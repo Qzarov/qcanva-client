@@ -7,6 +7,8 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted } from "vue";
 import Konva from "konva";
+import type { Group } from "konva/lib/Group";
+import type { Shape, ShapeConfig } from "konva/lib/Shape";
 
 export default defineComponent({
   name: "CanvasLoader",
@@ -46,7 +48,7 @@ export default defineComponent({
           // Перебираем объекты в parsedData и добавляем их на слой
           parsedData.nodes.forEach((obj: any) => {
             console.log(`parsed obj:`, obj)
-            let shape;
+            let shape: Group | Shape<ShapeConfig>;
             const borderColor = obj?.borderColor || "black";  // Цвет обводки, если не указан - чёрный
             const borderWidth = obj?.borderWidth || 2; // Толщина обводки, если не указана - 2px
 
@@ -82,23 +84,60 @@ export default defineComponent({
               });
             } else if (obj.type === "text") {
               // Для текста центрируем по высоте и ширине текста
-              const textWidth = obj.text.length * 10; // примерный расчет ширины текста
-              const textHeight = 20; // высота текста
-              x = centerX - textWidth / 2;
-              y = centerY - textHeight / 2;
-              shape = new Konva.Text({
+              const textWidth = obj.width || 200;  // если ширина не задана, установим по умолчанию 200px
+              const textHeight = obj.height || 50; // если высота не задана, установим по умолчанию 50px
+
+              x = obj.x - centerX - textWidth / 2;
+              y = obj.y + centerY - textHeight / 2;
+
+              // Создаем рамку для текста (обводку)
+              const borderRect = new Konva.Rect({
+                x: x,
+                y: y,
+                width: textWidth,
+                height: textHeight,
+                stroke: "white", // Цвет рамки
+                strokeWidth: borderWidth, // Толщина рамки
+                draggable: true, // Возможность перетаскивать рамку
+                cornerRadius: 10, // Скругление углов рамки
+              });
+
+              const text = new Konva.Text({
                 x,
                 y,
                 text: obj.text,
                 fontSize: 16,
-                fill: obj.fill || "black",
-                stroke: borderColor,  // Добавляем обводку
-                strokeWidth: borderWidth,  // Толщина обводки
+                width: textWidth,  // устанавливаем ширину
+                height: textHeight,  // устанавливаем высоту
+                fill: "white",
+                align: "left",  // Выравнивание текста по центру
+                verticalAlign: "middle",  // Выравнивание текста по вертикали
+                padding: 10,  // Добавляем отступы, чтобы текст не был прижат к границам
+                draggable: true,
               });
-            }
 
-            if (shape) {
-              layer.add(shape);
+              // Связываем текст и рамку, чтобы они перемещались вместе
+              borderRect.on("dragmove", () => {
+                // Синхронизируем позицию рамки с текстом
+                text.position({
+                  x: borderRect.x(),
+                  y: borderRect.y(),
+                });
+                layer.batchDraw();
+              });
+
+              text.on("dragmove", () => {
+                // Синхронизируем позицию рамки с текстом
+                borderRect.position({
+                  x: text.x(),
+                  y: text.y(),
+                });
+                layer.batchDraw();
+              });
+
+              // Добавляем рамку и текст на слой
+              layer.add(borderRect);
+              layer.add(text);
             }
           });
 
@@ -120,10 +159,3 @@ export default defineComponent({
   },
 });
 </script>
-
-<style scoped>
-.canvas-container {
-  border: 1px solid #ccc;
-  margin-top: 20px;
-}
-</style>

@@ -43,9 +43,3 @@ export default defineComponent({
   },
 });
 </script>
-
-<style scoped>
-.canvas-container {
-  border: 1px solid #ccc;
-}
-</style>
