@@ -135,6 +135,44 @@ export default defineComponent({
                 layer.batchDraw();
               });
 
+              // Добавляем обработчик двойного клика на текст для редактирования
+              text.on("dblclick", () => {
+                // Создаем текстовое поле для редактирования
+                const textInput = document.createElement("input");
+                textInput.value = text.text();
+                textInput.style.position = "absolute";
+                textInput.style.left = `${stage.container().offsetLeft + text.x()}px`;
+                textInput.style.top = `${stage.container().offsetTop + text.y()}px`;
+                textInput.style.width = `${textWidth}px`;
+                textInput.style.height = `${textHeight}px`;
+                textInput.style.fontSize = `${text.fontSize()}px`;
+                textInput.style.color = "white";
+                textInput.style.background = "transparent";
+                textInput.style.border = "none";
+                textInput.style.textAlign = "center";
+                textInput.style.verticalAlign = "middle";
+                textInput.style.padding = "10px";
+                textInput.style.outline = "none";
+
+                // Добавляем поле на страницу
+                document.body.appendChild(textInput);
+                textInput.focus();
+
+                // При потере фокуса или нажатии Enter сохраняем изменения
+                textInput.addEventListener("blur", () => {
+                  text.text(textInput.value);
+                  layer.batchDraw();
+                  document.body.removeChild(textInput);
+                });
+                textInput.addEventListener("keydown", (e) => {
+                  if (e.key === "Enter") {
+                    text.text(textInput.value);
+                    layer.batchDraw();
+                    document.body.removeChild(textInput);
+                  }
+                });
+              });
+
               // Добавляем рамку и текст на слой
               layer.add(borderRect);
               layer.add(text);
