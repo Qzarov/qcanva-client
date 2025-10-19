@@ -324,11 +324,11 @@ function addResizeHandles(
           y: borderRect.y(),
         })
 
-        // update upper right corner
-        const upperRightCircle = resizeHandleCircles[0];
-        upperRightCircle?.setPosition({
+        // update upper left corner
+        const upperLeftCircle = resizeHandleCircles[0];
+        upperLeftCircle?.setPosition({
           x: borderRect.x(),
-          y: upperRightCircle.y(),
+          y: upperLeftCircle.y(),
         })
 
         // update lower left corner
@@ -346,6 +346,20 @@ function addResizeHandles(
 
         borderRect.width(newWidth);
         borderRect.height(newHeight);
+
+        // update upper right corner
+        const upperRightCircle = resizeHandleCircles[1];
+        upperRightCircle?.setPosition({
+          x: borderRect.x() + newWidth,
+          y: upperRightCircle.y(),
+        })
+
+        // update lower left corner
+        const lowerLeftCircle = resizeHandleCircles[2];
+        lowerLeftCircle?.setPosition({
+          x: lowerLeftCircle.x(),
+          y: borderRect.y() + newHeight,
+        })
       }
 
       // Обновляем размеры текста (синхронизация)
