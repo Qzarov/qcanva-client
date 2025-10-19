@@ -47,7 +47,6 @@ export default defineComponent({
 
           // Перебираем объекты в parsedData и добавляем их на слой
           parsedData.nodes.forEach((obj: any) => {
-            console.log(`parsed obj:`, obj)
             let shape: Group | Shape<ShapeConfig>;
             const borderColor = obj?.borderColor || "black";  // Цвет обводки, если не указан - чёрный
             const borderWidth = obj?.borderWidth || 2; // Толщина обводки, если не указана - 2px
@@ -116,6 +115,11 @@ export default defineComponent({
                 draggable: true,
               });
 
+              // Добавляем маркеры изменения размера
+              let corners = updateCorners(borderRect);
+              
+              const resizeHandleCircles: Konva.Circle[] = addResizeHandles(text, borderRect, layer, corners);
+
               // Связываем текст и рамку, чтобы они перемещались вместе
               borderRect.on("dragmove", () => {
                 // Синхронизируем позицию рамки с текстом
@@ -123,6 +127,18 @@ export default defineComponent({
                   x: borderRect.x(),
                   y: borderRect.y(),
                 });
+
+                corners = updateCorners(borderRect);
+                resizeHandleCircles.forEach((circle: Konva.Circle, index) => {
+                  const corner = corners[index]
+                  if (!corner) { return }
+
+                  circle.position({
+                    x: borderRect.x() + corner.x,
+                    y: borderRect.y() + corner.y,
+                  });
+                });
+
                 layer.batchDraw();
               });
 
@@ -132,6 +148,18 @@ export default defineComponent({
                   x: text.x(),
                   y: text.y(),
                 });
+
+                corners = updateCorners(borderRect);
+                resizeHandleCircles.forEach((circle: Konva.Circle, index) => {
+                  const corner = corners[index]
+                  if (!corner) { return }
+
+                  circle.position({
+                    x: text.x() + corner.x,
+                    y: text.y() + corner.y,
+                  });
+                });
+
                 layer.batchDraw();
               });
 
@@ -180,12 +208,11 @@ export default defineComponent({
           });
 
           layer.draw();
-          console.log(`layer has been drawen`)
         }
-  } catch (error) {
-    console.error("Ошибка при загрузке или парсинге файла .canvas:", error);
-  }
-};
+      } catch (error) {
+        console.error("Ошибка при загрузке или парсинге файла .canvas:", error);
+      }
+    };
 
     onMounted(() => {
       loadCanvas();
@@ -196,4 +223,166 @@ export default defineComponent({
     };
   },
 });
+
+// Функция для добавления маркеров для изменения размера в каждом углу
+function addResizeHandles(
+  text: Konva.Text, 
+  borderRect: Konva.Rect, 
+  layer: Konva.Layer, 
+  corners: {x: number, y: number}[]
+) {
+  const cornerRadius = 8; // Радиус маркеров для изменения размера
+
+  const resizeHandleCircles: Konva.Circle[] = [];
+  corners.forEach((corner, index) => {
+    const resizeHandle = new Konva.Circle({
+      x: borderRect.x() + corner.x,
+      y: borderRect.y() + corner.y,
+      radius: cornerRadius,
+      fill: "white", // Цвет маркера
+      stroke: "black", // Цвет обводки маркера
+      strokeWidth: 2,
+      draggable: true,
+      opacity: 2, // Скрыто по умолчанию
+    });
+
+    // Логика изменения размера при перетаскивании углов
+    resizeHandle.on("dragmove", () => {
+      let newWidth, newHeight;
+
+      // В зависимости от того, какой угол перетаскиваем, изменяем ширину и высоту рамки
+      if (index === 0) {
+        // Верхний левый угол
+        newWidth = borderRect.width() - (resizeHandle.x() - borderRect.x());
+        newHeight = borderRect.height() - (resizeHandle.y() - borderRect.y());
+
+        borderRect.width(newWidth);
+        borderRect.height(newHeight);
+
+        // Перемещаем рамку в сторону перетаскиваемого угла
+        borderRect.x(resizeHandle.x());
+        borderRect.y(resizeHandle.y());
+
+        text.setPosition({
+          x: resizeHandle.x(),
+          y: resizeHandle.y(),
+        })
+
+        // update lower left corner
+        const lowerLeftCircle = resizeHandleCircles[2];
+        lowerLeftCircle?.setPosition({
+          x: borderRect.x(),
+          y: lowerLeftCircle.y(),
+        })
+
+        // update upper right corner
+        const upperRightCircle = resizeHandleCircles[1];
+        upperRightCircle?.setPosition({
+          x: upperRightCircle.x(),
+          y: borderRect.y(),
+        })
+
+      } else if (index === 1) {
+        // Верхний правый угол
+        newWidth = resizeHandle.x() - borderRect.x();
+        newHeight = borderRect.height() - (resizeHandle.y() - borderRect.y());
+
+        borderRect.width(newWidth);
+        borderRect.height(newHeight);
+
+        text.setPosition({
+          x: borderRect.x(),
+          y: borderRect.y(),
+        })
+
+        borderRect.y(resizeHandle.y()); // Оставляем y фиксированным
+
+        // update upper left corner
+        const upperLeftCircle = resizeHandleCircles[0];
+        upperLeftCircle?.setPosition({
+          x: upperLeftCircle.x(),
+          y: borderRect.y(),
+        })
+
+        // update lower right corner
+        const lowerRightCircle = resizeHandleCircles[3];
+        lowerRightCircle?.setPosition({
+          x: borderRect.x() + newWidth,
+          y: lowerRightCircle.y(),
+        })
+
+      } else if (index === 2) {
+        // Нижний левый угол
+        newWidth = borderRect.width() - (resizeHandle.x() - borderRect.x());
+        newHeight = resizeHandle.y() - borderRect.y();
+
+        borderRect.width(newWidth);
+        borderRect.height(newHeight);
+
+        text.setPosition({
+          x: borderRect.x(),
+          y: borderRect.y(),
+        })
+
+        // update upper right corner
+        const upperRightCircle = resizeHandleCircles[0];
+        upperRightCircle?.setPosition({
+          x: borderRect.x(),
+          y: upperRightCircle.y(),
+        })
+
+        // update lower left corner
+        const lowerRightCircle = resizeHandleCircles[3];
+        lowerRightCircle?.setPosition({
+          x: lowerRightCircle.x(),
+          y: borderRect.y() + newHeight,
+        })
+
+        borderRect.x(resizeHandle.x()); // Оставляем x фиксированным
+      } else if (index === 3) {
+        // Нижний правый угол
+        newWidth = resizeHandle.x() - borderRect.x();
+        newHeight = resizeHandle.y() - borderRect.y();
+
+        borderRect.width(newWidth);
+        borderRect.height(newHeight);
+      }
+
+      // Обновляем размеры текста (синхронизация)
+      text.width(newWidth);
+      text.height(newHeight);
+
+      // Перерисовываем слой
+      layer.batchDraw();
+    });
+
+    // Отображаем маркеры при наведении на рамку
+    // borderRect.on("mouseenter", () => {
+    //   resizeHandle.opacity(1); // Показываем маркеры
+    //   layer.batchDraw();
+    // });
+
+    // Прячем маркеры, когда мышь покидает рамку
+    // borderRect.on("mouseleave", () => {
+    //   resizeHandle.opacity(0); // Скрываем маркеры
+    //   layer.batchDraw();
+    // });
+
+    // Добавляем маркер на слой
+    layer.add(resizeHandle);
+
+    resizeHandleCircles.push(resizeHandle)
+  });
+  return resizeHandleCircles;
+};
+
+function updateCorners(borderRect: Konva.Rect): {x: number, y: number}[] {
+  return [
+    { x: 0, y: 0 }, // Верхний левый
+    { x: borderRect.width(), y: 0 }, // Верхний правый
+    { x: 0, y: borderRect.height() }, // Нижний левый
+    { x: borderRect.width(), y: borderRect.height() } // Нижний правый
+  ];
+}
+
 </script>
