@@ -566,6 +566,7 @@ export default defineComponent({
       if (!selectedNodeIds.value.includes(node.id)) {
         selectedNodeIds.value = [node.id];
       }
+      pushUndo();
       dragNodeId.value = node.id;
       dragMouseStart.x = e.clientX;
       dragMouseStart.y = e.clientY;
@@ -752,6 +753,7 @@ export default defineComponent({
         height: 60,
         text: "",
       };
+      pushUndo();
       nodes.value.push(newNode);
       selectedNodeIds.value = [newNode.id];
       editingNodeId.value = newNode.id;
@@ -787,6 +789,7 @@ export default defineComponent({
     const onCtxDuplicate = () => {
       const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
       if (!node) return;
+      pushUndo();
       const clone: CanvasNode = { ...node, id: genId(), x: node.x + 30, y: node.y + 30 };
       nodes.value.push(clone);
       selectedNodeIds.value = [clone.id];
@@ -794,6 +797,7 @@ export default defineComponent({
     };
 
     const onCtxDelete = () => {
+      pushUndo();
       const id = contextMenu.nodeId;
       edges.value = edges.value.filter((ed) => ed.fromNode !== id && ed.toNode !== id);
       nodes.value = nodes.value.filter((n) => n.id !== id);
@@ -801,15 +805,65 @@ export default defineComponent({
       closeContextMenu();
     };
 
+    // Undo/redo history
+    interface Snapshot { nodes: string; edges: string; }
+    const undoStack = ref<Snapshot[]>([]);
+    const redoStack = ref<Snapshot[]>([]);
+    const MAX_HISTORY = 50;
+
+    const takeSnapshot = (): Snapshot => ({
+      nodes: JSON.stringify(nodes.value),
+      edges: JSON.stringify(edges.value),
+    });
+
+    const pushUndo = () => {
+      undoStack.value.push(takeSnapshot());
+      if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
+      redoStack.value = [];
+    };
+
+    const undo = () => {
+      if (!undoStack.value.length) return;
+      redoStack.value.push(takeSnapshot());
+      const snap = undoStack.value.pop()!;
+      nodes.value = JSON.parse(snap.nodes);
+      edges.value = JSON.parse(snap.edges);
+      selectedNodeIds.value = [];
+      selectedEdgeId.value = null;
+    };
+
+    const redo = () => {
+      if (!redoStack.value.length) return;
+      undoStack.value.push(takeSnapshot());
+      const snap = redoStack.value.pop()!;
+      nodes.value = JSON.parse(snap.nodes);
+      edges.value = JSON.parse(snap.edges);
+      selectedNodeIds.value = [];
+      selectedEdgeId.value = null;
+    };
+
     // Delete edge or node on keydown
     const onKeyDown = (e: KeyboardEvent) => {
+      // Undo/redo
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "Z" || (e.key === "z" && e.shiftKey))) {
+        e.preventDefault();
+        redo();
+        return;
+      }
       if (editingNodeId.value || editingEdgeId.value) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedEdgeId.value) {
+          pushUndo();
           edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
           selectedEdgeId.value = null;
           e.preventDefault();
         } else if (selectedNodeIds.value.length > 0) {
+          pushUndo();
           const ids = new Set(selectedNodeIds.value);
           edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
           nodes.value = nodes.value.filter((n) => !ids.has(n.id));
@@ -917,6 +971,7 @@ export default defineComponent({
         const wy = (e.clientY - rect.top - camera.y) / camera.scale;
         const target = findNodeAt(wx, wy);
         if (target && target.node.id !== connFromNode.value) {
+          pushUndo();
           edges.value.push({
             id: genId(),
             fromNode: connFromNode.value,
