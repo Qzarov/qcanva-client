@@ -131,6 +131,9 @@
         />
       </div>
 
+      <!-- Selection box -->
+      <div v-if="selBox.active" class="selection-box" :style="selBoxStyle"></div>
+
       <!-- Context menu -->
       <div
         v-if="contextMenu.visible"
@@ -158,7 +161,7 @@
         v-for="node in textNodes"
         :key="node.id"
         class="canvas-node"
-        :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': selectedNodeId === node.id }]"
+        :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @dblclick.stop="onNodeDblClick(node)"
@@ -177,7 +180,7 @@
         <!-- View mode -->
         <div v-else class="node-content" v-html="renderMarkdown(node.text || '')"></div>
         <!-- Resize handles (visible when selected) -->
-        <template v-if="selectedNodeId === node.id && editingNodeId !== node.id">
+        <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id">
           <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
           <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
@@ -505,8 +508,29 @@ export default defineComponent({
       return processCallouts(html);
     };
 
-    // Selection state
-    const selectedNodeId = ref<string | null>(null);
+    // Selection state (multi-select)
+    const selectedNodeIds = ref<string[]>([]);
+    // Convenience: single selected node ID (for backwards compat in template)
+    const selectedNodeId = computed(() => selectedNodeIds.value.length === 1 ? selectedNodeIds.value[0] : null);
+
+    const isNodeSelected = (id: string) => selectedNodeIds.value.includes(id);
+
+    // Selection box state
+    const selBox = reactive({ active: false, startX: 0, startY: 0, curX: 0, curY: 0 });
+    const selBoxStyle = computed(() => {
+      if (!selBox.active) return { display: "none" };
+      const x1 = Math.min(selBox.startX, selBox.curX);
+      const y1 = Math.min(selBox.startY, selBox.curY);
+      const x2 = Math.max(selBox.startX, selBox.curX);
+      const y2 = Math.max(selBox.startY, selBox.curY);
+      return {
+        display: "block",
+        left: `${x1}px`,
+        top: `${y1}px`,
+        width: `${x2 - x1}px`,
+        height: `${y2 - y1}px`,
+      };
+    });
 
     // Editing state
     const editingNodeId = ref<string | null>(null);
@@ -514,7 +538,6 @@ export default defineComponent({
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
-    const dragNodeStart = reactive({ x: 0, y: 0 });
     const dragMouseStart = reactive({ x: 0, y: 0 });
 
     // Resize state
@@ -524,14 +547,34 @@ export default defineComponent({
     const MIN_NODE_SIZE = 60;
 
     // Node drag handlers
+    // Store initial positions of all dragged nodes for multi-drag
+    const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
+
     const onNodeDragStart = (e: MouseEvent, node: CanvasNode) => {
       if (resizeNodeId.value) return;
-      selectedNodeId.value = node.id;
+      // Shift/Ctrl click: toggle selection
+      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+        const idx = selectedNodeIds.value.indexOf(node.id);
+        if (idx >= 0) {
+          selectedNodeIds.value.splice(idx, 1);
+        } else {
+          selectedNodeIds.value.push(node.id);
+        }
+        return;
+      }
+      // If clicking a node that's not in selection, replace selection
+      if (!selectedNodeIds.value.includes(node.id)) {
+        selectedNodeIds.value = [node.id];
+      }
       dragNodeId.value = node.id;
       dragMouseStart.x = e.clientX;
       dragMouseStart.y = e.clientY;
-      dragNodeStart.x = node.x;
-      dragNodeStart.y = node.y;
+      // Store initial positions of all selected nodes
+      dragNodesInitial.value = new Map();
+      for (const id of selectedNodeIds.value) {
+        const n = nodes.value.find((nd) => nd.id === id);
+        if (n) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+      }
     };
 
     // Double-click to edit text
@@ -569,7 +612,7 @@ export default defineComponent({
 
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
-      selectedNodeId.value = null;
+      selectedNodeIds.value = [];
     };
 
     const onDeleteEdge = () => {
@@ -710,7 +753,7 @@ export default defineComponent({
         text: "",
       };
       nodes.value.push(newNode);
-      selectedNodeId.value = newNode.id;
+      selectedNodeIds.value = [newNode.id];
       editingNodeId.value = newNode.id;
       nextTick(() => {
         const textarea = editorRefs.value?.[0];
@@ -722,7 +765,7 @@ export default defineComponent({
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "" });
 
     const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
-      selectedNodeId.value = node.id;
+      selectedNodeIds.value = [node.id];
       // Position in world coords (same as nodes)
       const rect = viewport.value!.getBoundingClientRect();
       const wx = (e.clientX - rect.left - camera.x) / camera.scale;
@@ -746,7 +789,7 @@ export default defineComponent({
       if (!node) return;
       const clone: CanvasNode = { ...node, id: genId(), x: node.x + 30, y: node.y + 30 };
       nodes.value.push(clone);
-      selectedNodeId.value = clone.id;
+      selectedNodeIds.value = [clone.id];
       closeContextMenu();
     };
 
@@ -754,7 +797,7 @@ export default defineComponent({
       const id = contextMenu.nodeId;
       edges.value = edges.value.filter((ed) => ed.fromNode !== id && ed.toNode !== id);
       nodes.value = nodes.value.filter((n) => n.id !== id);
-      selectedNodeId.value = null;
+      selectedNodeIds.value = [];
       closeContextMenu();
     };
 
@@ -766,13 +809,11 @@ export default defineComponent({
           edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
           selectedEdgeId.value = null;
           e.preventDefault();
-        } else if (selectedNodeId.value) {
-          // Also remove edges connected to this node
-          edges.value = edges.value.filter(
-            (ed) => ed.fromNode !== selectedNodeId.value && ed.toNode !== selectedNodeId.value
-          );
-          nodes.value = nodes.value.filter((n) => n.id !== selectedNodeId.value);
-          selectedNodeId.value = null;
+        } else if (selectedNodeIds.value.length > 0) {
+          const ids = new Set(selectedNodeIds.value);
+          edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
+          nodes.value = nodes.value.filter((n) => !ids.has(n.id));
+          selectedNodeIds.value = [];
           e.preventDefault();
         }
       }
@@ -781,15 +822,31 @@ export default defineComponent({
     // Pan handlers
     const onPanStart = (e: MouseEvent) => {
       if (dragNodeId.value || connDragging.value) return;
-      selectedNodeId.value = null;
+      if (!(e.shiftKey || e.ctrlKey || e.metaKey)) {
+        selectedNodeIds.value = [];
+      }
       selectedEdgeId.value = null;
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
-      isPanning.value = true;
-      panStart.x = e.clientX;
-      panStart.y = e.clientY;
-      cameraStart.x = camera.x;
-      cameraStart.y = camera.y;
+
+      // Middle button or space held → always pan. Left button → selection box.
+      if (e.button === 1) {
+        isPanning.value = true;
+        panStart.x = e.clientX;
+        panStart.y = e.clientY;
+        cameraStart.x = camera.x;
+        cameraStart.y = camera.y;
+        return;
+      }
+      // Left button on empty space: start selection box
+      const rect = viewport.value!.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+      const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+      selBox.active = true;
+      selBox.startX = wx;
+      selBox.startY = wy;
+      selBox.curX = wx;
+      selBox.curY = wy;
     };
 
     const onPanMove = (e: MouseEvent) => {
@@ -826,15 +883,24 @@ export default defineComponent({
         }
         return;
       }
-      // Node dragging
+      // Node dragging (multi-drag)
       if (dragNodeId.value) {
-        const node = nodes.value.find((n) => n.id === dragNodeId.value);
-        if (node) {
-          const dx = (e.clientX - dragMouseStart.x) / camera.scale;
-          const dy = (e.clientY - dragMouseStart.y) / camera.scale;
-          node.x = dragNodeStart.x + dx;
-          node.y = dragNodeStart.y + dy;
+        const dx = (e.clientX - dragMouseStart.x) / camera.scale;
+        const dy = (e.clientY - dragMouseStart.y) / camera.scale;
+        for (const [id, init] of dragNodesInitial.value) {
+          const node = nodes.value.find((n) => n.id === id);
+          if (node) {
+            node.x = init.x + dx;
+            node.y = init.y + dy;
+          }
         }
+        return;
+      }
+      // Selection box dragging
+      if (selBox.active) {
+        const rect = viewport.value!.getBoundingClientRect();
+        selBox.curX = (e.clientX - rect.left - camera.x) / camera.scale;
+        selBox.curY = (e.clientY - rect.top - camera.y) / camera.scale;
         return;
       }
       // Canvas panning
@@ -861,6 +927,21 @@ export default defineComponent({
         }
         connDragging.value = false;
         return;
+      }
+      // Finish selection box
+      if (selBox.active) {
+        const x1 = Math.min(selBox.startX, selBox.curX);
+        const y1 = Math.min(selBox.startY, selBox.curY);
+        const x2 = Math.max(selBox.startX, selBox.curX);
+        const y2 = Math.max(selBox.startY, selBox.curY);
+        // Only select if box is bigger than a tiny drag (avoid deselect on click)
+        if (x2 - x1 > 5 || y2 - y1 > 5) {
+          const hits = nodes.value.filter((n) =>
+            n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
+          ).map((n) => n.id);
+          selectedNodeIds.value = hits;
+        }
+        selBox.active = false;
       }
       isPanning.value = false;
       dragNodeId.value = null;
@@ -990,6 +1071,10 @@ export default defineComponent({
       groupColorClass,
       renderMarkdown,
       selectedNodeId,
+      selectedNodeIds,
+      isNodeSelected,
+      selBoxStyle,
+      selBox,
       editingNodeId,
       editorRefs,
       dragNodeId,
@@ -1191,6 +1276,16 @@ export default defineComponent({
 }
 .edge-label-input::placeholder {
   color: rgba(255, 255, 255, 0.3);
+}
+
+/* ===== Selection box ===== */
+.selection-box {
+  position: absolute;
+  border: 1.5px solid rgba(124, 138, 255, 0.6);
+  background: rgba(124, 138, 255, 0.08);
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* ===== Context menu ===== */
