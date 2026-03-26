@@ -51,6 +51,11 @@
               :d="edge.path"
               class="edge-line"
               :class="{ 'edge-selected': selectedEdgeId === edge.id }"
+              :style="{
+                stroke: edge.color || undefined,
+                strokeWidth: edge.thickness,
+                strokeDasharray: edge.dashArray || undefined,
+              }"
               marker-end="url(#arrowhead)"
             />
             <!-- Label on edge -->
@@ -93,6 +98,16 @@
         <button class="edge-action-btn edge-label-btn" @mousedown.stop="onEdgeDblClick(selectedEdgeId!)" title="Add label">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </button>
+        <button class="edge-action-btn" @mousedown.stop="onEdgeToggleStyle" title="Toggle style">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="3" y1="12" x2="7" y2="12"/><line x1="10" y1="12" x2="14" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/>
+          </svg>
+        </button>
+        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleColor" title="Change color">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>
           </svg>
         </button>
       </div>
@@ -230,6 +245,9 @@ interface CanvasEdge {
   fromSide?: string;
   toSide?: string;
   label?: string;
+  color?: string;
+  lineStyle?: "solid" | "dashed" | "dotted";
+  thickness?: number;
   styleAttributes?: Record<string, string>;
 }
 
@@ -240,6 +258,9 @@ interface RenderedEdge {
   labelX: number;
   labelY: number;
   labelW: number;
+  color?: string;
+  dashArray?: string;
+  thickness: number;
 }
 
 // Obsidian color palette
@@ -399,7 +420,7 @@ export default defineComponent({
         const fromNode = nodeMap.value.get(edge.fromNode);
         const toNode = nodeMap.value.get(edge.toNode);
         if (!fromNode || !toNode) {
-          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0 };
+          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, thickness: 2 };
         }
 
         const fromSide = edge.fromSide || "bottom";
@@ -413,6 +434,8 @@ export default defineComponent({
 
         const path = `M ${from.x} ${from.y} C ${from.x + c1.dx} ${from.y + c1.dy}, ${to.x + c2.dx} ${to.y + c2.dy}, ${to.x} ${to.y}`;
 
+        const thickness = edge.thickness || 2;
+        const dashMap: Record<string, string> = { dashed: "8 4", dotted: "3 3" };
         return {
           id: edge.id,
           path,
@@ -420,6 +443,9 @@ export default defineComponent({
           labelX: (from.x + to.x) / 2,
           labelY: (from.y + to.y) / 2 - 8,
           labelW: edge.label ? edge.label.length * 7.5 : 0,
+          color: edge.color,
+          dashArray: edge.lineStyle ? dashMap[edge.lineStyle] : undefined,
+          thickness,
         };
       });
     });
@@ -591,6 +617,25 @@ export default defineComponent({
 
     const onEdgeLabelEnd = () => {
       editingEdgeId.value = null;
+    };
+
+    // Edge style cycling
+    const EDGE_COLORS = [undefined, "#fb464c", "#e9973f", "#e0de71", "#44cf6e", "#53dfdd", "#a882ff"];
+    const LINE_STYLES: Array<"solid" | "dashed" | "dotted"> = ["solid", "dashed", "dotted"];
+
+    const onEdgeToggleStyle = () => {
+      const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
+      if (!edge) return;
+      const current = edge.lineStyle || "solid";
+      const idx = LINE_STYLES.indexOf(current);
+      edge.lineStyle = LINE_STYLES[(idx + 1) % LINE_STYLES.length];
+    };
+
+    const onEdgeCycleColor = () => {
+      const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
+      if (!edge) return;
+      const idx = EDGE_COLORS.indexOf(edge.color);
+      edge.color = EDGE_COLORS[(idx + 1) % EDGE_COLORS.length];
     };
 
     // Connection (edge creation) state
@@ -964,6 +1009,8 @@ export default defineComponent({
       onEdgeDblClick,
       onEdgeLabelInput,
       onEdgeLabelEnd,
+      onEdgeToggleStyle,
+      onEdgeCycleColor,
       onCanvasDblClick,
       contextMenu,
       onNodeContextMenu,
