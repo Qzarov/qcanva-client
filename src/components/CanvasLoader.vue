@@ -116,6 +116,28 @@
         />
       </div>
 
+      <!-- Context menu -->
+      <div
+        v-if="contextMenu.visible"
+        class="context-menu"
+        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+        @mousedown.stop
+      >
+        <div class="ctx-colors">
+          <button
+            v-for="c in ['1','2','3','4','5','6']"
+            :key="c"
+            class="ctx-color-btn"
+            :class="'ctx-color-' + c"
+            :title="'Color ' + c"
+            @click="onCtxSetColor(c)"
+          ></button>
+          <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
+        </div>
+        <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
+        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+      </div>
+
       <!-- Text nodes -->
       <div
         v-for="node in textNodes"
@@ -125,6 +147,7 @@
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @dblclick.stop="onNodeDblClick(node)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <!-- Edit mode -->
         <textarea
@@ -615,6 +638,46 @@ export default defineComponent({
       });
     };
 
+    // Context menu state
+    const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "" });
+
+    const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
+      selectedNodeId.value = node.id;
+      // Position in world coords (same as nodes)
+      const rect = viewport.value!.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+      const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+      contextMenu.x = wx;
+      contextMenu.y = wy;
+      contextMenu.nodeId = node.id;
+      contextMenu.visible = true;
+    };
+
+    const closeContextMenu = () => { contextMenu.visible = false; };
+
+    const onCtxSetColor = (color: string | undefined) => {
+      const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
+      if (node) node.color = color;
+      closeContextMenu();
+    };
+
+    const onCtxDuplicate = () => {
+      const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
+      if (!node) return;
+      const clone: CanvasNode = { ...node, id: genId(), x: node.x + 30, y: node.y + 30 };
+      nodes.value.push(clone);
+      selectedNodeId.value = clone.id;
+      closeContextMenu();
+    };
+
+    const onCtxDelete = () => {
+      const id = contextMenu.nodeId;
+      edges.value = edges.value.filter((ed) => ed.fromNode !== id && ed.toNode !== id);
+      nodes.value = nodes.value.filter((n) => n.id !== id);
+      selectedNodeId.value = null;
+      closeContextMenu();
+    };
+
     // Delete edge or node on keydown
     const onKeyDown = (e: KeyboardEvent) => {
       if (editingNodeId.value || editingEdgeId.value) return;
@@ -641,6 +704,7 @@ export default defineComponent({
       selectedNodeId.value = null;
       selectedEdgeId.value = null;
       if (editingNodeId.value) editingNodeId.value = null;
+      if (contextMenu.visible) closeContextMenu();
       isPanning.value = true;
       panStart.x = e.clientX;
       panStart.y = e.clientY;
@@ -866,6 +930,11 @@ export default defineComponent({
       onEdgeLabelInput,
       onEdgeLabelEnd,
       onCanvasDblClick,
+      contextMenu,
+      onNodeContextMenu,
+      onCtxSetColor,
+      onCtxDuplicate,
+      onCtxDelete,
       connDragging,
       tempEdgePath,
       onConnStart,
@@ -1041,6 +1110,57 @@ export default defineComponent({
 .edge-label-input::placeholder {
   color: rgba(255, 255, 255, 0.3);
 }
+
+/* ===== Context menu ===== */
+.context-menu {
+  position: absolute;
+  z-index: 200;
+  background: rgba(30, 30, 30, 0.97);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 6px;
+  min-width: 140px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+.ctx-colors {
+  display: flex;
+  gap: 4px;
+  padding: 4px 4px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  margin-bottom: 4px;
+}
+.ctx-color-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s;
+}
+.ctx-color-btn:hover { transform: scale(1.2); }
+.ctx-color-1 { background: #fb464c; }
+.ctx-color-2 { background: #e9973f; }
+.ctx-color-3 { background: #e0de71; }
+.ctx-color-4 { background: #44cf6e; }
+.ctx-color-5 { background: #53dfdd; }
+.ctx-color-6 { background: #a882ff; }
+.ctx-color-none { background: #444; font-size: 10px; color: #aaa; display: flex; align-items: center; justify-content: center; }
+.ctx-item {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.ctx-item:hover { background: rgba(255, 255, 255, 0.08); }
+.ctx-item-danger:hover { background: rgba(251, 70, 76, 0.2); color: #fb464c; }
 
 /* Arrowhead color */
 #arrowhead polygon {
