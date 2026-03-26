@@ -842,6 +842,9 @@ export default defineComponent({
       selectedEdgeId.value = null;
     };
 
+    // Clipboard for copy/paste
+    const clipboard = ref<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>({ nodes: [], edges: [] });
+
     // Delete edge or node on keydown
     const onKeyDown = (e: KeyboardEvent) => {
       // Undo/redo
@@ -853,6 +856,38 @@ export default defineComponent({
       if ((e.ctrlKey || e.metaKey) && (e.key === "Z" || (e.key === "z" && e.shiftKey))) {
         e.preventDefault();
         redo();
+        return;
+      }
+      // Copy
+      if ((e.ctrlKey || e.metaKey) && e.key === "c" && selectedNodeIds.value.length > 0) {
+        const ids = new Set(selectedNodeIds.value);
+        clipboard.value = {
+          nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
+          edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
+        };
+        return;
+      }
+      // Paste
+      if ((e.ctrlKey || e.metaKey) && e.key === "v" && clipboard.value.nodes.length > 0) {
+        e.preventDefault();
+        pushUndo();
+        const idMap = new Map<string, string>();
+        const newNodes: CanvasNode[] = clipboard.value.nodes.map((n) => {
+          const newId = genId();
+          idMap.set(n.id, newId);
+          return { ...n, id: newId, x: n.x + 40, y: n.y + 40 };
+        });
+        const newEdges: CanvasEdge[] = clipboard.value.edges.map((ed) => ({
+          ...ed,
+          id: genId(),
+          fromNode: idMap.get(ed.fromNode) || ed.fromNode,
+          toNode: idMap.get(ed.toNode) || ed.toNode,
+        }));
+        nodes.value.push(...newNodes);
+        edges.value.push(...newEdges);
+        selectedNodeIds.value = newNodes.map((n) => n.id);
+        // Update clipboard positions for next paste
+        clipboard.value.nodes = clipboard.value.nodes.map((n) => ({ ...n, x: n.x + 40, y: n.y + 40 }));
         return;
       }
       if (editingNodeId.value || editingEdgeId.value) return;
