@@ -10,6 +10,7 @@
     @touchstart.prevent="onTouchStart"
     @touchmove.prevent="onTouchMove"
     @touchend="onTouchEnd"
+    @dblclick="onCanvasDblClick"
   >
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
@@ -39,31 +40,120 @@
         </defs>
         <g :transform="edgesSvgTransform">
           <g v-for="edge in renderedEdges" :key="edge.id">
+            <!-- Invisible wide hit area for clicking -->
+            <path
+              :d="edge.path"
+              class="edge-hit"
+              @mousedown.stop="onEdgeClick(edge.id)"
+              @dblclick.stop="onEdgeDblClick(edge.id)"
+            />
             <path
               :d="edge.path"
               class="edge-line"
+              :class="{ 'edge-selected': selectedEdgeId === edge.id }"
               marker-end="url(#arrowhead)"
             />
-            <text
-              v-if="edge.label"
-              :x="edge.labelX"
-              :y="edge.labelY"
-              class="edge-label"
-            >{{ edge.label }}</text>
+            <!-- Label on edge -->
+            <g v-if="edge.label && editingEdgeId !== edge.id" class="edge-label-group">
+              <rect
+                :x="edge.labelX - edge.labelW / 2 - 8"
+                :y="edge.labelY - 12"
+                :width="edge.labelW + 16"
+                :height="24"
+                rx="4"
+                class="edge-label-bg"
+              />
+              <text
+                :x="edge.labelX"
+                :y="edge.labelY + 4"
+                class="edge-label"
+              >{{ edge.label }}</text>
+            </g>
           </g>
+          <!-- Temporary edge while creating connection -->
+          <path
+            v-if="connDragging && tempEdgePath"
+            :d="tempEdgePath"
+            class="edge-line edge-temp"
+          />
         </g>
       </svg>
+
+      <!-- Edge action buttons (DOM overlay) -->
+      <div
+        v-if="selectedEdgeId && selectedEdgeMidpoint"
+        class="edge-actions"
+        :style="{ left: selectedEdgeMidpoint.x + 'px', top: selectedEdgeMidpoint.y + 'px' }"
+      >
+        <button class="edge-action-btn edge-delete-btn" @mousedown.stop="onDeleteEdge" title="Delete">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
+        </button>
+        <button class="edge-action-btn edge-label-btn" @mousedown.stop="onEdgeDblClick(selectedEdgeId!)" title="Add label">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Edge label editor (DOM overlay) -->
+      <div
+        v-if="editingEdgeId && editingEdgeMidpoint"
+        class="edge-label-editor"
+        :style="{ left: editingEdgeMidpoint.x + 'px', top: editingEdgeMidpoint.y + 'px' }"
+      >
+        <input
+          ref="edgeLabelInput"
+          class="edge-label-input"
+          :value="editingEdgeLabel"
+          @input="onEdgeLabelInput"
+          @blur="onEdgeLabelEnd"
+          @keydown.enter="onEdgeLabelEnd"
+          @keydown.escape="onEdgeLabelEnd"
+          placeholder="Label..."
+          @mousedown.stop
+        />
+      </div>
 
       <!-- Text nodes -->
       <div
         v-for="node in textNodes"
         :key="node.id"
         class="canvas-node"
-        :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id }]"
+        :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': selectedNodeId === node.id }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
+        @dblclick.stop="onNodeDblClick(node)"
       >
-        <div class="node-content" v-html="renderMarkdown(node.text || '')"></div>
+        <!-- Edit mode -->
+        <textarea
+          v-if="editingNodeId === node.id"
+          class="node-editor"
+          :value="node.text"
+          @input="onEditInput($event, node)"
+          @blur="onEditEnd"
+          @keydown.escape="onEditEnd"
+          ref="editorRefs"
+        ></textarea>
+        <!-- View mode -->
+        <div v-else class="node-content" v-html="renderMarkdown(node.text || '')"></div>
+        <!-- Resize handles (visible when selected) -->
+        <template v-if="selectedNodeId === node.id && editingNodeId !== node.id">
+          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+          <div class="resize-handle resize-handle-r" @mousedown.stop="onResizeStart($event, node, 'r')"></div>
+          <div class="resize-handle resize-handle-l" @mousedown.stop="onResizeStart($event, node, 'l')"></div>
+          <div class="resize-handle resize-handle-t" @mousedown.stop="onResizeStart($event, node, 't')"></div>
+          <div class="resize-handle resize-handle-b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
+        </template>
+        <!-- Connection points (visible on hover) -->
+        <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
+        <div class="conn-point conn-bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
+        <div class="conn-point conn-left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
+        <div class="conn-point conn-right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
 
       <!-- Link nodes -->
@@ -92,7 +182,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, reactive } from "vue";
+import { defineComponent, ref, computed, onMounted, reactive, nextTick } from "vue";
 import { marked } from "marked";
 
 interface CanvasNode {
@@ -126,6 +216,7 @@ interface RenderedEdge {
   label?: string;
   labelX: number;
   labelY: number;
+  labelW: number;
 }
 
 // Obsidian color palette
@@ -239,7 +330,6 @@ export default defineComponent({
         top: `${b.minY}px`,
         width: `${b.w}px`,
         height: `${b.h}px`,
-        pointerEvents: "none" as const,
         overflow: "visible" as const,
       };
     });
@@ -286,7 +376,7 @@ export default defineComponent({
         const fromNode = nodeMap.value.get(edge.fromNode);
         const toNode = nodeMap.value.get(edge.toNode);
         if (!fromNode || !toNode) {
-          return { id: edge.id, path: "", labelX: 0, labelY: 0 };
+          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0 };
         }
 
         const fromSide = edge.fromSide || "bottom";
@@ -306,6 +396,7 @@ export default defineComponent({
           label: edge.label,
           labelX: (from.x + to.x) / 2,
           labelY: (from.y + to.y) / 2 - 8,
+          labelW: edge.label ? edge.label.length * 7.5 : 0,
         };
       });
     });
@@ -330,13 +421,28 @@ export default defineComponent({
       return marked.parse(text) as string;
     };
 
+    // Selection state
+    const selectedNodeId = ref<string | null>(null);
+
+    // Editing state
+    const editingNodeId = ref<string | null>(null);
+    const editorRefs = ref<HTMLTextAreaElement[]>([]);
+
     // Drag node state
     const dragNodeId = ref<string | null>(null);
     const dragNodeStart = reactive({ x: 0, y: 0 });
     const dragMouseStart = reactive({ x: 0, y: 0 });
 
+    // Resize state
+    const resizeNodeId = ref<string | null>(null);
+    const resizeHandle = ref<string>("");
+    const resizeStart = reactive({ x: 0, y: 0, nodeX: 0, nodeY: 0, nodeW: 0, nodeH: 0 });
+    const MIN_NODE_SIZE = 60;
+
     // Node drag handlers
     const onNodeDragStart = (e: MouseEvent, node: CanvasNode) => {
+      if (resizeNodeId.value) return;
+      selectedNodeId.value = node.id;
       dragNodeId.value = node.id;
       dragMouseStart.x = e.clientX;
       dragMouseStart.y = e.clientY;
@@ -344,9 +450,197 @@ export default defineComponent({
       dragNodeStart.y = node.y;
     };
 
+    // Double-click to edit text
+    const onNodeDblClick = (node: CanvasNode) => {
+      if (node.type !== "text") return;
+      editingNodeId.value = node.id;
+      nextTick(() => {
+        const textarea = editorRefs.value?.[0];
+        if (textarea) textarea.focus();
+      });
+    };
+
+    const onEditInput = (e: Event, node: CanvasNode) => {
+      node.text = (e.target as HTMLTextAreaElement).value;
+    };
+
+    const onEditEnd = () => {
+      editingNodeId.value = null;
+    };
+
+    // Resize handlers
+    const onResizeStart = (e: MouseEvent, node: CanvasNode, handle: string) => {
+      resizeNodeId.value = node.id;
+      resizeHandle.value = handle;
+      resizeStart.x = e.clientX;
+      resizeStart.y = e.clientY;
+      resizeStart.nodeX = node.x;
+      resizeStart.nodeY = node.y;
+      resizeStart.nodeW = node.width;
+      resizeStart.nodeH = node.height;
+    };
+
+    // Edge selection
+    const selectedEdgeId = ref<string | null>(null);
+
+    const onEdgeClick = (edgeId: string) => {
+      selectedEdgeId.value = edgeId;
+      selectedNodeId.value = null;
+    };
+
+    const onDeleteEdge = () => {
+      if (!selectedEdgeId.value) return;
+      edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
+      selectedEdgeId.value = null;
+    };
+
+    // Midpoint of the selected edge (for positioning action buttons)
+    const selectedEdgeMidpoint = computed(() => {
+      if (!selectedEdgeId.value) return null;
+      const re = renderedEdges.value.find((e) => e.id === selectedEdgeId.value);
+      if (!re) return null;
+      return { x: re.labelX, y: re.labelY - 24 };
+    });
+
+    // Edge label editing
+    const editingEdgeId = ref<string | null>(null);
+    const editingEdgeLabel = ref("");
+    const edgeLabelInput = ref<HTMLInputElement | null>(null);
+
+    const editingEdgeMidpoint = computed(() => {
+      if (!editingEdgeId.value) return null;
+      const re = renderedEdges.value.find((e) => e.id === editingEdgeId.value);
+      if (!re) return null;
+      return { x: re.labelX, y: re.labelY };
+    });
+
+    const onEdgeDblClick = (edgeId: string) => {
+      const edge = edges.value.find((e) => e.id === edgeId);
+      if (!edge) return;
+      editingEdgeId.value = edgeId;
+      editingEdgeLabel.value = edge.label || "";
+      selectedEdgeId.value = null;
+      nextTick(() => {
+        edgeLabelInput.value?.focus();
+      });
+    };
+
+    const onEdgeLabelInput = (e: Event) => {
+      editingEdgeLabel.value = (e.target as HTMLInputElement).value;
+      const edge = edges.value.find((ed) => ed.id === editingEdgeId.value);
+      if (edge) edge.label = editingEdgeLabel.value || undefined;
+    };
+
+    const onEdgeLabelEnd = () => {
+      editingEdgeId.value = null;
+    };
+
+    // Connection (edge creation) state
+    const connDragging = ref(false);
+    const connFromNode = ref<string>("");
+    const connFromSide = ref<string>("");
+    const connMouseWorld = reactive({ x: 0, y: 0 });
+
+    const onConnStart = (e: MouseEvent, node: CanvasNode, side: string) => {
+      connDragging.value = true;
+      connFromNode.value = node.id;
+      connFromSide.value = side;
+      // Set initial mouse position in world coords
+      const rect = viewport.value!.getBoundingClientRect();
+      connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
+      connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+    };
+
+    // Temp edge path while dragging
+    const tempEdgePath = computed(() => {
+      if (!connDragging.value) return "";
+      const fromNode = nodeMap.value.get(connFromNode.value);
+      if (!fromNode) return "";
+      const from = getAnchor(fromNode, connFromSide.value);
+      const to = connMouseWorld;
+      const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
+      const c1 = getControlOffset(connFromSide.value, dist);
+      // Guess toSide based on direction
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const guessedSide = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "left" : "right") : (dy > 0 ? "top" : "bottom");
+      const c2 = getControlOffset(guessedSide, dist);
+      return `M ${from.x} ${from.y} C ${from.x + c1.dx} ${from.y + c1.dy}, ${to.x + c2.dx} ${to.y + c2.dy}, ${to.x} ${to.y}`;
+    });
+
+    // Find which node is under the mouse (world coords)
+    const findNodeAt = (wx: number, wy: number): { node: CanvasNode; side: string } | null => {
+      for (const n of nodes.value) {
+        if (wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) {
+          // Determine closest side
+          const cx = n.x + n.width / 2;
+          const cy = n.y + n.height / 2;
+          const relX = (wx - cx) / (n.width / 2);
+          const relY = (wy - cy) / (n.height / 2);
+          let side: string;
+          if (Math.abs(relX) > Math.abs(relY)) {
+            side = relX > 0 ? "right" : "left";
+          } else {
+            side = relY > 0 ? "bottom" : "top";
+          }
+          return { node: n, side };
+        }
+      }
+      return null;
+    };
+
+    // Generate unique ID
+    const genId = () => Math.random().toString(36).substring(2, 18);
+
+    // Create node on double-click on empty canvas
+    const onCanvasDblClick = (e: MouseEvent) => {
+      const rect = viewport.value!.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+      const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+      const newNode: CanvasNode = {
+        id: genId(),
+        type: "text",
+        x: wx - 125,
+        y: wy - 30,
+        width: 250,
+        height: 60,
+        text: "",
+      };
+      nodes.value.push(newNode);
+      selectedNodeId.value = newNode.id;
+      editingNodeId.value = newNode.id;
+      nextTick(() => {
+        const textarea = editorRefs.value?.[0];
+        if (textarea) textarea.focus();
+      });
+    };
+
+    // Delete edge or node on keydown
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (editingNodeId.value || editingEdgeId.value) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedEdgeId.value) {
+          edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
+          selectedEdgeId.value = null;
+          e.preventDefault();
+        } else if (selectedNodeId.value) {
+          // Also remove edges connected to this node
+          edges.value = edges.value.filter(
+            (ed) => ed.fromNode !== selectedNodeId.value && ed.toNode !== selectedNodeId.value
+          );
+          nodes.value = nodes.value.filter((n) => n.id !== selectedNodeId.value);
+          selectedNodeId.value = null;
+          e.preventDefault();
+        }
+      }
+    };
+
     // Pan handlers
     const onPanStart = (e: MouseEvent) => {
-      if (dragNodeId.value) return;
+      if (dragNodeId.value || connDragging.value) return;
+      selectedNodeId.value = null;
+      selectedEdgeId.value = null;
+      if (editingNodeId.value) editingNodeId.value = null;
       isPanning.value = true;
       panStart.x = e.clientX;
       panStart.y = e.clientY;
@@ -355,6 +649,39 @@ export default defineComponent({
     };
 
     const onPanMove = (e: MouseEvent) => {
+      // Edge creation dragging
+      if (connDragging.value) {
+        const rect = viewport.value!.getBoundingClientRect();
+        connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
+        connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+        return;
+      }
+      // Node resizing
+      if (resizeNodeId.value) {
+        const node = nodes.value.find((n) => n.id === resizeNodeId.value);
+        if (!node) return;
+        const dx = (e.clientX - resizeStart.x) / camera.scale;
+        const dy = (e.clientY - resizeStart.y) / camera.scale;
+        const h = resizeHandle.value;
+
+        if (h.includes("r")) {
+          node.width = Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx);
+        }
+        if (h.includes("b")) {
+          node.height = Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy);
+        }
+        if (h.includes("l")) {
+          const newW = Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx);
+          node.x = resizeStart.nodeX + resizeStart.nodeW - newW;
+          node.width = newW;
+        }
+        if (h.includes("t")) {
+          const newH = Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy);
+          node.y = resizeStart.nodeY + resizeStart.nodeH - newH;
+          node.height = newH;
+        }
+        return;
+      }
       // Node dragging
       if (dragNodeId.value) {
         const node = nodes.value.find((n) => n.id === dragNodeId.value);
@@ -372,9 +699,28 @@ export default defineComponent({
       camera.y = cameraStart.y + (e.clientY - panStart.y);
     };
 
-    const onPanEnd = () => {
+    const onPanEnd = (e: MouseEvent) => {
+      // Finish edge creation
+      if (connDragging.value) {
+        const rect = viewport.value!.getBoundingClientRect();
+        const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+        const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+        const target = findNodeAt(wx, wy);
+        if (target && target.node.id !== connFromNode.value) {
+          edges.value.push({
+            id: genId(),
+            fromNode: connFromNode.value,
+            fromSide: connFromSide.value,
+            toNode: target.node.id,
+            toSide: target.side,
+          });
+        }
+        connDragging.value = false;
+        return;
+      }
       isPanning.value = false;
       dragNodeId.value = null;
+      resizeNodeId.value = null;
     };
 
     // Zoom handler
@@ -482,6 +828,7 @@ export default defineComponent({
     onMounted(() => {
       loadCanvas();
       window.addEventListener("resize", fitToContent);
+      window.addEventListener("keydown", onKeyDown);
     });
 
     return {
@@ -498,8 +845,30 @@ export default defineComponent({
       nodeColorClass,
       groupColorClass,
       renderMarkdown,
+      selectedNodeId,
+      editingNodeId,
+      editorRefs,
       dragNodeId,
       onNodeDragStart,
+      onNodeDblClick,
+      onEditInput,
+      onEditEnd,
+      onResizeStart,
+      selectedEdgeId,
+      selectedEdgeMidpoint,
+      onEdgeClick,
+      onDeleteEdge,
+      editingEdgeId,
+      editingEdgeLabel,
+      editingEdgeMidpoint,
+      edgeLabelInput,
+      onEdgeDblClick,
+      onEdgeLabelInput,
+      onEdgeLabelEnd,
+      onCanvasDblClick,
+      connDragging,
+      tempEdgePath,
+      onConnStart,
       onWheel,
       onPanStart,
       onPanMove,
@@ -581,17 +950,96 @@ export default defineComponent({
   pointer-events: none;
   overflow: visible;
 }
+.edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  cursor: pointer;
+  pointer-events: stroke;
+}
 .edge-line {
   fill: none;
   stroke: rgba(255, 255, 255, 0.25);
   stroke-width: 2;
-  --edge-color: rgba(255, 255, 255, 0.25);
+  pointer-events: none;
+  transition: stroke 0.15s ease;
+}
+.edge-line.edge-selected {
+  stroke: rgba(124, 138, 255, 0.8);
+  stroke-width: 2.5;
+}
+.edge-line.edge-temp {
+  stroke: rgba(124, 138, 255, 0.5);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+.edge-label-bg {
+  fill: rgba(30, 30, 30, 0.85);
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 1;
 }
 .edge-label {
-  fill: rgba(255, 255, 255, 0.6);
-  font-size: 13px;
+  fill: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
   text-anchor: middle;
   dominant-baseline: auto;
+  pointer-events: none;
+}
+
+/* ===== Edge actions (DOM overlay) ===== */
+.edge-actions {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  gap: 4px;
+  z-index: 50;
+  pointer-events: auto;
+}
+.edge-action-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.12s, color 0.12s;
+}
+.edge-action-btn:hover {
+  background: rgba(60, 60, 60, 0.95);
+  color: #fff;
+}
+.edge-delete-btn:hover {
+  background: rgba(251, 70, 76, 0.3);
+  border-color: rgba(251, 70, 76, 0.5);
+  color: #fb464c;
+}
+
+/* ===== Edge label editor (DOM overlay) ===== */
+.edge-label-editor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+}
+.edge-label-input {
+  width: 140px;
+  padding: 4px 10px;
+  border: 1.5px solid rgba(124, 138, 255, 0.6);
+  border-radius: 6px;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(8px);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  text-align: center;
+  outline: none;
+}
+.edge-label-input::placeholder {
+  color: rgba(255, 255, 255, 0.3);
 }
 
 /* Arrowhead color */
@@ -613,6 +1061,9 @@ export default defineComponent({
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
   border-color: rgba(255, 255, 255, 0.2);
 }
+.canvas-node.is-selected {
+  border-color: rgba(124, 138, 255, 0.6);
+}
 .canvas-node.is-dragging {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
   border-color: rgba(124, 138, 255, 0.5);
@@ -622,6 +1073,64 @@ export default defineComponent({
 .canvas-node {
   cursor: grab;
 }
+
+/* ===== Text editor ===== */
+.node-editor {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border: none;
+  outline: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: none;
+  display: block;
+}
+
+/* ===== Resize handles ===== */
+.resize-handle {
+  position: absolute;
+  background: rgba(124, 138, 255, 0.8);
+  border: 1.5px solid rgba(124, 138, 255, 1);
+  border-radius: 2px;
+  z-index: 10;
+}
+/* Corners */
+.resize-handle-br { width: 8px; height: 8px; bottom: -4px; right: -4px; cursor: nwse-resize; border-radius: 50%; }
+.resize-handle-bl { width: 8px; height: 8px; bottom: -4px; left: -4px; cursor: nesw-resize; border-radius: 50%; }
+.resize-handle-tr { width: 8px; height: 8px; top: -4px; right: -4px; cursor: nesw-resize; border-radius: 50%; }
+.resize-handle-tl { width: 8px; height: 8px; top: -4px; left: -4px; cursor: nwse-resize; border-radius: 50%; }
+/* Edges */
+.resize-handle-r { width: 4px; height: calc(100% - 16px); top: 8px; right: -2px; cursor: ew-resize; border-radius: 2px; }
+.resize-handle-l { width: 4px; height: calc(100% - 16px); top: 8px; left: -2px; cursor: ew-resize; border-radius: 2px; }
+.resize-handle-t { height: 4px; width: calc(100% - 16px); left: 8px; top: -2px; cursor: ns-resize; border-radius: 2px; }
+.resize-handle-b { height: 4px; width: calc(100% - 16px); left: 8px; bottom: -2px; cursor: ns-resize; border-radius: 2px; }
+
+/* ===== Connection points ===== */
+.conn-point {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(124, 138, 255, 0.7);
+  border: 2px solid rgba(124, 138, 255, 1);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: crosshair;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+}
+.canvas-node:hover .conn-point {
+  opacity: 1;
+}
+.conn-top { left: 50%; top: 0; }
+.conn-bottom { left: 50%; top: 100%; }
+.conn-left { left: 0; top: 50%; }
+.conn-right { left: 100%; top: 50%; }
 
 /* Node colors */
 .node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), #262626 60%); }
