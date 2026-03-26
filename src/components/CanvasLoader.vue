@@ -545,6 +545,8 @@ export default defineComponent({
     const resizeHandle = ref<string>("");
     const resizeStart = reactive({ x: 0, y: 0, nodeX: 0, nodeY: 0, nodeW: 0, nodeH: 0 });
     const MIN_NODE_SIZE = 60;
+    const GRID_SIZE = 24;
+    const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
 
     // Node drag handlers
     // Store initial positions of all dragged nodes for multi-drag
@@ -955,18 +957,18 @@ export default defineComponent({
         const h = resizeHandle.value;
 
         if (h.includes("r")) {
-          node.width = Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx);
+          node.width = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx));
         }
         if (h.includes("b")) {
-          node.height = Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy);
+          node.height = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy));
         }
         if (h.includes("l")) {
-          const newW = Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx);
+          const newW = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx));
           node.x = resizeStart.nodeX + resizeStart.nodeW - newW;
           node.width = newW;
         }
         if (h.includes("t")) {
-          const newH = Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy);
+          const newH = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy));
           node.y = resizeStart.nodeY + resizeStart.nodeH - newH;
           node.height = newH;
         }
@@ -979,8 +981,8 @@ export default defineComponent({
         for (const [id, init] of dragNodesInitial.value) {
           const node = nodes.value.find((n) => n.id === id);
           if (node) {
-            node.x = init.x + dx;
-            node.y = init.y + dy;
+            node.x = snap(init.x + dx);
+            node.y = snap(init.y + dy);
           }
         }
         return;
