@@ -45,6 +45,19 @@
         No canvases yet. Create your first one!
       </div>
     </div>
+
+    <!-- Welcome canvas -->
+    <div v-if="welcomeCanvas" class="dash-section">
+      <h2>Welcome</h2>
+      <div class="dash-grid">
+        <div class="canvas-card canvas-card-welcome" @click="$router.push(`/canvas/${welcomeCanvas.id}`)">
+          <div class="card-title">{{ welcomeCanvas.title }}</div>
+          <div class="card-meta">
+            <span class="badge badge-public">Public</span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -58,6 +71,7 @@ export default defineComponent({
     const router = useRouter();
     const own = ref<any[]>([]);
     const shared = ref<any[]>([]);
+    const welcomeCanvas = ref<any>(null);
     const loading = ref(true);
 
     const allCanvases = computed(() => [
@@ -71,6 +85,7 @@ export default defineComponent({
         const res = await canvas.list();
         own.value = res.own;
         shared.value = res.shared;
+        welcomeCanvas.value = (res as any).welcome || null;
       } catch {}
       loading.value = false;
     };
@@ -120,7 +135,7 @@ export default defineComponent({
 
     onMounted(load);
 
-    return { allCanvases, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
+    return { allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
   },
 });
 </script>

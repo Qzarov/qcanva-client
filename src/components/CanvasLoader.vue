@@ -567,6 +567,7 @@ export default defineComponent({
       tip: { icon: "💡", color: "#44cf6e" },
       warning: { icon: "⚠️", color: "#e9973f" },
       danger: { icon: "🔴", color: "#fb464c" },
+      error: { icon: "🔴", color: "#fb464c" },
       info: { icon: "ℹ️", color: "#53dfdd" },
       success: { icon: "✅", color: "#44cf6e" },
       question: { icon: "❓", color: "#e0de71" },
@@ -582,7 +583,7 @@ export default defineComponent({
     const processCallouts = (html: string): string => {
       // Match blockquotes that start with [!type]
       return html.replace(
-        /<blockquote>\s*<p>\s*\[!([\w-]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
+        /<blockquote>\s*<p>\s*\[!\s*([\w-]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
         (_match, type: string, title: string, body: string) => {
           const key = type.toLowerCase();
           const style = CALLOUT_STYLES[key] || CALLOUT_STYLES.note;

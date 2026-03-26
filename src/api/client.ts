@@ -57,7 +57,7 @@ export const auth = {
 
 // Canvas
 export const canvas = {
-  list: () => request<{ own: any[]; shared: any[] }>('/canvas'),
+  list: () => request<{ own: any[]; shared: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),

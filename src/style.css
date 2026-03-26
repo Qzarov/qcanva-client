@@ -177,6 +177,11 @@ html, body {
   border-radius: 4px;
 }
 .card-delete:hover { color: #fb464c; background: rgba(251,70,76,0.15); }
+.dash-section { margin-top: 32px; }
+.dash-section h2 { font-size: 18px; margin-bottom: 16px; color: rgba(255,255,255,0.6); }
+.canvas-card-welcome { border-color: rgba(83,223,221,0.3); }
+.canvas-card-welcome:hover { border-color: rgba(83,223,221,0.6); }
+.badge-public { background: rgba(83,223,221,0.15); color: #53dfdd; }
 .dash-loading, .dash-empty {
   text-align: center;
   color: rgba(255,255,255,0.4);
