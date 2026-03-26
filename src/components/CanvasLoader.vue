@@ -238,13 +238,24 @@
       </svg>
     </div>
 
-    <!-- Zoom controls -->
+    <!-- Controls -->
     <div class="canvas-controls">
       <button @click="zoomIn" title="Zoom in">+</button>
       <span class="zoom-level">{{ zoomPercent }}%</span>
       <button @click="zoomOut" title="Zoom out">−</button>
       <button @click="resetView" title="Reset view">⌂</button>
+      <span class="controls-divider"></span>
+      <button @click="onNewCanvas" title="New canvas">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      </button>
+      <button @click="onImportCanvas" title="Open .canvas file">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      </button>
+      <button @click="onExportCanvas" title="Export .canvas file">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      </button>
     </div>
+    <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
   </div>
 </template>
 
@@ -1180,6 +1191,57 @@ export default defineComponent({
 
     const resetView = () => fitToContent();
 
+    // File operations
+    const fileInput = ref<HTMLInputElement | null>(null);
+
+    const onNewCanvas = () => {
+      pushUndo();
+      nodes.value = [];
+      edges.value = [];
+      selectedNodeIds.value = [];
+      selectedEdgeId.value = null;
+      camera.x = 0;
+      camera.y = 0;
+      camera.scale = 1;
+    };
+
+    const onImportCanvas = () => {
+      fileInput.value?.click();
+    };
+
+    const onFileSelected = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result as string);
+          pushUndo();
+          nodes.value = data.nodes || [];
+          edges.value = data.edges || [];
+          selectedNodeIds.value = [];
+          selectedEdgeId.value = null;
+          fitToContent();
+        } catch (err) {
+          console.error("Failed to parse canvas file:", err);
+        }
+      };
+      reader.readAsText(file);
+      // Reset so same file can be re-selected
+      (e.target as HTMLInputElement).value = "";
+    };
+
+    const onExportCanvas = () => {
+      const data = JSON.stringify({ nodes: nodes.value, edges: edges.value }, null, 2);
+      const blob = new Blob([data], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "canvas.canvas";
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
     // Minimap computed
     const minimapData = computed(() => {
       if (!nodes.value.length || !viewport.value) return null;
@@ -1272,6 +1334,11 @@ export default defineComponent({
       zoomIn,
       zoomOut,
       resetView,
+      fileInput,
+      onNewCanvas,
+      onImportCanvas,
+      onFileSelected,
+      onExportCanvas,
     };
   },
 });
@@ -1785,6 +1852,12 @@ export default defineComponent({
 .canvas-controls button:hover {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
+}
+.controls-divider {
+  width: 1px;
+  height: 18px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
 }
 .zoom-level {
   font-size: 12px;
