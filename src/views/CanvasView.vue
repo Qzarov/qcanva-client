@@ -9,13 +9,14 @@
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </router-link>
         <input
-          v-if="role === 'owner'"
+          v-if="role === 'owner' || role === 'edit'"
           class="topbar-title"
           v-model="title"
           @blur="saveTitle"
           @keydown.enter="($event.target as HTMLInputElement).blur()"
+          placeholder="Untitled"
         />
-        <span v-else class="topbar-title-ro">{{ title }}</span>
+        <span v-else class="topbar-title-ro">{{ title || 'Untitled' }}</span>
         <div class="topbar-right">
           <span v-if="saving" class="topbar-status">Saving...</span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
@@ -112,7 +113,7 @@ export default defineComponent({
     };
 
     const saveTitle = async () => {
-      if (role.value !== 'owner') return;
+      if (role.value !== 'owner' && role.value !== 'edit') return;
       await canvasApi.update(canvasId, { title: title.value });
     };
 

@@ -17,7 +17,17 @@
         class="canvas-card"
         @click="$router.push(`/canvas/${c.id}`)"
       >
-        <div class="card-title">{{ c.title }}</div>
+        <input
+          v-if="renamingId === c.id"
+          class="card-title-input"
+          :value="c.title"
+          @blur="finishRename($event, c)"
+          @keydown.enter="($event.target as HTMLInputElement).blur()"
+          @keydown.escape="renamingId = ''"
+          @click.stop
+          ref="renameInput"
+        />
+        <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
         <div class="card-meta">
           <span v-if="c.isOwn" class="badge badge-owner">Owner</span>
           <span v-else class="badge badge-shared">{{ c.role }}</span>
@@ -39,7 +49,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed } from 'vue';
+import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { canvas, clearToken } from '../api/client';
 
@@ -86,9 +96,31 @@ export default defineComponent({
       });
     };
 
+    // Rename
+    const renamingId = ref('');
+    const renameInput = ref<HTMLInputElement[]>([]);
+
+    const startRename = (id: string) => {
+      renamingId.value = id;
+      nextTick(() => {
+        renameInput.value?.[0]?.focus();
+        renameInput.value?.[0]?.select();
+      });
+    };
+
+    const finishRename = async (e: Event, c: any) => {
+      const newTitle = (e.target as HTMLInputElement).value.trim();
+      renamingId.value = '';
+      if (newTitle && newTitle !== c.title) {
+        await canvas.update(c.id, { title: newTitle });
+        const item = own.value.find((o) => o.id === c.id);
+        if (item) item.title = newTitle;
+      }
+    };
+
     onMounted(load);
 
-    return { allCanvases, loading, createCanvas, deleteCanvas, logout, formatDate };
+    return { allCanvases, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
   },
 });
 </script>
