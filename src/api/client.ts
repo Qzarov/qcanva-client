@@ -4,18 +4,27 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
-export function setToken(token: string, isAdmin = false) {
+export function setToken(token: string, role = 'user') {
   localStorage.setItem('token', token);
-  localStorage.setItem('isAdmin', isAdmin ? '1' : '0');
+  localStorage.setItem('userRole', role);
 }
 
 export function clearToken() {
   localStorage.removeItem('token');
-  localStorage.removeItem('isAdmin');
+  localStorage.removeItem('userRole');
+}
+
+export function getUserRole(): string {
+  return localStorage.getItem('userRole') || 'user';
 }
 
 export function isAdmin(): boolean {
-  return localStorage.getItem('isAdmin') === '1';
+  const r = getUserRole();
+  return r === 'admin' || r === 'superadmin';
+}
+
+export function isSuperAdmin(): boolean {
+  return getUserRole() === 'superadmin';
 }
 
 export function isAuthenticated(): boolean {

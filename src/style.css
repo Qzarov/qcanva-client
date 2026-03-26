@@ -211,6 +211,17 @@ html, body {
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 .admin-table tr:hover td { background: rgba(255,255,255,0.02); }
+.role-select {
+  padding: 4px 8px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  background: #333;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+.badge-superadmin { background: rgba(251,70,76,0.15); color: #fb464c; }
 
 .dash-loading, .dash-empty {
   text-align: center;
