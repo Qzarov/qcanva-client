@@ -892,6 +892,18 @@ export default defineComponent({
         clipboard.value.nodes = clipboard.value.nodes.map((n) => ({ ...n, x: n.x + 40, y: n.y + 40 }));
         return;
       }
+      // Select all
+      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
+        e.preventDefault();
+        selectedNodeIds.value = nodes.value.map((n) => n.id);
+        return;
+      }
+      // Escape — deselect
+      if (e.key === "Escape") {
+        selectedNodeIds.value = [];
+        selectedEdgeId.value = null;
+        return;
+      }
       if (editingNodeId.value || editingEdgeId.value) return;
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedEdgeId.value) {
