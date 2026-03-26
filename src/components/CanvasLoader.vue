@@ -89,6 +89,7 @@
         v-if="selectedEdgeId && selectedEdgeMidpoint"
         class="edge-actions"
         :style="{ left: selectedEdgeMidpoint.x + 'px', top: selectedEdgeMidpoint.y + 'px' }"
+        @dblclick.stop
       >
         <button class="edge-action-btn edge-delete-btn" @mousedown.stop="onDeleteEdge" title="Delete">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -154,6 +155,24 @@
         </div>
         <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
         <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+      </div>
+
+      <!-- Node color bar (above selected single node) -->
+      <div
+        v-if="selectedNodeId && !editingNodeId && !contextMenu.visible"
+        class="node-color-bar"
+        :style="nodeColorBarStyle"
+        @mousedown.stop
+        @dblclick.stop
+      >
+        <button
+          v-for="c in ['1','2','3','4','5','6']"
+          :key="c"
+          class="ncb-btn"
+          :class="'ctx-color-' + c"
+          @click="setNodeColor(selectedNodeId!, c)"
+        ></button>
+        <button class="ncb-btn ncb-none" @click="setNodeColor(selectedNodeId!, undefined)">x</button>
       </div>
 
       <!-- Text nodes -->
@@ -841,6 +860,25 @@ export default defineComponent({
 
     const closeContextMenu = () => { contextMenu.visible = false; };
 
+    // Node color bar (inline above selected node)
+    const nodeColorBarStyle = computed(() => {
+      if (!selectedNodeId.value) return { display: 'none' };
+      const node = nodes.value.find((n) => n.id === selectedNodeId.value);
+      if (!node) return { display: 'none' };
+      return {
+        left: `${node.x}px`,
+        top: `${node.y - 34}px`,
+      };
+    });
+
+    const setNodeColor = (nodeId: string, color: string | undefined) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.color = color;
+      }
+    };
+
     const onCtxSetColor = (color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
       if (node) node.color = color;
@@ -1347,6 +1385,8 @@ export default defineComponent({
       onEdgeCycleColor,
       onCanvasDblClick,
       contextMenu,
+      nodeColorBarStyle,
+      setNodeColor,
       onNodeContextMenu,
       onCtxSetColor,
       onCtxDuplicate,
@@ -1532,6 +1572,37 @@ export default defineComponent({
 }
 .edge-label-input::placeholder {
   color: rgba(255, 255, 255, 0.3);
+}
+
+/* ===== Node color bar ===== */
+.node-color-bar {
+  position: absolute;
+  display: flex;
+  gap: 3px;
+  z-index: 50;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px 6px;
+}
+.ncb-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s;
+}
+.ncb-btn:hover { transform: scale(1.25); }
+.ncb-none {
+  background: #444;
+  font-size: 9px;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ===== Selection box ===== */
