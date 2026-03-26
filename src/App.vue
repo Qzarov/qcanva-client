@@ -1,19 +1,5 @@
-<script lang="ts">
-import { defineComponent } from "vue";
-import CanvasLoader from "./components/CanvasLoader.vue";
-
-export default defineComponent({
-  name: "App",
-  components: {
-    CanvasLoader,
-  },
-});
-</script>
-
 <template>
-  <div id="app">
-    <CanvasLoader />
-  </div>
+  <router-view />
 </template>
 
 <style>

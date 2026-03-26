@@ -260,7 +260,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, reactive, nextTick } from "vue";
+import { defineComponent, ref, computed, onMounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
 
 interface CanvasNode {
@@ -315,7 +315,18 @@ const OBSIDIAN_COLORS: Record<string, { bg: string; border: string; text: string
 
 export default defineComponent({
   name: "CanvasLoader",
-  setup() {
+  props: {
+    initialData: {
+      type: Object as PropType<{ nodes: any[]; edges: any[] } | null>,
+      default: null,
+    },
+    readonly: {
+      type: Boolean,
+      default: false,
+    },
+  },
+  emits: ["change"],
+  setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
@@ -340,17 +351,27 @@ export default defineComponent({
       gfm: true,
     });
 
-    const loadCanvas = async () => {
-      try {
-        const response = await fetch("/product_decomposition.canvas");
-        const data = await response.json();
-        nodes.value = data.nodes || [];
-        edges.value = data.edges || [];
-        fitToContent();
-      } catch (e) {
-        console.error("Failed to load canvas:", e);
+    const loadCanvas = () => {
+      if (props.initialData) {
+        nodes.value = props.initialData.nodes || [];
+        edges.value = props.initialData.edges || [];
       }
+      nextTick(() => fitToContent());
     };
+
+    // Emit change when nodes or edges mutate
+    const emitChange = () => {
+      emit("change", { nodes: JSON.parse(JSON.stringify(nodes.value)), edges: JSON.parse(JSON.stringify(edges.value)) });
+    };
+
+    // Watch for prop changes
+    watch(() => props.initialData, (newData) => {
+      if (newData) {
+        nodes.value = newData.nodes || [];
+        edges.value = newData.edges || [];
+        nextTick(() => fitToContent());
+      }
+    });
 
     // Fit all content in view
     const fitToContent = () => {
@@ -633,6 +654,7 @@ export default defineComponent({
 
     const onEditEnd = () => {
       editingNodeId.value = null;
+      scheduleChange();
     };
 
     // Resize handlers
@@ -855,20 +877,29 @@ export default defineComponent({
       edges: JSON.stringify(edges.value),
     });
 
+    let changeTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleChange = () => {
+      if (changeTimer) clearTimeout(changeTimer);
+      changeTimer = setTimeout(emitChange, 300);
+    };
+
     const pushUndo = () => {
       undoStack.value.push(takeSnapshot());
       if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
       redoStack.value = [];
+      scheduleChange();
     };
 
     const undo = () => {
       if (!undoStack.value.length) return;
       redoStack.value.push(takeSnapshot());
+      // will call scheduleChange below
       const snap = undoStack.value.pop()!;
       nodes.value = JSON.parse(snap.nodes);
       edges.value = JSON.parse(snap.edges);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
+      scheduleChange();
     };
 
     const redo = () => {
@@ -879,6 +910,7 @@ export default defineComponent({
       edges.value = JSON.parse(snap.edges);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
+      scheduleChange();
     };
 
     // Clipboard for copy/paste
