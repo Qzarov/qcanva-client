@@ -440,8 +440,43 @@ export default defineComponent({
       return node.color ? `group-color-${node.color}` : "";
     };
 
+    // Callout types and their colors/icons
+    const CALLOUT_STYLES: Record<string, { icon: string; color: string }> = {
+      note: { icon: "📝", color: "#7c8aff" },
+      tip: { icon: "💡", color: "#44cf6e" },
+      warning: { icon: "⚠️", color: "#e9973f" },
+      danger: { icon: "🔴", color: "#fb464c" },
+      info: { icon: "ℹ️", color: "#53dfdd" },
+      success: { icon: "✅", color: "#44cf6e" },
+      question: { icon: "❓", color: "#e0de71" },
+      bug: { icon: "🐛", color: "#fb464c" },
+      example: { icon: "📋", color: "#a882ff" },
+      quote: { icon: "💬", color: "#999" },
+      abstract: { icon: "📄", color: "#53dfdd" },
+      todo: { icon: "☑️", color: "#7c8aff" },
+      failure: { icon: "❌", color: "#fb464c" },
+      important: { icon: "🔥", color: "#e9973f" },
+    };
+
+    const processCallouts = (html: string): string => {
+      // Match blockquotes that start with [!type]
+      return html.replace(
+        /<blockquote>\s*<p>\s*\[!([\w-]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
+        (_match, type: string, title: string, body: string) => {
+          const key = type.toLowerCase();
+          const style = CALLOUT_STYLES[key] || CALLOUT_STYLES.note;
+          const displayTitle = title.trim() || key.charAt(0).toUpperCase() + key.slice(1);
+          return `<div class="callout callout-${key}" style="border-left-color: ${style.color}">
+            <div class="callout-title" style="color: ${style.color}">${style.icon} ${displayTitle}</div>
+            <div class="callout-body">${body}</div>
+          </div>`;
+        }
+      );
+    };
+
     const renderMarkdown = (text: string) => {
-      return marked.parse(text) as string;
+      const html = marked.parse(text) as string;
+      return processCallouts(html);
     };
 
     // Selection state
@@ -1338,6 +1373,24 @@ export default defineComponent({
   padding: 4px 12px;
   color: rgba(255, 255, 255, 0.6);
 }
+/* Callouts */
+.node-content .callout {
+  border-left: 3px solid;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 4px;
+  margin: 8px 0;
+  padding: 8px 12px;
+}
+.node-content .callout-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.node-content .callout-body {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+}
+.node-content .callout-body p { margin: 0; }
 .node-content table {
   border-collapse: collapse;
   width: 100%;
