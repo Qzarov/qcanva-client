@@ -1724,21 +1724,21 @@ export default defineComponent({
   z-index: 10;
 }
 /* Corners */
-.resize-handle-br { width: 8px; height: 8px; bottom: -4px; right: -4px; cursor: nwse-resize; border-radius: 50%; }
-.resize-handle-bl { width: 8px; height: 8px; bottom: -4px; left: -4px; cursor: nesw-resize; border-radius: 50%; }
-.resize-handle-tr { width: 8px; height: 8px; top: -4px; right: -4px; cursor: nesw-resize; border-radius: 50%; }
-.resize-handle-tl { width: 8px; height: 8px; top: -4px; left: -4px; cursor: nwse-resize; border-radius: 50%; }
+.resize-handle-br { width: 14px; height: 14px; bottom: -7px; right: -7px; cursor: nwse-resize; border-radius: 50%; }
+.resize-handle-bl { width: 14px; height: 14px; bottom: -7px; left: -7px; cursor: nesw-resize; border-radius: 50%; }
+.resize-handle-tr { width: 14px; height: 14px; top: -7px; right: -7px; cursor: nesw-resize; border-radius: 50%; }
+.resize-handle-tl { width: 14px; height: 14px; top: -7px; left: -7px; cursor: nwse-resize; border-radius: 50%; }
 /* Edges */
-.resize-handle-r { width: 4px; height: calc(100% - 16px); top: 8px; right: -2px; cursor: ew-resize; border-radius: 2px; }
-.resize-handle-l { width: 4px; height: calc(100% - 16px); top: 8px; left: -2px; cursor: ew-resize; border-radius: 2px; }
-.resize-handle-t { height: 4px; width: calc(100% - 16px); left: 8px; top: -2px; cursor: ns-resize; border-radius: 2px; }
-.resize-handle-b { height: 4px; width: calc(100% - 16px); left: 8px; bottom: -2px; cursor: ns-resize; border-radius: 2px; }
+.resize-handle-r { width: 8px; height: calc(100% - 24px); top: 12px; right: -4px; cursor: ew-resize; border-radius: 3px; }
+.resize-handle-l { width: 8px; height: calc(100% - 24px); top: 12px; left: -4px; cursor: ew-resize; border-radius: 3px; }
+.resize-handle-t { height: 8px; width: calc(100% - 24px); left: 12px; top: -4px; cursor: ns-resize; border-radius: 3px; }
+.resize-handle-b { height: 8px; width: calc(100% - 24px); left: 12px; bottom: -4px; cursor: ns-resize; border-radius: 3px; }
 
 /* ===== Connection points ===== */
 .conn-point {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   background: rgba(124, 138, 255, 0.7);
   border: 2px solid rgba(124, 138, 255, 1);
