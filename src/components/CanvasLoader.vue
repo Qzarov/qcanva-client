@@ -212,6 +212,32 @@
       </div>
     </div>
 
+    <!-- Minimap -->
+    <div class="minimap" v-if="minimapData">
+      <svg :viewBox="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
+        <rect
+          v-for="node in nodes"
+          :key="'mm-' + node.id"
+          :x="node.x"
+          :y="node.y"
+          :width="node.width"
+          :height="node.height"
+          :fill="node.type === 'group' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)'"
+          rx="2"
+        />
+        <rect
+          :x="minimapData.vpX"
+          :y="minimapData.vpY"
+          :width="minimapData.vpW"
+          :height="minimapData.vpH"
+          fill="none"
+          stroke="rgba(124,138,255,0.6)"
+          stroke-width="3"
+          rx="2"
+        />
+      </svg>
+    </div>
+
     <!-- Zoom controls -->
     <div class="canvas-controls">
       <button @click="zoomIn" title="Zoom in">+</button>
@@ -1154,6 +1180,31 @@ export default defineComponent({
 
     const resetView = () => fitToContent();
 
+    // Minimap computed
+    const minimapData = computed(() => {
+      if (!nodes.value.length || !viewport.value) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of nodes.value) {
+        minX = Math.min(minX, n.x);
+        minY = Math.min(minY, n.y);
+        maxX = Math.max(maxX, n.x + n.width);
+        maxY = Math.max(maxY, n.y + n.height);
+      }
+      const pad = 100;
+      minX -= pad; minY -= pad; maxX += pad; maxY += pad;
+      const vw = viewport.value.clientWidth;
+      const vh = viewport.value.clientHeight;
+      // Viewport in world coords
+      const vpX = -camera.x / camera.scale;
+      const vpY = -camera.y / camera.scale;
+      const vpW = vw / camera.scale;
+      const vpH = vh / camera.scale;
+      return {
+        viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
+        vpX, vpY, vpW, vpH,
+      };
+    });
+
     onMounted(() => {
       loadCanvas();
       window.addEventListener("resize", fitToContent);
@@ -1216,6 +1267,8 @@ export default defineComponent({
       onTouchStart,
       onTouchMove,
       onTouchEnd,
+      nodes,
+      minimapData,
       zoomIn,
       zoomOut,
       resetView,
@@ -1678,6 +1731,26 @@ export default defineComponent({
 }
 .node-link-header a:hover {
   text-decoration: underline;
+}
+
+/* ===== Minimap ===== */
+.minimap {
+  position: absolute;
+  bottom: 16px;
+  left: 16px;
+  width: 180px;
+  height: 120px;
+  background: rgba(30, 30, 30, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 10;
+  padding: 6px;
+}
+.minimap svg {
+  width: 100%;
+  height: 100%;
 }
 
 /* ===== Controls ===== */
