@@ -157,61 +157,6 @@
         <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
       </div>
 
-      <!-- Node color bar (above selected single node) -->
-      <div
-        v-if="selectedNodeId && !editingNodeId && !contextMenu.visible"
-        class="node-color-bar"
-        :style="nodeColorBarStyle"
-        @mousedown.stop
-        @dblclick.stop
-      >
-        <button
-          v-for="c in ['1','2','3','4','5','6']"
-          :key="c"
-          class="ncb-btn"
-          :class="'ctx-color-' + c"
-          @click="setNodeColor(selectedNodeId!, c)"
-        ></button>
-        <button class="ncb-btn ncb-none" @click="setNodeColor(selectedNodeId!, undefined)">x</button>
-        <span class="ncb-divider"></span>
-        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'left' }" @click="setNodeAlign(selectedNodeId!, 'left')" title="Align left">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
-        </button>
-        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'center' }" @click="setNodeAlign(selectedNodeId!, 'center')" title="Align center">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
-        </button>
-        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'right' }" @click="setNodeAlign(selectedNodeId!, 'right')" title="Align right">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>
-        </button>
-        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'justify' }" @click="setNodeAlign(selectedNodeId!, 'justify')" title="Justify">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-        </button>
-        <span class="ncb-divider"></span>
-        <!-- Border style -->
-        <button
-          v-for="bs in borderStyles"
-          :key="bs.value"
-          class="ncb-align ncb-border-btn"
-          :class="{ active: getNodeBorderStyle(selectedNodeId!) === bs.value }"
-          @click="setNodeBorderStyle(selectedNodeId!, bs.value)"
-          :title="bs.label"
-        >
-          <svg width="18" height="8" viewBox="0 0 18 8"><line x1="0" y1="4" x2="18" y2="4" :stroke-dasharray="bs.dash" stroke="currentColor" :stroke-width="bs.sw" /></svg>
-        </button>
-        <span class="ncb-divider"></span>
-        <!-- Border width -->
-        <button
-          v-for="bw in [1, 2, 3, 4]"
-          :key="'bw'+bw"
-          class="ncb-align ncb-bw-btn"
-          :class="{ active: getNodeBorderWidth(selectedNodeId!) === bw }"
-          @click="setNodeBorderWidth(selectedNodeId!, bw)"
-          :title="bw + 'px'"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw" /></svg>
-        </button>
-      </div>
-
       <!-- Text nodes -->
       <div
         v-for="node in textNodes"
@@ -332,8 +277,9 @@ interface CanvasNode {
   color?: string;
   label?: string;
   textAlign?: "left" | "center" | "right" | "justify";
-  borderStyle?: "solid" | "dashed" | "dotted" | "double" | "ridge";
+  borderStyle?: string;
   borderWidth?: number;
+  borderColor?: string;
   styleAttributes?: Record<string, string>;
 }
 
@@ -571,15 +517,34 @@ export default defineComponent({
     });
 
     // Style helpers
-    const nodePosition = (node: CanvasNode) => ({
-      left: `${node.x}px`,
-      top: `${node.y}px`,
-      width: `${node.width}px`,
-      height: `${node.height}px`,
-      textAlign: node.textAlign || undefined,
-      borderStyle: node.borderStyle || undefined,
-      borderWidth: node.borderWidth ? `${node.borderWidth}px` : undefined,
-    });
+    const nodePosition = (node: CanvasNode) => {
+      const style: Record<string, string | undefined> = {
+        left: `${node.x}px`,
+        top: `${node.y}px`,
+        width: `${node.width}px`,
+        height: `${node.height}px`,
+        textAlign: node.textAlign || undefined,
+        borderColor: node.borderColor || undefined,
+      };
+      const bs = node.borderStyle || "solid";
+      const bw = node.borderWidth || undefined;
+      if (bs === "wavy" || bs === "sawtooth") {
+        // Use CSS border-image for custom patterns
+        style.borderStyle = "solid";
+        style.borderWidth = bw ? `${bw}px` : undefined;
+        const color = node.borderColor || (node.color ? undefined : "rgba(255,255,255,0.1)");
+        const strokeColor = color || "currentColor";
+        if (bs === "wavy") {
+          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='4'><path d='M0 2 Q5 0 10 2 Q15 4 20 2' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
+        } else {
+          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4'><path d='M0 4 L6 0 L12 4' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
+        }
+      } else {
+        style.borderStyle = bs;
+        style.borderWidth = bw ? `${bw}px` : undefined;
+      }
+      return style;
+    };
 
     const nodeColorClass = (node: CanvasNode) => {
       return node.color ? `node-color-${node.color}` : "";
@@ -904,17 +869,6 @@ export default defineComponent({
 
     const closeContextMenu = () => { contextMenu.visible = false; };
 
-    // Node color bar (inline above selected node)
-    const nodeColorBarStyle = computed(() => {
-      if (!selectedNodeId.value) return { display: 'none' };
-      const node = nodes.value.find((n) => n.id === selectedNodeId.value);
-      if (!node) return { display: 'none' };
-      return {
-        left: `${node.x}px`,
-        top: `${node.y - 34}px`,
-      };
-    });
-
     const setNodeColor = (nodeId: string, color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
@@ -937,21 +891,35 @@ export default defineComponent({
     };
 
     // Border styles config
-    type BorderStyleValue = "solid" | "dashed" | "dotted" | "double" | "ridge";
-    const borderStyles: { value: BorderStyleValue; label: string; dash: string; sw: number }[] = [
-      { value: "solid", label: "Solid", dash: "none", sw: 2 },
-      { value: "dashed", label: "Dashed", dash: "6 3", sw: 2 },
-      { value: "dotted", label: "Dotted", dash: "2 2", sw: 2 },
-      { value: "double", label: "Double", dash: "none", sw: 1 },
-      { value: "ridge", label: "Ridge", dash: "8 2 2 2", sw: 2 },
+    const borderStyles: { value: string; label: string; svg: string }[] = [
+      { value: "solid", label: "Solid", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2"/>` },
+      { value: "dashed", label: "Dashed", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="6 3"/>` },
+      { value: "dotted", label: "Dotted", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="2 2"/>` },
+      { value: "double", label: "Double", svg: `<line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" stroke-width="1"/><line x1="0" y1="7" x2="24" y2="7" stroke="currentColor" stroke-width="1"/>` },
+      { value: "ridge", label: "Dash-dot", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="8 2 2 2"/>` },
+      { value: "wavy", label: "Wavy", svg: `<path d="M0 5 Q3 2 6 5 Q9 8 12 5 Q15 2 18 5 Q21 8 24 5" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
+      { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
 
-    const getNodeBorderStyle = (nodeId: string): BorderStyleValue => {
+    const getNodeBorderColor = (nodeId: string): string | undefined => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.borderColor;
+    };
+
+    const setNodeBorderColor = (nodeId: string, color: string | undefined) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.borderColor = color;
+      }
+    };
+
+    const getNodeBorderStyle = (nodeId: string): string => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.borderStyle || "solid";
     };
 
-    const setNodeBorderStyle = (nodeId: string, style: BorderStyleValue) => {
+    const setNodeBorderStyle = (nodeId: string, style: string) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
@@ -1478,7 +1446,6 @@ export default defineComponent({
       onEdgeCycleColor,
       onCanvasDblClick,
       contextMenu,
-      nodeColorBarStyle,
       setNodeColor,
       getNodeAlign,
       setNodeAlign,
@@ -1487,6 +1454,8 @@ export default defineComponent({
       setNodeBorderStyle,
       getNodeBorderWidth,
       setNodeBorderWidth,
+      getNodeBorderColor,
+      setNodeBorderColor,
       onNodeContextMenu,
       onCtxSetColor,
       onCtxDuplicate,
@@ -1674,59 +1643,6 @@ export default defineComponent({
   color: rgba(255, 255, 255, 0.3);
 }
 
-/* ===== Node color bar ===== */
-.node-color-bar {
-  position: absolute;
-  display: flex;
-  gap: 3px;
-  z-index: 50;
-  background: rgba(30, 30, 30, 0.95);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  padding: 4px 6px;
-}
-.ncb-btn {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-  transition: transform 0.1s;
-}
-.ncb-btn:hover { transform: scale(1.25); }
-.ncb-none {
-  background: #444;
-  font-size: 9px;
-  color: #aaa;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.ncb-divider {
-  width: 1px;
-  height: 16px;
-  background: rgba(255, 255, 255, 0.12);
-  margin: 0 2px;
-}
-.ncb-align {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.5);
-  cursor: pointer;
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-.ncb-align:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
-.ncb-align.active { background: rgba(124, 138, 255, 0.2); color: #7c8aff; }
-.ncb-border-btn { width: 28px; }
-.ncb-bw-btn { width: 22px; }
 
 /* ===== Selection box ===== */
 .selection-box {

@@ -29,6 +29,35 @@
         </div>
       </div>
 
+      <!-- Node toolbar (under topbar, visible when node selected) -->
+      <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId" class="node-toolbar">
+        <!-- Fill color -->
+        <span class="tb-label">Fill</span>
+        <button v-for="c in ['1','2','3','4','5','6']" :key="c" class="tb-color" :class="'ctx-color-'+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
+        <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
+        <span class="tb-sep"></span>
+        <!-- Text align -->
+        <span class="tb-label">Align</span>
+        <button v-for="a in aligns" :key="a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
+        <span class="tb-sep"></span>
+        <!-- Border style -->
+        <span class="tb-label">Border</span>
+        <button v-for="bs in canvasRef?.borderStyles" :key="bs.value" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderStyle(canvasRef.selectedNodeId) === bs.value }" @click="canvasRef?.setNodeBorderStyle(canvasRef.selectedNodeId, bs.value)" :title="bs.label">
+          <svg width="24" height="10" viewBox="0 0 24 10" v-html="bs.svg"></svg>
+        </button>
+        <span class="tb-sep"></span>
+        <!-- Border width -->
+        <span class="tb-label">Width</span>
+        <button v-for="bw in [1,2,3,4]" :key="'bw'+bw" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderWidth(canvasRef.selectedNodeId) === bw }" @click="canvasRef?.setNodeBorderWidth(canvasRef.selectedNodeId, bw)" :title="bw+'px'">
+          <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
+        </button>
+        <span class="tb-sep"></span>
+        <!-- Border color -->
+        <span class="tb-label">Color</span>
+        <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'bc'+c" class="tb-color" :style="{background: c}" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
+        <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
+      </div>
+
       <!-- Share panel -->
       <div v-if="showShare" class="share-panel">
         <h3>Share Canvas</h3>
@@ -49,7 +78,7 @@
       </div>
 
       <CanvasLoader
-        ref="canvasLoader"
+        ref="canvasRef"
         :initial-data="canvasData"
         :readonly="role === 'read'"
         @change="onCanvasChange"
@@ -69,6 +98,15 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const canvasId = route.params.id as string;
+
+    const canvasRef = ref<any>(null);
+
+    const aligns = [
+      { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
+      { v: 'center', l: 'Center', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>' },
+      { v: 'right', l: 'Right', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>' },
+      { v: 'justify', l: 'Justify', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>' },
+    ];
 
     const loading = ref(true);
     const error = ref('');
@@ -144,6 +182,7 @@ export default defineComponent({
     onUnmounted(() => { if (saveTimeout) clearTimeout(saveTimeout); });
 
     return {
+      canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, saveTitle, togglePublic, doShare, doRevoke,
