@@ -186,6 +186,30 @@
         <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'justify' }" @click="setNodeAlign(selectedNodeId!, 'justify')" title="Justify">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
+        <span class="ncb-divider"></span>
+        <!-- Border style -->
+        <button
+          v-for="bs in borderStyles"
+          :key="bs.value"
+          class="ncb-align ncb-border-btn"
+          :class="{ active: getNodeBorderStyle(selectedNodeId!) === bs.value }"
+          @click="setNodeBorderStyle(selectedNodeId!, bs.value)"
+          :title="bs.label"
+        >
+          <svg width="18" height="8" viewBox="0 0 18 8"><line x1="0" y1="4" x2="18" y2="4" :stroke-dasharray="bs.dash" stroke="currentColor" :stroke-width="bs.sw" /></svg>
+        </button>
+        <span class="ncb-divider"></span>
+        <!-- Border width -->
+        <button
+          v-for="bw in [1, 2, 3, 4]"
+          :key="'bw'+bw"
+          class="ncb-align ncb-bw-btn"
+          :class="{ active: getNodeBorderWidth(selectedNodeId!) === bw }"
+          @click="setNodeBorderWidth(selectedNodeId!, bw)"
+          :title="bw + 'px'"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw" /></svg>
+        </button>
       </div>
 
       <!-- Text nodes -->
@@ -308,6 +332,8 @@ interface CanvasNode {
   color?: string;
   label?: string;
   textAlign?: "left" | "center" | "right" | "justify";
+  borderStyle?: "solid" | "dashed" | "dotted" | "double" | "ridge";
+  borderWidth?: number;
   styleAttributes?: Record<string, string>;
 }
 
@@ -551,6 +577,8 @@ export default defineComponent({
       width: `${node.width}px`,
       height: `${node.height}px`,
       textAlign: node.textAlign || undefined,
+      borderStyle: node.borderStyle || undefined,
+      borderWidth: node.borderWidth ? `${node.borderWidth}px` : undefined,
     });
 
     const nodeColorClass = (node: CanvasNode) => {
@@ -905,6 +933,42 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.textAlign = align;
+      }
+    };
+
+    // Border styles config
+    type BorderStyleValue = "solid" | "dashed" | "dotted" | "double" | "ridge";
+    const borderStyles: { value: BorderStyleValue; label: string; dash: string; sw: number }[] = [
+      { value: "solid", label: "Solid", dash: "none", sw: 2 },
+      { value: "dashed", label: "Dashed", dash: "6 3", sw: 2 },
+      { value: "dotted", label: "Dotted", dash: "2 2", sw: 2 },
+      { value: "double", label: "Double", dash: "none", sw: 1 },
+      { value: "ridge", label: "Ridge", dash: "8 2 2 2", sw: 2 },
+    ];
+
+    const getNodeBorderStyle = (nodeId: string): BorderStyleValue => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.borderStyle || "solid";
+    };
+
+    const setNodeBorderStyle = (nodeId: string, style: BorderStyleValue) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.borderStyle = style;
+      }
+    };
+
+    const getNodeBorderWidth = (nodeId: string): number => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.borderWidth || 2;
+    };
+
+    const setNodeBorderWidth = (nodeId: string, width: number) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.borderWidth = width;
       }
     };
 
@@ -1418,6 +1482,11 @@ export default defineComponent({
       setNodeColor,
       getNodeAlign,
       setNodeAlign,
+      borderStyles,
+      getNodeBorderStyle,
+      setNodeBorderStyle,
+      getNodeBorderWidth,
+      setNodeBorderWidth,
       onNodeContextMenu,
       onCtxSetColor,
       onCtxDuplicate,
@@ -1656,6 +1725,8 @@ export default defineComponent({
 }
 .ncb-align:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 .ncb-align.active { background: rgba(124, 138, 255, 0.2); color: #7c8aff; }
+.ncb-border-btn { width: 28px; }
+.ncb-bw-btn { width: 22px; }
 
 /* ===== Selection box ===== */
 .selection-box {
