@@ -280,6 +280,7 @@ interface CanvasNode {
   borderStyle?: string;
   borderWidth?: number;
   borderColor?: string;
+  fillStyle?: "gradient" | "solid";
   styleAttributes?: Record<string, string>;
 }
 
@@ -547,7 +548,9 @@ export default defineComponent({
     };
 
     const nodeColorClass = (node: CanvasNode) => {
-      return node.color ? `node-color-${node.color}` : "";
+      if (!node.color) return "";
+      const fill = node.fillStyle || "gradient";
+      return fill === "solid" ? `node-color-${node.color}-solid` : `node-color-${node.color}`;
     };
 
     const groupColorClass = (node: CanvasNode) => {
@@ -900,6 +903,19 @@ export default defineComponent({
       { value: "wavy", label: "Wavy", svg: `<path d="M0 5 Q3 2 6 5 Q9 8 12 5 Q15 2 18 5 Q21 8 24 5" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
       { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
+
+    const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.fillStyle || "gradient";
+    };
+
+    const toggleNodeFillStyle = (nodeId: string) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.fillStyle = (node.fillStyle || "gradient") === "gradient" ? "solid" : "gradient";
+      }
+    };
 
     const getNodeBorderColor = (nodeId: string): string | undefined => {
       const node = nodes.value.find((n) => n.id === nodeId);
@@ -1454,6 +1470,8 @@ export default defineComponent({
       setNodeBorderStyle,
       getNodeBorderWidth,
       setNodeBorderWidth,
+      getNodeFillStyle,
+      toggleNodeFillStyle,
       getNodeBorderColor,
       setNodeBorderColor,
       onNodeContextMenu,
@@ -1796,12 +1814,20 @@ export default defineComponent({
 .conn-right { left: 100%; top: 50%; }
 
 /* Node colors */
+/* Gradient fill (default) */
 .node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), #262626 60%); }
 .node-color-2 { border-color: rgba(233,151,63,0.6); background: linear-gradient(135deg, rgba(233,151,63,0.12), #262626 60%); }
 .node-color-3 { border-color: rgba(224,222,113,0.6); background: linear-gradient(135deg, rgba(224,222,113,0.12), #262626 60%); }
 .node-color-4 { border-color: rgba(68,207,110,0.6); background: linear-gradient(135deg, rgba(68,207,110,0.12), #262626 60%); }
 .node-color-5 { border-color: rgba(83,223,221,0.6); background: linear-gradient(135deg, rgba(83,223,221,0.12), #262626 60%); }
 .node-color-6 { border-color: rgba(168,130,255,0.6); background: linear-gradient(135deg, rgba(168,130,255,0.12), #262626 60%); }
+/* Solid fill */
+.node-color-1-solid { border-color: rgba(251,70,76,0.8); background: rgba(251,70,76,0.25); }
+.node-color-2-solid { border-color: rgba(233,151,63,0.8); background: rgba(233,151,63,0.25); }
+.node-color-3-solid { border-color: rgba(224,222,113,0.8); background: rgba(224,222,113,0.25); }
+.node-color-4-solid { border-color: rgba(68,207,110,0.8); background: rgba(68,207,110,0.25); }
+.node-color-5-solid { border-color: rgba(83,223,221,0.8); background: rgba(83,223,221,0.25); }
+.node-color-6-solid { border-color: rgba(168,130,255,0.8); background: rgba(168,130,255,0.25); }
 
 /* ===== Node content (markdown) ===== */
 .node-content {
