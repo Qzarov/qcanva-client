@@ -173,6 +173,19 @@
           @click="setNodeColor(selectedNodeId!, c)"
         ></button>
         <button class="ncb-btn ncb-none" @click="setNodeColor(selectedNodeId!, undefined)">x</button>
+        <span class="ncb-divider"></span>
+        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'left' }" @click="setNodeAlign(selectedNodeId!, 'left')" title="Align left">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
+        </button>
+        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'center' }" @click="setNodeAlign(selectedNodeId!, 'center')" title="Align center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>
+        </button>
+        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'right' }" @click="setNodeAlign(selectedNodeId!, 'right')" title="Align right">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        <button class="ncb-align" :class="{ active: getNodeAlign(selectedNodeId!) === 'justify' }" @click="setNodeAlign(selectedNodeId!, 'justify')" title="Justify">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
       </div>
 
       <!-- Text nodes -->
@@ -294,6 +307,7 @@ interface CanvasNode {
   file?: string;
   color?: string;
   label?: string;
+  textAlign?: "left" | "center" | "right" | "justify";
   styleAttributes?: Record<string, string>;
 }
 
@@ -536,6 +550,7 @@ export default defineComponent({
       top: `${node.y}px`,
       width: `${node.width}px`,
       height: `${node.height}px`,
+      textAlign: node.textAlign || undefined,
     });
 
     const nodeColorClass = (node: CanvasNode) => {
@@ -876,6 +891,19 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.color = color;
+      }
+    };
+
+    const getNodeAlign = (nodeId: string) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.textAlign || "left";
+    };
+
+    const setNodeAlign = (nodeId: string, align: "left" | "center" | "right" | "justify") => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.textAlign = align;
       }
     };
 
@@ -1387,6 +1415,8 @@ export default defineComponent({
       contextMenu,
       nodeColorBarStyle,
       setNodeColor,
+      getNodeAlign,
+      setNodeAlign,
       onNodeContextMenu,
       onCtxSetColor,
       onCtxDuplicate,
@@ -1604,6 +1634,27 @@ export default defineComponent({
   align-items: center;
   justify-content: center;
 }
+.ncb-divider {
+  width: 1px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
+}
+.ncb-align {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.ncb-align:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.ncb-align.active { background: rgba(124, 138, 255, 0.2); color: #7c8aff; }
 
 /* ===== Selection box ===== */
 .selection-box {
