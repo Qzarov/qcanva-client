@@ -33,7 +33,7 @@ export default defineComponent({
       loading.value = true;
       try {
         const res = await auth.register(email.value, name.value, password.value);
-        setToken(res.token);
+        setToken(res.token, res.user?.isAdmin);
         router.push('/');
       } catch (e: any) {
         error.value = e.message;

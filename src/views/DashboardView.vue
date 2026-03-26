@@ -4,6 +4,7 @@
       <h1>My Canvases</h1>
       <div class="dash-actions">
         <button class="btn-primary" @click="createCanvas">+ New Canvas</button>
+        <router-link v-if="admin" to="/admin" class="btn-ghost">Admin</router-link>
         <button class="btn-ghost" @click="logout">Logout</button>
       </div>
     </header>
@@ -64,11 +65,12 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { canvas, clearToken } from '../api/client';
+import { canvas, clearToken, isAdmin } from '../api/client';
 
 export default defineComponent({
   setup() {
     const router = useRouter();
+    const admin = isAdmin();
     const own = ref<any[]>([]);
     const shared = ref<any[]>([]);
     const welcomeCanvas = ref<any>(null);
@@ -135,7 +137,7 @@ export default defineComponent({
 
     onMounted(load);
 
-    return { allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
+    return { admin, allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
   },
 });
 </script>

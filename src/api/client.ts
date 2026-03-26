@@ -4,12 +4,18 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
-export function setToken(token: string) {
+export function setToken(token: string, isAdmin = false) {
   localStorage.setItem('token', token);
+  localStorage.setItem('isAdmin', isAdmin ? '1' : '0');
 }
 
 export function clearToken() {
   localStorage.removeItem('token');
+  localStorage.removeItem('isAdmin');
+}
+
+export function isAdmin(): boolean {
+  return localStorage.getItem('isAdmin') === '1';
 }
 
 export function isAuthenticated(): boolean {
