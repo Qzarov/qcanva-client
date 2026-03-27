@@ -214,7 +214,14 @@
     </div>
 
     <!-- Minimap -->
-    <div class="minimap" v-if="minimapData">
+    <div
+      class="minimap"
+      v-if="minimapData"
+      @mousedown.stop="onMinimapDown"
+      @mousemove.stop="onMinimapMove"
+      @mouseup.stop="onMinimapUp"
+      @mouseleave="onMinimapUp"
+    >
       <svg :viewBox="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
         <rect
           v-for="node in nodes"
@@ -231,10 +238,11 @@
           :y="minimapData.vpY"
           :width="minimapData.vpW"
           :height="minimapData.vpH"
-          fill="none"
+          fill="rgba(124,138,255,0.08)"
           stroke="rgba(124,138,255,0.6)"
           stroke-width="3"
           rx="2"
+          style="cursor: grab"
         />
       </svg>
     </div>
@@ -1236,19 +1244,25 @@ export default defineComponent({
       resizeNodeId.value = null;
     };
 
-    // Zoom handler
+    // Zoom / pan handler (wheel + trackpad)
     const onWheel = (e: WheelEvent) => {
-      const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
-      const newScale = Math.max(0.05, Math.min(5, camera.scale * zoomFactor));
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch-to-zoom on trackpad (or Ctrl+wheel)
+        const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
+        const newScale = Math.max(0.05, Math.min(5, camera.scale * zoomFactor));
 
-      // Zoom toward mouse pointer
-      const rect = viewport.value!.getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+        const rect = viewport.value!.getBoundingClientRect();
+        const mx = e.clientX - rect.left;
+        const my = e.clientY - rect.top;
 
-      camera.x = mx - (mx - camera.x) * (newScale / camera.scale);
-      camera.y = my - (my - camera.y) * (newScale / camera.scale);
-      camera.scale = newScale;
+        camera.x = mx - (mx - camera.x) * (newScale / camera.scale);
+        camera.y = my - (my - camera.y) * (newScale / camera.scale);
+        camera.scale = newScale;
+      } else {
+        // Two-finger scroll on trackpad → pan
+        camera.x -= e.deltaX;
+        camera.y -= e.deltaY;
+      }
     };
 
     // Touch handlers
@@ -1389,6 +1403,43 @@ export default defineComponent({
       URL.revokeObjectURL(url);
     };
 
+    // Minimap drag-to-pan
+    const minimapDragging = ref(false);
+
+    const minimapScreenToWorld = (e: MouseEvent) => {
+      const el = (e.currentTarget as HTMLElement).querySelector('svg')!;
+      const rect = el.getBoundingClientRect();
+      const vb = minimapData.value!;
+      const [vbX, vbY, vbW, vbH] = vb.viewBox.split(' ').map(Number);
+      const wx = vbX + (e.clientX - rect.left) / rect.width * vbW;
+      const wy = vbY + (e.clientY - rect.top) / rect.height * vbH;
+      return { wx, wy };
+    };
+
+    const centerCameraOn = (wx: number, wy: number) => {
+      const vw = viewport.value!.clientWidth;
+      const vh = viewport.value!.clientHeight;
+      camera.x = -(wx * camera.scale - vw / 2);
+      camera.y = -(wy * camera.scale - vh / 2);
+    };
+
+    const onMinimapDown = (e: MouseEvent) => {
+      if (e.button !== 0 || !minimapData.value) return;
+      minimapDragging.value = true;
+      const { wx, wy } = minimapScreenToWorld(e);
+      centerCameraOn(wx, wy);
+    };
+
+    const onMinimapMove = (e: MouseEvent) => {
+      if (!minimapDragging.value || !minimapData.value) return;
+      const { wx, wy } = minimapScreenToWorld(e);
+      centerCameraOn(wx, wy);
+    };
+
+    const onMinimapUp = () => {
+      minimapDragging.value = false;
+    };
+
     // Minimap computed
     const minimapData = computed(() => {
       if (!nodes.value.length || !viewport.value) return null;
@@ -1490,6 +1541,9 @@ export default defineComponent({
       onTouchEnd,
       nodes,
       minimapData,
+      onMinimapDown,
+      onMinimapMove,
+      onMinimapUp,
       zoomIn,
       zoomOut,
       resetView,
@@ -1986,6 +2040,7 @@ export default defineComponent({
 .minimap svg {
   width: 100%;
   height: 100%;
+  cursor: crosshair;
 }
 
 /* ===== Controls ===== */
