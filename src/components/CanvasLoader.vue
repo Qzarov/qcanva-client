@@ -37,6 +37,16 @@
           >
             <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.35)" />
           </marker>
+          <marker
+            id="arrowhead-start"
+            markerWidth="8"
+            markerHeight="6"
+            refX="1"
+            refY="3"
+            orient="auto"
+          >
+            <polygon points="8 0, 0 3, 8 6" fill="rgba(255,255,255,0.35)" />
+          </marker>
         </defs>
         <g :transform="edgesSvgTransform">
           <g v-for="edge in renderedEdges" :key="edge.id">
@@ -56,7 +66,8 @@
                 strokeWidth: edge.thickness,
                 strokeDasharray: edge.dashArray || undefined,
               }"
-              marker-end="url(#arrowhead)"
+              :marker-end="(edge.arrowType === 'end' || edge.arrowType === 'both') ? 'url(#arrowhead)' : undefined"
+              :marker-start="(edge.arrowType === 'start' || edge.arrowType === 'both') ? 'url(#arrowhead-start)' : undefined"
             />
             <!-- Label on edge -->
             <g v-if="edge.label && editingEdgeId !== edge.id" class="edge-label-group">
@@ -74,6 +85,14 @@
                 class="edge-label"
               >{{ edge.label }}</text>
             </g>
+            <!-- Midpoint connector for branching -->
+            <circle
+              :cx="edge.midX"
+              :cy="edge.midY"
+              r="5"
+              class="edge-midpoint-conn"
+              @mousedown.stop="onConnStartFromEdge($event, edge.id)"
+            />
           </g>
           <!-- Temporary edge while creating connection -->
           <path
@@ -104,6 +123,11 @@
         <button class="edge-action-btn" @mousedown.stop="onEdgeToggleStyle" title="Toggle style">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="3" y1="12" x2="7" y2="12"/><line x1="10" y1="12" x2="14" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/>
+          </svg>
+        </button>
+        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleArrow" title="Arrow type">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="15 8 19 12 15 16"/>
           </svg>
         </button>
         <button class="edge-action-btn" @mousedown.stop="onEdgeCycleColor" title="Change color">
@@ -295,12 +319,14 @@ interface CanvasNode {
 interface CanvasEdge {
   id: string;
   fromNode: string;
+  fromEdge?: string;
   toNode: string;
-  fromSide?: string;
   toSide?: string;
+  fromSide?: string;
   label?: string;
   color?: string;
   lineStyle?: "solid" | "dashed" | "dotted";
+  arrowType?: "end" | "start" | "both" | "none";
   thickness?: number;
   styleAttributes?: Record<string, string>;
 }
@@ -312,9 +338,12 @@ interface RenderedEdge {
   labelX: number;
   labelY: number;
   labelW: number;
+  midX: number;
+  midY: number;
   color?: string;
   dashArray?: string;
   thickness: number;
+  arrowType: string;
 }
 
 // Obsidian color palette
@@ -490,17 +519,50 @@ export default defineComponent({
       }
     };
 
+    // Helper to find midpoint of a rendered edge by id (for fromEdge support)
+    const getEdgeMidpoint = (edgeId: string): { x: number; y: number } | null => {
+      const srcEdge = edges.value.find((e) => e.id === edgeId);
+      if (!srcEdge) return null;
+      const srcFrom = nodeMap.value.get(srcEdge.fromNode);
+      const srcTo = nodeMap.value.get(srcEdge.toNode);
+      if (!srcFrom || !srcTo) return null;
+      const a = getAnchor(srcFrom, srcEdge.fromSide || "bottom");
+      const b = getAnchor(srcTo, srcEdge.toSide || "top");
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+
     const renderedEdges = computed<RenderedEdge[]>(() => {
       return edges.value.map((edge) => {
-        const fromNode = nodeMap.value.get(edge.fromNode);
         const toNode = nodeMap.value.get(edge.toNode);
-        if (!fromNode || !toNode) {
-          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, thickness: 2 };
+        if (!toNode) {
+          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
         }
 
-        const fromSide = edge.fromSide || "bottom";
+        let from: { x: number; y: number };
+        let fromSide: string;
+
+        if (edge.fromEdge) {
+          // Source is another edge's midpoint
+          const mid = getEdgeMidpoint(edge.fromEdge);
+          if (!mid) {
+            return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
+          }
+          from = mid;
+          // Guess direction toward target
+          const toAnchor = getAnchor(toNode, edge.toSide || "top");
+          const dx = toAnchor.x - from.x;
+          const dy = toAnchor.y - from.y;
+          fromSide = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "bottom" : "top");
+        } else {
+          const fromNode = nodeMap.value.get(edge.fromNode);
+          if (!fromNode) {
+            return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
+          }
+          fromSide = edge.fromSide || "bottom";
+          from = getAnchor(fromNode, fromSide);
+        }
+
         const toSide = edge.toSide || "top";
-        const from = getAnchor(fromNode, fromSide);
         const to = getAnchor(toNode, toSide);
 
         const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
@@ -510,17 +572,23 @@ export default defineComponent({
         const path = `M ${from.x} ${from.y} C ${from.x + c1.dx} ${from.y + c1.dy}, ${to.x + c2.dx} ${to.y + c2.dy}, ${to.x} ${to.y}`;
 
         const thickness = edge.thickness || 2;
+        const arrowType = edge.arrowType || "end";
         const dashMap: Record<string, string> = { dashed: "8 4", dotted: "3 3" };
+        const midX = (from.x + to.x) / 2;
+        const midY = (from.y + to.y) / 2;
         return {
           id: edge.id,
           path,
           label: edge.label,
-          labelX: (from.x + to.x) / 2,
-          labelY: (from.y + to.y) / 2 - 8,
+          labelX: midX,
+          labelY: midY - 8,
           labelW: edge.label ? edge.label.length * 7.5 : 0,
+          midX,
+          midY,
           color: edge.color,
           dashArray: edge.lineStyle ? dashMap[edge.lineStyle] : undefined,
           thickness,
+          arrowType,
         };
       });
     });
@@ -782,17 +850,39 @@ export default defineComponent({
       edge.color = EDGE_COLORS[(idx + 1) % EDGE_COLORS.length];
     };
 
+    const ARROW_TYPES: Array<"end" | "start" | "both" | "none"> = ["end", "start", "both", "none"];
+
+    const onEdgeCycleArrow = () => {
+      const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
+      if (!edge) return;
+      const current = edge.arrowType || "end";
+      const idx = ARROW_TYPES.indexOf(current);
+      edge.arrowType = ARROW_TYPES[(idx + 1) % ARROW_TYPES.length];
+    };
+
     // Connection (edge creation) state
     const connDragging = ref(false);
     const connFromNode = ref<string>("");
+    const connFromEdge = ref<string>("");
     const connFromSide = ref<string>("");
     const connMouseWorld = reactive({ x: 0, y: 0 });
 
     const onConnStart = (e: MouseEvent, node: CanvasNode, side: string) => {
       connDragging.value = true;
       connFromNode.value = node.id;
+      connFromEdge.value = "";
       connFromSide.value = side;
       // Set initial mouse position in world coords
+      const rect = viewport.value!.getBoundingClientRect();
+      connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
+      connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+    };
+
+    const onConnStartFromEdge = (e: MouseEvent, edgeId: string) => {
+      connDragging.value = true;
+      connFromNode.value = "";
+      connFromEdge.value = edgeId;
+      connFromSide.value = "";
       const rect = viewport.value!.getBoundingClientRect();
       connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
       connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
@@ -801,12 +891,28 @@ export default defineComponent({
     // Temp edge path while dragging
     const tempEdgePath = computed(() => {
       if (!connDragging.value) return "";
-      const fromNode = nodeMap.value.get(connFromNode.value);
-      if (!fromNode) return "";
-      const from = getAnchor(fromNode, connFromSide.value);
+
+      let from: { x: number; y: number };
+      let fromSideVal: string;
+
+      if (connFromEdge.value) {
+        // Starting from edge midpoint
+        const mid = getEdgeMidpoint(connFromEdge.value);
+        if (!mid) return "";
+        from = mid;
+        const dx = connMouseWorld.x - from.x;
+        const dy = connMouseWorld.y - from.y;
+        fromSideVal = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "bottom" : "top");
+      } else {
+        const fromNode = nodeMap.value.get(connFromNode.value);
+        if (!fromNode) return "";
+        from = getAnchor(fromNode, connFromSide.value);
+        fromSideVal = connFromSide.value;
+      }
+
       const to = connMouseWorld;
       const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-      const c1 = getControlOffset(connFromSide.value, dist);
+      const c1 = getControlOffset(fromSideVal, dist);
       // Guess toSide based on direction
       const dx = to.x - from.x;
       const dy = to.y - from.y;
@@ -1213,15 +1319,21 @@ export default defineComponent({
         const target = findNodeAt(wx, wy);
         if (target && target.node.id !== connFromNode.value) {
           pushUndo();
-          edges.value.push({
+          const newEdge: CanvasEdge = {
             id: genId(),
-            fromNode: connFromNode.value,
-            fromSide: connFromSide.value,
+            fromNode: connFromEdge.value ? "" : connFromNode.value,
             toNode: target.node.id,
             toSide: target.side,
-          });
+          };
+          if (connFromEdge.value) {
+            newEdge.fromEdge = connFromEdge.value;
+          } else {
+            newEdge.fromSide = connFromSide.value;
+          }
+          edges.value.push(newEdge);
         }
         connDragging.value = false;
+        connFromEdge.value = "";
         return;
       }
       // Finish selection box
@@ -1511,6 +1623,7 @@ export default defineComponent({
       onEdgeLabelEnd,
       onEdgeToggleStyle,
       onEdgeCycleColor,
+      onEdgeCycleArrow,
       onCanvasDblClick,
       contextMenu,
       setNodeColor,
@@ -1532,6 +1645,7 @@ export default defineComponent({
       connDragging,
       tempEdgePath,
       onConnStart,
+      onConnStartFromEdge,
       onWheel,
       onPanStart,
       onPanMove,
@@ -1645,6 +1759,18 @@ export default defineComponent({
   stroke: rgba(124, 138, 255, 0.5);
   stroke-width: 2;
   stroke-dasharray: 6 4;
+}
+.edge-midpoint-conn {
+  fill: rgba(124, 138, 255, 0.5);
+  stroke: rgba(124, 138, 255, 0.8);
+  stroke-width: 1.5;
+  cursor: crosshair;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 0.15s;
+}
+g:hover > .edge-midpoint-conn {
+  opacity: 1;
 }
 .edge-label-bg {
   fill: rgba(30, 30, 30, 0.85);
