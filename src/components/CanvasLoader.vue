@@ -235,6 +235,18 @@
           <a :href="node.url" target="_blank" rel="noopener">{{ node.url }}</a>
         </div>
       </div>
+      <!-- Remote cursors -->
+      <div
+        v-for="cursor in remoteCursors"
+        :key="'cursor-' + cursor.socketId"
+        class="remote-cursor"
+        :style="{ left: cursor.x + 'px', top: cursor.y + 'px' }"
+      >
+        <svg width="16" height="20" viewBox="0 0 16 20" :fill="cursor.color">
+          <path d="M0 0 L16 12 L8 12 L4 20 Z"/>
+        </svg>
+        <span class="remote-cursor-name" :style="{ background: cursor.color }">{{ cursor.userName }}</span>
+      </div>
     </div>
 
     <!-- Minimap -->
@@ -367,8 +379,12 @@ export default defineComponent({
       type: Boolean,
       default: false,
     },
+    remoteCursors: {
+      type: Array as PropType<Array<{ socketId: string; userId: string; userName: string; x: number; y: number; color: string }>>,
+      default: () => [],
+    },
   },
-  emits: ["change"],
+  emits: ["change", "cursor-move"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -1251,6 +1267,13 @@ export default defineComponent({
     };
 
     const onPanMove = (e: MouseEvent) => {
+      // Emit cursor position for remote users
+      if (viewport.value) {
+        const rect = viewport.value.getBoundingClientRect();
+        const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+        const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+        emit("cursor-move", { x: wx, y: wy });
+      }
       // Edge creation dragging
       if (connDragging.value) {
         const rect = viewport.value!.getBoundingClientRect();
@@ -1577,6 +1600,12 @@ export default defineComponent({
       };
     });
 
+    // Apply remote canvas data without triggering change event
+    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[] }) => {
+      nodes.value = data.nodes;
+      edges.value = data.edges;
+    };
+
     onMounted(() => {
       loadCanvas();
       window.addEventListener("resize", fitToContent);
@@ -1666,6 +1695,7 @@ export default defineComponent({
       onImportCanvas,
       onFileSelected,
       onExportCanvas,
+      applyRemoteData,
     };
   },
 });
@@ -2225,5 +2255,28 @@ g:hover > .edge-midpoint-conn {
 .node-content::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
+}
+
+/* ===== Remote cursors ===== */
+.remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  z-index: 100;
+  transition: left 0.1s linear, top 0.1s linear;
+}
+.remote-cursor svg {
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+}
+.remote-cursor-name {
+  position: absolute;
+  left: 16px;
+  top: 12px;
+  font-size: 11px;
+  color: #fff;
+  padding: 1px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-weight: 500;
+  line-height: 16px;
 }
 </style>

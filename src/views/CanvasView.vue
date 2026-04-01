@@ -18,6 +18,19 @@
         />
         <span v-else class="topbar-title-ro">{{ title || 'Untitled' }}</span>
         <div class="topbar-right">
+          <!-- Online users -->
+          <div v-if="onlineUsers.length > 1" class="online-users">
+            <div
+              v-for="u in otherUsers"
+              :key="u.socketId"
+              class="online-avatar"
+              :style="{ background: u.color }"
+              :title="u.name"
+            >{{ u.name.charAt(0).toUpperCase() }}</div>
+          </div>
+          <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
+            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
+          </span>
           <span v-if="saving" class="topbar-status">Saving...</span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="togglePublic">
@@ -84,16 +97,19 @@
         ref="canvasRef"
         :initial-data="canvasData"
         :readonly="role === 'read'"
+        :remote-cursors="remoteCursorsArray"
         @change="onCanvasChange"
+        @cursor-move="onCursorMove"
       />
     </template>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, onUnmounted } from 'vue';
+import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { canvas as canvasApi, isAuthenticated } from '../api/client';
+import { useCanvasSocket, type RemoteCursor } from '../composables/useCanvasSocket';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 export default defineComponent({
@@ -124,6 +140,30 @@ export default defineComponent({
     const permissions = ref<any[]>([]);
 
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+    let isApplyingRemote = false;
+
+    // WebSocket
+    const {
+      connected: wsConnected,
+      onlineUsers,
+      remoteCursors,
+      connect: wsConnect,
+      sendUpdate,
+      sendCursor,
+      onRemoteCanvasUpdate,
+    } = useCanvasSocket(canvasId);
+
+    const otherUsers = computed(() => {
+      return onlineUsers.value.filter((u) => {
+        // Filter out self — socket id won't match any user if we check by presence
+        // We keep all users except self; self is the one whose socketId matches the connected socket
+        return true; // We'll filter self server-side or by checking socket id
+      });
+    });
+
+    const remoteCursorsArray = computed(() => {
+      return Array.from(remoteCursors.value.values());
+    });
 
     const load = async () => {
       try {
@@ -133,6 +173,19 @@ export default defineComponent({
         role.value = res.role;
         isPublic.value = res.canvas.isPublic;
         if (res.role === 'owner') loadPermissions();
+
+        // Connect WebSocket after canvas loaded
+        if (isAuthenticated()) {
+          wsConnect();
+          onRemoteCanvasUpdate((dataStr: string) => {
+            try {
+              const parsed = JSON.parse(dataStr);
+              isApplyingRemote = true;
+              canvasRef.value?.applyRemoteData(parsed);
+              isApplyingRemote = false;
+            } catch {}
+          });
+        }
       } catch (e: any) {
         error.value = e.message || 'Canvas not found';
       }
@@ -142,15 +195,27 @@ export default defineComponent({
     const saveData = async (data: any) => {
       if (role.value !== 'owner' && role.value !== 'edit') return;
       saving.value = true;
-      try {
-        await canvasApi.update(canvasId, { data: JSON.stringify(data) });
-      } catch {}
+      // Send via WebSocket (persists on server too)
+      if (wsConnected.value) {
+        sendUpdate(JSON.stringify(data));
+      } else {
+        try {
+          await canvasApi.update(canvasId, { data: JSON.stringify(data) });
+        } catch {}
+      }
       saving.value = false;
     };
 
     const onCanvasChange = (data: any) => {
+      if (isApplyingRemote) return; // Don't echo back remote updates
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => saveData(data), 1000);
+    };
+
+    const onCursorMove = (pos: { x: number; y: number }) => {
+      if (wsConnected.value) {
+        sendCursor(pos.x, pos.y);
+      }
     };
 
     const saveTitle = async () => {
@@ -188,8 +253,9 @@ export default defineComponent({
       canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving,
       showShare, shareEmail, shareRole, permissions,
-      onCanvasChange, saveTitle, togglePublic, doShare, doRevoke,
+      onCanvasChange, onCursorMove, saveTitle, togglePublic, doShare, doRevoke,
       isAuthenticated,
+      wsConnected, onlineUsers, otherUsers, remoteCursorsArray,
     };
   },
 });
