@@ -44,8 +44,8 @@
           </span>
           <span v-if="saving" class="topbar-status">Saving...</span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="togglePublic">
-            {{ isPublic ? 'Public' : 'Private' }}
+          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="cycleVisibility">
+            {{ visibilityLabel }}
           </button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">
             Share
@@ -145,6 +145,12 @@ export default defineComponent({
     const canvasData = ref<any>(null);
     const role = ref('');
     const isPublic = ref(false);
+    const visibility = ref<'private' | 'authenticated' | 'public'>('private');
+
+    const visibilityLabel = computed(() => {
+      const map = { private: 'Private', authenticated: 'Auth Only', public: 'Public' };
+      return map[visibility.value];
+    });
     const saving = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
@@ -184,6 +190,7 @@ export default defineComponent({
         canvasData.value = JSON.parse(res.canvas.data);
         role.value = res.role;
         isPublic.value = res.canvas.isPublic;
+        visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         if (res.role === 'owner') loadPermissions();
 
         // Connect WebSocket after canvas loaded
@@ -247,9 +254,12 @@ export default defineComponent({
       await canvasApi.update(canvasId, { title: title.value });
     };
 
-    const togglePublic = async () => {
-      isPublic.value = !isPublic.value;
-      await canvasApi.update(canvasId, { isPublic: isPublic.value });
+    const cycleVisibility = async () => {
+      const order: Array<'private' | 'authenticated' | 'public'> = ['private', 'authenticated', 'public'];
+      const idx = order.indexOf(visibility.value);
+      visibility.value = order[(idx + 1) % order.length]!;
+      isPublic.value = visibility.value === 'public';
+      await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: visibility.value });
     };
 
     const loadPermissions = async () => {
@@ -277,7 +287,7 @@ export default defineComponent({
       canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving,
       showShare, shareEmail, shareRole, permissions,
-      onCanvasChange, onCanvasOp, onCursorMove, saveTitle, togglePublic, doShare, doRevoke,
+      onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       isAuthenticated,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray,
     };

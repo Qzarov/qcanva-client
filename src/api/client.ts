@@ -76,7 +76,7 @@ export const canvas = {
   create: (title: string, data?: string) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
-  update: (id: string, updates: { title?: string; data?: string; isPublic?: boolean }) =>
+  update: (id: string, updates: { title?: string; data?: string; isPublic?: boolean; visibility?: string }) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
   delete: (id: string) =>
     request<any>(`/canvas/${id}`, { method: 'DELETE' }),
