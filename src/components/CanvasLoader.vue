@@ -816,6 +816,14 @@ export default defineComponent({
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
 
     const onNodeDragStart = (e: MouseEvent, node: CanvasNode) => {
+      if (e.button === 1) { // middle-click → pan, not drag
+        isPanning.value = true;
+        panStart.x = e.clientX;
+        panStart.y = e.clientY;
+        cameraStart.x = camera.x;
+        cameraStart.y = camera.y;
+        return;
+      }
       if (resizeNodeId.value) return;
       // Shift/Ctrl click: toggle selection
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
@@ -868,6 +876,14 @@ export default defineComponent({
 
     // Resize handlers
     const onResizeStart = (e: MouseEvent, node: CanvasNode, handle: string) => {
+      if (e.button === 1) {
+        isPanning.value = true;
+        panStart.x = e.clientX;
+        panStart.y = e.clientY;
+        cameraStart.x = camera.x;
+        cameraStart.y = camera.y;
+        return;
+      }
       pushUndo();
       resizeNodeId.value = node.id;
       resizeHandle.value = handle;
