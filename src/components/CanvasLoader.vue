@@ -384,15 +384,6 @@ interface RenderedEdge {
   arrowType: string;
 }
 
-// Obsidian color palette
-const OBSIDIAN_COLORS: Record<string, { bg: string; border: string; text: string }> = {
-  "1": { bg: "rgba(251,70,76,0.15)", border: "#fb464c", text: "#fb464c" },
-  "2": { bg: "rgba(233,151,63,0.15)", border: "#e9973f", text: "#e9973f" },
-  "3": { bg: "rgba(224,222,113,0.15)", border: "#e0de71", text: "#e0de71" },
-  "4": { bg: "rgba(68,207,110,0.15)", border: "#44cf6e", text: "#44cf6e" },
-  "5": { bg: "rgba(83,223,221,0.15)", border: "#53dfdd", text: "#53dfdd" },
-  "6": { bg: "rgba(168,130,255,0.15)", border: "#a882ff", text: "#a882ff" },
-};
 
 export default defineComponent({
   name: "CanvasLoader",
@@ -765,7 +756,7 @@ export default defineComponent({
         /<blockquote>\s*<p>\s*\[!\s*([\w-]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
         (_match, type: string, title: string, body: string) => {
           const key = type.toLowerCase();
-          const style = CALLOUT_STYLES[key] || CALLOUT_STYLES.note;
+          const style = (CALLOUT_STYLES[key] || CALLOUT_STYLES.note)!;
           const displayTitle = title.trim() || key.charAt(0).toUpperCase() + key.slice(1);
           return `<div class="callout callout-${key}" style="border-left-color: ${style.color}">
             <div class="callout-title" style="color: ${style.color}">${style.icon} ${displayTitle}</div>
@@ -1545,24 +1536,28 @@ export default defineComponent({
     // Touch handlers
     const getTouchDist = (e: TouchEvent) => {
       if (e.touches.length < 2) return 0;
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const t0 = e.touches[0]!;
+      const t1 = e.touches[1]!;
+      const dx = t0.clientX - t1.clientX;
+      const dy = t0.clientY - t1.clientY;
       return Math.sqrt(dx * dx + dy * dy);
     };
 
     const getTouchCenter = (e: TouchEvent) => {
-      if (e.touches.length < 2) return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      const t0 = e.touches[0]!;
+      if (e.touches.length < 2) return { x: t0.clientX, y: t0.clientY };
+      const t1 = e.touches[1]!;
       return {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        x: (t0.clientX + t1.clientX) / 2,
+        y: (t0.clientY + t1.clientY) / 2,
       };
     };
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         isPanning.value = true;
-        panStart.x = e.touches[0].clientX;
-        panStart.y = e.touches[0].clientY;
+        panStart.x = e.touches[0]!.clientX;
+        panStart.y = e.touches[0]!.clientY;
         cameraStart.x = camera.x;
         cameraStart.y = camera.y;
       } else if (e.touches.length === 2) {
@@ -1577,8 +1572,8 @@ export default defineComponent({
 
     const onTouchMove = (e: TouchEvent) => {
       if (e.touches.length === 1 && isPanning.value) {
-        camera.x = cameraStart.x + (e.touches[0].clientX - panStart.x);
-        camera.y = cameraStart.y + (e.touches[0].clientY - panStart.y);
+        camera.x = cameraStart.x + (e.touches[0]!.clientX - panStart.x);
+        camera.y = cameraStart.y + (e.touches[0]!.clientY - panStart.y);
       } else if (e.touches.length === 2) {
         const dist = getTouchDist(e);
         const center = getTouchCenter(e);
@@ -1687,7 +1682,7 @@ export default defineComponent({
       const el = (e.currentTarget as HTMLElement).querySelector('svg')!;
       const rect = el.getBoundingClientRect();
       const vb = minimapData.value!;
-      const [vbX, vbY, vbW, vbH] = vb.viewBox.split(' ').map(Number);
+      const [vbX = 0, vbY = 0, vbW = 1, vbH = 1] = vb.viewBox.split(' ').map(Number);
       const wx = vbX + (e.clientX - rect.left) / rect.width * vbW;
       const wy = vbY + (e.clientY - rect.top) / rect.height * vbH;
       return { wx, wy };

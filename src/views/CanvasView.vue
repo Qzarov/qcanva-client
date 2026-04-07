@@ -121,7 +121,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { canvas as canvasApi, isAuthenticated } from '../api/client';
-import { useCanvasSocket, type RemoteCursor } from '../composables/useCanvasSocket';
+import { useCanvasSocket } from '../composables/useCanvasSocket';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 export default defineComponent({
@@ -168,10 +168,8 @@ export default defineComponent({
     } = useCanvasSocket(canvasId);
 
     const otherUsers = computed(() => {
-      return onlineUsers.value.filter((u) => {
-        // Filter out self — socket id won't match any user if we check by presence
-        // We keep all users except self; self is the one whose socketId matches the connected socket
-        return true; // We'll filter self server-side or by checking socket id
+      return onlineUsers.value.filter((_u) => {
+        return true;
       });
     });
 

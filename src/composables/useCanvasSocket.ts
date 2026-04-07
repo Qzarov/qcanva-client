@@ -1,4 +1,4 @@
-import { ref, onUnmounted, type Ref } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');

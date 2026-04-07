@@ -90,7 +90,7 @@ export default defineComponent({
     let currentUserId = '';
     if (token) {
       try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
+        const payload = JSON.parse(atob(token.split('.')[1] || ''));
         currentUserId = payload.sub;
       } catch {}
     }
