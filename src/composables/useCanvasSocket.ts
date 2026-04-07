@@ -28,6 +28,7 @@ export function useCanvasSocket(canvasId: string) {
 
   // Callbacks set by consumer
   let onRemoteUpdate: ((data: string) => void) | null = null;
+  let onRemoteOpCb: ((op: any) => void) | null = null;
 
   function connect() {
     const token = localStorage.getItem('token');
@@ -79,9 +80,17 @@ export function useCanvasSocket(canvasId: string) {
       remoteCursors.value.delete(data.socketId);
     });
 
+    // Full-sync updates (legacy, used for DB persistence fallback)
     s.on('canvas-update', (data: { canvasData: string; userId: string; userName: string }) => {
       if (onRemoteUpdate) {
         onRemoteUpdate(data.canvasData);
+      }
+    });
+
+    // Granular operation updates
+    s.on('canvas-op', (data: { op: any; userId: string }) => {
+      if (onRemoteOpCb) {
+        onRemoteOpCb(data.op);
       }
     });
 
@@ -102,8 +111,14 @@ export function useCanvasSocket(canvasId: string) {
     socket.value = s;
   }
 
+  // Full-sync update (for DB persistence)
   function sendUpdate(canvasData: string) {
     socket.value?.emit('canvas-update', { canvasData });
+  }
+
+  // Granular operation (for real-time sync)
+  function sendOp(op: any) {
+    socket.value?.emit('canvas-op', { op });
   }
 
   function sendCursor(x: number, y: number) {
@@ -112,6 +127,10 @@ export function useCanvasSocket(canvasId: string) {
 
   function onRemoteCanvasUpdate(cb: (data: string) => void) {
     onRemoteUpdate = cb;
+  }
+
+  function onRemoteOp(cb: (op: any) => void) {
+    onRemoteOpCb = cb;
   }
 
   function disconnect() {
@@ -134,7 +153,9 @@ export function useCanvasSocket(canvasId: string) {
     connect,
     disconnect,
     sendUpdate,
+    sendOp,
     sendCursor,
     onRemoteCanvasUpdate,
+    onRemoteOp,
   };
 }

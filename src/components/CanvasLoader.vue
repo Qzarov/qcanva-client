@@ -47,6 +47,28 @@
           >
             <polygon points="8 0, 0 3, 8 6" fill="rgba(255,255,255,0.35)" />
           </marker>
+          <template v-for="color in edgeColors" :key="color">
+            <marker
+              :id="'arrowhead-' + color.replace('#', '')"
+              markerWidth="8"
+              markerHeight="6"
+              refX="7"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" :fill="color" />
+            </marker>
+            <marker
+              :id="'arrowhead-start-' + color.replace('#', '')"
+              markerWidth="8"
+              markerHeight="6"
+              refX="1"
+              refY="3"
+              orient="auto"
+            >
+              <polygon points="8 0, 0 3, 8 6" :fill="color" />
+            </marker>
+          </template>
         </defs>
         <g :transform="edgesSvgTransform">
           <g v-for="edge in renderedEdges" :key="edge.id">
@@ -66,8 +88,8 @@
                 strokeWidth: edge.thickness,
                 strokeDasharray: edge.dashArray || undefined,
               }"
-              :marker-end="(edge.arrowType === 'end' || edge.arrowType === 'both') ? 'url(#arrowhead)' : undefined"
-              :marker-start="(edge.arrowType === 'start' || edge.arrowType === 'both') ? 'url(#arrowhead-start)' : undefined"
+              :marker-end="(edge.arrowType === 'end' || edge.arrowType === 'both') ? 'url(#' + arrowMarkerId(edge.color, false) + ')' : undefined"
+              :marker-start="(edge.arrowType === 'start' || edge.arrowType === 'both') ? 'url(#' + arrowMarkerId(edge.color, true) + ')' : undefined"
             />
             <!-- Label on edge -->
             <g v-if="edge.label && editingEdgeId !== edge.id" class="edge-label-group">
@@ -290,12 +312,6 @@
       <button @click="zoomOut" title="Zoom out">−</button>
       <button @click="resetView" title="Reset view">⌂</button>
       <span class="controls-divider"></span>
-      <button @click="onNewCanvas" title="New canvas">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      </button>
-      <button @click="onImportCanvas" title="Open .canvas file">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      </button>
       <button @click="onExportCanvas" title="Export .canvas file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
@@ -343,6 +359,16 @@ interface CanvasEdge {
   styleAttributes?: Record<string, string>;
 }
 
+type CanvasOp =
+  | { type: 'nodes-move'; moves: { id: string; x: number; y: number }[] }
+  | { type: 'node-resize'; id: string; x: number; y: number; width: number; height: number }
+  | { type: 'node-add'; node: CanvasNode }
+  | { type: 'node-delete'; ids: string[] }
+  | { type: 'node-update'; id: string; changes: Partial<CanvasNode> }
+  | { type: 'edge-add'; edge: CanvasEdge }
+  | { type: 'edge-delete'; id: string }
+  | { type: 'edge-update'; id: string; changes: Partial<CanvasEdge> };
+
 interface RenderedEdge {
   id: string;
   path: string;
@@ -384,7 +410,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move"],
+  emits: ["change", "cursor-move", "op"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -418,9 +444,60 @@ export default defineComponent({
       nextTick(() => fitToContent());
     };
 
-    // Emit change when nodes or edges mutate
+    // Emit change when nodes or edges mutate (full-sync for DB persistence)
     const emitChange = () => {
       emit("change", { nodes: JSON.parse(JSON.stringify(nodes.value)), edges: JSON.parse(JSON.stringify(edges.value)) });
+    };
+
+    // Emit granular operation for real-time sync
+    const emitOp = (op: CanvasOp) => {
+      emit("op", op);
+    };
+
+    // Apply a remote operation without triggering change/op emit
+    const applyRemoteOp = (op: CanvasOp) => {
+      switch (op.type) {
+        case 'nodes-move':
+          for (const m of op.moves) {
+            const node = nodes.value.find((n) => n.id === m.id);
+            if (node) { node.x = m.x; node.y = m.y; }
+          }
+          break;
+        case 'node-resize': {
+          const node = nodes.value.find((n) => n.id === op.id);
+          if (node) { node.x = op.x; node.y = op.y; node.width = op.width; node.height = op.height; }
+          break;
+        }
+        case 'node-add':
+          if (!nodes.value.find((n) => n.id === op.node.id)) {
+            nodes.value.push({ ...op.node });
+          }
+          break;
+        case 'node-delete': {
+          const ids = new Set(op.ids);
+          edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
+          nodes.value = nodes.value.filter((n) => !ids.has(n.id));
+          break;
+        }
+        case 'node-update': {
+          const node = nodes.value.find((n) => n.id === op.id);
+          if (node) Object.assign(node, op.changes);
+          break;
+        }
+        case 'edge-add':
+          if (!edges.value.find((e) => e.id === op.edge.id)) {
+            edges.value.push({ ...op.edge });
+          }
+          break;
+        case 'edge-delete':
+          edges.value = edges.value.filter((e) => e.id !== op.id);
+          break;
+        case 'edge-update': {
+          const edge = edges.value.find((e) => e.id === op.id);
+          if (edge) Object.assign(edge, op.changes);
+          break;
+        }
+      }
     };
 
     // Watch for prop changes
@@ -609,6 +686,20 @@ export default defineComponent({
       });
     });
 
+    // Unique edge colors for dynamic arrow markers
+    const edgeColors = computed(() => {
+      const colors = new Set<string>();
+      for (const edge of edges.value) {
+        if (edge.color) colors.add(edge.color);
+      }
+      return Array.from(colors);
+    });
+
+    const arrowMarkerId = (color: string | undefined, start: boolean) => {
+      if (!color) return start ? 'arrowhead-start' : 'arrowhead';
+      return (start ? 'arrowhead-start-' : 'arrowhead-') + color.replace('#', '');
+    };
+
     // Style helpers
     const nodePosition = (node: CanvasNode) => {
       const style: Record<string, string | undefined> = {
@@ -776,12 +867,17 @@ export default defineComponent({
     };
 
     const onEditEnd = () => {
+      if (editingNodeId.value) {
+        const node = nodes.value.find((n) => n.id === editingNodeId.value);
+        if (node) emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
+      }
       editingNodeId.value = null;
       scheduleChange();
     };
 
     // Resize handlers
     const onResizeStart = (e: MouseEvent, node: CanvasNode, handle: string) => {
+      pushUndo();
       resizeNodeId.value = node.id;
       resizeHandle.value = handle;
       resizeStart.x = e.clientX;
@@ -802,7 +898,10 @@ export default defineComponent({
 
     const onDeleteEdge = () => {
       if (!selectedEdgeId.value) return;
-      edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
+      pushUndo();
+      const deletedId = selectedEdgeId.value;
+      edges.value = edges.value.filter((ed) => ed.id !== deletedId);
+      emitOp({ type: 'edge-delete', id: deletedId });
       selectedEdgeId.value = null;
     };
 
@@ -829,6 +928,7 @@ export default defineComponent({
     const onEdgeDblClick = (edgeId: string) => {
       const edge = edges.value.find((e) => e.id === edgeId);
       if (!edge) return;
+      pushUndo();
       editingEdgeId.value = edgeId;
       editingEdgeLabel.value = edge.label || "";
       selectedEdgeId.value = null;
@@ -844,6 +944,10 @@ export default defineComponent({
     };
 
     const onEdgeLabelEnd = () => {
+      if (editingEdgeId.value) {
+        const edge = edges.value.find((e) => e.id === editingEdgeId.value);
+        if (edge) emitOp({ type: 'edge-update', id: edge.id, changes: { label: edge.label } });
+      }
       editingEdgeId.value = null;
     };
 
@@ -854,16 +958,20 @@ export default defineComponent({
     const onEdgeToggleStyle = () => {
       const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
       if (!edge) return;
+      pushUndo();
       const current = edge.lineStyle || "solid";
       const idx = LINE_STYLES.indexOf(current);
       edge.lineStyle = LINE_STYLES[(idx + 1) % LINE_STYLES.length];
+      emitOp({ type: 'edge-update', id: edge.id, changes: { lineStyle: edge.lineStyle } });
     };
 
     const onEdgeCycleColor = () => {
       const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
       if (!edge) return;
+      pushUndo();
       const idx = EDGE_COLORS.indexOf(edge.color);
       edge.color = EDGE_COLORS[(idx + 1) % EDGE_COLORS.length];
+      emitOp({ type: 'edge-update', id: edge.id, changes: { color: edge.color } });
     };
 
     const ARROW_TYPES: Array<"end" | "start" | "both" | "none"> = ["end", "start", "both", "none"];
@@ -871,9 +979,11 @@ export default defineComponent({
     const onEdgeCycleArrow = () => {
       const edge = edges.value.find((e) => e.id === selectedEdgeId.value);
       if (!edge) return;
+      pushUndo();
       const current = edge.arrowType || "end";
       const idx = ARROW_TYPES.indexOf(current);
       edge.arrowType = ARROW_TYPES[(idx + 1) % ARROW_TYPES.length];
+      emitOp({ type: 'edge-update', id: edge.id, changes: { arrowType: edge.arrowType } });
     };
 
     // Connection (edge creation) state
@@ -977,6 +1087,7 @@ export default defineComponent({
       };
       pushUndo();
       nodes.value.push(newNode);
+      emitOp({ type: 'node-add', node: { ...newNode } });
       selectedNodeIds.value = [newNode.id];
       editingNodeId.value = newNode.id;
       nextTick(() => {
@@ -1007,6 +1118,7 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.color = color;
+        emitOp({ type: 'node-update', id: nodeId, changes: { color } });
       }
     };
 
@@ -1020,6 +1132,7 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.textAlign = align;
+        emitOp({ type: 'node-update', id: nodeId, changes: { textAlign: align } });
       }
     };
 
@@ -1044,6 +1157,7 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.fillStyle = (node.fillStyle || "gradient") === "gradient" ? "solid" : "gradient";
+        emitOp({ type: 'node-update', id: nodeId, changes: { fillStyle: node.fillStyle } });
       }
     };
 
@@ -1057,6 +1171,7 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.borderColor = color;
+        emitOp({ type: 'node-update', id: nodeId, changes: { borderColor: color } });
       }
     };
 
@@ -1070,6 +1185,7 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.borderStyle = style;
+        emitOp({ type: 'node-update', id: nodeId, changes: { borderStyle: style } });
       }
     };
 
@@ -1083,12 +1199,16 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.borderWidth = width;
+        emitOp({ type: 'node-update', id: nodeId, changes: { borderWidth: width } });
       }
     };
 
     const onCtxSetColor = (color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
-      if (node) node.color = color;
+      if (node) {
+        node.color = color;
+        emitOp({ type: 'node-update', id: node.id, changes: { color } });
+      }
       closeContextMenu();
     };
 
@@ -1098,6 +1218,7 @@ export default defineComponent({
       pushUndo();
       const clone: CanvasNode = { ...node, id: genId(), x: node.x + 30, y: node.y + 30 };
       nodes.value.push(clone);
+      emitOp({ type: 'node-add', node: { ...clone } });
       selectedNodeIds.value = [clone.id];
       closeContextMenu();
     };
@@ -1107,6 +1228,7 @@ export default defineComponent({
       const id = contextMenu.nodeId;
       edges.value = edges.value.filter((ed) => ed.fromNode !== id && ed.toNode !== id);
       nodes.value = nodes.value.filter((n) => n.id !== id);
+      emitOp({ type: 'node-delete', ids: [id] });
       selectedNodeIds.value = [];
       closeContextMenu();
     };
@@ -1201,6 +1323,8 @@ export default defineComponent({
         }));
         nodes.value.push(...newNodes);
         edges.value.push(...newEdges);
+        for (const n of newNodes) emitOp({ type: 'node-add', node: { ...n } });
+        for (const ed of newEdges) emitOp({ type: 'edge-add', edge: { ...ed } });
         selectedNodeIds.value = newNodes.map((n) => n.id);
         // Update clipboard positions for next paste
         clipboard.value.nodes = clipboard.value.nodes.map((n) => ({ ...n, x: n.x + 40, y: n.y + 40 }));
@@ -1222,14 +1346,18 @@ export default defineComponent({
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedEdgeId.value) {
           pushUndo();
-          edges.value = edges.value.filter((ed) => ed.id !== selectedEdgeId.value);
+          const deletedId = selectedEdgeId.value;
+          edges.value = edges.value.filter((ed) => ed.id !== deletedId);
+          emitOp({ type: 'edge-delete', id: deletedId });
           selectedEdgeId.value = null;
           e.preventDefault();
         } else if (selectedNodeIds.value.length > 0) {
           pushUndo();
-          const ids = new Set(selectedNodeIds.value);
-          edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
-          nodes.value = nodes.value.filter((n) => !ids.has(n.id));
+          const ids = [...selectedNodeIds.value];
+          const idSet = new Set(ids);
+          edges.value = edges.value.filter((ed) => !idSet.has(ed.fromNode) && !idSet.has(ed.toNode));
+          nodes.value = nodes.value.filter((n) => !idSet.has(n.id));
+          emitOp({ type: 'node-delete', ids });
           selectedNodeIds.value = [];
           e.preventDefault();
         }
@@ -1354,6 +1482,7 @@ export default defineComponent({
             newEdge.fromSide = connFromSide.value;
           }
           edges.value.push(newEdge);
+          emitOp({ type: 'edge-add', edge: { ...newEdge } });
         }
         connDragging.value = false;
         connFromEdge.value = "";
@@ -1375,6 +1504,19 @@ export default defineComponent({
         selBox.active = false;
       }
       isPanning.value = false;
+      // Emit move op at end of drag
+      if (dragNodeId.value && selectedNodeIds.value.length > 0) {
+        const moves = selectedNodeIds.value.map((id) => {
+          const n = nodes.value.find((nd) => nd.id === id);
+          return n ? { id, x: n.x, y: n.y } : null;
+        }).filter(Boolean) as { id: string; x: number; y: number }[];
+        if (moves.length) emitOp({ type: 'nodes-move', moves });
+      }
+      // Emit resize op at end of resize
+      if (resizeNodeId.value) {
+        const n = nodes.value.find((nd) => nd.id === resizeNodeId.value);
+        if (n) emitOp({ type: 'node-resize', id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
+      }
       dragNodeId.value = null;
       resizeNodeId.value = null;
     };
@@ -1622,6 +1764,8 @@ export default defineComponent({
       edgesSvgStyle,
       edgesSvgTransform,
       renderedEdges,
+      edgeColors,
+      arrowMarkerId,
       nodePosition,
       nodeColorClass,
       groupColorClass,
@@ -1696,6 +1840,7 @@ export default defineComponent({
       onFileSelected,
       onExportCanvas,
       applyRemoteData,
+      applyRemoteOp,
     };
   },
 });
