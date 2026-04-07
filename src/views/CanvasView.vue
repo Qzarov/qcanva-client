@@ -1,7 +1,18 @@
 <template>
   <div class="canvas-view">
     <div v-if="loading" class="canvas-loading">Loading canvas...</div>
-    <div v-else-if="error" class="canvas-error">{{ error }}</div>
+    <div v-else-if="error" class="canvas-error">
+      <div class="error-modal">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(251,70,76,0.8)" stroke-width="1.5">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <h2>Canvas not available</h2>
+        <p>{{ error }}</p>
+        <router-link to="/" class="error-home-btn">Go to Dashboard</router-link>
+      </div>
+    </div>
     <template v-else>
       <!-- Top bar -->
       <div class="canvas-topbar">
@@ -99,6 +110,7 @@
         :readonly="role === 'read'"
         :remote-cursors="remoteCursorsArray"
         @change="onCanvasChange"
+        @op="onCanvasOp"
         @cursor-move="onCursorMove"
       />
     </template>
@@ -149,8 +161,10 @@ export default defineComponent({
       remoteCursors,
       connect: wsConnect,
       sendUpdate,
+      sendOp,
       sendCursor,
       onRemoteCanvasUpdate,
+      onRemoteOp,
     } = useCanvasSocket(canvasId);
 
     const otherUsers = computed(() => {
@@ -185,6 +199,11 @@ export default defineComponent({
               isApplyingRemote = false;
             } catch {}
           });
+          onRemoteOp((op: any) => {
+            isApplyingRemote = true;
+            canvasRef.value?.applyRemoteOp(op);
+            isApplyingRemote = false;
+          });
         }
       } catch (e: any) {
         error.value = e.message || 'Canvas not found';
@@ -207,9 +226,16 @@ export default defineComponent({
     };
 
     const onCanvasChange = (data: any) => {
-      if (isApplyingRemote) return; // Don't echo back remote updates
+      if (isApplyingRemote) return;
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => saveData(data), 1000);
+    };
+
+    const onCanvasOp = (op: any) => {
+      if (isApplyingRemote) return;
+      if (wsConnected.value) {
+        sendOp(op);
+      }
     };
 
     const onCursorMove = (pos: { x: number; y: number }) => {
@@ -253,7 +279,7 @@ export default defineComponent({
       canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving,
       showShare, shareEmail, shareRole, permissions,
-      onCanvasChange, onCursorMove, saveTitle, togglePublic, doShare, doRevoke,
+      onCanvasChange, onCanvasOp, onCursorMove, saveTitle, togglePublic, doShare, doRevoke,
       isAuthenticated,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray,
     };
