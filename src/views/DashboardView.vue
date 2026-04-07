@@ -4,6 +4,8 @@
       <h1>My Canvases</h1>
       <div class="dash-actions">
         <button class="btn-primary" @click="createCanvas">+ New Canvas</button>
+        <button class="btn-ghost" @click="importFile">Open .canvas</button>
+        <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
         <router-link v-if="admin" to="/admin" class="btn-ghost">Admin</router-link>
         <button class="btn-ghost" @click="logout">Logout</button>
       </div>
@@ -113,6 +115,28 @@ export default defineComponent({
       });
     };
 
+    // Import .canvas file
+    const fileInput = ref<HTMLInputElement | null>(null);
+
+    const importFile = () => {
+      fileInput.value?.click();
+    };
+
+    const onFileSelected = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const title = file.name.replace(/\.(canvas|json)$/, '') || 'Imported';
+        const c = await canvas.create(title, JSON.stringify(data));
+        router.push(`/canvas/${c.id}`);
+      } catch (err) {
+        console.error('Failed to import canvas file:', err);
+      }
+      (e.target as HTMLInputElement).value = '';
+    };
+
     // Rename
     const renamingId = ref('');
     const renameInput = ref<HTMLInputElement[]>([]);
@@ -137,7 +161,7 @@ export default defineComponent({
 
     onMounted(load);
 
-    return { admin, allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename };
+    return { admin, allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename, fileInput, importFile, onFileSelected };
   },
 });
 </script>
