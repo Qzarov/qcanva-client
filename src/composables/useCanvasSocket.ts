@@ -20,15 +20,27 @@ export interface RemoteCursor {
   color: string;
 }
 
+export interface RevisionReject {
+  clientOpId?: string;
+  reason: 'revision_mismatch' | 'forbidden' | 'invalid_op' | 'target_missing';
+  serverRevision?: number;
+}
+
 export function useCanvasSocket(canvasId: string) {
   const socket = ref<Socket | null>(null);
   const onlineUsers = ref<OnlineUser[]>([]);
   const remoteCursors = ref<Map<string, RemoteCursor>>(new Map());
   const connected = ref(false);
+  const currentRevision = ref(0);
+  const pendingOps = ref<Map<string, { baseRevision: number; op: any }>>(new Map());
 
   // Callbacks set by consumer
-  let onRemoteUpdate: ((data: string) => void) | null = null;
-  let onRemoteOpCb: ((op: any) => void) | null = null;
+  let onRemoteUpdate: ((data: string, revision: number) => void) | null = null;
+  let onRemoteOpCb: ((op: any, revision: number) => void) | null = null;
+  let onRejectCb: ((reject: RevisionReject) => void) | null = null;
+
+  const genClientOpId = () =>
+    `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
   function connect() {
     const token = localStorage.getItem('token');
@@ -46,6 +58,10 @@ export function useCanvasSocket(canvasId: string) {
 
     s.on('disconnect', () => {
       connected.value = false;
+    });
+
+    s.on('canvas-room-state', (data: { revision: number }) => {
+      currentRevision.value = data.revision ?? currentRevision.value;
     });
 
     s.on('online-users', (users: OnlineUser[]) => {
@@ -81,17 +97,53 @@ export function useCanvasSocket(canvasId: string) {
     });
 
     // Full-sync updates (legacy, used for DB persistence fallback)
-    s.on('canvas-update', (data: { canvasData: string; userId: string; userName: string }) => {
+    s.on('canvas-update', (data: { canvasData: string; revision: number; userId: string; userName: string }) => {
+      if (typeof data.revision === 'number') {
+        if (data.revision !== currentRevision.value + 1) {
+          onRejectCb?.({ reason: 'revision_mismatch', serverRevision: data.revision });
+          return;
+        }
+        currentRevision.value = data.revision;
+      }
       if (onRemoteUpdate) {
-        onRemoteUpdate(data.canvasData);
+        onRemoteUpdate(data.canvasData, currentRevision.value);
       }
     });
 
-    // Granular operation updates
-    s.on('canvas-op', (data: { op: any; userId: string }) => {
-      if (onRemoteOpCb) {
-        onRemoteOpCb(data.op);
+    s.on('canvas-update-ack', (data: { revision: number }) => {
+      if (typeof data.revision === 'number') {
+        currentRevision.value = data.revision;
       }
+    });
+
+    s.on('canvas-update-reject', (data: RevisionReject) => {
+      onRejectCb?.(data);
+    });
+
+    // Granular operation updates
+    s.on('canvas-op', (data: { op: any; userId: string; revision: number; clientOpId: string }) => {
+      if (typeof data.revision === 'number') {
+        if (data.revision !== currentRevision.value + 1) {
+          onRejectCb?.({ reason: 'revision_mismatch', serverRevision: data.revision });
+          return;
+        }
+        currentRevision.value = data.revision;
+      }
+      if (onRemoteOpCb) {
+        onRemoteOpCb(data.op, currentRevision.value);
+      }
+    });
+
+    s.on('canvas-op-ack', (data: { clientOpId: string; revision: number }) => {
+      pendingOps.value.delete(data.clientOpId);
+      if (typeof data.revision === 'number') {
+        currentRevision.value = data.revision;
+      }
+    });
+
+    s.on('canvas-op-reject', (data: RevisionReject) => {
+      if (data.clientOpId) pendingOps.value.delete(data.clientOpId);
+      onRejectCb?.(data);
     });
 
     s.on('cursor-move', (data: { socketId: string; userId: string; userName: string; x: number; y: number }) => {
@@ -113,24 +165,45 @@ export function useCanvasSocket(canvasId: string) {
 
   // Full-sync update (for DB persistence)
   function sendUpdate(canvasData: string) {
-    socket.value?.emit('canvas-update', { canvasData });
+    socket.value?.emit('canvas-update', {
+      canvasData,
+      baseRevision: currentRevision.value,
+    });
   }
 
   // Granular operation (for real-time sync)
   function sendOp(op: any) {
-    socket.value?.emit('canvas-op', { op });
+    const clientOpId = genClientOpId();
+    pendingOps.value.set(clientOpId, {
+      baseRevision: currentRevision.value,
+      op,
+    });
+    socket.value?.emit('canvas-op', {
+      op,
+      baseRevision: currentRevision.value,
+      clientOpId,
+    });
+    return clientOpId;
   }
 
   function sendCursor(x: number, y: number) {
     socket.value?.emit('cursor-move', { x, y });
   }
 
-  function onRemoteCanvasUpdate(cb: (data: string) => void) {
+  function onRemoteCanvasUpdate(cb: (data: string, revision: number) => void) {
     onRemoteUpdate = cb;
   }
 
-  function onRemoteOp(cb: (op: any) => void) {
+  function onRemoteOp(cb: (op: any, revision: number) => void) {
     onRemoteOpCb = cb;
+  }
+
+  function onReject(cb: (reject: RevisionReject) => void) {
+    onRejectCb = cb;
+  }
+
+  function setRevision(revision: number) {
+    currentRevision.value = revision;
   }
 
   function disconnect() {
@@ -142,6 +215,7 @@ export function useCanvasSocket(canvasId: string) {
     connected.value = false;
     onlineUsers.value = [];
     remoteCursors.value.clear();
+    pendingOps.value.clear();
   }
 
   onUnmounted(disconnect);
@@ -150,6 +224,7 @@ export function useCanvasSocket(canvasId: string) {
     connected,
     onlineUsers,
     remoteCursors,
+    currentRevision,
     connect,
     disconnect,
     sendUpdate,
@@ -157,5 +232,7 @@ export function useCanvasSocket(canvasId: string) {
     sendCursor,
     onRemoteCanvasUpdate,
     onRemoteOp,
+    onReject,
+    setRevision,
   };
 }

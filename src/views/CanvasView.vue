@@ -146,6 +146,8 @@ export default defineComponent({
     const role = ref('');
     const isPublic = ref(false);
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
+    const revision = ref(0);
+    const isResyncing = ref(false);
 
     const visibilityLabel = computed(() => {
       const map = { private: 'Private', authenticated: 'Auth Only', public: 'Public' };
@@ -171,6 +173,8 @@ export default defineComponent({
       sendCursor,
       onRemoteCanvasUpdate,
       onRemoteOp,
+      onReject,
+      setRevision,
     } = useCanvasSocket(canvasId);
 
     const otherUsers = computed(() => {
@@ -188,6 +192,8 @@ export default defineComponent({
         const res = await canvasApi.get(canvasId);
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
+        revision.value = res.canvas.revision ?? 0;
+        setRevision(revision.value);
         role.value = res.role;
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
@@ -196,18 +202,23 @@ export default defineComponent({
         // Connect WebSocket after canvas loaded
         if (isAuthenticated()) {
           wsConnect();
-          onRemoteCanvasUpdate((dataStr: string) => {
+          onRemoteCanvasUpdate((dataStr: string, nextRevision: number) => {
             try {
               const parsed = JSON.parse(dataStr);
               isApplyingRemote = true;
               canvasRef.value?.applyRemoteData(parsed);
+              revision.value = nextRevision;
               isApplyingRemote = false;
             } catch {}
           });
-          onRemoteOp((op: any) => {
+          onRemoteOp((op: any, nextRevision: number) => {
             isApplyingRemote = true;
             canvasRef.value?.applyRemoteOp(op);
+            revision.value = nextRevision;
             isApplyingRemote = false;
+          });
+          onReject(() => {
+            void resyncCanvas();
           });
         }
       } catch (e: any) {
@@ -216,15 +227,35 @@ export default defineComponent({
       loading.value = false;
     };
 
+    const resyncCanvas = async () => {
+      if (isResyncing.value) return;
+      isResyncing.value = true;
+      try {
+        const res = await canvasApi.resync(canvasId, revision.value);
+        const parsed = JSON.parse(res.canvas.data);
+        isApplyingRemote = true;
+        canvasRef.value?.applyRemoteData(parsed);
+        canvasData.value = parsed;
+        revision.value = res.canvas.revision ?? 0;
+        setRevision(revision.value);
+        isApplyingRemote = false;
+      } catch (e: any) {
+        error.value = e.message || 'Failed to resync canvas';
+      } finally {
+        isResyncing.value = false;
+      }
+    };
+
     const saveData = async (data: any) => {
       if (role.value !== 'owner' && role.value !== 'edit') return;
       saving.value = true;
-      // Send via WebSocket (persists on server too)
       if (wsConnected.value) {
         sendUpdate(JSON.stringify(data));
       } else {
         try {
-          await canvasApi.update(canvasId, { data: JSON.stringify(data) });
+          const updated = await canvasApi.update(canvasId, { data: JSON.stringify(data) });
+          revision.value = updated?.revision ?? revision.value;
+          setRevision(revision.value);
         } catch {}
       }
       saving.value = false;
@@ -289,7 +320,7 @@ export default defineComponent({
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       isAuthenticated,
-      wsConnected, onlineUsers, otherUsers, remoteCursorsArray,
+      wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing,
     };
   },
 });

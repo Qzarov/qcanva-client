@@ -75,6 +75,55 @@
 - [x] Индикатор «кто сейчас онлайн» на canvas
 - [ ] Разрешение конфликтов при одновременном редактировании
 
+## 10.1. Migration path к полноценной collaboration model
+
+Технический контракт и целевой протокол описаны в [COLLABORATION_PROTOCOL.md](/home/qzaro/nocode/codex/canvas-server-front/COLLABORATION_PROTOCOL.md:1).
+
+### Этап 1. Зафиксировать сервер как source of truth
+- [x] Добавить `revision` в сущность canvas и возвращать его в `GET /api/canvas/:id`
+- [x] Перевести WebSocket `canvas-op` на payload вида `{ op, baseRevision, clientOpId }`
+- [x] На сервере проверять `baseRevision` перед применением операции
+- [x] При успешном применении операции увеличивать `revision` и broadcast'ить уже серверную версию события: `{ op, revision, clientOpId, userId }`
+- [x] Оставить `canvas-update` только как fallback/checkpoint, а не как основную модель истины
+- [x] В UI показывать forced resync при `revision mismatch`
+
+### Этап 2. Добавить протокол resync и recovery
+- [x] Добавить событие/endpoint `canvas-resync`, которое возвращает полный snapshot + актуальный `revision`
+- [x] На клиенте при пропуске ревизии или reject операции делать reload состояния через resync, а не молча продолжать работу
+- [x] Ввести явные причины reject'а операции: `revision_mismatch`, `forbidden`, `invalid_op`, `target_missing`
+- [ ] Добавить retry policy только для безопасных случаев, без бесконечного повторного применения
+- [x] Логировать частоту resync/reject, чтобы видеть реальные проблемные сценарии
+
+### Этап 3. Ввести op log и базовую историю
+- [x] Создать таблицу `canvas_operations` с `canvasId`, `revision`, `clientOpId`, `userId`, `type`, `payload`, `createdAt`
+- [x] Сохранять каждую принятую сервером операцию в op log
+- [x] Использовать op log для дебага, replay и будущего diff/history
+- [x] Добавить snapshot/checkpoint стратегию, чтобы не восстанавливать canvas только из длинной цепочки операций
+- [x] Подготовить API для просмотра истории изменений canvas
+
+### Этап 4. Формализовать conflict policy
+- [x] Зафиксировать правила merge/reject по типам операций
+- [x] Разрешить параллельное редактирование разных нод/рёбер без полного resync
+- [ ] Для одной и той же ноды на первом этапе использовать простое правило `last-writer-wins` на уровне поля
+- [x] Для конфликтов `delete vs update` и `delete vs move` возвращать reject/resync вместо неявного восстановления удалённого объекта
+- [ ] Добавить optimistic UI с подтверждением операции сервером
+
+### Этап 5. Улучшить collaborative text editing
+- [ ] Выделить редактирование текста ноды в отдельный поток операций, а не смешивать его с геометрией
+- [ ] Решить отдельно модель для text nodes: сначала coarse-grained patching, позже OT/CRDT при необходимости
+- [ ] Не тащить CRDT сразу на весь canvas-документ
+
+### Переходный режим
+- [ ] На время миграции поддерживать старый `canvas-update` только для совместимости со старым клиентом
+- [ ] Новому клиенту использовать `revision`-aware `canvas-op` как основной канал изменений
+- [ ] После стабилизации telemetry и resync flow удалить legacy full-state sync из realtime-контура
+
+### Критерий завершения миграции
+- [ ] Сервер определяет единый порядок операций
+- [ ] Клиент не может молча перетереть чужие изменения полным snapshot'ом
+- [ ] При рассинхроне есть понятный и воспроизводимый путь recovery
+- [ ] История операций позволяет строить versioning, diff и audit без переписывания архитектуры
+
 ## 11. Расширенные типы нод
 - [ ] File-ноды — drag & drop картинок на canvas
 - [ ] Загрузка файлов на сервер (image, PDF)

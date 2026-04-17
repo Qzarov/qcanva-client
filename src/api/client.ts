@@ -78,6 +78,11 @@ export const canvas = {
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
   update: (id: string, updates: { title?: string; data?: string; isPublic?: boolean; visibility?: string }) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
+  resync: (id: string, knownRevision?: number) =>
+    request<{ canvas: { id: string; data: string; revision: number } }>(`/canvas/${id}/resync`, {
+      method: 'POST',
+      body: JSON.stringify({ knownRevision: knownRevision?.toString() }),
+    }),
   delete: (id: string) =>
     request<any>(`/canvas/${id}`, { method: 'DELETE' }),
   share: (id: string, email: string, role: string) =>
