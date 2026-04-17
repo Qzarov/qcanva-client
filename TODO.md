@@ -124,6 +124,14 @@
 - [ ] При рассинхроне есть понятный и воспроизводимый путь recovery
 - [ ] История операций позволяет строить versioning, diff и audit без переписывания архитектуры
 
+### Следующий приоритетный спринт
+- [ ] Прогнать ручные sync-сценарии на двух клиентах: parallel move, same-node edit, delete-vs-update, reconnect, duplicate `clientOpId`
+- [ ] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
+- [ ] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
+- [ ] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
+- [ ] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
+- [ ] Только после стабилизации sync-модели возвращаться к продуктовым фичам редактора: search, file/image nodes, templates
+
 ## 11. Расширенные типы нод
 - [ ] File-ноды — drag & drop картинок на canvas
 - [ ] Загрузка файлов на сервер (image, PDF)
