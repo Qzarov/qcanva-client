@@ -330,7 +330,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, reactive, nextTick, watch, type PropType } from "vue";
+import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
 
 interface CanvasNode {
@@ -844,20 +844,111 @@ export default defineComponent({
     // Drag node state
     const dragNodeId = ref<string | null>(null);
     const dragMouseStart = reactive({ x: 0, y: 0 });
+    const dragCameraStart = reactive({ x: 0, y: 0 });
 
     // Resize state
     const resizeNodeId = ref<string | null>(null);
     const resizeHandle = ref<string>("");
     const resizeStart = reactive({ x: 0, y: 0, nodeX: 0, nodeY: 0, nodeW: 0, nodeH: 0 });
+    const resizeCameraStart = reactive({ x: 0, y: 0 });
     const MIN_NODE_SIZE = 60;
     const GRID_SIZE = 24;
     const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
+    const EDGE_PAN_ZONE = 72;
+    const EDGE_PAN_MAX_SPEED = 18;
+    const lastPointer = reactive({ x: 0, y: 0 });
+    let autoPanFrame: number | null = null;
 
     // Node drag handlers
     // Store initial positions of all dragged nodes for multi-drag
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
 
+    const updateLastPointer = (e: MouseEvent) => {
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
+    };
+
+    const updateActiveDragFromPointer = () => {
+      if (dragNodeId.value) {
+        const dx = (lastPointer.x - dragMouseStart.x - camera.x + dragCameraStart.x) / camera.scale;
+        const dy = (lastPointer.y - dragMouseStart.y - camera.y + dragCameraStart.y) / camera.scale;
+        for (const [id, init] of dragNodesInitial.value) {
+          const node = nodes.value.find((n) => n.id === id);
+          if (node) {
+            node.x = snap(init.x + dx);
+            node.y = snap(init.y + dy);
+          }
+        }
+      }
+
+      if (resizeNodeId.value) {
+        const node = nodes.value.find((n) => n.id === resizeNodeId.value);
+        if (node) {
+          const dx = (lastPointer.x - resizeStart.x - camera.x + resizeCameraStart.x) / camera.scale;
+          const dy = (lastPointer.y - resizeStart.y - camera.y + resizeCameraStart.y) / camera.scale;
+          const h = resizeHandle.value;
+
+          if (h.includes("r")) node.width = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx));
+          if (h.includes("b")) node.height = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy));
+          if (h.includes("l")) {
+            const newW = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx));
+            node.x = resizeStart.nodeX + resizeStart.nodeW - newW;
+            node.width = newW;
+          }
+          if (h.includes("t")) {
+            const newH = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy));
+            node.y = resizeStart.nodeY + resizeStart.nodeH - newH;
+            node.height = newH;
+          }
+        }
+      }
+
+      if (connDragging.value && viewport.value) {
+        const rect = viewport.value.getBoundingClientRect();
+        connMouseWorld.x = (lastPointer.x - rect.left - camera.x) / camera.scale;
+        connMouseWorld.y = (lastPointer.y - rect.top - camera.y) / camera.scale;
+      }
+    };
+
+    const stopAutoPan = () => {
+      if (autoPanFrame !== null) {
+        cancelAnimationFrame(autoPanFrame);
+        autoPanFrame = null;
+      }
+    };
+
+    const tickAutoPan = () => {
+      autoPanFrame = null;
+      if (!viewport.value || (!dragNodeId.value && !resizeNodeId.value && !connDragging.value)) return;
+
+      const rect = viewport.value.getBoundingClientRect();
+      const left = lastPointer.x - rect.left;
+      const right = rect.right - lastPointer.x;
+      const top = lastPointer.y - rect.top;
+      const bottom = rect.bottom - lastPointer.y;
+      let vx = 0;
+      let vy = 0;
+
+      if (left < EDGE_PAN_ZONE) vx = (1 - Math.max(left, 0) / EDGE_PAN_ZONE) * EDGE_PAN_MAX_SPEED;
+      else if (right < EDGE_PAN_ZONE) vx = -(1 - Math.max(right, 0) / EDGE_PAN_ZONE) * EDGE_PAN_MAX_SPEED;
+      if (top < EDGE_PAN_ZONE) vy = (1 - Math.max(top, 0) / EDGE_PAN_ZONE) * EDGE_PAN_MAX_SPEED;
+      else if (bottom < EDGE_PAN_ZONE) vy = -(1 - Math.max(bottom, 0) / EDGE_PAN_ZONE) * EDGE_PAN_MAX_SPEED;
+
+      if (vx || vy) {
+        camera.x += vx;
+        camera.y += vy;
+        updateActiveDragFromPointer();
+      }
+
+      autoPanFrame = requestAnimationFrame(tickAutoPan);
+    };
+
+    const startAutoPan = () => {
+      if (autoPanFrame === null) autoPanFrame = requestAnimationFrame(tickAutoPan);
+    };
+
     const onNodeDragStart = (e: MouseEvent, node: CanvasNode) => {
+      updateLastPointer(e);
       if (e.button === 1) { // middle-click → pan, not drag
         isPanning.value = true;
         panStart.x = e.clientX;
@@ -885,12 +976,15 @@ export default defineComponent({
       dragNodeId.value = node.id;
       dragMouseStart.x = e.clientX;
       dragMouseStart.y = e.clientY;
+      dragCameraStart.x = camera.x;
+      dragCameraStart.y = camera.y;
       // Store initial positions of all selected nodes
       dragNodesInitial.value = new Map();
       for (const id of selectedNodeIds.value) {
         const n = nodes.value.find((nd) => nd.id === id);
         if (n) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
       }
+      startAutoPan();
     };
 
     // Double-click to edit text
@@ -918,6 +1012,7 @@ export default defineComponent({
 
     // Resize handlers
     const onResizeStart = (e: MouseEvent, node: CanvasNode, handle: string) => {
+      updateLastPointer(e);
       if (e.button === 1) {
         isPanning.value = true;
         panStart.x = e.clientX;
@@ -935,6 +1030,9 @@ export default defineComponent({
       resizeStart.nodeY = node.y;
       resizeStart.nodeW = node.width;
       resizeStart.nodeH = node.height;
+      resizeCameraStart.x = camera.x;
+      resizeCameraStart.y = camera.y;
+      startAutoPan();
     };
 
     // Edge selection
@@ -1043,6 +1141,7 @@ export default defineComponent({
     const connMouseWorld = reactive({ x: 0, y: 0 });
 
     const onConnStart = (e: MouseEvent, node: CanvasNode, side: string) => {
+      updateLastPointer(e);
       connDragging.value = true;
       connFromNode.value = node.id;
       connFromEdge.value = "";
@@ -1051,9 +1150,11 @@ export default defineComponent({
       const rect = viewport.value!.getBoundingClientRect();
       connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
       connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+      startAutoPan();
     };
 
     const onConnStartFromEdge = (e: MouseEvent, edgeId: string) => {
+      updateLastPointer(e);
       connDragging.value = true;
       connFromNode.value = "";
       connFromEdge.value = edgeId;
@@ -1061,6 +1162,7 @@ export default defineComponent({
       const rect = viewport.value!.getBoundingClientRect();
       connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
       connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+      startAutoPan();
     };
 
     // Temp edge path while dragging
@@ -1453,6 +1555,7 @@ export default defineComponent({
     };
 
     const onPanMove = (e: MouseEvent) => {
+      updateLastPointer(e);
       // Emit cursor position for remote users
       if (viewport.value) {
         const rect = viewport.value.getBoundingClientRect();
@@ -1462,48 +1565,17 @@ export default defineComponent({
       }
       // Edge creation dragging
       if (connDragging.value) {
-        const rect = viewport.value!.getBoundingClientRect();
-        connMouseWorld.x = (e.clientX - rect.left - camera.x) / camera.scale;
-        connMouseWorld.y = (e.clientY - rect.top - camera.y) / camera.scale;
+        updateActiveDragFromPointer();
         return;
       }
       // Node resizing
       if (resizeNodeId.value) {
-        const node = nodes.value.find((n) => n.id === resizeNodeId.value);
-        if (!node) return;
-        const dx = (e.clientX - resizeStart.x) / camera.scale;
-        const dy = (e.clientY - resizeStart.y) / camera.scale;
-        const h = resizeHandle.value;
-
-        if (h.includes("r")) {
-          node.width = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx));
-        }
-        if (h.includes("b")) {
-          node.height = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy));
-        }
-        if (h.includes("l")) {
-          const newW = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx));
-          node.x = resizeStart.nodeX + resizeStart.nodeW - newW;
-          node.width = newW;
-        }
-        if (h.includes("t")) {
-          const newH = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy));
-          node.y = resizeStart.nodeY + resizeStart.nodeH - newH;
-          node.height = newH;
-        }
+        updateActiveDragFromPointer();
         return;
       }
       // Node dragging (multi-drag)
       if (dragNodeId.value) {
-        const dx = (e.clientX - dragMouseStart.x) / camera.scale;
-        const dy = (e.clientY - dragMouseStart.y) / camera.scale;
-        for (const [id, init] of dragNodesInitial.value) {
-          const node = nodes.value.find((n) => n.id === id);
-          if (node) {
-            node.x = snap(init.x + dx);
-            node.y = snap(init.y + dy);
-          }
-        }
+        updateActiveDragFromPointer();
         return;
       }
       // Selection box dragging
@@ -1520,6 +1592,8 @@ export default defineComponent({
     };
 
     const onPanEnd = (e: MouseEvent) => {
+      updateLastPointer(e);
+      stopAutoPan();
       // Finish edge creation
       if (connDragging.value) {
         const rect = viewport.value!.getBoundingClientRect();
@@ -1816,6 +1890,12 @@ export default defineComponent({
       loadCanvas();
       window.addEventListener("resize", fitToContent);
       window.addEventListener("keydown", onKeyDown);
+    });
+
+    onUnmounted(() => {
+      stopAutoPan();
+      window.removeEventListener("resize", fitToContent);
+      window.removeEventListener("keydown", onKeyDown);
     });
 
     return {
