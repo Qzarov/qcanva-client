@@ -18,8 +18,10 @@
         v-for="group in groups"
         :key="group.id"
         class="canvas-group"
-        :class="groupColorClass(group)"
+        :class="[groupColorClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id }]"
         :style="nodePosition(group)"
+        @mousedown.stop="onNodeDragStart($event, group)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
       >
         <span v-if="group.label" class="group-label">{{ group.label }}</span>
       </div>
@@ -750,6 +752,27 @@ export default defineComponent({
       return node.color ? `group-color-${node.color}` : "";
     };
 
+    const isNodeInsideGroup = (node: CanvasNode, group: CanvasNode) => {
+      if (node.id === group.id || node.type === "group") return false;
+      return (
+        node.x >= group.x &&
+        node.y >= group.y &&
+        node.x + node.width <= group.x + group.width &&
+        node.y + node.height <= group.y + group.height
+      );
+    };
+
+    const getCopySelectionIds = () => {
+      const ids = new Set(selectedNodeIds.value);
+      const selectedGroups = nodes.value.filter((node) => ids.has(node.id) && node.type === "group");
+      for (const group of selectedGroups) {
+        for (const node of nodes.value) {
+          if (isNodeInsideGroup(node, group)) ids.add(node.id);
+        }
+      }
+      return ids;
+    };
+
     // Callout types and their colors/icons
     const CALLOUT_STYLES: Record<string, { icon: string; color: string }> = {
       note: { icon: "📝", color: "#7c8aff" },
@@ -1331,7 +1354,8 @@ export default defineComponent({
       }
       // Copy
       if ((e.ctrlKey || e.metaKey) && e.key === "c" && selectedNodeIds.value.length > 0) {
-        const ids = new Set(selectedNodeIds.value);
+        e.preventDefault();
+        const ids = getCopySelectionIds();
         clipboard.value = {
           nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
           edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
@@ -1352,6 +1376,7 @@ export default defineComponent({
           ...ed,
           id: genId(),
           fromNode: idMap.get(ed.fromNode) || ed.fromNode,
+          fromEdge: ed.fromEdge ? idMap.get(ed.fromEdge) || ed.fromEdge : ed.fromEdge,
           toNode: idMap.get(ed.toNode) || ed.toNode,
         }));
         nodes.value.push(...newNodes);
@@ -1916,6 +1941,14 @@ export default defineComponent({
   border-radius: 12px;
   border: 1.5px solid rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.03);
+  cursor: grab;
+}
+.canvas-group.is-selected {
+  border-color: rgba(124, 138, 255, 0.7);
+  box-shadow: 0 0 0 1px rgba(124, 138, 255, 0.35);
+}
+.canvas-group.is-dragging {
+  cursor: grabbing;
 }
 .canvas-group .group-label {
   position: absolute;
