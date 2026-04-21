@@ -234,7 +234,19 @@
           ref="editorRefs"
         ></textarea>
         <!-- View mode -->
-        <div v-else class="node-content" v-html="renderMarkdown(node.text || '')"></div>
+        <div v-else class="node-content">
+          <div
+            class="node-first-line"
+            :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
+            v-html="renderMarkdown(getNodeFirstLine(node.text || ''))"
+          ></div>
+          <div
+            v-if="getNodeRestText(node.text || '')"
+            class="node-rest-content"
+            :style="{ textAlign: node.textAlign || undefined }"
+            v-html="renderMarkdown(getNodeRestText(node.text || ''))"
+          ></div>
+        </div>
         <!-- Resize handles (visible when selected) -->
         <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id">
           <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -346,6 +358,7 @@ interface CanvasNode {
   color?: string;
   label?: string;
   textAlign?: "left" | "center" | "right" | "justify";
+  firstLineTextAlign?: "left" | "center" | "right" | "justify";
   borderStyle?: string;
   borderWidth?: number;
   borderColor?: string;
@@ -719,7 +732,6 @@ export default defineComponent({
         top: `${node.y}px`,
         width: `${node.width}px`,
         height: `${node.height}px`,
-        textAlign: node.textAlign || undefined,
         borderColor: node.borderColor || undefined,
       };
       const bs = node.borderStyle || "solid";
@@ -811,6 +823,19 @@ export default defineComponent({
     const renderMarkdown = (text: string) => {
       const html = marked.parse(text) as string;
       return processCallouts(html);
+    };
+
+    const getNodeFirstLine = (text: string) => {
+      return text.split(/\r?\n/, 1)[0] || "";
+    };
+
+    const getNodeRestText = (text: string) => {
+      const lines = text.split(/\r?\n/);
+      return lines.length > 1 ? lines.slice(1).join("\n") : "";
+    };
+
+    const getNodeFirstLineAlignValue = (node: CanvasNode) => {
+      return node.firstLineTextAlign || node.textAlign || undefined;
     };
 
     // Selection state (multi-select)
@@ -1276,6 +1301,20 @@ export default defineComponent({
     const getNodeAlign = (nodeId: string) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.textAlign || "left";
+    };
+
+    const getNodeFirstLineAlign = (nodeId: string) => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      return node?.firstLineTextAlign || node?.textAlign || "left";
+    };
+
+    const setNodeFirstLineAlign = (nodeId: string, align: "left" | "center" | "right" | "justify") => {
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (node) {
+        pushUndo();
+        node.firstLineTextAlign = align;
+        emitOp({ type: 'node-update', id: nodeId, changes: { firstLineTextAlign: align } });
+      }
     };
 
     const setNodeAlign = (nodeId: string, align: "left" | "center" | "right" | "justify") => {
@@ -1914,6 +1953,9 @@ export default defineComponent({
       nodeColorClass,
       groupColorClass,
       renderMarkdown,
+      getNodeFirstLine,
+      getNodeRestText,
+      getNodeFirstLineAlignValue,
       selectedNodeId,
       selectedNodeIds,
       isNodeSelected,
@@ -1945,6 +1987,8 @@ export default defineComponent({
       contextMenu,
       setNodeColor,
       getNodeAlign,
+      getNodeFirstLineAlign,
+      setNodeFirstLineAlign,
       setNodeAlign,
       borderStyles,
       getNodeBorderStyle,
@@ -2370,6 +2414,15 @@ g:hover > .edge-midpoint-conn {
 }
 .node-content p:last-child {
   margin-bottom: 0;
+}
+.node-first-line > :first-child {
+  margin-top: 0;
+}
+.node-first-line > :last-child {
+  margin-bottom: 4px;
+}
+.node-rest-content > :first-child {
+  margin-top: 0;
 }
 .node-content ul,
 .node-content ol {

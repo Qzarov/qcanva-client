@@ -64,7 +64,18 @@
         </button>
         <span class="tb-sep"></span>
         <!-- Text align -->
-        <span class="tb-label">Align</span>
+        <span class="tb-label">First</span>
+        <button
+          v-for="a in aligns"
+          :key="'first-' + a.v"
+          class="tb-btn"
+          :class="{ active: canvasRef?.getNodeFirstLineAlign(canvasRef.selectedNodeId) === a.v }"
+          @click="canvasRef?.setNodeFirstLineAlign(canvasRef.selectedNodeId, a.v)"
+          :title="'First line: ' + a.l"
+          v-html="a.icon"
+        ></button>
+        <span class="tb-sep"></span>
+        <span class="tb-label">Body</span>
         <button v-for="a in aligns" :key="a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
         <span class="tb-sep"></span>
         <!-- Border style -->
