@@ -42,7 +42,9 @@
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
             <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
           </span>
-          <span v-if="saving" class="topbar-status">Saving...</span>
+          <span class="topbar-sync" :class="'topbar-sync-' + syncStatus.kind" :title="'Revision ' + revision">
+            {{ syncStatus.label }}
+          </span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="cycleVisibility">
             {{ visibilityLabel }}
@@ -51,6 +53,10 @@
             Share
           </button>
         </div>
+      </div>
+
+      <div v-if="syncNotice" class="sync-notice" :class="'sync-notice-' + syncNotice.kind">
+        {{ syncNotice.text }}
       </div>
 
       <!-- Node toolbar (under topbar, visible when node selected) -->
@@ -165,6 +171,8 @@ export default defineComponent({
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const revision = ref(0);
     const isResyncing = ref(false);
+    const syncIssue = ref<'conflict' | ''>('');
+    const syncNotice = ref<{ kind: 'info' | 'warning'; text: string } | null>(null);
 
     const visibilityLabel = computed(() => {
       const map = { private: 'Private', authenticated: 'Auth Only', public: 'Public' };
@@ -177,7 +185,24 @@ export default defineComponent({
     const permissions = ref<any[]>([]);
 
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+    let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let isApplyingRemote = false;
+
+    const syncStatus = computed(() => {
+      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
+      if (isResyncing.value) return { kind: 'resyncing', label: 'Resyncing' };
+      if (saving.value) return { kind: 'saving', label: 'Saving' };
+      if (wsConnected.value) return { kind: 'synced', label: 'Synced' };
+      return { kind: 'offline', label: 'Offline' };
+    });
+
+    function showSyncNotice(kind: 'info' | 'warning', text: string) {
+      syncNotice.value = { kind, text };
+      if (noticeTimeout) clearTimeout(noticeTimeout);
+      noticeTimeout = setTimeout(() => {
+        syncNotice.value = null;
+      }, 3200);
+    }
 
     // WebSocket
     const {
@@ -235,6 +260,8 @@ export default defineComponent({
             isApplyingRemote = false;
           });
           onReject(() => {
+            syncIssue.value = 'conflict';
+            showSyncNotice('warning', 'Parallel edit conflict. Restoring the latest canvas state.');
             void resyncCanvas();
           });
         }
@@ -255,6 +282,8 @@ export default defineComponent({
         canvasData.value = parsed;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
+        syncIssue.value = '';
+        showSyncNotice('info', 'Canvas state refreshed.');
         isApplyingRemote = false;
       } catch (e: any) {
         error.value = e.message || 'Failed to resync canvas';
@@ -330,11 +359,14 @@ export default defineComponent({
     };
 
     onMounted(load);
-    onUnmounted(() => { if (saveTimeout) clearTimeout(saveTimeout); });
+    onUnmounted(() => {
+      if (saveTimeout) clearTimeout(saveTimeout);
+      if (noticeTimeout) clearTimeout(noticeTimeout);
+    });
 
     return {
       canvasRef, aligns,
-      loading, error, title, canvasData, role, isPublic, saving,
+      loading, error, title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       isAuthenticated,

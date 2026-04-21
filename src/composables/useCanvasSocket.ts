@@ -123,8 +123,7 @@ export function useCanvasSocket(canvasId: string) {
     // Granular operation updates
     s.on('canvas-op', (data: { op: any; userId: string; revision: number; clientOpId: string }) => {
       if (typeof data.revision === 'number') {
-        if (data.revision !== currentRevision.value + 1) {
-          onRejectCb?.({ reason: 'revision_mismatch', serverRevision: data.revision });
+        if (data.revision <= currentRevision.value) {
           return;
         }
         currentRevision.value = data.revision;
