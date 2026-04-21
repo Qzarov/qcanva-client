@@ -124,6 +124,12 @@ import { canvas as canvasApi, isAuthenticated } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
+interface CanvasChangePayload {
+  nodes: any[];
+  edges: any[];
+  forceSnapshot?: boolean;
+}
+
 export default defineComponent({
   components: { CanvasLoader },
   setup() {
@@ -246,14 +252,15 @@ export default defineComponent({
       }
     };
 
-    const saveData = async (data: any) => {
+    const saveData = async (data: CanvasChangePayload) => {
       if (role.value !== 'owner' && role.value !== 'edit') return;
+      if (wsConnected.value && !data.forceSnapshot) return;
       saving.value = true;
       if (wsConnected.value) {
-        sendUpdate(JSON.stringify(data));
+        sendUpdate(JSON.stringify({ nodes: data.nodes, edges: data.edges }));
       } else {
         try {
-          const updated = await canvasApi.update(canvasId, { data: JSON.stringify(data) });
+          const updated = await canvasApi.update(canvasId, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges }) });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
         } catch {}
@@ -261,7 +268,7 @@ export default defineComponent({
       saving.value = false;
     };
 
-    const onCanvasChange = (data: any) => {
+    const onCanvasChange = (data: CanvasChangePayload) => {
       if (isApplyingRemote) return;
       if (saveTimeout) clearTimeout(saveTimeout);
       saveTimeout = setTimeout(() => saveData(data), 1000);

@@ -384,6 +384,11 @@ interface RenderedEdge {
   arrowType: string;
 }
 
+export interface CanvasChangePayload {
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  forceSnapshot?: boolean;
+}
 
 export default defineComponent({
   name: "CanvasLoader",
@@ -436,8 +441,15 @@ export default defineComponent({
     };
 
     // Emit change when nodes or edges mutate (full-sync for DB persistence)
+    let forceNextChange = false;
     const emitChange = () => {
-      emit("change", { nodes: JSON.parse(JSON.stringify(nodes.value)), edges: JSON.parse(JSON.stringify(edges.value)) });
+      const payload: CanvasChangePayload = {
+        nodes: JSON.parse(JSON.stringify(nodes.value)),
+        edges: JSON.parse(JSON.stringify(edges.value)),
+      };
+      if (forceNextChange) payload.forceSnapshot = true;
+      forceNextChange = false;
+      emit("change", payload);
     };
 
     // Emit granular operation for real-time sync
@@ -1252,7 +1264,8 @@ export default defineComponent({
     });
 
     let changeTimer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleChange = () => {
+    const scheduleChange = (forceSnapshot = false) => {
+      forceNextChange = forceNextChange || forceSnapshot;
       if (changeTimer) clearTimeout(changeTimer);
       changeTimer = setTimeout(emitChange, 300);
     };
@@ -1273,7 +1286,7 @@ export default defineComponent({
       edges.value = JSON.parse(snap.edges);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      scheduleChange();
+      scheduleChange(true);
     };
 
     const redo = () => {
@@ -1284,7 +1297,7 @@ export default defineComponent({
       edges.value = JSON.parse(snap.edges);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      scheduleChange();
+      scheduleChange(true);
     };
 
     // Clipboard for copy/paste
@@ -1652,6 +1665,7 @@ export default defineComponent({
       camera.x = 0;
       camera.y = 0;
       camera.scale = 1;
+      scheduleChange(true);
     };
 
     const onImportCanvas = () => {
@@ -1671,6 +1685,7 @@ export default defineComponent({
           selectedNodeIds.value = [];
           selectedEdgeId.value = null;
           fitToContent();
+          scheduleChange(true);
         } catch (err) {
           console.error("Failed to parse canvas file:", err);
         }
