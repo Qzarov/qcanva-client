@@ -43,7 +43,7 @@
             <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
           </span>
           <span class="topbar-sync" :class="'topbar-sync-' + syncStatus.kind" :title="'Revision ' + revision">
-            {{ syncStatus.label }}
+            {{ syncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
           </span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="cycleVisibility">
@@ -191,7 +191,7 @@ export default defineComponent({
     const syncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
       if (isResyncing.value) return { kind: 'resyncing', label: 'Resyncing' };
-      if (saving.value) return { kind: 'saving', label: 'Saving' };
+      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
       if (wsConnected.value) return { kind: 'synced', label: 'Synced' };
       return { kind: 'offline', label: 'Offline' };
     });
@@ -217,6 +217,7 @@ export default defineComponent({
       onRemoteOp,
       onReject,
       setRevision,
+      pendingOpsCount,
     } = useCanvasSocket(canvasId);
 
     const otherUsers = computed(() => {
@@ -370,7 +371,7 @@ export default defineComponent({
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       isAuthenticated,
-      wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing,
+      wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
     };
   },
 });

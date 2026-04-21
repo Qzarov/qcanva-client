@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue';
+import { computed, ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
@@ -33,6 +33,7 @@ export function useCanvasSocket(canvasId: string) {
   const connected = ref(false);
   const currentRevision = ref(0);
   const pendingOps = ref<Map<string, { baseRevision: number; op: any }>>(new Map());
+  const pendingOpsCount = computed(() => pendingOps.value.size);
 
   // Callbacks set by consumer
   let onRemoteUpdate: ((data: string, revision: number) => void) | null = null;
@@ -224,6 +225,7 @@ export function useCanvasSocket(canvasId: string) {
     onlineUsers,
     remoteCursors,
     currentRevision,
+    pendingOpsCount,
     connect,
     disconnect,
     sendUpdate,
