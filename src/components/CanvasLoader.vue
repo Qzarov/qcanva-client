@@ -221,6 +221,13 @@
           :value="node.text"
           @input="onEditInput($event, node)"
           @blur="onEditEnd"
+          @mousedown.stop
+          @mousemove.stop
+          @mouseup.stop
+          @click.stop
+          @dblclick.stop
+          @keydown.stop
+          @keyup.stop
           @keydown.escape="onEditEnd"
           ref="editorRefs"
         ></textarea>
@@ -1303,8 +1310,14 @@ export default defineComponent({
     // Clipboard for copy/paste
     const clipboard = ref<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>({ nodes: [], edges: [] });
 
+    const isEditableEventTarget = (target: EventTarget | null) => {
+      if (!(target instanceof HTMLElement)) return false;
+      return Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+    };
+
     // Delete edge or node on keydown
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isEditableEventTarget(e.target)) return;
       // Undo/redo
       if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
         e.preventDefault();
