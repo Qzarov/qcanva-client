@@ -55,6 +55,36 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return res.json();
 }
 
+function isMissingRouteError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.message.includes('Cannot POST') || error.message.includes('HTTP 404');
+}
+
+async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canvas: { id: string; data: string; revision: number } }> {
+  try {
+    return await request<{ canvas: { id: string; data: string; revision: number } }>(`/canvas/${id}/resync`, {
+      method: 'POST',
+      body: JSON.stringify({ knownRevision: knownRevision?.toString() }),
+    });
+  } catch (error) {
+    if (!isMissingRouteError(error)) {
+      throw error;
+    }
+
+    const snapshot = await request<{ canvas: { id: string; data: string; revision?: number } }>(`/canvas/${id}`);
+    return {
+      canvas: {
+        id: snapshot.canvas.id,
+        data: snapshot.canvas.data,
+        revision: snapshot.canvas.revision ?? 0,
+      },
+    };
+  }
+}
+
 // Auth
 export const auth = {
   register: (email: string, name: string, password: string) =>
@@ -78,11 +108,7 @@ export const canvas = {
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
   update: (id: string, updates: { title?: string; data?: string; isPublic?: boolean; visibility?: string }) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
-  resync: (id: string, knownRevision?: number) =>
-    request<{ canvas: { id: string; data: string; revision: number } }>(`/canvas/${id}/resync`, {
-      method: 'POST',
-      body: JSON.stringify({ knownRevision: knownRevision?.toString() }),
-    }),
+  resync: resyncCanvas,
   delete: (id: string) =>
     request<any>(`/canvas/${id}`, { method: 'DELETE' }),
   share: (id: string, email: string, role: string) =>
