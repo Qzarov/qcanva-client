@@ -173,6 +173,7 @@ export default defineComponent({
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
     const syncNotice = ref<{ kind: 'info' | 'warning'; text: string } | null>(null);
+    const realtimeOpsUnavailable = ref(false);
 
     const visibilityLabel = computed(() => {
       const map = { private: 'Private', authenticated: 'Auth Only', public: 'Public' };
@@ -261,7 +262,16 @@ export default defineComponent({
             revision.value = nextRevision;
             isApplyingRemote = false;
           });
-          onReject(() => {
+          onReject((reject) => {
+            if (reject.reason === 'timeout') {
+              realtimeOpsUnavailable.value = true;
+              syncIssue.value = '';
+              clearPendingOps();
+              showSyncNotice('warning', 'Realtime ops unavailable. Saving full canvas snapshot.');
+              void persistCurrentSnapshot();
+              return;
+            }
+
             syncIssue.value = 'conflict';
             showSyncNotice('warning', 'Parallel edit conflict. Restoring the latest canvas state.');
             void resyncCanvas();
@@ -295,9 +305,25 @@ export default defineComponent({
       }
     };
 
+    const getCurrentCanvasData = (): CanvasChangePayload | null => {
+      const currentData = canvasRef.value?.getCanvasData?.();
+      if (!currentData) return null;
+      return {
+        nodes: currentData.nodes,
+        edges: currentData.edges,
+        forceSnapshot: true,
+      };
+    };
+
+    const persistCurrentSnapshot = async () => {
+      const currentData = getCurrentCanvasData();
+      if (!currentData) return;
+      await saveData(currentData);
+    };
+
     const saveData = async (data: CanvasChangePayload) => {
       if (role.value !== 'owner' && role.value !== 'edit') return;
-      if (wsConnected.value && !data.forceSnapshot) return;
+      if (wsConnected.value && !data.forceSnapshot && !realtimeOpsUnavailable.value) return;
       saving.value = true;
       if (wsConnected.value) {
         sendUpdate(JSON.stringify({ nodes: data.nodes, edges: data.edges }));
@@ -319,6 +345,7 @@ export default defineComponent({
 
     const onCanvasOp = (op: any) => {
       if (isApplyingRemote) return;
+      if (realtimeOpsUnavailable.value) return;
       if (wsConnected.value) {
         sendOp(op);
       }

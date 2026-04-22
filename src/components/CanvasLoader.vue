@@ -1925,6 +1925,11 @@ export default defineComponent({
       edges.value = data.edges;
     };
 
+    const getCanvasData = () => ({
+      nodes: JSON.parse(JSON.stringify(nodes.value)),
+      edges: JSON.parse(JSON.stringify(edges.value)),
+    });
+
     onMounted(() => {
       loadCanvas();
       window.addEventListener("resize", fitToContent);
@@ -2029,6 +2034,7 @@ export default defineComponent({
       onExportCanvas,
       applyRemoteData,
       applyRemoteOp,
+      getCanvasData,
     };
   },
 });

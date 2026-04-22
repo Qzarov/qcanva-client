@@ -23,7 +23,7 @@ export interface RemoteCursor {
 
 export interface RevisionReject {
   clientOpId?: string;
-  reason: 'revision_mismatch' | 'forbidden' | 'invalid_op' | 'target_missing';
+  reason: 'revision_mismatch' | 'forbidden' | 'invalid_op' | 'target_missing' | 'timeout';
   serverRevision?: number;
 }
 
@@ -199,7 +199,7 @@ export function useCanvasSocket(canvasId: string) {
       removePendingOp(clientOpId);
       onRejectCb?.({
         clientOpId,
-        reason: 'revision_mismatch',
+        reason: 'timeout',
         serverRevision: currentRevision.value,
       });
     }, PENDING_OP_TIMEOUT_MS);
