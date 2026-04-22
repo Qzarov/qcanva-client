@@ -218,6 +218,7 @@ export default defineComponent({
       onReject,
       setRevision,
       pendingOpsCount,
+      clearPendingOps,
     } = useCanvasSocket(canvasId);
 
     const otherUsers = computed(() => {
@@ -283,6 +284,7 @@ export default defineComponent({
         canvasData.value = parsed;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
+        clearPendingOps();
         syncIssue.value = '';
         showSyncNotice('info', 'Canvas state refreshed.');
         isApplyingRemote = false;

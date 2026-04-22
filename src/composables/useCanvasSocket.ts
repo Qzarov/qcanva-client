@@ -1,7 +1,8 @@
-import { computed, ref, onUnmounted } from 'vue';
+import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
+const PENDING_OP_TIMEOUT_MS = 10000;
 
 export interface OnlineUser {
   socketId: string;
@@ -32,8 +33,8 @@ export function useCanvasSocket(canvasId: string) {
   const remoteCursors = ref<Map<string, RemoteCursor>>(new Map());
   const connected = ref(false);
   const currentRevision = ref(0);
-  const pendingOps = ref<Map<string, { baseRevision: number; op: any }>>(new Map());
-  const pendingOpsCount = computed(() => pendingOps.value.size);
+  const pendingOps = ref<Map<string, { baseRevision: number; op: any; timeout: ReturnType<typeof setTimeout> }>>(new Map());
+  const pendingOpsCount = ref(0);
 
   // Callbacks set by consumer
   let onRemoteUpdate: ((data: string, revision: number) => void) | null = null;
@@ -42,6 +43,25 @@ export function useCanvasSocket(canvasId: string) {
 
   const genClientOpId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+
+  function updatePendingOpsCount() {
+    pendingOpsCount.value = pendingOps.value.size;
+  }
+
+  function removePendingOp(clientOpId: string) {
+    const pending = pendingOps.value.get(clientOpId);
+    if (pending) clearTimeout(pending.timeout);
+    pendingOps.value.delete(clientOpId);
+    updatePendingOpsCount();
+  }
+
+  function clearPendingOps() {
+    for (const pending of pendingOps.value.values()) {
+      clearTimeout(pending.timeout);
+    }
+    pendingOps.value.clear();
+    updatePendingOpsCount();
+  }
 
   function connect() {
     const token = localStorage.getItem('token');
@@ -59,6 +79,7 @@ export function useCanvasSocket(canvasId: string) {
 
     s.on('disconnect', () => {
       connected.value = false;
+      clearPendingOps();
     });
 
     s.on('canvas-room-state', (data: { revision: number }) => {
@@ -135,14 +156,14 @@ export function useCanvasSocket(canvasId: string) {
     });
 
     s.on('canvas-op-ack', (data: { clientOpId: string; revision: number }) => {
-      pendingOps.value.delete(data.clientOpId);
+      removePendingOp(data.clientOpId);
       if (typeof data.revision === 'number') {
         currentRevision.value = data.revision;
       }
     });
 
     s.on('canvas-op-reject', (data: RevisionReject) => {
-      if (data.clientOpId) pendingOps.value.delete(data.clientOpId);
+      if (data.clientOpId) removePendingOp(data.clientOpId);
       onRejectCb?.(data);
     });
 
@@ -174,10 +195,20 @@ export function useCanvasSocket(canvasId: string) {
   // Granular operation (for real-time sync)
   function sendOp(op: any) {
     const clientOpId = genClientOpId();
+    const timeout = setTimeout(() => {
+      removePendingOp(clientOpId);
+      onRejectCb?.({
+        clientOpId,
+        reason: 'revision_mismatch',
+        serverRevision: currentRevision.value,
+      });
+    }, PENDING_OP_TIMEOUT_MS);
     pendingOps.value.set(clientOpId, {
       baseRevision: currentRevision.value,
       op,
+      timeout,
     });
+    updatePendingOpsCount();
     socket.value?.emit('canvas-op', {
       op,
       baseRevision: currentRevision.value,
@@ -215,7 +246,7 @@ export function useCanvasSocket(canvasId: string) {
     connected.value = false;
     onlineUsers.value = [];
     remoteCursors.value.clear();
-    pendingOps.value.clear();
+    clearPendingOps();
   }
 
   onUnmounted(disconnect);
@@ -234,6 +265,7 @@ export function useCanvasSocket(canvasId: string) {
     onRemoteCanvasUpdate,
     onRemoteOp,
     onReject,
+    clearPendingOps,
     setRevision,
   };
 }
