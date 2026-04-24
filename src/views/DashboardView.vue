@@ -209,7 +209,7 @@
           <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
         </div>
         <div class="tag-editor-list">
-          <div v-for="(tag, index) in tagsModal.tags" :key="tag.name + index" class="tag-editor-row">
+          <div v-for="(tag, index) in tagsModal.tags" :key="tag.id" class="tag-editor-row">
             <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
             <div class="tag-color-palette">
               <button
@@ -260,7 +260,7 @@ import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { canvas, clearToken, isAdmin, isAuthenticated } from '../api/client';
 
-type CanvasTag = { name: string; color: string };
+type CanvasTag = { id: string; name: string; color: string };
 type CanvasRecord = {
   id: string;
   title: string;
@@ -275,6 +275,7 @@ type CanvasRecord = {
 };
 
 const DEFAULT_TAG_COLOR = '#7c8aff';
+const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   setup() {
@@ -311,9 +312,10 @@ export default defineComponent({
       if (!Array.isArray(tags)) return [];
       return tags
         .map((tag) => {
-          if (typeof tag === 'string') return { name: tag, color: DEFAULT_TAG_COLOR };
+          if (typeof tag === 'string') return { id: genTagId(), name: tag, color: DEFAULT_TAG_COLOR };
           if (tag && typeof tag === 'object' && typeof (tag as any).name === 'string') {
             return {
+              id: genTagId(),
               name: (tag as any).name,
               color: typeof (tag as any).color === 'string' ? (tag as any).color : DEFAULT_TAG_COLOR,
             };
@@ -423,7 +425,7 @@ export default defineComponent({
       tagsModal.value = {
         open: true,
         canvasId: c.id,
-        tags: c.tags.length ? c.tags.map((tag) => ({ ...tag })) : [{ name: '', color: DEFAULT_TAG_COLOR }],
+        tags: c.tags.length ? c.tags.map((tag) => ({ ...tag })) : [{ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR }],
       };
     };
 
@@ -432,7 +434,7 @@ export default defineComponent({
     };
 
     const addTag = () => {
-      tagsModal.value.tags.push({ name: '', color: DEFAULT_TAG_COLOR });
+      tagsModal.value.tags.push({ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR });
     };
 
     const removeTag = (index: number) => {
