@@ -9,6 +9,7 @@
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">{{ loading ? 'Creating...' : 'Create Account' }}</button>
       </form>
+      <p class="auth-link"><router-link to="/">Go to Home</router-link></p>
       <p class="auth-link">Have an account? <router-link to="/login">Sign in</router-link></p>
     </div>
   </div>

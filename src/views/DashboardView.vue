@@ -8,6 +8,7 @@
       <div class="dash-actions">
         <template v-if="isLoggedIn">
           <button class="btn-primary" @click="createCanvas">+ New Canvas</button>
+          <button class="btn-ghost" @click="createCanvasInFolder">+ Folder Canvas</button>
           <button class="btn-ghost" @click="importFile">Open .canvas</button>
         </template>
         <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
@@ -74,9 +75,16 @@
                 <span v-else class="badge badge-shared">{{ c.role }}</span>
                 <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
               </div>
+              <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
               <div v-if="c.tags?.length" class="card-tags">
                 <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
               </div>
+              <button
+                v-if="c.isOwn"
+                class="card-manage"
+                @click.stop="manageCanvasMeta(c)"
+                title="Folder & tags"
+              >⋯</button>
               <button
                 v-if="c.isOwn"
                 class="card-delete"
@@ -102,9 +110,16 @@
               <span class="badge badge-shared">{{ c.role }}</span>
               <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
             </div>
+            <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
             <div v-if="c.tags?.length" class="card-tags">
               <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
             </div>
+            <button
+              v-if="c.role === 'edit'"
+              class="card-manage"
+              @click.stop="manageCanvasMeta(c)"
+              title="Folder & tags"
+            >⋯</button>
           </div>
         </div>
       </div>
@@ -124,6 +139,7 @@
               <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
             </div>
             <div class="card-owner">{{ c.ownerName || c.ownerEmail || 'Unknown owner' }}</div>
+            <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
             <div v-if="c.tags?.length" class="card-tags">
               <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
             </div>
@@ -228,9 +244,43 @@ export default defineComponent({
       router.push(`/canvas/${c.id}`);
     };
 
+    const createCanvasInFolder = async () => {
+      const folder = window.prompt('Folder name');
+      if (folder === null) return;
+      const normalizedFolder = folder.trim();
+      if (!normalizedFolder) return;
+      const c = await canvas.create('Untitled', undefined, normalizedFolder);
+      router.push(`/canvas/${c.id}`);
+    };
+
     const deleteCanvas = async (id: string) => {
       await canvas.delete(id);
       own.value = own.value.filter((c) => c.id !== id);
+    };
+
+    const applyCanvasMetaLocally = (updated: any) => {
+      const patch = (items: any[]) => {
+        const target = items.find((item) => item.id === updated.id);
+        if (!target) return;
+        target.folder = updated.folder || '';
+        target.tags = Array.isArray(updated.tags) ? updated.tags : [];
+      };
+      patch(own.value);
+      patch(shared.value);
+      patch(publicCanvases.value);
+    };
+
+    const manageCanvasMeta = async (c: any) => {
+      const nextFolder = window.prompt('Folder', c.folder || '');
+      if (nextFolder === null) return;
+      const nextTagsRaw = window.prompt('Tags (comma separated)', Array.isArray(c.tags) ? c.tags.join(', ') : '');
+      if (nextTagsRaw === null) return;
+      const tags = nextTagsRaw
+        .split(',')
+        .map((tag) => tag.trim().toLowerCase())
+        .filter(Boolean);
+      const updated = await canvas.update(c.id, { folder: nextFolder.trim(), tags });
+      applyCanvasMetaLocally(updated);
     };
 
     const logout = () => {
@@ -302,6 +352,8 @@ export default defineComponent({
       searchQuery,
       selectedTag,
       createCanvas,
+      createCanvasInFolder,
+      manageCanvasMeta,
       deleteCanvas,
       logout,
       formatDate,

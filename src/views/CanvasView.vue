@@ -67,27 +67,6 @@
         {{ syncNotice.text }}
       </div>
 
-      <div v-if="canManageSettings" class="canvas-meta-panel">
-        <input
-          v-model.trim="folder"
-          class="canvas-meta-input"
-          placeholder="Folder"
-          @blur="saveFolder"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-        />
-        <input
-          v-model.trim="tagsInput"
-          class="canvas-meta-input"
-          placeholder="Tags: sales, demo, public"
-          @blur="saveTags"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-        />
-        <label class="canvas-meta-toggle">
-          <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
-          <span>Public edit</span>
-        </label>
-      </div>
-
       <!-- Node toolbar (under topbar, visible when node selected) -->
       <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId" class="node-toolbar">
         <!-- Fill color -->
@@ -148,6 +127,10 @@
             <button @click="doRevoke(p.userId)">x</button>
           </div>
         </div>
+        <label v-if="role === 'owner'" class="share-checkbox">
+          <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
+          <span>Allow public edit</span>
+        </label>
         <div v-if="role === 'owner'" class="share-form share-form-transfer">
           <input v-model="transferEmail" placeholder="Transfer ownership to email" type="email" />
           <button @click="doTransferOwnership">Transfer</button>
@@ -203,8 +186,6 @@ export default defineComponent({
     const isPublic = ref(false);
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
-    const folder = ref('');
-    const tagsInput = ref('');
     const revision = ref(0);
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
@@ -284,8 +265,6 @@ export default defineComponent({
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
-        folder.value = res.canvas.folder || '';
-        tagsInput.value = Array.isArray(res.canvas.tags) ? res.canvas.tags.join(', ') : '';
         if (res.role === 'owner') loadPermissions();
 
         // Connect WebSocket after canvas loaded
@@ -404,23 +383,6 @@ export default defineComponent({
       await canvasApi.update(canvasId, { title: title.value });
     };
 
-    const saveFolder = async () => {
-      if (!canManageSettings.value) return;
-      await canvasApi.update(canvasId, { folder: folder.value });
-    };
-
-    const parseTags = () => tagsInput.value
-      .split(',')
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean);
-
-    const saveTags = async () => {
-      if (!canManageSettings.value) return;
-      const tags = parseTags();
-      tagsInput.value = tags.join(', ');
-      await canvasApi.update(canvasId, { tags });
-    };
-
     const togglePublicEdit = async (e: Event) => {
       if (!canManageSettings.value) return;
       allowPublicEdit.value = (e.target as HTMLInputElement).checked;
@@ -459,8 +421,6 @@ export default defineComponent({
       transferEmail.value = '';
       role.value = res.role;
       title.value = res.canvas.title;
-      folder.value = res.canvas.folder || '';
-      tagsInput.value = Array.isArray(res.canvas.tags) ? res.canvas.tags.join(', ') : '';
       allowPublicEdit.value = !!res.canvas.allowPublicEdit;
       showSyncNotice('info', 'Ownership transferred.');
     };
@@ -490,7 +450,7 @@ export default defineComponent({
       loading, error, title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showShare, shareEmail, shareRole, transferEmail, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
-      allowPublicEdit, folder, tagsInput, canManageSettings, saveFolder, saveTags, togglePublicEdit, doTransferOwnership,
+      allowPublicEdit, canManageSettings, togglePublicEdit, doTransferOwnership,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
