@@ -46,10 +46,16 @@
     <template v-else>
       <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
         <div class="dash-section-head">
-          <h2>Folders</h2>
-          <button class="btn-ghost btn-sm" @click.stop="openFolderModal()" :disabled="isBusy">+ Folder canvas</button>
+          <button class="section-toggle" @click.stop="toggleFoldersExpanded">
+            <span>Folders</span>
+            <span class="section-toggle-icon" :class="{ expanded: foldersExpanded }">⌄</span>
+          </button>
+          <div class="dash-section-actions">
+            <button class="btn-ghost btn-sm" @click.stop="openFolderModal()" :disabled="isBusy">+ Folder canvas</button>
+          </div>
         </div>
-        <div class="folder-manager-list">
+        <transition name="folder-collapse">
+        <div v-if="foldersExpanded" class="folder-manager-list">
           <div v-for="folder in folderSummaries" :key="folder.name" class="folder-manager-row">
             <button class="folder-manager-main" @click.stop="searchQuery = folder.name">
               <span class="folder-manager-name">{{ folder.name }}</span>
@@ -62,6 +68,7 @@
             </div>
           </div>
         </div>
+        </transition>
       </div>
 
       <div v-if="isLoggedIn && groupedOwnCanvases.length" class="dash-section">
@@ -356,6 +363,7 @@ export default defineComponent({
     const searchQuery = ref('');
     const selectedTag = ref('');
     const openMenuCanvasId = ref('');
+    const foldersExpanded = ref(false);
     const pendingAction = ref('');
     const feedback = ref<FeedbackState>({ type: 'success', message: '' });
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -651,6 +659,10 @@ export default defineComponent({
       router.push('/login');
     };
 
+    const toggleFoldersExpanded = () => {
+      foldersExpanded.value = !foldersExpanded.value;
+    };
+
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
@@ -716,6 +728,7 @@ export default defineComponent({
       feedback,
       isBusy,
       actionLabel,
+      foldersExpanded,
       openMenuCanvasId,
       tagColors,
       folderModal,
@@ -741,6 +754,7 @@ export default defineComponent({
       openTransferModal,
       closeTransferModal,
       saveTransferModal,
+      toggleFoldersExpanded,
       toggleCardMenu,
       closeCardMenu,
       openCanvas,

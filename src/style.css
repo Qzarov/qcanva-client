@@ -112,6 +112,36 @@ html, body {
   gap: 12px;
   margin-bottom: 24px;
 }
+.dash-section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.86);
+  font-size: 18px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+.section-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: rgba(255,255,255,0.5);
+  transition: transform 0.22s ease, color 0.22s ease;
+}
+.section-toggle-icon.expanded {
+  transform: rotate(180deg);
+  color: rgba(255,255,255,0.82);
+}
 .dashboard-toast {
   position: sticky;
   top: 12px;
@@ -350,16 +380,17 @@ html, body {
 .folder-manager-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  overflow: hidden;
 }
 .folder-manager-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px 16px;
+  padding: 10px 12px;
   border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 10px;
+  border-radius: 8px;
   background: rgba(255,255,255,0.03);
 }
 .folder-manager-main {
@@ -375,12 +406,12 @@ html, body {
 }
 .folder-manager-name {
   color: rgba(255,255,255,0.9);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 .folder-manager-count {
   color: rgba(255,255,255,0.45);
-  font-size: 12px;
+  font-size: 11px;
 }
 .folder-manager-actions {
   display: flex;
@@ -389,8 +420,8 @@ html, body {
   justify-content: flex-end;
 }
 .folder-manager-btn {
-  padding: 7px 10px;
-  border-radius: 8px;
+  padding: 6px 9px;
+  border-radius: 7px;
   border: 1px solid rgba(255,255,255,0.1);
   background: rgba(255,255,255,0.04);
   color: rgba(255,255,255,0.75);
@@ -404,6 +435,21 @@ html, body {
   color: #fff;
   background: rgba(251,70,76,0.18);
   border-color: rgba(251,70,76,0.28);
+}
+.folder-collapse-enter-active,
+.folder-collapse-leave-active {
+  transition: max-height 0.24s ease, opacity 0.2s ease, transform 0.2s ease, margin-top 0.24s ease;
+  max-height: 360px;
+  opacity: 1;
+  transform: translateY(0);
+  margin-top: 0;
+}
+.folder-collapse-enter-from,
+.folder-collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  margin-top: -4px;
 }
 /* ===== Admin ===== */
 .admin-stats { display: flex; gap: 16px; margin-bottom: 24px; }
