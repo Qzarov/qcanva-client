@@ -100,10 +100,15 @@ export const auth = {
   me: () => request<any>('/auth/me'),
 };
 
+type CanvasTag = {
+  name: string;
+  color: string;
+};
+
 // Canvas
 export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
-  create: (title: string, data?: string, folder?: string, tags?: string[]) =>
+  create: (title: string, data?: string, folder?: string, tags?: CanvasTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folder, tags }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
   update: (
@@ -115,7 +120,7 @@ export const canvas = {
       visibility?: string;
       allowPublicEdit?: boolean;
       folder?: string;
-      tags?: string[];
+      tags?: CanvasTag[];
     },
   ) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),

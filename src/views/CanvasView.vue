@@ -131,10 +131,6 @@
           <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
           <span>Allow public edit</span>
         </label>
-        <div v-if="role === 'owner'" class="share-form share-form-transfer">
-          <input v-model="transferEmail" placeholder="Transfer ownership to email" type="email" />
-          <button @click="doTransferOwnership">Transfer</button>
-        </div>
       </div>
 
       <CanvasLoader
@@ -203,7 +199,6 @@ export default defineComponent({
     const showShare = ref(false);
     const shareEmail = ref('');
     const shareRole = ref('read');
-    const transferEmail = ref('');
     const permissions = ref<any[]>([]);
     const canManageSettings = computed(() => isAuthenticated() && (role.value === 'owner' || role.value === 'edit'));
 
@@ -415,16 +410,6 @@ export default defineComponent({
       loadPermissions();
     };
 
-    const doTransferOwnership = async () => {
-      if (!transferEmail.value) return;
-      const res = await canvasApi.transferOwnership(canvasId, transferEmail.value);
-      transferEmail.value = '';
-      role.value = res.role;
-      title.value = res.canvas.title;
-      allowPublicEdit.value = !!res.canvas.allowPublicEdit;
-      showSyncNotice('info', 'Ownership transferred.');
-    };
-
     const runCanvasSearch = () => {
       searchMatches.value = canvasRef.value?.searchNodes?.(searchQuery.value) || [];
       searchIndex.value = 0;
@@ -448,9 +433,9 @@ export default defineComponent({
     return {
       canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
-      showShare, shareEmail, shareRole, transferEmail, permissions,
+      showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
-      allowPublicEdit, canManageSettings, togglePublicEdit, doTransferOwnership,
+      allowPublicEdit, canManageSettings, togglePublicEdit,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
