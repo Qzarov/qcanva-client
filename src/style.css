@@ -117,18 +117,6 @@ html, body {
   align-items: center;
   gap: 8px;
 }
-.section-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: none;
-  background: transparent;
-  color: rgba(255,255,255,0.86);
-  font-size: 18px;
-  font-weight: 600;
-  padding: 0;
-  cursor: pointer;
-}
 .section-toggle-icon {
   display: inline-flex;
   align-items: center;
@@ -210,10 +198,6 @@ html, body {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-}
-.folder-inline-actions {
-  display: flex;
-  gap: 8px;
 }
 .folder-action {
   padding: 6px 10px;
@@ -385,24 +369,41 @@ html, body {
 }
 .folder-manager-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  gap: 10px;
   padding: 10px 12px;
   border: 1px solid rgba(255,255,255,0.08);
   border-radius: 8px;
   background: rgba(255,255,255,0.03);
 }
+.folder-manager-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
 .folder-manager-main {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
   border: none;
   background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
   padding: 0;
+}
+.folder-manager-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.folder-row-toggle {
+  width: 16px;
+  height: 16px;
+  font-size: 12px;
 }
 .folder-manager-name {
   color: rgba(255,255,255,0.9);
@@ -436,10 +437,13 @@ html, body {
   background: rgba(251,70,76,0.18);
   border-color: rgba(251,70,76,0.28);
 }
+.folder-manager-body {
+  width: 100%;
+}
 .folder-collapse-enter-active,
 .folder-collapse-leave-active {
   transition: max-height 0.24s ease, opacity 0.2s ease, transform 0.2s ease, margin-top 0.24s ease;
-  max-height: 360px;
+  max-height: 1200px;
   opacity: 1;
   transform: translateY(0);
   margin-top: 0;
@@ -624,10 +628,14 @@ html, body {
 
 @media (max-width: 720px) {
   .dash-section-head,
-  .folder-title-row,
+  .folder-manager-top,
   .folder-manager-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .folder-manager-main {
+    width: 100%;
   }
 
   .folder-manager-actions {

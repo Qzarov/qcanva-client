@@ -46,88 +46,80 @@
     <template v-else>
       <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
         <div class="dash-section-head">
-          <button class="section-toggle" @click.stop="toggleFoldersExpanded">
-            <span>Folders</span>
-            <span class="section-toggle-icon" :class="{ expanded: foldersExpanded }">⌄</span>
-          </button>
-          <div class="dash-section-actions">
-            <button class="btn-ghost btn-sm" @click.stop="openFolderModal()" :disabled="isBusy">+ Folder canvas</button>
-          </div>
-        </div>
-        <transition name="folder-collapse">
-        <div v-if="foldersExpanded" class="folder-manager-list">
-          <div v-for="folder in folderSummaries" :key="folder.name" class="folder-manager-row">
-            <button class="folder-manager-main" @click.stop="searchQuery = folder.name">
-              <span class="folder-manager-name">{{ folder.name }}</span>
-              <span class="folder-manager-count">{{ folder.count }} canvas{{ folder.count === 1 ? '' : 'es' }}</span>
-            </button>
-            <div class="folder-manager-actions">
-              <button class="folder-manager-btn" @click.stop="openFolderModal(folder.name)" :disabled="isBusy">Add canvas</button>
-              <button class="folder-manager-btn" @click.stop="openRenameFolderModal(folder.name)" :disabled="isBusy">Rename</button>
-              <button class="folder-manager-btn danger" @click.stop="deleteFolder(folder.name)" :disabled="isBusy">Delete</button>
-            </div>
-          </div>
-        </div>
-        </transition>
-      </div>
-
-      <div v-if="isLoggedIn && groupedOwnCanvases.length" class="dash-section">
-        <div class="dash-section-head">
           <h2>My folders</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
-        </div>
-        <div v-for="group in groupedOwnCanvases" :key="'own-' + group.name" class="folder-section">
-          <div class="folder-title-row">
-            <div class="folder-title">{{ group.name }}</div>
-            <div class="folder-inline-actions">
-              <button class="folder-action" @click.stop="openFolderModal(group.name)" :disabled="isBusy">Add canvas</button>
-              <button
-                v-if="group.name !== 'Unsorted'"
-                class="folder-action"
-                @click.stop="openRenameFolderModal(group.name)"
-                :disabled="isBusy"
-              >Rename</button>
-            </div>
+          <div class="dash-section-actions">
+            <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
           </div>
-          <div class="dash-grid">
-            <div
-              v-for="c in group.items"
-              :key="c.id"
-              class="canvas-card"
-              @click="openCanvas(c.id)"
-            >
-              <input
-                v-if="renamingId === c.id"
-                class="card-title-input"
-                :value="c.title"
-                @blur="finishRename($event, c)"
-                @keydown.enter="($event.target as HTMLInputElement).blur()"
-                @keydown.escape="renamingId = ''"
-                @click.stop
-                ref="renameInput"
-              />
-              <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
-              <div class="card-meta">
-                <span class="badge badge-owner">Owner</span>
-                <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
-              </div>
-              <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
-              <div v-if="c.tags?.length" class="card-tags">
-                <span
-                  v-for="tag in c.tags"
-                  :key="tag.name"
-                  class="card-tag color-tag"
-                  :style="{ '--tag-color': tag.color }"
-                >#{{ tag.name }}</span>
-              </div>
-              <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
-              <button class="card-delete" @click.stop="deleteCanvas(c)" title="Delete" :disabled="isBusy">x</button>
-              <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-                <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
-                <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
-                <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
+        </div>
+        <div class="folder-manager-list">
+          <div v-for="folder in folderSummaries" :key="folder.name" class="folder-manager-row">
+            <div class="folder-manager-top">
+              <button class="folder-manager-main" @click.stop="toggleFolderOpen(folder.name)">
+                <span class="folder-manager-title">
+                  <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.name) }">⌄</span>
+                  <span class="folder-manager-name">{{ folder.name }}</span>
+                </span>
+                <span class="folder-manager-count">{{ folder.count }} canvas{{ folder.count === 1 ? '' : 'es' }}</span>
+              </button>
+              <div class="folder-manager-actions">
+                <button class="folder-manager-btn" @click.stop="openFolderModal(folder.name)" :disabled="isBusy">Add canvas</button>
+                <button
+                  v-if="folder.name !== 'Unsorted'"
+                  class="folder-manager-btn"
+                  @click.stop="openRenameFolderModal(folder.name)"
+                  :disabled="isBusy"
+                >Rename</button>
+                <button
+                  v-if="folder.name !== 'Unsorted'"
+                  class="folder-manager-btn danger"
+                  @click.stop="deleteFolder(folder.name)"
+                  :disabled="isBusy"
+                >Delete</button>
               </div>
             </div>
+            <transition name="folder-collapse">
+              <div v-if="isFolderOpen(folder.name)" class="folder-manager-body">
+                <div class="dash-grid">
+                  <div
+                    v-for="c in folder.items"
+                    :key="c.id"
+                    class="canvas-card"
+                    @click="openCanvas(c.id)"
+                  >
+                    <input
+                      v-if="renamingId === c.id"
+                      class="card-title-input"
+                      :value="c.title"
+                      @blur="finishRename($event, c)"
+                      @keydown.enter="($event.target as HTMLInputElement).blur()"
+                      @keydown.escape="renamingId = ''"
+                      @click.stop
+                      ref="renameInput"
+                    />
+                    <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
+                    <div class="card-meta">
+                      <span class="badge badge-owner">Owner</span>
+                      <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+                    </div>
+                    <div v-if="c.tags?.length" class="card-tags">
+                      <span
+                        v-for="tag in c.tags"
+                        :key="tag.name"
+                        class="card-tag color-tag"
+                        :style="{ '--tag-color': tag.color }"
+                      >#{{ tag.name }}</span>
+                    </div>
+                    <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
+                    <button class="card-delete" @click.stop="deleteCanvas(c)" title="Delete" :disabled="isBusy">x</button>
+                    <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
+                      <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
+                      <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </transition>
           </div>
         </div>
       </div>
@@ -210,7 +202,7 @@
         </div>
       </div>
 
-      <div v-if="isLoggedIn && !groupedOwnCanvases.length && !sharedFiltered.length" class="dash-empty">
+      <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
         No canvases yet. Create your first one!
       </div>
       <div v-else-if="!isLoggedIn && !publicFiltered.length && !welcomeCanvas" class="dash-empty">
@@ -363,7 +355,7 @@ export default defineComponent({
     const searchQuery = ref('');
     const selectedTag = ref('');
     const openMenuCanvasId = ref('');
-    const foldersExpanded = ref(false);
+    const openFolderNames = ref<string[]>(['Unsorted']);
     const pendingAction = ref('');
     const feedback = ref<FeedbackState>({ type: 'success', message: '' });
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -452,12 +444,11 @@ export default defineComponent({
       }
       return Array.from(names).sort();
     });
-    const folderSummaries = computed(() =>
-      folderNames.value.map((name) => ({
-        name,
-        count: own.value.filter((canvasRecord) => canvasRecord.folder === name).length,
-      })),
-    );
+    const folderSummaries = computed(() => groupedOwnCanvases.value.map((group) => ({
+      name: group.name,
+      count: group.items.length,
+      items: group.items,
+    })));
     const isBusy = computed(() => pendingAction.value.length > 0);
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
@@ -494,6 +485,11 @@ export default defineComponent({
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
         welcomeCanvas.value = res.welcome ? normalizeCanvas(res.welcome, false) : null;
+        const availableFolders = new Set(groupedOwnCanvases.value.map((group) => group.name));
+        openFolderNames.value = openFolderNames.value.filter((name) => availableFolders.has(name));
+        if (availableFolders.has('Unsorted') && !openFolderNames.value.includes('Unsorted')) {
+          openFolderNames.value.unshift('Unsorted');
+        }
       } finally {
         loading.value = false;
       }
@@ -504,12 +500,12 @@ export default defineComponent({
     };
 
     const createCanvas = async () => {
-      const c = await runAction('create-canvas', () => canvas.create('Untitled'), 'Canvas created');
+      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, 'Unsorted'), 'Canvas created');
       if (!c) return;
       router.push(`/canvas/${c.id}`);
     };
 
-    const openFolderModal = (folder = '') => {
+    const openFolderModal = (folder = 'Unsorted') => {
       closeCardMenu();
       folderModal.value = { open: true, canvasId: '', value: folder };
     };
@@ -659,8 +655,14 @@ export default defineComponent({
       router.push('/login');
     };
 
-    const toggleFoldersExpanded = () => {
-      foldersExpanded.value = !foldersExpanded.value;
+    const toggleFolderOpen = (folderName: string) => {
+      openFolderNames.value = openFolderNames.value.includes(folderName)
+        ? openFolderNames.value.filter((name) => name !== folderName)
+        : [...openFolderNames.value, folderName];
+    };
+
+    const isFolderOpen = (folderName: string) => {
+      return openFolderNames.value.includes(folderName);
     };
 
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {
@@ -728,7 +730,6 @@ export default defineComponent({
       feedback,
       isBusy,
       actionLabel,
-      foldersExpanded,
       openMenuCanvasId,
       tagColors,
       folderModal,
@@ -754,7 +755,8 @@ export default defineComponent({
       openTransferModal,
       closeTransferModal,
       saveTransferModal,
-      toggleFoldersExpanded,
+      toggleFolderOpen,
+      isFolderOpen,
       toggleCardMenu,
       closeCardMenu,
       openCanvas,
