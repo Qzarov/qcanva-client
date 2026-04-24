@@ -104,7 +104,57 @@ html, body {
   margin-bottom: 32px;
 }
 .dash-header h1 { font-size: 24px; }
+.dash-subtitle { margin-top: 6px; color: rgba(255,255,255,0.45); font-size: 13px; }
 .dash-actions { display: flex; gap: 8px; }
+.dash-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+.dash-search,
+.canvas-search-input,
+.canvas-meta-input {
+  padding: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  outline: none;
+}
+.dash-search { max-width: 360px; }
+.tag-filter-list,
+.card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tag-filter,
+.card-tag {
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: rgba(255,255,255,0.72);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.tag-filter {
+  cursor: pointer;
+}
+.tag-filter.active {
+  border-color: rgba(124,138,255,0.45);
+  color: #c9d0ff;
+}
+.folder-section {
+  margin-bottom: 24px;
+}
+.folder-title {
+  margin-bottom: 12px;
+  color: rgba(255,255,255,0.5);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .btn-primary {
   padding: 8px 16px;
   border: none;
@@ -155,6 +205,8 @@ html, body {
   width: 100%;
 }
 .card-meta { display: flex; gap: 8px; align-items: center; font-size: 12px; color: rgba(255,255,255,0.4); }
+.card-owner { margin-top: 10px; font-size: 12px; color: rgba(255,255,255,0.5); }
+.card-tags { margin-top: 10px; }
 .badge {
   padding: 2px 8px;
   border-radius: 4px;
@@ -295,6 +347,35 @@ html, body {
   padding: 0 12px;
   gap: 8px;
   z-index: 100;
+}
+.canvas-search-input {
+  width: 220px;
+  height: 32px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.canvas-meta-panel {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.canvas-meta-input {
+  min-width: 180px;
+  height: 36px;
+  font-size: 13px;
+}
+.canvas-meta-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255,255,255,0.72);
+  font-size: 13px;
+}
+.share-form-transfer {
+  margin-top: 12px;
 }
 .topbar-back {
   color: rgba(255,255,255,0.5);

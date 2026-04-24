@@ -1,87 +1,215 @@
 <template>
   <div class="dashboard">
     <header class="dash-header">
-      <h1>My Canvases</h1>
+      <div>
+        <h1>{{ isLoggedIn ? 'My Canvases' : 'QCanva' }}</h1>
+        <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
+      </div>
       <div class="dash-actions">
-        <button class="btn-primary" @click="createCanvas">+ New Canvas</button>
-        <button class="btn-ghost" @click="importFile">Open .canvas</button>
+        <template v-if="isLoggedIn">
+          <button class="btn-primary" @click="createCanvas">+ New Canvas</button>
+          <button class="btn-ghost" @click="importFile">Open .canvas</button>
+        </template>
         <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
         <router-link v-if="admin" to="/admin" class="btn-ghost">Admin</router-link>
-        <button class="btn-ghost" @click="logout">Logout</button>
+        <template v-if="isLoggedIn">
+          <button class="btn-ghost" @click="logout">Logout</button>
+        </template>
+        <template v-else>
+          <router-link to="/login" class="btn-ghost">Login</router-link>
+          <router-link to="/register" class="btn-primary">Register</router-link>
+        </template>
       </div>
     </header>
 
-    <div v-if="loading" class="dash-loading">Loading...</div>
-
-    <div v-else class="dash-grid">
-      <div
-        v-for="c in allCanvases"
-        :key="c.id"
-        class="canvas-card"
-        @click="$router.push(`/canvas/${c.id}`)"
-      >
-        <input
-          v-if="renamingId === c.id"
-          class="card-title-input"
-          :value="c.title"
-          @blur="finishRename($event, c)"
-          @keydown.enter="($event.target as HTMLInputElement).blur()"
-          @keydown.escape="renamingId = ''"
-          @click.stop
-          ref="renameInput"
-        />
-        <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
-        <div class="card-meta">
-          <span v-if="c.isOwn" class="badge badge-owner">Owner</span>
-          <span v-else class="badge badge-shared">{{ c.role }}</span>
-          <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
-        </div>
+    <div class="dash-toolbar">
+      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title or tag" />
+      <div v-if="allTags.length" class="tag-filter-list">
         <button
-          v-if="c.isOwn"
-          class="card-delete"
-          @click.stop="deleteCanvas(c.id)"
-          title="Delete"
-        >x</button>
-      </div>
-
-      <div v-if="allCanvases.length === 0" class="dash-empty">
-        No canvases yet. Create your first one!
+          class="tag-filter"
+          :class="{ active: selectedTag === '' }"
+          @click="selectedTag = ''"
+        >All</button>
+        <button
+          v-for="tag in allTags"
+          :key="tag"
+          class="tag-filter"
+          :class="{ active: selectedTag === tag }"
+          @click="selectedTag = tag"
+        >#{{ tag }}</button>
       </div>
     </div>
 
-    <!-- Welcome canvas -->
-    <div v-if="welcomeCanvas" class="dash-section">
-      <h2>Welcome</h2>
-      <div class="dash-grid">
-        <div class="canvas-card canvas-card-welcome" @click="$router.push(`/canvas/${welcomeCanvas.id}`)">
-          <div class="card-title">{{ welcomeCanvas.title }}</div>
-          <div class="card-meta">
-            <span class="badge badge-public">Public</span>
+    <div v-if="loading" class="dash-loading">Loading...</div>
+
+    <template v-else>
+      <div v-if="isLoggedIn && groupedOwnCanvases.length" class="dash-section">
+        <h2>My folders</h2>
+        <div
+          v-for="group in groupedOwnCanvases"
+          :key="'own-' + group.name"
+          class="folder-section"
+        >
+          <div class="folder-title">{{ group.name }}</div>
+          <div class="dash-grid">
+            <div
+              v-for="c in group.items"
+              :key="c.id"
+              class="canvas-card"
+              @click="$router.push(`/canvas/${c.id}`)"
+            >
+              <input
+                v-if="renamingId === c.id"
+                class="card-title-input"
+                :value="c.title"
+                @blur="finishRename($event, c)"
+                @keydown.enter="($event.target as HTMLInputElement).blur()"
+                @keydown.escape="renamingId = ''"
+                @click.stop
+                ref="renameInput"
+              />
+              <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
+              <div class="card-meta">
+                <span v-if="c.isOwn" class="badge badge-owner">Owner</span>
+                <span v-else class="badge badge-shared">{{ c.role }}</span>
+                <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+              </div>
+              <div v-if="c.tags?.length" class="card-tags">
+                <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
+              </div>
+              <button
+                v-if="c.isOwn"
+                class="card-delete"
+                @click.stop="deleteCanvas(c.id)"
+                title="Delete"
+              >x</button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+
+      <div v-if="sharedFiltered.length" class="dash-section">
+        <h2>Shared with me</h2>
+        <div class="dash-grid">
+          <div
+            v-for="c in sharedFiltered"
+            :key="'shared-' + c.id"
+            class="canvas-card"
+            @click="$router.push(`/canvas/${c.id}`)"
+          >
+            <div class="card-title">{{ c.title || 'Untitled' }}</div>
+            <div class="card-meta">
+              <span class="badge badge-shared">{{ c.role }}</span>
+              <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+            </div>
+            <div v-if="c.tags?.length" class="card-tags">
+              <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="publicFiltered.length" class="dash-section">
+        <h2>Public canvases</h2>
+        <div class="dash-grid">
+          <div
+            v-for="c in publicFiltered"
+            :key="'public-' + c.id"
+            class="canvas-card"
+            @click="$router.push(`/canvas/${c.id}`)"
+          >
+            <div class="card-title">{{ c.title || 'Untitled' }}</div>
+            <div class="card-meta">
+              <span class="badge badge-public">{{ c.allowPublicEdit ? 'Public edit' : 'Public' }}</span>
+              <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+            </div>
+            <div class="card-owner">{{ c.ownerName || c.ownerEmail || 'Unknown owner' }}</div>
+            <div v-if="c.tags?.length" class="card-tags">
+              <span v-for="tag in c.tags" :key="tag" class="card-tag">#{{ tag }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="welcomeCanvas" class="dash-section">
+        <h2>Welcome</h2>
+        <div class="dash-grid">
+          <div class="canvas-card canvas-card-welcome" @click="$router.push(`/canvas/${welcomeCanvas.id}`)">
+            <div class="card-title">{{ welcomeCanvas.title }}</div>
+            <div class="card-meta">
+              <span class="badge badge-public">Public</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="isLoggedIn && !groupedOwnCanvases.length && !sharedFiltered.length" class="dash-empty">
+        No canvases yet. Create your first one!
+      </div>
+      <div v-else-if="!isLoggedIn && !publicFiltered.length && !welcomeCanvas" class="dash-empty">
+        No public canvases yet.
+      </div>
+    </template>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { canvas, clearToken, isAdmin } from '../api/client';
+import { canvas, clearToken, isAdmin, isAuthenticated } from '../api/client';
 
 export default defineComponent({
   setup() {
     const router = useRouter();
     const admin = isAdmin();
+    const isLoggedIn = isAuthenticated();
     const own = ref<any[]>([]);
     const shared = ref<any[]>([]);
+    const publicCanvases = ref<any[]>([]);
     const welcomeCanvas = ref<any>(null);
     const loading = ref(true);
+    const searchQuery = ref('');
+    const selectedTag = ref('');
 
-    const allCanvases = computed(() => [
-      ...own.value.map((c) => ({ ...c, isOwn: true })),
-      ...shared.value.map((c) => ({ ...c, isOwn: false })),
-    ]);
+    const normalizeCanvas = (c: any, isOwn = false) => ({
+      ...c,
+      isOwn,
+      folder: c.folder || '',
+      tags: Array.isArray(c.tags) ? c.tags : [],
+    });
+
+    const matchesCanvas = (c: any) => {
+      const q = searchQuery.value.trim().toLowerCase();
+      const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${(c.tags || []).join(' ')}`.toLowerCase().includes(q);
+      const matchesTag = !selectedTag.value || (c.tags || []).includes(selectedTag.value);
+      return matchesQuery && matchesTag;
+    };
+
+    const ownFiltered = computed(() => own.value.map((c) => normalizeCanvas(c, true)).filter(matchesCanvas));
+    const sharedFiltered = computed(() => shared.value.map((c) => normalizeCanvas(c)).filter(matchesCanvas));
+    const publicFiltered = computed(() => publicCanvases.value.map((c) => normalizeCanvas(c)).filter(matchesCanvas));
+
+    const groupedOwnCanvases = computed(() => {
+      const map = new Map<string, any[]>();
+      for (const canvas of ownFiltered.value) {
+        const folder = canvas.folder || 'Unsorted';
+        if (!map.has(folder)) map.set(folder, []);
+        map.get(folder)!.push(canvas);
+      }
+      return Array.from(map.entries()).map(([name, items]) => ({ name, items }));
+    });
+
+    const allTags = computed(() => {
+      const tags = new Set<string>();
+      for (const list of [own.value, shared.value, publicCanvases.value]) {
+        for (const canvas of list) {
+          for (const tag of Array.isArray(canvas.tags) ? canvas.tags : []) {
+            tags.add(tag);
+          }
+        }
+      }
+      return Array.from(tags).sort();
+    });
 
     const load = async () => {
       loading.value = true;
@@ -89,6 +217,7 @@ export default defineComponent({
         const res = await canvas.list();
         own.value = res.own;
         shared.value = res.shared;
+        publicCanvases.value = res.public || [];
         welcomeCanvas.value = (res as any).welcome || null;
       } catch {}
       loading.value = false;
@@ -161,7 +290,29 @@ export default defineComponent({
 
     onMounted(load);
 
-    return { admin, allCanvases, welcomeCanvas, loading, createCanvas, deleteCanvas, logout, formatDate, renamingId, renameInput, startRename, finishRename, fileInput, importFile, onFileSelected };
+    return {
+      admin,
+      isLoggedIn,
+      loading,
+      welcomeCanvas,
+      groupedOwnCanvases,
+      sharedFiltered,
+      publicFiltered,
+      allTags,
+      searchQuery,
+      selectedTag,
+      createCanvas,
+      deleteCanvas,
+      logout,
+      formatDate,
+      renamingId,
+      renameInput,
+      startRename,
+      finishRename,
+      fileInput,
+      importFile,
+      onFileSelected,
+    };
   },
 });
 </script>

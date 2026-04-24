@@ -102,11 +102,22 @@ export const auth = {
 
 // Canvas
 export const canvas = {
-  list: () => request<{ own: any[]; shared: any[]; welcome?: any }>('/canvas'),
-  create: (title: string, data?: string) =>
-    request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data }) }),
+  list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
+  create: (title: string, data?: string, folder?: string, tags?: string[]) =>
+    request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folder, tags }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
-  update: (id: string, updates: { title?: string; data?: string; isPublic?: boolean; visibility?: string }) =>
+  update: (
+    id: string,
+    updates: {
+      title?: string;
+      data?: string;
+      isPublic?: boolean;
+      visibility?: string;
+      allowPublicEdit?: boolean;
+      folder?: string;
+      tags?: string[];
+    },
+  ) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
   resync: resyncCanvas,
   delete: (id: string) =>
@@ -116,4 +127,6 @@ export const canvas = {
   revoke: (id: string, userId: string) =>
     request<any>(`/canvas/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/canvas/${id}/permissions`),
+  transferOwnership: (id: string, email: string) =>
+    request<any>(`/canvas/${id}/transfer-ownership`, { method: 'POST', body: JSON.stringify({ email }) }),
 };

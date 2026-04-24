@@ -65,10 +65,8 @@ export function useCanvasSocket(canvasId: string) {
 
   function connect() {
     const token = localStorage.getItem('token');
-    if (!token) return;
-
     const s = io(`${WS_URL}/canvas-ws`, {
-      auth: { token },
+      auth: token ? { token } : {},
       transports: ['websocket', 'polling'],
     });
 

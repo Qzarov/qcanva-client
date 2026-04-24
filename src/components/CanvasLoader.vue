@@ -278,6 +278,25 @@
           <a :href="node.url" target="_blank" rel="noopener">{{ node.url }}</a>
         </div>
       </div>
+      <!-- Image nodes -->
+      <div
+        v-for="node in imageNodes"
+        :key="node.id"
+        class="canvas-node canvas-node-image"
+        :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
+        :style="nodePosition(node)"
+        @mousedown.stop="onNodeDragStart($event, node)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
+      >
+        <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
+        <div v-if="node.label" class="node-image-label">{{ node.label }}</div>
+        <template v-if="isNodeSelected(node.id)">
+          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+        </template>
+      </div>
       <!-- Remote cursors -->
       <div
         v-for="cursor in remoteCursors"
@@ -333,11 +352,19 @@
       <button @click="zoomOut" title="Zoom out">−</button>
       <button @click="resetView" title="Reset view">⌂</button>
       <span class="controls-divider"></span>
+      <button @click="duplicateSelection" title="Duplicate selection">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
+      </button>
+      <button @click="openImagePicker" title="Add image">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+      </button>
+      <span class="controls-divider"></span>
       <button @click="onExportCanvas" title="Export .canvas file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
     </div>
     <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
+    <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
   </div>
 </template>
 
@@ -574,6 +601,7 @@ export default defineComponent({
     const groups = computed(() => nodes.value.filter((n) => n.type === "group"));
     const textNodes = computed(() => nodes.value.filter((n) => n.type === "text"));
     const linkNodes = computed(() => nodes.value.filter((n) => n.type === "link"));
+    const imageNodes = computed(() => nodes.value.filter((n) => n.type === "image"));
 
     // Bounding box for SVG edges — explicit position & size
     const contentBounds = computed(() => {
@@ -1413,6 +1441,35 @@ export default defineComponent({
       closeContextMenu();
     };
 
+    const duplicateSelection = () => {
+      if (!selectedNodeIds.value.length) return;
+      const ids = getCopySelectionIds();
+      clipboard.value = {
+        nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
+        edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
+      };
+
+      const idMap = new Map<string, string>();
+      pushUndo();
+      const newNodes: CanvasNode[] = clipboard.value.nodes.map((n) => {
+        const newId = genId();
+        idMap.set(n.id, newId);
+        return { ...n, id: newId, x: n.x + 40, y: n.y + 40 };
+      });
+      const newEdges: CanvasEdge[] = clipboard.value.edges.map((ed) => ({
+        ...ed,
+        id: genId(),
+        fromNode: idMap.get(ed.fromNode) || ed.fromNode,
+        fromEdge: ed.fromEdge ? idMap.get(ed.fromEdge) || ed.fromEdge : ed.fromEdge,
+        toNode: idMap.get(ed.toNode) || ed.toNode,
+      }));
+      nodes.value.push(...newNodes);
+      edges.value.push(...newEdges);
+      for (const n of newNodes) emitOp({ type: 'node-add', node: { ...n } });
+      for (const ed of newEdges) emitOp({ type: 'edge-add', edge: { ...ed } });
+      selectedNodeIds.value = newNodes.map((n) => n.id);
+    };
+
     const onCtxDelete = () => {
       pushUndo();
       const id = contextMenu.nodeId;
@@ -1527,6 +1584,11 @@ export default defineComponent({
         selectedNodeIds.value = newNodes.map((n) => n.id);
         // Update clipboard positions for next paste
         clipboard.value.nodes = clipboard.value.nodes.map((n) => ({ ...n, x: n.x + 40, y: n.y + 40 }));
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d" && selectedNodeIds.value.length > 0) {
+        e.preventDefault();
+        duplicateSelection();
         return;
       }
       // Select all
@@ -1806,6 +1868,7 @@ export default defineComponent({
 
     // File operations
     const fileInput = ref<HTMLInputElement | null>(null);
+    const imageInput = ref<HTMLInputElement | null>(null);
 
     const onNewCanvas = () => {
       pushUndo();
@@ -1855,6 +1918,68 @@ export default defineComponent({
       a.download = "canvas.canvas";
       a.click();
       URL.revokeObjectURL(url);
+    };
+
+    const openImagePicker = () => {
+      imageInput.value?.click();
+    };
+
+    const onImageSelected = (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const src = typeof reader.result === "string" ? reader.result : "";
+        if (!src) return;
+        const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
+        const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
+        const newNode: CanvasNode = {
+          id: genId(),
+          type: "image",
+          x: centerX - 160,
+          y: centerY - 120,
+          width: 320,
+          height: 240,
+          file: src,
+          label: file.name,
+        };
+        pushUndo();
+        nodes.value.push(newNode);
+        emitOp({ type: 'node-add', node: { ...newNode } });
+        selectedNodeIds.value = [newNode.id];
+      };
+      reader.readAsDataURL(file);
+      (e.target as HTMLInputElement).value = "";
+    };
+
+    const searchNodes = (query: string) => {
+      const q = query.trim().toLowerCase();
+      if (!q) {
+        selectedNodeIds.value = [];
+        return [];
+      }
+      return nodes.value
+        .filter((node) => {
+          const haystack = [
+            node.text || "",
+            node.label || "",
+            node.url || "",
+            node.file || "",
+          ].join(" ").toLowerCase();
+          return haystack.includes(q);
+        })
+        .map((node) => node.id);
+    };
+
+    const focusNode = (nodeId: string) => {
+      const node = nodes.value.find((item) => item.id === nodeId);
+      if (!node || !viewport.value) return;
+      selectedNodeIds.value = [nodeId];
+      selectedEdgeId.value = null;
+      const centerX = node.x + node.width / 2;
+      const centerY = node.y + node.height / 2;
+      camera.x = viewport.value.clientWidth / 2 - centerX * camera.scale;
+      camera.y = viewport.value.clientHeight / 2 - centerY * camera.scale;
     };
 
     // Minimap drag-to-pan
@@ -1949,6 +2074,7 @@ export default defineComponent({
       groups,
       textNodes,
       linkNodes,
+      imageNodes,
       edgesSvgStyle,
       edgesSvgTransform,
       renderedEdges,
@@ -2032,9 +2158,15 @@ export default defineComponent({
       onImportCanvas,
       onFileSelected,
       onExportCanvas,
+      openImagePicker,
+      onImageSelected,
       applyRemoteData,
       applyRemoteOp,
       getCanvasData,
+      duplicateSelection,
+      searchNodes,
+      focusNode,
+      imageInput,
     };
   },
 });
@@ -2088,6 +2220,35 @@ export default defineComponent({
   font-weight: 600;
   color: rgba(255, 255, 255, 0.5);
   white-space: nowrap;
+}
+
+.canvas-node-image {
+  overflow: hidden;
+  display: flex;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 0;
+}
+.node-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  user-select: none;
+}
+.node-image-label {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  max-width: calc(100% - 16px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.9);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Group colors */
