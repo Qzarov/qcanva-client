@@ -37,15 +37,50 @@
       </div>
     </div>
 
+    <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
+      {{ feedback.message }}
+    </div>
+
     <div v-if="loading" class="dash-loading">Loading...</div>
 
     <template v-else>
+      <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
+        <div class="dash-section-head">
+          <h2>Folders</h2>
+          <button class="btn-ghost btn-sm" @click.stop="openFolderModal()" :disabled="isBusy">+ Folder canvas</button>
+        </div>
+        <div class="folder-manager-list">
+          <div v-for="folder in folderSummaries" :key="folder.name" class="folder-manager-row">
+            <button class="folder-manager-main" @click.stop="searchQuery = folder.name">
+              <span class="folder-manager-name">{{ folder.name }}</span>
+              <span class="folder-manager-count">{{ folder.count }} canvas{{ folder.count === 1 ? '' : 'es' }}</span>
+            </button>
+            <div class="folder-manager-actions">
+              <button class="folder-manager-btn" @click.stop="openFolderModal(folder.name)" :disabled="isBusy">Add canvas</button>
+              <button class="folder-manager-btn" @click.stop="openRenameFolderModal(folder.name)" :disabled="isBusy">Rename</button>
+              <button class="folder-manager-btn danger" @click.stop="deleteFolder(folder.name)" :disabled="isBusy">Delete</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="isLoggedIn && groupedOwnCanvases.length" class="dash-section">
-        <h2>My folders</h2>
+        <div class="dash-section-head">
+          <h2>My folders</h2>
+          <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
+        </div>
         <div v-for="group in groupedOwnCanvases" :key="'own-' + group.name" class="folder-section">
           <div class="folder-title-row">
             <div class="folder-title">{{ group.name }}</div>
-            <button class="folder-action" @click.stop="openFolderModal(group.name)">Add canvas</button>
+            <div class="folder-inline-actions">
+              <button class="folder-action" @click.stop="openFolderModal(group.name)" :disabled="isBusy">Add canvas</button>
+              <button
+                v-if="group.name !== 'Unsorted'"
+                class="folder-action"
+                @click.stop="openRenameFolderModal(group.name)"
+                :disabled="isBusy"
+              >Rename</button>
+            </div>
           </div>
           <div class="dash-grid">
             <div
@@ -78,12 +113,12 @@
                   :style="{ '--tag-color': tag.color }"
                 >#{{ tag.name }}</span>
               </div>
-              <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions">⋯</button>
-              <button class="card-delete" @click.stop="deleteCanvas(c.id)" title="Delete">x</button>
+              <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
+              <button class="card-delete" @click.stop="deleteCanvas(c)" title="Delete" :disabled="isBusy">x</button>
               <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-                <button class="card-menu-item" @click="openMoveFolderModal(c)">Move to folder</button>
-                <button class="card-menu-item" @click="openTagsModal(c)">Edit tags</button>
-                <button class="card-menu-item" @click="openTransferModal(c)">Transfer ownership</button>
+                <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
+                <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
+                <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
               </div>
             </div>
           </div>
@@ -118,10 +153,11 @@
               class="card-manage"
               @click.stop="toggleCardMenu(c.id)"
               title="Canvas actions"
+              :disabled="isBusy"
             >⋯</button>
             <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(c)">Move to folder</button>
-              <button class="card-menu-item" @click="openTagsModal(c)">Edit tags</button>
+              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
+              <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
             </div>
           </div>
         </div>
@@ -196,8 +232,32 @@
           >{{ folderName }}</button>
         </div>
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeFolderModal">Cancel</button>
-          <button class="btn-primary" @click="saveFolderModal">{{ folderModal.canvasId ? 'Move' : 'Create' }}</button>
+          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !folderModal.value.trim()">
+            {{ actionLabel(folderModal.canvasId ? 'move-folder' : 'create-folder-canvas', folderModal.canvasId ? 'Move' : 'Create') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Rename folder</h3>
+          <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
+        </div>
+        <input
+          v-model.trim="renameFolderModal.value"
+          class="dashboard-modal-input"
+          placeholder="Folder name"
+          @keydown.enter.prevent="saveRenameFolderModal"
+        />
+        <p class="dashboard-modal-note">All canvases from this folder will move to the new folder name.</p>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
+            {{ actionLabel('rename-folder', 'Save') }}
+          </button>
         </div>
       </div>
     </div>
@@ -219,15 +279,18 @@
                 :class="{ active: tag.color === color }"
                 :style="{ background: color }"
                 @click="tag.color = color"
+                :disabled="isBusy"
               ></button>
             </div>
-            <button class="tag-remove-btn" @click="removeTag(index)">x</button>
+            <button class="tag-remove-btn" @click="removeTag(index)" :disabled="isBusy">x</button>
           </div>
         </div>
-        <button class="btn-ghost tag-add-btn" @click="addTag">+ Add tag</button>
+        <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="isBusy">+ Add tag</button>
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTagsModal">Cancel</button>
-          <button class="btn-primary" @click="saveTagsModal">Save tags</button>
+          <button class="btn-ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveTagsModal" :disabled="isBusy">
+            {{ actionLabel('save-tags', 'Save tags') }}
+          </button>
         </div>
       </div>
     </div>
@@ -247,8 +310,10 @@
         />
         <p class="dashboard-modal-note">The current owner will become an editor.</p>
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTransferModal">Cancel</button>
-          <button class="btn-primary" @click="saveTransferModal">Transfer</button>
+          <button class="btn-ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
+            {{ actionLabel('transfer-ownership', 'Transfer') }}
+          </button>
         </div>
       </div>
     </div>
@@ -261,6 +326,7 @@ import { useRouter } from 'vue-router';
 import { canvas, clearToken, isAdmin, isAuthenticated } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
+type FeedbackState = { type: 'success' | 'error'; message: string };
 type CanvasRecord = {
   id: string;
   title: string;
@@ -290,11 +356,19 @@ export default defineComponent({
     const searchQuery = ref('');
     const selectedTag = ref('');
     const openMenuCanvasId = ref('');
+    const pendingAction = ref('');
+    const feedback = ref<FeedbackState>({ type: 'success', message: '' });
+    let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
     const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
 
     const folderModal = ref<{ open: boolean; canvasId: string; value: string }>({
       open: false,
       canvasId: '',
+      value: '',
+    });
+    const renameFolderModal = ref<{ open: boolean; sourceName: string; value: string }>({
+      open: false,
+      sourceName: '',
       value: '',
     });
     const tagsModal = ref<{ open: boolean; canvasId: string; tags: CanvasTag[] }>({
@@ -370,6 +444,39 @@ export default defineComponent({
       }
       return Array.from(names).sort();
     });
+    const folderSummaries = computed(() =>
+      folderNames.value.map((name) => ({
+        name,
+        count: own.value.filter((canvasRecord) => canvasRecord.folder === name).length,
+      })),
+    );
+    const isBusy = computed(() => pendingAction.value.length > 0);
+
+    const setFeedback = (type: FeedbackState['type'], message: string) => {
+      feedback.value = { type, message };
+      if (feedbackTimer) clearTimeout(feedbackTimer);
+      feedbackTimer = setTimeout(() => {
+        feedback.value.message = '';
+      }, 2800);
+    };
+
+    const actionLabel = (action: string, idleLabel: string) =>
+      pendingAction.value === action ? 'Saving...' : idleLabel;
+
+    const runAction = async <T>(action: string, task: () => Promise<T>, successMessage?: string) => {
+      pendingAction.value = action;
+      try {
+        const result = await task();
+        if (successMessage) setFeedback('success', successMessage);
+        return result;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Request failed';
+        setFeedback('error', message);
+        throw error;
+      } finally {
+        pendingAction.value = '';
+      }
+    };
 
     const load = async () => {
       loading.value = true;
@@ -389,7 +496,8 @@ export default defineComponent({
     };
 
     const createCanvas = async () => {
-      const c = await canvas.create('Untitled');
+      const c = await runAction('create-canvas', () => canvas.create('Untitled'), 'Canvas created');
+      if (!c) return;
       router.push(`/canvas/${c.id}`);
     };
 
@@ -410,14 +518,53 @@ export default defineComponent({
     const saveFolderModal = async () => {
       const folder = folderModal.value.value.trim();
       if (!folderModal.value.canvasId) {
-        const c = await canvas.create('Untitled', undefined, folder);
+        const c = await runAction('create-folder-canvas', () => canvas.create('Untitled', undefined, folder), `Canvas created in ${folder}`);
+        if (!c) return;
         closeFolderModal();
         router.push(`/canvas/${c.id}`);
         return;
       }
-      const updated = await canvas.update(folderModal.value.canvasId, { folder });
-      applyCanvasUpdate(updated);
+      await runAction('move-folder', () => canvas.update(folderModal.value.canvasId, { folder }), `Moved to ${folder}`);
       closeFolderModal();
+      await load();
+    };
+
+    const openRenameFolderModal = (folderName: string) => {
+      closeCardMenu();
+      renameFolderModal.value = { open: true, sourceName: folderName, value: folderName };
+    };
+
+    const closeRenameFolderModal = () => {
+      renameFolderModal.value = { open: false, sourceName: '', value: '' };
+    };
+
+    const saveRenameFolderModal = async () => {
+      const nextFolder = renameFolderModal.value.value.trim();
+      const currentFolder = renameFolderModal.value.sourceName;
+      if (!nextFolder || nextFolder === currentFolder) {
+        closeRenameFolderModal();
+        return;
+      }
+      const affected = own.value.filter((canvasRecord) => canvasRecord.folder === currentFolder);
+      await runAction(
+        'rename-folder',
+        () => Promise.all(affected.map((canvasRecord) => canvas.update(canvasRecord.id, { folder: nextFolder }))),
+        `Folder renamed to ${nextFolder}`,
+      );
+      closeRenameFolderModal();
+      await load();
+    };
+
+    const deleteFolder = async (folderName: string) => {
+      const affected = own.value.filter((canvasRecord) => canvasRecord.folder === folderName);
+      const confirmed = window.confirm(`Delete folder "${folderName}"? Canvases will move to Unsorted.`);
+      if (!confirmed || !affected.length) return;
+      await runAction(
+        'delete-folder',
+        () => Promise.all(affected.map((canvasRecord) => canvas.update(canvasRecord.id, { folder: '' }))),
+        `Folder ${folderName} removed`,
+      );
+      await load();
     };
 
     const openTagsModal = (c: CanvasRecord) => {
@@ -446,9 +593,9 @@ export default defineComponent({
       const tags = tagsModal.value.tags
         .map((tag) => ({ name: tag.name.trim().toLowerCase(), color: tag.color }))
         .filter((tag) => tag.name);
-      const updated = await canvas.update(tagsModal.value.canvasId, { tags });
-      applyCanvasUpdate(updated);
+      await runAction('save-tags', () => canvas.update(tagsModal.value.canvasId, { tags }), 'Tags saved');
       closeTagsModal();
+      await load();
     };
 
     const openTransferModal = (c: CanvasRecord) => {
@@ -463,14 +610,17 @@ export default defineComponent({
     const saveTransferModal = async () => {
       const email = transferModal.value.email.trim();
       if (!email) return;
-      await canvas.transferOwnership(transferModal.value.canvasId, email);
+      await runAction('transfer-ownership', () => canvas.transferOwnership(transferModal.value.canvasId, email), 'Ownership transferred');
       closeTransferModal();
       await load();
     };
 
-    const deleteCanvas = async (id: string) => {
-      await canvas.delete(id);
-      own.value = own.value.filter((c) => c.id !== id);
+    const deleteCanvas = async (canvasRecord: CanvasRecord) => {
+      const title = canvasRecord.title?.trim() || 'Untitled';
+      const confirmed = window.confirm(`Delete canvas "${title}"?`);
+      if (!confirmed) return;
+      await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
+      own.value = own.value.filter((c) => c.id !== canvasRecord.id);
     };
 
     const applyCanvasUpdate = (updatedRaw: any) => {
@@ -518,9 +668,11 @@ export default defineComponent({
         const text = await file.text();
         const data = JSON.parse(text);
         const title = file.name.replace(/\.(canvas|json)$/, '') || 'Imported';
-        const c = await canvas.create(title, JSON.stringify(data));
+        const c = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(data)), `Imported ${title}`);
+        if (!c) return;
         router.push(`/canvas/${c.id}`);
       } catch (err) {
+        setFeedback('error', err instanceof Error ? err.message : 'Failed to import canvas file');
         console.error('Failed to import canvas file:', err);
       }
       (e.target as HTMLInputElement).value = '';
@@ -541,7 +693,8 @@ export default defineComponent({
       const newTitle = (e.target as HTMLInputElement).value.trim();
       renamingId.value = '';
       if (newTitle && newTitle !== c.title) {
-        const updated = await canvas.update(c.id, { title: newTitle });
+        const updated = await runAction('rename-canvas', () => canvas.update(c.id, { title: newTitle }), 'Canvas renamed');
+        if (!updated) return;
         applyCanvasUpdate(updated);
       }
     };
@@ -560,16 +713,26 @@ export default defineComponent({
       folderNames,
       searchQuery,
       selectedTag,
+      feedback,
+      isBusy,
+      actionLabel,
       openMenuCanvasId,
       tagColors,
       folderModal,
+      renameFolderModal,
       tagsModal,
       transferModal,
+      folderSummaries,
       createCanvas,
+      load,
       openFolderModal,
       openMoveFolderModal,
       saveFolderModal,
       closeFolderModal,
+      openRenameFolderModal,
+      closeRenameFolderModal,
+      saveRenameFolderModal,
+      deleteFolder,
       openTagsModal,
       closeTagsModal,
       addTag,
