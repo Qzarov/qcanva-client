@@ -125,6 +125,8 @@ export const canvas = {
   ) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
   resync: resyncCanvas,
+  duplicate: (id: string) =>
+    request<any>(`/canvas/${id}/duplicate`, { method: 'POST' }),
   delete: (id: string) =>
     request<any>(`/canvas/${id}`, { method: 'DELETE' }),
   share: (id: string, email: string, role: string) =>

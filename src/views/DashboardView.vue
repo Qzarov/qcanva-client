@@ -112,6 +112,7 @@
                     <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <button class="card-delete" @click.stop="deleteCanvas(c)" title="Delete" :disabled="isBusy">x</button>
                     <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="duplicateCanvas(c)" :disabled="isBusy">Duplicate</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
                       <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
                       <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
@@ -619,6 +620,13 @@ export default defineComponent({
       await load();
     };
 
+    const duplicateCanvas = async (canvasRecord: CanvasRecord) => {
+      closeCardMenu();
+      const title = canvasRecord.title?.trim() || 'Untitled';
+      await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), `Duplicated "${title}"`);
+      await load();
+    };
+
     const deleteCanvas = async (canvasRecord: CanvasRecord) => {
       const title = canvasRecord.title?.trim() || 'Untitled';
       const confirmed = window.confirm(`Delete canvas "${title}"?`);
@@ -760,6 +768,7 @@ export default defineComponent({
       toggleCardMenu,
       closeCardMenu,
       openCanvas,
+      duplicateCanvas,
       deleteCanvas,
       logout,
       formatDate,
