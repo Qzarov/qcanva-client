@@ -66,6 +66,9 @@
           <button class="btn-ghost btn-sm" @click="toggleHistory">
             History
           </button>
+          <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts" title="Keyboard Shortcuts">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+          </button>
         </div>
       </div>
 
@@ -199,6 +202,32 @@
         </div>
       </div>
 
+      <!-- Keyboard Shortcuts dialog -->
+      <div v-if="showShortcuts" class="shortcuts-backdrop" @click.self="showShortcuts = false">
+        <div class="shortcuts-panel">
+          <div class="shortcuts-header">
+            <h3>Keyboard Shortcuts</h3>
+            <button class="btn-ghost btn-sm" @click="showShortcuts = false">&times;</button>
+          </div>
+          <div class="shortcuts-grid">
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Undo</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Redo</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>Copy selected</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>V</kbd><span>Paste</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>D</kbd><span>Duplicate</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>A</kbd><span>Select all</span></div>
+            <div class="shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>Delete selected</span></div>
+            <div class="shortcut-row"><kbd>Escape</kbd><span>Deselect all</span></div>
+            <div class="shortcut-row"><kbd>Double-click</kbd><span>Edit node text</span></div>
+            <div class="shortcut-row"><kbd>Shift</kbd>+Click<span>Multi-select</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+Scroll<span>Zoom in/out</span></div>
+            <div class="shortcut-row"><kbd>Middle mouse</kbd><span>Pan canvas</span></div>
+            <div class="shortcut-row"><kbd>Right-click</kbd><span>Context menu</span></div>
+            <div class="shortcut-row"><kbd>Drag from edge</kbd><span>Create connection</span></div>
+          </div>
+        </div>
+      </div>
+
       <CanvasLoader
         ref="canvasRef"
         :initial-data="canvasData"
@@ -218,6 +247,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 interface CanvasChangePayload {
@@ -233,7 +263,9 @@ export default defineComponent({
     const router = useRouter();
     const canvasId = route.params.id as string;
 
+    const { show: showToast } = useToast();
     const canvasRef = ref<any>(null);
+    const showShortcuts = ref(false);
 
     const aligns = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
@@ -339,7 +371,9 @@ export default defineComponent({
             canvasRef.value?.applyRemoteData(parsed);
             revision.value = nextRevision;
             isApplyingRemote = false;
-          } catch {}
+          } catch (err) {
+            console.error('Failed to apply remote canvas update', err);
+          }
         });
         onRemoteOp((op: any, nextRevision: number) => {
           isApplyingRemote = true;
@@ -416,7 +450,9 @@ export default defineComponent({
           const updated = await canvasApi.update(canvasId, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges }) });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
-        } catch {}
+        } catch (err: any) {
+          showToast(err.message || 'Failed to save canvas', 'error');
+        }
       }
       saving.value = false;
     };
@@ -443,39 +479,69 @@ export default defineComponent({
 
     const saveTitle = async () => {
       if (!canManageSettings.value) return;
-      await canvasApi.update(canvasId, { title: title.value });
+      try {
+        await canvasApi.update(canvasId, { title: title.value });
+      } catch (err: any) {
+        showToast(err.message || 'Failed to save title', 'error');
+      }
     };
 
     const togglePublicEdit = async (e: Event) => {
       if (!canManageSettings.value) return;
       allowPublicEdit.value = (e.target as HTMLInputElement).checked;
-      await canvasApi.update(canvasId, { allowPublicEdit: allowPublicEdit.value });
+      try {
+        await canvasApi.update(canvasId, { allowPublicEdit: allowPublicEdit.value });
+        showToast(allowPublicEdit.value ? 'Public edit enabled' : 'Public edit disabled', 'success');
+      } catch (err: any) {
+        allowPublicEdit.value = !allowPublicEdit.value;
+        showToast(err.message || 'Failed to update setting', 'error');
+      }
     };
 
     const cycleVisibility = async () => {
       const order: Array<'private' | 'authenticated' | 'public'> = ['private', 'authenticated', 'public'];
-      const idx = order.indexOf(visibility.value);
-      visibility.value = order[(idx + 1) % order.length]!;
+      const prevIdx = order.indexOf(visibility.value);
+      const prev = visibility.value;
+      visibility.value = order[(prevIdx + 1) % order.length]!;
       isPublic.value = visibility.value === 'public';
-      await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: visibility.value });
+      try {
+        await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: visibility.value });
+        showToast(`Visibility: ${visibility.value}`, 'success');
+      } catch (err: any) {
+        visibility.value = prev;
+        isPublic.value = prev === 'public';
+        showToast(err.message || 'Failed to update visibility', 'error');
+      }
     };
 
     const loadPermissions = async () => {
       try {
         permissions.value = await canvasApi.permissions(canvasId);
-      } catch {}
+      } catch (err: any) {
+        showToast(err.message || 'Failed to load permissions', 'error');
+      }
     };
 
     const doShare = async () => {
       if (!shareEmail.value) return;
-      await canvasApi.share(canvasId, shareEmail.value, shareRole.value);
-      shareEmail.value = '';
-      loadPermissions();
+      try {
+        await canvasApi.share(canvasId, shareEmail.value, shareRole.value);
+        showToast(`Shared with ${shareEmail.value}`, 'success');
+        shareEmail.value = '';
+        loadPermissions();
+      } catch (err: any) {
+        showToast(err.message || 'Failed to share canvas', 'error');
+      }
     };
 
     const doRevoke = async (userId: string) => {
-      await canvasApi.revoke(canvasId, userId);
-      loadPermissions();
+      try {
+        await canvasApi.revoke(canvasId, userId);
+        showToast('Access revoked', 'success');
+        loadPermissions();
+      } catch (err: any) {
+        showToast(err.message || 'Failed to revoke access', 'error');
+      }
     };
 
     const runCanvasSearch = () => {
@@ -529,7 +595,9 @@ export default defineComponent({
         const res = await canvasApi.history(canvasId, HISTORY_PAGE + 1, historyItems.value.length);
         hasMoreHistory.value = res.items.length > HISTORY_PAGE;
         historyItems.value.push(...res.items.slice(0, HISTORY_PAGE));
-      } catch {} finally {
+      } catch (err: any) {
+        showToast(err.message || 'Failed to load history', 'error');
+      } finally {
         historyLoading.value = false;
       }
     };
@@ -538,8 +606,9 @@ export default defineComponent({
       try {
         await canvasApi.updateHistoryAccess(canvasId, access);
         historyAccess.value = access;
+        showToast('History access updated', 'success');
       } catch (e: any) {
-        alert(e.message);
+        showToast(e.message || 'Failed to update history access', 'error');
       }
     };
 
@@ -598,7 +667,9 @@ export default defineComponent({
           const res = await canvasApi.list();
           const all = [...(res.own || []), ...(res.shared || []), ...(res.public || [])];
           embedCanvases.value = all.filter((c: any) => c.id !== canvasId);
-        } catch {} finally {
+        } catch (err: any) {
+          showToast(err.message || 'Failed to load canvases', 'error');
+        } finally {
           embedLoading.value = false;
         }
       }
@@ -642,6 +713,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
+      showShortcuts,
     };
   },
 });

@@ -2650,10 +2650,15 @@ g:hover > .edge-midpoint-conn {
 .resize-handle-b { height: 8px; width: calc(100% - 24px); left: 12px; bottom: -4px; cursor: ns-resize; border-radius: 3px; }
 
 /* ===== Connection points ===== */
+@keyframes conn-pulse {
+  0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+  50% { transform: translate(-50%, -50%) scale(1.5); opacity: 0.6; }
+  100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+}
 .conn-point {
   position: absolute;
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: rgba(124, 138, 255, 0.7);
   border: 2px solid rgba(124, 138, 255, 1);
@@ -2663,8 +2668,19 @@ g:hover > .edge-midpoint-conn {
   z-index: 20;
   transform: translate(-50%, -50%);
 }
+.canvas-node.is-selected .conn-point {
+  opacity: 0.6;
+}
 .canvas-node:hover .conn-point {
   opacity: 1;
+  animation: conn-pulse 0.6s ease-in-out 1;
+}
+@media (hover: none) {
+  .canvas-node.is-selected .conn-point {
+    opacity: 0.8;
+    width: 28px;
+    height: 28px;
+  }
 }
 .conn-top { left: 50%; top: 0; }
 .conn-bottom { left: 50%; top: 100%; }

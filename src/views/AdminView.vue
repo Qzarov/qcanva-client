@@ -93,6 +93,7 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
+import { useToast } from '../composables/useToast';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 function getToken() { return localStorage.getItem('token'); }
@@ -113,6 +114,7 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
 
 export default defineComponent({
   setup() {
+    const { show: showToast } = useToast();
     const users = ref<any[]>([]);
     const canvases = ref<any[]>([]);
     const stats = ref({ userCount: 0, canvasCount: 0 });
@@ -140,7 +142,7 @@ export default defineComponent({
         stats.value = s;
         canvases.value = c;
       } catch (e: any) {
-        alert(e.message);
+        showToast(e.message || 'Failed to load admin data', 'error');
       }
       loading.value = false;
     };
@@ -153,8 +155,9 @@ export default defineComponent({
         });
         const user = users.value.find((u) => u.id === userId);
         if (user) user.role = role;
+        showToast(`Role updated to ${role}`, 'success');
       } catch (e: any) {
-        alert(e.message);
+        showToast(e.message || 'Failed to change role', 'error');
       }
     };
 
@@ -166,8 +169,9 @@ export default defineComponent({
         });
         const c = canvases.value.find((cv: any) => cv.id === canvasId);
         if (c) c.historyAccess = access;
+        showToast('History access updated', 'success');
       } catch (e: any) {
-        alert(e.message);
+        showToast(e.message || 'Failed to update history access', 'error');
       }
     };
 

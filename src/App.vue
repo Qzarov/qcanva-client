@@ -1,6 +1,16 @@
 <template>
   <router-view />
+  <ToastContainer />
 </template>
+
+<script lang="ts">
+import { defineComponent } from 'vue';
+import ToastContainer from './components/ToastContainer.vue';
+
+export default defineComponent({
+  components: { ToastContainer },
+});
+</script>
 
 <style>
 #app {
