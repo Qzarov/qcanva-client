@@ -134,4 +134,8 @@ export const canvas = {
   permissions: (id: string) => request<any[]>(`/canvas/${id}/permissions`),
   transferOwnership: (id: string, email: string) =>
     request<any>(`/canvas/${id}/transfer-ownership`, { method: 'POST', body: JSON.stringify({ email }) }),
+  history: (id: string, limit = 50, offset = 0) =>
+    request<{ historyAccess: string; items: any[] }>(`/canvas/${id}/history?limit=${limit}&offset=${offset}`),
+  updateHistoryAccess: (id: string, historyAccess: string) =>
+    request<{ historyAccess: string }>(`/canvas/${id}/history-access`, { method: 'PUT', body: JSON.stringify({ historyAccess }) }),
 };

@@ -60,6 +60,9 @@
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">
             Share
           </button>
+          <button class="btn-ghost btn-sm" @click="toggleHistory">
+            History
+          </button>
         </div>
       </div>
 
@@ -133,6 +136,40 @@
         </label>
       </div>
 
+      <!-- History panel -->
+      <div v-if="showHistory" class="history-panel">
+        <div class="history-panel-header">
+          <h3>History</h3>
+          <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
+        </div>
+        <!-- History access control (owner/admin) -->
+        <div v-if="canManageSettings || isAdmin()" class="history-access-control">
+          <label>Who can view history:</label>
+          <select :value="historyAccess" @change="changeHistoryAccess(($event.target as HTMLSelectElement).value)">
+            <option value="owner">Owner only</option>
+            <option value="editors">Editors</option>
+            <option value="viewers">All viewers</option>
+          </select>
+        </div>
+        <div v-if="historyLoading && historyItems.length === 0" class="history-loading">Loading...</div>
+        <div v-else-if="historyError" class="history-error">{{ historyError }}</div>
+        <div v-else-if="historyItems.length === 0" class="history-empty">No history yet</div>
+        <div v-else class="history-list">
+          <div v-for="item in historyItems" :key="item.id" class="history-item">
+            <div class="history-item-header">
+              <span class="history-op-type" :class="'history-op-' + opCategory(item.type)">{{ opLabel(item.type) }}</span>
+              <span class="history-user">{{ item.userName }}</span>
+              <span class="history-rev">r{{ item.revision }}</span>
+            </div>
+            <div class="history-item-detail">{{ opDetail(item) }}</div>
+            <div class="history-item-date">{{ formatHistoryDate(item.createdAt) }}</div>
+          </div>
+          <button v-if="hasMoreHistory" class="btn-ghost btn-sm history-load-more" @click="loadMoreHistory" :disabled="historyLoading">
+            Load more
+          </button>
+        </div>
+      </div>
+
       <CanvasLoader
         ref="canvasRef"
         :initial-data="canvasData"
@@ -149,7 +186,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
 import { useRoute } from 'vue-router';
-import { canvas as canvasApi, isAuthenticated } from '../api/client';
+import { canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
@@ -424,6 +461,98 @@ export default defineComponent({
       canvasRef.value?.focusNode?.(searchMatches.value[searchIndex.value]);
     };
 
+    // --- History ---
+    const showHistory = ref(false);
+    const historyItems = ref<any[]>([]);
+    const historyLoading = ref(false);
+    const historyError = ref('');
+    const historyAccess = ref('owner');
+    const hasMoreHistory = ref(false);
+    const HISTORY_PAGE = 30;
+
+    const toggleHistory = async () => {
+      showHistory.value = !showHistory.value;
+      if (showHistory.value && historyItems.value.length === 0) {
+        await loadHistory();
+      }
+    };
+
+    const loadHistory = async () => {
+      historyLoading.value = true;
+      historyError.value = '';
+      try {
+        const res = await canvasApi.history(canvasId, HISTORY_PAGE + 1, 0);
+        historyAccess.value = res.historyAccess;
+        hasMoreHistory.value = res.items.length > HISTORY_PAGE;
+        historyItems.value = res.items.slice(0, HISTORY_PAGE);
+      } catch (e: any) {
+        historyError.value = e.message || 'Cannot load history';
+      } finally {
+        historyLoading.value = false;
+      }
+    };
+
+    const loadMoreHistory = async () => {
+      historyLoading.value = true;
+      try {
+        const res = await canvasApi.history(canvasId, HISTORY_PAGE + 1, historyItems.value.length);
+        hasMoreHistory.value = res.items.length > HISTORY_PAGE;
+        historyItems.value.push(...res.items.slice(0, HISTORY_PAGE));
+      } catch {} finally {
+        historyLoading.value = false;
+      }
+    };
+
+    const changeHistoryAccess = async (access: string) => {
+      try {
+        await canvasApi.updateHistoryAccess(canvasId, access);
+        historyAccess.value = access;
+      } catch (e: any) {
+        alert(e.message);
+      }
+    };
+
+    const opLabels: Record<string, string> = {
+      'nodes-move': 'Moved nodes',
+      'node-resize': 'Resized node',
+      'node-add': 'Added node',
+      'node-delete': 'Deleted nodes',
+      'node-update': 'Updated node',
+      'edge-add': 'Added edge',
+      'edge-delete': 'Deleted edge',
+      'edge-update': 'Updated edge',
+    };
+
+    const opLabel = (type: string) => opLabels[type] || type;
+
+    const opCategory = (type: string) => {
+      if (type.includes('add')) return 'add';
+      if (type.includes('delete')) return 'delete';
+      return 'change';
+    };
+
+    const opDetail = (item: any) => {
+      try {
+        const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload;
+        switch (item.type) {
+          case 'node-add': return payload.node?.text?.slice(0, 60) || payload.node?.type || '';
+          case 'node-delete': return `${payload.ids?.length || 1} node(s)`;
+          case 'nodes-move': return `${payload.moves?.length || 1} node(s)`;
+          case 'node-update': return Object.keys(payload.changes || {}).join(', ');
+          case 'edge-add': return `${payload.edge?.fromNode?.slice(0, 8)} → ${payload.edge?.toNode?.slice(0, 8)}`;
+          default: return '';
+        }
+      } catch {
+        return '';
+      }
+    };
+
+    const formatHistoryDate = (d: string) => {
+      const date = new Date(d);
+      const pad = (n: number) => String(n).padStart(2, '0');
+      return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    };
+
     onMounted(load);
     onUnmounted(() => {
       if (saveTimeout) clearTimeout(saveTimeout);
@@ -437,8 +566,11 @@ export default defineComponent({
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       allowPublicEdit, canManageSettings, togglePublicEdit,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
-      isAuthenticated,
+      isAuthenticated, isAdmin,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
+      showHistory, historyItems, historyLoading, historyError, historyAccess, hasMoreHistory,
+      toggleHistory, loadMoreHistory, changeHistoryAccess,
+      opLabel, opCategory, opDetail, formatHistoryDate,
     };
   },
 });

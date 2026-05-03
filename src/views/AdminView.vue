@@ -21,6 +21,7 @@
         </div>
       </div>
 
+      <h2 class="admin-section-title">Users</h2>
       <table class="admin-table">
         <thead>
           <tr>
@@ -53,6 +54,38 @@
           </tr>
         </tbody>
       </table>
+
+      <h2 class="admin-section-title">Canvas History Access</h2>
+      <table class="admin-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Owner</th>
+            <th>Visibility</th>
+            <th>History access</th>
+            <th>Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="c in canvases" :key="c.id">
+            <td>{{ c.title }}</td>
+            <td>{{ c.ownerName || c.ownerEmail }}</td>
+            <td><span class="badge" :class="visBadge(c.visibility)">{{ c.visibility }}</span></td>
+            <td>
+              <select
+                class="role-select"
+                :value="c.historyAccess"
+                @change="changeHistoryAccess(c.id, ($event.target as HTMLSelectElement).value)"
+              >
+                <option value="owner">Owner only</option>
+                <option value="editors">Editors</option>
+                <option value="viewers">All viewers</option>
+              </select>
+            </td>
+            <td>{{ formatDate(c.updatedAt) }}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </div>
 </template>
@@ -81,6 +114,7 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
 export default defineComponent({
   setup() {
     const users = ref<any[]>([]);
+    const canvases = ref<any[]>([]);
     const stats = ref({ userCount: 0, canvasCount: 0 });
     const loading = ref(true);
     const superAdmin = isSuperAdmin();
@@ -97,12 +131,14 @@ export default defineComponent({
 
     const load = async () => {
       try {
-        const [u, s] = await Promise.all([
+        const [u, s, c] = await Promise.all([
           adminRequest<any[]>('/admin/users'),
           adminRequest<any>('/admin/stats'),
+          adminRequest<any[]>('/admin/canvases'),
         ]);
         users.value = u;
         stats.value = s;
+        canvases.value = c;
       } catch (e: any) {
         alert(e.message);
       }
@@ -122,6 +158,25 @@ export default defineComponent({
       }
     };
 
+    const changeHistoryAccess = async (canvasId: string, access: string) => {
+      try {
+        await adminRequest(`/admin/canvases/${canvasId}/history-access`, {
+          method: 'PUT',
+          body: JSON.stringify({ historyAccess: access }),
+        });
+        const c = canvases.value.find((cv: any) => cv.id === canvasId);
+        if (c) c.historyAccess = access;
+      } catch (e: any) {
+        alert(e.message);
+      }
+    };
+
+    const visBadge = (vis: string) => {
+      if (vis === 'public') return 'badge-owner';
+      if (vis === 'authenticated') return 'badge-superadmin';
+      return 'badge-shared';
+    };
+
     const roleBadge = (role: string) => {
       if (role === 'superadmin') return 'badge-superadmin';
       if (role === 'admin') return 'badge-owner';
@@ -134,7 +189,7 @@ export default defineComponent({
       });
 
     onMounted(load);
-    return { users, stats, loading, superAdmin, currentUserId, changeRole, roleBadge, formatDate };
+    return { users, canvases, stats, loading, superAdmin, currentUserId, changeRole, changeHistoryAccess, roleBadge, visBadge, formatDate };
   },
 });
 </script>
