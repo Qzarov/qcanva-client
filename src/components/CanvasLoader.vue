@@ -297,6 +297,61 @@
           <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
         </template>
       </div>
+      <!-- Canvas embed nodes -->
+      <div
+        v-for="node in canvasNodes"
+        :key="node.id"
+        class="canvas-node canvas-node-embed"
+        :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
+        :style="nodePosition(node)"
+        @mousedown.stop="onNodeDragStart($event, node)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
+        @dblclick.stop="onCanvasEmbedDblClick(node.canvasId!)"
+      >
+        <div class="embed-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
+          </svg>
+          <span class="embed-title">{{ getEmbeddedCanvasData(node.canvasId!).title || 'Loading...' }}</span>
+        </div>
+        <div class="embed-preview">
+          <div v-if="getEmbeddedCanvasData(node.canvasId!).loading" class="embed-loading">Loading...</div>
+          <div v-else-if="getEmbeddedCanvasData(node.canvasId!).error" class="embed-error">Cannot load canvas</div>
+          <svg v-else class="embed-minimap" :viewBox="embeddedCanvasViewBox(node.canvasId!)" preserveAspectRatio="xMidYMid meet">
+            <rect
+              v-for="en in getEmbeddedCanvasData(node.canvasId!).nodes"
+              :key="'emb-' + en.id"
+              :x="en.x"
+              :y="en.y"
+              :width="en.width || 100"
+              :height="en.height || 60"
+              :fill="en.type === 'group' ? 'rgba(255,255,255,0.05)' : 'rgba(124,138,255,0.25)'"
+              :stroke="en.type === 'group' ? 'rgba(255,255,255,0.1)' : 'rgba(124,138,255,0.5)'"
+              stroke-width="2"
+              rx="3"
+            />
+            <path
+              v-for="ee in getEmbeddedCanvasData(node.canvasId!).edges"
+              :key="'embe-' + ee.id"
+              :d="embeddedEdgePath(ee, getEmbeddedCanvasData(node.canvasId!).nodes)"
+              stroke="rgba(255,255,255,0.2)"
+              stroke-width="1.5"
+              fill="none"
+            />
+          </svg>
+        </div>
+        <template v-if="isNodeSelected(node.id)">
+          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+        </template>
+        <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
+        <div class="conn-point conn-bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
+        <div class="conn-point conn-left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
+        <div class="conn-point conn-right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
+      </div>
+
       <!-- Remote cursors -->
       <div
         v-for="cursor in remoteCursors"
@@ -384,6 +439,7 @@ interface CanvasNode {
   file?: string;
   color?: string;
   label?: string;
+  canvasId?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   firstLineTextAlign?: "left" | "center" | "right" | "justify";
   borderStyle?: string;
@@ -455,7 +511,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op"],
+  emits: ["change", "cursor-move", "op", "open-canvas"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -486,7 +542,14 @@ export default defineComponent({
         nodes.value = props.initialData.nodes || [];
         edges.value = props.initialData.edges || [];
       }
-      nextTick(() => fitToContent());
+      nextTick(() => {
+        fitToContent();
+        for (const node of nodes.value) {
+          if (node.type === 'canvas' && node.canvasId) {
+            loadEmbeddedCanvas(node.canvasId);
+          }
+        }
+      });
     };
 
     // Emit change when nodes or edges mutate (full-sync for DB persistence)
@@ -602,6 +665,54 @@ export default defineComponent({
     const textNodes = computed(() => nodes.value.filter((n) => n.type === "text"));
     const linkNodes = computed(() => nodes.value.filter((n) => n.type === "link"));
     const imageNodes = computed(() => nodes.value.filter((n) => n.type === "image"));
+    const canvasNodes = computed(() => nodes.value.filter((n) => n.type === "canvas"));
+
+    const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
+
+    const loadEmbeddedCanvas = async (canvasId: string) => {
+      if (embeddedCanvasCache[canvasId]) return;
+      embeddedCanvasCache[canvasId] = { title: '', nodes: [], edges: [], loading: true, error: false };
+      try {
+        const { canvas: canvasApi } = await import('../api/client');
+        const res = await canvasApi.get(canvasId);
+        const data = JSON.parse(res.canvas.data || '{"nodes":[],"edges":[]}');
+        embeddedCanvasCache[canvasId] = { title: res.canvas.title || 'Untitled', nodes: data.nodes || [], edges: data.edges || [], loading: false, error: false };
+      } catch {
+        embeddedCanvasCache[canvasId] = { title: 'Error', nodes: [], edges: [], loading: false, error: true };
+      }
+    };
+
+    const getEmbeddedCanvasData = (canvasId: string) => {
+      if (!embeddedCanvasCache[canvasId]) {
+        loadEmbeddedCanvas(canvasId);
+      }
+      return embeddedCanvasCache[canvasId] || { title: '', nodes: [], edges: [], loading: true, error: false };
+    };
+
+    const embeddedCanvasViewBox = (canvasId: string) => {
+      const data = embeddedCanvasCache[canvasId];
+      if (!data || data.nodes.length === 0) return '0 0 800 600';
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of data.nodes) {
+        minX = Math.min(minX, n.x);
+        minY = Math.min(minY, n.y);
+        maxX = Math.max(maxX, n.x + (n.width || 100));
+        maxY = Math.max(maxY, n.y + (n.height || 60));
+      }
+      const pad = 40;
+      return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
+    };
+
+    const embeddedEdgePath = (edge: any, allNodes: any[]) => {
+      const from = allNodes.find((n: any) => n.id === edge.fromNode);
+      const to = allNodes.find((n: any) => n.id === edge.toNode);
+      if (!from || !to) return '';
+      const fx = from.x + (from.width || 100) / 2;
+      const fy = from.y + (from.height || 60) / 2;
+      const tx = to.x + (to.width || 100) / 2;
+      const ty = to.y + (to.height || 60) / 2;
+      return `M${fx},${fy} L${tx},${ty}`;
+    };
 
     // Bounding box for SVG edges — explicit position & size
     const contentBounds = computed(() => {
@@ -1952,6 +2063,29 @@ export default defineComponent({
       (e.target as HTMLInputElement).value = "";
     };
 
+    const onCanvasEmbedDblClick = (canvasId: string) => {
+      emit("open-canvas", canvasId);
+    };
+
+    const addCanvasEmbed = (canvasId: string) => {
+      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
+      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
+      const newNode: CanvasNode = {
+        id: genId(),
+        type: "canvas",
+        x: centerX - 200,
+        y: centerY - 150,
+        width: 400,
+        height: 300,
+        canvasId,
+      };
+      pushUndo();
+      nodes.value.push(newNode);
+      emitOp({ type: 'node-add', node: { ...newNode } });
+      selectedNodeIds.value = [newNode.id];
+      loadEmbeddedCanvas(canvasId);
+    };
+
     const searchNodes = (query: string) => {
       const q = query.trim().toLowerCase();
       if (!q) {
@@ -2075,6 +2209,12 @@ export default defineComponent({
       textNodes,
       linkNodes,
       imageNodes,
+      canvasNodes,
+      getEmbeddedCanvasData,
+      embeddedCanvasViewBox,
+      embeddedEdgePath,
+      addCanvasEmbed,
+      onCanvasEmbedDblClick,
       edgesSvgStyle,
       edgesSvgTransform,
       renderedEdges,

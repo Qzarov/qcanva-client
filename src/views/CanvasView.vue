@@ -60,6 +60,9 @@
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">
             Share
           </button>
+          <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker">
+            Embed
+          </button>
           <button class="btn-ghost btn-sm" @click="toggleHistory">
             History
           </button>
@@ -170,6 +173,32 @@
         </div>
       </div>
 
+      <!-- Embed canvas picker -->
+      <div v-if="showEmbedPicker" class="embed-picker-panel">
+        <div class="history-panel-header">
+          <h3>Embed Canvas</h3>
+          <button class="btn-ghost btn-sm" @click="showEmbedPicker = false">×</button>
+        </div>
+        <input
+          v-model.trim="embedSearch"
+          class="embed-search-input"
+          placeholder="Search canvases..."
+        />
+        <div v-if="embedLoading" class="history-loading">Loading...</div>
+        <div v-else class="embed-canvas-list">
+          <div
+            v-for="c in filteredEmbedCanvases"
+            :key="c.id"
+            class="embed-canvas-item"
+            @click="doEmbed(c.id)"
+          >
+            <span class="embed-canvas-title">{{ c.title || 'Untitled' }}</span>
+            <span class="embed-canvas-owner">{{ c.ownerName || c.ownerEmail || '' }}</span>
+          </div>
+          <div v-if="filteredEmbedCanvases.length === 0" class="history-empty">No canvases found</div>
+        </div>
+      </div>
+
       <CanvasLoader
         ref="canvasRef"
         :initial-data="canvasData"
@@ -178,6 +207,7 @@
         @change="onCanvasChange"
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
+        @open-canvas="onOpenCanvas"
       />
     </template>
   </div>
@@ -185,7 +215,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -200,6 +230,7 @@ export default defineComponent({
   components: { CanvasLoader },
   setup() {
     const route = useRoute();
+    const router = useRouter();
     const canvasId = route.params.id as string;
 
     const canvasRef = ref<any>(null);
@@ -553,6 +584,44 @@ export default defineComponent({
       return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     };
 
+    // --- Embed Canvas ---
+    const showEmbedPicker = ref(false);
+    const embedSearch = ref('');
+    const embedCanvases = ref<any[]>([]);
+    const embedLoading = ref(false);
+
+    const openEmbedPicker = async () => {
+      showEmbedPicker.value = true;
+      if (embedCanvases.value.length === 0) {
+        embedLoading.value = true;
+        try {
+          const res = await canvasApi.list();
+          const all = [...(res.own || []), ...(res.shared || []), ...(res.public || [])];
+          embedCanvases.value = all.filter((c: any) => c.id !== canvasId);
+        } catch {} finally {
+          embedLoading.value = false;
+        }
+      }
+    };
+
+    const filteredEmbedCanvases = computed(() => {
+      const q = embedSearch.value.toLowerCase();
+      if (!q) return embedCanvases.value;
+      return embedCanvases.value.filter((c: any) =>
+        (c.title || '').toLowerCase().includes(q) ||
+        (c.ownerName || '').toLowerCase().includes(q)
+      );
+    });
+
+    const doEmbed = (embedCanvasId: string) => {
+      canvasRef.value?.addCanvasEmbed(embedCanvasId);
+      showEmbedPicker.value = false;
+    };
+
+    const onOpenCanvas = (targetCanvasId: string) => {
+      router.push('/canvas/' + targetCanvasId);
+    };
+
     onMounted(load);
     onUnmounted(() => {
       if (saveTimeout) clearTimeout(saveTimeout);
@@ -571,6 +640,8 @@ export default defineComponent({
       showHistory, historyItems, historyLoading, historyError, historyAccess, hasMoreHistory,
       toggleHistory, loadMoreHistory, changeHistoryAccess,
       opLabel, opCategory, opDetail, formatHistoryDate,
+      showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
+      openEmbedPicker, doEmbed, onOpenCanvas,
     };
   },
 });
