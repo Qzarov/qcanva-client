@@ -63,6 +63,10 @@ export function useCanvasSocket(canvasId: string) {
     updatePendingOpsCount();
   }
 
+  function getOptimisticRevision() {
+    return currentRevision.value + pendingOps.value.size;
+  }
+
   function connect() {
     const token = localStorage.getItem('token');
     const s = io(`${WS_URL}/canvas-ws`, {
@@ -186,30 +190,31 @@ export function useCanvasSocket(canvasId: string) {
   function sendUpdate(canvasData: string) {
     socket.value?.emit('canvas-update', {
       canvasData,
-      baseRevision: currentRevision.value,
+      baseRevision: getOptimisticRevision(),
     });
   }
 
   // Granular operation (for real-time sync)
   function sendOp(op: any) {
     const clientOpId = genClientOpId();
+    const baseRevision = getOptimisticRevision();
     const timeout = setTimeout(() => {
       removePendingOp(clientOpId);
       onRejectCb?.({
         clientOpId,
         reason: 'timeout',
-        serverRevision: currentRevision.value,
+        serverRevision: getOptimisticRevision(),
       });
     }, PENDING_OP_TIMEOUT_MS);
     pendingOps.value.set(clientOpId, {
-      baseRevision: currentRevision.value,
+      baseRevision,
       op,
       timeout,
     });
     updatePendingOpsCount();
     socket.value?.emit('canvas-op', {
       op,
-      baseRevision: currentRevision.value,
+      baseRevision,
       clientOpId,
     });
     return clientOpId;
