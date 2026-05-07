@@ -1161,14 +1161,34 @@ export default defineComponent({
       });
     };
 
+    let editSaveTimer: ReturnType<typeof setTimeout> | null = null;
+    const lastEmittedText = new Map<string, string | undefined>();
+
+    const emitTextUpdate = (node: CanvasNode) => {
+      if (editSaveTimer) {
+        clearTimeout(editSaveTimer);
+        editSaveTimer = null;
+      }
+      if (lastEmittedText.get(node.id) === node.text) return;
+      lastEmittedText.set(node.id, node.text);
+      emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
+    };
+
+    const scheduleTextUpdate = (node: CanvasNode) => {
+      if (editSaveTimer) clearTimeout(editSaveTimer);
+      editSaveTimer = setTimeout(() => emitTextUpdate(node), 500);
+    };
+
     const onEditInput = (e: Event, node: CanvasNode) => {
       node.text = (e.target as HTMLTextAreaElement).value;
+      scheduleTextUpdate(node);
+      scheduleChange();
     };
 
     const onEditEnd = () => {
       if (editingNodeId.value) {
         const node = nodes.value.find((n) => n.id === editingNodeId.value);
-        if (node) emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
+        if (node) emitTextUpdate(node);
       }
       editingNodeId.value = null;
       scheduleChange();
@@ -2196,6 +2216,7 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
+      if (editSaveTimer) clearTimeout(editSaveTimer);
       stopAutoPan();
       window.removeEventListener("resize", fitToContent);
       window.removeEventListener("keydown", onKeyDown);
