@@ -396,7 +396,9 @@ export default defineComponent({
           void resyncCanvas();
         });
       } catch (e: any) {
-        error.value = e.message || 'Canvas not found';
+        console.warn('Canvas is not available, redirecting to dashboard', e);
+        await router.replace('/');
+        return;
       }
       loading.value = false;
     };
