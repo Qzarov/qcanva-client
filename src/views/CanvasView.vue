@@ -1,5 +1,5 @@
 <template>
-  <div class="canvas-view">
+  <div ref="canvasViewRef" class="canvas-view">
     <div v-if="loading" class="canvas-loading">Loading canvas...</div>
     <div v-else-if="error" class="canvas-error">
       <div class="error-modal">
@@ -15,7 +15,7 @@
     </div>
     <template v-else>
       <!-- Top bar -->
-      <div class="canvas-topbar">
+      <div ref="topbarRef" class="canvas-topbar">
         <router-link to="/" class="topbar-back">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </router-link>
@@ -77,7 +77,7 @@
       </div>
 
       <!-- Node toolbar (under topbar, visible when node selected) -->
-      <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId" class="node-toolbar">
+      <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId" ref="nodeToolbarRef" class="node-toolbar">
         <!-- Fill color -->
         <span class="tb-label">Fill</span>
         <button v-for="c in ['1','2','3','4','5','6']" :key="c" class="tb-color" :class="'ctx-color-'+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
@@ -243,7 +243,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted } from 'vue';
+import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
@@ -264,6 +264,9 @@ export default defineComponent({
     const canvasId = route.params.id as string;
 
     const { show: showToast } = useToast();
+    const canvasViewRef = ref<HTMLElement | null>(null);
+    const topbarRef = ref<HTMLElement | null>(null);
+    const nodeToolbarRef = ref<HTMLElement | null>(null);
     const canvasRef = ref<any>(null);
     const showShortcuts = ref(false);
 
@@ -305,6 +308,7 @@ export default defineComponent({
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let isApplyingRemote = false;
+    let chromeResizeObserver: ResizeObserver | null = null;
 
     const syncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
@@ -320,6 +324,26 @@ export default defineComponent({
       noticeTimeout = setTimeout(() => {
         syncNotice.value = null;
       }, 3200);
+    }
+
+    function updateChromeMetrics() {
+      const root = canvasViewRef.value;
+      if (!root) return;
+      root.style.setProperty('--canvas-topbar-height', `${topbarRef.value?.offsetHeight || 44}px`);
+      root.style.setProperty('--canvas-toolbar-height', `${nodeToolbarRef.value?.offsetHeight || 0}px`);
+    }
+
+    function observeChromeMetrics() {
+      chromeResizeObserver?.disconnect();
+      if (typeof ResizeObserver === 'undefined') {
+        updateChromeMetrics();
+        return;
+      }
+
+      chromeResizeObserver = new ResizeObserver(updateChromeMetrics);
+      if (topbarRef.value) chromeResizeObserver.observe(topbarRef.value);
+      if (nodeToolbarRef.value) chromeResizeObserver.observe(nodeToolbarRef.value);
+      updateChromeMetrics();
     }
 
     // WebSocket
@@ -695,14 +719,26 @@ export default defineComponent({
       router.push('/canvas/' + targetCanvasId);
     };
 
-    onMounted(load);
+    watchPostEffect(() => {
+      topbarRef.value;
+      nodeToolbarRef.value;
+      void nextTick(observeChromeMetrics);
+    });
+
+    onMounted(() => {
+      window.addEventListener('resize', updateChromeMetrics);
+      void load();
+      void nextTick(observeChromeMetrics);
+    });
     onUnmounted(() => {
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
+      window.removeEventListener('resize', updateChromeMetrics);
+      chromeResizeObserver?.disconnect();
     });
 
     return {
-      canvasRef, aligns,
+      canvasViewRef, topbarRef, nodeToolbarRef, canvasRef, aligns,
       loading, error, title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,

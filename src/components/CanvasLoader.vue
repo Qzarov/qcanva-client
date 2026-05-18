@@ -2973,4 +2973,87 @@ g:hover > .edge-midpoint-conn {
   font-weight: 500;
   line-height: 16px;
 }
+
+@media (max-width: 640px) {
+  .canvas-viewport {
+    touch-action: none;
+  }
+
+  .context-menu {
+    min-width: 180px;
+    padding: 8px;
+  }
+
+  .ctx-colors {
+    gap: 8px;
+  }
+
+  .ctx-color-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .ctx-item {
+    min-height: 40px;
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+
+  .edge-action-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .edge-label-input,
+  .node-editor {
+    font-size: 16px;
+  }
+
+  .minimap {
+    left: 8px;
+    bottom: calc(var(--canvas-toolbar-height, 0px) + 12px + env(safe-area-inset-bottom));
+    width: 132px;
+    height: 88px;
+  }
+
+  .canvas-controls {
+    right: 8px;
+    bottom: calc(var(--canvas-toolbar-height, 0px) + 12px + env(safe-area-inset-bottom));
+    padding: 5px;
+    gap: 2px;
+  }
+
+  .canvas-controls button {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+
+  .zoom-level {
+    min-width: 42px;
+    font-size: 11px;
+  }
+
+  .controls-divider {
+    height: 24px;
+  }
+}
+
+@media (max-width: 420px) {
+  .minimap {
+    width: 112px;
+    height: 76px;
+  }
+
+  .canvas-controls {
+    max-width: calc(100vw - 132px);
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .canvas-controls button {
+    width: 34px;
+    height: 34px;
+  }
+}
 </style>
