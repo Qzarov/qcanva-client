@@ -20,6 +20,24 @@ const router = createRouter({
       component: () => import('../views/DashboardView.vue'),
     },
     {
+      path: '/html-docs',
+      name: 'html-docs',
+      component: () => import('../views/HtmlDocsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/html/:id',
+      name: 'html-document',
+      component: () => import('../views/HtmlDocumentView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/html-settings',
+      name: 'html-settings',
+      component: () => import('../views/HtmlSettingsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),
@@ -35,7 +53,7 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   if (to.meta.requiresAuth && !isAuthenticated()) {
-    return { name: 'login' };
+    return { name: 'login', query: { redirect: to.fullPath } };
   }
 });
 

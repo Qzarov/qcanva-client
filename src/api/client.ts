@@ -97,6 +97,11 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
+  passwordAccessLogin: (login: string, password: string) =>
+    request<{ token: string; user: any }>('/auth/password-access-login', {
+      method: 'POST',
+      body: JSON.stringify({ login, password }),
+    }),
   me: () => request<any>('/auth/me'),
 };
 
@@ -140,4 +145,26 @@ export const canvas = {
     request<{ historyAccess: string; items: any[] }>(`/canvas/${id}/history?limit=${limit}&offset=${offset}`),
   updateHistoryAccess: (id: string, historyAccess: string) =>
     request<{ historyAccess: string }>(`/canvas/${id}/history-access`, { method: 'PUT', body: JSON.stringify({ historyAccess }) }),
+};
+
+export const htmlDocuments = {
+  list: () => request<{ groups: any[]; documents: any[] }>('/html-documents'),
+  createGroup: (name: string) =>
+    request<any>('/html-documents/groups', { method: 'POST', body: JSON.stringify({ name }) }),
+  renameGroup: (id: string, name: string) =>
+    request<any>(`/html-documents/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  create: (payload: { title: string; html: string; groupId?: string; shared?: boolean }) =>
+    request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
+  get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`),
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean }) =>
+    request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  move: (id: string, groupId: string) =>
+    request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),
+  checklist: (id: string, checkId: string, checked: boolean) =>
+    request<any>(`/html-documents/${id}/checklist`, { method: 'PUT', body: JSON.stringify({ checkId, checked }) }),
+  settings: () => request<{ model: string; hasOpenRouterKey: boolean }>('/html-documents/settings/current'),
+  updateSettings: (payload: { model?: string; openRouterKey?: string }) =>
+    request<any>('/html-documents/settings/current', { method: 'PUT', body: JSON.stringify(payload) }),
+  generate: (payload: { documentIds: string[]; prompt: string; title?: string; groupId?: string }) =>
+    request<any>('/html-documents/generate', { method: 'POST', body: JSON.stringify(payload) }),
 };

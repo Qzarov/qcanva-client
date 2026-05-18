@@ -3,7 +3,7 @@
     <div class="auth-card">
       <h1>Sign In</h1>
       <form @submit.prevent="onSubmit">
-        <input v-model="email" type="email" placeholder="Email" required />
+        <input v-model="login" type="text" placeholder="Email or access login" required />
         <input v-model="password" type="password" placeholder="Password" required />
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">{{ loading ? 'Signing in...' : 'Sign In' }}</button>
@@ -16,13 +16,14 @@
 
 <script lang="ts">
 import { defineComponent, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { auth, setToken } from '../api/client';
 
 export default defineComponent({
   setup() {
     const router = useRouter();
-    const email = ref('');
+    const route = useRoute();
+    const login = ref('');
     const password = ref('');
     const error = ref('');
     const loading = ref(false);
@@ -31,9 +32,11 @@ export default defineComponent({
       error.value = '';
       loading.value = true;
       try {
-        const res = await auth.login(email.value, password.value);
+        const res = login.value.includes('@')
+          ? await auth.login(login.value, password.value)
+          : await auth.passwordAccessLogin(login.value, password.value);
         setToken(res.token, res.user?.role);
-        router.push('/');
+        router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
       } catch (e: any) {
         error.value = e.message;
       } finally {
@@ -41,7 +44,7 @@ export default defineComponent({
       }
     };
 
-    return { email, password, error, loading, onSubmit };
+    return { login, password, error, loading, onSubmit };
   },
 });
 </script>

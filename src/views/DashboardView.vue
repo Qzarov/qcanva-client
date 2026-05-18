@@ -4,6 +4,10 @@
       <div>
         <h1>{{ isLoggedIn ? 'My Canvases' : 'QCanva' }}</h1>
         <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
+        <nav v-if="isLoggedIn" class="home-tabs">
+          <router-link to="/" class="home-tab active">Canvas</router-link>
+          <router-link to="/html-docs" class="home-tab">HTML</router-link>
+        </nav>
       </div>
       <div class="dash-actions">
         <template v-if="isLoggedIn">
