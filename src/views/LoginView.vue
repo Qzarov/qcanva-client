@@ -3,7 +3,7 @@
     <div class="auth-card">
       <h1>Sign In</h1>
       <form @submit.prevent="onSubmit">
-        <input v-model="login" type="text" placeholder="Email or access login" required />
+        <input v-model="login" type="email" placeholder="Email" required />
         <input v-model="password" type="password" placeholder="Password" required />
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">{{ loading ? 'Signing in...' : 'Sign In' }}</button>
@@ -32,9 +32,7 @@ export default defineComponent({
       error.value = '';
       loading.value = true;
       try {
-        const res = login.value.includes('@')
-          ? await auth.login(login.value, password.value)
-          : await auth.passwordAccessLogin(login.value, password.value);
+        const res = await auth.login(login.value, password.value);
         setToken(res.token, res.user?.role, res.user?.accessMode || 'user');
         router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
       } catch (e: any) {

@@ -60,10 +60,12 @@ export function getAccessMode(): string {
 }
 
 export function isPasswordAccess(): boolean {
-  return getAccessMode() === 'password';
+  return getAccessMode() === 'resource-password';
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+type ApiRequestInit = RequestInit & { skipAuthRedirect?: boolean };
+
+async function request<T>(path: string, options: ApiRequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -73,7 +75,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
-  if (res.status === 401) {
+  if (res.status === 401 && !options.skipAuthRedirect) {
     clearToken();
     window.location.href = '/login';
     throw new ApiError(401, 'Unauthorized');
@@ -129,10 +131,11 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
-  passwordAccessLogin: (login: string, password: string) =>
-    request<{ token: string; user: any }>('/auth/password-access-login', {
+  resourcePasswordLogin: (payload: { resourceType: 'canvas' | 'html-document'; resourceId: string; password: string }) =>
+    request<{ token: string; user: any }>('/auth/resource-password-login', {
       method: 'POST',
-      body: JSON.stringify({ login, password }),
+      body: JSON.stringify(payload),
+      skipAuthRedirect: true,
     }),
   me: () => request<any>('/auth/me'),
 };
@@ -156,6 +159,9 @@ export const canvas = {
       isPublic?: boolean;
       visibility?: string;
       allowPublicEdit?: boolean;
+      passwordAccessEnabled?: boolean;
+      passwordAccessPassword?: string;
+      passwordAccessRole?: string;
       folder?: string;
       tags?: CanvasTag[];
     },
@@ -187,8 +193,8 @@ export const htmlDocuments = {
     request<any>(`/html-documents/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
   create: (payload: { title: string; html: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
-  get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`),
-  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
+  get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   move: (id: string, groupId: string) =>
     request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),

@@ -16,7 +16,13 @@
     <div v-else-if="accessDenied" class="canvas-error">
       <div class="error-modal access-request-modal">
         <h2>No access to this canvas</h2>
-        <p>Request access from the owner and choose the level you need.</p>
+        <p>Enter the canvas password or request access from the owner.</p>
+        <form class="resource-password-form" @submit.prevent="loginWithCanvasPassword">
+          <input v-model="resourcePassword" type="password" placeholder="Canvas password" />
+          <button class="error-home-btn" :disabled="checkingResourcePassword || !resourcePassword">
+            {{ checkingResourcePassword ? 'Checking...' : 'Open with password' }}
+          </button>
+        </form>
         <div class="access-request-controls">
           <select v-model="requestedRole">
             <option value="read">Read</option>
@@ -156,6 +162,20 @@
           <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
           <span>Allow public edit</span>
         </label>
+        <div v-if="role === 'owner'" class="password-access-panel">
+          <label class="share-checkbox">
+            <input type="checkbox" v-model="passwordAccessEnabled" />
+            <span>Password access</span>
+          </label>
+          <div class="share-form">
+            <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
+            <select v-model="passwordAccessRole">
+              <option value="read">Read</option>
+              <option value="edit">Edit</option>
+            </select>
+            <button @click="savePasswordAccess">Save</button>
+          </div>
+        </div>
       </div>
 
       <!-- History panel -->
@@ -261,7 +281,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accessRequests, ApiError, canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
+import { accessRequests, ApiError, auth, canvas as canvasApi, isAuthenticated, isAdmin, setToken } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -299,6 +319,8 @@ export default defineComponent({
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
     const requestedRole = ref<'read' | 'edit'>('read');
+    const resourcePassword = ref('');
+    const checkingResourcePassword = ref(false);
     const title = ref('');
     const canvasData = ref<any>(null);
     const role = ref('');
@@ -323,6 +345,9 @@ export default defineComponent({
     const shareEmail = ref('');
     const shareRole = ref('read');
     const permissions = ref<any[]>([]);
+    const passwordAccessEnabled = ref(false);
+    const passwordAccessPassword = ref('');
+    const passwordAccessRole = ref<'read' | 'edit'>('read');
     const canManageSettings = computed(() => isAuthenticated() && (role.value === 'owner' || role.value === 'edit'));
 
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -405,6 +430,8 @@ export default defineComponent({
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
+        passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
+        passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         if (res.role === 'owner') loadPermissions();
 
         // Connect WebSocket after canvas loaded
@@ -441,7 +468,7 @@ export default defineComponent({
           void resyncCanvas();
         });
       } catch (e: any) {
-        if (e instanceof ApiError && e.status === 403 && isAuthenticated()) {
+        if (e instanceof ApiError && e.status === 403) {
           accessDenied.value = true;
           loading.value = false;
           return;
@@ -454,6 +481,10 @@ export default defineComponent({
     };
 
     const requestCanvasAccess = async () => {
+      if (!isAuthenticated()) {
+        await router.push(`/login?redirect=/canvas/${canvasId}`);
+        return;
+      }
       requestingAccess.value = true;
       try {
         await accessRequests.create({
@@ -467,6 +498,24 @@ export default defineComponent({
         showToast(e.message || 'Failed to request access', 'error');
       } finally {
         requestingAccess.value = false;
+      }
+    };
+
+    const loginWithCanvasPassword = async () => {
+      checkingResourcePassword.value = true;
+      try {
+        const res = await auth.resourcePasswordLogin({
+          resourceType: 'canvas',
+          resourceId: canvasId,
+          password: resourcePassword.value,
+        });
+        setToken(res.token, res.user?.role, res.user?.accessMode || 'resource-password');
+        accessDenied.value = false;
+        await load();
+      } catch (e: any) {
+        showToast(e.message || 'Invalid password', 'error');
+      } finally {
+        checkingResourcePassword.value = false;
       }
     };
 
@@ -610,6 +659,21 @@ export default defineComponent({
         loadPermissions();
       } catch (err: any) {
         showToast(err.message || 'Failed to revoke access', 'error');
+      }
+    };
+
+    const savePasswordAccess = async () => {
+      try {
+        await canvasApi.update(canvasId, {
+          passwordAccessEnabled: passwordAccessEnabled.value,
+          passwordAccessPassword: passwordAccessPassword.value || undefined,
+          passwordAccessRole: passwordAccessRole.value,
+        });
+        passwordAccessPassword.value = '';
+        showToast('Password access saved', 'success');
+        await load();
+      } catch (err: any) {
+        showToast(err.message || 'Failed to save password access', 'error');
       }
     };
 
@@ -783,10 +847,12 @@ export default defineComponent({
     return {
       canvasViewRef, topbarRef, nodeToolbarRef, canvasRef, aligns,
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
+      resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       allowPublicEdit, canManageSettings, togglePublicEdit,
+      passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated, isAdmin,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
@@ -795,7 +861,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
-      showShortcuts, requestCanvasAccess,
+      showShortcuts, requestCanvasAccess, loginWithCanvasPassword,
     };
   },
 });
