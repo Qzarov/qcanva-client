@@ -35,7 +35,7 @@ export default defineComponent({
         const res = login.value.includes('@')
           ? await auth.login(login.value, password.value)
           : await auth.passwordAccessLogin(login.value, password.value);
-        setToken(res.token, res.user?.role);
+        setToken(res.token, res.user?.role, res.user?.accessMode || 'user');
         router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
       } catch (e: any) {
         error.value = e.message;

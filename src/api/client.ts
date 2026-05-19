@@ -4,14 +4,16 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
-export function setToken(token: string, role = 'user') {
+export function setToken(token: string, role = 'user', accessMode = 'user') {
   localStorage.setItem('token', token);
   localStorage.setItem('userRole', role);
+  localStorage.setItem('accessMode', accessMode);
 }
 
 export function clearToken() {
   localStorage.removeItem('token');
   localStorage.removeItem('userRole');
+  localStorage.removeItem('accessMode');
 }
 
 export function getUserRole(): string {
@@ -29,6 +31,24 @@ export function isSuperAdmin(): boolean {
 
 export function isAuthenticated(): boolean {
   return !!getToken();
+}
+
+export function getAccessMode(): string {
+  const stored = localStorage.getItem('accessMode');
+  if (stored) return stored;
+
+  const token = getToken();
+  if (!token) return 'user';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] || ''));
+    return payload.accessMode || 'user';
+  } catch {
+    return 'user';
+  }
+}
+
+export function isPasswordAccess(): boolean {
+  return getAccessMode() === 'password';
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

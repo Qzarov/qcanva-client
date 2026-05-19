@@ -10,17 +10,19 @@
         </nav>
       </div>
       <div class="dash-actions">
-        <button class="btn-primary" @click.stop="createDoc">+ HTML</button>
-        <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload</button>
-        <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
-        <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
+        <template v-if="canManageDocs">
+          <button class="btn-primary" @click.stop="createDoc">+ Empty HTML</button>
+          <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
+          <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
+          <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
+        </template>
       </div>
       <input ref="uploadInput" type="file" accept=".html,.htm,text/html" hidden @change="uploadFile" />
     </header>
 
     <div v-if="message" class="dashboard-toast" :class="`dashboard-toast-${messageType}`">{{ message }}</div>
 
-    <section class="html-generate-panel">
+    <section v-if="canManageDocs" class="html-generate-panel">
       <div>
         <h2>Generate from selected</h2>
         <p>{{ selectedIds.length }} selected</p>
@@ -47,7 +49,7 @@
             </span>
             <span class="folder-manager-count">{{ group.items.length }} docs</span>
           </button>
-          <div class="folder-manager-actions">
+          <div v-if="canManageDocs" class="folder-manager-actions">
             <button class="folder-manager-btn" @click.stop="renameGroup(group)">Rename</button>
           </div>
         </div>
@@ -58,7 +60,7 @@
                 v-for="doc in group.items"
                 :key="doc.id"
                 class="canvas-card html-doc-card"
-                draggable="true"
+                :draggable="canManageDocs"
                 @dragstart="draggingId = doc.id"
                 @click="router.push('/html/' + doc.id)"
               >
@@ -70,7 +72,7 @@
                   <span class="badge" :class="doc.shared ? 'badge-public' : 'badge-owner'">{{ doc.shared ? 'Shared' : 'Private' }}</span>
                   <span>{{ formatDate(doc.updatedAt) }}</span>
                 </div>
-                <button class="card-manage" @click.stop="openMenuId = openMenuId === doc.id ? '' : doc.id">⋯</button>
+                <button v-if="canManageDocs" class="card-manage" @click.stop="openMenuId = openMenuId === doc.id ? '' : doc.id">⋯</button>
                 <div v-if="openMenuId === doc.id" class="card-menu" @click.stop>
                   <button class="card-menu-item" @click="copyLink(doc)">Copy shared link</button>
                   <button class="card-menu-item" @click="toggleShare(doc)">{{ doc.shared ? 'Make private' : 'Share' }}</button>
@@ -87,7 +89,7 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { htmlDocuments } from '../api/client';
+import { htmlDocuments, isPasswordAccess } from '../api/client';
 
 export default defineComponent({
   setup() {
@@ -105,6 +107,7 @@ export default defineComponent({
     const openMenuId = ref('');
     const prompt = ref('');
     const generateTitle = ref('');
+    const canManageDocs = computed(() => !isPasswordAccess());
 
     const groupsWithDocs = computed(() => {
       const baseGroups = groups.value.length ? groups.value : [{ id: 'shared', name: 'Shared', updatedAt: '', createdAt: '' }];
@@ -132,34 +135,52 @@ export default defineComponent({
     async function createGroup() {
       const name = window.prompt('Group name');
       if (!name) return;
-      await htmlDocuments.createGroup(name);
-      await load();
+      try {
+        await htmlDocuments.createGroup(name);
+        await load();
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to create group');
+      }
     }
 
     async function renameGroup(group: any) {
       const name = window.prompt('Group name', group.name);
       if (!name) return;
-      await htmlDocuments.renameGroup(group.id, name);
-      await load();
+      try {
+        await htmlDocuments.renameGroup(group.id, name);
+        await load();
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to rename group');
+      }
     }
 
     async function createDoc() {
       const title = window.prompt('Document title', 'Untitled HTML');
       if (!title) return;
-      const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', groupId: groups.value[0]?.id });
-      router.push('/html/' + doc.id);
+      try {
+        const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', groupId: groups.value[0]?.id });
+        router.push('/html/' + doc.id);
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to create document');
+      }
     }
 
     async function uploadFile(event: Event) {
       const file = (event.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      const html = await file.text();
-      const doc = await htmlDocuments.create({
-        title: file.name.replace(/\.html?$/i, ''),
-        html,
-        groupId: groups.value[0]?.id,
-      });
-      router.push('/html/' + doc.id);
+      try {
+        const html = await file.text();
+        const doc = await htmlDocuments.create({
+          title: file.name.replace(/\.html?$/i, ''),
+          html,
+          groupId: groups.value[0]?.id,
+        });
+        router.push('/html/' + doc.id);
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to upload document');
+      } finally {
+        if (uploadInput.value) uploadInput.value.value = '';
+      }
     }
 
     function toggleGroup(id: string) {
@@ -176,14 +197,23 @@ export default defineComponent({
 
     async function dropDocument(groupId: string) {
       if (!draggingId.value) return;
-      await htmlDocuments.move(draggingId.value, groupId);
-      draggingId.value = '';
-      await load();
+      try {
+        await htmlDocuments.move(draggingId.value, groupId);
+        await load();
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to move document');
+      } finally {
+        draggingId.value = '';
+      }
     }
 
     async function toggleShare(doc: any) {
-      await htmlDocuments.update(doc.id, { shared: !doc.shared });
-      await load();
+      try {
+        await htmlDocuments.update(doc.id, { shared: !doc.shared });
+        await load();
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to update sharing');
+      }
     }
 
     async function copyLink(doc: any) {
@@ -214,7 +244,7 @@ export default defineComponent({
     onMounted(load);
 
     return {
-      router, uploadInput, groupsWithDocs, loading, busy, message, messageType,
+      router, uploadInput, groupsWithDocs, loading, busy, message, messageType, canManageDocs,
       openGroups, selectedIds, draggingId, openMenuId, prompt, generateTitle,
       load, createGroup, renameGroup, createDoc, uploadFile, toggleGroup,
       toggleSelected, dropDocument, toggleShare, copyLink, generate, formatDate,
