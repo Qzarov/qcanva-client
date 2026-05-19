@@ -48,6 +48,27 @@
     <div v-if="loading" class="dash-loading">Loading...</div>
 
     <template v-else>
+      <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
+        <div class="dash-section-head">
+          <h2>Access requests</h2>
+          <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
+        </div>
+        <div class="access-request-list">
+          <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
+            <div>
+              <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
+              <div class="access-request-meta">
+                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : 'HTML' }}
+              </div>
+            </div>
+            <div class="access-request-actions">
+              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">Decline</button>
+              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">Approve</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
         <div class="dash-section-head">
           <h2>My folders</h2>
@@ -327,7 +348,7 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { canvas, clearToken, isAdmin, isAuthenticated } from '../api/client';
+import { accessRequests, canvas, clearToken, isAdmin, isAuthenticated } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -362,6 +383,7 @@ export default defineComponent({
     const openMenuCanvasId = ref('');
     const openFolderNames = ref<string[]>(['Unsorted']);
     const pendingAction = ref('');
+    const incomingRequests = ref<any[]>([]);
     const feedback = ref<FeedbackState>({ type: 'success', message: '' });
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
     const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
@@ -490,6 +512,7 @@ export default defineComponent({
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
         welcomeCanvas.value = res.welcome ? normalizeCanvas(res.welcome, false) : null;
+        incomingRequests.value = isLoggedIn ? await accessRequests.incoming() : [];
         const availableFolders = new Set(groupedOwnCanvases.value.map((group) => group.name));
         openFolderNames.value = openFolderNames.value.filter((name) => availableFolders.has(name));
         if (availableFolders.has('Unsorted') && !openFolderNames.value.includes('Unsorted')) {
@@ -667,6 +690,15 @@ export default defineComponent({
       router.push('/login');
     };
 
+    const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
+      await runAction(
+        `access-request-${id}`,
+        () => accessRequests.resolve(id, status),
+        status === 'approved' ? 'Access approved' : 'Access declined',
+      );
+      await load();
+    };
+
     const toggleFolderOpen = (folderName: string) => {
       openFolderNames.value = openFolderNames.value.includes(folderName)
         ? openFolderNames.value.filter((name) => name !== folderName)
@@ -749,6 +781,7 @@ export default defineComponent({
       tagsModal,
       transferModal,
       folderSummaries,
+      incomingRequests,
       createCanvas,
       load,
       openFolderModal,
@@ -783,6 +816,7 @@ export default defineComponent({
       fileInput,
       importFile,
       onFileSelected,
+      resolveAccessRequest,
     };
   },
 });

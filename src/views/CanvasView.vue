@@ -13,6 +13,22 @@
         <router-link to="/" class="error-home-btn">Go to Dashboard</router-link>
       </div>
     </div>
+    <div v-else-if="accessDenied" class="canvas-error">
+      <div class="error-modal access-request-modal">
+        <h2>No access to this canvas</h2>
+        <p>Request access from the owner and choose the level you need.</p>
+        <div class="access-request-controls">
+          <select v-model="requestedRole">
+            <option value="read">Read</option>
+            <option value="edit">Edit</option>
+          </select>
+          <button class="error-home-btn" :disabled="requestingAccess || accessRequestSent" @click="requestCanvasAccess">
+            {{ accessRequestSent ? 'Request sent' : 'Request access' }}
+          </button>
+        </div>
+        <router-link to="/" class="btn-ghost">Go to Dashboard</router-link>
+      </div>
+    </div>
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
@@ -245,7 +261,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
+import { accessRequests, ApiError, canvas as canvasApi, isAuthenticated, isAdmin } from '../api/client';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -279,6 +295,10 @@ export default defineComponent({
 
     const loading = ref(true);
     const error = ref('');
+    const accessDenied = ref(false);
+    const requestingAccess = ref(false);
+    const accessRequestSent = ref(false);
+    const requestedRole = ref<'read' | 'edit'>('read');
     const title = ref('');
     const canvasData = ref<any>(null);
     const role = ref('');
@@ -375,6 +395,7 @@ export default defineComponent({
 
     const load = async () => {
       try {
+        accessDenied.value = false;
         const res = await canvasApi.get(canvasId);
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
@@ -420,11 +441,33 @@ export default defineComponent({
           void resyncCanvas();
         });
       } catch (e: any) {
+        if (e instanceof ApiError && e.status === 403 && isAuthenticated()) {
+          accessDenied.value = true;
+          loading.value = false;
+          return;
+        }
         console.warn('Canvas is not available, redirecting to dashboard', e);
         await router.replace('/');
         return;
       }
       loading.value = false;
+    };
+
+    const requestCanvasAccess = async () => {
+      requestingAccess.value = true;
+      try {
+        await accessRequests.create({
+          resourceType: 'canvas',
+          resourceId: canvasId,
+          requestedRole: requestedRole.value,
+        });
+        accessRequestSent.value = true;
+        showToast('Access request sent', 'success');
+      } catch (e: any) {
+        showToast(e.message || 'Failed to request access', 'error');
+      } finally {
+        requestingAccess.value = false;
+      }
     };
 
     const resyncCanvas = async () => {
@@ -739,7 +782,8 @@ export default defineComponent({
 
     return {
       canvasViewRef, topbarRef, nodeToolbarRef, canvasRef, aligns,
-      loading, error, title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
+      loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
+      title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       allowPublicEdit, canManageSettings, togglePublicEdit,
@@ -751,7 +795,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
-      showShortcuts,
+      showShortcuts, requestCanvasAccess,
     };
   },
 });

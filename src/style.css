@@ -732,6 +732,20 @@ html, body {
   font-size: 15px;
   font-weight: 600;
 }
+.html-access-select {
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: #2b2b35;
+  color: #fff;
+  font-size: 13px;
+}
+.html-share-panel {
+  position: static;
+  width: auto;
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
 .html-editor-grid {
   min-height: 0;
   flex: 1;
@@ -1020,6 +1034,55 @@ html, body {
 }
 .error-home-btn:hover {
   background: #4f46e5;
+}
+.error-home-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.access-request-modal {
+  max-width: 420px;
+}
+.access-request-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+.access-request-controls select {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: #2b2b35;
+  color: #fff;
+}
+.access-request-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.access-request-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+}
+.access-request-title {
+  color: rgba(255,255,255,0.9);
+  font-weight: 600;
+}
+.access-request-meta {
+  margin-top: 4px;
+  color: rgba(255,255,255,0.54);
+  font-size: 13px;
+}
+.access-request-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
 }
 .canvas-topbar {
   position: absolute;

@@ -1,5 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+export class ApiError extends Error {
+  status: number;
+  body: any;
+
+  constructor(status: number, message: string, body: any = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.body = body;
+  }
+}
+
 function getToken(): string | null {
   return localStorage.getItem('token');
 }
@@ -64,12 +76,12 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (res.status === 401) {
     clearToken();
     window.location.href = '/login';
-    throw new Error('Unauthorized');
+    throw new ApiError(401, 'Unauthorized');
   }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `HTTP ${res.status}`);
+    throw new ApiError(res.status, body.message || `HTTP ${res.status}`, body);
   }
 
   return res.json();
@@ -173,10 +185,10 @@ export const htmlDocuments = {
     request<any>('/html-documents/groups', { method: 'POST', body: JSON.stringify({ name }) }),
   renameGroup: (id: string, name: string) =>
     request<any>(`/html-documents/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
-  create: (payload: { title: string; html: string; groupId?: string; shared?: boolean }) =>
+  create: (payload: { title: string; html: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`),
-  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean }) =>
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   move: (id: string, groupId: string) =>
     request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),
@@ -187,4 +199,17 @@ export const htmlDocuments = {
     request<any>('/html-documents/settings/current', { method: 'PUT', body: JSON.stringify(payload) }),
   generate: (payload: { documentIds: string[]; prompt: string; title?: string; groupId?: string }) =>
     request<any>('/html-documents/generate', { method: 'POST', body: JSON.stringify(payload) }),
+  share: (id: string, email: string, role: string) =>
+    request<any>(`/html-documents/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+  revoke: (id: string, userId: string) =>
+    request<any>(`/html-documents/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
+  permissions: (id: string) => request<any[]>(`/html-documents/${id}/permissions`),
+};
+
+export const accessRequests = {
+  create: (payload: { resourceType: 'canvas' | 'html-document'; resourceId: string; requestedRole: 'read' | 'edit' }) =>
+    request<any>('/access-requests', { method: 'POST', body: JSON.stringify(payload) }),
+  incoming: () => request<any[]>('/access-requests/incoming'),
+  resolve: (id: string, status: 'approved' | 'declined') =>
+    request<any>(`/access-requests/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
 };
