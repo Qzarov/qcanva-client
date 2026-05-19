@@ -37,6 +37,9 @@
         <span>Public edit</span>
       </label>
       <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Share</button>
+      <button class="btn-ghost" @click="viewMode = viewMode === 'preview' ? 'source' : 'preview'">
+        {{ viewMode === 'preview' ? 'Source' : 'Preview' }}
+      </button>
       <button v-if="role !== 'read'" class="btn-primary" @click="save">Save</button>
     </header>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
@@ -70,9 +73,21 @@
         </div>
       </div>
     </section>
-    <main class="html-editor-grid">
-      <textarea v-if="role !== 'read'" v-model="html" class="html-source"></textarea>
-      <section class="html-preview" @change="onPreviewChange" v-html="html"></section>
+    <main class="html-editor-main">
+      <iframe
+        v-if="viewMode === 'preview'"
+        :srcdoc="html"
+        class="html-browser-preview"
+        sandbox="allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+        @load="bindPreviewChecklist"
+      ></iframe>
+      <textarea
+        v-else-if="role !== 'read'"
+        v-model="html"
+        class="html-source html-source-full"
+        spellcheck="false"
+      ></textarea>
+      <pre v-else class="html-source html-source-readonly"><code>{{ html }}</code></pre>
     </main>
     </template>
   </div>
@@ -93,6 +108,7 @@ export default defineComponent({
     const title = ref('');
     const html = ref('');
     const role = ref('read');
+    const viewMode = ref<'preview' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const loading = ref(true);
@@ -166,10 +182,22 @@ export default defineComponent({
       }
     }
 
-    async function onPreviewChange(event: Event) {
-      const target = event.target as HTMLInputElement;
+    async function persistChecklistChange(target: HTMLInputElement) {
       if (target?.type !== 'checkbox' || !target.dataset.checkId) return;
       await htmlDocuments.checklist(id, target.dataset.checkId, target.checked);
+    }
+
+    async function onPreviewChange(event: Event) {
+      await persistChecklistChange(event.target as HTMLInputElement);
+    }
+
+    function bindPreviewChecklist(event: Event) {
+      const iframe = event.target as HTMLIFrameElement;
+      const doc = iframe.contentDocument;
+      if (!doc) return;
+      doc.addEventListener('change', (changeEvent) => {
+        void persistChecklistChange(changeEvent.target as HTMLInputElement);
+      });
     }
 
     async function loadPermissions() {
@@ -234,11 +262,11 @@ export default defineComponent({
 
     onMounted(load);
     return {
-      title, html, role, visibility, allowPublicEdit, loading, accessDenied,
+      title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole,
-      save, saveAccessSettings, savePasswordAccess, onPreviewChange, doShare,
+      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword,
     };
   },

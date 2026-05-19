@@ -746,9 +746,16 @@ html, body {
   border-radius: 0;
   border-width: 0 0 1px;
 }
+.html-editor-main,
 .html-editor-grid {
   min-height: 0;
   flex: 1;
+}
+.html-editor-main {
+  display: flex;
+  background: #fff;
+}
+.html-editor-grid {
   display: grid;
   grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
 }
@@ -759,6 +766,30 @@ html, body {
   border-radius: 0;
   border-right: 1px solid rgba(255,255,255,0.08);
   resize: none;
+}
+.html-source-full,
+.html-source-readonly {
+  width: 100%;
+  flex: 1;
+  padding: 18px;
+  background: #111217;
+  color: rgba(255,255,255,0.9);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.html-source-readonly {
+  margin: 0;
+  user-select: text;
+}
+.html-browser-preview {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  background: #fff;
 }
 .html-preview {
   overflow: auto;
@@ -851,6 +882,10 @@ html, body {
 
   .html-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .html-editor-main {
+    min-height: 0;
   }
 
   .html-source {
