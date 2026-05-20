@@ -71,9 +71,30 @@
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
             <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
           </span>
-          <span class="topbar-sync" :class="'topbar-sync-' + syncStatus.kind" :title="'Revision ' + revision">
-            {{ syncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
-          </span>
+          <div class="sync-menu-wrap">
+            <button
+              class="topbar-sync"
+              :class="'topbar-sync-' + syncStatus.kind"
+              :title="syncBadgeTitle"
+              @click="showSyncEvents = !showSyncEvents"
+            >
+              {{ syncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+            </button>
+            <div v-if="showSyncEvents" class="sync-events-popover">
+              <div class="sync-events-head">
+                <strong>Sync</strong>
+                <span>r{{ revision }}</span>
+              </div>
+              <div v-if="syncEvents.length === 0" class="sync-event-empty">No local sync events yet</div>
+              <div v-for="event in syncEvents" :key="event.id" class="sync-event-row" :class="'sync-event-' + event.status">
+                <div>
+                  <strong>{{ event.label }}</strong>
+                  <span v-if="event.reason">{{ syncReasonLabel(event.reason) }}</span>
+                </div>
+                <time>{{ formatSyncEventTime(event.timestamp) }}</time>
+              </div>
+            </div>
+          </div>
           <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="cycleVisibility">
@@ -282,6 +303,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, isAuthenticated, isAdmin, setToken } from '../api/client';
+import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -332,6 +354,10 @@ export default defineComponent({
     const syncIssue = ref<'conflict' | ''>('');
     const syncNotice = ref<{ kind: 'info' | 'warning'; text: string } | null>(null);
     const realtimeOpsUnavailable = ref(false);
+    const showSyncEvents = ref(false);
+    const syncEventStore = createSyncEventStore(5);
+    const syncEvents = syncEventStore.events;
+    const latestSyncReason = syncEventStore.latestReason;
     const searchQuery = ref('');
     const searchMatches = ref<string[]>([]);
     const searchIndex = ref(0);
@@ -363,12 +389,28 @@ export default defineComponent({
       return { kind: 'offline', label: 'Offline' };
     });
 
+    const syncBadgeTitle = computed(() => {
+      const parts = [`Revision ${revision.value}`, `${pendingOpsCount.value} pending`];
+      if (latestSyncReason.value) parts.push(latestSyncReason.value);
+      return parts.join(' · ');
+    });
+
     function showSyncNotice(kind: 'info' | 'warning', text: string) {
       syncNotice.value = { kind, text };
       if (noticeTimeout) clearTimeout(noticeTimeout);
       noticeTimeout = setTimeout(() => {
         syncNotice.value = null;
       }, 3200);
+    }
+
+    function rejectNotice(reason: SyncRejectReason) {
+      const reasonText = syncReasonLabel(reason);
+      if (reason === 'timeout') return `${reasonText}. Saving full canvas snapshot.`;
+      return `${reasonText}. Restoring the latest canvas state.`;
+    }
+
+    function formatSyncEventTime(timestamp: number) {
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
     function updateChromeMetrics() {
@@ -403,6 +445,7 @@ export default defineComponent({
       onRemoteCanvasUpdate,
       onRemoteOp,
       onReject,
+      onAck,
       setRevision,
       pendingOpsCount,
       clearPendingOps,
@@ -453,18 +496,28 @@ export default defineComponent({
           revision.value = nextRevision;
           isApplyingRemote = false;
         });
+        onAck((ack) => {
+          syncEventStore.confirm(ack.clientOpId, ack.revision);
+        });
         onReject((reject) => {
           if (reject.reason === 'timeout') {
             realtimeOpsUnavailable.value = true;
             syncIssue.value = '';
             clearPendingOps();
-            showSyncNotice('warning', 'Realtime ops unavailable. Saving full canvas snapshot.');
+            if (reject.clientOpId) syncEventStore.reject(reject.clientOpId, 'timeout', reject.serverRevision);
+            else syncEventStore.recordWarning(rejectNotice('timeout'), 'timeout', reject.serverRevision);
+            showSyncNotice('warning', rejectNotice('timeout'));
             void persistCurrentSnapshot();
             return;
           }
 
           syncIssue.value = 'conflict';
-          showSyncNotice('warning', 'Parallel edit conflict. Restoring the latest canvas state.');
+          syncEventStore.reject(
+            reject.clientOpId || `reject-${Date.now()}`,
+            reject.reason as SyncRejectReason,
+            reject.serverRevision,
+          );
+          showSyncNotice('warning', rejectNotice(reject.reason as SyncRejectReason));
           void resyncCanvas();
         });
       } catch (e: any) {
@@ -522,6 +575,7 @@ export default defineComponent({
     const resyncCanvas = async () => {
       if (isResyncing.value) return;
       isResyncing.value = true;
+      syncEventStore.resyncStarted();
       try {
         const res = await canvasApi.resync(canvasId, revision.value);
         const parsed = JSON.parse(res.canvas.data);
@@ -532,10 +586,12 @@ export default defineComponent({
         setRevision(revision.value);
         clearPendingOps();
         syncIssue.value = '';
+        syncEventStore.resyncCompleted(revision.value);
         showSyncNotice('info', 'Canvas state refreshed.');
         isApplyingRemote = false;
       } catch (e: any) {
         error.value = e.message || 'Failed to resync canvas';
+        syncEventStore.resyncFailed(error.value);
       } finally {
         isResyncing.value = false;
       }
@@ -585,7 +641,8 @@ export default defineComponent({
       if (isApplyingRemote) return;
       if (realtimeOpsUnavailable.value) return;
       if (wsConnected.value) {
-        sendOp(op);
+        const clientOpId = sendOp(op);
+        syncEventStore.recordPending(clientOpId, op?.type || 'operation', revision.value);
       }
     };
 
@@ -849,6 +906,7 @@ export default defineComponent({
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
+      showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
       allowPublicEdit, canManageSettings, togglePublicEdit,
