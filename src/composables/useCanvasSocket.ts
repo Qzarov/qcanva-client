@@ -40,6 +40,7 @@ export function useCanvasSocket(canvasId: string) {
   let onRemoteUpdate: ((data: string, revision: number) => void) | null = null;
   let onRemoteOpCb: ((op: any, revision: number) => void) | null = null;
   let onRejectCb: ((reject: RevisionReject) => void) | null = null;
+  let onAckCb: ((ack: { clientOpId: string; revision: number }) => void) | null = null;
 
   const genClientOpId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -162,6 +163,7 @@ export function useCanvasSocket(canvasId: string) {
       if (typeof data.revision === 'number') {
         currentRevision.value = data.revision;
       }
+      onAckCb?.(data);
     });
 
     s.on('canvas-op-reject', (data: RevisionReject) => {
@@ -236,6 +238,10 @@ export function useCanvasSocket(canvasId: string) {
     onRejectCb = cb;
   }
 
+  function onAck(cb: (ack: { clientOpId: string; revision: number }) => void) {
+    onAckCb = cb;
+  }
+
   function setRevision(revision: number) {
     currentRevision.value = revision;
   }
@@ -268,6 +274,7 @@ export function useCanvasSocket(canvasId: string) {
     onRemoteCanvasUpdate,
     onRemoteOp,
     onReject,
+    onAck,
     clearPendingOps,
     setRevision,
   };
