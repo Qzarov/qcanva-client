@@ -156,7 +156,7 @@ export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string, folder?: string, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folder, tags }) }),
-  get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
+  get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
   update: (
     id: string,
     updates: {

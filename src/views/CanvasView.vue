@@ -533,7 +533,7 @@ export default defineComponent({
           void resyncCanvas();
         });
       } catch (e: any) {
-        if (e instanceof ApiError && e.status === 403) {
+        if (e instanceof ApiError && (e.status === 403 || e.status === 401)) {
           accessDenied.value = true;
           loading.value = false;
           return;

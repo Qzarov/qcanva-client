@@ -29,7 +29,6 @@ const router = createRouter({
       path: '/html/:id',
       name: 'html-document',
       component: () => import('../views/HtmlDocumentView.vue'),
-      meta: { requiresAuth: true },
     },
     {
       path: '/html-settings',
