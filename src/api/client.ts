@@ -140,15 +140,21 @@ export const auth = {
   me: () => request<any>('/auth/me'),
 };
 
-type CanvasTag = {
+export type ResourceTag = {
   name: string;
   color: string;
+};
+
+export type ResourceTagSummary = ResourceTag & {
+  canvasCount: number;
+  htmlDocumentCount: number;
+  totalCount: number;
 };
 
 // Canvas
 export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
-  create: (title: string, data?: string, folder?: string, tags?: CanvasTag[]) =>
+  create: (title: string, data?: string, folder?: string, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folder, tags }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`),
   update: (
@@ -163,7 +169,8 @@ export const canvas = {
       passwordAccessPassword?: string;
       passwordAccessRole?: string;
       folder?: string;
-      tags?: CanvasTag[];
+      pinned?: boolean;
+      tags?: ResourceTag[];
     },
   ) =>
     request<any>(`/canvas/${id}`, { method: 'PUT', body: JSON.stringify(updates) }),
@@ -191,10 +198,10 @@ export const htmlDocuments = {
     request<any>('/html-documents/groups', { method: 'POST', body: JSON.stringify({ name }) }),
   renameGroup: (id: string, name: string) =>
     request<any>(`/html-documents/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
-  create: (payload: { title: string; html: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
+  create: (payload: { title: string; html: string; groupId?: string; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
-  update: (id: string, payload: { title?: string; html?: string; groupId?: string; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   move: (id: string, groupId: string) =>
     request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),
@@ -218,4 +225,12 @@ export const accessRequests = {
   incoming: () => request<any[]>('/access-requests/incoming'),
   resolve: (id: string, status: 'approved' | 'declined') =>
     request<any>(`/access-requests/${id}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+export const tags = {
+  list: () => request<{ tags: ResourceTagSummary[] }>('/tags'),
+  update: (name: string, payload: ResourceTag) =>
+    request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (name: string) =>
+    request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };

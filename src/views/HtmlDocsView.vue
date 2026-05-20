@@ -22,6 +22,20 @@
 
     <div v-if="message" class="dashboard-toast" :class="`dashboard-toast-${messageType}`">{{ message }}</div>
 
+    <div class="dash-toolbar">
+      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
+      <div v-if="allTagNames.length" class="tag-filter-list">
+        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
+        <button
+          v-for="tag in allTagNames"
+          :key="tag"
+          class="tag-filter"
+          :class="{ active: selectedTag === tag }"
+          @click.stop="selectedTag = tag"
+        >#{{ tag }}</button>
+      </div>
+    </div>
+
     <section v-if="canManageDocs" class="html-generate-panel">
       <div>
         <h2>Generate from selected</h2>
@@ -72,10 +86,19 @@
                   <span class="badge" :class="doc.shared ? 'badge-public' : 'badge-owner'">{{ doc.shared ? 'Shared' : 'Private' }}</span>
                   <span>{{ formatDate(doc.updatedAt) }}</span>
                 </div>
+                <div v-if="doc.tags?.length" class="card-tags">
+                  <span
+                    v-for="tag in doc.tags"
+                    :key="tag.name"
+                    class="card-tag color-tag"
+                    :style="{ '--tag-color': tag.color }"
+                  >#{{ tag.name }}</span>
+                </div>
                 <button v-if="canManageDocs" class="card-manage" @click.stop="openMenuId = openMenuId === doc.id ? '' : doc.id">⋯</button>
                 <div v-if="openMenuId === doc.id" class="card-menu" @click.stop>
                   <button class="card-menu-item" @click="copyLink(doc)">Copy shared link</button>
                   <button class="card-menu-item" @click="toggleShare(doc)">{{ doc.shared ? 'Make private' : 'Share' }}</button>
+                  <button class="card-menu-item" @click="openTagsModal(doc)">Edit tags</button>
                 </div>
               </article>
             </div>
@@ -83,22 +106,79 @@
         </transition>
       </section>
     </div>
+
+    <div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Edit tags</h3>
+          <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
+        </div>
+        <div v-if="tagSuggestions.length" class="tag-filter-list">
+          <button
+            v-for="tag in tagSuggestions"
+            :key="tag.name"
+            class="tag-filter color-tag"
+            :style="{ '--tag-color': tag.color }"
+            @click="addSuggestedTag(tag)"
+          >#{{ tag.name }}</button>
+        </div>
+        <div class="tag-editor-list">
+          <div v-for="(tag, index) in tagsModal.tags" :key="tag.id" class="tag-editor-row">
+            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
+            <div class="tag-color-palette">
+              <button
+                v-for="color in tagColors"
+                :key="color"
+                class="tag-color-option"
+                :class="{ active: tag.color === color }"
+                :style="{ background: color }"
+                @click="tag.color = color"
+                :disabled="busy"
+              ></button>
+            </div>
+            <button class="tag-remove-btn" @click="removeTag(index)" :disabled="busy">x</button>
+          </div>
+        </div>
+        <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="busy">+ Add tag</button>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeTagsModal" :disabled="busy">Cancel</button>
+          <button class="btn-primary" @click="saveTagsModal" :disabled="busy">Save tags</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { htmlDocuments, isPasswordAccess } from '../api/client';
+import { htmlDocuments, isPasswordAccess, tags, type ResourceTag } from '../api/client';
+
+type HtmlTag = ResourceTag & { id: string };
+type HtmlDocumentRecord = {
+  id: string;
+  title: string;
+  groupId?: string;
+  shared?: boolean;
+  updatedAt: string;
+  tags: HtmlTag[];
+};
+
+const DEFAULT_TAG_COLOR = '#7c8aff';
+const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
+const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   setup() {
     const router = useRouter();
     const uploadInput = ref<HTMLInputElement | null>(null);
     const groups = ref<any[]>([]);
-    const documents = ref<any[]>([]);
+    const documents = ref<HtmlDocumentRecord[]>([]);
+    const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const busy = ref(false);
+    const searchQuery = ref('');
+    const selectedTag = ref('');
     const message = ref('');
     const messageType = ref<'success' | 'error'>('success');
     const openGroups = ref(new Set<string>());
@@ -108,13 +188,70 @@ export default defineComponent({
     const prompt = ref('');
     const generateTitle = ref('');
     const canManageDocs = computed(() => !isPasswordAccess());
+    const tagsModal = ref<{ open: boolean; documentId: string; tags: HtmlTag[] }>({
+      open: false,
+      documentId: '',
+      tags: [],
+    });
+
+    const normalizeTags = (tags: unknown): HtmlTag[] => {
+      if (!Array.isArray(tags)) return [];
+      return tags
+        .map((tag) => {
+          if (typeof tag === 'string') return { id: genTagId(), name: tag, color: DEFAULT_TAG_COLOR };
+          if (tag && typeof tag === 'object' && typeof (tag as any).name === 'string') {
+            return {
+              id: genTagId(),
+              name: (tag as any).name,
+              color: typeof (tag as any).color === 'string' ? (tag as any).color : DEFAULT_TAG_COLOR,
+            };
+          }
+          return null;
+        })
+        .filter((tag): tag is HtmlTag => Boolean(tag));
+    };
+
+    const normalizeDocument = (doc: any): HtmlDocumentRecord => ({
+      ...doc,
+      tags: normalizeTags(doc.tags),
+    });
+
+    const getGroupName = (groupId?: string) => groups.value.find((group) => group.id === groupId)?.name || '';
+
+    const matchesDocument = (doc: HtmlDocumentRecord) => {
+      const q = searchQuery.value.trim().toLowerCase();
+      const groupName = getGroupName(doc.groupId);
+      const matchesQuery = !q || `${doc.title || ''} ${groupName} ${doc.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
+      const matchesTag = !selectedTag.value || doc.tags.some((tag) => tag.name === selectedTag.value);
+      return matchesQuery && matchesTag;
+    };
+
+    const filteredDocuments = computed(() => documents.value.filter(matchesDocument));
 
     const groupsWithDocs = computed(() => {
       const baseGroups = groups.value.length ? groups.value : [{ id: 'shared', name: 'Shared', updatedAt: '', createdAt: '' }];
       return baseGroups.map((group) => ({
         ...group,
-        items: documents.value.filter((doc) => doc.groupId === group.id || (!groups.value.length && doc.shared)),
+        items: filteredDocuments.value.filter((doc) => doc.groupId === group.id || (!groups.value.length && doc.shared)),
       }));
+    });
+
+    const allTagNames = computed(() => {
+      const names = new Set<string>();
+      for (const tag of sharedResourceTags.value) names.add(tag.name);
+      for (const doc of documents.value) {
+        for (const tag of doc.tags) names.add(tag.name);
+      }
+      return Array.from(names).sort();
+    });
+
+    const tagSuggestions = computed(() => {
+      const byName = new Map<string, ResourceTag>();
+      for (const tag of sharedResourceTags.value) byName.set(tag.name, tag);
+      for (const doc of documents.value) {
+        for (const tag of doc.tags) byName.set(tag.name, tag);
+      }
+      return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
     });
 
     function flash(type: 'success' | 'error', text: string) {
@@ -127,7 +264,10 @@ export default defineComponent({
       loading.value = true;
       const state = await htmlDocuments.list();
       groups.value = state.groups;
-      documents.value = state.documents;
+      documents.value = state.documents.map(normalizeDocument);
+      if (canManageDocs.value) {
+        sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
+      }
       for (const group of state.groups) openGroups.value.add(group.id);
       loading.value = false;
     }
@@ -216,6 +356,50 @@ export default defineComponent({
       }
     }
 
+    function openTagsModal(doc: HtmlDocumentRecord) {
+      openMenuId.value = '';
+      tagsModal.value = {
+        open: true,
+        documentId: doc.id,
+        tags: doc.tags.length ? doc.tags.map((tag) => ({ ...tag })) : [{ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR }],
+      };
+    }
+
+    function closeTagsModal() {
+      tagsModal.value = { open: false, documentId: '', tags: [] };
+    }
+
+    function addTag() {
+      tagsModal.value.tags.push({ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR });
+    }
+
+    function addSuggestedTag(tag: ResourceTag) {
+      if (tagsModal.value.tags.some((current) => current.name === tag.name)) return;
+      tagsModal.value.tags.push({ id: genTagId(), name: tag.name, color: tag.color });
+    }
+
+    function removeTag(index: number) {
+      tagsModal.value.tags.splice(index, 1);
+      if (!tagsModal.value.tags.length) addTag();
+    }
+
+    async function saveTagsModal() {
+      const tags = tagsModal.value.tags
+        .map((tag) => ({ name: tag.name.trim().toLowerCase(), color: tag.color }))
+        .filter((tag) => tag.name);
+      busy.value = true;
+      try {
+        await htmlDocuments.update(tagsModal.value.documentId, { tags });
+        closeTagsModal();
+        await load();
+        flash('success', 'Tags saved');
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to save tags');
+      } finally {
+        busy.value = false;
+      }
+    }
+
     async function copyLink(doc: any) {
       const url = `${window.location.origin}/html/${doc.id}`;
       await navigator.clipboard?.writeText(url);
@@ -246,8 +430,10 @@ export default defineComponent({
     return {
       router, uploadInput, groupsWithDocs, loading, busy, message, messageType, canManageDocs,
       openGroups, selectedIds, draggingId, openMenuId, prompt, generateTitle,
+      searchQuery, selectedTag, allTagNames, tagColors, tagsModal, tagSuggestions,
       load, createGroup, renameGroup, createDoc, uploadFile, toggleGroup,
       toggleSelected, dropDocument, toggleShare, copyLink, generate, formatDate,
+      openTagsModal, closeTagsModal, addTag, addSuggestedTag, removeTag, saveTagsModal,
     };
   },
 });
