@@ -231,10 +231,8 @@ export default defineComponent({
     async function save() {
       saving.value = true;
       try {
-        syncHtmlFromPreview();
         await htmlDocuments.update(id, { title: title.value, html: html.value });
         savedSnapshot.value = { title: title.value, html: html.value };
-        await load();
         showToast('HTML document saved', 'success');
       } catch (e: any) {
         showToast(e.message || 'Failed to save HTML document', 'error');
