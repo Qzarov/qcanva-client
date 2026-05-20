@@ -1,26 +1,43 @@
 <template>
   <div class="html-editor-page">
     <div v-if="loading" class="canvas-loading">Loading document...</div>
-    <div v-else-if="accessDenied" class="canvas-error">
-      <div class="error-modal access-request-modal">
-        <h2>No access to this HTML document</h2>
-        <p>Enter the document password or request access from the owner.</p>
-        <form class="resource-password-form" @submit.prevent="loginWithHtmlPassword">
-          <input v-model="resourcePassword" type="password" placeholder="Document password" />
-          <button class="error-home-btn" :disabled="checkingResourcePassword || !resourcePassword">
-            {{ checkingResourcePassword ? 'Checking...' : 'Open with password' }}
-          </button>
-        </form>
-        <div class="access-request-controls">
-          <select v-model="requestedRole">
-            <option value="read">Read</option>
-            <option value="edit">Edit</option>
-          </select>
-          <button class="error-home-btn" :disabled="requestingAccess || accessRequestSent" @click="requestHtmlAccess">
-            {{ accessRequestSent ? 'Request sent' : 'Request access' }}
-          </button>
+    <div v-else-if="accessDenied" class="access-gate">
+      <div class="access-gate-card">
+        <div class="access-gate-icon">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
         </div>
-        <router-link to="/html-docs" class="btn-ghost">Back</router-link>
+        <h2 class="access-gate-title">Private document</h2>
+        <p class="access-gate-sub">You need permission to view this document.</p>
+
+        <div class="access-gate-section">
+          <div class="access-gate-label">Have a password?</div>
+          <form class="access-gate-form" @submit.prevent="loginWithHtmlPassword">
+            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
+            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
+              {{ checkingResourcePassword ? 'Checking…' : 'Open' }}
+            </button>
+          </form>
+        </div>
+
+        <div class="access-gate-divider"><span>or</span></div>
+
+        <div class="access-gate-section">
+          <div class="access-gate-label">Request access from the owner</div>
+          <div class="access-gate-request-row">
+            <select v-model="requestedRole" class="access-gate-select">
+              <option value="read">View only</option>
+              <option value="edit">Can edit</option>
+            </select>
+            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestHtmlAccess">
+              {{ accessRequestSent ? '✓ Request sent' : 'Send request' }}
+            </button>
+          </div>
+        </div>
+
+        <router-link to="/html-docs" class="access-gate-back">← Documents</router-link>
       </div>
     </div>
     <template v-else>
