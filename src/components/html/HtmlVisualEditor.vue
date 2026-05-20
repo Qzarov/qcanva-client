@@ -1,6 +1,10 @@
 <template>
   <div class="html-visual-editor">
     <aside class="html-block-sidebar">
+      <div class="html-history-toolbar">
+        <button class="btn-ghost btn-sm" :disabled="!canUndo" @click="undo">Undo</button>
+        <button class="btn-ghost btn-sm" :disabled="!canRedo" @click="redo">Redo</button>
+      </div>
       <div class="html-panel-title">Add block</div>
       <button
         v-for="block in blockTypes"
@@ -113,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   createBlock,
   duplicateBlock,
@@ -124,6 +128,7 @@ import {
   type VisualBlock,
   type VisualBlockType,
 } from '../../html/visualHtml';
+import { createHistory } from '../../html/visualHtmlHistory';
 
 const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>();
@@ -156,6 +161,43 @@ const parsed = ref<ParsedVisualHtml>(parseVisualHtml(props.modelValue));
 const selectedId = ref(parsed.value.blocks[0]?.id || '');
 const syncingFromSelf = ref(false);
 
+const canUndo = ref(false);
+const canRedo = ref(false);
+
+const history = (() => {
+  const inner = createHistory<string>(props.modelValue || '');
+  return {
+    record(value: string) {
+      inner.record(value);
+      canUndo.value = true;
+      canRedo.value = false;
+    },
+    undo(): string | undefined {
+      const value = inner.undo();
+      if (value === undefined) {
+        canUndo.value = false;
+      } else {
+        canRedo.value = true;
+      }
+      return value;
+    },
+    redo(): string | undefined {
+      const value = inner.redo();
+      if (value === undefined) {
+        canRedo.value = false;
+      } else {
+        canUndo.value = true;
+      }
+      return value;
+    },
+    reset(value: string) {
+      inner.reset(value);
+      canUndo.value = false;
+      canRedo.value = false;
+    },
+  };
+})();
+
 const selectedIndex = computed(() => parsed.value.blocks.findIndex((block) => block.id === selectedId.value));
 const selectedBlock = computed(() => parsed.value.blocks[selectedIndex.value] || parsed.value.blocks[0]);
 const previewHtml = computed(() => serializeVisualHtml(parsed.value));
@@ -167,11 +209,14 @@ watch(() => props.modelValue, (value) => {
   }
   parsed.value = parseVisualHtml(value);
   selectedId.value = parsed.value.blocks[0]?.id || '';
+  history.reset(value || '');
 });
 
-function emitHtml() {
+function emitHtml(record = true) {
   syncingFromSelf.value = true;
-  emit('update:modelValue', serializeVisualHtml(parsed.value));
+  const html = serializeVisualHtml(parsed.value);
+  if (record) history.record(html);
+  emit('update:modelValue', html);
 }
 
 function addBlock(type: VisualBlockType) {
@@ -234,6 +279,29 @@ function updateStyle(property: string, value: string) {
   setBlockStyleProperty(selectedBlock.value, property, value);
   emitHtml();
 }
+
+function applyHistoryValue(value: string | undefined) {
+  if (value === undefined) return;
+  parsed.value = parseVisualHtml(value);
+  selectedId.value = parsed.value.blocks[0]?.id || selectedId.value;
+  syncingFromSelf.value = true;
+  emit('update:modelValue', value);
+}
+
+function undo() { applyHistoryValue(history.undo()); }
+function redo() { applyHistoryValue(history.redo()); }
+
+function onHistoryShortcut(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey)) return;
+  const target = event.target as HTMLElement | null;
+  if (target?.isContentEditable) return;
+  const key = event.key.toLowerCase();
+  if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
+  else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redo(); }
+}
+
+onMounted(() => window.addEventListener('keydown', onHistoryShortcut));
+onBeforeUnmount(() => window.removeEventListener('keydown', onHistoryShortcut));
 
 function styleValue(block: VisualBlock, property: string) {
   for (const part of (block.style || '').split(';')) {

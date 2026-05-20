@@ -2239,3 +2239,9 @@ html, body {
     flex-basis: calc(50% - 4px);
   }
 }
+
+.html-history-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
