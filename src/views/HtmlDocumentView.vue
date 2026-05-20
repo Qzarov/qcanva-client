@@ -46,17 +46,6 @@
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
     </header>
-    <section v-if="role !== 'read'" class="html-editor-tools">
-      <button class="btn-ghost btn-sm" @click="formatHtml">Format</button>
-      <button class="btn-ghost btn-sm" @click="wrapSelection('section')">Section</button>
-      <button class="btn-ghost btn-sm" @click="wrapSelection('h2')">H2</button>
-      <button class="btn-ghost btn-sm" @click="wrapSelection('p')">P</button>
-      <button class="btn-ghost btn-sm" @click="wrapSelection('button')">Button</button>
-      <button class="btn-ghost btn-sm" @click="insertSnippet('link')">Link</button>
-      <button class="btn-ghost btn-sm" @click="insertSnippet('card')">Card</button>
-      <button class="btn-ghost btn-sm" @click="insertSnippet('list')">List</button>
-      <button class="btn-ghost btn-sm" @click="insertSnippet('style')">Style</button>
-    </section>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
       <h3>Share HTML</h3>
       <div class="share-form">
