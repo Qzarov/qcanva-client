@@ -145,7 +145,7 @@ export default defineComponent({
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
     const role = ref('read');
-    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
+    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('visual');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const loading = ref(true);
@@ -180,6 +180,9 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
+        if (res.role === 'read') {
+          viewMode.value = 'preview';
+        }
         if (res.role === 'owner') await loadPermissions();
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
