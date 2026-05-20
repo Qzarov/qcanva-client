@@ -46,4 +46,17 @@ describe('visualHtml', () => {
     expect(block.style).toContain('color: red');
     expect(block.style).toContain('padding: 16px');
   });
+
+  it("escapes single quotes in href and text content", () => {
+    const parsed = parseVisualHtml(
+      "<!DOCTYPE html><html><head></head><body><a href=\"/o'malley\">O'Malley</a></body></html>",
+    );
+
+    expect(parsed.blocks[0]).toMatchObject({ type: 'link', text: "O'Malley", href: "/o'malley" });
+
+    const html = serializeVisualHtml(parsed);
+    expect(html).toContain("href=\"/o&#39;malley\"");
+    expect(html).toContain(">O&#39;Malley<");
+    expect(html).not.toContain("/o'malley\"");
+  });
 });
