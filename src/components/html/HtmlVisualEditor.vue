@@ -23,8 +23,13 @@
           v-for="(block, index) in parsed.blocks"
           :key="block.id"
           class="html-structure-item"
-          :class="{ active: selectedBlock?.id === block.id }"
+          :class="{ active: selectedBlock?.id === block.id, 'drop-target': dropIndex === index }"
+          draggable="true"
           @click="selectedId = block.id"
+          @dragstart="onDragStart(index, $event)"
+          @dragover.prevent="onDragOver(index, $event)"
+          @drop="onDrop(index, $event)"
+          @dragend="onDragEnd"
         >
           <span>{{ blockLabel(block) }}</span>
           <small>{{ index + 1 }}</small>
@@ -160,6 +165,39 @@ const styleControls = [
 const parsed = ref<ParsedVisualHtml>(parseVisualHtml(props.modelValue));
 const selectedId = ref(parsed.value.blocks[0]?.id || '');
 const syncingFromSelf = ref(false);
+
+const dragIndex = ref<number | null>(null);
+const dropIndex = ref<number | null>(null);
+
+function onDragStart(index: number, event: DragEvent) {
+  dragIndex.value = index;
+  event.dataTransfer?.setData('text/plain', String(index));
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+}
+
+function onDragOver(index: number, event: DragEvent) {
+  if (dragIndex.value === null) return;
+  event.preventDefault();
+  dropIndex.value = index;
+}
+
+function onDrop(index: number, event: DragEvent) {
+  event.preventDefault();
+  const from = dragIndex.value;
+  dragIndex.value = null;
+  dropIndex.value = null;
+  if (from === null || from === index) return;
+  const [block] = parsed.value.blocks.splice(from, 1);
+  if (!block) return;
+  parsed.value.blocks.splice(index, 0, block);
+  selectedId.value = block.id;
+  emitHtml();
+}
+
+function onDragEnd() {
+  dragIndex.value = null;
+  dropIndex.value = null;
+}
 
 const canUndo = ref(false);
 const canRedo = ref(false);
