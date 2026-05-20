@@ -38,10 +38,8 @@
       </label>
       <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Share</button>
       <div class="html-mode-tabs">
-        <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'visual' }" @click="viewMode = 'visual'">Visual</button>
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
-        <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'split' }" @click="viewMode = 'split'">Split</button>
-        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
+        <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
       </div>
       <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty }">{{ isDirty ? 'Unsaved' : 'Saved' }}</span>
       <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
@@ -145,7 +143,7 @@ export default defineComponent({
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
     const role = ref('read');
-    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('visual');
+    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const loading = ref(true);
@@ -180,9 +178,6 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
-        if (res.role === 'read') {
-          viewMode.value = 'preview';
-        }
         if (res.role === 'owner') await loadPermissions();
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {

@@ -97,11 +97,8 @@
           </div>
           <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
           <span v-if="role" class="topbar-role">{{ role }}</span>
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="cycleVisibility">
-            {{ visibilityLabel }}
-          </button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">
-            Share
+            Access
           </button>
           <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker">
             Embed
@@ -162,37 +159,56 @@
         <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
       </div>
 
-      <!-- Share panel -->
+      <!-- Access panel -->
       <div v-if="showShare" class="share-panel">
-        <h3>Share Canvas</h3>
-        <div class="share-form">
-          <input v-model="shareEmail" placeholder="Email" type="email" />
-          <select v-model="shareRole">
-            <option value="read">Read</option>
-            <option value="edit">Edit</option>
-          </select>
-          <button @click="doShare">Share</button>
+        <div class="share-panel-header">
+          <h3>Access</h3>
+          <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
         </div>
-        <div v-if="permissions.length" class="share-list">
-          <div v-for="p in permissions" :key="p.id" class="share-item">
-            <span>{{ p.user?.email || p.userId }} — {{ p.role }}</span>
-            <button @click="doRevoke(p.userId)">x</button>
+
+        <div class="share-section">
+          <div class="share-section-title">Who can view</div>
+          <select class="share-visibility-select" :value="visibility" @change="setVisibility(($event.target as HTMLSelectElement).value as any)">
+            <option value="private">Private — only invited people</option>
+            <option value="authenticated">Auth only — any logged-in user</option>
+            <option value="public">Public — anyone with the link</option>
+          </select>
+          <label class="share-checkbox">
+            <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
+            <span>Allow public editing</span>
+          </label>
+        </div>
+
+        <div class="share-section">
+          <div class="share-section-title">Invite people</div>
+          <div class="share-form">
+            <input v-model="shareEmail" placeholder="Email" type="email" />
+            <select v-model="shareRole">
+              <option value="read">Can view</option>
+              <option value="edit">Can edit</option>
+            </select>
+            <button @click="doShare">Invite</button>
+          </div>
+          <div v-if="permissions.length" class="share-list">
+            <div v-for="p in permissions" :key="p.id" class="share-item">
+              <span>{{ p.user?.email || p.userId }}</span>
+              <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+              <button @click="doRevoke(p.userId)">×</button>
+            </div>
           </div>
         </div>
-        <label v-if="role === 'owner'" class="share-checkbox">
-          <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
-          <span>Allow public edit</span>
-        </label>
-        <div v-if="role === 'owner'" class="password-access-panel">
+
+        <div v-if="role === 'owner'" class="share-section">
+          <div class="share-section-title">Password access</div>
           <label class="share-checkbox">
             <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>Password access</span>
+            <span>Enable password access</span>
           </label>
-          <div class="share-form">
+          <div v-if="passwordAccessEnabled" class="share-form">
             <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
             <select v-model="passwordAccessRole">
-              <option value="read">Read</option>
-              <option value="edit">Edit</option>
+              <option value="read">Can view</option>
+              <option value="edit">Can edit</option>
             </select>
             <button @click="savePasswordAccess">Save</button>
           </div>
@@ -362,10 +378,6 @@ export default defineComponent({
     const searchMatches = ref<string[]>([]);
     const searchIndex = ref(0);
 
-    const visibilityLabel = computed(() => {
-      const map = { private: 'Private', authenticated: 'Auth Only', public: 'Public' };
-      return map[visibility.value];
-    });
     const saving = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
@@ -673,15 +685,13 @@ export default defineComponent({
       }
     };
 
-    const cycleVisibility = async () => {
-      const order: Array<'private' | 'authenticated' | 'public'> = ['private', 'authenticated', 'public'];
-      const prevIdx = order.indexOf(visibility.value);
+    const setVisibility = async (value: 'private' | 'authenticated' | 'public') => {
       const prev = visibility.value;
-      visibility.value = order[(prevIdx + 1) % order.length]!;
-      isPublic.value = visibility.value === 'public';
+      visibility.value = value;
+      isPublic.value = value === 'public';
       try {
-        await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: visibility.value });
-        showToast(`Visibility: ${visibility.value}`, 'success');
+        await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: value });
+        showToast(`Visibility: ${value}`, 'success');
       } catch (err: any) {
         visibility.value = prev;
         isPublic.value = prev === 'public';
@@ -908,7 +918,7 @@ export default defineComponent({
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, shareEmail, shareRole, permissions,
-      onCanvasChange, onCanvasOp, onCursorMove, saveTitle, cycleVisibility, visibilityLabel, doShare, doRevoke,
+      onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       allowPublicEdit, canManageSettings, togglePublicEdit,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
