@@ -95,10 +95,12 @@
                   >#{{ tag.name }}</span>
                 </div>
                 <button v-if="canManageDocs" class="card-manage" @click.stop="openMenuId = openMenuId === doc.id ? '' : doc.id">⋯</button>
+                <button v-if="canManageDocs" class="card-delete" @click.stop="deleteDoc(doc)" title="Delete" :disabled="busy">x</button>
                 <div v-if="openMenuId === doc.id" class="card-menu" @click.stop>
                   <button class="card-menu-item" @click="copyLink(doc)">Copy shared link</button>
                   <button class="card-menu-item" @click="toggleShare(doc)">{{ doc.shared ? 'Make private' : 'Share' }}</button>
                   <button class="card-menu-item" @click="openTagsModal(doc)">Edit tags</button>
+                  <button class="card-menu-item danger" @click="deleteDoc(doc)" :disabled="busy">Delete</button>
                 </div>
               </article>
             </div>
@@ -356,6 +358,24 @@ export default defineComponent({
       }
     }
 
+    async function deleteDoc(doc: HtmlDocumentRecord) {
+      const title = doc.title?.trim() || 'Untitled HTML';
+      const confirmed = window.confirm(`Delete HTML document "${title}"?`);
+      if (!confirmed) return;
+      busy.value = true;
+      openMenuId.value = '';
+      try {
+        await htmlDocuments.delete(doc.id);
+        documents.value = documents.value.filter((item) => item.id !== doc.id);
+        selectedIds.value = selectedIds.value.filter((id) => id !== doc.id);
+        flash('success', `Deleted ${title}`);
+      } catch (e: any) {
+        flash('error', e.message || 'Failed to delete document');
+      } finally {
+        busy.value = false;
+      }
+    }
+
     function openTagsModal(doc: HtmlDocumentRecord) {
       openMenuId.value = '';
       tagsModal.value = {
@@ -433,7 +453,7 @@ export default defineComponent({
       searchQuery, selectedTag, allTagNames, tagColors, tagsModal, tagSuggestions,
       load, createGroup, renameGroup, createDoc, uploadFile, toggleGroup,
       toggleSelected, dropDocument, toggleShare, copyLink, generate, formatDate,
-      openTagsModal, closeTagsModal, addTag, addSuggestedTag, removeTag, saveTagsModal,
+      deleteDoc, openTagsModal, closeTagsModal, addTag, addSuggestedTag, removeTag, saveTagsModal,
     };
   },
 });

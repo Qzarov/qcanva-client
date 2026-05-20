@@ -205,6 +205,8 @@ export const htmlDocuments = {
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   move: (id: string, groupId: string) =>
     request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),
+  delete: (id: string) =>
+    request<any>(`/html-documents/${id}`, { method: 'DELETE' }),
   checklist: (id: string, checkId: string, checked: boolean) =>
     request<any>(`/html-documents/${id}/checklist`, { method: 'PUT', body: JSON.stringify({ checkId, checked }) }),
   settings: () => request<{ model: string; hasOpenRouterKey: boolean }>('/html-documents/settings/current'),
