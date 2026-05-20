@@ -91,49 +91,7 @@
       </div>
     </section>
     <main class="html-editor-main">
-      <div v-if="viewMode === 'visual' && role !== 'read'" class="html-visual-grid">
-        <aside class="html-block-sidebar">
-          <div class="html-panel-title">Templates</div>
-          <button v-for="template in templates" :key="template.id" class="html-block-btn" @click="applyTemplate(template.id)">
-            {{ template.label }}
-          </button>
-          <div class="html-panel-title">Blocks</div>
-          <button v-for="block in blockTypes" :key="block.type" class="html-block-btn" @click="addBlock(block.type)">
-            {{ block.label }}
-          </button>
-          <div class="html-panel-title">Visual edit</div>
-          <button class="html-block-btn" :class="{ active: visualEditorMode === 'blocks' }" @click="visualEditorMode = 'blocks'">Blocks</button>
-          <button class="html-block-btn" :class="{ active: visualEditorMode === 'dom' }" @click="openDomVisualEditor">DOM edit</button>
-          <button v-if="visualEditorMode === 'dom'" class="html-block-btn" @click="resetDomVisualEditor">Reload from source</button>
-        </aside>
-        <section v-if="visualEditorMode === 'blocks'" class="html-block-editor">
-          <div v-for="(block, index) in visualBlocks" :key="block.id" class="html-block-row">
-            <div class="html-block-row-head">
-              <span>{{ blockLabel(block.type) }}</span>
-              <div>
-                <button class="btn-ghost btn-sm" @click="moveBlock(index, -1)" :disabled="index === 0">Up</button>
-                <button class="btn-ghost btn-sm" @click="moveBlock(index, 1)" :disabled="index === visualBlocks.length - 1">Down</button>
-                <button class="btn-ghost btn-sm danger" @click="removeBlock(index)">Delete</button>
-              </div>
-            </div>
-            <input v-if="block.type !== 'list'" v-model="block.text" class="dashboard-modal-input" :placeholder="blockPlaceholder(block.type)" @input="syncHtmlFromBlocks" />
-            <textarea v-else v-model="block.text" class="dashboard-modal-input html-block-textarea" placeholder="One list item per line" @input="syncHtmlFromBlocks"></textarea>
-            <input v-if="block.type === 'link' || block.type === 'button' || block.type === 'image'" v-model="block.href" class="dashboard-modal-input" :placeholder="block.type === 'image' ? 'Image URL' : 'URL'" @input="syncHtmlFromBlocks" />
-            <input v-if="block.type === 'image'" v-model="block.alt" class="dashboard-modal-input" placeholder="Alt text" @input="syncHtmlFromBlocks" />
-          </div>
-        </section>
-        <section v-else class="html-block-editor html-dom-editor-note">
-          <h3>DOM edit</h3>
-          <p>Edit the page directly in the preview pane. Changes sync into the HTML source and save through the normal Save button.</p>
-        </section>
-        <iframe
-          ref="visualFrame"
-          :srcdoc="visualEditorMode === 'dom' ? visualDomSrcdoc : html"
-          class="html-browser-preview"
-          sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-          @load="visualEditorMode === 'dom' ? bindVisualDomEditor($event) : bindPreviewChecklist($event)"
-        ></iframe>
-      </div>
+      <HtmlVisualEditor v-if="viewMode === 'visual' && role !== 'read'" v-model="html" />
       <iframe
         v-if="viewMode === 'preview'"
         ref="previewFrame"
@@ -173,9 +131,11 @@
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToken } from '../api/client';
+import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useToast } from '../composables/useToast';
 
 export default defineComponent({
+  components: { HtmlVisualEditor },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -204,28 +164,8 @@ export default defineComponent({
     const passwordAccessRole = ref<'read' | 'edit'>('read');
     const saving = ref(false);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
-    const visualFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
-    type VisualBlock = { id: string; type: string; text: string; href?: string; alt?: string };
-    const genBlockId = () => Math.random().toString(36).slice(2, 10);
-    const blockTypes = [
-      { type: 'heading', label: 'Heading' },
-      { type: 'paragraph', label: 'Paragraph' },
-      { type: 'button', label: 'Button' },
-      { type: 'link', label: 'Link' },
-      { type: 'card', label: 'Card' },
-      { type: 'list', label: 'List' },
-      { type: 'image', label: 'Image' },
-    ];
-    const templates = [
-      { id: 'landing', label: 'Landing page' },
-      { id: 'brief', label: 'Brief' },
-      { id: 'checklist', label: 'Checklist' },
-    ];
-    const visualBlocks = ref<VisualBlock[]>([]);
-    const visualEditorMode = ref<'blocks' | 'dom'>('blocks');
-    const visualDomSrcdoc = ref('');
 
     async function load() {
       try {
@@ -234,8 +174,6 @@ export default defineComponent({
         const res = await htmlDocuments.get(id);
         title.value = res.document.title;
         html.value = res.document.html;
-        visualDomSrcdoc.value = html.value;
-        visualBlocks.value = inferBlocksFromHtml(html.value);
         savedSnapshot.value = { title: title.value, html: html.value };
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
@@ -265,157 +203,10 @@ export default defineComponent({
       html.value = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
     }
 
-    function syncHtmlFromVisualDom() {
-      if (viewMode.value !== 'visual' || visualEditorMode.value !== 'dom') return;
-      const doc = visualFrame.value?.contentDocument;
-      if (!doc?.documentElement) return;
-      html.value = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
-    }
-
-    function openDomVisualEditor() {
-      visualEditorMode.value = 'dom';
-      visualDomSrcdoc.value = html.value;
-    }
-
-    function resetDomVisualEditor() {
-      visualDomSrcdoc.value = html.value;
-    }
-
-    function bindVisualDomEditor(event: Event) {
-      const iframe = event.target as HTMLIFrameElement;
-      const doc = iframe.contentDocument;
-      if (!doc?.body) return;
-      doc.designMode = 'on';
-      doc.body.contentEditable = 'true';
-      doc.body.classList.add('qcanva-dom-editing');
-      const sync = () => syncHtmlFromVisualDom();
-      doc.body.addEventListener('input', sync);
-      doc.body.addEventListener('keyup', sync);
-      doc.body.addEventListener('mouseup', sync);
-      bindPreviewChecklist(event);
-    }
-
-    function escapeHtml(value: string) {
-      return value
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-    }
-
-    function blockToHtml(block: VisualBlock) {
-      const text = escapeHtml(block.text || '');
-      if (block.type === 'heading') return `<h1>${text || 'Heading'}</h1>`;
-      if (block.type === 'paragraph') return `<p>${text || 'Paragraph text'}</p>`;
-      if (block.type === 'button') return `<a class="button" href="${escapeHtml(block.href || '#')}">${text || 'Button'}</a>`;
-      if (block.type === 'link') return `<a href="${escapeHtml(block.href || '#')}">${text || 'Link text'}</a>`;
-      if (block.type === 'card') return `<section class="card"><h2>${text || 'Card title'}</h2><p>Card body text</p></section>`;
-      if (block.type === 'list') {
-        const items = (block.text || 'First item\nSecond item').split('\n').filter(Boolean).map((item) => `<li>${escapeHtml(item)}</li>`).join('');
-        return `<ul>${items}</ul>`;
-      }
-      if (block.type === 'image') return `<img src="${escapeHtml(block.href || '')}" alt="${escapeHtml(block.alt || block.text || '')}">`;
-      return `<p>${text}</p>`;
-    }
-
-    function syncHtmlFromBlocks() {
-      const body = visualBlocks.value.map(blockToHtml).join('\n');
-      html.value = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { margin: 0; padding: 40px; font-family: system-ui, sans-serif; color: #1f2937; }
-    .button { display: inline-block; padding: 10px 16px; border-radius: 6px; background: #2563eb; color: white; text-decoration: none; }
-    .card { padding: 20px; border: 1px solid #e5e7eb; border-radius: 8px; margin: 16px 0; }
-    img { max-width: 100%; border-radius: 8px; }
-  </style>
-</head>
-<body>
-${body}
-</body>
-</html>`;
-    }
-
-    function inferBlocksFromHtml(source: string): VisualBlock[] {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(source || '<main></main>', 'text/html');
-      const bodyChildren = Array.from(doc.body.children);
-      const blocks = bodyChildren.map((element): VisualBlock | null => {
-        const tag = element.tagName.toLowerCase();
-        if (/h[1-6]/.test(tag)) return { id: genBlockId(), type: 'heading', text: element.textContent || '' };
-        if (tag === 'p') return { id: genBlockId(), type: 'paragraph', text: element.textContent || '' };
-        if (tag === 'a' && element.classList.contains('button')) return { id: genBlockId(), type: 'button', text: element.textContent || '', href: element.getAttribute('href') || '' };
-        if (tag === 'a') return { id: genBlockId(), type: 'link', text: element.textContent || '', href: element.getAttribute('href') || '' };
-        if (tag === 'ul' || tag === 'ol') return { id: genBlockId(), type: 'list', text: Array.from(element.children).map((item) => item.textContent || '').join('\n') };
-        if (tag === 'img') return { id: genBlockId(), type: 'image', text: element.getAttribute('alt') || '', href: element.getAttribute('src') || '', alt: element.getAttribute('alt') || '' };
-        if (tag === 'section' || tag === 'div') return { id: genBlockId(), type: 'card', text: element.querySelector('h1,h2,h3')?.textContent || element.textContent || '' };
-        return null;
-      }).filter((block): block is VisualBlock => Boolean(block));
-      return blocks.length ? blocks : [{ id: genBlockId(), type: 'heading', text: title.value || 'Untitled HTML' }];
-    }
-
-    function addBlock(type: string) {
-      visualBlocks.value.push({ id: genBlockId(), type, text: '', href: '', alt: '' });
-      syncHtmlFromBlocks();
-    }
-
-    function removeBlock(index: number) {
-      visualBlocks.value.splice(index, 1);
-      syncHtmlFromBlocks();
-    }
-
-    function moveBlock(index: number, direction: number) {
-      const nextIndex = index + direction;
-      if (nextIndex < 0 || nextIndex >= visualBlocks.value.length) return;
-      const [block] = visualBlocks.value.splice(index, 1);
-      if (!block) return;
-      visualBlocks.value.splice(nextIndex, 0, block);
-      syncHtmlFromBlocks();
-    }
-
-    function applyTemplate(templateId: string) {
-      const map: Record<string, VisualBlock[]> = {
-        landing: [
-          { id: genBlockId(), type: 'heading', text: title.value || 'Landing page' },
-          { id: genBlockId(), type: 'paragraph', text: 'A concise value proposition for this page.' },
-          { id: genBlockId(), type: 'button', text: 'Get started', href: '#' },
-          { id: genBlockId(), type: 'card', text: 'Feature highlight' },
-        ],
-        brief: [
-          { id: genBlockId(), type: 'heading', text: title.value || 'Brief' },
-          { id: genBlockId(), type: 'paragraph', text: 'Context, goals, and constraints.' },
-          { id: genBlockId(), type: 'list', text: 'Goal\nAudience\nNext step' },
-        ],
-        checklist: [
-          { id: genBlockId(), type: 'heading', text: title.value || 'Checklist' },
-          { id: genBlockId(), type: 'list', text: 'First task\nSecond task\nFinal review' },
-        ],
-      };
-      const selectedTemplate = map[templateId] || map.landing || [];
-      visualBlocks.value = selectedTemplate.map((block) => ({ ...block, id: genBlockId() }));
-      syncHtmlFromBlocks();
-    }
-
-    function blockLabel(type: string) {
-      return blockTypes.find((block) => block.type === type)?.label || type;
-    }
-
-    function blockPlaceholder(type: string) {
-      if (type === 'heading') return 'Heading text';
-      if (type === 'button') return 'Button label';
-      if (type === 'link') return 'Link text';
-      if (type === 'image') return 'Caption';
-      if (type === 'card') return 'Card title';
-      return 'Text';
-    }
-
     async function save() {
       saving.value = true;
       try {
         syncHtmlFromPreview();
-        syncHtmlFromVisualDom();
         await htmlDocuments.update(id, { title: title.value, html: html.value });
         savedSnapshot.value = { title: title.value, html: html.value };
         await load();
@@ -612,12 +403,9 @@ ${body}
       title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied, isDirty,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
-      passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, visualFrame, sourceEditor,
-      visualBlocks, blockTypes, templates, visualEditorMode, visualDomSrcdoc,
+      passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
-      addBlock, removeBlock, moveBlock, applyTemplate, syncHtmlFromBlocks, blockLabel, blockPlaceholder,
-      openDomVisualEditor, resetDomVisualEditor, bindVisualDomEditor,
     };
   },
 });
