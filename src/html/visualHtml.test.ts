@@ -59,4 +59,22 @@ describe('visualHtml', () => {
     expect(html).toContain(">O&#39;Malley<");
     expect(html).not.toContain("/o'malley\"");
   });
+
+  it("round-trips section without duplicating heading", () => {
+    const source =
+      '<!DOCTYPE html><html><head></head><body><section><h2>Title</h2><p>Body</p></section></body></html>';
+    const once = serializeVisualHtml(parseVisualHtml(source));
+    const twice = serializeVisualHtml(parseVisualHtml(once));
+
+    const headingCount = (twice.match(/<h2[^>]*>Title<\/h2>/g) || []).length;
+    expect(headingCount).toBe(1);
+    expect(twice).toContain('<p>Body</p>');
+  });
+
+  it("round-trips card without duplicating heading", () => {
+    const source =
+      '<!DOCTYPE html><html><head></head><body><article class="card"><h2>T</h2><p>B</p></article></body></html>';
+    const twice = serializeVisualHtml(parseVisualHtml(serializeVisualHtml(parseVisualHtml(source))));
+    expect((twice.match(/<h2[^>]*>T<\/h2>/g) || []).length).toBe(1);
+  });
 });

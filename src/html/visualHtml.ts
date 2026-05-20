@@ -114,17 +114,25 @@ function parseBlock(element: Element): VisualBlock {
   }
 
   if (tag === 'section') {
+    const heading = element.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+    const clone = element.cloneNode(true) as Element;
+    if (heading) {
+      const headingClone = clone.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+      headingClone?.remove();
+    }
     return createBlock('section', {
-      text: element.querySelector('h1,h2,h3,h4,h5,h6')?.textContent?.trim() || '',
-      body: element.innerHTML,
+      text: heading?.textContent?.trim() || '',
+      body: clone.innerHTML.trim(),
       style,
     });
   }
 
   if (tag === 'article' || (tag === 'div' && element.classList.contains('card'))) {
+    const heading = element.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
+    const paragraph = element.querySelector(':scope > p');
     return createBlock('card', {
-      text: element.querySelector('h1,h2,h3,h4,h5,h6')?.textContent?.trim() || textFrom(element),
-      body: element.querySelector('p')?.textContent?.trim() || '',
+      text: heading?.textContent?.trim() || '',
+      body: paragraph?.textContent?.trim() || '',
       style,
     });
   }
@@ -212,11 +220,14 @@ export function blockToHtml(block: VisualBlock): string {
 
   if (block.type === 'section') {
     const heading = block.text ? `<h2>${text}</h2>` : '';
-    return `<section${style}>${heading}${block.body || '<p>Section content</p>'}</section>`;
+    const body = (block.body || '').trim() || '<p>Section content</p>';
+    return `<section${style}>${heading}${body}</section>`;
   }
 
   if (block.type === 'card') {
-    return `<article class="card"${style}><h2>${text || 'Card title'}</h2><p>${escapeHtml(block.body || 'Card body')}</p></article>`;
+    const heading = block.text ? `<h2>${text}</h2>` : '';
+    const body = block.body ? `<p>${escapeHtml(block.body)}</p>` : '<p>Card body</p>';
+    return `<article class="card"${style}>${heading}${body}</article>`;
   }
 
   return block.rawHtml || '';
