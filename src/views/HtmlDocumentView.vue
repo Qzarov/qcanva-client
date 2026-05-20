@@ -49,6 +49,7 @@
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
         <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
       </div>
+      <button class="btn-ghost" @click="downloadDocument">Download</button>
       <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty }">{{ isDirty ? 'Unsaved' : 'Saved' }}</span>
       <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
@@ -151,6 +152,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useToast } from '../composables/useToast';
+import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 
 export default defineComponent({
   components: { HtmlVisualEditor },
@@ -219,6 +221,11 @@ export default defineComponent({
       const doc = previewFrame.value?.contentDocument;
       if (!doc?.documentElement) return;
       html.value = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+    }
+
+    function downloadDocument() {
+      syncHtmlFromPreview();
+      downloadHtmlDocument(title.value, html.value);
     }
 
     async function save() {
@@ -424,6 +431,7 @@ export default defineComponent({
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
+      downloadDocument,
     };
   },
 });
