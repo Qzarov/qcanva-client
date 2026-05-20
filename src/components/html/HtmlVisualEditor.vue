@@ -19,6 +19,9 @@
     <section class="html-visual-panel">
       <div class="html-panel-title">Structure</div>
       <div class="html-structure-list">
+        <div v-if="parsed.blocks.length === 0" class="html-structure-empty">
+          Add a block from the left to start editing the document.
+        </div>
         <button
           v-for="(block, index) in parsed.blocks"
           :key="block.id"
