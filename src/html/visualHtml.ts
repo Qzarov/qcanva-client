@@ -277,7 +277,8 @@ export function sanitizeInlineHtml(input: string): string {
           out += '<br>';
         } else if (tag === 'a') {
           const href = el.getAttribute('href') || '#';
-          out += `<a href="${escapeHtml(href)}">${walk(el)}</a>`;
+          const safehref = /^javascript:/i.test(href) ? '#' : href;
+          out += `<a href="${escapeHtml(safehref)}">${walk(el)}</a>`;
         } else {
           out += `<${tag}>${walk(el)}</${tag}>`;
         }

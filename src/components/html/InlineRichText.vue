@@ -6,19 +6,34 @@
       <button type="button" @mousedown.prevent="promptLink">Link</button>
     </div>
     <div
+      ref="surfaceRef"
       class="inline-rich-surface"
       contenteditable="true"
-      v-html="modelValue"
       @input="onInput"
     ></div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { onMounted, ref, watch } from 'vue';
 import { sanitizeInlineHtml } from '../../html/visualHtml';
 
-defineProps<{ modelValue: string }>();
+const props = defineProps<{ modelValue: string }>();
 const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>();
+
+const surfaceRef = ref<HTMLElement | null>(null);
+
+onMounted(() => {
+  if (surfaceRef.value) {
+    surfaceRef.value.innerHTML = props.modelValue || '';
+  }
+});
+
+watch(() => props.modelValue, (value) => {
+  const el = surfaceRef.value;
+  if (!el || el === document.activeElement) return;
+  el.innerHTML = value || '';
+});
 
 function exec(command: 'bold' | 'italic') {
   document.execCommand(command);
