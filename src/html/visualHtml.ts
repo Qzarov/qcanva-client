@@ -71,14 +71,14 @@ function parseBlock(element: Element): VisualBlock {
 
   if (/^h[1-6]$/.test(tag)) {
     return createBlock('heading', {
-      text: textFrom(element),
+      text: sanitizeInlineHtml(element.innerHTML),
       level: Number(tag.slice(1)),
       style,
     });
   }
 
   if (tag === 'p') {
-    return createBlock('paragraph', { text: textFrom(element), style });
+    return createBlock('paragraph', { text: sanitizeInlineHtml(element.innerHTML), style });
   }
 
   if (tag === 'a' && element.classList.contains('button')) {
@@ -199,10 +199,14 @@ export function blockToHtml(block: VisualBlock): string {
 
   if (block.type === 'heading') {
     const level = Math.min(Math.max(block.level || 2, 1), 6);
-    return `<h${level}${style}>${text || 'Heading'}</h${level}>`;
+    const inline = sanitizeInlineHtml(block.text || '') || 'Heading';
+    return `<h${level}${style}>${inline}</h${level}>`;
   }
 
-  if (block.type === 'paragraph') return `<p${style}>${text || 'Paragraph text'}</p>`;
+  if (block.type === 'paragraph') {
+    const inline = sanitizeInlineHtml(block.text || '') || 'Paragraph text';
+    return `<p${style}>${inline}</p>`;
+  }
   if (block.type === 'button') return `<a class="button" href="${escapeHtml(block.href || '#')}"${style}>${text || 'Button'}</a>`;
   if (block.type === 'link') return `<a href="${escapeHtml(block.href || '#')}"${style}>${text || 'Link'}</a>`;
 
@@ -250,4 +254,36 @@ export function setBlockStyleProperty(block: VisualBlock, property: string, valu
   if (value.trim()) styles.set(property, value.trim());
   else styles.delete(property);
   block.style = Array.from(styles.entries()).map(([key, val]) => `${key}: ${val}`).join('; ');
+}
+
+const INLINE_ALLOWED = new Set(['strong', 'em', 'a', 'br']);
+
+export function sanitizeInlineHtml(input: string): string {
+  if (typeof DOMParser === 'undefined') return input.replace(/<[^>]+>/g, '');
+  const doc = new DOMParser().parseFromString(`<div>${input}</div>`, 'text/html');
+  const root = doc.body.firstElementChild as HTMLElement | null;
+  if (!root) return '';
+  const walk = (node: Element): string => {
+    let out = '';
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === 3) {
+        out += escapeHtml(child.textContent || '');
+      } else if (child.nodeType === 1) {
+        const el = child as Element;
+        const tag = el.tagName.toLowerCase();
+        if (!INLINE_ALLOWED.has(tag)) {
+          out += walk(el);
+        } else if (tag === 'br') {
+          out += '<br>';
+        } else if (tag === 'a') {
+          const href = el.getAttribute('href') || '#';
+          out += `<a href="${escapeHtml(href)}">${walk(el)}</a>`;
+        } else {
+          out += `<${tag}>${walk(el)}</${tag}>`;
+        }
+      }
+    });
+    return out;
+  };
+  return walk(root);
 }

@@ -55,7 +55,16 @@
 
           <label v-if="hasTextField(selectedBlock.type)">
             <span>Text</span>
-            <input :value="selectedBlock.text || ''" @input="updateSelected({ text: ($event.target as HTMLInputElement).value })" />
+            <InlineRichText
+              v-if="selectedBlock.type === 'heading' || selectedBlock.type === 'paragraph'"
+              :model-value="selectedBlock.text || ''"
+              @update:model-value="updateSelected({ text: $event })"
+            />
+            <input
+              v-else
+              :value="selectedBlock.text || ''"
+              @input="updateSelected({ text: ($event.target as HTMLInputElement).value })"
+            />
           </label>
 
           <label v-if="selectedBlock.type === 'section' || selectedBlock.type === 'card'">
@@ -123,6 +132,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import InlineRichText from './InlineRichText.vue';
 import {
   createBlock,
   duplicateBlock,

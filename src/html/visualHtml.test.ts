@@ -77,4 +77,20 @@ describe('visualHtml', () => {
     const twice = serializeVisualHtml(parseVisualHtml(serializeVisualHtml(parseVisualHtml(source))));
     expect((twice.match(/<h2[^>]*>T<\/h2>/g) || []).length).toBe(1);
   });
+
+  it('preserves bold and italic inside paragraph round-trip', () => {
+    const parsed = parseVisualHtml('<!DOCTYPE html><html><head></head><body><p>Hi <strong>bold</strong></p></body></html>');
+    parsed.blocks[0]!.text = 'Hi <strong>bold</strong>';
+    const html = serializeVisualHtml(parsed);
+    expect(html).toContain('<strong>bold</strong>');
+  });
+
+  it('drops disallowed tags via sanitizer', () => {
+    const block = createBlock('paragraph', { text: 'ok<script>alert(1)<\/script>' });
+    const html = serializeVisualHtml({
+      doctype: '<!DOCTYPE html>', htmlAttrs: '', headHtml: '', bodyAttrs: '', blocks: [block],
+    });
+    expect(html).toContain('ok');
+    expect(html).not.toContain('<script');
+  });
 });
