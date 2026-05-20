@@ -45,7 +45,7 @@
           </label>
 
           <label v-if="hasTextField(selectedBlock.type)">
-            <span>{{ selectedBlock.type === 'image' ? 'Caption' : 'Text' }}</span>
+            <span>Text</span>
             <input :value="selectedBlock.text || ''" @input="updateSelected({ text: ($event.target as HTMLInputElement).value })" />
           </label>
 
@@ -77,6 +77,11 @@
           <label v-if="selectedBlock.type === 'image'">
             <span>Alt text</span>
             <input :value="selectedBlock.alt || ''" @input="updateSelected({ alt: ($event.target as HTMLInputElement).value })" />
+          </label>
+
+          <label v-if="selectedBlock.type === 'image'">
+            <span>Caption</span>
+            <input :value="selectedBlock.caption || ''" @input="updateSelected({ caption: ($event.target as HTMLInputElement).value })" />
           </label>
 
           <label v-if="selectedBlock.type === 'raw'">
@@ -239,7 +244,7 @@ function styleValue(block: VisualBlock, property: string) {
 }
 
 function hasTextField(type: VisualBlockType) {
-  return ['heading', 'paragraph', 'section', 'card', 'button', 'link', 'image'].includes(type);
+  return ['heading', 'paragraph', 'section', 'card', 'button', 'link'].includes(type);
 }
 
 function blockLabel(block: VisualBlock) {
