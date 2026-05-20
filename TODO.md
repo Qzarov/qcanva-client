@@ -133,7 +133,7 @@
 
 ### Следующий приоритетный спринт
 - [ ] Прогнать ручные sync-сценарии на двух клиентах: parallel move, independent node edit, same-node edit, delete-vs-update, reconnect, duplicate `clientOpId`
-- [ ] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
+- [x] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
 - [x] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
 - [ ] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
 - [ ] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
