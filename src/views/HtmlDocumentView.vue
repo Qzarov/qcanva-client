@@ -27,16 +27,7 @@
     <header class="html-editor-bar">
       <router-link to="/html-docs" class="btn-ghost">Back</router-link>
       <input v-model="title" class="html-title-input" :readonly="role === 'read'" />
-      <select v-if="role === 'owner'" v-model="visibility" class="html-access-select" @change="saveAccessSettings">
-        <option value="private">Private</option>
-        <option value="authenticated">Auth only</option>
-        <option value="public">Public</option>
-      </select>
-      <label v-if="role === 'owner'" class="share-checkbox">
-        <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-        <span>Public edit</span>
-      </label>
-      <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Share</button>
+      <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Access</button>
       <div class="html-mode-tabs">
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
         <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
@@ -47,31 +38,54 @@
       </button>
     </header>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
-      <h3>Share HTML</h3>
-      <div class="share-form">
-        <input v-model.trim="shareEmail" placeholder="Email" type="email" />
-        <select v-model="shareRole">
-          <option value="read">Read</option>
-          <option value="edit">Edit</option>
-        </select>
-        <button @click="doShare">Share</button>
+      <div class="share-panel-header">
+        <h3>Access</h3>
+        <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
       </div>
-      <div v-if="permissions.length" class="share-list">
-        <div v-for="p in permissions" :key="p.id" class="share-item">
-          <span>{{ p.user?.email || p.userId }} - {{ p.role }}</span>
-          <button @click="doRevoke(p.userId)">x</button>
+
+      <div class="share-section">
+        <div class="share-section-title">Who can view</div>
+        <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
+          <option value="private">Private — only invited people</option>
+          <option value="authenticated">Auth only — any logged-in user</option>
+          <option value="public">Public — anyone with the link</option>
+        </select>
+        <label class="share-checkbox">
+          <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
+          <span>Allow public editing</span>
+        </label>
+      </div>
+
+      <div class="share-section">
+        <div class="share-section-title">Invite people</div>
+        <div class="share-form">
+          <input v-model.trim="shareEmail" placeholder="Email" type="email" />
+          <select v-model="shareRole">
+            <option value="read">Can view</option>
+            <option value="edit">Can edit</option>
+          </select>
+          <button @click="doShare">Invite</button>
+        </div>
+        <div v-if="permissions.length" class="share-list">
+          <div v-for="p in permissions" :key="p.id" class="share-item">
+            <span>{{ p.user?.email || p.userId }}</span>
+            <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+            <button @click="doRevoke(p.userId)">×</button>
+          </div>
         </div>
       </div>
-      <div class="password-access-panel">
+
+      <div class="share-section">
+        <div class="share-section-title">Password access</div>
         <label class="share-checkbox">
           <input type="checkbox" v-model="passwordAccessEnabled" />
-          <span>Password access</span>
+          <span>Enable password access</span>
         </label>
-        <div class="share-form">
+        <div v-if="passwordAccessEnabled" class="share-form">
           <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
           <select v-model="passwordAccessRole">
-            <option value="read">Read</option>
-            <option value="edit">Edit</option>
+            <option value="read">Can view</option>
+            <option value="edit">Can edit</option>
           </select>
           <button @click="savePasswordAccess">Save</button>
         </div>
