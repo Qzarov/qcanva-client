@@ -133,11 +133,13 @@ function parseBlock(element: Element): VisualBlock {
 
 function bodyElements(doc: Document) {
   const bodyChildren = Array.from(doc.body.children);
+  const firstChild = bodyChildren[0];
   if (
     bodyChildren.length === 1 &&
-    ['main', 'body'].includes(bodyChildren[0]?.tagName.toLowerCase() || '')
+    firstChild &&
+    ['main', 'body'].includes(firstChild.tagName.toLowerCase())
   ) {
-    return Array.from(bodyChildren[0].children);
+    return Array.from(firstChild.children);
   }
   return bodyChildren;
 }

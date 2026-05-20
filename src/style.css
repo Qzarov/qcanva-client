@@ -851,6 +851,13 @@ html, body {
   min-height: 0;
   background: #17181f;
 }
+.html-visual-editor {
+  display: grid;
+  grid-template-columns: 210px minmax(330px, 0.9fr) minmax(0, 1.1fr);
+  width: 100%;
+  min-height: 0;
+  background: #17181f;
+}
 .html-block-sidebar {
   padding: 14px;
   border-right: 1px solid rgba(255,255,255,0.08);
@@ -885,6 +892,87 @@ html, body {
 .html-block-editor {
   padding: 14px;
   overflow: auto;
+}
+.html-visual-panel {
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  border-right: 1px solid rgba(255,255,255,0.08);
+}
+.html-structure-list {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.html-structure-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,0.09);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.035);
+  color: rgba(255,255,255,0.76);
+  text-align: left;
+  cursor: pointer;
+}
+.html-structure-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.html-structure-item small {
+  color: rgba(255,255,255,0.38);
+}
+.html-structure-item.active {
+  border-color: rgba(83,223,221,0.45);
+  background: rgba(83,223,221,0.12);
+  color: #d8fffd;
+}
+.html-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.html-property-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.html-property-grid label {
+  display: grid;
+  gap: 5px;
+  color: rgba(255,255,255,0.58);
+  font-size: 12px;
+}
+.html-property-grid input,
+.html-property-grid textarea,
+.html-property-grid select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  background: rgba(255,255,255,0.055);
+  color: rgba(255,255,255,0.9);
+  font: inherit;
+}
+.html-property-grid textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+.html-style-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.html-checkbox-row {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.html-checkbox-row input {
+  width: auto;
 }
 .html-dom-editor-note {
   align-content: start;
@@ -1047,6 +1135,14 @@ html, body {
 
   .html-visual-grid {
     grid-template-columns: 1fr;
+  }
+
+  .html-visual-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .html-visual-editor .html-browser-preview {
+    min-height: 420px;
   }
 
   .html-editor-main {
