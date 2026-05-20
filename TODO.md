@@ -134,17 +134,17 @@
 ### Следующий приоритетный спринт
 - [ ] Прогнать ручные sync-сценарии на двух клиентах: parallel move, independent node edit, same-node edit, delete-vs-update, reconnect, duplicate `clientOpId`
 - [ ] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
-- [ ] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
+- [x] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
 - [ ] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
 - [ ] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
 - [ ] Только после стабилизации sync-модели возвращаться к продуктовым фичам редактора: search, file/image nodes, templates
 
 ### Быстрые следующие задачи
-- [ ] Добавить маленький sync status badge: `saving`, `synced`, `resyncing`, `conflict`
-- [ ] Показывать toast/banner при reject/resync вместо тихого восстановления
+- [x] Добавить маленький sync status badge: `saving`, `synced`, `resyncing`, `conflict`
+- [x] Показывать toast/banner при reject/resync вместо тихого восстановления
 - [x] Добавить backend unit/e2e на независимые stale операции: `node-1` + `node-2`
 - [x] Добавить backend unit/e2e на конфликтующие stale операции: две операции по одной node/edge
-- [ ] Добавить простое отображение pending/confirmed для локальных операций
+- [x] Добавить простое отображение pending/confirmed для локальных операций
 - [ ] Добавить duplicate для выбранной группы и нескольких нод через общий clipboard path
 
 ## 11. Расширенные типы нод
