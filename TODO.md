@@ -204,4 +204,5 @@
 
 ## 19. HTML documents
 - [x] Доделать полноценный HTML-редактор: удобное редактирование структуры/стилей без ручной правки всего исходника
+- [x] Закрыть пост-релизные баги визуального редактора: round-trip section/card, дефолт Visual, escape `'`, image caption
 - [ ] Перенести модель collaborative editing на HTML-документы: `revision`, HTML operation log, server-side ordering, reject/resync и realtime broadcast по аналогии с canvas
