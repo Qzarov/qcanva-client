@@ -864,6 +864,12 @@ html, body {
   border-bottom: 1px solid rgba(255,255,255,0.08);
   color: rgba(255,255,255,0.9);
 }
+.html-history-preview-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
 .html-history-item {
   width: 100%;
   display: flex;

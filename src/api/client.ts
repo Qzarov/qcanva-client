@@ -218,6 +218,8 @@ export const htmlDocuments = {
   },
   historyEntry: (id: string, entryId: string) =>
     request<any>(`/html-documents/${id}/history/${entryId}`),
+  restoreHistoryEntry: (id: string, entryId: string) =>
+    request<any>(`/html-documents/${id}/history/${entryId}/restore`, { method: 'POST' }),
   settings: () => request<{ model: string; hasOpenRouterKey: boolean }>('/html-documents/settings/current'),
   updateSettings: (payload: { model?: string; openRouterKey?: string }) =>
     request<any>('/html-documents/settings/current', { method: 'PUT', body: JSON.stringify(payload) }),

@@ -133,8 +133,13 @@
         <div v-if="!selectedHistory" class="html-history-empty">Select a revision</div>
         <template v-else>
           <div class="html-history-preview-head">
-            <strong>Revision {{ selectedHistory.revision }}</strong>
-            <small>{{ selectedHistory.type }}</small>
+            <div>
+              <strong>Revision {{ selectedHistory.revision }}</strong>
+              <small>{{ selectedHistory.type }}</small>
+            </div>
+            <button v-if="role !== 'read'" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
+              {{ restoringHistory ? 'Restoring...' : 'Restore' }}
+            </button>
           </div>
           <iframe
             :srcdoc="selectedHistory.html"
@@ -225,6 +230,7 @@ export default defineComponent({
     const historyLoading = ref(false);
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
+    const restoringHistory = ref(false);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
@@ -314,6 +320,24 @@ export default defineComponent({
         selectedHistory.value = await htmlDocuments.historyEntry(id, entry.id);
       } catch (e: any) {
         showToast(e.message || 'Failed to load history entry', 'error');
+      }
+    }
+
+    async function restoreSelectedHistory() {
+      if (!selectedHistory.value) return;
+      const ok = window.confirm(`Restore revision ${selectedHistory.value.revision}? This will create a new revision.`);
+      if (!ok) return;
+      restoringHistory.value = true;
+      try {
+        await htmlDocuments.restoreHistoryEntry(id, selectedHistory.value.id);
+        selectedHistory.value = null;
+        await load();
+        await loadHistory();
+        showToast('HTML document restored', 'success');
+      } catch (e: any) {
+        showToast(e.message || 'Failed to restore history entry', 'error');
+      } finally {
+        restoringHistory.value = false;
       }
     }
 
@@ -512,10 +536,10 @@ export default defineComponent({
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
-      showHistory, historyLoading, historyItems, selectedHistory,
+      showHistory, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
-      downloadDocument, loadHistory, toggleHistory, openHistoryEntry,
+      downloadDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
     };
   },
 });

@@ -66,4 +66,26 @@ describe('htmlDocuments API client', () => {
       },
     );
   });
+
+  it('restores one HTML document history entry', async () => {
+    localStorage.setItem('token', 'token-1');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'doc-1', revision: 3 }),
+    } as Response);
+
+    await htmlDocuments.restoreHistoryEntry('doc-1', 'hist-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/html-documents/doc-1/history/hist-1/restore',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        },
+      },
+    );
+  });
 });
