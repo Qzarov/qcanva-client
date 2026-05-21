@@ -50,6 +50,7 @@
         <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
       </div>
       <button class="btn-ghost" @click="downloadDocument">Download</button>
+      <button class="btn-ghost" @click="toggleHistory">History</button>
       <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty }">{{ isDirty ? 'Unsaved' : 'Saved' }}</span>
       <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
@@ -107,6 +108,40 @@
           </select>
           <button @click="savePasswordAccess">Save</button>
         </div>
+      </div>
+    </section>
+    <section v-if="showHistory" class="html-history-panel">
+      <div class="html-history-list">
+        <div class="html-history-head">
+          <strong>History</strong>
+          <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
+        </div>
+        <div v-if="historyLoading" class="html-history-empty">Loading...</div>
+        <button
+          v-for="entry in historyItems"
+          :key="entry.id"
+          class="html-history-item"
+          :class="{ active: selectedHistory?.id === entry.id }"
+          @click="openHistoryEntry(entry)"
+        >
+          <span>Revision {{ entry.revision }}</span>
+          <small>{{ entry.type }} · {{ new Date(entry.createdAt).toLocaleString() }}</small>
+        </button>
+        <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">No history yet</div>
+      </div>
+      <div class="html-history-preview">
+        <div v-if="!selectedHistory" class="html-history-empty">Select a revision</div>
+        <template v-else>
+          <div class="html-history-preview-head">
+            <strong>Revision {{ selectedHistory.revision }}</strong>
+            <small>{{ selectedHistory.type }}</small>
+          </div>
+          <iframe
+            :srcdoc="selectedHistory.html"
+            class="html-browser-preview"
+            sandbox="allow-same-origin allow-scripts allow-forms"
+          ></iframe>
+        </template>
       </div>
     </section>
     <main class="html-editor-main">
@@ -186,6 +221,10 @@ export default defineComponent({
     const passwordAccessPassword = ref('');
     const passwordAccessRole = ref<'read' | 'edit'>('read');
     const saving = ref(false);
+    const showHistory = ref(false);
+    const historyLoading = ref(false);
+    const historyItems = ref<any[]>([]);
+    const selectedHistory = ref<any | null>(null);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
@@ -242,6 +281,7 @@ export default defineComponent({
         syncHtmlFromPreview();
         await htmlDocuments.update(id, { title: title.value, html: html.value });
         savedSnapshot.value = { title: title.value, html: html.value };
+        if (showHistory.value) await loadHistory();
         await nextTick();
         requestAnimationFrame(() => window.scrollTo(pageScroll.x, pageScroll.y));
         showToast('HTML document saved', 'success');
@@ -249,6 +289,31 @@ export default defineComponent({
         showToast(e.message || 'Failed to save HTML document', 'error');
       } finally {
         saving.value = false;
+      }
+    }
+
+    async function loadHistory() {
+      historyLoading.value = true;
+      try {
+        const result = await htmlDocuments.history(id, { limit: 50 });
+        historyItems.value = result.items || [];
+      } catch (e: any) {
+        showToast(e.message || 'Failed to load history', 'error');
+      } finally {
+        historyLoading.value = false;
+      }
+    }
+
+    async function toggleHistory() {
+      showHistory.value = !showHistory.value;
+      if (showHistory.value && !historyItems.value.length) await loadHistory();
+    }
+
+    async function openHistoryEntry(entry: any) {
+      try {
+        selectedHistory.value = await htmlDocuments.historyEntry(id, entry.id);
+      } catch (e: any) {
+        showToast(e.message || 'Failed to load history entry', 'error');
       }
     }
 
@@ -447,9 +512,10 @@ export default defineComponent({
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
+      showHistory, historyLoading, historyItems, selectedHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
-      downloadDocument,
+      downloadDocument, loadHistory, toggleHistory, openHistoryEntry,
     };
   },
 });
