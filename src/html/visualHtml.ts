@@ -113,6 +113,18 @@ function parseBlock(element: Element): VisualBlock {
     });
   }
 
+  if (tag === 'figure') {
+    const image = element.querySelector(':scope > img');
+    if (image) {
+      return createBlock('image', {
+        src: image.getAttribute('src') || '',
+        alt: image.getAttribute('alt') || '',
+        caption: element.querySelector(':scope > figcaption')?.textContent?.trim() || '',
+        style: image.getAttribute('style') || style,
+      });
+    }
+  }
+
   if (tag === 'section') {
     const heading = element.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6');
     const clone = element.cloneNode(true) as Element;

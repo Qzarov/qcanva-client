@@ -85,6 +85,22 @@ describe('visualHtml', () => {
     expect(html).toContain('<strong>bold</strong>');
   });
 
+  it('round-trips image figures with captions as editable image blocks', () => {
+    const parsed = parseVisualHtml(
+      '<!DOCTYPE html><html><head></head><body><figure><img src="/hero.png" alt="Hero"><figcaption>Hero caption</figcaption></figure></body></html>',
+    );
+
+    expect(parsed.blocks[0]).toMatchObject({
+      type: 'image',
+      src: '/hero.png',
+      alt: 'Hero',
+      caption: 'Hero caption',
+    });
+
+    const html = serializeVisualHtml(parsed);
+    expect(html).toContain('<figure><img src="/hero.png" alt="Hero"><figcaption>Hero caption</figcaption></figure>');
+  });
+
   it('drops disallowed tags via sanitizer', () => {
     const block = createBlock('paragraph', { text: 'ok<script>alert(1)<\/script>' });
     const html = serializeVisualHtml({
