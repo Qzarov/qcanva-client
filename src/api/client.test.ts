@@ -26,4 +26,44 @@ describe('htmlDocuments API client', () => {
       },
     });
   });
+
+  it('requests HTML document history list', async () => {
+    localStorage.setItem('token', 'token-1');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [] }),
+    } as Response);
+
+    await htmlDocuments.history('doc-1', { limit: 25, offset: 5 });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/html-documents/doc-1/history?limit=25&offset=5',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        },
+      },
+    );
+  });
+
+  it('requests one HTML document history entry', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'hist-1', html: '<main></main>' }),
+    } as Response);
+
+    await htmlDocuments.historyEntry('doc-1', 'hist-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/html-documents/doc-1/history/hist-1',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+  });
 });

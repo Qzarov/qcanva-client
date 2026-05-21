@@ -209,6 +209,15 @@ export const htmlDocuments = {
     request<any>(`/html-documents/${id}`, { method: 'DELETE' }),
   checklist: (id: string, checkId: string, checked: boolean) =>
     request<any>(`/html-documents/${id}/checklist`, { method: 'PUT', body: JSON.stringify({ checkId, checked }) }),
+  history: (id: string, params: { limit?: number; offset?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.limit !== undefined) search.set('limit', String(params.limit));
+    if (params.offset !== undefined) search.set('offset', String(params.offset));
+    const query = search.toString();
+    return request<{ items: any[] }>(`/html-documents/${id}/history${query ? `?${query}` : ''}`);
+  },
+  historyEntry: (id: string, entryId: string) =>
+    request<any>(`/html-documents/${id}/history/${entryId}`),
   settings: () => request<{ model: string; hasOpenRouterKey: boolean }>('/html-documents/settings/current'),
   updateSettings: (payload: { model?: string; openRouterKey?: string }) =>
     request<any>('/html-documents/settings/current', { method: 'PUT', body: JSON.stringify(payload) }),
