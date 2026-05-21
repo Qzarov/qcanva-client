@@ -153,6 +153,7 @@ import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToke
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useToast } from '../composables/useToast';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
+import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 
 export default defineComponent({
   components: { HtmlVisualEditor },
@@ -220,7 +221,7 @@ export default defineComponent({
       if (viewMode.value !== 'preview') return;
       const doc = previewFrame.value?.contentDocument;
       if (!doc?.documentElement) return;
-      html.value = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+      html.value = serializeDocumentWithFormState(doc);
     }
 
     function downloadDocument() {
@@ -231,6 +232,7 @@ export default defineComponent({
     async function save() {
       saving.value = true;
       try {
+        syncHtmlFromPreview();
         await htmlDocuments.update(id, { title: title.value, html: html.value });
         savedSnapshot.value = { title: title.value, html: html.value };
         showToast('HTML document saved', 'success');
