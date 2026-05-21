@@ -117,7 +117,7 @@
         :srcdoc="html"
         class="html-browser-preview"
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-        @load="bindPreviewChecklist"
+        @load="onPreviewLoad"
       ></iframe>
       <div v-else-if="viewMode === 'split' && role !== 'read'" class="html-editor-grid">
         <textarea
@@ -130,7 +130,7 @@
           :srcdoc="html"
           class="html-browser-preview"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
-          @load="bindPreviewChecklist"
+          @load="onPreviewLoad"
         ></iframe>
       </div>
       <textarea
@@ -154,6 +154,8 @@ import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useToast } from '../composables/useToast';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
+import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
+import type { FrameScrollPosition } from '../html/scrollRestoration';
 
 export default defineComponent({
   components: { HtmlVisualEditor },
@@ -186,6 +188,7 @@ export default defineComponent({
     const saving = ref(false);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
+    let pendingPreviewScroll: FrameScrollPosition | null = null;
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
 
     async function load() {
@@ -231,10 +234,16 @@ export default defineComponent({
 
     async function save() {
       saving.value = true;
+      const pageScroll = { x: window.scrollX, y: window.scrollY };
       try {
+        if (viewMode.value === 'preview') {
+          pendingPreviewScroll = captureFrameScroll(previewFrame.value);
+        }
         syncHtmlFromPreview();
         await htmlDocuments.update(id, { title: title.value, html: html.value });
         savedSnapshot.value = { title: title.value, html: html.value };
+        await nextTick();
+        requestAnimationFrame(() => window.scrollTo(pageScroll.x, pageScroll.y));
         showToast('HTML document saved', 'success');
       } catch (e: any) {
         showToast(e.message || 'Failed to save HTML document', 'error');
@@ -357,6 +366,15 @@ export default defineComponent({
       });
     }
 
+    function onPreviewLoad(event: Event) {
+      bindPreviewChecklist(event);
+      const iframe = event.target as HTMLIFrameElement;
+      const scroll = pendingPreviewScroll;
+      if (!scroll) return;
+      pendingPreviewScroll = null;
+      requestAnimationFrame(() => restoreFrameScroll(iframe, scroll));
+    }
+
     async function loadPermissions() {
       permissions.value = await htmlDocuments.permissions(id);
     }
@@ -429,7 +447,7 @@ export default defineComponent({
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
-      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, doShare,
+      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
       downloadDocument,
     };
