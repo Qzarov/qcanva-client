@@ -1,7 +1,7 @@
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <h1>Register</h1>
+      <h1>Canvas<span class="brand">.</span></h1>
       <form @submit.prevent="onSubmit">
         <input v-model="name" type="text" placeholder="Name" required />
         <input v-model="email" type="email" placeholder="Email" required />

@@ -1,7 +1,7 @@
 <template>
   <div class="auth-page">
     <div class="auth-card">
-      <h1>Sign In</h1>
+      <h1>Canvas<span class="brand">.</span></h1>
       <form @submit.prevent="onSubmit">
         <input v-model="login" type="email" placeholder="Email" required />
         <input v-model="password" type="password" placeholder="Password" required />

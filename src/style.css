@@ -66,7 +66,7 @@ html, body {
   justify-content: center;
   height: 100vh;
   height: 100dvh;
-  background: var(--dark-neutral-bg);
+  background: #0f0f12;
 }
 .auth-card {
   background: var(--dark-card-bg);
@@ -79,7 +79,12 @@ html, body {
 .auth-card h1 {
   margin-bottom: 24px;
   font-size: 24px;
+  font-weight: 700;
   text-align: center;
+  color: var(--dark-text-primary);
+}
+.auth-card h1 span.brand {
+  color: var(--color-brands);
 }
 .auth-card form {
   display: flex;
