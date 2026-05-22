@@ -136,7 +136,7 @@
 - [x] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
 - [x] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
 - [x] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
-- [ ] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
+- [x] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
 - [ ] Только после стабилизации sync-модели возвращаться к продуктовым фичам редактора: search, file/image nodes, templates
 
 ### Быстрые следующие задачи

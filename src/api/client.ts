@@ -188,6 +188,10 @@ export const canvas = {
     request<any>(`/canvas/${id}/transfer-ownership`, { method: 'POST', body: JSON.stringify({ email }) }),
   history: (id: string, limit = 50, offset = 0) =>
     request<{ historyAccess: string; items: any[] }>(`/canvas/${id}/history?limit=${limit}&offset=${offset}`),
+  historySnapshot: (id: string, revision: number) =>
+    request<{ revision: number; canvas: any }>(`/canvas/${id}/history/${revision}/snapshot`),
+  restoreHistorySnapshot: (id: string, revision: number) =>
+    request<{ revision: number; canvas: any }>(`/canvas/${id}/history/${revision}/restore`, { method: 'POST' }),
   updateHistoryAccess: (id: string, historyAccess: string) =>
     request<{ historyAccess: string }>(`/canvas/${id}/history-access`, { method: 'PUT', body: JSON.stringify({ historyAccess }) }),
 };

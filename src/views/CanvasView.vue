@@ -250,19 +250,65 @@
         <div v-if="historyLoading && historyItems.length === 0" class="history-loading">Loading...</div>
         <div v-else-if="historyError" class="history-error">{{ historyError }}</div>
         <div v-else-if="historyItems.length === 0" class="history-empty">No history yet</div>
-        <div v-else class="history-list">
-          <div v-for="item in historyItems" :key="item.id" class="history-item">
-            <div class="history-item-header">
-              <span class="history-op-type" :class="'history-op-' + opCategory(item.type)">{{ opLabel(item.type) }}</span>
-              <span class="history-user">{{ item.userName }}</span>
-              <span class="history-rev">r{{ item.revision }}</span>
-            </div>
-            <div class="history-item-detail">{{ opDetail(item) }}</div>
-            <div class="history-item-date">{{ formatHistoryDate(item.createdAt) }}</div>
+        <div v-else class="history-split">
+          <div class="history-list">
+            <button
+              v-for="item in historyItems"
+              :key="item.id"
+              class="history-item"
+              :class="{ active: selectedHistoryItem?.id === item.id }"
+              @click="openHistorySnapshot(item)"
+            >
+              <div class="history-item-header">
+                <span class="history-op-type" :class="'history-op-' + opCategory(item.type)">{{ opLabel(item.type) }}</span>
+                <span class="history-user">{{ item.userName }}</span>
+                <span class="history-rev">r{{ item.revision }}</span>
+              </div>
+              <div class="history-item-detail">{{ opDetail(item) }}</div>
+              <div class="history-item-date">{{ formatHistoryDate(item.createdAt) }}</div>
+            </button>
+            <button v-if="hasMoreHistory" class="btn-ghost btn-sm history-load-more" @click="loadMoreHistory" :disabled="historyLoading">
+              Load more
+            </button>
           </div>
-          <button v-if="hasMoreHistory" class="btn-ghost btn-sm history-load-more" @click="loadMoreHistory" :disabled="historyLoading">
-            Load more
-          </button>
+          <div class="history-preview">
+            <div v-if="historySnapshotLoading" class="history-empty">Loading revision...</div>
+            <div v-else-if="historySnapshotError" class="history-error">{{ historySnapshotError }}</div>
+            <div v-else-if="!selectedHistoryItem" class="history-empty">Select a revision</div>
+            <template v-else>
+              <div class="history-preview-head">
+                <strong>Revision {{ selectedHistoryItem.revision }}</strong>
+                <span>{{ formatHistoryDate(selectedHistoryItem.createdAt) }}</span>
+              </div>
+              <div class="history-preview-row">
+                <span>Operation</span>
+                <strong>{{ opLabel(selectedHistoryItem.type) }}</strong>
+              </div>
+              <div class="history-preview-row">
+                <span>Author</span>
+                <strong>{{ selectedHistoryItem.userName || 'Guest' }}</strong>
+              </div>
+              <div class="history-preview-grid">
+                <div>
+                  <span>Nodes</span>
+                  <strong>{{ selectedHistorySummary.nodes }}</strong>
+                </div>
+                <div>
+                  <span>Edges</span>
+                  <strong>{{ selectedHistorySummary.edges }}</strong>
+                </div>
+              </div>
+              <div class="history-preview-detail">{{ opDetail(selectedHistoryItem) || 'Full canvas snapshot' }}</div>
+              <button
+                v-if="role !== 'read'"
+                class="btn-primary btn-sm history-restore-btn"
+                :disabled="restoringHistory || !selectedHistorySnapshot"
+                @click="restoreSelectedHistorySnapshot"
+              >
+                {{ restoringHistory ? 'Restoring...' : 'Restore revision' }}
+              </button>
+            </template>
+          </div>
         </div>
       </div>
 
@@ -800,7 +846,26 @@ export default defineComponent({
     const historyError = ref('');
     const historyAccess = ref('owner');
     const hasMoreHistory = ref(false);
+    const selectedHistoryItem = ref<any | null>(null);
+    const selectedHistorySnapshot = ref<any | null>(null);
+    const historySnapshotLoading = ref(false);
+    const historySnapshotError = ref('');
+    const restoringHistory = ref(false);
     const HISTORY_PAGE = 30;
+
+    const selectedHistorySummary = computed(() => {
+      try {
+        const data = selectedHistorySnapshot.value?.canvas?.data
+          ? JSON.parse(selectedHistorySnapshot.value.canvas.data)
+          : null;
+        return {
+          nodes: Array.isArray(data?.nodes) ? data.nodes.length : 0,
+          edges: Array.isArray(data?.edges) ? data.edges.length : 0,
+        };
+      } catch {
+        return { nodes: 0, edges: 0 };
+      }
+    });
 
     const toggleHistory = async () => {
       showHistory.value = !showHistory.value;
@@ -817,6 +882,10 @@ export default defineComponent({
         historyAccess.value = res.historyAccess;
         hasMoreHistory.value = res.items.length > HISTORY_PAGE;
         historyItems.value = res.items.slice(0, HISTORY_PAGE);
+        if (!historyItems.value.some((item) => item.id === selectedHistoryItem.value?.id)) {
+          selectedHistoryItem.value = null;
+          selectedHistorySnapshot.value = null;
+        }
       } catch (e: any) {
         historyError.value = e.message || 'Cannot load history';
       } finally {
@@ -847,6 +916,45 @@ export default defineComponent({
       }
     };
 
+    const openHistorySnapshot = async (item: any) => {
+      selectedHistoryItem.value = item;
+      selectedHistorySnapshot.value = null;
+      historySnapshotError.value = '';
+      historySnapshotLoading.value = true;
+      try {
+        selectedHistorySnapshot.value = await canvasApi.historySnapshot(canvasId, item.revision);
+      } catch (e: any) {
+        historySnapshotError.value = e.message || 'Failed to load revision';
+      } finally {
+        historySnapshotLoading.value = false;
+      }
+    };
+
+    const restoreSelectedHistorySnapshot = async () => {
+      if (!selectedHistoryItem.value || !selectedHistorySnapshot.value) return;
+      const ok = window.confirm(`Restore revision ${selectedHistoryItem.value.revision}? This will create a new current revision.`);
+      if (!ok) return;
+      restoringHistory.value = true;
+      try {
+        const result = await canvasApi.restoreHistorySnapshot(canvasId, selectedHistoryItem.value.revision);
+        const nextData = JSON.parse(result.canvas.data);
+        isApplyingRemote = true;
+        canvasRef.value?.applyRemoteData(nextData);
+        canvasData.value = nextData;
+        revision.value = result.canvas.revision ?? result.revision ?? revision.value;
+        setRevision(revision.value);
+        clearPendingOps();
+        isApplyingRemote = false;
+        showToast(`Restored revision ${selectedHistoryItem.value.revision}`, 'success');
+        await loadHistory();
+      } catch (e: any) {
+        isApplyingRemote = false;
+        showToast(e.message || 'Failed to restore revision', 'error');
+      } finally {
+        restoringHistory.value = false;
+      }
+    };
+
     const opLabels: Record<string, string> = {
       'nodes-move': 'Moved nodes',
       'node-resize': 'Resized node',
@@ -856,6 +964,7 @@ export default defineComponent({
       'edge-add': 'Added edge',
       'edge-delete': 'Deleted edge',
       'edge-update': 'Updated edge',
+      'canvas-restore': 'Restored canvas',
     };
 
     const opLabel = (type: string) => opLabels[type] || type;
@@ -875,6 +984,7 @@ export default defineComponent({
           case 'nodes-move': return `${payload.moves?.length || 1} node(s)`;
           case 'node-update': return Object.keys(payload.changes || {}).join(', ');
           case 'edge-add': return `${payload.edge?.fromNode?.slice(0, 8)} → ${payload.edge?.toNode?.slice(0, 8)}`;
+          case 'canvas-restore': return `from revision ${payload.restoredFromRevision}`;
           default: return '';
         }
       } catch {
@@ -960,7 +1070,9 @@ export default defineComponent({
       isAuthenticated, isAdmin,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
       showHistory, historyItems, historyLoading, historyError, historyAccess, hasMoreHistory,
-      toggleHistory, loadMoreHistory, changeHistoryAccess,
+      selectedHistoryItem, selectedHistorySnapshot, selectedHistorySummary,
+      historySnapshotLoading, historySnapshotError, restoringHistory,
+      toggleHistory, loadMoreHistory, changeHistoryAccess, openHistorySnapshot, restoreSelectedHistorySnapshot,
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
