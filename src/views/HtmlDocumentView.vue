@@ -168,7 +168,7 @@
       </div>
     </section>
     <main class="html-editor-main">
-      <HtmlVisualEditor v-if="viewMode === 'visual' && role !== 'read'" v-model="html" />
+      <HtmlVisualEditor v-if="viewMode === 'visual' && role !== 'read'" v-model="html" @op="pendingVisualOp = $event" />
       <iframe
         v-if="viewMode === 'preview'"
         ref="previewFrame"
@@ -216,6 +216,7 @@ import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
 import type { FrameScrollPosition } from '../html/scrollRestoration';
+import type { HtmlVisualOp } from '../html/visualHtmlOps';
 
 export default defineComponent({
   components: { HtmlVisualEditor },
@@ -256,6 +257,7 @@ export default defineComponent({
     const syncIssue = ref<'conflict' | ''>('');
     const syncEventStore = createSyncEventStore(5);
     const syncEvents = syncEventStore.events;
+    const pendingVisualOp = ref<HtmlVisualOp | null>(null);
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
@@ -305,7 +307,7 @@ export default defineComponent({
           htmlSocketInitialized = true;
           htmlWsConnect();
           onRemoteOp((op, nextRevision) => {
-            if (op.type !== 'html-update') return;
+            if (!('html' in op)) return;
             html.value = op.html;
             savedSnapshot.value = { title: title.value, html: op.html };
             revision.value = nextRevision;
@@ -357,8 +359,12 @@ export default defineComponent({
         }
         syncHtmlFromPreview();
         if (htmlWsConnected.value && title.value === savedSnapshot.value.title) {
-          const clientOpId = sendOp({ type: 'html-update', html: html.value });
-          syncEventStore.recordPending(clientOpId, 'html-update', revision.value);
+          const op = pendingVisualOp.value?.html === html.value
+            ? pendingVisualOp.value
+            : { type: 'html-update' as const, html: html.value };
+          const clientOpId = sendOp(op);
+          syncEventStore.recordPending(clientOpId, op.type, revision.value);
+          pendingVisualOp.value = null;
         } else {
           const updated = await htmlDocuments.update(id, { title: title.value, html: html.value });
           revision.value = updated?.revision ?? revision.value;
@@ -395,7 +401,7 @@ export default defineComponent({
         syncEventStore.resyncCompleted(revision.value);
         return;
       }
-      if (reject.reason === 'timeout' && reject.pending?.op?.type === 'html-update') {
+      if (reject.reason === 'timeout' && reject.pending?.op && 'html' in reject.pending.op) {
         clearPendingOps();
         try {
           const updated = await htmlDocuments.update(id, { title: title.value, html: reject.pending.op.html });
@@ -656,7 +662,7 @@ export default defineComponent({
     return {
       title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
-      showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime,
+      showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,

@@ -1,10 +1,11 @@
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
+import type { HtmlVisualOp } from '../html/visualHtmlOps';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
 const PENDING_OP_TIMEOUT_MS = 10000;
 
-export type HtmlOp = { type: 'html-update'; html: string };
+export type HtmlOp = { type: 'html-update'; html: string } | HtmlVisualOp;
 
 export interface PendingHtmlOp {
   baseRevision: number;
