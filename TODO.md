@@ -98,7 +98,7 @@
 - [x] Добавить событие/endpoint `canvas-resync`, которое возвращает полный snapshot + актуальный `revision`
 - [x] На клиенте при пропуске ревизии или reject операции делать reload состояния через resync, а не молча продолжать работу
 - [x] Ввести явные причины reject'а операции: `revision_mismatch`, `forbidden`, `invalid_op`, `target_missing`
-- [ ] Добавить retry policy только для безопасных случаев, без бесконечного повторного применения
+- [x] Добавить retry policy только для безопасных случаев, без бесконечного повторного применения
 - [x] Логировать частоту resync/reject, чтобы видеть реальные проблемные сценарии
 
 ### Этап 3. Ввести op log и базовую историю
@@ -135,7 +135,7 @@
 - [ ] Прогнать ручные sync-сценарии на двух клиентах: parallel move, independent node edit, same-node edit, delete-vs-update, reconnect, duplicate `clientOpId`
 - [x] Добавить backend e2e на `revision`, `revision_mismatch`, `target_missing`, `resync`, `operations`, `checkpoints`
 - [x] Доделать frontend UX вокруг sync state: `resyncing`, pending/confirmed operation state, reject/error feedback
-- [ ] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
+- [x] Ввести selective retry для безопасных случаев вместо полного `resync` по любому reject
 - [ ] Подготовить первую user-facing history/versioning фичу поверх `op log` + `checkpoints`
 - [ ] Только после стабилизации sync-модели возвращаться к продуктовым фичам редактора: search, file/image nodes, templates
 

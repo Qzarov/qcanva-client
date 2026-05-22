@@ -2,14 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { isRetryableCanvasOp, shouldRetryCanvasReject } from './syncRetry';
 
 describe('syncRetry', () => {
-  it('retries node-update once on revision mismatch with server revision', () => {
-    const op = { type: 'node-update', id: 'node-1', changes: { text: 'Updated' } };
+  it('retries safe update operations once on revision mismatch with server revision', () => {
+    const safeOps = [
+      { type: 'nodes-move', moves: [{ id: 'node-1', x: 10, y: 20 }] },
+      { type: 'node-resize', id: 'node-1', x: 0, y: 0, width: 200, height: 120 },
+      { type: 'node-update', id: 'node-1', changes: { text: 'Updated' } },
+      { type: 'edge-update', id: 'edge-1', changes: { label: 'Next' } },
+    ];
 
-    expect(isRetryableCanvasOp(op)).toBe(true);
-    expect(shouldRetryCanvasReject(
-      { reason: 'revision_mismatch', serverRevision: 4 },
-      { op, retryCount: 0 },
-    )).toBe(true);
+    for (const op of safeOps) {
+      expect(isRetryableCanvasOp(op)).toBe(true);
+      expect(shouldRetryCanvasReject(
+        { reason: 'revision_mismatch', serverRevision: 4 },
+        { op, retryCount: 0 },
+      )).toBe(true);
+    }
   });
 
   it('does not retry add and delete operations', () => {
