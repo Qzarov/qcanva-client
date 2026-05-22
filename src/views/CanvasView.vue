@@ -337,6 +337,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watch
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, isAuthenticated, isAdmin, setToken } from '../api/client';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
+import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -529,6 +530,7 @@ export default defineComponent({
           syncEventStore.confirm(ack.clientOpId, ack.revision);
         });
         onReject((reject) => {
+          const reason = reject.reason as SyncRejectReason;
           if (reject.reason === 'timeout') {
             realtimeOpsUnavailable.value = true;
             syncIssue.value = '';
@@ -540,13 +542,29 @@ export default defineComponent({
             return;
           }
 
+          const pendingRejectOp = reject.pending;
+          if (pendingRejectOp && shouldRetryCanvasReject(reject, pendingRejectOp)) {
+            const originalClientOpId = reject.clientOpId || `reject-${Date.now()}`;
+            const opType = pendingRejectOp.op?.type || 'operation';
+            syncEventStore.recordWarning(`${opType} retrying after parallel edit`, reason, reject.serverRevision);
+            const retryClientOpId = sendOp(pendingRejectOp.op, {
+              baseRevision: reject.serverRevision,
+              retryCount: pendingRejectOp.retryCount + 1,
+              retryOf: reject.clientOpId,
+            });
+            syncEventStore.recordPending(retryClientOpId, opType, reject.serverRevision);
+            syncEventStore.reject(originalClientOpId, reason, reject.serverRevision);
+            showSyncNotice('warning', 'Parallel edit changed revision. Retrying operation once.');
+            return;
+          }
+
           syncIssue.value = 'conflict';
           syncEventStore.reject(
             reject.clientOpId || `reject-${Date.now()}`,
-            reject.reason as SyncRejectReason,
+            reason,
             reject.serverRevision,
           );
-          showSyncNotice('warning', rejectNotice(reject.reason as SyncRejectReason));
+          showSyncNotice('warning', rejectNotice(reason));
           void resyncCanvas();
         });
       } catch (e: any) {
