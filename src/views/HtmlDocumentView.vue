@@ -51,9 +51,25 @@
       </div>
       <button class="btn-ghost" @click="downloadDocument">Download</button>
       <button class="btn-ghost" @click="toggleHistory">History</button>
-      <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty || pendingOpsCount > 0 }">
-        {{ htmlSaveLabel }}
-      </span>
+      <div v-if="role !== 'read'" class="html-sync-wrap">
+        <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
+          {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+        </button>
+        <div v-if="showSyncEvents" class="html-sync-popover">
+          <div class="html-sync-head">
+            <strong>Sync</strong>
+            <span>r{{ revision }}</span>
+          </div>
+          <div v-if="syncEvents.length === 0" class="html-sync-empty">No local sync events yet</div>
+          <div v-for="event in syncEvents" :key="event.id" class="html-sync-event" :class="'html-sync-event-' + event.status">
+            <div>
+              <strong>{{ event.label }}</strong>
+              <span v-if="event.reason">{{ syncReasonLabel(event.reason) }}</span>
+            </div>
+            <time>{{ formatSyncEventTime(event.timestamp) }}</time>
+          </div>
+        </div>
+      </div>
       <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
@@ -195,6 +211,7 @@ import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToke
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
+import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
@@ -235,14 +252,21 @@ export default defineComponent({
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
     const restoringHistory = ref(false);
+    const showSyncEvents = ref(false);
+    const syncIssue = ref<'conflict' | ''>('');
+    const syncEventStore = createSyncEventStore(5);
+    const syncEvents = syncEventStore.events;
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
     let htmlSocketInitialized = false;
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
-    const htmlSaveLabel = computed(() => {
-      if (pendingOpsCount.value > 0) return 'Syncing';
-      return isDirty.value ? 'Unsaved' : 'Saved';
+    const htmlSyncStatus = computed(() => {
+      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
+      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
+      if (isDirty.value) return { kind: 'dirty', label: 'Unsaved' };
+      if (htmlWsConnected.value) return { kind: 'synced', label: 'Synced' };
+      return { kind: 'offline', label: 'Offline' };
     });
 
     const {
@@ -289,6 +313,8 @@ export default defineComponent({
           });
           onAck((ack) => {
             revision.value = ack.revision;
+            syncIssue.value = '';
+            syncEventStore.confirm(ack.clientOpId, ack.revision);
             savedSnapshot.value = { title: title.value, html: html.value };
           });
           onReject((reject) => {
@@ -331,11 +357,14 @@ export default defineComponent({
         }
         syncHtmlFromPreview();
         if (htmlWsConnected.value && title.value === savedSnapshot.value.title) {
-          sendOp({ type: 'html-update', html: html.value });
+          const clientOpId = sendOp({ type: 'html-update', html: html.value });
+          syncEventStore.recordPending(clientOpId, 'html-update', revision.value);
         } else {
           const updated = await htmlDocuments.update(id, { title: title.value, html: html.value });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
+          syncIssue.value = '';
+          syncEventStore.recordInfo('HTML document saved', revision.value);
           savedSnapshot.value = { title: title.value, html: html.value };
         }
         if (showHistory.value) await loadHistory();
@@ -350,10 +379,20 @@ export default defineComponent({
     }
 
     async function handleHtmlReject(reject: HtmlReject) {
+      const reason = reject.reason as SyncRejectReason;
+      if (reject.clientOpId) {
+        syncEventStore.reject(reject.clientOpId, reason, reject.serverRevision);
+      } else {
+        syncEventStore.recordWarning('HTML realtime update rejected', reason, reject.serverRevision);
+      }
       if (reject.reason === 'revision_mismatch' || reject.reason === 'target_missing') {
+        syncIssue.value = 'conflict';
         clearPendingOps();
+        syncEventStore.resyncStarted(reason);
         showToast('HTML document changed elsewhere. Reloading latest version.', 'error');
         await load();
+        syncIssue.value = '';
+        syncEventStore.resyncCompleted(revision.value);
         return;
       }
       if (reject.reason === 'timeout' && reject.pending?.op?.type === 'html-update') {
@@ -363,13 +402,22 @@ export default defineComponent({
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
           savedSnapshot.value = { title: title.value, html: reject.pending.op.html };
+          syncIssue.value = '';
+          syncEventStore.recordInfo('REST fallback saved HTML document', revision.value);
           showToast('Realtime timed out. Saved through REST fallback.', 'success');
         } catch (e: any) {
+          syncIssue.value = 'conflict';
+          syncEventStore.resyncFailed(e.message || 'Failed to save HTML document');
           showToast(e.message || 'Failed to save HTML document', 'error');
         }
         return;
       }
+      syncIssue.value = 'conflict';
       showToast('HTML realtime update was rejected', 'error');
+    }
+
+    function formatSyncEventTime(timestamp: number) {
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
 
     async function loadHistory() {
@@ -607,7 +655,8 @@ export default defineComponent({
     });
     return {
       title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied, isDirty,
-      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSaveLabel,
+      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
+      showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,

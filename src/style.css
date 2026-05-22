@@ -788,17 +788,87 @@ html, body {
   background: rgba(124,138,255,0.14);
   color: #d8ddff;
 }
+.html-sync-wrap {
+  position: relative;
+}
 .html-save-state {
+  border: 0;
   padding: 4px 8px;
   border-radius: 999px;
   background: rgba(68,207,110,0.12);
   color: #9af3b3;
   font-size: 12px;
   white-space: nowrap;
+  cursor: pointer;
 }
-.html-save-state.dirty {
+.html-save-state-dirty,
+.html-save-state-saving {
   background: rgba(224,222,113,0.14);
   color: #f0ed9b;
+}
+.html-save-state-conflict {
+  background: rgba(251,70,76,0.16);
+  color: #ff9da1;
+}
+.html-save-state-offline {
+  background: rgba(255,255,255,0.08);
+  color: rgba(255,255,255,0.62);
+}
+.html-sync-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(24,25,31,0.98);
+  box-shadow: 0 12px 36px rgba(0,0,0,0.34);
+  z-index: 120;
+}
+.html-sync-head,
+.html-sync-event {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.html-sync-head {
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.html-sync-head strong,
+.html-sync-event strong {
+  color: rgba(255,255,255,0.9);
+  font-size: 12px;
+}
+.html-sync-head span,
+.html-sync-event span,
+.html-sync-event time,
+.html-sync-empty {
+  color: rgba(255,255,255,0.48);
+  font-size: 11px;
+}
+.html-sync-event {
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.html-sync-event > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.html-sync-event-rejected strong {
+  color: #ff9da1;
+}
+.html-sync-event-warning strong {
+  color: #f0ed9b;
+}
+.html-sync-event-confirmed strong {
+  color: #9af3b3;
 }
 .html-editor-tools {
   padding: 8px 12px;
