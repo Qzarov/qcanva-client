@@ -2,7 +2,7 @@ export type CanvasOp = { type: string } & Record<string, unknown>;
 export type PendingCanvasOp = { op: CanvasOp; retryCount: number };
 export type CanvasSyncReject = { reason: string; serverRevision?: number };
 
-const RETRYABLE = new Set(['node-update']);
+const RETRYABLE = new Set(['nodes-move', 'node-resize', 'node-update', 'edge-update']);
 
 export function isRetryableCanvasOp(op: CanvasOp): boolean {
   return RETRYABLE.has(op.type);
