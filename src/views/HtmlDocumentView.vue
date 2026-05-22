@@ -51,7 +51,9 @@
       </div>
       <button class="btn-ghost" @click="downloadDocument">Download</button>
       <button class="btn-ghost" @click="toggleHistory">History</button>
-      <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty }">{{ isDirty ? 'Unsaved' : 'Saved' }}</span>
+      <span v-if="role !== 'read'" class="html-save-state" :class="{ dirty: isDirty || pendingOpsCount > 0 }">
+        {{ htmlSaveLabel }}
+      </span>
       <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
@@ -191,6 +193,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } 
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
+import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
@@ -207,6 +210,7 @@ export default defineComponent({
     const title = ref('');
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
+    const revision = ref(0);
     const role = ref('read');
     const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('visual');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
@@ -234,7 +238,25 @@ export default defineComponent({
     const previewFrame = ref<HTMLIFrameElement | null>(null);
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
+    let htmlSocketInitialized = false;
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
+    const htmlSaveLabel = computed(() => {
+      if (pendingOpsCount.value > 0) return 'Syncing';
+      return isDirty.value ? 'Unsaved' : 'Saved';
+    });
+
+    const {
+      connected: htmlWsConnected,
+      currentRevision,
+      pendingOpsCount,
+      connect: htmlWsConnect,
+      sendOp,
+      onRemoteOp,
+      onReject,
+      onAck,
+      setRevision,
+      clearPendingOps,
+    } = useHtmlSocket(id);
 
     async function load() {
       try {
@@ -244,6 +266,8 @@ export default defineComponent({
         title.value = res.document.title;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
+        revision.value = res.document.revision ?? 0;
+        setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
@@ -253,6 +277,24 @@ export default defineComponent({
           viewMode.value = 'preview';
         }
         if (res.role === 'owner') await loadPermissions();
+        if (!htmlSocketInitialized) {
+          htmlSocketInitialized = true;
+          htmlWsConnect();
+          onRemoteOp((op, nextRevision) => {
+            if (op.type !== 'html-update') return;
+            html.value = op.html;
+            savedSnapshot.value = { title: title.value, html: op.html };
+            revision.value = nextRevision;
+            showToast('HTML document updated remotely', 'info');
+          });
+          onAck((ack) => {
+            revision.value = ack.revision;
+            savedSnapshot.value = { title: title.value, html: html.value };
+          });
+          onReject((reject) => {
+            void handleHtmlReject(reject);
+          });
+        }
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           accessDenied.value = true;
@@ -288,8 +330,14 @@ export default defineComponent({
           pendingPreviewScroll = captureFrameScroll(previewFrame.value);
         }
         syncHtmlFromPreview();
-        await htmlDocuments.update(id, { title: title.value, html: html.value });
-        savedSnapshot.value = { title: title.value, html: html.value };
+        if (htmlWsConnected.value && title.value === savedSnapshot.value.title) {
+          sendOp({ type: 'html-update', html: html.value });
+        } else {
+          const updated = await htmlDocuments.update(id, { title: title.value, html: html.value });
+          revision.value = updated?.revision ?? revision.value;
+          setRevision(revision.value);
+          savedSnapshot.value = { title: title.value, html: html.value };
+        }
         if (showHistory.value) await loadHistory();
         await nextTick();
         requestAnimationFrame(() => window.scrollTo(pageScroll.x, pageScroll.y));
@@ -299,6 +347,29 @@ export default defineComponent({
       } finally {
         saving.value = false;
       }
+    }
+
+    async function handleHtmlReject(reject: HtmlReject) {
+      if (reject.reason === 'revision_mismatch' || reject.reason === 'target_missing') {
+        clearPendingOps();
+        showToast('HTML document changed elsewhere. Reloading latest version.', 'error');
+        await load();
+        return;
+      }
+      if (reject.reason === 'timeout' && reject.pending?.op?.type === 'html-update') {
+        clearPendingOps();
+        try {
+          const updated = await htmlDocuments.update(id, { title: title.value, html: reject.pending.op.html });
+          revision.value = updated?.revision ?? revision.value;
+          setRevision(revision.value);
+          savedSnapshot.value = { title: title.value, html: reject.pending.op.html };
+          showToast('Realtime timed out. Saved through REST fallback.', 'success');
+        } catch (e: any) {
+          showToast(e.message || 'Failed to save HTML document', 'error');
+        }
+        return;
+      }
+      showToast('HTML realtime update was rejected', 'error');
     }
 
     async function loadHistory() {
@@ -536,6 +607,7 @@ export default defineComponent({
     });
     return {
       title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied, isDirty,
+      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSaveLabel,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
