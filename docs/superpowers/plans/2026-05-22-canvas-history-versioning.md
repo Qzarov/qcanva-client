@@ -58,6 +58,6 @@
 - [x] Mark user-facing history/versioning TODO complete.
 - [x] Run backend `npm test -- --runInBand` and `npm run build`.
 - [x] Run frontend `npm run test:unit` and `npm run build`.
-- [ ] Commit docs/TODO changes.
-- [ ] Merge backend branch to `dev`, rerun backend verification.
-- [ ] Merge frontend branch to `dev`, rerun frontend verification.
+- [x] Commit docs/TODO changes.
+- [x] Merge backend branch to `dev`, rerun backend verification.
+- [x] Merge frontend branch to `dev`, rerun frontend verification.
