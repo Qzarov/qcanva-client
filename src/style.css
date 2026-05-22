@@ -90,10 +90,11 @@ html, body {
   padding: 10px 14px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.06);
+  background: var(--dark-input-bg);
   color: #fff;
   font-size: 14px;
   outline: none;
+  transition: border-color var(--transition-fast);
 }
 .auth-card input:focus {
   border-color: color-mix(in srgb, var(--color-brands) 50%, transparent);
@@ -166,7 +167,7 @@ html, body {
 }
 .home-tab.active {
   color: #fff;
-  background: color-mix(in srgb, var(--color-brands) 20%, transparent);
+  background: color-mix(in srgb, var(--color-brands) 22%, transparent);
 }
 .dash-toolbar {
   display: flex;
@@ -214,12 +215,18 @@ html, body {
 }
 .dash-search,
 .canvas-search-input {
-  padding: 10px 12px;
+  padding: 10px 14px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.06);
-  color: #fff;
+  background: var(--dark-input-bg);
+  color: var(--dark-text-primary);
+  font-size: 13px;
   outline: none;
+  transition: border-color var(--transition-fast);
+}
+.dash-search:focus,
+.canvas-search-input:focus {
+  border-color: color-mix(in srgb, var(--color-brands) 50%, transparent);
 }
 .dash-search { max-width: 360px; }
 .dash-sort-select {
@@ -227,8 +234,8 @@ html, body {
   padding: 9px 10px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-sm);
-  background: #2b2b35;
-  color: #fff;
+  background: var(--dark-card-bg);
+  color: var(--dark-text-primary);
   font-size: 13px;
 }
 .tag-filter-list,
