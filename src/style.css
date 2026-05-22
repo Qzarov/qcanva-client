@@ -2026,17 +2026,30 @@ html, body {
   padding: 8px 0;
 }
 .history-error { color: #fb464c; }
+.history-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
 .history-list { display: flex; flex-direction: column; gap: 2px; }
 .history-item {
+  width: 100%;
+  text-align: left;
   padding: 8px;
   border-radius: 6px;
   background: rgba(255,255,255,0.03);
   border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
   transition: background .15s;
 }
-.history-item:hover {
+.history-item:hover,
+.history-item.active {
   background: rgba(255,255,255,0.06);
   border-color: rgba(255,255,255,0.06);
+}
+.history-item.active {
+  border-color: rgba(124,138,255,0.5);
 }
 .history-item-header {
   display: flex;
@@ -2082,6 +2095,71 @@ html, body {
 .history-load-more {
   margin-top: 8px;
   align-self: center;
+}
+.history-preview {
+  padding: 10px;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.18);
+}
+.history-preview-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.history-preview-head strong {
+  font-size: 13px;
+}
+.history-preview-head span,
+.history-preview-row span,
+.history-preview-grid span {
+  font-size: 10px;
+  color: rgba(255,255,255,0.38);
+}
+.history-preview-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 0;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+.history-preview-row strong {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: rgba(255,255,255,0.76);
+}
+.history-preview-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 10px;
+}
+.history-preview-grid div {
+  padding: 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.04);
+}
+.history-preview-grid strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 18px;
+  color: #fff;
+}
+.history-preview-detail {
+  margin-top: 10px;
+  font-size: 11px;
+  color: rgba(255,255,255,0.52);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.history-restore-btn {
+  width: 100%;
+  margin-top: 10px;
 }
 
 /* ===== Canvas embed nodes ===== */
