@@ -147,9 +147,13 @@ import {
   type VisualBlockType,
 } from '../../html/visualHtml';
 import { createHistory } from '../../html/visualHtmlHistory';
+import { createHtmlVisualOp, type HtmlVisualOp, type HtmlVisualOpKind } from '../../html/visualHtmlOps';
 
 const props = defineProps<{ modelValue: string }>();
-const emit = defineEmits<{ (event: 'update:modelValue', value: string): void }>();
+const emit = defineEmits<{
+  (event: 'update:modelValue', value: string): void;
+  (event: 'op', op: HtmlVisualOp): void;
+}>();
 
 const blockTypes: { type: VisualBlockType; label: string }[] = [
   { type: 'heading', label: 'Heading' },
@@ -204,7 +208,7 @@ function onDrop(index: number, event: DragEvent) {
   if (!block) return;
   parsed.value.blocks.splice(index, 0, block);
   selectedId.value = block.id;
-  emitHtml();
+  emitHtml(true, 'move', { blockId: block.id, fromIndex: from, toIndex: index });
 }
 
 function onDragEnd() {
@@ -263,18 +267,23 @@ watch(() => props.modelValue, (value) => {
   history.reset(value || '');
 });
 
-function emitHtml(record = true) {
+function emitHtml(
+  record = true,
+  opKind?: HtmlVisualOpKind,
+  meta: { blockId?: string; fromIndex?: number; toIndex?: number } = {},
+) {
   syncingFromSelf.value = true;
   const html = serializeVisualHtml(parsed.value);
   if (record) history.record(html);
   emit('update:modelValue', html);
+  if (opKind) emit('op', createHtmlVisualOp(opKind, html, meta));
 }
 
 function addBlock(type: VisualBlockType) {
   const block = createBlock(type, defaultBlockInput(type));
   parsed.value.blocks.push(block);
   selectedId.value = block.id;
-  emitHtml();
+  emitHtml(true, 'add', { blockId: block.id });
 }
 
 function defaultBlockInput(type: VisualBlockType): Partial<VisualBlock> {
@@ -297,7 +306,7 @@ function updateSelected(patch: Partial<VisualBlock>) {
     ...current,
     ...patch,
   };
-  emitHtml();
+  emitHtml(true, 'update', { blockId: current.id });
 }
 
 function moveSelected(direction: number) {
@@ -307,7 +316,7 @@ function moveSelected(direction: number) {
   const [block] = parsed.value.blocks.splice(index, 1);
   if (!block) return;
   parsed.value.blocks.splice(nextIndex, 0, block);
-  emitHtml();
+  emitHtml(true, 'move', { blockId: block.id, fromIndex: index, toIndex: nextIndex });
 }
 
 function duplicateSelected() {
@@ -315,20 +324,21 @@ function duplicateSelected() {
   const copy = duplicateBlock(selectedBlock.value);
   parsed.value.blocks.splice(selectedIndex.value + 1, 0, copy);
   selectedId.value = copy.id;
-  emitHtml();
+  emitHtml(true, 'add', { blockId: copy.id });
 }
 
 function deleteSelected() {
   if (selectedIndex.value < 0) return;
-  parsed.value.blocks.splice(selectedIndex.value, 1);
+  const [deleted] = parsed.value.blocks.splice(selectedIndex.value, 1);
   selectedId.value = parsed.value.blocks[Math.max(selectedIndex.value - 1, 0)]?.id || '';
-  emitHtml();
+  emitHtml(true, 'delete', { blockId: deleted?.id });
 }
 
 function updateStyle(property: string, value: string) {
   if (!selectedBlock.value) return;
+  const blockId = selectedBlock.value.id;
   setBlockStyleProperty(selectedBlock.value, property, value);
-  emitHtml();
+  emitHtml(true, 'update', { blockId });
 }
 
 function applyHistoryValue(value: string | undefined) {
