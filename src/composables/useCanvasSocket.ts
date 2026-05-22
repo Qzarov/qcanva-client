@@ -25,6 +25,21 @@ export interface RevisionReject {
   clientOpId?: string;
   reason: 'revision_mismatch' | 'forbidden' | 'invalid_op' | 'target_missing' | 'timeout';
   serverRevision?: number;
+  pending?: PendingCanvasOp;
+}
+
+export interface PendingCanvasOp {
+  baseRevision: number;
+  op: any;
+  retryCount: number;
+  retryOf?: string;
+}
+
+export interface SendCanvasOpOptions {
+  baseRevision?: number;
+  clientOpId?: string;
+  retryCount?: number;
+  retryOf?: string;
 }
 
 export function useCanvasSocket(canvasId: string) {
@@ -33,7 +48,7 @@ export function useCanvasSocket(canvasId: string) {
   const remoteCursors = ref<Map<string, RemoteCursor>>(new Map());
   const connected = ref(false);
   const currentRevision = ref(0);
-  const pendingOps = ref<Map<string, { baseRevision: number; op: any; timeout: ReturnType<typeof setTimeout> }>>(new Map());
+  const pendingOps = ref<Map<string, PendingCanvasOp & { timeout: ReturnType<typeof setTimeout> }>>(new Map());
   const pendingOpsCount = ref(0);
 
   // Callbacks set by consumer
@@ -54,6 +69,7 @@ export function useCanvasSocket(canvasId: string) {
     if (pending) clearTimeout(pending.timeout);
     pendingOps.value.delete(clientOpId);
     updatePendingOpsCount();
+    return pending;
   }
 
   function clearPendingOps() {
@@ -167,8 +183,8 @@ export function useCanvasSocket(canvasId: string) {
     });
 
     s.on('canvas-op-reject', (data: RevisionReject) => {
-      if (data.clientOpId) removePendingOp(data.clientOpId);
-      onRejectCb?.(data);
+      const pending = data.clientOpId ? removePendingOp(data.clientOpId) : undefined;
+      onRejectCb?.({ ...data, pending });
     });
 
     s.on('cursor-move', (data: { socketId: string; userId: string; userName: string; x: number; y: number }) => {
@@ -197,20 +213,25 @@ export function useCanvasSocket(canvasId: string) {
   }
 
   // Granular operation (for real-time sync)
-  function sendOp(op: any) {
-    const clientOpId = genClientOpId();
-    const baseRevision = getOptimisticRevision();
+  function sendOp(op: any, options: SendCanvasOpOptions = {}) {
+    const clientOpId = options.clientOpId || genClientOpId();
+    const baseRevision = options.baseRevision ?? getOptimisticRevision();
+    const retryCount = options.retryCount ?? 0;
+    const retryOf = options.retryOf;
     const timeout = setTimeout(() => {
-      removePendingOp(clientOpId);
+      const pending = removePendingOp(clientOpId);
       onRejectCb?.({
         clientOpId,
         reason: 'timeout',
         serverRevision: getOptimisticRevision(),
+        pending,
       });
     }, PENDING_OP_TIMEOUT_MS);
     pendingOps.value.set(clientOpId, {
       baseRevision,
       op,
+      retryCount,
+      retryOf,
       timeout,
     });
     updatePendingOpsCount();
