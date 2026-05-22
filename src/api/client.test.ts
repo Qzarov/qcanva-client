@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { htmlDocuments } from './client';
+import { canvas, htmlDocuments } from './client';
 
 describe('htmlDocuments API client', () => {
   afterEach(() => {
@@ -79,6 +79,54 @@ describe('htmlDocuments API client', () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:3001/api/html-documents/doc-1/history/hist-1/restore',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer token-1',
+        },
+      },
+    );
+  });
+});
+
+describe('canvas API client', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('requests one canvas history revision snapshot', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ revision: 7, canvas: { data: '{"nodes":[],"edges":[]}' } }),
+    } as Response);
+
+    await canvas.historySnapshot('canvas-1', 7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/canvas/canvas-1/history/7/snapshot',
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+    );
+  });
+
+  it('restores one canvas history revision snapshot', async () => {
+    localStorage.setItem('token', 'token-1');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ revision: 8, canvas: { id: 'canvas-1', revision: 8 } }),
+    } as Response);
+
+    await canvas.restoreHistorySnapshot('canvas-1', 7);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/canvas/canvas-1/history/7/restore',
       {
         method: 'POST',
         headers: {
