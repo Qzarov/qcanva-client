@@ -71,10 +71,10 @@ html, body {
 .auth-card {
   background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 40px;
   width: 360px;
-  box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-card);
 }
 .auth-card h1 {
   margin-bottom: 24px;
@@ -321,16 +321,19 @@ html, body {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
 }
-  .canvas-card {
+.canvas-card {
   position: relative;
   background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 20px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
-.canvas-card:hover { border-color: color-mix(in srgb, var(--color-brands) 40%, transparent); }
+.canvas-card:hover {
+  border-color: var(--color-brands);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brands) 30%, transparent);
+}
 .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; cursor: text; }
 .card-title-input {
   font-size: 16px;
@@ -400,8 +403,8 @@ html, body {
   padding: 6px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-md);
-  background: rgba(23,23,23,0.98);
-  box-shadow: 0 18px 40px rgba(0,0,0,0.4);
+  background: var(--dark-card-bg);
+  box-shadow: var(--shadow-dropdown);
   z-index: 20;
 }
 .card-menu-item {
@@ -410,10 +413,11 @@ html, body {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: rgba(255,255,255,0.82);
+  color: var(--dark-text-primary);
   text-align: left;
   font-size: 13px;
   cursor: pointer;
+  transition: background var(--transition-fast);
 }
 .card-menu-item:hover {
   background: rgba(255,255,255,0.06);
@@ -563,8 +567,9 @@ html, body {
 .stat-card {
   background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 20px 32px;
+  box-shadow: var(--shadow-card);
   text-align: center;
 }
 .stat-value { font-size: 32px; font-weight: 700; color: var(--color-brands); }
@@ -616,11 +621,11 @@ html, body {
 }
 .dashboard-modal {
   width: min(560px, 100%);
-  background: #232323;
+  background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   padding: 18px;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+  box-shadow: var(--shadow-card);
 }
 .dashboard-modal-head {
   display: flex;
@@ -752,8 +757,9 @@ html, body {
   margin-bottom: 22px;
   padding: 16px;
   border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-md);
-  background: rgba(255,255,255,0.03);
+  border-radius: var(--radius-lg);
+  background: var(--dark-card-bg);
+  box-shadow: var(--shadow-card);
 }
 .html-generate-panel {
   grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1fr) minmax(260px, 2fr) auto;
@@ -1488,10 +1494,11 @@ html, body {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-  background: #1e1e2e;
+  background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 40px 48px;
+  box-shadow: var(--shadow-card);
   text-align: center;
 }
 .error-modal h2 {
@@ -1539,10 +1546,11 @@ html, body {
   align-items: center;
   width: 100%;
   max-width: 400px;
-  background: #1e1e2e;
+  background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 40px 36px 32px;
+  box-shadow: var(--shadow-card);
   gap: 0;
 }
 .access-gate-icon {
@@ -1987,11 +1995,12 @@ html, body {
   top: 44px;
   right: 0;
   width: 320px;
-  background: rgba(30,30,30,0.97);
+  background: var(--dark-card-bg);
   backdrop-filter: blur(12px);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   padding: 16px;
+  box-shadow: var(--shadow-dropdown);
   z-index: 100;
 }
 .share-panel-header {
@@ -2089,11 +2098,12 @@ html, body {
   width: 360px;
   max-height: calc(100vh - 44px);
   overflow-y: auto;
-  background: rgba(30,30,30,0.97);
+  background: var(--dark-card-bg);
   backdrop-filter: blur(12px);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 0 0 0 8px;
+  border-radius: 0 0 0 var(--radius-lg);
   padding: 16px;
+  box-shadow: var(--shadow-dropdown);
   z-index: 100;
 }
 .history-panel-header {
@@ -2383,15 +2393,15 @@ html, body {
   justify-content: center;
 }
 .shortcuts-panel {
-  background: #1a1a2e;
+  background: var(--dark-card-bg);
   border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   padding: 24px;
   min-width: 380px;
   max-width: 90vw;
   max-height: 80vh;
   overflow-y: auto;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  box-shadow: var(--shadow-card);
 }
 .shortcuts-header {
   display: flex;
