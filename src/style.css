@@ -356,10 +356,10 @@ html, body {
 .tag-filter,
 .card-tag {
   border: 1px solid var(--dark-neutral-border);
-  background: var(--dark-input-bg);
-  color: rgba(255,255,255,0.72);
-  border-radius: 999px;
-  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--dark-text-secondary);
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
   font-size: 12px;
 }
 .tag-filter {
@@ -368,16 +368,24 @@ html, body {
 .tag-filter.active {
   border-color: color-mix(in srgb, var(--color-brands) 45%, transparent);
   color: var(--color-brands-light);
+  background: color-mix(in srgb, var(--color-brands) 10%, transparent);
 }
 .folder-section {
   margin-bottom: 24px;
 }
 .folder-title {
   margin-bottom: 12px;
-  color: var(--dark-text-secondary);
-  font-size: 13px;
+  color: var(--dark-text-muted);
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
+}
+.frox-divider {
+  width: 100%;
+  height: 1px;
+  background: var(--dark-neutral-border);
+  margin: 12px 0;
 }
 .folder-title-row {
   display: flex;
