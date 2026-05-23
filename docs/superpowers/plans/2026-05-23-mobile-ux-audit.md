@@ -61,11 +61,11 @@ git commit -m "design: improve mobile app shell navigation"
 - Modify: `src/views/HtmlDocsView.vue`
 - Modify: `src/style.css`
 
-- [ ] **Step 1: Add a mobile overflow action for secondary buttons**
+- [x] **Step 1: Add a mobile overflow action for secondary buttons**
 
 Keep the primary creation action visible and move secondary actions into a compact mobile menu.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npm run test:unit`
 

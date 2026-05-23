@@ -258,6 +258,26 @@ html, body {
 .dash-header h1 { font-size: 24px; }
 .dash-subtitle { margin-top: 6px; color: var(--dark-text-muted); font-size: 13px; }
 .dash-actions { display: flex; gap: 8px; }
+.dash-actions-secondary {
+  display: flex;
+  gap: 8px;
+}
+.mobile-action-menu {
+  display: none;
+  position: relative;
+}
+.mobile-action-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 310;
+  width: min(228px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-md);
+  background: var(--dark-card-bg);
+  box-shadow: var(--shadow-card);
+}
 .home-tabs {
   display: inline-flex;
   gap: 4px;
@@ -544,6 +564,7 @@ html, body {
   z-index: 20;
 }
 .card-menu-item {
+  display: block;
   width: 100%;
   padding: 10px 12px;
   border: none;
@@ -1474,6 +1495,31 @@ html, body {
   .dash-actions > *,
   .dash-section-actions > * {
     flex: 1 1 auto;
+  }
+
+  .dash-actions {
+    align-items: center;
+  }
+
+  .dash-actions-secondary {
+    display: none;
+  }
+
+  .mobile-action-menu {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .dash-actions > .mobile-action-menu {
+    flex: 0 0 auto;
+  }
+
+  .dash-more-btn {
+    min-width: 76px;
+  }
+
+  .mobile-action-popover .card-menu-item {
+    text-decoration: none;
   }
 
   .dash-search {

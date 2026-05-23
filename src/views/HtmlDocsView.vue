@@ -1,5 +1,5 @@
 <template>
-  <div class="app-layout" @click="openMenuId = ''">
+  <div class="app-layout" @click="closeMenus">
     <aside class="app-sidebar">
       <div class="sidebar-logo">Canvas<span>.</span></div>
       <nav class="sidebar-nav">
@@ -59,9 +59,19 @@
       <div class="dash-actions">
         <template v-if="canManageDocs">
           <button class="btn-primary" @click.stop="createDoc">+ Empty HTML</button>
-          <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
-          <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
-          <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
+          <div class="mobile-action-menu">
+            <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
+            <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
+              <button class="card-menu-item" @click="uploadInput?.click()">Upload HTML</button>
+              <button class="card-menu-item" @click="createGroup">+ Group</button>
+              <router-link to="/html-settings" class="card-menu-item">Settings</router-link>
+            </div>
+          </div>
+          <div class="dash-actions-secondary">
+            <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
+            <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
+            <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
+          </div>
         </template>
       </div>
       <input ref="uploadInput" type="file" accept=".html,.htm,text/html" hidden @change="uploadFile" />
@@ -237,6 +247,7 @@ export default defineComponent({
     const selectedIds = ref<string[]>([]);
     const draggingId = ref('');
     const openMenuId = ref('');
+    const showMobileActions = ref(false);
     const prompt = ref('');
     const generateTitle = ref('');
     const canManageDocs = computed(() => !isPasswordAccess());
@@ -315,6 +326,16 @@ export default defineComponent({
     function logout() {
       clearToken();
       router.push('/login');
+    }
+
+    function closeMenus() {
+      openMenuId.value = '';
+      showMobileActions.value = false;
+    }
+
+    function toggleMobileActions() {
+      openMenuId.value = '';
+      showMobileActions.value = !showMobileActions.value;
     }
 
     async function load() {
@@ -504,11 +525,12 @@ export default defineComponent({
 
     return {
       router, uploadInput, groupsWithDocs, loading, busy, message, messageType, canManageDocs, isAdminUser,
-      openGroups, selectedIds, draggingId, openMenuId, prompt, generateTitle,
+      openGroups, selectedIds, draggingId, openMenuId, showMobileActions, prompt, generateTitle,
       searchQuery, selectedTag, allTagNames, tagColors, tagsModal, tagSuggestions,
       load, createGroup, renameGroup, createDoc, uploadFile, toggleGroup,
       toggleSelected, dropDocument, toggleShare, copyLink, generate, formatDate,
       deleteDoc, openTagsModal, closeTagsModal, addTag, addSuggestedTag, removeTag, saveTagsModal, logout,
+      closeMenus, toggleMobileActions,
     };
   },
 });

@@ -59,9 +59,19 @@
       <div class="dash-actions">
         <template v-if="isLoggedIn">
           <button class="btn-primary" @click.stop="createCanvas">+ New Canvas</button>
-          <button class="btn-ghost" @click.stop="openFolderModal()">+ Folder Canvas</button>
-          <button class="btn-ghost" @click.stop="openTagManager">Manage tags</button>
-          <button class="btn-ghost" @click.stop="importFile">Open .canvas</button>
+          <div class="mobile-action-menu">
+            <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
+            <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
+              <button class="card-menu-item" @click="openFolderModal()">+ Folder Canvas</button>
+              <button class="card-menu-item" @click="openTagManager">Manage tags</button>
+              <button class="card-menu-item" @click="importFile">Open .canvas</button>
+            </div>
+          </div>
+          <div class="dash-actions-secondary">
+            <button class="btn-ghost" @click.stop="openFolderModal()">+ Folder Canvas</button>
+            <button class="btn-ghost" @click.stop="openTagManager">Manage tags</button>
+            <button class="btn-ghost" @click.stop="importFile">Open .canvas</button>
+          </div>
         </template>
         <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
         <template v-if="!isLoggedIn">
@@ -492,6 +502,7 @@ export default defineComponent({
     const selectedTag = ref('');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
+    const showMobileActions = ref(false);
     const openFolderNames = ref<string[]>(['Unsorted']);
     const draggingCanvasId = ref('');
     const dragTargetFolder = ref('');
@@ -916,11 +927,18 @@ export default defineComponent({
     };
 
     const toggleCardMenu = (canvasId: string) => {
+      showMobileActions.value = false;
       openMenuCanvasId.value = openMenuCanvasId.value === canvasId ? '' : canvasId;
     };
 
     const closeCardMenu = () => {
       openMenuCanvasId.value = '';
+      showMobileActions.value = false;
+    };
+
+    const toggleMobileActions = () => {
+      openMenuCanvasId.value = '';
+      showMobileActions.value = !showMobileActions.value;
     };
 
     const logout = () => {
@@ -1014,6 +1032,7 @@ export default defineComponent({
       isBusy,
       actionLabel,
       openMenuCanvasId,
+      showMobileActions,
       draggingCanvasId,
       dragTargetFolder,
       tagColors,
@@ -1057,6 +1076,7 @@ export default defineComponent({
       isFolderOpen,
       toggleCardMenu,
       closeCardMenu,
+      toggleMobileActions,
       openCanvas,
       duplicateCanvas,
       deleteCanvas,
