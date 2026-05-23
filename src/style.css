@@ -1395,23 +1395,34 @@ html, body {
 
   .app-layout {
     grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto 1fr;
   }
 
   .app-sidebar {
-    grid-row: auto;
-    padding: 14px 16px;
-    gap: 10px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 260;
+    padding: 8px max(10px, env(safe-area-inset-left)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-right));
+    border-right: 0;
+    border-top: 1px solid var(--dark-neutral-border);
+    gap: 0;
     overflow-x: auto;
+    overflow-y: hidden;
+    box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.24);
   }
 
   .sidebar-logo {
-    margin-bottom: 0;
+    display: none;
   }
 
   .sidebar-nav {
     flex-direction: row;
     flex: 0 0 auto;
+    gap: 6px;
+    justify-content: space-around;
+    width: 100%;
   }
 
   .sidebar-section-label,
@@ -1420,7 +1431,18 @@ html, body {
   }
 
   .sidebar-item {
+    flex: 1 0 72px;
+    justify-content: center;
+    min-height: 48px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
     white-space: nowrap;
+  }
+
+  .sidebar-item svg {
+    width: 16px;
+    height: 16px;
   }
 
   .app-header {
@@ -1430,7 +1452,7 @@ html, body {
   }
 
   .app-main.dashboard {
-    padding: 20px 16px 28px;
+    padding: 20px 16px calc(92px + env(safe-area-inset-bottom));
   }
 
   .dash-header {
