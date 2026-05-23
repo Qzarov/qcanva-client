@@ -82,11 +82,11 @@ Expected: production build passes.
 - Modify: `src/views/CanvasView.vue`
 - Modify: `src/style.css`
 
-- [ ] **Step 1: Split editor controls into mobile rows**
+- [x] **Step 1: Split editor controls into mobile rows**
 
 Keep title/save state separate from mode and share controls on HTML documents; reduce Canvas toolbar wrapping height.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npm run test:unit`
 

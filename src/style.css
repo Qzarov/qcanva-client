@@ -1544,11 +1544,31 @@ html, body {
 
   .html-editor-bar {
     flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px;
   }
 
   .html-title-input {
-    flex-basis: 100%;
+    flex: 1 1 calc(100% - 86px);
+    min-height: 40px;
+  }
+
+  .html-mode-tabs {
     order: 2;
+    flex: 1 0 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  }
+
+  .html-mode-tabs .btn-ghost {
+    justify-content: center;
+  }
+
+  .html-sync-wrap,
+  .html-editor-bar > .btn-primary,
+  .html-editor-bar > .btn-ghost:not(:first-child) {
+    order: 3;
+    flex: 1 1 auto;
   }
 
   .html-editor-grid {
@@ -2721,24 +2741,30 @@ html, body {
 
   .topbar-right {
     gap: 4px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     width: 100%;
     margin-left: 0;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .topbar-right::-webkit-scrollbar {
+    display: none;
   }
 
   .topbar-right .btn-ghost.btn-sm {
     font-size: 11px;
     min-height: 34px;
     padding: 6px 8px;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
   }
 
   .canvas-search-input {
-    order: -1;
-    width: 100%;
+    width: clamp(150px, 46vw, 220px);
     height: 36px;
     font-size: 16px;
-    flex: 1 0 100%;
+    flex: 0 0 auto;
   }
 
   .topbar-sync {
@@ -2787,11 +2813,12 @@ html, body {
     bottom: 0;
     height: auto;
     min-height: 40px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     gap: 4px;
-    max-height: 42vh;
-    overflow-y: auto;
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .tb-label {
