@@ -215,7 +215,9 @@
                       <button class="card-menu-item" @click="duplicateCanvas(c)" :disabled="isBusy">Duplicate</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
                       <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
+                      <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? 'Unpin' : 'Pin' }}</button>
                       <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
+                      <button class="card-menu-item danger" @click="deleteCanvas(c)" :disabled="isBusy">Delete</button>
                     </div>
                   </div>
                 </div>

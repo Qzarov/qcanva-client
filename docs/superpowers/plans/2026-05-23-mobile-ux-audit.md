@@ -103,11 +103,11 @@ Expected: production build passes.
 - Modify: `src/views/HtmlDocsView.vue`
 - Modify: `src/style.css`
 
-- [ ] **Step 1: Reduce mobile card action buttons**
+- [x] **Step 1: Reduce mobile card action buttons**
 
 Use a single menu entry point for mobile card actions while keeping desktop card controls unchanged.
 
-- [ ] **Step 2: Verify**
+- [x] **Step 2: Verify**
 
 Run: `npm run test:unit`
 

@@ -579,6 +579,12 @@ html, body {
 .card-menu-item:hover {
   background: rgba(255,255,255,0.06);
 }
+.card-menu-item.danger {
+  color: #ff9da1;
+}
+.card-menu-item.danger:hover {
+  background: rgba(251,70,76,0.15);
+}
 .dash-section-head {
   display: flex;
   align-items: center;
@@ -1640,16 +1646,13 @@ html, body {
     height: 36px;
   }
 
+  .card-pin,
   .card-delete {
-    right: 6px;
+    display: none;
   }
 
   .card-manage {
-    right: 44px;
-  }
-
-  .card-pin {
-    right: 82px;
+    right: 6px;
   }
 
   .card-menu {
