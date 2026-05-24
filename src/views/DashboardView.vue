@@ -161,6 +161,12 @@
               </button>
               <div class="folder-manager-actions">
                 <button
+                  v-if="folder.role === 'owner'"
+                  class="folder-manager-btn"
+                  @click.stop="openFolderShareModal(folder)"
+                  :disabled="isBusy"
+                >Share</button>
+                <button
                   v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
                   class="folder-manager-btn"
                   @click.stop="openRenameFolderModal(folder)"
@@ -398,6 +404,41 @@
       </div>
     </div>
 
+    <div v-if="folderShareModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderShareModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Share group</h3>
+          <button class="dashboard-modal-close" @click="closeFolderShareModal">x</button>
+        </div>
+        <p class="dashboard-modal-note">Sharing "{{ folderShareModal.name }}" grants access to all resources in this Group.</p>
+        <div class="share-section">
+          <div class="share-section-title">Invite people</div>
+          <div class="share-form">
+            <input v-model.trim="folderShareModal.email" placeholder="Email" type="email" />
+            <select v-model="folderShareModal.role">
+              <option value="read">Can view</option>
+              <option value="edit">Can edit</option>
+            </select>
+            <button @click="shareFolder" :disabled="isBusy || !folderShareModal.email.trim()">
+              {{ actionLabel('share-folder', 'Invite') }}
+            </button>
+          </div>
+          <div v-if="folderShareModal.loading" class="dashboard-modal-note">Loading access...</div>
+          <div v-else-if="!folderShareModal.permissions.length" class="dashboard-modal-note">No invited people yet.</div>
+          <div v-else class="share-list">
+            <div v-for="permission in folderShareModal.permissions" :key="permission.id || permission.userId" class="share-item">
+              <span>{{ permission.user?.email || permission.userId }}</span>
+              <span class="share-item-role">{{ permission.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+              <button @click="revokeFolderAccess(permission.userId)" :disabled="isBusy">x</button>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
@@ -588,6 +629,15 @@ export default defineComponent({
       folderId: '',
       sourceName: '',
       value: '',
+    });
+    const folderShareModal = ref<{ open: boolean; folderId: string; name: string; email: string; role: 'read' | 'edit'; permissions: any[]; loading: boolean }>({
+      open: false,
+      folderId: '',
+      name: '',
+      email: '',
+      role: 'read',
+      permissions: [],
+      loading: false,
     });
     const tagsModal = ref<{ open: boolean; canvasId: string; tags: CanvasTag[] }>({
       open: false,
@@ -1224,6 +1274,59 @@ export default defineComponent({
       await load();
     };
 
+    const loadFolderPermissions = async () => {
+      if (!folderShareModal.value.folderId) return;
+      folderShareModal.value.loading = true;
+      try {
+        folderShareModal.value.permissions = await resourceFolders.permissions(folderShareModal.value.folderId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load group permissions';
+        setFeedback('error', message);
+      } finally {
+        folderShareModal.value.loading = false;
+      }
+    };
+
+    const openFolderShareModal = async (folder: FolderSummary) => {
+      closeCardMenu();
+      folderShareModal.value = {
+        open: true,
+        folderId: folder.id,
+        name: folder.name,
+        email: '',
+        role: 'read',
+        permissions: [],
+        loading: false,
+      };
+      await loadFolderPermissions();
+    };
+
+    const closeFolderShareModal = () => {
+      folderShareModal.value = { open: false, folderId: '', name: '', email: '', role: 'read', permissions: [], loading: false };
+    };
+
+    const shareFolder = async () => {
+      const email = folderShareModal.value.email.trim();
+      if (!folderShareModal.value.folderId || !email) return;
+      await runAction(
+        'share-folder',
+        () => resourceFolders.share(folderShareModal.value.folderId, email, folderShareModal.value.role),
+        `Shared group with ${email}`,
+      );
+      folderShareModal.value.email = '';
+      await loadFolderPermissions();
+    };
+
+    const revokeFolderAccess = async (userId: string) => {
+      if (!folderShareModal.value.folderId || !userId) return;
+      await runAction(
+        'revoke-folder',
+        () => resourceFolders.revoke(folderShareModal.value.folderId, userId),
+        'Group access revoked',
+      );
+      await loadFolderPermissions();
+    };
+
     const openTagsModal = (c: CanvasRecord) => {
       closeCardMenu();
       tagsModal.value = {
@@ -1508,6 +1611,7 @@ export default defineComponent({
       currentUserLabel,
       folderModal,
       renameFolderModal,
+      folderShareModal,
       tagsModal,
       tagManager,
       transferModal,
@@ -1533,6 +1637,10 @@ export default defineComponent({
       closeRenameFolderModal,
       saveRenameFolderModal,
       deleteFolder,
+      openFolderShareModal,
+      closeFolderShareModal,
+      shareFolder,
+      revokeFolderAccess,
       deleteHtmlDocument,
       openHtmlDocument,
       openHtmlDocumentFromCard,

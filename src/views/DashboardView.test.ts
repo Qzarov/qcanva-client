@@ -40,7 +40,10 @@ vi.mock('../api/client', () => ({
       shared: [],
     }),
     move: vi.fn().mockResolvedValue({ id: 'canvas-1', folderId: 'folder-b' }),
+    permissions: vi.fn().mockResolvedValue([{ id: 'perm-1', userId: 'user-2', role: 'read', user: { email: 'reader@example.com' } }]),
     rename: vi.fn(),
+    revoke: vi.fn().mockResolvedValue({ revoked: true }),
+    share: vi.fn().mockResolvedValue({ id: 'perm-2' }),
   },
   tags: {
     list: vi.fn().mockResolvedValue({ tags: [] }),
@@ -131,5 +134,19 @@ describe('DashboardView groups', () => {
     await vm.saveFolderModal();
 
     expect(resourceFolders.move).toHaveBeenCalledWith('folder-c', 'html-document', 'doc-1');
+  });
+
+  it('shares groups through the group access modal', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    await vm.openFolderShareModal({ id: 'folder-b', role: 'owner', name: 'Target', items: [] });
+    vm.folderShareModal.email = 'reader@example.com';
+    vm.folderShareModal.role = 'edit';
+    await vm.shareFolder();
+
+    expect(resourceFolders.permissions).toHaveBeenCalledWith('folder-b');
+    expect(resourceFolders.share).toHaveBeenCalledWith('folder-b', 'reader@example.com', 'edit');
   });
 });
