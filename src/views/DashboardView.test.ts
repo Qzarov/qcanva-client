@@ -3,7 +3,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
-import { canvas, resourceFolders } from '../api/client';
+import { canvas, htmlDocuments, resourceFolders } from '../api/client';
 
 const push = vi.fn();
 
@@ -24,7 +24,11 @@ vi.mock('../api/client', () => ({
   getCurrentUser: vi.fn(() => ({ id: 'user-1', email: 'admin@example.com', name: 'Admin' })),
   htmlDocuments: {
     create: vi.fn(),
+    delete: vi.fn(),
+    duplicate: vi.fn().mockResolvedValue({ id: 'doc-copy' }),
     list: vi.fn().mockResolvedValue({ documents: [] }),
+    transferOwnership: vi.fn().mockResolvedValue({ document: { id: 'doc-1' }, role: 'owner' }),
+    update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },
   isAdmin: vi.fn(() => false),
   isAuthenticated: vi.fn(() => true),
@@ -148,5 +152,37 @@ describe('DashboardView groups', () => {
 
     expect(resourceFolders.permissions).toHaveBeenCalledWith('folder-b');
     expect(resourceFolders.share).toHaveBeenCalledWith('folder-b', 'reader@example.com', 'edit');
+  });
+
+  it('pins HTML documents through the unified action menu handler', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    await vm.togglePinned({ id: 'doc-1', type: 'html-document', title: 'Doc 1', pinned: false, tags: [] });
+
+    expect(htmlDocuments.update).toHaveBeenCalledWith('doc-1', { pinned: true });
+  });
+
+  it('duplicates HTML documents from dashboard actions', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    await vm.duplicateHtmlDocument({ id: 'doc-1', type: 'html-document', title: 'Doc 1', tags: [] });
+
+    expect(htmlDocuments.duplicate).toHaveBeenCalledWith('doc-1');
+  });
+
+  it('transfers HTML document ownership through the shared transfer modal', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.openTransferModal({ id: 'doc-1', type: 'html-document', title: 'Doc 1', tags: [] });
+    vm.transferModal.email = 'next@example.com';
+    await vm.saveTransferModal();
+
+    expect(htmlDocuments.transferOwnership).toHaveBeenCalledWith('doc-1', 'next@example.com');
   });
 });

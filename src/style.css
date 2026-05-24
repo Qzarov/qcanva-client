@@ -613,6 +613,7 @@ html, body {
   padding: 20px;
   cursor: pointer;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  overflow: visible;
 }
 .canvas-card:hover {
   border-color: var(--color-brands);
@@ -655,7 +656,7 @@ html, body {
 .card-manage {
   position: absolute;
   top: 8px;
-  right: 36px;
+  right: 8px;
   width: 24px;
   height: 24px;
   border: none;
@@ -672,7 +673,7 @@ html, body {
 .card-pin {
   position: absolute;
   top: 8px;
-  right: 64px;
+  right: 36px;
   width: 24px;
   height: 24px;
   border: none;
@@ -698,7 +699,7 @@ html, body {
   background: var(--dark-menu-bg);
   box-shadow: var(--shadow-dropdown);
   backdrop-filter: blur(10px);
-  z-index: 20;
+  z-index: 120;
 }
 .card-menu-item {
   display: block;
@@ -761,7 +762,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow: hidden;
+  overflow: visible;
 }
 .folder-manager-row {
   display: flex;
@@ -772,6 +773,7 @@ html, body {
   border-radius: var(--radius-sm);
   background: rgba(255,255,255,0.03);
   transition: border-color 0.15s, background 0.15s;
+  overflow: visible;
 }
 .folder-manager-row.folder-drop-active {
   border-color: color-mix(in srgb, var(--color-brands) 55%, transparent);

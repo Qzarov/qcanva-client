@@ -219,7 +219,6 @@
                     </div>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <button class="card-delete" @click.stop="deleteCanvas(item)" title="Delete" :disabled="isBusy">x</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
                       <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">Duplicate</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">Move to group</button>
@@ -241,12 +240,25 @@
                     <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
                       <span class="badge badge-public">HTML</span>
+                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div v-if="item.tags?.length" class="card-tags">
+                      <span
+                        v-for="tag in item.tags"
+                        :key="tag.name"
+                        class="card-tag color-tag"
+                        :style="{ '--tag-color': tag.color }"
+                      >#{{ tag.name }}</span>
+                    </div>
+                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="HTML actions" :disabled="isBusy">⋯</button>
-                    <button class="card-delete" @click.stop="deleteHtmlDocument(item)" title="Delete" :disabled="isBusy">x</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">Duplicate</button>
                       <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">Move to group</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
                       <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">Delete</button>
                     </div>
                   </article>
@@ -564,6 +576,7 @@ type HtmlDocumentRecord = {
   title: string;
   updatedAt: string;
   folderId?: string | null;
+  pinned?: boolean;
   tags: CanvasTag[];
 };
 type FolderItem = CanvasRecord | HtmlDocumentRecord;
@@ -639,18 +652,20 @@ export default defineComponent({
       permissions: [],
       loading: false,
     });
-    const tagsModal = ref<{ open: boolean; canvasId: string; tags: CanvasTag[] }>({
+    const tagsModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; tags: CanvasTag[] }>({
       open: false,
-      canvasId: '',
+      resourceId: '',
+      resourceType: 'canvas',
       tags: [],
     });
     const tagManager = ref<{ open: boolean; items: ManagedTag[] }>({
       open: false,
       items: [],
     });
-    const transferModal = ref<{ open: boolean; canvasId: string; email: string }>({
+    const transferModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; email: string }>({
       open: false,
-      canvasId: '',
+      resourceId: '',
+      resourceType: 'canvas',
       email: '',
     });
 
@@ -684,6 +699,7 @@ export default defineComponent({
       ...doc,
       type: 'html-document',
       folderId: doc.folderId || null,
+      pinned: Boolean(doc.pinned),
       tags: normalizeTags(doc.tags),
     });
 
@@ -727,7 +743,7 @@ export default defineComponent({
     });
 
     const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
-      if (a.type === 'canvas' && b.type === 'canvas' && Boolean(a.pinned) !== Boolean(b.pinned)) {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
         return a.pinned ? -1 : 1;
       }
       if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
@@ -1327,17 +1343,18 @@ export default defineComponent({
       await loadFolderPermissions();
     };
 
-    const openTagsModal = (c: CanvasRecord) => {
+    const openTagsModal = (item: FolderItem) => {
       closeCardMenu();
       tagsModal.value = {
         open: true,
-        canvasId: c.id,
-        tags: c.tags.length ? c.tags.map((tag) => ({ ...tag })) : [{ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR }],
+        resourceId: item.id,
+        resourceType: item.type,
+        tags: item.tags.length ? item.tags.map((tag) => ({ ...tag })) : [{ id: genTagId(), name: '', color: DEFAULT_TAG_COLOR }],
       };
     };
 
     const closeTagsModal = () => {
-      tagsModal.value = { open: false, canvasId: '', tags: [] };
+      tagsModal.value = { open: false, resourceId: '', resourceType: 'canvas', tags: [] };
     };
 
     const addTag = () => {
@@ -1358,7 +1375,10 @@ export default defineComponent({
       const tags = tagsModal.value.tags
         .map((tag) => ({ name: tag.name.trim().toLowerCase(), color: tag.color }))
         .filter((tag) => tag.name);
-      await runAction('save-tags', () => canvas.update(tagsModal.value.canvasId, { tags }), 'Tags saved');
+      const save = tagsModal.value.resourceType === 'canvas'
+        ? () => canvas.update(tagsModal.value.resourceId, { tags })
+        : () => htmlDocuments.update(tagsModal.value.resourceId, { tags });
+      await runAction('save-tags', save, 'Tags saved');
       closeTagsModal();
       await load();
     };
@@ -1400,19 +1420,22 @@ export default defineComponent({
       await load();
     };
 
-    const openTransferModal = (c: CanvasRecord) => {
+    const openTransferModal = (item: FolderItem) => {
       closeCardMenu();
-      transferModal.value = { open: true, canvasId: c.id, email: '' };
+      transferModal.value = { open: true, resourceId: item.id, resourceType: item.type, email: '' };
     };
 
     const closeTransferModal = () => {
-      transferModal.value = { open: false, canvasId: '', email: '' };
+      transferModal.value = { open: false, resourceId: '', resourceType: 'canvas', email: '' };
     };
 
     const saveTransferModal = async () => {
       const email = transferModal.value.email.trim();
       if (!email) return;
-      await runAction('transfer-ownership', () => canvas.transferOwnership(transferModal.value.canvasId, email), 'Ownership transferred');
+      const transfer = transferModal.value.resourceType === 'canvas'
+        ? () => canvas.transferOwnership(transferModal.value.resourceId, email)
+        : () => htmlDocuments.transferOwnership(transferModal.value.resourceId, email);
+      await runAction('transfer-ownership', transfer, 'Ownership transferred');
       closeTransferModal();
       await load();
     };
@@ -1421,6 +1444,13 @@ export default defineComponent({
       closeCardMenu();
       const title = canvasRecord.title?.trim() || 'Untitled';
       await runAction('duplicate-canvas', () => canvas.duplicate(canvasRecord.id), `Duplicated "${title}"`);
+      await load();
+    };
+
+    const duplicateHtmlDocument = async (doc: HtmlDocumentRecord) => {
+      closeCardMenu();
+      const title = doc.title?.trim() || 'Untitled HTML';
+      await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), `Duplicated "${title}"`);
       await load();
     };
 
@@ -1441,16 +1471,26 @@ export default defineComponent({
       await load();
     };
 
-    const togglePinned = async (canvasRecord: CanvasRecord) => {
+    const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
-      const nextPinned = !canvasRecord.pinned;
-      const updated = await runAction(
-        `pin-canvas-${canvasRecord.id}`,
-        () => canvas.update(canvasRecord.id, { pinned: nextPinned }),
-        nextPinned ? 'Canvas pinned' : 'Canvas unpinned',
-      );
+      const nextPinned = !item.pinned;
+      const updated = item.type === 'canvas'
+        ? await runAction(
+          `pin-canvas-${item.id}`,
+          () => canvas.update(item.id, { pinned: nextPinned }),
+          nextPinned ? 'Canvas pinned' : 'Canvas unpinned',
+        )
+        : await runAction(
+          `pin-html-document-${item.id}`,
+          () => htmlDocuments.update(item.id, { pinned: nextPinned }),
+          nextPinned ? 'HTML pinned' : 'HTML unpinned',
+        );
       if (!updated) return;
-      applyCanvasUpdate(updated);
+      if (item.type === 'canvas') {
+        applyCanvasUpdate(updated);
+        return;
+      }
+      await load();
     };
 
     const applyCanvasUpdate = (updatedRaw: any) => {
@@ -1666,6 +1706,7 @@ export default defineComponent({
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
+      duplicateHtmlDocument,
       deleteCanvas,
       togglePinned,
       logout,
