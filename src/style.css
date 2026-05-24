@@ -14,13 +14,14 @@
   /* Dark surfaces */
   --dark-neutral-bg: #1f2128;
   --dark-neutral-border: #313442;
-  --dark-card-bg: #006400;
+  --dark-card-bg: rgba(0, 42, 0, 0.82);
+  --dark-menu-bg: rgba(0, 32, 0, 0.9);
   --dark-input-bg: rgba(255, 255, 255, 0.05);
 
   /* Dark text scale */
-  --dark-text-primary: #f1f1f1;
-  --dark-text-secondary: #8b8b93;
-  --dark-text-muted: #64646f;
+  --dark-text-primary: #f8fff8;
+  --dark-text-secondary: #d6f2d6;
+  --dark-text-muted: #a8c6a8;
 
   /* Accents */
   --accent-green: #50d1b2;
@@ -308,6 +309,7 @@ html, body {
   color: var(--dark-text-secondary);
   font-size: 12px;
   line-height: 1;
+  cursor: pointer;
 }
 .current-user-badge span:last-child {
   min-width: 0;
@@ -364,12 +366,19 @@ html, body {
   padding: 6px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-md);
-  background: var(--dark-card-bg);
+  background: var(--dark-menu-bg);
   box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
 }
 .control-popover {
   left: 0;
   right: auto;
+}
+.user-menu {
+  position: relative;
+}
+.user-popover {
+  width: 190px;
 }
 .home-tabs {
   display: inline-flex;
@@ -674,8 +683,9 @@ html, body {
   padding: 6px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-md);
-  background: var(--dark-card-bg);
+  background: var(--dark-menu-bg);
   box-shadow: var(--shadow-dropdown);
+  backdrop-filter: blur(10px);
   z-index: 20;
 }
 .card-menu-item {
@@ -899,11 +909,12 @@ html, body {
 }
 .dashboard-modal {
   width: min(560px, 100%);
-  background: var(--dark-card-bg);
+  background: var(--dark-menu-bg);
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-lg);
   padding: 18px;
   box-shadow: var(--shadow-card);
+  backdrop-filter: blur(10px);
 }
 .dashboard-modal-head {
   display: flex;

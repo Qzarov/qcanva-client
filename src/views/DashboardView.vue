@@ -8,14 +8,26 @@
         </div>
         <div class="header-user-slot">
           <template v-if="isLoggedIn">
-          <div class="current-user-badge" :title="currentUserLabel">
-            <span class="current-user-icon">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M20 21a8 8 0 0 0-16 0" />
-                <circle cx="12" cy="7" r="4" />
-              </svg>
-            </span>
-            <span>{{ currentUserLabel }}</span>
+          <div class="user-menu">
+            <button class="current-user-badge" :title="currentUserLabel" @click.stop="toggleUserMenu">
+              <span class="current-user-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M20 21a8 8 0 0 0-16 0" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+              </span>
+              <span>{{ currentUserLabel }}</span>
+            </button>
+            <div v-if="openControlMenu === 'user'" class="mobile-action-popover user-popover" @click.stop>
+              <router-link to="/html-settings" class="card-menu-item">
+                <span class="menu-icon">⚙</span>
+                <span>Settings</span>
+              </router-link>
+              <button class="card-menu-item" @click="logout">
+                <span class="menu-icon">↪</span>
+                <span>Sign out</span>
+              </button>
+            </div>
           </div>
           </template>
           <template v-else>
@@ -63,14 +75,6 @@
               <span class="menu-icon">◎</span>
               <span>Admin</span>
             </router-link>
-            <router-link to="/html-settings" class="btn-ghost">
-              <span class="menu-icon">⚙</span>
-              <span>HTML settings</span>
-            </router-link>
-            <button class="btn-ghost" @click.stop="logout">
-              <span class="menu-icon">↪</span>
-              <span>Sign out</span>
-            </button>
           </div>
       </div>
     </section>
@@ -1117,6 +1121,11 @@ export default defineComponent({
       openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
+    const toggleUserMenu = () => {
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === 'user' ? '' : 'user';
+    };
+
     const logout = () => {
       clearToken();
       router.push('/login');
@@ -1278,6 +1287,7 @@ export default defineComponent({
       toggleCardMenu,
       closeCardMenu,
       toggleNewMenu,
+      toggleUserMenu,
       openCanvas,
       duplicateCanvas,
       deleteCanvas,
