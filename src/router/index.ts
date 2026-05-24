@@ -22,7 +22,7 @@ const router = createRouter({
     {
       path: '/html-docs',
       name: 'html-docs',
-      component: () => import('../views/HtmlDocsView.vue'),
+      redirect: { name: 'dashboard', query: { type: 'html' } },
       meta: { requiresAuth: true },
     },
     {

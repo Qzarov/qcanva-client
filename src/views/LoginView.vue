@@ -33,7 +33,7 @@ export default defineComponent({
       loading.value = true;
       try {
         const res = await auth.login(login.value, password.value);
-        setToken(res.token, res.user?.role, res.user?.accessMode || 'user');
+        setToken(res.token, res.user?.role, res.user?.accessMode || 'user', res.user);
         router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
       } catch (e: any) {
         error.value = e.message;

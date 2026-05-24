@@ -1,76 +1,42 @@
 <template>
   <div class="app-layout" @click="closeCardMenu">
-    <aside class="app-sidebar">
-      <div class="sidebar-logo">Canvas<span>.</span></div>
-      <nav class="sidebar-nav">
-        <router-link to="/" class="sidebar-item active">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="7" height="7" />
-            <rect x="14" y="3" width="7" height="7" />
-            <rect x="3" y="14" width="7" height="7" />
-            <rect x="14" y="14" width="7" height="7" />
-          </svg>
-          Canvases
-        </router-link>
-        <router-link to="/html-docs" class="sidebar-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14,2 14,8 20,8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
-          HTML Docs
-        </router-link>
-        <router-link v-if="isLoggedIn" to="/html-settings" class="sidebar-item">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 0 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
-          </svg>
-          Settings
-        </router-link>
-        <template v-if="admin">
-          <div class="sidebar-section-label">Admin</div>
-          <router-link to="/admin" class="sidebar-item">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14" />
-            </svg>
-            Admin
-          </router-link>
-        </template>
-      </nav>
-      <div v-if="isLoggedIn" class="sidebar-footer">
-        <button class="sidebar-item" @click.stop="logout">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16,17 21,12 16,7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Sign out
-        </button>
-      </div>
-    </aside>
-
     <header class="app-header">
       <div>
-        <h1>{{ isLoggedIn ? 'My Canvases' : 'QCanva' }}</h1>
+        <h1>{{ isLoggedIn ? 'Resources' : 'QCanva' }}</h1>
         <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
       </div>
       <div class="dash-actions">
         <template v-if="isLoggedIn">
+          <div class="current-user-badge" :title="currentUserLabel">
+            <span class="current-user-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M20 21a8 8 0 0 0-16 0" />
+                <circle cx="12" cy="7" r="4" />
+              </svg>
+            </span>
+            <span>{{ currentUserLabel }}</span>
+          </div>
           <button class="btn-primary" @click.stop="createCanvas">+ New Canvas</button>
           <div class="mobile-action-menu">
             <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
             <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
+              <button class="card-menu-item" @click="createHtmlDocument">+ HTML document</button>
               <button class="card-menu-item" @click="openFolderModal()">+ Folder Canvas</button>
               <button class="card-menu-item" @click="openTagManager">Manage tags</button>
               <button class="card-menu-item" @click="importFile">Open .canvas</button>
+              <router-link v-if="admin" to="/admin" class="card-menu-item">Admin</router-link>
+              <router-link to="/html-settings" class="card-menu-item">HTML settings</router-link>
+              <button class="card-menu-item" @click="logout">Sign out</button>
             </div>
           </div>
           <div class="dash-actions-secondary">
+            <button class="btn-ghost" @click.stop="createHtmlDocument">+ HTML document</button>
             <button class="btn-ghost" @click.stop="openFolderModal()">+ Folder Canvas</button>
             <button class="btn-ghost" @click.stop="openTagManager">Manage tags</button>
             <button class="btn-ghost" @click.stop="importFile">Open .canvas</button>
+            <router-link v-if="admin" to="/admin" class="btn-ghost">Admin</router-link>
+            <router-link to="/html-settings" class="btn-ghost">HTML settings</router-link>
+            <button class="btn-ghost" @click.stop="logout">Sign out</button>
           </div>
         </template>
         <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
@@ -487,8 +453,8 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
-import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { useRoute, useRouter } from 'vue-router';
+import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -521,12 +487,13 @@ type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
 };
 
-const DEFAULT_TAG_COLOR = '#7c8aff';
+const DEFAULT_TAG_COLOR = '#50d1b2';
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   setup() {
     const router = useRouter();
+    const route = useRoute();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -534,12 +501,13 @@ export default defineComponent({
     const publicCanvases = ref<CanvasRecord[]>([]);
     const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
     const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
+    const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const welcomeCanvas = ref<CanvasRecord | null>(null);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const searchQuery = ref('');
     const selectedTag = ref('');
-    const contentFilter = ref<'all' | 'canvas' | 'html-document'>('all');
+    const contentFilter = ref<'all' | 'canvas' | 'html-document'>(route.query.type === 'html' ? 'html-document' : 'all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const showMobileActions = ref(false);
@@ -550,7 +518,9 @@ export default defineComponent({
     const incomingRequests = ref<any[]>([]);
     const feedback = ref<FeedbackState>({ type: 'success', message: '' });
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
+    const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
+    const currentUser = computed(() => getCurrentUser());
+    const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const folderModal = ref<{ open: boolean; resourceId: string; resourceType: 'canvas' | 'html-document'; folderId: string; value: string }>({
       open: false,
@@ -661,6 +631,14 @@ export default defineComponent({
           for (const tag of canvas.tags) names.add(tag.name);
         }
       }
+      for (const document of unfiledHtmlDocuments.value) {
+        for (const tag of document.tags) names.add(tag.name);
+      }
+      for (const folder of allResourceFolders.value) {
+        for (const document of folder.items?.htmlDocuments || []) {
+          for (const tag of normalizeTags(document.tags)) names.add(tag.name);
+        }
+      }
       return Array.from(names).sort();
     });
 
@@ -672,13 +650,17 @@ export default defineComponent({
           for (const tag of canvasRecord.tags) byName.set(tag.name, tag);
         }
       }
+      for (const document of unfiledHtmlDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
       return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
     const folderOptions = computed(() => ownResourceFolders.value.slice().sort((a, b) => a.name.localeCompare(b.name)));
     const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
-    const folderSummaries = computed<FolderSummary[]>(() => allResourceFolders.value
+    const folderSummaries = computed<FolderSummary[]>(() => {
+      const folders = allResourceFolders.value
       .map((folder) => {
         const canvases = (folder.items?.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
@@ -690,7 +672,21 @@ export default defineComponent({
           htmlDocumentCount: htmlDocs.length,
         };
       })
-      .filter((folder) => folder.items.length || contentFilter.value === 'all'));
+      .filter((folder) => folder.items.length || contentFilter.value === 'all');
+
+      const fallbackItems = sortFolderItems(unfiledHtmlDocuments.value.filter((item) => matchesFolderItem(item, 'Inbox')));
+      if (fallbackItems.length || (contentFilter.value === 'all' && unfiledHtmlDocuments.value.length)) {
+        folders.push({
+          id: 'legacy-html-inbox',
+          name: 'Inbox',
+          role: 'owner',
+          canvasCount: 0,
+          htmlDocumentCount: unfiledHtmlDocuments.value.length,
+          items: fallbackItems,
+        });
+      }
+      return folders;
+    });
     const isBusy = computed(() => pendingAction.value.length > 0);
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
@@ -727,6 +723,15 @@ export default defineComponent({
           const folders = await resourceFolders.list();
           ownResourceFolders.value = folders.own;
           sharedResourceFolders.value = folders.shared;
+          const folderDocumentIds = new Set(
+            [...folders.own, ...folders.shared].flatMap((folder) =>
+              (folder.items?.htmlDocuments || []).map((document: any) => document.id),
+            ),
+          );
+          const legacyState = await htmlDocuments.list();
+          unfiledHtmlDocuments.value = (legacyState.documents || [])
+            .filter((document: any) => !folderDocumentIds.has(document.id))
+            .map((document: any) => normalizeHtmlDocument(document));
         }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
@@ -760,6 +765,17 @@ export default defineComponent({
       const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolder?.id), 'Canvas created');
       if (!c) return;
       router.push(`/canvas/${c.id}`);
+    };
+
+    const createHtmlDocument = async () => {
+      const targetFolder = await ensureFolderByName('Unsorted');
+      const doc = await runAction(
+        'create-html-document',
+        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolder?.id }),
+        'HTML document created',
+      );
+      if (!doc) return;
+      router.push(`/html/${doc.id}`);
     };
 
     const openFolderModal = (folder?: FolderSummary | ResourceFolderSummary) => {
@@ -1157,6 +1173,7 @@ export default defineComponent({
       dragTargetFolder,
       tagColors,
       tagSuggestions,
+      currentUserLabel,
       folderModal,
       renameFolderModal,
       tagsModal,
@@ -1165,6 +1182,7 @@ export default defineComponent({
       folderSummaries,
       incomingRequests,
       createCanvas,
+      createHtmlDocument,
       load,
       openFolderModal,
       openMoveFolderModal,

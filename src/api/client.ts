@@ -12,20 +12,74 @@ export class ApiError extends Error {
   }
 }
 
+export type CurrentUser = {
+  id?: string;
+  email?: string;
+  name?: string;
+  role: string;
+  accessMode: string;
+};
+
 function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
-export function setToken(token: string, role = 'user', accessMode = 'user') {
+export function setToken(token: string, role = 'user', accessMode = 'user', user?: { id?: string; email?: string; name?: string }) {
   localStorage.setItem('token', token);
   localStorage.setItem('userRole', role);
   localStorage.setItem('accessMode', accessMode);
+  if (user) {
+    localStorage.setItem('currentUser', JSON.stringify({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role,
+      accessMode,
+    }));
+  }
 }
 
 export function clearToken() {
   localStorage.removeItem('token');
   localStorage.removeItem('userRole');
   localStorage.removeItem('accessMode');
+  localStorage.removeItem('currentUser');
+}
+
+export function getCurrentUser(): CurrentUser | null {
+  const stored = localStorage.getItem('currentUser');
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      return {
+        id: parsed.id,
+        email: parsed.email,
+        name: parsed.name,
+        role: parsed.role || getUserRole(),
+        accessMode: parsed.accessMode || getAccessMode(),
+      };
+    } catch {
+      localStorage.removeItem('currentUser');
+    }
+  }
+
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1] || ''));
+    return {
+      id: payload.sub || payload.id,
+      email: payload.email,
+      name: payload.name,
+      role: payload.role || getUserRole(),
+      accessMode: payload.accessMode || getAccessMode(),
+    };
+  } catch {
+    return {
+      role: getUserRole(),
+      accessMode: getAccessMode(),
+    };
+  }
 }
 
 export function getUserRole(): string {

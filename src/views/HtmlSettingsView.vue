@@ -6,7 +6,7 @@
         <p class="dash-subtitle">OpenRouter credentials for document generation.</p>
       </div>
       <div class="dash-actions">
-        <router-link to="/html-docs" class="btn-ghost">Back</router-link>
+        <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
       </div>
     </header>
     <section class="settings-panel">

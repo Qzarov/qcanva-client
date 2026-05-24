@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, htmlDocuments, resourceFolders } from './client';
+import { canvas, getCurrentUser, htmlDocuments, resourceFolders, setToken } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -48,6 +48,24 @@ describe('resourceFolders API client', () => {
       headers: {
         'Content-Type': 'application/json',
       },
+    });
+  });
+});
+
+describe('session helpers', () => {
+  afterEach(() => {
+    localStorage.clear();
+  });
+
+  it('stores current user display data with token', () => {
+    setToken('token-1', 'admin', 'user', { id: 'u1', email: 'admin@example.com', name: 'Admin' });
+
+    expect(getCurrentUser()).toEqual({
+      id: 'u1',
+      email: 'admin@example.com',
+      name: 'Admin',
+      role: 'admin',
+      accessMode: 'user',
     });
   });
 });

@@ -37,12 +37,12 @@
           </div>
         </div>
 
-        <router-link to="/html-docs" class="access-gate-back">← Documents</router-link>
+        <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="access-gate-back">← Documents</router-link>
       </div>
     </div>
     <template v-else>
     <header class="html-editor-bar">
-      <router-link to="/html-docs" class="btn-ghost">Back</router-link>
+      <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
       <input v-model="title" class="html-title-input" :readonly="role === 'read'" />
       <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Access</button>
       <div class="html-mode-tabs">
@@ -329,7 +329,7 @@ export default defineComponent({
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
-          await router.replace('/html-docs');
+          await router.replace({ name: 'dashboard', query: { type: 'html' } });
           return;
         }
         throw e;
