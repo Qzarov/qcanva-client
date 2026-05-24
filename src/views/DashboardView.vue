@@ -1,12 +1,13 @@
 <template>
   <div class="app-layout" @click="closeCardMenu">
     <header class="app-header">
-      <div>
-        <h1>{{ isLoggedIn ? 'Resources' : 'QCanva' }}</h1>
-        <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
-      </div>
-      <div class="dash-actions">
-        <template v-if="isLoggedIn">
+      <div class="app-header-inner">
+        <div>
+          <h1>{{ isLoggedIn ? 'Resources' : 'QCanva' }}</h1>
+          <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
+        </div>
+        <div class="header-user-slot">
+          <template v-if="isLoggedIn">
           <div class="current-user-badge" :title="currentUserLabel">
             <span class="current-user-icon">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -16,6 +17,19 @@
             </span>
             <span>{{ currentUserLabel }}</span>
           </div>
+          </template>
+          <template v-else>
+            <router-link to="/login" class="btn-ghost">Login</router-link>
+            <router-link to="/register" class="btn-primary">Register</router-link>
+          </template>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main dashboard">
+    <div class="dashboard-shell">
+    <section v-if="isLoggedIn" class="resource-control-panel">
+      <div class="resource-control-actions">
           <button class="btn-primary" @click.stop="createCanvas">+ New Canvas</button>
           <div class="mobile-action-menu">
             <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
@@ -38,16 +52,9 @@
             <router-link to="/html-settings" class="btn-ghost">HTML settings</router-link>
             <button class="btn-ghost" @click.stop="logout">Sign out</button>
           </div>
-        </template>
-        <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
-        <template v-if="!isLoggedIn">
-          <router-link to="/login" class="btn-ghost">Login</router-link>
-          <router-link to="/register" class="btn-primary">Register</router-link>
-        </template>
       </div>
-    </header>
-
-    <main class="app-main dashboard">
+    </section>
+    <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
       <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, folder or tag" />
       <select v-model="sortMode" class="dash-sort-select">
@@ -300,6 +307,7 @@
         No public canvases yet.
       </div>
     </template>
+    </div>
     </main>
 
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
@@ -501,6 +509,7 @@ export default defineComponent({
     const publicCanvases = ref<CanvasRecord[]>([]);
     const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
     const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
+    const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const welcomeCanvas = ref<CanvasRecord | null>(null);
     const sharedResourceTags = ref<ResourceTag[]>([]);
@@ -674,13 +683,14 @@ export default defineComponent({
       })
       .filter((folder) => folder.items.length || contentFilter.value === 'all');
 
-      const fallbackItems = sortFolderItems(unfiledHtmlDocuments.value.filter((item) => matchesFolderItem(item, 'Inbox')));
-      if (fallbackItems.length || (contentFilter.value === 'all' && unfiledHtmlDocuments.value.length)) {
+      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value];
+      const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
+      if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
         folders.push({
-          id: 'legacy-html-inbox',
+          id: 'legacy-resource-inbox',
           name: 'Inbox',
           role: 'owner',
-          canvasCount: 0,
+          canvasCount: unfiledCanvases.value.length,
           htmlDocumentCount: unfiledHtmlDocuments.value.length,
           items: fallbackItems,
         });
@@ -734,6 +744,15 @@ export default defineComponent({
             .map((document: any) => normalizeHtmlDocument(document));
         }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
+        unfiledCanvases.value = own.value.filter((canvasRecord) => !canvasRecord.folderId || !ownResourceFolders.value.some((folder) => folder.id === canvasRecord.folderId));
+        if (isLoggedIn) {
+          const visibleFolderCanvasIds = new Set(
+            [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) =>
+              (folder.items?.canvases || []).map((canvasItem: any) => canvasItem.id),
+            ),
+          );
+          unfiledCanvases.value = own.value.filter((canvasRecord) => !visibleFolderCanvasIds.has(canvasRecord.id));
+        }
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
         welcomeCanvas.value = res.welcome ? normalizeCanvas(res.welcome, false) : null;
