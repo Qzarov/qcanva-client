@@ -211,7 +211,6 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-move" @click.stop="openMoveFolderModal(item)" title="Move to group" :disabled="isBusy">Move</button>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <button class="card-delete" @click.stop="deleteCanvas(item)" title="Delete" :disabled="isBusy">x</button>
@@ -238,9 +237,12 @@
                       <span class="badge badge-public">HTML</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
-                    <button class="card-move" @click.stop="openMoveHtmlFolderModal(item)" title="Move to group" :disabled="isBusy">Move</button>
-                    <button class="card-manage" @click.stop="openMoveHtmlFolderModal(item)" title="Move document" :disabled="isBusy">⋯</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="HTML actions" :disabled="isBusy">⋯</button>
                     <button class="card-delete" @click.stop="deleteHtmlDocument(item)" title="Delete" :disabled="isBusy">x</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">Move to group</button>
+                      <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">Delete</button>
+                    </div>
                   </article>
                   </template>
                 </div>
