@@ -33,8 +33,8 @@ vi.mock('../api/client', () => ({
     delete: vi.fn(),
     list: vi.fn().mockResolvedValue({
       own: [
-        { id: 'folder-a', name: 'Unsorted', role: 'owner', items: { canvases: [], htmlDocuments: [] } },
-        { id: 'folder-b', name: 'Target', role: 'owner', items: { canvases: [], htmlDocuments: [] } },
+        { id: 'folder-a', name: 'Unsorted', role: 'owner', canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
+        { id: 'folder-b', name: 'Target', role: 'owner', canvases: [], htmlDocuments: [] },
       ],
       shared: [],
     }),
@@ -79,6 +79,7 @@ describe('DashboardView groups', () => {
   it('moves dragged canvas by stored source folder instead of old own canvas list', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    vi.mocked(resourceFolders.list).mockClear();
 
     const vm = wrapper.vm as any;
     vm.startCanvasDrag(
@@ -90,5 +91,6 @@ describe('DashboardView groups', () => {
     await vm.dropCanvasToFolder({ id: 'folder-b', role: 'owner', name: 'Target', items: [] });
 
     expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'canvas', 'canvas-1');
+    expect(resourceFolders.list).not.toHaveBeenCalled();
   });
 });

@@ -217,7 +217,9 @@ export type ResourceFolderSummary = {
   htmlDocumentCount: number;
   updatedAt?: string;
   createdAt?: string;
-  items: {
+  canvases?: any[];
+  htmlDocuments?: any[];
+  items?: {
     canvases: any[];
     htmlDocuments: any[];
   };
