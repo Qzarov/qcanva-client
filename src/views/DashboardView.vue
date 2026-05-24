@@ -56,7 +56,7 @@
                 <span class="menu-icon">▤</span>
                 <span>HTML document</span>
               </button>
-              <button class="card-menu-item" @click="openFolderModal()">
+              <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
                 <span>Group</span>
               </button>
@@ -144,7 +144,7 @@
             v-for="folder in folderSummaries"
             :key="folder.id"
             class="folder-manager-row"
-            :class="{ 'folder-drop-active': draggingCanvasId && dragTargetFolder === folder.id }"
+            :class="{ 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id }"
             @dragover.prevent="onFolderDragOver(folder)"
             @dragleave="onFolderDragLeave(folder)"
             @drop.prevent="dropCanvasToFolder(folder)"
@@ -154,11 +154,10 @@
                 <span class="folder-manager-title">
                   <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.id) }">⌄</span>
                   <span class="folder-manager-name">{{ folder.name }}</span>
+                  <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML</span>
                 </span>
-                <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML</span>
               </button>
               <div class="folder-manager-actions">
-                <button class="folder-manager-btn" @click.stop="openFolderModal(folder)" :disabled="isBusy || folder.role !== 'owner'">Add canvas</button>
                 <button
                   v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
                   class="folder-manager-btn"
@@ -337,7 +336,7 @@
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? 'Move to group' : 'Create canvas in group' }}</h3>
+          <h3>{{ folderModal.resourceId ? 'Move to group' : 'Create group' }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
@@ -347,7 +346,7 @@
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
-        <div v-if="folderOptions.length" class="folder-chip-list">
+        <div v-if="folderModal.resourceId && folderOptions.length" class="folder-chip-list">
           <button
             v-for="folder in folderOptions"
             :key="folder.id"
@@ -359,7 +358,7 @@
         <div class="dashboard-modal-actions">
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">Cancel</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !folderModal.value.trim()">
-            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder-canvas', folderModal.resourceId ? 'Move' : 'Create') }}
+            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? 'Move' : 'Create') }}
           </button>
         </div>
       </div>
@@ -546,6 +545,7 @@ export default defineComponent({
     const openControlMenu = ref('');
     const openFolderNames = ref<string[]>(['Unsorted']);
     const draggingCanvasId = ref('');
+    const draggingCanvasFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
     const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
@@ -705,7 +705,10 @@ export default defineComponent({
           htmlDocumentCount: htmlDocs.length,
         };
       })
-      .filter((folder) => folder.items.length || contentFilter.value === 'all');
+      .filter((folder) => {
+        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
+        return folder.items.length || (!hasActiveFilter && folder.role === 'owner');
+      });
 
       const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value];
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
@@ -823,14 +826,15 @@ export default defineComponent({
       router.push(`/html/${doc.id}`);
     };
 
-    const openFolderModal = (folder?: FolderSummary | ResourceFolderSummary) => {
+    const openCreateGroupModal = () => {
       closeCardMenu();
+      openControlMenu.value = '';
       folderModal.value = {
         open: true,
         resourceId: '',
         resourceType: 'canvas',
-        folderId: folder?.id || '',
-        value: folder?.name || 'Unsorted',
+        folderId: '',
+        value: '',
       };
     };
 
@@ -875,10 +879,8 @@ export default defineComponent({
         : await ensureFolderByName(folderName);
       if (!targetFolder) return;
       if (!folderModal.value.resourceId) {
-        const c = await runAction('create-folder-canvas', () => canvas.create('Untitled', undefined, targetFolder.id), `Canvas created in ${targetFolder.name}`);
-        if (!c) return;
         closeFolderModal();
-        router.push(`/canvas/${c.id}`);
+        await load();
         return;
       }
       await runAction(
@@ -897,17 +899,28 @@ export default defineComponent({
       }
       closeCardMenu();
       draggingCanvasId.value = c.id;
+      draggingCanvasFolderId.value = c.folderId || null;
       event.dataTransfer?.setData('text/plain', c.id);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     };
 
     const endCanvasDrag = () => {
       draggingCanvasId.value = '';
+      draggingCanvasFolderId.value = null;
       dragTargetFolder.value = '';
     };
 
+    const canDropToFolder = (folder: FolderSummary) => {
+      return Boolean(
+        draggingCanvasId.value
+        && !isBusy.value
+        && folder.role === 'owner'
+        && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id),
+      );
+    };
+
     const onFolderDragOver = (folder: FolderSummary) => {
-      if (!draggingCanvasId.value || isBusy.value || folder.role !== 'owner') return;
+      if (!canDropToFolder(folder)) return;
       dragTargetFolder.value = folder.id;
       if (!openFolderNames.value.includes(folder.id)) {
         openFolderNames.value = [...openFolderNames.value, folder.id];
@@ -920,10 +933,11 @@ export default defineComponent({
 
     const dropCanvasToFolder = async (folder: FolderSummary) => {
       const canvasId = draggingCanvasId.value;
+      const sourceFolderId = draggingCanvasFolderId.value;
+      const canDrop = canDropToFolder(folder);
       endCanvasDrag();
-      if (!canvasId || isBusy.value || folder.role !== 'owner') return;
-      const current = own.value.find((item) => item.id === canvasId);
-      if (!current || current.folderId === folder.id) return;
+      if (!canvasId || !canDrop) return;
+      if (sourceFolderId === folder.id) return;
       await runAction('move-folder', () => resourceFolders.move(folder.id, 'canvas', canvasId), `Moved to ${folder.name}`);
       await load();
     };
@@ -1240,6 +1254,7 @@ export default defineComponent({
       openControlMenu,
       draggingCanvasId,
       dragTargetFolder,
+      draggingCanvasFolderId,
       tagColors,
       tagSuggestions,
       currentUserLabel,
@@ -1253,7 +1268,7 @@ export default defineComponent({
       createCanvas,
       createHtmlDocument,
       load,
-      openFolderModal,
+      openCreateGroupModal,
       openMoveFolderModal,
       openMoveHtmlFolderModal,
       saveFolderModal,
@@ -1263,6 +1278,7 @@ export default defineComponent({
       onFolderDragOver,
       onFolderDragLeave,
       dropCanvasToFolder,
+      canDropToFolder,
       openRenameFolderModal,
       closeRenameFolderModal,
       saveRenameFolderModal,

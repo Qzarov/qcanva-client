@@ -402,7 +402,8 @@ html, body {
 }
 .dash-toolbar {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -459,9 +460,12 @@ html, body {
 .canvas-search-input:focus {
   border-color: color-mix(in srgb, var(--color-brands) 50%, transparent);
 }
-.dash-search { max-width: 360px; }
+.dash-search {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
 .dash-sort-select {
-  max-width: 180px;
+  flex: 0 0 180px;
   padding: 9px 10px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-sm);
@@ -788,6 +792,7 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 .folder-row-toggle {
   width: 16px;
@@ -802,6 +807,7 @@ html, body {
 .folder-manager-count {
   color: var(--dark-text-muted);
   font-size: 11px;
+  font-weight: 500;
 }
 .folder-manager-actions {
   display: flex;
@@ -1640,6 +1646,20 @@ html, body {
     max-width: none;
     min-height: 44px;
     font-size: 16px;
+  }
+
+  .dash-sort-select,
+  .content-type-tabs,
+  .tag-filter-list {
+    width: 100%;
+  }
+
+  .dash-sort-select {
+    flex-basis: auto;
+  }
+
+  .content-type-tabs button {
+    flex: 1;
   }
 
   .home-tabs {
