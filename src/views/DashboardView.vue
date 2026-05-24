@@ -183,7 +183,8 @@
                     class="canvas-card resource-drag-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @pointerdown="startResourcePointerDrag($event, item, folder)"
+                    @mousedown="startResourceMouseDrag($event, item, folder)"
+                    @touchstart="startResourceTouchDrag($event, item, folder)"
                     @click="openCanvasFromCard(item.id)"
                   >
                     <input
@@ -227,7 +228,8 @@
                     class="canvas-card html-doc-card resource-drag-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @pointerdown="startResourcePointerDrag($event, item, folder)"
+                    @mousedown="startResourceMouseDrag($event, item, folder)"
+                    @touchstart="startResourceTouchDrag($event, item, folder)"
                     @click="openHtmlDocumentFromCard(item.id)"
                   >
                     <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
@@ -552,14 +554,12 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
-    const pointerDrag = ref<{
+    const resourceDrag = ref<{
       active: boolean;
-      pointerId: number;
       startX: number;
       startY: number;
       item: FolderItem;
       targetFolderId: string;
-      element: HTMLElement;
     } | null>(null);
     const suppressNextCardClick = ref(false);
     const pendingAction = ref('');
@@ -1064,15 +1064,18 @@ export default defineComponent({
       }
     };
 
-    const finishPointerDrag = async () => {
-      const state = pointerDrag.value;
-      pointerDrag.value = null;
-      window.removeEventListener('pointermove', onCanvasPointerMove);
-      window.removeEventListener('pointerup', onCanvasPointerUp);
-      window.removeEventListener('pointercancel', onCanvasPointerCancel);
-      if (state?.element.hasPointerCapture?.(state.pointerId)) {
-        state.element.releasePointerCapture(state.pointerId);
-      }
+    const removeResourceDragListeners = () => {
+      window.removeEventListener('mousemove', onResourceMouseMove);
+      window.removeEventListener('mouseup', onResourceMouseUp);
+      window.removeEventListener('touchmove', onResourceTouchMove);
+      window.removeEventListener('touchend', onResourceTouchEnd);
+      window.removeEventListener('touchcancel', onResourceTouchCancel);
+    };
+
+    const finishResourceDrag = async () => {
+      const state = resourceDrag.value;
+      resourceDrag.value = null;
+      removeResourceDragListeners();
       if (!state?.active) {
         endResourceDrag();
         return;
@@ -1089,10 +1092,10 @@ export default defineComponent({
       }
     };
 
-    function onCanvasPointerMove(event: PointerEvent) {
-      const state = pointerDrag.value;
-      if (!state || state.pointerId !== event.pointerId) return;
-      const distance = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
+    const updateResourceDrag = (clientX: number, clientY: number, event?: Event) => {
+      const state = resourceDrag.value;
+      if (!state) return;
+      const distance = Math.hypot(clientX - state.startX, clientY - state.startY);
       if (!state.active && distance < 8) return;
       if (!state.active) {
         state.active = true;
@@ -1101,8 +1104,8 @@ export default defineComponent({
         draggingResourceType.value = state.item.type;
         draggingResourceFolderId.value = state.item.folderId || null;
       }
-      event.preventDefault();
-      const target = document.elementsFromPoint(event.clientX, event.clientY)
+      event?.preventDefault();
+      const target = document.elementsFromPoint(clientX, clientY)
         .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-folder-id]') : null)
         .find((element): element is HTMLElement => Boolean(element));
       const folderId = target?.dataset.folderId || '';
@@ -1112,45 +1115,63 @@ export default defineComponent({
       if (folder && !openFolderNames.value.includes(folder.id)) {
         openFolderNames.value = [...openFolderNames.value, folder.id];
       }
+    };
+
+    function onResourceMouseMove(event: MouseEvent) {
+      updateResourceDrag(event.clientX, event.clientY, event);
     }
 
-    function onCanvasPointerUp(event: PointerEvent) {
-      if (pointerDrag.value?.pointerId !== event.pointerId) return;
-      void finishPointerDrag();
+    function onResourceMouseUp() {
+      void finishResourceDrag();
     }
 
-    function onCanvasPointerCancel(event: PointerEvent) {
-      if (pointerDrag.value?.pointerId !== event.pointerId) return;
-      const state = pointerDrag.value;
-      pointerDrag.value = null;
-      window.removeEventListener('pointermove', onCanvasPointerMove);
-      window.removeEventListener('pointerup', onCanvasPointerUp);
-      window.removeEventListener('pointercancel', onCanvasPointerCancel);
-      if (state?.element.hasPointerCapture?.(event.pointerId)) {
-        state.element.releasePointerCapture(event.pointerId);
-      }
+    function onResourceTouchMove(event: TouchEvent) {
+      const point = event.touches[0];
+      if (!point) return;
+      updateResourceDrag(point.clientX, point.clientY, event);
+    }
+
+    function onResourceTouchEnd(event: TouchEvent) {
+      const point = event.changedTouches[0];
+      if (point) updateResourceDrag(point.clientX, point.clientY, event);
+      void finishResourceDrag();
+    }
+
+    function onResourceTouchCancel() {
+      resourceDrag.value = null;
+      removeResourceDragListeners();
       endResourceDrag();
     }
 
-    const startResourcePointerDrag = (event: PointerEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      if ((event.pointerType === 'mouse' && event.button !== 0) || isBusy.value) return;
+    const startResourceDrag = (clientX: number, clientY: number, item: FolderItem, sourceFolder: FolderSummary, target: HTMLElement | null) => {
+      if (isBusy.value) return;
       if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
-      const target = event.target as HTMLElement | null;
       if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
-      const element = event.currentTarget as HTMLElement;
-      element.setPointerCapture?.(event.pointerId);
-      pointerDrag.value = {
+      resourceDrag.value = {
         active: false,
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
+        startX: clientX,
+        startY: clientY,
         item,
         targetFolderId: '',
-        element,
       };
-      window.addEventListener('pointermove', onCanvasPointerMove);
-      window.addEventListener('pointerup', onCanvasPointerUp);
-      window.addEventListener('pointercancel', onCanvasPointerCancel);
+    };
+
+    const startResourceMouseDrag = (event: MouseEvent, item: FolderItem, sourceFolder: FolderSummary) => {
+      if (event.button !== 0) return;
+      startResourceDrag(event.clientX, event.clientY, item, sourceFolder, event.target as HTMLElement | null);
+      if (!resourceDrag.value) return;
+      window.addEventListener('mousemove', onResourceMouseMove);
+      window.addEventListener('mouseup', onResourceMouseUp);
+    };
+
+    const startResourceTouchDrag = (event: TouchEvent, item: FolderItem, sourceFolder: FolderSummary) => {
+      const point = event.touches[0];
+      if (!point) return;
+      startResourceDrag(point.clientX, point.clientY, item, sourceFolder, event.target as HTMLElement | null);
+      if (!resourceDrag.value) return;
+      window.addEventListener('touchmove', onResourceTouchMove, { passive: false });
+      window.addEventListener('touchend', onResourceTouchEnd);
+      window.addEventListener('touchcancel', onResourceTouchCancel);
     };
 
     const openRenameFolderModal = (folder: FolderSummary) => {
@@ -1486,7 +1507,8 @@ export default defineComponent({
       saveFolderModal,
       closeFolderModal,
       startCanvasDrag,
-      startResourcePointerDrag,
+      startResourceMouseDrag,
+      startResourceTouchDrag,
       endResourceDrag,
       onFolderDragOver,
       onFolderDragLeave,

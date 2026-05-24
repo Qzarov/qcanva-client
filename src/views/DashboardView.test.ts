@@ -101,15 +101,13 @@ describe('DashboardView groups', () => {
     vi.mocked(resourceFolders.list).mockClear();
 
     const vm = wrapper.vm as any;
-    vm.startResourcePointerDrag(
+    vm.startResourceMouseDrag(
       {
         button: 0,
         clientX: 0,
         clientY: 0,
-        pointerId: 1,
         target: document.createElement('div'),
-        currentTarget: document.createElement('div'),
-      } as unknown as PointerEvent,
+      } as unknown as MouseEvent,
       { id: 'doc-1', type: 'html-document', folderId: 'folder-b', title: 'Doc 1', tags: [] },
       { id: 'folder-b', role: 'owner', name: 'Target', items: [] },
     );
