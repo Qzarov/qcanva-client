@@ -63,13 +63,13 @@
             <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
             <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
               <button class="card-menu-item" @click="uploadInput?.click()">Upload HTML</button>
-              <button class="card-menu-item" @click="createGroup">+ Folder</button>
+              <button class="card-menu-item" @click="createGroup">+ Group</button>
               <router-link to="/html-settings" class="card-menu-item">Settings</router-link>
             </div>
           </div>
           <div class="dash-actions-secondary">
             <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
-            <button class="btn-ghost" @click.stop="createGroup">+ Folder</button>
+            <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
             <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
           </div>
         </template>
@@ -81,7 +81,7 @@
     <div v-if="message" class="dashboard-toast" :class="`dashboard-toast-${messageType}`">{{ message }}</div>
 
     <div class="dash-toolbar">
-      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, folder or tag" />
+      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
       <div v-if="allTagNames.length" class="tag-filter-list">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
         <button
@@ -356,24 +356,24 @@ export default defineComponent({
     }
 
     async function createGroup() {
-      const name = window.prompt('Folder name');
+      const name = window.prompt('Group name');
       if (!name) return;
       try {
         await resourceFolders.create(name);
         await load();
       } catch (e: any) {
-        flash('error', e.message || 'Failed to create folder');
+        flash('error', e.message || 'Failed to create group');
       }
     }
 
     async function renameGroup(group: any) {
-      const name = window.prompt('Folder name', group.name);
+      const name = window.prompt('Group name', group.name);
       if (!name) return;
       try {
         await resourceFolders.rename(group.id, name);
         await load();
       } catch (e: any) {
-        flash('error', e.message || 'Failed to rename folder');
+        flash('error', e.message || 'Failed to rename group');
       }
     }
 

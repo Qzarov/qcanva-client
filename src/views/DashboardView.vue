@@ -80,7 +80,7 @@
     </section>
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
-      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, folder or tag" />
+      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
       <select v-model="sortMode" class="dash-sort-select">
         <option value="updated-desc">Newest first</option>
         <option value="updated-asc">Oldest first</option>
@@ -134,7 +134,7 @@
 
       <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
         <div class="dash-section-head">
-          <h2>Folders</h2>
+          <h2>Groups</h2>
           <div class="dash-section-actions">
             <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
           </div>
@@ -215,7 +215,7 @@
                     <button class="card-delete" @click.stop="deleteCanvas(item)" title="Delete" :disabled="isBusy">x</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
                       <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">Duplicate</button>
-                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">Move to folder</button>
+                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">Move to group</button>
                       <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
                       <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
                       <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
@@ -275,7 +275,7 @@
               :disabled="isBusy"
             >⋯</button>
             <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
+              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to group</button>
               <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? 'Unpin' : 'Pin' }}</button>
               <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
             </div>
@@ -337,13 +337,13 @@
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? 'Move to folder' : 'Create canvas in folder' }}</h3>
+          <h3>{{ folderModal.resourceId ? 'Move to group' : 'Create canvas in group' }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
-          placeholder="Folder name"
+          placeholder="Group name"
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
@@ -368,16 +368,16 @@
     <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>Rename folder</h3>
+          <h3>Rename group</h3>
           <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
         </div>
         <input
           v-model.trim="renameFolderModal.value"
           class="dashboard-modal-input"
-          placeholder="Folder name"
+          placeholder="Group name"
           @keydown.enter.prevent="saveRenameFolderModal"
         />
-        <p class="dashboard-modal-note">All canvases from this folder will move to the new folder name.</p>
+        <p class="dashboard-modal-note">All resources in this group will move to the new group name.</p>
         <div class="dashboard-modal-actions">
           <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">Cancel</button>
           <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
@@ -865,7 +865,7 @@ export default defineComponent({
       const normalizedName = name.trim() || 'Unsorted';
       const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
       if (existing) return existing;
-      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Group ${normalizedName} created`);
     };
 
     const saveFolderModal = async () => {
@@ -947,19 +947,19 @@ export default defineComponent({
       await runAction(
         'rename-folder',
         () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
-        `Folder renamed to ${nextFolder}`,
+        `Group renamed to ${nextFolder}`,
       );
       closeRenameFolderModal();
       await load();
     };
 
     const deleteFolder = async (folder: FolderSummary) => {
-      const confirmed = window.confirm(`Delete folder "${folder.name}"? Resources will move to Unsorted.`);
+      const confirmed = window.confirm(`Delete group "${folder.name}"? Resources will move to Unsorted.`);
       if (!confirmed) return;
       await runAction(
         'delete-folder',
         () => resourceFolders.delete(folder.id),
-        `Folder ${folder.name} removed`,
+        `Group ${folder.name} removed`,
       );
       await load();
     };
