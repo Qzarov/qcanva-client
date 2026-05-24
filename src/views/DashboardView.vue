@@ -211,6 +211,7 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
+                    <button class="card-move" @click.stop="openMoveFolderModal(item)" title="Move to group" :disabled="isBusy">Move</button>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <button class="card-delete" @click.stop="deleteCanvas(item)" title="Delete" :disabled="isBusy">x</button>
@@ -237,6 +238,7 @@
                       <span class="badge badge-public">HTML</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <button class="card-move" @click.stop="openMoveHtmlFolderModal(item)" title="Move to group" :disabled="isBusy">Move</button>
                     <button class="card-manage" @click.stop="openMoveHtmlFolderModal(item)" title="Move document" :disabled="isBusy">⋯</button>
                     <button class="card-delete" @click.stop="deleteHtmlDocument(item)" title="Delete" :disabled="isBusy">x</button>
                   </article>
@@ -346,12 +348,14 @@
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
+          v-if="!folderModal.resourceId"
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
           placeholder="Group name"
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
+        <div v-if="folderModal.resourceId" class="dashboard-modal-note">Choose an existing Group for this resource.</div>
         <div v-if="folderModal.resourceId && folderOptions.length" class="folder-chip-list">
           <button
             v-for="folder in folderOptions"
@@ -363,7 +367,7 @@
         </div>
         <div class="dashboard-modal-actions">
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">Cancel</button>
-          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !folderModal.value.trim()">
+          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
             {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? 'Move' : 'Create') }}
           </button>
         </div>
@@ -721,6 +725,11 @@ export default defineComponent({
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
     const folderOptions = computed(() => ownResourceFolders.value.slice().sort((a, b) => a.name.localeCompare(b.name)));
     const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
+    const canSaveFolderModal = computed(() => {
+      if (!folderModal.value.open) return false;
+      if (!folderModal.value.resourceId) return Boolean(folderModal.value.value.trim());
+      return Boolean(folderModal.value.folderId && folderModal.value.folderId !== draggingResourceFolderId.value);
+    });
     const folderSummaries = computed<FolderSummary[]>(() => {
       const folders = allResourceFolders.value
       .map((folder) => {
@@ -885,6 +894,7 @@ export default defineComponent({
 
     const openMoveFolderModal = (c: CanvasRecord) => {
       closeCardMenu();
+      draggingResourceFolderId.value = c.folderId || null;
       folderModal.value = {
         open: true,
         resourceId: c.id,
@@ -897,6 +907,7 @@ export default defineComponent({
     const openMoveHtmlFolderModal = (doc: HtmlDocumentRecord) => {
       closeCardMenu();
       const currentFolder = ownResourceFolders.value.find((folder) => folder.id === doc.folderId);
+      draggingResourceFolderId.value = doc.folderId || null;
       folderModal.value = {
         open: true,
         resourceId: doc.id,
@@ -908,6 +919,7 @@ export default defineComponent({
 
     const closeFolderModal = () => {
       folderModal.value = { open: false, resourceId: '', resourceType: 'canvas', folderId: '', value: '' };
+      draggingResourceFolderId.value = null;
     };
 
     const ensureFolderByName = async (name: string) => {
@@ -1481,6 +1493,7 @@ export default defineComponent({
       sortMode,
       feedback,
       isBusy,
+      canSaveFolderModal,
       actionLabel,
       openMenuCanvasId,
       openControlMenu,

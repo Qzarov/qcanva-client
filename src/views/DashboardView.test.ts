@@ -120,4 +120,16 @@ describe('DashboardView groups', () => {
     expect(resourceFolders.move).toHaveBeenCalledWith('folder-c', 'html-document', 'doc-1');
     expect(resourceFolders.list).not.toHaveBeenCalled();
   });
+
+  it('moves HTML documents through the explicit move modal', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.openMoveHtmlFolderModal({ id: 'doc-1', type: 'html-document', folderId: 'folder-b', title: 'Doc 1', tags: [] });
+    vm.folderModal.folderId = 'folder-c';
+    await vm.saveFolderModal();
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-c', 'html-document', 'doc-1');
+  });
 });
