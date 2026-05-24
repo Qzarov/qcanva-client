@@ -1,7 +1,56 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, htmlDocuments } from './client';
+import { canvas, htmlDocuments, resourceFolders } from './client';
+
+function jsonBody(call: unknown[]) {
+  return JSON.parse((call[1] as RequestInit).body as string);
+}
+
+describe('resourceFolders API client', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('creates a unified resource folder', async () => {
+    localStorage.setItem('token', 'token-1');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'folder-1', name: 'Work' }),
+    } as Response);
+
+    await resourceFolders.create('Work');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/resource-folders', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Work' }),
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer token-1',
+      },
+    });
+  });
+
+  it('moves a resource into a unified folder', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'canvas-1', folderId: 'folder-1' }),
+    } as Response);
+
+    await resourceFolders.move('folder-1', 'canvas', 'canvas-1');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/resource-folders/folder-1/resources', {
+      method: 'PUT',
+      body: JSON.stringify({ resourceType: 'canvas', resourceId: 'canvas-1' }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  });
+});
 
 describe('htmlDocuments API client', () => {
   afterEach(() => {
@@ -88,6 +137,40 @@ describe('htmlDocuments API client', () => {
       },
     );
   });
+
+  it('creates an HTML document with folderId', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'doc-1' }),
+    } as Response);
+
+    await htmlDocuments.create({ title: 'Doc', html: '<main></main>', folderId: 'folder-1' });
+
+    expect(jsonBody(fetchMock.mock.calls[0])).toEqual({
+      title: 'Doc',
+      html: '<main></main>',
+      folderId: 'folder-1',
+    });
+  });
+
+  it('delegates HTML document moves to unified folder endpoint', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'doc-1', folderId: 'folder-1' }),
+    } as Response);
+
+    await htmlDocuments.move('doc-1', 'folder-1');
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/resource-folders/folder-1/resources', {
+      method: 'PUT',
+      body: JSON.stringify({ resourceType: 'html-document', resourceId: 'doc-1' }),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  });
 });
 
 describe('canvas API client', () => {
@@ -135,5 +218,21 @@ describe('canvas API client', () => {
         },
       },
     );
+  });
+
+  it('creates a canvas with folderId', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'canvas-1' }),
+    } as Response);
+
+    await canvas.create('Canvas', '{"nodes":[],"edges":[]}', 'folder-1');
+
+    expect(jsonBody(fetchMock.mock.calls[0])).toEqual({
+      title: 'Canvas',
+      data: '{"nodes":[],"edges":[]}',
+      folderId: 'folder-1',
+    });
   });
 });

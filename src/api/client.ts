@@ -151,11 +151,46 @@ export type ResourceTagSummary = ResourceTag & {
   totalCount: number;
 };
 
+export type ResourceType = 'canvas' | 'html-document';
+export type ResourceFolderRole = 'owner' | 'read' | 'edit';
+
+export type ResourceFolderSummary = {
+  id: string;
+  name: string;
+  ownerId?: string;
+  role: ResourceFolderRole;
+  canvasCount: number;
+  htmlDocumentCount: number;
+  updatedAt?: string;
+  createdAt?: string;
+  items: {
+    canvases: any[];
+    htmlDocuments: any[];
+  };
+};
+
+export const resourceFolders = {
+  list: () => request<{ own: ResourceFolderSummary[]; shared: ResourceFolderSummary[] }>('/resource-folders'),
+  create: (name: string) =>
+    request<ResourceFolderSummary>('/resource-folders', { method: 'POST', body: JSON.stringify({ name }) }),
+  rename: (id: string, name: string) =>
+    request<ResourceFolderSummary>(`/resource-folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+  delete: (id: string) =>
+    request<{ deleted: boolean; id: string }>(`/resource-folders/${id}`, { method: 'DELETE' }),
+  move: (id: string, resourceType: ResourceType, resourceId: string) =>
+    request<any>(`/resource-folders/${id}/resources`, { method: 'PUT', body: JSON.stringify({ resourceType, resourceId }) }),
+  share: (id: string, email: string, role: Exclude<ResourceFolderRole, 'owner'>) =>
+    request<any>(`/resource-folders/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+  revoke: (id: string, userId: string) =>
+    request<any>(`/resource-folders/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
+  permissions: (id: string) => request<any[]>(`/resource-folders/${id}/permissions`),
+};
+
 // Canvas
 export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
-  create: (title: string, data?: string, folder?: string, tags?: ResourceTag[]) =>
-    request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folder, tags }) }),
+  create: (title: string, data?: string, folderId?: string | null, tags?: ResourceTag[]) =>
+    request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folderId, tags }) }),
   get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
   update: (
     id: string,
@@ -169,6 +204,7 @@ export const canvas = {
       passwordAccessPassword?: string;
       passwordAccessRole?: string;
       folder?: string;
+      folderId?: string | null;
       pinned?: boolean;
       tags?: ResourceTag[];
     },
@@ -199,16 +235,16 @@ export const canvas = {
 export const htmlDocuments = {
   list: () => request<{ groups: any[]; documents: any[] }>('/html-documents'),
   createGroup: (name: string) =>
-    request<any>('/html-documents/groups', { method: 'POST', body: JSON.stringify({ name }) }),
+    resourceFolders.create(name),
   renameGroup: (id: string, name: string) =>
-    request<any>(`/html-documents/groups/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
-  create: (payload: { title: string; html: string; groupId?: string; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
+    resourceFolders.rename(id, name),
+  create: (payload: { title: string; html: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
-  update: (id: string, payload: { title?: string; html?: string; groupId?: string; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
-  move: (id: string, groupId: string) =>
-    request<any>(`/html-documents/${id}/move`, { method: 'PUT', body: JSON.stringify({ groupId }) }),
+  move: (id: string, folderId: string) =>
+    resourceFolders.move(folderId, 'html-document', id),
   delete: (id: string) =>
     request<any>(`/html-documents/${id}`, { method: 'DELETE' }),
   checklist: (id: string, checkId: string, checked: boolean) =>
@@ -227,7 +263,7 @@ export const htmlDocuments = {
   settings: () => request<{ model: string; hasOpenRouterKey: boolean }>('/html-documents/settings/current'),
   updateSettings: (payload: { model?: string; openRouterKey?: string }) =>
     request<any>('/html-documents/settings/current', { method: 'PUT', body: JSON.stringify(payload) }),
-  generate: (payload: { documentIds: string[]; prompt: string; title?: string; groupId?: string }) =>
+  generate: (payload: { documentIds: string[]; prompt: string; title?: string; groupId?: string; folderId?: string | null }) =>
     request<any>('/html-documents/generate', { method: 'POST', body: JSON.stringify(payload) }),
   share: (id: string, email: string, role: string) =>
     request<any>(`/html-documents/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
