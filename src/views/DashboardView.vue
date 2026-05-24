@@ -90,6 +90,11 @@
         <option value="title-asc">Title A-Z</option>
         <option value="title-desc">Title Z-A</option>
       </select>
+      <div class="content-type-tabs">
+        <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">All</button>
+        <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">Canvas</button>
+        <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
+      </div>
       <div v-if="allTagNames.length" class="tag-filter-list">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
         <button
@@ -132,7 +137,7 @@
 
       <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
         <div class="dash-section-head">
-          <h2>My folders</h2>
+          <h2>Folders</h2>
           <div class="dash-section-actions">
             <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
           </div>
@@ -140,86 +145,100 @@
         <div class="folder-manager-list">
           <div
             v-for="folder in folderSummaries"
-            :key="folder.name"
+            :key="folder.id"
             class="folder-manager-row"
-            :class="{ 'folder-drop-active': draggingCanvasId && dragTargetFolder === folder.name }"
-            @dragover.prevent="onFolderDragOver(folder.name)"
-            @dragleave="onFolderDragLeave(folder.name)"
-            @drop.prevent="dropCanvasToFolder(folder.name)"
+            :class="{ 'folder-drop-active': draggingCanvasId && dragTargetFolder === folder.id }"
+            @dragover.prevent="onFolderDragOver(folder)"
+            @dragleave="onFolderDragLeave(folder)"
+            @drop.prevent="dropCanvasToFolder(folder)"
           >
             <div class="folder-manager-top">
-              <button class="folder-manager-main" @click.stop="toggleFolderOpen(folder.name)">
+              <button class="folder-manager-main" @click.stop="toggleFolderOpen(folder.id)">
                 <span class="folder-manager-title">
-                  <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.name) }">⌄</span>
+                  <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.id) }">⌄</span>
                   <span class="folder-manager-name">{{ folder.name }}</span>
                 </span>
-                <span class="folder-manager-count">{{ folder.count }} canvas{{ folder.count === 1 ? '' : 'es' }}</span>
+                <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML</span>
               </button>
               <div class="folder-manager-actions">
-                <button class="folder-manager-btn" @click.stop="openFolderModal(folder.name)" :disabled="isBusy">Add canvas</button>
+                <button class="folder-manager-btn" @click.stop="openFolderModal(folder)" :disabled="isBusy || folder.role !== 'owner'">Add canvas</button>
                 <button
-                  v-if="folder.name !== 'Unsorted'"
+                  v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
                   class="folder-manager-btn"
-                  @click.stop="openRenameFolderModal(folder.name)"
+                  @click.stop="openRenameFolderModal(folder)"
                   :disabled="isBusy"
                 >Rename</button>
                 <button
-                  v-if="folder.name !== 'Unsorted'"
+                  v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
                   class="folder-manager-btn danger"
-                  @click.stop="deleteFolder(folder.name)"
+                  @click.stop="deleteFolder(folder)"
                   :disabled="isBusy"
                 >Delete</button>
               </div>
             </div>
             <transition name="folder-collapse">
-              <div v-if="isFolderOpen(folder.name)" class="folder-manager-body">
+              <div v-if="isFolderOpen(folder.id)" class="folder-manager-body">
                 <div class="dash-grid">
+                  <template v-for="item in folder.items" :key="`${item.type}-${item.id}`">
                   <div
-                    v-for="c in folder.items"
-                    :key="c.id"
+                    v-if="item.type === 'canvas'"
                     class="canvas-card"
-                    :class="{ dragging: draggingCanvasId === c.id }"
+                    :class="{ dragging: draggingCanvasId === item.id }"
                     draggable="true"
-                    @dragstart="startCanvasDrag($event, c)"
+                    @dragstart="startCanvasDrag($event, item)"
                     @dragend="endCanvasDrag"
-                    @click="openCanvas(c.id)"
+                    @click="openCanvas(item.id)"
                   >
                     <input
-                      v-if="renamingId === c.id"
+                      v-if="renamingId === item.id"
                       class="card-title-input"
-                      :value="c.title"
-                      @blur="finishRename($event, c)"
+                      :value="item.title"
+                      @blur="finishRename($event, item)"
                       @keydown.enter="($event.target as HTMLInputElement).blur()"
                       @keydown.escape="renamingId = ''"
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title" @dblclick.stop="startRename(c.id)">{{ c.title || 'Untitled' }}</div>
+                    <div v-else class="card-title" @dblclick.stop="startRename(item.id)">{{ item.title || 'Untitled' }}</div>
                     <div class="card-meta">
                       <span class="badge badge-owner">Owner</span>
-                      <span v-if="c.pinned" class="badge badge-pinned">Pinned</span>
-                      <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
-                    <div v-if="c.tags?.length" class="card-tags">
+                    <div v-if="item.tags?.length" class="card-tags">
                       <span
-                        v-for="tag in c.tags"
+                        v-for="tag in item.tags"
                         :key="tag.name"
                         class="card-tag color-tag"
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: c.pinned }" @click.stop="togglePinned(c)" title="Pin canvas" :disabled="isBusy">{{ c.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(c.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <button class="card-delete" @click.stop="deleteCanvas(c)" title="Delete" :disabled="isBusy">x</button>
-                    <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-                      <button class="card-menu-item" @click="duplicateCanvas(c)" :disabled="isBusy">Duplicate</button>
-                      <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to folder</button>
-                      <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
-                      <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? 'Unpin' : 'Pin' }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(c)" :disabled="isBusy">Transfer ownership</button>
-                      <button class="card-menu-item danger" @click="deleteCanvas(c)" :disabled="isBusy">Delete</button>
+                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
+                    <button class="card-delete" @click.stop="deleteCanvas(item)" title="Delete" :disabled="isBusy">x</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">Duplicate</button>
+                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">Move to folder</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
+                      <button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">Delete</button>
                     </div>
                   </div>
+                  <article
+                    v-else
+                    class="canvas-card html-doc-card"
+                    @click="openHtmlDocument(item.id)"
+                  >
+                    <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
+                    <div class="card-meta">
+                      <span class="badge badge-public">HTML</span>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <button class="card-manage" @click.stop="openMoveHtmlFolderModal(item)" title="Move document" :disabled="isBusy">⋯</button>
+                    <button class="card-delete" @click.stop="deleteHtmlDocument(item)" title="Delete" :disabled="isBusy">x</button>
+                  </article>
+                  </template>
                 </div>
               </div>
             </transition>
@@ -320,27 +339,29 @@
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.canvasId ? 'Move to folder' : 'Create canvas in folder' }}</h3>
+          <h3>{{ folderModal.resourceId ? 'Move to folder' : 'Create canvas in folder' }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
           placeholder="Folder name"
+          @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
-        <div v-if="folderNames.length" class="folder-chip-list">
+        <div v-if="folderOptions.length" class="folder-chip-list">
           <button
-            v-for="folderName in folderNames"
-            :key="folderName"
+            v-for="folder in folderOptions"
+            :key="folder.id"
             class="folder-chip"
-            @click="folderModal.value = folderName"
-          >{{ folderName }}</button>
+            :class="{ active: folderModal.folderId === folder.id }"
+            @click="folderModal.folderId = folder.id; folderModal.value = folder.name"
+          >{{ folder.name }}</button>
         </div>
         <div class="dashboard-modal-actions">
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">Cancel</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !folderModal.value.trim()">
-            {{ actionLabel(folderModal.canvasId ? 'move-folder' : 'create-folder-canvas', folderModal.canvasId ? 'Move' : 'Create') }}
+            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder-canvas', folderModal.resourceId ? 'Move' : 'Create') }}
           </button>
         </div>
       </div>
@@ -467,23 +488,37 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, isAdmin, isAuthenticated, tags, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, clearToken, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
 type ManagedTag = ResourceTagSummary & { originalName: string };
 type CanvasRecord = {
+  type: 'canvas';
   id: string;
   title: string;
   updatedAt: string;
   role?: string;
   isOwn?: boolean;
   folder: string;
+  folderId?: string | null;
   pinned?: boolean;
   tags: CanvasTag[];
   allowPublicEdit?: boolean;
   ownerName?: string;
   ownerEmail?: string;
+};
+type HtmlDocumentRecord = {
+  type: 'html-document';
+  id: string;
+  title: string;
+  updatedAt: string;
+  folderId?: string | null;
+  tags: CanvasTag[];
+};
+type FolderItem = CanvasRecord | HtmlDocumentRecord;
+type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
+  items: FolderItem[];
 };
 
 const DEFAULT_TAG_COLOR = '#7c8aff';
@@ -497,11 +532,14 @@ export default defineComponent({
     const own = ref<CanvasRecord[]>([]);
     const shared = ref<CanvasRecord[]>([]);
     const publicCanvases = ref<CanvasRecord[]>([]);
+    const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
+    const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
     const welcomeCanvas = ref<CanvasRecord | null>(null);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const searchQuery = ref('');
     const selectedTag = ref('');
+    const contentFilter = ref<'all' | 'canvas' | 'html-document'>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const showMobileActions = ref(false);
@@ -514,13 +552,16 @@ export default defineComponent({
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
     const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
 
-    const folderModal = ref<{ open: boolean; canvasId: string; value: string }>({
+    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: 'canvas' | 'html-document'; folderId: string; value: string }>({
       open: false,
-      canvasId: '',
+      resourceId: '',
+      resourceType: 'canvas',
+      folderId: '',
       value: '',
     });
-    const renameFolderModal = ref<{ open: boolean; sourceName: string; value: string }>({
+    const renameFolderModal = ref<{ open: boolean; folderId: string; sourceName: string; value: string }>({
       open: false,
+      folderId: '',
       sourceName: '',
       value: '',
     });
@@ -558,15 +599,32 @@ export default defineComponent({
 
     const normalizeCanvas = (c: any, isOwn = false): CanvasRecord => ({
       ...c,
+      type: 'canvas',
       isOwn,
       folder: c.folder || '',
+      folderId: c.folderId || null,
       tags: normalizeTags(c.tags),
+    });
+
+    const normalizeHtmlDocument = (doc: any): HtmlDocumentRecord => ({
+      ...doc,
+      type: 'html-document',
+      folderId: doc.folderId || null,
+      tags: normalizeTags(doc.tags),
     });
 
     const matchesCanvas = (c: CanvasRecord) => {
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       const matchesTag = !selectedTag.value || c.tags.some((tag) => tag.name === selectedTag.value);
+      return matchesQuery && matchesTag;
+    };
+
+    const matchesFolderItem = (item: FolderItem, folderName: string) => {
+      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
+      const q = searchQuery.value.trim().toLowerCase();
+      const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
+      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
       return matchesQuery && matchesTag;
     };
 
@@ -580,19 +638,20 @@ export default defineComponent({
       return sortMode.value === 'updated-asc' ? result : -result;
     });
 
-    const ownFiltered = computed(() => sortCanvases(own.value.filter(matchesCanvas)));
+    const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
+      if (a.type === 'canvas' && b.type === 'canvas' && Boolean(a.pinned) !== Boolean(b.pinned)) {
+        return a.pinned ? -1 : 1;
+      }
+      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
+        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+        return sortMode.value === 'title-asc' ? result : -result;
+      }
+      const result = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
+      return sortMode.value === 'updated-asc' ? result : -result;
+    });
+
     const sharedFiltered = computed(() => sortCanvases(shared.value.filter(matchesCanvas)));
     const publicFiltered = computed(() => sortCanvases(publicCanvases.value.filter(matchesCanvas)));
-
-    const groupedOwnCanvases = computed(() => {
-      const map = new Map<string, CanvasRecord[]>();
-      for (const c of ownFiltered.value) {
-        const folder = c.folder || 'Unsorted';
-        if (!map.has(folder)) map.set(folder, []);
-        map.get(folder)!.push(c);
-      }
-      return Array.from(map.entries()).map(([name, items]) => ({ name, items }));
-    });
 
     const allTagNames = computed(() => {
       const names = new Set<string>();
@@ -616,18 +675,22 @@ export default defineComponent({
       return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
     });
 
-    const folderNames = computed(() => {
-      const names = new Set<string>();
-      for (const c of own.value) {
-        if (c.folder) names.add(c.folder);
-      }
-      return Array.from(names).sort();
-    });
-    const folderSummaries = computed(() => groupedOwnCanvases.value.map((group) => ({
-      name: group.name,
-      count: group.items.length,
-      items: group.items,
-    })));
+    const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
+    const folderOptions = computed(() => ownResourceFolders.value.slice().sort((a, b) => a.name.localeCompare(b.name)));
+    const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
+    const folderSummaries = computed<FolderSummary[]>(() => allResourceFolders.value
+      .map((folder) => {
+        const canvases = (folder.items?.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
+        const htmlDocs = (folder.items?.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
+        const items = sortFolderItems([...canvases, ...htmlDocs].filter((item) => matchesFolderItem(item, folder.name)));
+        return {
+          ...folder,
+          items,
+          canvasCount: canvases.length,
+          htmlDocumentCount: htmlDocs.length,
+        };
+      })
+      .filter((folder) => folder.items.length || contentFilter.value === 'all'));
     const isBusy = computed(() => pendingAction.value.length > 0);
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
@@ -660,6 +723,11 @@ export default defineComponent({
       loading.value = true;
       try {
         const res = await canvas.list();
+        if (isLoggedIn) {
+          const folders = await resourceFolders.list();
+          ownResourceFolders.value = folders.own;
+          sharedResourceFolders.value = folders.shared;
+        }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
@@ -668,10 +736,11 @@ export default defineComponent({
         if (isLoggedIn) {
           sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
         }
-        const availableFolders = new Set(groupedOwnCanvases.value.map((group) => group.name));
+        const availableFolders = new Set(ownResourceFolders.value.map((folder) => folder.id));
         openFolderNames.value = openFolderNames.value.filter((name) => availableFolders.has(name));
-        if (availableFolders.has('Unsorted') && !openFolderNames.value.includes('Unsorted')) {
-          openFolderNames.value.unshift('Unsorted');
+        const unsorted = ownResourceFolders.value.find((folder) => folder.name === 'Unsorted') || ownResourceFolders.value[0];
+        if (unsorted && !openFolderNames.value.includes(unsorted.id)) {
+          openFolderNames.value.unshift(unsorted.id);
         }
       } finally {
         loading.value = false;
@@ -682,41 +751,83 @@ export default defineComponent({
       router.push(`/canvas/${id}`);
     };
 
+    const openHtmlDocument = (id: string) => {
+      router.push(`/html/${id}`);
+    };
+
     const createCanvas = async () => {
-      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, 'Unsorted'), 'Canvas created');
+      const targetFolder = await ensureFolderByName('Unsorted');
+      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolder?.id), 'Canvas created');
       if (!c) return;
       router.push(`/canvas/${c.id}`);
     };
 
-    const openFolderModal = (folder = 'Unsorted') => {
+    const openFolderModal = (folder?: FolderSummary | ResourceFolderSummary) => {
       closeCardMenu();
-      folderModal.value = { open: true, canvasId: '', value: folder };
+      folderModal.value = {
+        open: true,
+        resourceId: '',
+        resourceType: 'canvas',
+        folderId: folder?.id || '',
+        value: folder?.name || 'Unsorted',
+      };
     };
 
     const openMoveFolderModal = (c: CanvasRecord) => {
       closeCardMenu();
-      folderModal.value = { open: true, canvasId: c.id, value: c.folder || '' };
+      folderModal.value = {
+        open: true,
+        resourceId: c.id,
+        resourceType: 'canvas',
+        folderId: c.folderId || '',
+        value: c.folder || '',
+      };
+    };
+
+    const openMoveHtmlFolderModal = (doc: HtmlDocumentRecord) => {
+      closeCardMenu();
+      const currentFolder = ownResourceFolders.value.find((folder) => folder.id === doc.folderId);
+      folderModal.value = {
+        open: true,
+        resourceId: doc.id,
+        resourceType: 'html-document',
+        folderId: doc.folderId || '',
+        value: currentFolder?.name || '',
+      };
     };
 
     const closeFolderModal = () => {
-      folderModal.value = { open: false, canvasId: '', value: '' };
+      folderModal.value = { open: false, resourceId: '', resourceType: 'canvas', folderId: '', value: '' };
+    };
+
+    const ensureFolderByName = async (name: string) => {
+      const normalizedName = name.trim() || 'Unsorted';
+      const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
+      if (existing) return existing;
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
     };
 
     const saveFolderModal = async () => {
-      const folder = folderModal.value.value.trim();
-      if (!folderModal.value.canvasId) {
-        const c = await runAction('create-folder-canvas', () => canvas.create('Untitled', undefined, folder), `Canvas created in ${folder}`);
+      const folderName = folderModal.value.value.trim();
+      const targetFolder = folderModal.value.folderId
+        ? ownResourceFolders.value.find((folder) => folder.id === folderModal.value.folderId)
+        : await ensureFolderByName(folderName);
+      if (!targetFolder) return;
+      if (!folderModal.value.resourceId) {
+        const c = await runAction('create-folder-canvas', () => canvas.create('Untitled', undefined, targetFolder.id), `Canvas created in ${targetFolder.name}`);
         if (!c) return;
         closeFolderModal();
         router.push(`/canvas/${c.id}`);
         return;
       }
-      await runAction('move-folder', () => canvas.update(folderModal.value.canvasId, { folder }), `Moved to ${folder}`);
+      await runAction(
+        'move-folder',
+        () => resourceFolders.move(targetFolder.id, folderModal.value.resourceType, folderModal.value.resourceId),
+        `Moved to ${targetFolder.name}`,
+      );
       closeFolderModal();
       await load();
     };
-
-    const folderPayloadValue = (folderName: string) => folderName === 'Unsorted' ? '' : folderName;
 
     const startCanvasDrag = (event: DragEvent, c: CanvasRecord) => {
       if (isBusy.value) {
@@ -734,63 +845,60 @@ export default defineComponent({
       dragTargetFolder.value = '';
     };
 
-    const onFolderDragOver = (folderName: string) => {
-      if (!draggingCanvasId.value || isBusy.value) return;
-      dragTargetFolder.value = folderName;
-      if (!openFolderNames.value.includes(folderName)) {
-        openFolderNames.value = [...openFolderNames.value, folderName];
+    const onFolderDragOver = (folder: FolderSummary) => {
+      if (!draggingCanvasId.value || isBusy.value || folder.role !== 'owner') return;
+      dragTargetFolder.value = folder.id;
+      if (!openFolderNames.value.includes(folder.id)) {
+        openFolderNames.value = [...openFolderNames.value, folder.id];
       }
     };
 
-    const onFolderDragLeave = (folderName: string) => {
-      if (dragTargetFolder.value === folderName) dragTargetFolder.value = '';
+    const onFolderDragLeave = (folder: FolderSummary) => {
+      if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
     };
 
-    const dropCanvasToFolder = async (folderName: string) => {
+    const dropCanvasToFolder = async (folder: FolderSummary) => {
       const canvasId = draggingCanvasId.value;
       endCanvasDrag();
-      if (!canvasId || isBusy.value) return;
-      const targetFolder = folderPayloadValue(folderName);
+      if (!canvasId || isBusy.value || folder.role !== 'owner') return;
       const current = own.value.find((item) => item.id === canvasId);
-      if (!current || (current.folder || '') === targetFolder) return;
-      await runAction('move-folder', () => canvas.update(canvasId, { folder: targetFolder }), `Moved to ${folderName}`);
+      if (!current || current.folderId === folder.id) return;
+      await runAction('move-folder', () => resourceFolders.move(folder.id, 'canvas', canvasId), `Moved to ${folder.name}`);
       await load();
     };
 
-    const openRenameFolderModal = (folderName: string) => {
+    const openRenameFolderModal = (folder: FolderSummary) => {
       closeCardMenu();
-      renameFolderModal.value = { open: true, sourceName: folderName, value: folderName };
+      renameFolderModal.value = { open: true, folderId: folder.id, sourceName: folder.name, value: folder.name };
     };
 
     const closeRenameFolderModal = () => {
-      renameFolderModal.value = { open: false, sourceName: '', value: '' };
+      renameFolderModal.value = { open: false, folderId: '', sourceName: '', value: '' };
     };
 
     const saveRenameFolderModal = async () => {
       const nextFolder = renameFolderModal.value.value.trim();
       const currentFolder = renameFolderModal.value.sourceName;
-      if (!nextFolder || nextFolder === currentFolder) {
+      if (!nextFolder || nextFolder === currentFolder || !renameFolderModal.value.folderId) {
         closeRenameFolderModal();
         return;
       }
-      const affected = own.value.filter((canvasRecord) => canvasRecord.folder === currentFolder);
       await runAction(
         'rename-folder',
-        () => Promise.all(affected.map((canvasRecord) => canvas.update(canvasRecord.id, { folder: nextFolder }))),
+        () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
         `Folder renamed to ${nextFolder}`,
       );
       closeRenameFolderModal();
       await load();
     };
 
-    const deleteFolder = async (folderName: string) => {
-      const affected = own.value.filter((canvasRecord) => canvasRecord.folder === folderName);
-      const confirmed = window.confirm(`Delete folder "${folderName}"? Canvases will move to Unsorted.`);
-      if (!confirmed || !affected.length) return;
+    const deleteFolder = async (folder: FolderSummary) => {
+      const confirmed = window.confirm(`Delete folder "${folder.name}"? Resources will move to Unsorted.`);
+      if (!confirmed) return;
       await runAction(
         'delete-folder',
-        () => Promise.all(affected.map((canvasRecord) => canvas.update(canvasRecord.id, { folder: '' }))),
-        `Folder ${folderName} removed`,
+        () => resourceFolders.delete(folder.id),
+        `Folder ${folder.name} removed`,
       );
       await load();
     };
@@ -898,6 +1006,15 @@ export default defineComponent({
       if (!confirmed) return;
       await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
       own.value = own.value.filter((c) => c.id !== canvasRecord.id);
+      await load();
+    };
+
+    const deleteHtmlDocument = async (doc: HtmlDocumentRecord) => {
+      const title = doc.title?.trim() || 'Untitled HTML';
+      const confirmed = window.confirm(`Delete HTML document "${title}"?`);
+      if (!confirmed) return;
+      await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), `Deleted ${title}`);
+      await load();
     };
 
     const togglePinned = async (canvasRecord: CanvasRecord) => {
@@ -1022,13 +1139,14 @@ export default defineComponent({
       isLoggedIn,
       loading,
       welcomeCanvas,
-      groupedOwnCanvases,
       sharedFiltered,
       publicFiltered,
       allTagNames,
+      folderOptions,
       folderNames,
       searchQuery,
       selectedTag,
+      contentFilter,
       sortMode,
       feedback,
       isBusy,
@@ -1050,6 +1168,7 @@ export default defineComponent({
       load,
       openFolderModal,
       openMoveFolderModal,
+      openMoveHtmlFolderModal,
       saveFolderModal,
       closeFolderModal,
       startCanvasDrag,
@@ -1061,6 +1180,8 @@ export default defineComponent({
       closeRenameFolderModal,
       saveRenameFolderModal,
       deleteFolder,
+      deleteHtmlDocument,
+      openHtmlDocument,
       openTagsModal,
       closeTagsModal,
       addTag,

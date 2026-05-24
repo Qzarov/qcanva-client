@@ -477,6 +477,28 @@ html, body {
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 16px;
 }
+.content-type-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.03);
+}
+.content-type-tabs button {
+  min-width: 64px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dark-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.content-type-tabs button.active {
+  background: var(--color-brands);
+  color: #fff;
+}
 .canvas-card {
   position: relative;
   background: var(--dark-card-bg);
@@ -849,7 +871,12 @@ html, body {
   font-size: 12px;
   cursor: pointer;
 }
-.folder-chip:hover { background: rgba(255,255,255,0.08); }
+.folder-chip:hover,
+.folder-chip.active {
+  background: rgba(255,255,255,0.08);
+  border-color: color-mix(in srgb, var(--color-brands) 45%, transparent);
+  color: #fff;
+}
 .tag-editor-list {
   display: flex;
   flex-direction: column;

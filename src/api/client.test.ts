@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canvas, htmlDocuments, resourceFolders } from './client';
 
-function jsonBody(call: unknown[]) {
+function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
 }
 
@@ -147,7 +147,7 @@ describe('htmlDocuments API client', () => {
 
     await htmlDocuments.create({ title: 'Doc', html: '<main></main>', folderId: 'folder-1' });
 
-    expect(jsonBody(fetchMock.mock.calls[0])).toEqual({
+    expect(jsonBody(fetchMock.mock.calls[0]!)).toEqual({
       title: 'Doc',
       html: '<main></main>',
       folderId: 'folder-1',
@@ -229,7 +229,7 @@ describe('canvas API client', () => {
 
     await canvas.create('Canvas', '{"nodes":[],"edges":[]}', 'folder-1');
 
-    expect(jsonBody(fetchMock.mock.calls[0])).toEqual({
+    expect(jsonBody(fetchMock.mock.calls[0]!)).toEqual({
       title: 'Canvas',
       data: '{"nodes":[],"edges":[]}',
       folderId: 'folder-1',

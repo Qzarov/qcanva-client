@@ -63,13 +63,13 @@
             <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
             <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
               <button class="card-menu-item" @click="uploadInput?.click()">Upload HTML</button>
-              <button class="card-menu-item" @click="createGroup">+ Group</button>
+              <button class="card-menu-item" @click="createGroup">+ Folder</button>
               <router-link to="/html-settings" class="card-menu-item">Settings</router-link>
             </div>
           </div>
           <div class="dash-actions-secondary">
             <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
-            <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
+            <button class="btn-ghost" @click.stop="createGroup">+ Folder</button>
             <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
           </div>
         </template>
@@ -81,7 +81,7 @@
     <div v-if="message" class="dashboard-toast" :class="`dashboard-toast-${messageType}`">{{ message }}</div>
 
     <div class="dash-toolbar">
-      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
+      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, folder or tag" />
       <div v-if="allTagNames.length" class="tag-filter-list">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
         <button
@@ -119,9 +119,9 @@
               <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: openGroups.has(group.id) }">⌄</span>
               <span class="folder-manager-name">{{ group.name }}</span>
             </span>
-            <span class="folder-manager-count">{{ group.items.length }} docs</span>
+            <span class="folder-manager-count">{{ group.items.length }} HTML / {{ group.canvasCount || 0 }} canvas</span>
           </button>
-          <div v-if="canManageDocs" class="folder-manager-actions">
+          <div v-if="canManageDocs && group.role === 'owner'" class="folder-manager-actions">
             <button class="folder-manager-btn" @click.stop="renameGroup(group)">Rename</button>
           </div>
         </div>
@@ -213,13 +213,14 @@
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { clearToken, htmlDocuments, isAdmin, isPasswordAccess, tags, type ResourceTag } from '../api/client';
+import { clearToken, htmlDocuments, isAdmin, isPasswordAccess, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 
 type HtmlTag = ResourceTag & { id: string };
 type HtmlDocumentRecord = {
   id: string;
   title: string;
   groupId?: string;
+  folderId?: string | null;
   shared?: boolean;
   updatedAt: string;
   tags: HtmlTag[];
@@ -234,7 +235,7 @@ export default defineComponent({
     const router = useRouter();
     const isAdminUser = isAdmin();
     const uploadInput = ref<HTMLInputElement | null>(null);
-    const groups = ref<any[]>([]);
+    const groups = ref<ResourceFolderSummary[]>([]);
     const documents = ref<HtmlDocumentRecord[]>([]);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
@@ -276,14 +277,15 @@ export default defineComponent({
 
     const normalizeDocument = (doc: any): HtmlDocumentRecord => ({
       ...doc,
+      folderId: doc.folderId || null,
       tags: normalizeTags(doc.tags),
     });
 
-    const getGroupName = (groupId?: string) => groups.value.find((group) => group.id === groupId)?.name || '';
+    const getGroupName = (folderId?: string | null) => groups.value.find((group) => group.id === folderId)?.name || '';
 
     const matchesDocument = (doc: HtmlDocumentRecord) => {
       const q = searchQuery.value.trim().toLowerCase();
-      const groupName = getGroupName(doc.groupId);
+      const groupName = getGroupName(doc.folderId || doc.groupId);
       const matchesQuery = !q || `${doc.title || ''} ${groupName} ${doc.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       const matchesTag = !selectedTag.value || doc.tags.some((tag) => tag.name === selectedTag.value);
       return matchesQuery && matchesTag;
@@ -292,10 +294,10 @@ export default defineComponent({
     const filteredDocuments = computed(() => documents.value.filter(matchesDocument));
 
     const groupsWithDocs = computed(() => {
-      const baseGroups = groups.value.length ? groups.value : [{ id: 'shared', name: 'Shared', updatedAt: '', createdAt: '' }];
+      const baseGroups = groups.value.length ? groups.value : [{ id: 'shared', name: 'Shared', role: 'owner' as const, canvasCount: 0, htmlDocumentCount: 0, updatedAt: '', createdAt: '', items: { canvases: [], htmlDocuments: [] } }];
       return baseGroups.map((group) => ({
         ...group,
-        items: filteredDocuments.value.filter((doc) => doc.groupId === group.id || (!groups.value.length && doc.shared)),
+        items: filteredDocuments.value.filter((doc) => doc.folderId === group.id || (!groups.value.length && doc.shared)),
       }));
     });
 
@@ -340,35 +342,38 @@ export default defineComponent({
 
     async function load() {
       loading.value = true;
-      const state = await htmlDocuments.list();
-      groups.value = state.groups;
-      documents.value = state.documents.map(normalizeDocument);
+      const state = await resourceFolders.list();
+      const allFolders = [...state.own, ...state.shared];
+      groups.value = allFolders;
+      documents.value = allFolders.flatMap((folder) =>
+        (folder.items?.htmlDocuments || []).map((doc: any) => normalizeDocument({ ...doc, folderId: folder.id })),
+      );
       if (canManageDocs.value) {
         sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
       }
-      for (const group of state.groups) openGroups.value.add(group.id);
+      for (const group of allFolders) openGroups.value.add(group.id);
       loading.value = false;
     }
 
     async function createGroup() {
-      const name = window.prompt('Group name');
+      const name = window.prompt('Folder name');
       if (!name) return;
       try {
-        await htmlDocuments.createGroup(name);
+        await resourceFolders.create(name);
         await load();
       } catch (e: any) {
-        flash('error', e.message || 'Failed to create group');
+        flash('error', e.message || 'Failed to create folder');
       }
     }
 
     async function renameGroup(group: any) {
-      const name = window.prompt('Group name', group.name);
+      const name = window.prompt('Folder name', group.name);
       if (!name) return;
       try {
-        await htmlDocuments.renameGroup(group.id, name);
+        await resourceFolders.rename(group.id, name);
         await load();
       } catch (e: any) {
-        flash('error', e.message || 'Failed to rename group');
+        flash('error', e.message || 'Failed to rename folder');
       }
     }
 
@@ -376,7 +381,7 @@ export default defineComponent({
       const title = window.prompt('Document title', 'Untitled HTML');
       if (!title) return;
       try {
-        const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', groupId: groups.value[0]?.id });
+        const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', folderId: groups.value[0]?.id });
         router.push('/html/' + doc.id);
       } catch (e: any) {
         flash('error', e.message || 'Failed to create document');
@@ -391,7 +396,7 @@ export default defineComponent({
         const doc = await htmlDocuments.create({
           title: file.name.replace(/\.html?$/i, ''),
           html,
-          groupId: groups.value[0]?.id,
+          folderId: groups.value[0]?.id,
         });
         router.push('/html/' + doc.id);
       } catch (e: any) {
@@ -416,7 +421,7 @@ export default defineComponent({
     async function dropDocument(groupId: string) {
       if (!draggingId.value) return;
       try {
-        await htmlDocuments.move(draggingId.value, groupId);
+        await resourceFolders.move(groupId, 'html-document', draggingId.value);
         await load();
       } catch (e: any) {
         flash('error', e.message || 'Failed to move document');
@@ -509,7 +514,7 @@ export default defineComponent({
           documentIds: selectedIds.value,
           prompt: prompt.value,
           title: generateTitle.value || 'Generated HTML',
-          groupId: groups.value[0]?.id,
+          folderId: groups.value[0]?.id,
         });
         router.push('/html/' + doc.id);
       } catch (e: any) {
