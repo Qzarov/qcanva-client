@@ -149,7 +149,7 @@
             @dragenter.prevent="onFolderDragOver(folder)"
             @dragover.prevent="onFolderDragOver(folder)"
             @dragleave="onFolderDragLeave(folder)"
-            @drop.prevent="dropCanvasToFolder(folder)"
+            @drop.prevent="dropResourceToFolder(folder)"
           >
             <div class="folder-manager-top">
               <button class="folder-manager-main" @click.stop="toggleFolderOpen(folder.id)">
@@ -181,9 +181,9 @@
                   <div
                     v-if="item.type === 'canvas'"
                     class="canvas-card"
-                    :class="{ dragging: draggingCanvasId === item.id }"
+                    :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @pointerdown="startCanvasPointerDrag($event, item, folder)"
+                    @pointerdown="startResourcePointerDrag($event, item, folder)"
                     @click="openCanvasFromCard(item.id)"
                   >
                     <input
@@ -225,7 +225,10 @@
                   <article
                     v-else
                     class="canvas-card html-doc-card"
-                    @click="openHtmlDocument(item.id)"
+                    :class="{ dragging: draggingResourceId === item.id }"
+                    draggable="false"
+                    @pointerdown="startResourcePointerDrag($event, item, folder)"
+                    @click="openHtmlDocumentFromCard(item.id)"
                   >
                     <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
@@ -545,15 +548,16 @@ export default defineComponent({
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
     const openFolderNames = ref<string[]>(['Unsorted']);
-    const draggingCanvasId = ref('');
-    const draggingCanvasFolderId = ref<string | null>(null);
+    const draggingResourceId = ref('');
+    const draggingResourceType = ref<FolderItem['type']>('canvas');
+    const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
     const pointerDrag = ref<{
       active: boolean;
       pointerId: number;
       startX: number;
       startY: number;
-      canvas: CanvasRecord;
+      item: FolderItem;
       targetFolderId: string;
     } | null>(null);
     const suppressNextCardClick = ref(false);
@@ -838,6 +842,14 @@ export default defineComponent({
       router.push(`/html/${id}`);
     };
 
+    const openHtmlDocumentFromCard = (id: string) => {
+      if (suppressNextCardClick.value) {
+        suppressNextCardClick.value = false;
+        return;
+      }
+      openHtmlDocument(id);
+    };
+
     const createCanvas = async () => {
       openControlMenu.value = '';
       const targetFolder = await ensureFolderByName('Unsorted');
@@ -924,39 +936,49 @@ export default defineComponent({
       await load();
     };
 
-    const moveCanvasLocally = (canvasId: string, targetFolder: FolderSummary) => {
-      let movedCanvas: any | null = null;
+    const moveResourceLocally = (resourceId: string, resourceType: FolderItem['type'], targetFolder: FolderSummary) => {
+      let movedItem: any | null = null;
       const sourceFolders = [...ownResourceFolders.value, ...sharedResourceFolders.value];
       for (const folder of sourceFolders) {
-        const canvases = folder.items?.canvases || [];
-        const index = canvases.findIndex((item) => item.id === canvasId);
+        const list = resourceType === 'canvas' ? folder.items?.canvases || [] : folder.items?.htmlDocuments || [];
+        const index = list.findIndex((item) => item.id === resourceId);
         if (index >= 0) {
-          [movedCanvas] = canvases.splice(index, 1);
-          folder.canvasCount = canvases.length;
+          [movedItem] = list.splice(index, 1);
+          if (resourceType === 'canvas') {
+            folder.canvasCount = list.length;
+          } else {
+            folder.htmlDocumentCount = list.length;
+          }
           break;
         }
       }
-      if (!movedCanvas) {
-        const index = unfiledCanvases.value.findIndex((item) => item.id === canvasId);
+      if (!movedItem) {
+        const fallbackItems = resourceType === 'canvas' ? unfiledCanvases.value : unfiledHtmlDocuments.value;
+        const index = fallbackItems.findIndex((item) => item.id === resourceId);
         if (index >= 0) {
-          [movedCanvas] = unfiledCanvases.value.splice(index, 1);
+          [movedItem] = fallbackItems.splice(index, 1);
         }
       }
       const destination = ownResourceFolders.value.find((folder) => folder.id === targetFolder.id);
-      if (!movedCanvas || !destination?.items) return null;
-      const nextCanvas = {
-        ...movedCanvas,
+      if (!movedItem || !destination?.items) return null;
+      const nextItem = {
+        ...movedItem,
         folderId: destination.id,
-        folder: destination.name,
       };
-      destination.items.canvases = [nextCanvas, ...(destination.items.canvases || [])];
-      destination.canvasCount = destination.items.canvases.length;
-      const ownCanvas = own.value.find((item) => item.id === canvasId);
-      if (ownCanvas) {
-        ownCanvas.folderId = destination.id;
-        ownCanvas.folder = destination.name;
+      if (resourceType === 'canvas') {
+        nextItem.folder = destination.name;
+        destination.items.canvases = [nextItem, ...(destination.items.canvases || [])];
+        destination.canvasCount = destination.items.canvases.length;
+        const ownCanvas = own.value.find((item) => item.id === resourceId);
+        if (ownCanvas) {
+          ownCanvas.folderId = destination.id;
+          ownCanvas.folder = destination.name;
+        }
+      } else {
+        destination.items.htmlDocuments = [nextItem, ...(destination.items.htmlDocuments || [])];
+        destination.htmlDocumentCount = destination.items.htmlDocuments.length;
       }
-      return nextCanvas;
+      return nextItem;
     };
 
     const startCanvasDrag = (event: DragEvent, c: CanvasRecord) => {
@@ -965,24 +987,25 @@ export default defineComponent({
         return;
       }
       closeCardMenu();
-      draggingCanvasId.value = c.id;
-      draggingCanvasFolderId.value = c.folderId || null;
+      draggingResourceId.value = c.id;
+      draggingResourceType.value = 'canvas';
+      draggingResourceFolderId.value = c.folderId || null;
       event.dataTransfer?.setData('text/plain', c.id);
       if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
     };
 
-    const endCanvasDrag = () => {
-      draggingCanvasId.value = '';
-      draggingCanvasFolderId.value = null;
+    const endResourceDrag = () => {
+      draggingResourceId.value = '';
+      draggingResourceFolderId.value = null;
       dragTargetFolder.value = '';
     };
 
     const canDropToFolder = (folder: FolderSummary) => {
       return Boolean(
-        draggingCanvasId.value
+        draggingResourceId.value
         && !isBusy.value
         && folder.role === 'owner'
-        && draggingCanvasFolderId.value !== folder.id
+        && draggingResourceFolderId.value !== folder.id
         && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id),
       );
     };
@@ -1003,12 +1026,13 @@ export default defineComponent({
       if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
     };
 
-    const dropCanvasToFolder = async (folder: FolderSummary) => {
-      const canvasId = draggingCanvasId.value;
-      const sourceFolderId = draggingCanvasFolderId.value;
+    const dropResourceToFolder = async (folder: FolderSummary) => {
+      const resourceId = draggingResourceId.value;
+      const resourceType = draggingResourceType.value;
+      const sourceFolderId = draggingResourceFolderId.value;
       const canDrop = canDropToFolder(folder);
-      endCanvasDrag();
-      if (!canvasId || !canDrop) return;
+      endResourceDrag();
+      if (!resourceId || !canDrop) return;
       if (sourceFolderId === folder.id) return;
       const previousOwnFolders = ownResourceFolders.value.map((folder) => ({
         ...folder,
@@ -1025,14 +1049,16 @@ export default defineComponent({
         },
       }));
       const previousUnfiledCanvases = [...unfiledCanvases.value];
+      const previousUnfiledHtmlDocuments = [...unfiledHtmlDocuments.value];
       const previousOwn = own.value.map((item) => ({ ...item }));
-      moveCanvasLocally(canvasId, folder);
+      moveResourceLocally(resourceId, resourceType, folder);
       try {
-        await runAction('move-folder', () => resourceFolders.move(folder.id, 'canvas', canvasId), `Moved to ${folder.name}`);
+        await runAction('move-folder', () => resourceFolders.move(folder.id, resourceType, resourceId), `Moved to ${folder.name}`);
       } catch (error) {
         ownResourceFolders.value = previousOwnFolders;
         sharedResourceFolders.value = previousSharedFolders;
         unfiledCanvases.value = previousUnfiledCanvases;
+        unfiledHtmlDocuments.value = previousUnfiledHtmlDocuments;
         own.value = previousOwn;
       }
     };
@@ -1044,7 +1070,7 @@ export default defineComponent({
       window.removeEventListener('pointerup', onCanvasPointerUp);
       window.removeEventListener('pointercancel', onCanvasPointerCancel);
       if (!state?.active) {
-        endCanvasDrag();
+        endResourceDrag();
         return;
       }
       suppressNextCardClick.value = true;
@@ -1053,9 +1079,9 @@ export default defineComponent({
       }, 0);
       const targetFolder = findDropFolder(state.targetFolderId);
       if (targetFolder) {
-        await dropCanvasToFolder(targetFolder);
+        await dropResourceToFolder(targetFolder);
       } else {
-        endCanvasDrag();
+        endResourceDrag();
       }
     };
 
@@ -1067,8 +1093,9 @@ export default defineComponent({
       if (!state.active) {
         state.active = true;
         closeCardMenu();
-        draggingCanvasId.value = state.canvas.id;
-        draggingCanvasFolderId.value = state.canvas.folderId || null;
+        draggingResourceId.value = state.item.id;
+        draggingResourceType.value = state.item.type;
+        draggingResourceFolderId.value = state.item.folderId || null;
       }
       event.preventDefault();
       const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-folder-id]');
@@ -1092,10 +1119,10 @@ export default defineComponent({
       window.removeEventListener('pointermove', onCanvasPointerMove);
       window.removeEventListener('pointerup', onCanvasPointerUp);
       window.removeEventListener('pointercancel', onCanvasPointerCancel);
-      endCanvasDrag();
+      endResourceDrag();
     }
 
-    const startCanvasPointerDrag = (event: PointerEvent, c: CanvasRecord, sourceFolder: FolderSummary) => {
+    const startResourcePointerDrag = (event: PointerEvent, item: FolderItem, sourceFolder: FolderSummary) => {
       if (event.button !== 0 || isBusy.value) return;
       if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
       const target = event.target as HTMLElement | null;
@@ -1105,7 +1132,7 @@ export default defineComponent({
         pointerId: event.pointerId,
         startX: event.clientX,
         startY: event.clientY,
-        canvas: c,
+        item,
         targetFolderId: '',
       };
       window.addEventListener('pointermove', onCanvasPointerMove);
@@ -1423,9 +1450,10 @@ export default defineComponent({
       actionLabel,
       openMenuCanvasId,
       openControlMenu,
-      draggingCanvasId,
+      draggingResourceId,
+      draggingResourceType,
       dragTargetFolder,
-      draggingCanvasFolderId,
+      draggingResourceFolderId,
       tagColors,
       tagSuggestions,
       currentUserLabel,
@@ -1445,11 +1473,11 @@ export default defineComponent({
       saveFolderModal,
       closeFolderModal,
       startCanvasDrag,
-      startCanvasPointerDrag,
-      endCanvasDrag,
+      startResourcePointerDrag,
+      endResourceDrag,
       onFolderDragOver,
       onFolderDragLeave,
-      dropCanvasToFolder,
+      dropResourceToFolder,
       canDropToFolder,
       openRenameFolderModal,
       closeRenameFolderModal,
@@ -1457,6 +1485,7 @@ export default defineComponent({
       deleteFolder,
       deleteHtmlDocument,
       openHtmlDocument,
+      openHtmlDocumentFromCard,
       openTagsModal,
       closeTagsModal,
       addTag,

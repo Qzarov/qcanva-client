@@ -34,7 +34,8 @@ vi.mock('../api/client', () => ({
     list: vi.fn().mockResolvedValue({
       own: [
         { id: 'folder-a', name: 'Unsorted', role: 'owner', canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
-        { id: 'folder-b', name: 'Target', role: 'owner', canvases: [], htmlDocuments: [] },
+        { id: 'folder-b', name: 'Target', role: 'owner', canvases: [], htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-b' }] },
+        { id: 'folder-c', name: 'Archive', role: 'owner', canvases: [], htmlDocuments: [] },
       ],
       shared: [],
     }),
@@ -88,9 +89,36 @@ describe('DashboardView groups', () => {
       } as unknown as DragEvent,
       { id: 'canvas-1', folderId: 'folder-a' },
     );
-    await vm.dropCanvasToFolder({ id: 'folder-b', role: 'owner', name: 'Target', items: [] });
+    await vm.dropResourceToFolder({ id: 'folder-b', role: 'owner', name: 'Target', items: [] });
 
     expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'canvas', 'canvas-1');
+    expect(resourceFolders.list).not.toHaveBeenCalled();
+  });
+
+  it('moves dragged HTML documents without reloading folders', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    vi.mocked(resourceFolders.list).mockClear();
+
+    const vm = wrapper.vm as any;
+    vm.startResourcePointerDrag(
+      {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        pointerId: 1,
+        target: document.createElement('div'),
+      } as unknown as PointerEvent,
+      { id: 'doc-1', type: 'html-document', folderId: 'folder-b', title: 'Doc 1', tags: [] },
+      { id: 'folder-b', role: 'owner', name: 'Target', items: [] },
+    );
+    vm.draggingResourceId = 'doc-1';
+    vm.draggingResourceType = 'html-document';
+    vm.draggingResourceFolderId = 'folder-b';
+
+    await vm.dropResourceToFolder({ id: 'folder-c', role: 'owner', name: 'Archive', items: [] });
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-c', 'html-document', 'doc-1');
     expect(resourceFolders.list).not.toHaveBeenCalled();
   });
 });
