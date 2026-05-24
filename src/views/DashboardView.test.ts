@@ -108,6 +108,7 @@ describe('DashboardView groups', () => {
         clientY: 0,
         pointerId: 1,
         target: document.createElement('div'),
+        currentTarget: document.createElement('div'),
       } as unknown as PointerEvent,
       { id: 'doc-1', type: 'html-document', folderId: 'folder-b', title: 'Doc 1', tags: [] },
       { id: 'folder-b', role: 'owner', name: 'Target', items: [] },

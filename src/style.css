@@ -618,6 +618,14 @@ html, body {
   border-color: var(--color-brands);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brands) 30%, transparent);
 }
+.resource-drag-card {
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.resource-drag-card:active {
+  cursor: grabbing;
+}
 .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; cursor: text; }
 .card-title-input {
   font-size: 16px;
@@ -1858,6 +1866,7 @@ html, body {
 .canvas-card.dragging {
   opacity: 0.45;
   border-color: color-mix(in srgb, var(--color-brands) 52%, transparent);
+  cursor: grabbing;
 }
 
 /* ===== Canvas view ===== */

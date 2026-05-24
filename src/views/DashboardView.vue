@@ -180,7 +180,7 @@
                   <template v-for="item in folder.items" :key="`${item.type}-${item.id}`">
                   <div
                     v-if="item.type === 'canvas'"
-                    class="canvas-card"
+                    class="canvas-card resource-drag-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
                     @pointerdown="startResourcePointerDrag($event, item, folder)"
@@ -224,7 +224,7 @@
                   </div>
                   <article
                     v-else
-                    class="canvas-card html-doc-card"
+                    class="canvas-card html-doc-card resource-drag-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
                     @pointerdown="startResourcePointerDrag($event, item, folder)"
@@ -559,6 +559,7 @@ export default defineComponent({
       startY: number;
       item: FolderItem;
       targetFolderId: string;
+      element: HTMLElement;
     } | null>(null);
     const suppressNextCardClick = ref(false);
     const pendingAction = ref('');
@@ -1069,6 +1070,9 @@ export default defineComponent({
       window.removeEventListener('pointermove', onCanvasPointerMove);
       window.removeEventListener('pointerup', onCanvasPointerUp);
       window.removeEventListener('pointercancel', onCanvasPointerCancel);
+      if (state?.element.hasPointerCapture?.(state.pointerId)) {
+        state.element.releasePointerCapture(state.pointerId);
+      }
       if (!state?.active) {
         endResourceDrag();
         return;
@@ -1098,7 +1102,9 @@ export default defineComponent({
         draggingResourceFolderId.value = state.item.folderId || null;
       }
       event.preventDefault();
-      const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-folder-id]');
+      const target = document.elementsFromPoint(event.clientX, event.clientY)
+        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-folder-id]') : null)
+        .find((element): element is HTMLElement => Boolean(element));
       const folderId = target?.dataset.folderId || '';
       const folder = findDropFolder(folderId);
       state.targetFolderId = folder?.id || '';
@@ -1115,18 +1121,24 @@ export default defineComponent({
 
     function onCanvasPointerCancel(event: PointerEvent) {
       if (pointerDrag.value?.pointerId !== event.pointerId) return;
+      const state = pointerDrag.value;
       pointerDrag.value = null;
       window.removeEventListener('pointermove', onCanvasPointerMove);
       window.removeEventListener('pointerup', onCanvasPointerUp);
       window.removeEventListener('pointercancel', onCanvasPointerCancel);
+      if (state?.element.hasPointerCapture?.(event.pointerId)) {
+        state.element.releasePointerCapture(event.pointerId);
+      }
       endResourceDrag();
     }
 
     const startResourcePointerDrag = (event: PointerEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      if (event.button !== 0 || isBusy.value) return;
+      if ((event.pointerType === 'mouse' && event.button !== 0) || isBusy.value) return;
       if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
+      const element = event.currentTarget as HTMLElement;
+      element.setPointerCapture?.(event.pointerId);
       pointerDrag.value = {
         active: false,
         pointerId: event.pointerId,
@@ -1134,6 +1146,7 @@ export default defineComponent({
         startY: event.clientY,
         item,
         targetFolderId: '',
+        element,
       };
       window.addEventListener('pointermove', onCanvasPointerMove);
       window.addEventListener('pointerup', onCanvasPointerUp);
