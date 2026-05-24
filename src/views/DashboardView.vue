@@ -30,31 +30,51 @@
     <div class="dashboard-shell">
     <section v-if="isLoggedIn" class="resource-control-panel">
       <div class="resource-control-actions">
-          <button class="btn-primary" @click.stop="createCanvas">+ New Canvas</button>
-          <div class="mobile-action-menu">
-            <button class="btn-ghost dash-more-btn" @click.stop="toggleMobileActions">More</button>
-            <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
-              <button class="card-menu-item" @click="createHtmlDocument">+ HTML document</button>
-              <button class="card-menu-item" @click="openFolderModal()">+ Folder Canvas</button>
-              <button class="card-menu-item" @click="openTagManager">Manage tags</button>
-              <button class="card-menu-item" @click="importFile">Open .canvas</button>
-              <router-link v-if="admin" to="/admin" class="card-menu-item">Admin</router-link>
-              <router-link to="/html-settings" class="card-menu-item">HTML settings</router-link>
-              <button class="card-menu-item" @click="logout">Sign out</button>
+          <div class="control-menu">
+            <button class="btn-primary" @click.stop="toggleNewMenu">
+              <span class="menu-icon">+</span>
+              <span>New</span>
+            </button>
+            <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
+              <button class="card-menu-item" @click="createCanvas">
+                <span class="menu-icon">▦</span>
+                <span>New canvas</span>
+              </button>
+              <button class="card-menu-item" @click="createHtmlDocument">
+                <span class="menu-icon">▤</span>
+                <span>HTML document</span>
+              </button>
+              <button class="card-menu-item" @click="openFolderModal()">
+                <span class="menu-icon">□</span>
+                <span>Group</span>
+              </button>
             </div>
           </div>
           <div class="dash-actions-secondary">
-            <button class="btn-ghost" @click.stop="createHtmlDocument">+ HTML document</button>
-            <button class="btn-ghost" @click.stop="openFolderModal()">+ Folder Canvas</button>
-            <button class="btn-ghost" @click.stop="openTagManager">Manage tags</button>
-            <button class="btn-ghost" @click.stop="importFile">Open .canvas</button>
-            <router-link v-if="admin" to="/admin" class="btn-ghost">Admin</router-link>
-            <router-link to="/html-settings" class="btn-ghost">HTML settings</router-link>
-            <button class="btn-ghost" @click.stop="logout">Sign out</button>
+            <button class="btn-ghost" @click.stop="openTagManager">
+              <span class="menu-icon">#</span>
+              <span>Manage tags</span>
+            </button>
+            <button class="btn-ghost" @click.stop="importFile">
+              <span class="menu-icon">⇧</span>
+              <span>Import</span>
+            </button>
+            <router-link v-if="admin" to="/admin" class="btn-ghost">
+              <span class="menu-icon">◎</span>
+              <span>Admin</span>
+            </router-link>
+            <router-link to="/html-settings" class="btn-ghost">
+              <span class="menu-icon">⚙</span>
+              <span>HTML settings</span>
+            </router-link>
+            <button class="btn-ghost" @click.stop="logout">
+              <span class="menu-icon">↪</span>
+              <span>Sign out</span>
+            </button>
           </div>
       </div>
     </section>
-    <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
+    <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
       <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, folder or tag" />
       <select v-model="sortMode" class="dash-sort-select">
@@ -519,7 +539,7 @@ export default defineComponent({
     const contentFilter = ref<'all' | 'canvas' | 'html-document'>(route.query.type === 'html' ? 'html-document' : 'all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
-    const showMobileActions = ref(false);
+    const openControlMenu = ref('');
     const openFolderNames = ref<string[]>(['Unsorted']);
     const draggingCanvasId = ref('');
     const dragTargetFolder = ref('');
@@ -780,6 +800,7 @@ export default defineComponent({
     };
 
     const createCanvas = async () => {
+      openControlMenu.value = '';
       const targetFolder = await ensureFolderByName('Unsorted');
       const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolder?.id), 'Canvas created');
       if (!c) return;
@@ -787,6 +808,7 @@ export default defineComponent({
     };
 
     const createHtmlDocument = async () => {
+      openControlMenu.value = '';
       const targetFolder = await ensureFolderByName('Unsorted');
       const doc = await runAction(
         'create-html-document',
@@ -1081,18 +1103,18 @@ export default defineComponent({
     };
 
     const toggleCardMenu = (canvasId: string) => {
-      showMobileActions.value = false;
+      openControlMenu.value = '';
       openMenuCanvasId.value = openMenuCanvasId.value === canvasId ? '' : canvasId;
     };
 
     const closeCardMenu = () => {
       openMenuCanvasId.value = '';
-      showMobileActions.value = false;
+      openControlMenu.value = '';
     };
 
-    const toggleMobileActions = () => {
+    const toggleNewMenu = () => {
       openMenuCanvasId.value = '';
-      showMobileActions.value = !showMobileActions.value;
+      openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
     const logout = () => {
@@ -1126,6 +1148,7 @@ export default defineComponent({
     const fileInput = ref<HTMLInputElement | null>(null);
 
     const importFile = () => {
+      openControlMenu.value = '';
       fileInput.value?.click();
     };
 
@@ -1134,14 +1157,32 @@ export default defineComponent({
       if (!file) return;
       try {
         const text = await file.text();
+        const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
+        const title = file.name.replace(/\.(canvas|json|html?|htm)$/i, '') || 'Imported';
+        if (isHtml) {
+          const targetFolder = await ensureFolderByName('Unsorted');
+          const doc = await runAction(
+            'import-html-document',
+            () => htmlDocuments.create({ title, html: text, folderId: targetFolder?.id }),
+            `Imported ${title}`,
+          );
+          if (!doc) return;
+          router.push(`/html/${doc.id}`);
+          return;
+        }
+
         const data = JSON.parse(text);
-        const title = file.name.replace(/\.(canvas|json)$/, '') || 'Imported';
-        const c = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(data)), `Imported ${title}`);
+        const targetFolder = await ensureFolderByName('Unsorted');
+        const c = await runAction(
+          'import-canvas',
+          () => canvas.create(title, JSON.stringify(data), targetFolder?.id),
+          `Imported ${title}`,
+        );
         if (!c) return;
         router.push(`/canvas/${c.id}`);
       } catch (err) {
-        setFeedback('error', err instanceof Error ? err.message : 'Failed to import canvas file');
-        console.error('Failed to import canvas file:', err);
+        setFeedback('error', err instanceof Error ? err.message : 'Failed to import file');
+        console.error('Failed to import file:', err);
       }
       (e.target as HTMLInputElement).value = '';
     };
@@ -1187,7 +1228,7 @@ export default defineComponent({
       isBusy,
       actionLabel,
       openMenuCanvasId,
-      showMobileActions,
+      openControlMenu,
       draggingCanvasId,
       dragTargetFolder,
       tagColors,
@@ -1236,7 +1277,7 @@ export default defineComponent({
       isFolderOpen,
       toggleCardMenu,
       closeCardMenu,
-      toggleMobileActions,
+      toggleNewMenu,
       openCanvas,
       duplicateCanvas,
       deleteCanvas,
