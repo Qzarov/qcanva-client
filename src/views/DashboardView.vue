@@ -742,6 +742,13 @@ export default defineComponent({
       return matchesQuery && matchesTag;
     };
 
+    const matchesPublicItem = (item: FolderItem) => {
+      const q = searchQuery.value.trim().toLowerCase();
+      const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
+      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
+      return matchesQuery && matchesTag;
+    };
+
     const sortCanvases = (items: CanvasRecord[]) => [...items].sort((a, b) => {
       if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
       if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
@@ -767,7 +774,7 @@ export default defineComponent({
     const sharedFiltered = computed(() => sortCanvases(shared.value.filter(matchesCanvas)));
     const publicFiltered = computed(() => sortFolderItems(
       [...publicCanvases.value, ...publicHtmlDocuments.value]
-        .filter((item) => matchesFolderItem(item, 'Public')),
+        .filter(matchesPublicItem),
     ));
 
     const allTagNames = computed(() => {
