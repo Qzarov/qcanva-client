@@ -134,7 +134,7 @@
                 class="canvas-card html-doc-card"
                 :draggable="canManageDocs"
                 @dragstart="draggingId = doc.id"
-                @click="router.push('/html/' + doc.id)"
+                @click="router.push('/html/' + doc.id + '?edit=1')"
               >
                 <label class="html-select" @click.stop>
                   <input type="checkbox" :checked="selectedIds.includes(doc.id)" @change="toggleSelected(doc.id)" />
@@ -382,7 +382,7 @@ export default defineComponent({
       if (!title) return;
       try {
         const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', folderId: groups.value[0]?.id });
-        router.push('/html/' + doc.id);
+        router.push('/html/' + doc.id + '?edit=1');
       } catch (e: any) {
         flash('error', e.message || 'Failed to create document');
       }
@@ -398,7 +398,7 @@ export default defineComponent({
           html,
           folderId: groups.value[0]?.id,
         });
-        router.push('/html/' + doc.id);
+        router.push('/html/' + doc.id + '?edit=1');
       } catch (e: any) {
         flash('error', e.message || 'Failed to upload document');
       } finally {
@@ -516,7 +516,7 @@ export default defineComponent({
           title: generateTitle.value || 'Generated HTML',
           folderId: groups.value[0]?.id,
         });
-        router.push('/html/' + doc.id);
+        router.push('/html/' + doc.id + '?edit=1');
       } catch (e: any) {
         flash('error', e.message || 'Generation failed');
       } finally {
