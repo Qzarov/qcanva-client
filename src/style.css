@@ -1541,11 +1541,21 @@ html, body {
 .settings-panel {
   max-width: 640px;
 }
+.settings-panel h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--dark-text-primary);
+}
 .settings-panel label {
   display: grid;
   gap: 6px;
   color: rgba(255,255,255,0.65);
   font-size: 13px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 @media (max-width: 720px) {

@@ -24,6 +24,10 @@ function getToken(): string | null {
   return localStorage.getItem('token');
 }
 
+export function getAccessToken(): string | null {
+  return getToken();
+}
+
 export function setToken(token: string, role = 'user', accessMode = 'user', user?: { id?: string; email?: string; name?: string }) {
   localStorage.setItem('token', token);
   localStorage.setItem('userRole', role);
@@ -190,6 +194,10 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify(payload),
       skipAuthRedirect: true,
+    }),
+  refreshToken: () =>
+    request<{ token: string; user: any }>('/auth/refresh-token', {
+      method: 'POST',
     }),
   me: () => request<any>('/auth/me'),
 };

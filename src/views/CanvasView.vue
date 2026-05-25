@@ -768,14 +768,23 @@ export default defineComponent({
 
     const setVisibility = async (value: 'private' | 'authenticated' | 'public') => {
       const prev = visibility.value;
+      const prevAllowPublicEdit = allowPublicEdit.value;
       visibility.value = value;
       isPublic.value = value === 'public';
+      if (value === 'public') {
+        allowPublicEdit.value = false;
+      }
       try {
-        await canvasApi.update(canvasId, { isPublic: isPublic.value, visibility: value });
+        await canvasApi.update(canvasId, {
+          isPublic: isPublic.value,
+          visibility: value,
+          ...(value === 'public' ? { allowPublicEdit: false } : {}),
+        });
         showToast(`Visibility: ${value}`, 'success');
       } catch (err: any) {
         visibility.value = prev;
         isPublic.value = prev === 'public';
+        allowPublicEdit.value = prevAllowPublicEdit;
         showToast(err.message || 'Failed to update visibility', 'error');
       }
     };

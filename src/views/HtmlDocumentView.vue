@@ -230,7 +230,7 @@ export default defineComponent({
     const savedSnapshot = ref({ title: '', html: '' });
     const revision = ref(0);
     const role = ref('read');
-    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('visual');
+    const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const loading = ref(true);
