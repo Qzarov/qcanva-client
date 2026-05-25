@@ -312,7 +312,7 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
-        if (res.role === 'read' && res.document.visibility === 'public' && route.query.edit !== '1') {
+        if (res.role === 'read' && res.document.visibility === 'public') {
           window.location.replace(`/api/html-documents/${id}/stream`);
           return;
         }
@@ -634,7 +634,7 @@ export default defineComponent({
 
     async function requestHtmlAccess() {
       if (!isAuthenticated()) {
-        await router.push(`/login?redirect=/html/${id}?edit=1`);
+        await router.push(`/login?redirect=/edit/html/${id}`);
         return;
       }
       requestingAccess.value = true;

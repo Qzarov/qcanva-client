@@ -8,13 +8,6 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>QCanva</title>
-    <script>
-      (function () {
-        var match = window.location.pathname.match(/^\/html\/([^/?#]+)$/);
-        if (!match || window.location.search.indexOf("edit=1") !== -1) return;
-        window.location.replace("/api/html-documents/" + encodeURIComponent(match[1]) + "/stream");
-      })();
-    </script>
   </head>
   <body>
     <div id="app"></div>

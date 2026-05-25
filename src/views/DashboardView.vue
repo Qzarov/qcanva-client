@@ -944,7 +944,7 @@ export default defineComponent({
     };
 
     const openHtmlDocument = (id: string) => {
-      router.push(`/html/${id}?edit=1`);
+      router.push(`/edit/html/${id}`);
     };
 
     const openHtmlDocumentFromCard = (id: string) => {
@@ -972,7 +972,7 @@ export default defineComponent({
         'HTML document created',
       );
       if (!doc) return;
-      router.push(`/html/${doc.id}?edit=1`);
+      router.push(`/edit/html/${doc.id}`);
     };
 
     const openCreateGroupModal = () => {
@@ -1606,7 +1606,7 @@ export default defineComponent({
             `Imported ${title}`,
           );
           if (!doc) return;
-          router.push(`/html/${doc.id}?edit=1`);
+          router.push(`/edit/html/${doc.id}`);
           return;
         }
 
