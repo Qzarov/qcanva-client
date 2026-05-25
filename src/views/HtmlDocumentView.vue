@@ -312,6 +312,10 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
+        if (res.role === 'read' && res.document.visibility === 'public') {
+          window.location.replace(`/api/html-documents/${id}/stream`);
+          return;
+        }
         if (!canEditContent.value) {
           viewMode.value = 'preview';
         }
