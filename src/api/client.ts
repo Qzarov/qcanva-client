@@ -298,6 +298,7 @@ export const canvas = {
 
 export const htmlDocuments = {
   list: () => request<{ groups: any[]; documents: any[] }>('/html-documents'),
+  publicList: () => request<{ documents: any[] }>('/html-documents/public', { skipAuthRedirect: true }),
   createGroup: (name: string) =>
     resourceFolders.create(name),
   renameGroup: (id: string, name: string) =>

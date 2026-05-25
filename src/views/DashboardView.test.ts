@@ -27,6 +27,7 @@ vi.mock('../api/client', () => ({
     delete: vi.fn(),
     duplicate: vi.fn().mockResolvedValue({ id: 'doc-copy' }),
     list: vi.fn().mockResolvedValue({ documents: [] }),
+    publicList: vi.fn().mockResolvedValue({ documents: [] }),
     transferOwnership: vi.fn().mockResolvedValue({ document: { id: 'doc-1' }, role: 'owner' }),
     update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },

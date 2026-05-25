@@ -4,7 +4,7 @@
       <div class="app-header-inner">
         <div>
           <h1>{{ isLoggedIn ? 'Resources' : 'QCanva' }}</h1>
-          <p v-if="!isLoggedIn" class="dash-subtitle">Public canvases available without registration.</p>
+          <p v-if="!isLoggedIn" class="dash-subtitle">Public resources available without registration.</p>
         </div>
         <div class="header-user-slot">
           <template v-if="isLoggedIn">
@@ -311,51 +311,61 @@
       </div>
 
       <div v-if="publicFiltered.length" class="dash-section">
-        <h2>Public canvases</h2>
+        <h2>Public</h2>
         <div class="dash-grid">
+          <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
           <div
-            v-for="c in publicFiltered"
-            :key="'public-' + c.id"
+            v-if="item.type === 'canvas'"
             class="canvas-card"
-            @click="openCanvas(c.id)"
+            @click="openCanvas(item.id)"
           >
-            <div class="card-title">{{ c.title || 'Untitled' }}</div>
+            <div class="card-title">{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ c.allowPublicEdit ? 'Public edit' : 'Public' }}</span>
-              <span v-if="c.pinned" class="badge badge-pinned">Pinned</span>
-              <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+              <span class="badge badge-public">{{ item.allowPublicEdit ? 'Public edit' : 'Public' }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
-            <div class="card-owner">{{ c.ownerName || c.ownerEmail || 'Unknown owner' }}</div>
-            <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
-            <div v-if="c.tags?.length" class="card-tags">
+            <div class="card-owner">{{ item.ownerName || item.ownerEmail || 'Unknown owner' }}</div>
+            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
+            <div v-if="item.tags?.length" class="card-tags">
               <span
-                v-for="tag in c.tags"
+                v-for="tag in item.tags"
                 :key="tag.name"
                 class="card-tag color-tag"
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div v-if="welcomeCanvas" class="dash-section">
-        <h2>Welcome</h2>
-        <div class="dash-grid">
-          <div class="canvas-card canvas-card-welcome" @click="openCanvas(welcomeCanvas.id)">
-            <div class="card-title">{{ welcomeCanvas.title }}</div>
+          <article
+            v-else
+            class="canvas-card html-doc-card"
+            @click="openHtmlDocument(item.id)"
+          >
+            <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
+              <span class="badge badge-public">HTML</span>
               <span class="badge badge-public">Public</span>
+              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
-          </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+          </article>
+          </template>
         </div>
       </div>
 
       <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
         No canvases yet. Create your first one!
       </div>
-      <div v-else-if="!isLoggedIn && !publicFiltered.length && !welcomeCanvas" class="dash-empty">
-        No public canvases yet.
+      <div v-else-if="!isLoggedIn && !publicFiltered.length" class="dash-empty">
+        No public resources yet.
       </div>
     </template>
     </div>
@@ -596,11 +606,11 @@ export default defineComponent({
     const own = ref<CanvasRecord[]>([]);
     const shared = ref<CanvasRecord[]>([]);
     const publicCanvases = ref<CanvasRecord[]>([]);
+    const publicHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
     const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
     const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
-    const welcomeCanvas = ref<CanvasRecord | null>(null);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const searchQuery = ref('');
@@ -755,7 +765,10 @@ export default defineComponent({
     });
 
     const sharedFiltered = computed(() => sortCanvases(shared.value.filter(matchesCanvas)));
-    const publicFiltered = computed(() => sortCanvases(publicCanvases.value.filter(matchesCanvas)));
+    const publicFiltered = computed(() => sortFolderItems(
+      [...publicCanvases.value, ...publicHtmlDocuments.value]
+        .filter((item) => matchesFolderItem(item, 'Public')),
+    ));
 
     const allTagNames = computed(() => {
       const names = new Set<string>();
@@ -766,6 +779,9 @@ export default defineComponent({
         }
       }
       for (const document of unfiledHtmlDocuments.value) {
+        for (const tag of document.tags) names.add(tag.name);
+      }
+      for (const document of publicHtmlDocuments.value) {
         for (const tag of document.tags) names.add(tag.name);
       }
       for (const folder of allResourceFolders.value) {
@@ -785,6 +801,9 @@ export default defineComponent({
         }
       }
       for (const document of unfiledHtmlDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
+      for (const document of publicHtmlDocuments.value) {
         for (const tag of document.tags) byName.set(tag.name, tag);
       }
       return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -888,7 +907,8 @@ export default defineComponent({
         }
         shared.value = res.shared.map((c: any) => normalizeCanvas(c, false));
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
-        welcomeCanvas.value = res.welcome ? normalizeCanvas(res.welcome, false) : null;
+        const publicDocuments = await htmlDocuments.publicList();
+        publicHtmlDocuments.value = (publicDocuments.documents || []).map((document: any) => normalizeHtmlDocument(document));
         incomingRequests.value = isLoggedIn ? await accessRequests.incoming() : [];
         if (isLoggedIn) {
           sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
@@ -1626,7 +1646,6 @@ export default defineComponent({
       admin,
       isLoggedIn,
       loading,
-      welcomeCanvas,
       sharedFiltered,
       publicFiltered,
       allTagNames,
