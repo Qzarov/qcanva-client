@@ -194,6 +194,15 @@
             <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
             <span>Allow public editing</span>
           </label>
+          <label class="share-checkbox">
+            <input
+              type="checkbox"
+              :checked="listedInPublic"
+              :disabled="visibility !== 'public'"
+              @change="togglePublicListing"
+            />
+            <span>Show in Public</span>
+          </label>
         </div>
 
         <div class="share-section">
@@ -429,6 +438,7 @@ export default defineComponent({
     const isPublic = ref(false);
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
+    const listedInPublic = ref(true);
     const revision = ref(0);
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
@@ -549,6 +559,7 @@ export default defineComponent({
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
+        listedInPublic.value = res.canvas.listedInPublic !== false;
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         if (res.role === 'owner') loadPermissions();
@@ -762,6 +773,19 @@ export default defineComponent({
         showToast(allowPublicEdit.value ? 'Public edit enabled' : 'Public edit disabled', 'success');
       } catch (err: any) {
         allowPublicEdit.value = !allowPublicEdit.value;
+        showToast(err.message || 'Failed to update setting', 'error');
+      }
+    };
+
+    const togglePublicListing = async (e: Event) => {
+      if (!canManageSettings.value) return;
+      const previous = listedInPublic.value;
+      listedInPublic.value = (e.target as HTMLInputElement).checked;
+      try {
+        await canvasApi.update(canvasId, { listedInPublic: listedInPublic.value });
+        showToast(listedInPublic.value ? 'Shown in Public' : 'Hidden from Public', 'success');
+      } catch (err: any) {
+        listedInPublic.value = previous;
         showToast(err.message || 'Failed to update setting', 'error');
       }
     };
@@ -1073,7 +1097,7 @@ export default defineComponent({
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
-      allowPublicEdit, canManageSettings, togglePublicEdit,
+      allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated, isAdmin,

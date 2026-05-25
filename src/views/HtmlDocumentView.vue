@@ -91,6 +91,15 @@
           <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
           <span>Allow public editing</span>
         </label>
+        <label class="share-checkbox">
+          <input
+            type="checkbox"
+            v-model="listedInPublic"
+            :disabled="visibility !== 'public'"
+            @change="saveAccessSettings"
+          />
+          <span>Show in Public</span>
+        </label>
       </div>
 
       <div class="share-section">
@@ -233,6 +242,7 @@ export default defineComponent({
     const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
+    const listedInPublic = ref(true);
     const loading = ref(true);
     const accessDenied = ref(false);
     const requestedRole = ref<'read' | 'edit'>('read');
@@ -296,6 +306,7 @@ export default defineComponent({
         setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
+        listedInPublic.value = res.document.listedInPublic !== false;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
@@ -546,6 +557,7 @@ export default defineComponent({
       await htmlDocuments.update(id, {
         visibility: visibility.value,
         allowPublicEdit: allowPublicEdit.value,
+        listedInPublic: listedInPublic.value,
       });
       await load();
     }
@@ -660,7 +672,7 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
-      title, html, role, viewMode, visibility, allowPublicEdit, loading, accessDenied, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, loading, accessDenied, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,

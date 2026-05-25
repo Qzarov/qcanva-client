@@ -264,6 +264,7 @@ export const canvas = {
       isPublic?: boolean;
       visibility?: string;
       allowPublicEdit?: boolean;
+      listedInPublic?: boolean;
       passwordAccessEnabled?: boolean;
       passwordAccessPassword?: string;
       passwordAccessRole?: string;
@@ -303,10 +304,10 @@ export const htmlDocuments = {
     resourceFolders.create(name),
   renameGroup: (id: string, name: string) =>
     resourceFolders.rename(id, name),
-  create: (payload: { title: string; html: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean }) =>
+  create: (payload: { title: string; html: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
-  update: (id: string, payload: { title?: string; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; pinned?: boolean; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
+  update: (id: string, payload: { title?: string; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; pinned?: boolean; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   duplicate: (id: string) =>
     request<any>(`/html-documents/${id}/duplicate`, { method: 'POST' }),
