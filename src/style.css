@@ -1238,6 +1238,16 @@ html, body {
   font-size: 15px;
   font-weight: 600;
 }
+.html-title-readonly {
+  flex: 1;
+  min-width: 0;
+  color: var(--dark-text-primary);
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .html-access-select {
   padding: 9px 10px;
   border: 1px solid var(--dark-neutral-border);

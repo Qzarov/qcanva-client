@@ -43,15 +43,16 @@
     <template v-else>
     <header class="html-editor-bar">
       <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
-      <input v-model="title" class="html-title-input" :readonly="role === 'read'" />
+      <input v-if="canEditContent" v-model="title" class="html-title-input" />
+      <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
       <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Access</button>
       <div class="html-mode-tabs">
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
-        <button v-if="role !== 'read'" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
+        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
       </div>
       <button class="btn-ghost" @click="downloadDocument">Download</button>
       <button class="btn-ghost" @click="toggleHistory">History</button>
-      <div v-if="role !== 'read'" class="html-sync-wrap">
+      <div v-if="canEditContent" class="html-sync-wrap">
         <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
           {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
         </button>
@@ -70,7 +71,7 @@
           </div>
         </div>
       </div>
-      <button v-if="role !== 'read'" class="btn-primary" :disabled="saving" @click="save">
+      <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
     </header>
@@ -164,7 +165,7 @@
               <strong>Revision {{ selectedHistory.revision }}</strong>
               <small>{{ selectedHistory.type }}</small>
             </div>
-            <button v-if="role !== 'read'" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
+            <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
               {{ restoringHistory ? 'Restoring...' : 'Restore' }}
             </button>
           </div>
@@ -177,7 +178,7 @@
       </div>
     </section>
     <main class="html-editor-main">
-      <HtmlVisualEditor v-if="viewMode === 'visual' && role !== 'read'" v-model="html" @op="pendingVisualOp = $event" />
+      <HtmlVisualEditor v-if="viewMode === 'visual' && canEditContent" v-model="html" @op="pendingVisualOp = $event" />
       <iframe
         v-if="viewMode === 'preview'"
         ref="previewFrame"
@@ -186,7 +187,7 @@
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
         @load="onPreviewLoad"
       ></iframe>
-      <div v-else-if="viewMode === 'split' && role !== 'read'" class="html-editor-grid">
+      <div v-else-if="viewMode === 'split' && canEditContent" class="html-editor-grid">
         <textarea
           ref="sourceEditor"
           v-model="html"
@@ -201,7 +202,7 @@
         ></iframe>
       </div>
       <textarea
-        v-else-if="role !== 'read'"
+        v-else-if="canEditContent"
         ref="sourceEditor"
         v-model="html"
         class="html-source html-source-full"
@@ -272,6 +273,7 @@ export default defineComponent({
     const sourceEditor = ref<HTMLTextAreaElement | null>(null);
     let pendingPreviewScroll: FrameScrollPosition | null = null;
     let htmlSocketInitialized = false;
+    const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
     const htmlSyncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
@@ -310,7 +312,7 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
-        if (res.role === 'read') {
+        if (!canEditContent.value) {
           viewMode.value = 'preview';
         }
         if (res.role === 'owner') await loadPermissions();
@@ -362,6 +364,7 @@ export default defineComponent({
     }
 
     async function save() {
+      if (!canEditContent.value) return;
       saving.value = true;
       const pageScroll = { x: window.scrollX, y: window.scrollY };
       try {
@@ -672,7 +675,7 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, loading, accessDenied, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, loading, accessDenied, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
