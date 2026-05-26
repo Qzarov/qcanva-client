@@ -3149,6 +3149,15 @@ html, body {
     width: 100%;
   }
 
+  .html-editor-bar .btn-primary,
+  .html-editor-bar .btn-ghost {
+    width: auto;
+  }
+
+  .html-editor-bar .html-actions-trigger {
+    width: 28px;
+  }
+
   .canvas-card {
     padding-right: 44px;
   }
