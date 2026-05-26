@@ -3,7 +3,7 @@
     <header class="app-header">
       <div class="app-header-inner">
         <div>
-          <h1>{{ isLoggedIn ? 'Resources' : 'QCanva' }}</h1>
+          <h1>QCanva</h1>
           <p v-if="!isLoggedIn" class="dash-subtitle">Public resources available without registration.</p>
         </div>
         <div class="header-user-slot">
@@ -186,11 +186,9 @@
                   <template v-for="item in folder.items" :key="`${item.type}-${item.id}`">
                   <div
                     v-if="item.type === 'canvas'"
-                    class="canvas-card resource-drag-card"
+                    class="canvas-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @mousedown="startResourceMouseDrag($event, item, folder)"
-                    @touchstart="startResourceTouchDrag($event, item, folder)"
                     @click="openCanvasFromCard(item.id)"
                   >
                     <input
@@ -230,11 +228,9 @@
                   </div>
                   <article
                     v-else
-                    class="canvas-card html-doc-card resource-drag-card"
+                    class="canvas-card html-doc-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @mousedown="startResourceMouseDrag($event, item, folder)"
-                    @touchstart="startResourceTouchDrag($event, item, folder)"
                     @click="openHtmlDocumentFromCard(item.id)"
                   >
                     <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
