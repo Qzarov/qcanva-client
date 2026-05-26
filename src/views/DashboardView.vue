@@ -559,7 +559,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
@@ -600,7 +600,6 @@ const genTagId = () => Math.random().toString(36).slice(2, 10);
 export default defineComponent({
   setup() {
     const router = useRouter();
-    const route = useRoute();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -615,7 +614,7 @@ export default defineComponent({
     const loading = ref(true);
     const searchQuery = ref('');
     const selectedTag = ref('');
-    const contentFilter = ref<'all' | 'canvas' | 'html-document'>(route.query.type === 'html' ? 'html-document' : 'all');
+    const contentFilter = ref<'all' | 'canvas' | 'html-document'>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
