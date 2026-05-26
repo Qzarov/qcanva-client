@@ -74,6 +74,8 @@
       <div class="html-mobile-actions">
         <button class="btn-ghost html-actions-trigger" aria-label="Document actions" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
         <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
+          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">Preview</button>
+          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">Source</button>
           <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">Access</button>
           <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">Download</button>
           <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">History</button>
