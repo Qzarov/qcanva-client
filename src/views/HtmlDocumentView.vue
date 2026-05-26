@@ -45,14 +45,14 @@
       <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
-      <button v-if="role === 'owner'" class="btn-ghost" @click="showShare = !showShare">Access</button>
+      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">Access</button>
       <div class="html-mode-tabs">
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
         <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
       </div>
-      <button class="btn-ghost" @click="downloadDocument">Download</button>
-      <button class="btn-ghost" @click="toggleHistory">History</button>
-      <div v-if="canEditContent" class="html-sync-wrap">
+      <button class="btn-ghost html-desktop-action" @click="downloadDocument">Download</button>
+      <button class="btn-ghost html-desktop-action" @click="toggleHistory">History</button>
+      <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
         <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
           {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
         </button>
@@ -69,6 +69,17 @@
             </div>
             <time>{{ formatSyncEventTime(event.timestamp) }}</time>
           </div>
+        </div>
+      </div>
+      <div class="html-mobile-actions">
+        <button class="btn-ghost html-actions-trigger" aria-label="Document actions" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
+        <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
+          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">Access</button>
+          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">Download</button>
+          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">History</button>
+          <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
+            {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+          </button>
         </div>
       </div>
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
@@ -260,6 +271,7 @@ export default defineComponent({
     const passwordAccessRole = ref<'read' | 'edit'>('read');
     const saving = ref(false);
     const showHistory = ref(false);
+    const showHtmlActions = ref(false);
     const historyLoading = ref(false);
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
@@ -685,7 +697,7 @@ export default defineComponent({
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, resourcePassword, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
-      showHistory, historyLoading, historyItems, selectedHistory, restoringHistory,
+      showHistory, showHtmlActions, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
       downloadDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
