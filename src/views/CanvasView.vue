@@ -218,6 +218,78 @@
         </button>
       </div>
 
+      <!-- Mobile block settings menu — opens near the minimap when a block is selected.
+           Colors/style live behind expandable buttons, so there is no scrolling. -->
+      <div
+        v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId"
+        class="block-menu"
+      >
+        <!-- Fill (background) color -->
+        <button class="block-menu-item" :class="{ open: blockSection === 'fill' }" @click="toggleBlockSection('fill')">
+          <span class="block-menu-swatch" :class="canvasRef.getNodeColor(canvasRef.selectedNodeId) ? 'ctx-color-' + canvasRef.getNodeColor(canvasRef.selectedNodeId) : 'swatch-empty'"></span>
+          <span class="block-menu-label">Цвет фона</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'fill'" class="block-menu-pop">
+          <button v-for="c in ['1','2','3','4','5','6']" :key="'bf'+c" class="tb-color" :class="'ctx-color-'+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
+          <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
+          <button class="block-menu-toggle" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)">
+            {{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'Сплошная' : 'Градиент' }}
+          </button>
+        </div>
+
+        <!-- Border color -->
+        <button class="block-menu-item" :class="{ open: blockSection === 'borderColor' }" @click="toggleBlockSection('borderColor')">
+          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) } : {}"></span>
+          <span class="block-menu-label">Цвет рамки</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'borderColor'" class="block-menu-pop">
+          <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'bbc'+c" class="tb-color" :style="{ background: c }" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
+          <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
+        </div>
+
+        <!-- Border style & width -->
+        <button class="block-menu-item" :class="{ open: blockSection === 'border' }" @click="toggleBlockSection('border')">
+          <span class="block-menu-label">Рамка</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'border'" class="block-menu-pop block-menu-pop-wrap">
+          <button v-for="bs in canvasRef?.borderStyles" :key="bs.value" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderStyle(canvasRef.selectedNodeId) === bs.value }" @click="canvasRef?.setNodeBorderStyle(canvasRef.selectedNodeId, bs.value)" :title="bs.label">
+            <svg width="24" height="10" viewBox="0 0 24 10" v-html="bs.svg"></svg>
+          </button>
+          <span class="tb-sep"></span>
+          <button v-for="bw in [1,2,3,4]" :key="'bmw'+bw" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderWidth(canvasRef.selectedNodeId) === bw }" @click="canvasRef?.setNodeBorderWidth(canvasRef.selectedNodeId, bw)" :title="bw+'px'">
+            <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
+          </button>
+        </div>
+
+        <!-- Text alignment -->
+        <button class="block-menu-item" :class="{ open: blockSection === 'align' }" @click="toggleBlockSection('align')">
+          <span class="block-menu-label">Выравнивание</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'align'" class="block-menu-pop block-menu-pop-wrap">
+          <span class="block-menu-sublabel">1-я строка</span>
+          <button v-for="a in aligns" :key="'bmf-'+a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeFirstLineAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeFirstLineAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
+          <span class="tb-sep"></span>
+          <span class="block-menu-sublabel">Текст</span>
+          <button v-for="a in aligns" :key="'bma-'+a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
+        </div>
+
+        <div class="block-menu-divider"></div>
+
+        <!-- Actions -->
+        <button class="block-menu-item" @click="canvasRef?.duplicateSelection()">
+          <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
+          <span class="block-menu-label">Дублировать</span>
+        </button>
+        <button v-if="role !== 'read'" class="block-menu-item block-menu-danger" @click="canvasRef?.deleteSelection()">
+          <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+          <span class="block-menu-label">Удалить</span>
+        </button>
+      </div>
+
       <!-- Access panel -->
       <div v-if="showShare" class="share-panel">
         <div class="share-panel-header">
@@ -459,6 +531,11 @@ export default defineComponent({
     const canvasRef = ref<any>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
+    // Which expandable section of the mobile block menu is open ('' = none)
+    const blockSection = ref('');
+    const toggleBlockSection = (s: string) => {
+      blockSection.value = blockSection.value === s ? '' : s;
+    };
 
     const aligns = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
@@ -1152,7 +1229,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
-      showShortcuts, menuOpen, requestCanvasAccess, loginWithCanvasPassword,
+      showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
     };
   },
 });

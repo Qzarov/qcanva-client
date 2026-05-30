@@ -1490,6 +1490,10 @@ export default defineComponent({
       }
     };
 
+    const getNodeColor = (nodeId: string): string | undefined => {
+      return nodes.value.find((n) => n.id === nodeId)?.color;
+    };
+
     const getNodeAlign = (nodeId: string) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.textAlign || "left";
@@ -2447,6 +2451,7 @@ export default defineComponent({
       addTextNodeCenter,
       contextMenu,
       setNodeColor,
+      getNodeColor,
       getNodeAlign,
       getNodeFirstLineAlign,
       setNodeFirstLineAlign,
