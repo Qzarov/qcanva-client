@@ -68,14 +68,7 @@
         />
         <span v-else class="topbar-title-ro">{{ title || 'Untitled' }}</span>
         <div class="topbar-right">
-          <input
-            v-model.trim="searchQuery"
-            class="canvas-search-input"
-            placeholder="Search in canvas"
-            @input="runCanvasSearch"
-            @keydown.enter.prevent="focusNextSearchResult"
-          />
-          <!-- Online users -->
+          <!-- Compact status, always visible -->
           <div v-if="onlineUsers.length > 1" class="online-users">
             <div
               v-for="u in otherUsers"
@@ -112,22 +105,42 @@
               </div>
             </div>
           </div>
-          <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
-          <span v-if="role" class="topbar-role">{{ role }}</span>
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">
-            Access
-          </button>
-          <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker">
-            Embed
-          </button>
-          <button class="btn-ghost btn-sm" @click="toggleHistory">
-            History
-          </button>
-          <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts" title="Keyboard Shortcuts">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+
+          <!-- Secondary actions: inline on desktop, dropdown menu on mobile -->
+          <div class="topbar-actions" :class="{ open: menuOpen }">
+            <input
+              v-model.trim="searchQuery"
+              class="canvas-search-input"
+              placeholder="Search in canvas"
+              @input="runCanvasSearch"
+              @keydown.enter.prevent="focusNextSearchResult"
+            />
+            <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
+            <span v-if="role" class="topbar-role">{{ role }}</span>
+            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare; menuOpen = false">
+              Access
+            </button>
+            <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker(); menuOpen = false">
+              Embed
+            </button>
+            <button class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
+              History
+            </button>
+            <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts; menuOpen = false" title="Keyboard Shortcuts">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
+              <span class="topbar-action-label">Shortcuts</span>
+            </button>
+          </div>
+
+          <!-- Overflow menu toggle (mobile only) -->
+          <button class="topbar-menu-btn btn-ghost btn-sm" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
         </div>
       </div>
+
+      <!-- Tap-away backdrop to close the mobile overflow menu -->
+      <div v-if="menuOpen" class="topbar-menu-backdrop" @click="menuOpen = false"></div>
 
       <div v-if="syncNotice" class="sync-notice" :class="'sync-notice-' + syncNotice.kind">
         {{ syncNotice.text }}
@@ -174,6 +187,14 @@
         <span class="tb-label">Color</span>
         <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'bc'+c" class="tb-color" :style="{background: c}" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
         <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
+        <span class="tb-sep"></span>
+        <!-- Node actions -->
+        <button class="tb-btn" @click="canvasRef?.duplicateSelection()" title="Duplicate">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
+        </button>
+        <button v-if="role !== 'read'" class="tb-btn tb-btn-danger" @click="canvasRef?.deleteSelection()" title="Delete">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </button>
       </div>
 
       <!-- Access panel -->
@@ -416,6 +437,7 @@ export default defineComponent({
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const canvasRef = ref<any>(null);
     const showShortcuts = ref(false);
+    const menuOpen = ref(false);
 
     const aligns = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
@@ -1109,7 +1131,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
-      showShortcuts, requestCanvasAccess, loginWithCanvasPassword,
+      showShortcuts, menuOpen, requestCanvasAccess, loginWithCanvasPassword,
     };
   },
 });

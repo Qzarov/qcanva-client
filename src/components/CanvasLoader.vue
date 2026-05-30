@@ -7,9 +7,10 @@
     @mousemove="onPanMove"
     @mouseup="onPanEnd"
     @mouseleave="onPanEnd"
-    @touchstart.prevent="onTouchStart"
-    @touchmove.prevent="onTouchMove"
+    @touchstart="onTouchStart"
+    @touchmove="onTouchMove"
     @touchend="onTouchEnd"
+    @touchcancel="onTouchEnd"
     @dblclick="onCanvasDblClick"
   >
     <div class="canvas-world" :style="worldStyle">
@@ -18,6 +19,7 @@
         v-for="group in groups"
         :key="group.id"
         class="canvas-group"
+        :data-node-id="group.id"
         :class="[groupColorClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id }]"
         :style="nodePosition(group)"
         @mousedown.stop="onNodeDragStart($event, group)"
@@ -210,6 +212,7 @@
         v-for="node in textNodes"
         :key="node.id"
         class="canvas-node"
+        :data-node-id="node.id"
         :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
@@ -270,6 +273,7 @@
         v-for="node in linkNodes"
         :key="node.id"
         class="canvas-node canvas-node-link"
+        :data-node-id="node.id"
         :class="{ 'is-dragging': dragNodeId === node.id }"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
@@ -283,6 +287,7 @@
         v-for="node in imageNodes"
         :key="node.id"
         class="canvas-node canvas-node-image"
+        :data-node-id="node.id"
         :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
@@ -302,6 +307,7 @@
         v-for="node in canvasNodes"
         :key="node.id"
         class="canvas-node canvas-node-embed"
+        :data-node-id="node.id"
         :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
@@ -407,6 +413,9 @@
       <button @click="zoomOut" title="Zoom out">−</button>
       <button @click="resetView" title="Reset view">⌂</button>
       <span class="controls-divider"></span>
+      <button v-if="!readonly" class="ctrl-add-node" @click="addTextNodeCenter" title="Add text node">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
       <button @click="duplicateSelection" title="Duplicate selection">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
       </button>
@@ -530,6 +539,16 @@ export default defineComponent({
     // Touch state
     const lastTouchDist = ref(0);
     const lastTouchCenter = reactive({ x: 0, y: 0 });
+    // Single-finger tap / drag tracking
+    const TAP_MOVE_THRESHOLD = 8; // px before a touch becomes a drag/pan
+    const DOUBLE_TAP_MS = 300;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let touchMoved = false;
+    let touchNodeId: string | null = null; // node under the active single-finger touch
+    let touchDragging = false; // an actual node drag is in progress
+    let lastTapTime = 0;
+    let lastTapTarget = ""; // node id, or "__empty__" for blank canvas
 
     // Configure marked
     marked.setOptions({
@@ -1407,15 +1426,17 @@ export default defineComponent({
     const genId = () => Math.random().toString(36).substring(2, 18);
 
     // Create node on double-click on empty canvas
-    const onCanvasDblClick = (e: MouseEvent) => {
+    // Create a text node at the given screen coordinates and start editing it
+    const createTextNodeAtClient = (clientX: number, clientY: number) => {
+      if (props.readonly) return;
       const rect = viewport.value!.getBoundingClientRect();
-      const wx = (e.clientX - rect.left - camera.x) / camera.scale;
-      const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+      const wx = (clientX - rect.left - camera.x) / camera.scale;
+      const wy = (clientY - rect.top - camera.y) / camera.scale;
       const newNode: CanvasNode = {
         id: genId(),
         type: "text",
-        x: wx - 125,
-        y: wy - 30,
+        x: snap(wx - 125),
+        y: snap(wy - 30),
         width: 250,
         height: 60,
         text: "",
@@ -1429,6 +1450,18 @@ export default defineComponent({
         const textarea = editorRefs.value?.[0];
         if (textarea) textarea.focus();
       });
+    };
+
+    const onCanvasDblClick = (e: MouseEvent) => {
+      createTextNodeAtClient(e.clientX, e.clientY);
+    };
+
+    // Add a text node at the center of the current viewport (toolbar button —
+    // the reliable way to create a node on touch devices).
+    const addTextNodeCenter = () => {
+      if (!viewport.value) return;
+      const rect = viewport.value.getBoundingClientRect();
+      createTextNodeAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
     };
 
     // Context menu state
@@ -1609,6 +1642,19 @@ export default defineComponent({
       emitOp({ type: 'node-delete', ids: [id] });
       selectedNodeIds.value = [];
       closeContextMenu();
+    };
+
+    // Delete the current selection (toolbar button — touch-friendly alternative
+    // to the keyboard Delete shortcut / right-click context menu).
+    const deleteSelection = () => {
+      if (!selectedNodeIds.value.length) return;
+      pushUndo();
+      const ids = [...selectedNodeIds.value];
+      const idSet = new Set(ids);
+      edges.value = edges.value.filter((ed) => !idSet.has(ed.fromNode) && !idSet.has(ed.toNode));
+      nodes.value = nodes.value.filter((n) => !idSet.has(n.id));
+      emitOp({ type: 'node-delete', ids });
+      selectedNodeIds.value = [];
     };
 
     // Undo/redo history
@@ -1926,14 +1972,59 @@ export default defineComponent({
       };
     };
 
+    // Is the touch on a text-editing field? If so, let the browser handle it
+    // natively (caret placement, on-screen keyboard) instead of hijacking it.
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      return !!el?.closest('.node-editor, .edge-label-input, input, textarea');
+    };
+
     const onTouchStart = (e: TouchEvent) => {
+      if (isEditableTarget(e.target)) return; // typing — don't interfere
+      e.preventDefault();
+
       if (e.touches.length === 1) {
-        isPanning.value = true;
-        panStart.x = e.touches[0]!.clientX;
-        panStart.y = e.touches[0]!.clientY;
-        cameraStart.x = camera.x;
-        cameraStart.y = camera.y;
+        const t = e.touches[0]!;
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        touchMoved = false;
+        touchDragging = false;
+        if (contextMenu.visible) closeContextMenu();
+
+        // Did we start on a node/group?
+        const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
+        touchNodeId = nodeEl?.dataset.nodeId ?? null;
+
+        if (touchNodeId && !props.readonly) {
+          // Select immediately (so the style toolbar appears) and prime a drag.
+          if (!selectedNodeIds.value.includes(touchNodeId)) {
+            selectedNodeIds.value = [touchNodeId];
+          }
+          selectedEdgeId.value = null;
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          dragMouseStart.x = t.clientX;
+          dragMouseStart.y = t.clientY;
+          dragCameraStart.x = camera.x;
+          dragCameraStart.y = camera.y;
+        } else if (touchNodeId && props.readonly) {
+          // read-only: tap just selects, no drag/pan
+          selectedNodeIds.value = [touchNodeId];
+        } else {
+          // Empty canvas → pan
+          isPanning.value = true;
+          panStart.x = t.clientX;
+          panStart.y = t.clientY;
+          cameraStart.x = camera.x;
+          cameraStart.y = camera.y;
+        }
       } else if (e.touches.length === 2) {
+        // Second finger down → abandon any single-finger drag/pan, go to pinch
+        touchNodeId = null;
+        touchDragging = false;
+        dragNodeId.value = null;
+        isPanning.value = false;
+        stopAutoPan();
         lastTouchDist.value = getTouchDist(e);
         const c = getTouchCenter(e);
         lastTouchCenter.x = c.x;
@@ -1944,9 +2035,38 @@ export default defineComponent({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 1 && isPanning.value) {
-        camera.x = cameraStart.x + (e.touches[0]!.clientX - panStart.x);
-        camera.y = cameraStart.y + (e.touches[0]!.clientY - panStart.y);
+      if (isEditableTarget(e.target)) return;
+      e.preventDefault();
+
+      if (e.touches.length === 1) {
+        const t = e.touches[0]!;
+        if (!touchMoved) {
+          const dx = t.clientX - touchStartX;
+          const dy = t.clientY - touchStartY;
+          if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) touchMoved = true;
+        }
+        if (!touchMoved) return;
+
+        if (touchNodeId && !props.readonly) {
+          // Begin the actual node drag the first time we cross the threshold
+          if (!touchDragging) {
+            touchDragging = true;
+            pushUndo();
+            dragNodeId.value = touchNodeId;
+            dragNodesInitial.value = new Map();
+            for (const id of selectedNodeIds.value) {
+              const n = nodes.value.find((nd) => nd.id === id);
+              if (n) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+            }
+            startAutoPan();
+          }
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          updateActiveDragFromPointer();
+        } else if (isPanning.value) {
+          camera.x = cameraStart.x + (t.clientX - panStart.x);
+          camera.y = cameraStart.y + (t.clientY - panStart.y);
+        }
       } else if (e.touches.length === 2) {
         const dist = getTouchDist(e);
         const center = getTouchCenter(e);
@@ -1971,7 +2091,55 @@ export default defineComponent({
       }
     };
 
-    const onTouchEnd = () => {
+    const onTouchEnd = (e: TouchEvent) => {
+      // Only handle when the last finger lifts
+      if (e.touches.length > 0) return;
+      stopAutoPan();
+
+      const now = performance.now();
+
+      if (!touchMoved && touchNodeId) {
+        // Tap on a node
+        const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === touchNodeId;
+        if (isDouble && !props.readonly) {
+          const node = nodes.value.find((n) => n.id === touchNodeId);
+          if (node && node.type === 'text') onNodeDblClick(node);
+          lastTapTime = 0;
+          lastTapTarget = "";
+        } else {
+          lastTapTime = now;
+          lastTapTarget = touchNodeId;
+        }
+      } else if (!touchMoved && !touchNodeId) {
+        // Tap on empty canvas
+        const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === "__empty__";
+        if (isDouble && !props.readonly) {
+          createTextNodeAtClient(touchStartX, touchStartY);
+          lastTapTime = 0;
+          lastTapTarget = "";
+        } else {
+          // Single tap on blank space → deselect / close
+          if (editingNodeId.value) onEditEnd();
+          selectedNodeIds.value = [];
+          selectedEdgeId.value = null;
+          closeContextMenu();
+          lastTapTime = now;
+          lastTapTarget = "__empty__";
+        }
+      }
+
+      // Commit a node move op at the end of a touch drag
+      if (touchDragging && dragNodeId.value && selectedNodeIds.value.length > 0) {
+        const moves = selectedNodeIds.value.map((id) => {
+          const n = nodes.value.find((nd) => nd.id === id);
+          return n ? { id, x: n.x, y: n.y } : null;
+        }).filter(Boolean) as { id: string; x: number; y: number }[];
+        if (moves.length) emitOp({ type: 'nodes-move', moves });
+      }
+
+      dragNodeId.value = null;
+      touchDragging = false;
+      touchNodeId = null;
       isPanning.value = false;
       lastTouchDist.value = 0;
     };
@@ -2276,6 +2444,7 @@ export default defineComponent({
       onEdgeCycleColor,
       onEdgeCycleArrow,
       onCanvasDblClick,
+      addTextNodeCenter,
       contextMenu,
       setNodeColor,
       getNodeAlign,
@@ -2325,6 +2494,7 @@ export default defineComponent({
       applyRemoteOp,
       getCanvasData,
       duplicateSelection,
+      deleteSelection,
       searchNodes,
       focusNode,
       imageInput,
@@ -2339,6 +2509,7 @@ export default defineComponent({
   width: 100%;
   height: 100%;
   overflow: hidden;
+  touch-action: none;
   background-color: #1e1e1e;
   background-image: radial-gradient(circle, #333 1px, transparent 1px);
   background-size: 24px 24px;
