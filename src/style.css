@@ -2277,6 +2277,13 @@ html, body {
   gap: 8px;
 }
 .topbar-action-label { display: none; }
+/* Canvas actions (Add block / image / reset / export) — only in the mobile dropdown */
+.topbar-canvas-actions { display: none; }
+.topbar-actions-sep {
+  height: 1px;
+  background: var(--dark-neutral-border);
+  margin: 4px 2px;
+}
 /* Overflow (kebab) toggle — mobile only */
 .topbar-menu-btn {
   display: none;
@@ -3042,6 +3049,8 @@ html, body {
     z-index: 160;
   }
   .topbar-actions.open { display: flex; }
+  /* let the canvas-action buttons flow as normal dropdown rows */
+  .topbar-canvas-actions { display: contents; }
   .topbar-actions .canvas-search-input {
     width: 100%;
     height: 40px;

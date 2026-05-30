@@ -3187,26 +3187,10 @@ g:hover > .edge-midpoint-conn {
     height: 88px;
   }
 
+  /* Floating controls panel is replaced on mobile by the kebab "canvas
+     actions" and the bottom block toolbar. Pinch handles zoom. */
   .canvas-controls {
-    right: 8px;
-    bottom: calc(var(--canvas-toolbar-height, 0px) + 12px + env(safe-area-inset-bottom));
-    padding: 5px;
-    gap: 2px;
-  }
-
-  .canvas-controls button {
-    width: 36px;
-    height: 36px;
-    font-size: 18px;
-  }
-
-  .zoom-level {
-    min-width: 42px;
-    font-size: 11px;
-  }
-
-  .controls-divider {
-    height: 24px;
+    display: none;
   }
 }
 

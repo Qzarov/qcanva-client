@@ -130,6 +130,27 @@
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
               <span class="topbar-action-label">Shortcuts</span>
             </button>
+
+            <!-- Canvas actions (mobile dropdown only — replaces the floating controls panel) -->
+            <div class="topbar-canvas-actions">
+              <span class="topbar-actions-sep"></span>
+              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.addTextNodeCenter(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                <span>Add text block</span>
+              </button>
+              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.openImagePicker(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+                <span>Add image</span>
+              </button>
+              <button class="btn-ghost btn-sm" @click="canvasRef?.resetView(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                <span>Reset view</span>
+              </button>
+              <button class="btn-ghost btn-sm" @click="canvasRef?.onExportCanvas(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>Export .canvas</span>
+              </button>
+            </div>
           </div>
 
           <!-- Overflow menu toggle (mobile only) -->
