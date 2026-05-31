@@ -95,6 +95,24 @@
       </div>
 
       <div class="share-section">
+        <div class="share-section-title">Link</div>
+        <div class="slug-row">
+          <span class="slug-prefix">/html/</span>
+          <input
+            v-model="slugInput"
+            class="slug-input"
+            placeholder="my-page"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            @keydown.enter="saveSlug"
+          />
+          <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+        </div>
+        <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+      </div>
+
+      <div class="share-section">
         <div class="share-section-title">Who can view</div>
         <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
           <option value="private">Private — only invited people</option>
@@ -246,7 +264,13 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
+    // The URL param may be a UUID id or a human-readable slug. `resolvedId`
+    // holds the real document id after load (used for the WS room + mutations).
     const id = route.params.id as string;
+    const resolvedId = ref(id);
+    const slug = ref<string | null>(null);
+    const slugInput = ref('');
+    const savingSlug = ref(false);
     const { show: showToast } = useToast();
     const title = ref('');
     const html = ref('');
@@ -308,13 +332,17 @@ export default defineComponent({
       onAck,
       setRevision,
       clearPendingOps,
-    } = useHtmlSocket(id);
+    } = useHtmlSocket(resolvedId);
 
     async function load() {
       try {
         loading.value = true;
         accessDenied.value = false;
-        const res = await htmlDocuments.get(id);
+        const res = await htmlDocuments.get(resolvedId.value);
+        // Canonicalize to the real id (URL may have been a slug).
+        resolvedId.value = res.document.id;
+        slug.value = res.document.slug || null;
+        slugInput.value = slug.value || '';
         title.value = res.document.title;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
@@ -327,8 +355,13 @@ export default defineComponent({
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
         if (res.role === 'read' && res.document.visibility === 'public') {
-          window.location.replace(`/api/html-documents/${id}/stream`);
+          window.location.replace(`/api/html-documents/${slug.value || id}/stream`);
           return;
+        }
+        // Prettify the address bar: prefer the slug when present.
+        const preferred = slug.value || res.document.id;
+        if (route.params.id !== preferred) {
+          router.replace(`/edit/html/${preferred}`).catch(() => {});
         }
         if (!canEditContent.value) {
           viewMode.value = 'preview';
@@ -398,7 +431,7 @@ export default defineComponent({
           syncEventStore.recordPending(clientOpId, op.type, revision.value);
           pendingVisualOp.value = null;
         } else {
-          const updated = await htmlDocuments.update(id, { title: title.value, html: html.value });
+          const updated = await htmlDocuments.update(resolvedId.value, { title: title.value, html: html.value });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
           syncIssue.value = '';
@@ -436,7 +469,7 @@ export default defineComponent({
       if (reject.reason === 'timeout' && reject.pending?.op && 'html' in reject.pending.op) {
         clearPendingOps();
         try {
-          const updated = await htmlDocuments.update(id, { title: title.value, html: reject.pending.op.html });
+          const updated = await htmlDocuments.update(resolvedId.value, { title: title.value, html: reject.pending.op.html });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
           savedSnapshot.value = { title: title.value, html: reject.pending.op.html };
@@ -461,7 +494,7 @@ export default defineComponent({
     async function loadHistory() {
       historyLoading.value = true;
       try {
-        const result = await htmlDocuments.history(id, { limit: 50 });
+        const result = await htmlDocuments.history(resolvedId.value, { limit: 50 });
         historyItems.value = result.items || [];
       } catch (e: any) {
         showToast(e.message || 'Failed to load history', 'error');
@@ -477,7 +510,7 @@ export default defineComponent({
 
     async function openHistoryEntry(entry: any) {
       try {
-        selectedHistory.value = await htmlDocuments.historyEntry(id, entry.id);
+        selectedHistory.value = await htmlDocuments.historyEntry(resolvedId.value, entry.id);
       } catch (e: any) {
         showToast(e.message || 'Failed to load history entry', 'error');
       }
@@ -489,7 +522,7 @@ export default defineComponent({
       if (!ok) return;
       restoringHistory.value = true;
       try {
-        await htmlDocuments.restoreHistoryEntry(id, selectedHistory.value.id);
+        await htmlDocuments.restoreHistoryEntry(resolvedId.value, selectedHistory.value.id);
         selectedHistory.value = null;
         await load();
         await loadHistory();
@@ -575,7 +608,7 @@ export default defineComponent({
     }
 
     async function saveAccessSettings() {
-      await htmlDocuments.update(id, {
+      await htmlDocuments.update(resolvedId.value, {
         visibility: visibility.value,
         allowPublicEdit: allowPublicEdit.value,
         listedInPublic: listedInPublic.value,
@@ -583,9 +616,30 @@ export default defineComponent({
       await load();
     }
 
+    async function saveSlug() {
+      if (role.value !== 'owner') return;
+      const next = slugInput.value.trim().toLowerCase();
+      if ((next || null) === (slug.value || null)) return;
+      savingSlug.value = true;
+      try {
+        const updated = await htmlDocuments.update(resolvedId.value, { slug: next === '' ? null : next });
+        const doc = (updated as any).document || updated;
+        slug.value = doc.slug || null;
+        slugInput.value = slug.value || '';
+        showToast(slug.value ? 'Link updated' : 'Link removed', 'success');
+        const preferred = slug.value || resolvedId.value;
+        if (route.params.id !== preferred) router.replace(`/edit/html/${preferred}`).catch(() => {});
+      } catch (err: any) {
+        showToast(err?.message || 'Failed to update link', 'error');
+        slugInput.value = slug.value || '';
+      } finally {
+        savingSlug.value = false;
+      }
+    }
+
     async function savePasswordAccess() {
       try {
-        await htmlDocuments.update(id, {
+        await htmlDocuments.update(resolvedId.value, {
           passwordAccessEnabled: passwordAccessEnabled.value,
           passwordAccessPassword: passwordAccessPassword.value || undefined,
           passwordAccessRole: passwordAccessRole.value,
@@ -600,7 +654,7 @@ export default defineComponent({
 
     async function persistChecklistChange(target: HTMLInputElement) {
       if (target?.type !== 'checkbox' || !target.dataset.checkId) return;
-      await htmlDocuments.checklist(id, target.dataset.checkId, target.checked);
+      await htmlDocuments.checklist(resolvedId.value, target.dataset.checkId, target.checked);
     }
 
     async function onPreviewChange(event: Event) {
@@ -626,13 +680,13 @@ export default defineComponent({
     }
 
     async function loadPermissions() {
-      permissions.value = await htmlDocuments.permissions(id);
+      permissions.value = await htmlDocuments.permissions(resolvedId.value);
     }
 
     async function doShare() {
       if (!shareEmail.value) return;
       try {
-        await htmlDocuments.share(id, shareEmail.value, shareRole.value);
+        await htmlDocuments.share(resolvedId.value, shareEmail.value, shareRole.value);
         shareEmail.value = '';
         await loadPermissions();
         showToast('HTML document shared', 'success');
@@ -642,7 +696,7 @@ export default defineComponent({
     }
 
     async function doRevoke(userId: string) {
-      await htmlDocuments.revoke(id, userId);
+      await htmlDocuments.revoke(resolvedId.value, userId);
       await loadPermissions();
     }
 
@@ -701,6 +755,7 @@ export default defineComponent({
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       showHistory, showHtmlActions, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
+      slug, slugInput, savingSlug, saveSlug,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
       downloadDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
     };

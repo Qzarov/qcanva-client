@@ -19,7 +19,10 @@ export interface HtmlReject {
   pending?: PendingHtmlOp;
 }
 
-export function useHtmlSocket(documentId: string) {
+export function useHtmlSocket(documentIdInput: string | { value: string }) {
+  // The id may be resolved (slug → real id) after creation; read it lazily.
+  const resolveDocumentId = () =>
+    typeof documentIdInput === 'string' ? documentIdInput : documentIdInput.value;
   const socket = ref<Socket | null>(null);
   const connected = ref(false);
   const currentRevision = ref(0);
@@ -66,7 +69,7 @@ export function useHtmlSocket(documentId: string) {
 
     s.on('connect', () => {
       connected.value = true;
-      s.emit('join-html', { documentId });
+      s.emit('join-html', { documentId: resolveDocumentId() });
     });
 
     s.on('disconnect', () => {

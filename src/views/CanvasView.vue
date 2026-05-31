@@ -297,6 +297,24 @@
           <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
         </div>
 
+        <div v-if="role === 'owner'" class="share-section">
+          <div class="share-section-title">Link</div>
+          <div class="slug-row">
+            <span class="slug-prefix">/canvas/</span>
+            <input
+              v-model="slugInput"
+              class="slug-input"
+              placeholder="my-canvas"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              @keydown.enter="saveSlug"
+            />
+            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+          </div>
+          <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+        </div>
+
         <div class="share-section">
           <div class="share-section-title">Who can view</div>
           <select class="share-visibility-select" :value="visibility" @change="setVisibility(($event.target as HTMLSelectElement).value as any)">
@@ -522,7 +540,15 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
+    // The URL param may be a UUID id or a human-readable slug. `resolvedId`
+    // holds the real canvas id after load; it's used for the WS room and all
+    // mutations so collaborators share one room regardless of which form of the
+    // link they opened.
     const canvasId = route.params.id as string;
+    const resolvedId = ref(canvasId);
+    const slug = ref<string | null>(null);
+    const slugInput = ref('');
+    const savingSlug = ref(false);
 
     const { show: showToast } = useToast();
     const canvasViewRef = ref<HTMLElement | null>(null);
@@ -655,7 +681,7 @@ export default defineComponent({
       setRevision,
       pendingOpsCount,
       clearPendingOps,
-    } = useCanvasSocket(canvasId);
+    } = useCanvasSocket(resolvedId);
 
     const otherUsers = computed(() => {
       return onlineUsers.value.filter((_u) => {
@@ -670,7 +696,17 @@ export default defineComponent({
     const load = async () => {
       try {
         accessDenied.value = false;
-        const res = await canvasApi.get(canvasId);
+        const res = await canvasApi.get(resolvedId.value);
+        // Canonicalize to the real id (the URL may have been a slug) so the WS
+        // room and all mutations use it.
+        resolvedId.value = res.canvas.id;
+        slug.value = res.canvas.slug || null;
+        slugInput.value = slug.value || '';
+        // Prettify the address bar: prefer the slug when present.
+        const preferred = slug.value || res.canvas.id;
+        if (route.params.id !== preferred) {
+          router.replace(`/canvas/${preferred}`).catch(() => {});
+        }
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
         revision.value = res.canvas.revision ?? 0;
@@ -801,7 +837,7 @@ export default defineComponent({
       isResyncing.value = true;
       syncEventStore.resyncStarted();
       try {
-        const res = await canvasApi.resync(canvasId, revision.value);
+        const res = await canvasApi.resync(resolvedId.value, revision.value);
         const parsed = JSON.parse(res.canvas.data);
         isApplyingRemote = true;
         canvasRef.value?.applyRemoteData(parsed);
@@ -845,7 +881,7 @@ export default defineComponent({
         sendUpdate(JSON.stringify({ nodes: data.nodes, edges: data.edges }));
       } else {
         try {
-          const updated = await canvasApi.update(canvasId, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges }) });
+          const updated = await canvasApi.update(resolvedId.value, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges }) });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
         } catch (err: any) {
@@ -879,9 +915,29 @@ export default defineComponent({
     const saveTitle = async () => {
       if (!canManageSettings.value) return;
       try {
-        await canvasApi.update(canvasId, { title: title.value });
+        await canvasApi.update(resolvedId.value, { title: title.value });
       } catch (err: any) {
         showToast(err.message || 'Failed to save title', 'error');
+      }
+    };
+
+    const saveSlug = async () => {
+      if (role.value !== 'owner') return;
+      const next = slugInput.value.trim().toLowerCase();
+      if ((next || null) === (slug.value || null)) return; // unchanged
+      savingSlug.value = true;
+      try {
+        const updated = await canvasApi.update(resolvedId.value, { slug: next === '' ? null : next });
+        slug.value = updated.slug || null;
+        slugInput.value = slug.value || '';
+        showToast(slug.value ? 'Link updated' : 'Link removed', 'success');
+        const preferred = slug.value || resolvedId.value;
+        if (route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
+      } catch (err: any) {
+        showToast(err.message || 'Failed to update link', 'error');
+        slugInput.value = slug.value || '';
+      } finally {
+        savingSlug.value = false;
       }
     };
 
@@ -889,7 +945,7 @@ export default defineComponent({
       if (!canManageSettings.value) return;
       allowPublicEdit.value = (e.target as HTMLInputElement).checked;
       try {
-        await canvasApi.update(canvasId, { allowPublicEdit: allowPublicEdit.value });
+        await canvasApi.update(resolvedId.value, { allowPublicEdit: allowPublicEdit.value });
         showToast(allowPublicEdit.value ? 'Public edit enabled' : 'Public edit disabled', 'success');
       } catch (err: any) {
         allowPublicEdit.value = !allowPublicEdit.value;
@@ -902,7 +958,7 @@ export default defineComponent({
       const previous = listedInPublic.value;
       listedInPublic.value = (e.target as HTMLInputElement).checked;
       try {
-        await canvasApi.update(canvasId, { listedInPublic: listedInPublic.value });
+        await canvasApi.update(resolvedId.value, { listedInPublic: listedInPublic.value });
         showToast(listedInPublic.value ? 'Shown in Public' : 'Hidden from Public', 'success');
       } catch (err: any) {
         listedInPublic.value = previous;
@@ -919,7 +975,7 @@ export default defineComponent({
         allowPublicEdit.value = false;
       }
       try {
-        await canvasApi.update(canvasId, {
+        await canvasApi.update(resolvedId.value, {
           isPublic: isPublic.value,
           visibility: value,
           ...(value === 'public' ? { allowPublicEdit: false } : {}),
@@ -935,7 +991,7 @@ export default defineComponent({
 
     const loadPermissions = async () => {
       try {
-        permissions.value = await canvasApi.permissions(canvasId);
+        permissions.value = await canvasApi.permissions(resolvedId.value);
       } catch (err: any) {
         showToast(err.message || 'Failed to load permissions', 'error');
       }
@@ -944,7 +1000,7 @@ export default defineComponent({
     const doShare = async () => {
       if (!shareEmail.value) return;
       try {
-        await canvasApi.share(canvasId, shareEmail.value, shareRole.value);
+        await canvasApi.share(resolvedId.value, shareEmail.value, shareRole.value);
         showToast(`Shared with ${shareEmail.value}`, 'success');
         shareEmail.value = '';
         loadPermissions();
@@ -955,7 +1011,7 @@ export default defineComponent({
 
     const doRevoke = async (userId: string) => {
       try {
-        await canvasApi.revoke(canvasId, userId);
+        await canvasApi.revoke(resolvedId.value, userId);
         showToast('Access revoked', 'success');
         loadPermissions();
       } catch (err: any) {
@@ -965,7 +1021,7 @@ export default defineComponent({
 
     const savePasswordAccess = async () => {
       try {
-        await canvasApi.update(canvasId, {
+        await canvasApi.update(resolvedId.value, {
           passwordAccessEnabled: passwordAccessEnabled.value,
           passwordAccessPassword: passwordAccessPassword.value || undefined,
           passwordAccessRole: passwordAccessRole.value,
@@ -1031,7 +1087,7 @@ export default defineComponent({
       historyLoading.value = true;
       historyError.value = '';
       try {
-        const res = await canvasApi.history(canvasId, HISTORY_PAGE + 1, 0);
+        const res = await canvasApi.history(resolvedId.value, HISTORY_PAGE + 1, 0);
         historyAccess.value = res.historyAccess;
         hasMoreHistory.value = res.items.length > HISTORY_PAGE;
         historyItems.value = res.items.slice(0, HISTORY_PAGE);
@@ -1049,7 +1105,7 @@ export default defineComponent({
     const loadMoreHistory = async () => {
       historyLoading.value = true;
       try {
-        const res = await canvasApi.history(canvasId, HISTORY_PAGE + 1, historyItems.value.length);
+        const res = await canvasApi.history(resolvedId.value, HISTORY_PAGE + 1, historyItems.value.length);
         hasMoreHistory.value = res.items.length > HISTORY_PAGE;
         historyItems.value.push(...res.items.slice(0, HISTORY_PAGE));
       } catch (err: any) {
@@ -1061,7 +1117,7 @@ export default defineComponent({
 
     const changeHistoryAccess = async (access: string) => {
       try {
-        await canvasApi.updateHistoryAccess(canvasId, access);
+        await canvasApi.updateHistoryAccess(resolvedId.value, access);
         historyAccess.value = access;
         showToast('History access updated', 'success');
       } catch (e: any) {
@@ -1075,7 +1131,7 @@ export default defineComponent({
       historySnapshotError.value = '';
       historySnapshotLoading.value = true;
       try {
-        selectedHistorySnapshot.value = await canvasApi.historySnapshot(canvasId, item.revision);
+        selectedHistorySnapshot.value = await canvasApi.historySnapshot(resolvedId.value, item.revision);
       } catch (e: any) {
         historySnapshotError.value = e.message || 'Failed to load revision';
       } finally {
@@ -1089,7 +1145,7 @@ export default defineComponent({
       if (!ok) return;
       restoringHistory.value = true;
       try {
-        const result = await canvasApi.restoreHistorySnapshot(canvasId, selectedHistoryItem.value.revision);
+        const result = await canvasApi.restoreHistorySnapshot(resolvedId.value, selectedHistoryItem.value.revision);
         const nextData = JSON.parse(result.canvas.data);
         isApplyingRemote = true;
         canvasRef.value?.applyRemoteData(nextData);
@@ -1164,7 +1220,7 @@ export default defineComponent({
         try {
           const res = await canvasApi.list();
           const all = [...(res.own || []), ...(res.shared || []), ...(res.public || [])];
-          embedCanvases.value = all.filter((c: any) => c.id !== canvasId);
+          embedCanvases.value = all.filter((c: any) => c.id !== resolvedId.value);
         } catch (err: any) {
           showToast(err.message || 'Failed to load canvases', 'error');
         } finally {
@@ -1217,6 +1273,7 @@ export default defineComponent({
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
+      slug, slugInput, savingSlug, saveSlug,
       allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,

@@ -2658,6 +2658,36 @@ html, body {
   color: var(--dark-text-muted);
   margin-bottom: 8px;
 }
+/* Slug / human-readable link editor */
+.slug-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slug-prefix {
+  font-size: 12px;
+  color: var(--dark-text-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: nowrap;
+}
+.slug-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  outline: none;
+}
+.slug-input:focus { border-color: var(--color-brands); }
+.slug-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--dark-text-muted);
+}
 .share-visibility-select {
   width: 100%;
   padding: 7px 10px;

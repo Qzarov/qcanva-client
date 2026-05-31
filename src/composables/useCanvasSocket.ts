@@ -42,7 +42,11 @@ export interface SendCanvasOpOptions {
   retryOf?: string;
 }
 
-export function useCanvasSocket(canvasId: string) {
+export function useCanvasSocket(canvasIdInput: string | { value: string }) {
+  // The id may be resolved (slug → real id) after this composable is created,
+  // so read it lazily at join time.
+  const resolveCanvasId = () =>
+    typeof canvasIdInput === 'string' ? canvasIdInput : canvasIdInput.value;
   const socket = ref<Socket | null>(null);
   const onlineUsers = ref<OnlineUser[]>([]);
   const remoteCursors = ref<Map<string, RemoteCursor>>(new Map());
@@ -93,7 +97,7 @@ export function useCanvasSocket(canvasId: string) {
 
     s.on('connect', () => {
       connected.value = true;
-      s.emit('join-canvas', { canvasId });
+      s.emit('join-canvas', { canvasId: resolveCanvasId() });
     });
 
     s.on('disconnect', () => {

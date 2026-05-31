@@ -189,7 +189,7 @@
                     class="canvas-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @click="openCanvasFromCard(item.id)"
+                    @click="openCanvasFromCard(item.slug || item.id)"
                   >
                     <input
                       v-if="renamingId === item.id"
@@ -231,7 +231,7 @@
                     class="canvas-card html-doc-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
-                    @click="openHtmlDocumentFromCard(item.id)"
+                    @click="openHtmlDocumentFromCard(item.slug || item.id)"
                   >
                     <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
@@ -273,7 +273,7 @@
             v-for="c in sharedFiltered"
             :key="'shared-' + c.id"
             class="canvas-card"
-            @click="openCanvas(c.id)"
+            @click="openCanvas(c.slug || c.id)"
           >
             <div class="card-title">{{ c.title || 'Untitled' }}</div>
             <div class="card-meta">
@@ -313,7 +313,7 @@
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
-            @click="openCanvas(item.id)"
+            @click="openCanvas(item.slug || item.id)"
           >
             <div class="card-title">{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
@@ -335,7 +335,7 @@
           <article
             v-else
             class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.id)"
+            @click="openHtmlDocument(item.slug || item.id)"
           >
             <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
@@ -564,6 +564,7 @@ type ManagedTag = ResourceTagSummary & { originalName: string };
 type CanvasRecord = {
   type: 'canvas';
   id: string;
+  slug?: string | null;
   title: string;
   updatedAt: string;
   role?: string;
@@ -579,6 +580,7 @@ type CanvasRecord = {
 type HtmlDocumentRecord = {
   type: 'html-document';
   id: string;
+  slug?: string | null;
   title: string;
   updatedAt: string;
   folderId?: string | null;
