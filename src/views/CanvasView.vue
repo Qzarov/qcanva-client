@@ -168,7 +168,7 @@
       </div>
 
       <!-- Node toolbar (under topbar, visible when node selected) -->
-      <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId" ref="nodeToolbarRef" class="node-toolbar">
+      <div v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode" ref="nodeToolbarRef" class="node-toolbar">
         <!-- Fill color -->
         <span class="tb-label">Fill</span>
         <button v-for="c in ['1','2','3','4','5','6']" :key="c" class="tb-color" :class="'ctx-color-'+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
@@ -221,7 +221,7 @@
       <!-- Mobile block settings menu — opens near the minimap when a block is selected.
            Colors/style live behind expandable buttons, so there is no scrolling. -->
       <div
-        v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId"
+        v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         class="block-menu"
       >
         <!-- Fill (background) color -->

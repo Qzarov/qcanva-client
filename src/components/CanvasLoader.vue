@@ -252,14 +252,14 @@
         </div>
         <!-- Resize handles (visible when selected) -->
         <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id">
-          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-          <div class="resize-handle resize-handle-r" @mousedown.stop="onResizeStart($event, node, 'r')"></div>
-          <div class="resize-handle resize-handle-l" @mousedown.stop="onResizeStart($event, node, 'l')"></div>
-          <div class="resize-handle resize-handle-t" @mousedown.stop="onResizeStart($event, node, 't')"></div>
-          <div class="resize-handle resize-handle-b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, node, 'r')"></div>
+          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, node, 'l')"></div>
+          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, node, 't')"></div>
+          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
         </template>
         <!-- Connection points (visible on hover) -->
         <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
@@ -296,10 +296,10 @@
         <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
         <div v-if="node.label" class="node-image-label">{{ node.label }}</div>
         <template v-if="isNodeSelected(node.id)">
-          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
         </template>
       </div>
       <!-- Canvas embed nodes -->
@@ -347,10 +347,10 @@
           </svg>
         </div>
         <template v-if="isNodeSelected(node.id)">
-          <div class="resize-handle resize-handle-br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
         </template>
         <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
         <div class="conn-point conn-bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
@@ -435,6 +435,10 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
+import { computeResizedRect } from "../canvas/resizeMath";
+
+/** Minimal pointer shape shared by mouse and touch resize entry points. */
+type PointerLike = { clientX: number; clientY: number; button?: number };
 
 interface CanvasNode {
   id: string;
@@ -547,6 +551,7 @@ export default defineComponent({
     let touchMoved = false;
     let touchNodeId: string | null = null; // node under the active single-finger touch
     let touchDragging = false; // an actual node drag is in progress
+    let touchResizing = false; // a resize via a touch on a resize handle is in progress
     let lastTapTime = 0;
     let lastTapTarget = ""; // node id, or "__empty__" for blank canvas
 
@@ -1034,7 +1039,9 @@ export default defineComponent({
     const resizeHandle = ref<string>("");
     const resizeStart = reactive({ x: 0, y: 0, nodeX: 0, nodeY: 0, nodeW: 0, nodeH: 0 });
     const resizeCameraStart = reactive({ x: 0, y: 0 });
-    const MIN_NODE_SIZE = 60;
+    // True while a node is being actively dragged or resized — used to hide the
+    // node edit menu/toolbar during manipulation (it overlaps the node on mobile).
+    const isManipulatingNode = computed(() => !!dragNodeId.value || !!resizeNodeId.value);
     const GRID_SIZE = 24;
     const snap = (v: number) => Math.round(v / GRID_SIZE) * GRID_SIZE;
     const EDGE_PAN_ZONE = 72;
@@ -1046,9 +1053,28 @@ export default defineComponent({
     // Store initial positions of all dragged nodes for multi-drag
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
 
-    const updateLastPointer = (e: MouseEvent) => {
+    const updateLastPointer = (e: PointerLike) => {
       lastPointer.x = e.clientX;
       lastPointer.y = e.clientY;
+    };
+
+    // Apply the in-progress resize to its node from the current lastPointer.
+    // Shared by the mouse/pointer move handler and the touch move handler.
+    const applyResize = () => {
+      if (!resizeNodeId.value) return;
+      const node = nodes.value.find((n) => n.id === resizeNodeId.value);
+      if (!node) return;
+      const r = computeResizedRect({
+        handle: resizeHandle.value,
+        start: { x: resizeStart.x, y: resizeStart.y, nodeX: resizeStart.nodeX, nodeY: resizeStart.nodeY, nodeW: resizeStart.nodeW, nodeH: resizeStart.nodeH },
+        pointer: { x: lastPointer.x, y: lastPointer.y },
+        camera: { x: camera.x, y: camera.y, scale: camera.scale },
+        cameraStart: { x: resizeCameraStart.x, y: resizeCameraStart.y },
+      });
+      node.x = r.x;
+      node.y = r.y;
+      node.width = r.width;
+      node.height = r.height;
     };
 
     const updateActiveDragFromPointer = () => {
@@ -1064,27 +1090,7 @@ export default defineComponent({
         }
       }
 
-      if (resizeNodeId.value) {
-        const node = nodes.value.find((n) => n.id === resizeNodeId.value);
-        if (node) {
-          const dx = (lastPointer.x - resizeStart.x - camera.x + resizeCameraStart.x) / camera.scale;
-          const dy = (lastPointer.y - resizeStart.y - camera.y + resizeCameraStart.y) / camera.scale;
-          const h = resizeHandle.value;
-
-          if (h.includes("r")) node.width = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW + dx));
-          if (h.includes("b")) node.height = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH + dy));
-          if (h.includes("l")) {
-            const newW = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeW - dx));
-            node.x = resizeStart.nodeX + resizeStart.nodeW - newW;
-            node.width = newW;
-          }
-          if (h.includes("t")) {
-            const newH = snap(Math.max(MIN_NODE_SIZE, resizeStart.nodeH - dy));
-            node.y = resizeStart.nodeY + resizeStart.nodeH - newH;
-            node.height = newH;
-          }
-        }
-      }
+      applyResize();
 
       if (connDragging.value && viewport.value) {
         const rect = viewport.value.getBoundingClientRect();
@@ -1214,7 +1220,7 @@ export default defineComponent({
     };
 
     // Resize handlers
-    const onResizeStart = (e: MouseEvent, node: CanvasNode, handle: string) => {
+    const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
       updateLastPointer(e);
       if (e.button === 1) {
         isPanning.value = true;
@@ -1993,7 +1999,24 @@ export default defineComponent({
         touchStartY = t.clientY;
         touchMoved = false;
         touchDragging = false;
+        touchResizing = false;
         if (contextMenu.visible) closeContextMenu();
+
+        // Did we start on a resize handle? (touch-resize for mobile)
+        const handleEl = (e.target as HTMLElement | null)?.closest('.resize-handle') as HTMLElement | null;
+        const handleNodeEl = handleEl?.closest('[data-node-id]') as HTMLElement | null;
+        const handleNodeId = handleNodeEl?.dataset.nodeId ?? null;
+        if (handleEl && handleNodeId && !props.readonly) {
+          const node = nodes.value.find((n) => n.id === handleNodeId);
+          const handle = handleEl.dataset.handle ?? "";
+          if (node && handle) {
+            selectedNodeIds.value = [handleNodeId];
+            selectedEdgeId.value = null;
+            touchResizing = true;
+            onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node, handle);
+            return;
+          }
+        }
 
         // Did we start on a node/group?
         const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
@@ -2023,10 +2046,12 @@ export default defineComponent({
           cameraStart.y = camera.y;
         }
       } else if (e.touches.length === 2) {
-        // Second finger down → abandon any single-finger drag/pan, go to pinch
+        // Second finger down → abandon any single-finger drag/pan/resize, go to pinch
         touchNodeId = null;
         touchDragging = false;
+        touchResizing = false;
         dragNodeId.value = null;
+        resizeNodeId.value = null;
         isPanning.value = false;
         stopAutoPan();
         lastTouchDist.value = getTouchDist(e);
@@ -2044,6 +2069,15 @@ export default defineComponent({
 
       if (e.touches.length === 1) {
         const t = e.touches[0]!;
+
+        // Resize via touch on a handle — drive the shared resize math.
+        if (touchResizing && resizeNodeId.value) {
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          applyResize();
+          return;
+        }
+
         if (!touchMoved) {
           const dx = t.clientX - touchStartX;
           const dy = t.clientY - touchStartY;
@@ -2099,6 +2133,18 @@ export default defineComponent({
       // Only handle when the last finger lifts
       if (e.touches.length > 0) return;
       stopAutoPan();
+
+      // Finalize a touch resize — emit the op and reset, skip tap/drag handling.
+      if (touchResizing) {
+        if (resizeNodeId.value) {
+          const n = nodes.value.find((nd) => nd.id === resizeNodeId.value);
+          if (n) emitOp({ type: 'node-resize', id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
+        }
+        resizeNodeId.value = null;
+        touchResizing = false;
+        touchNodeId = null;
+        return;
+      }
 
       const now = performance.now();
 
@@ -2428,6 +2474,7 @@ export default defineComponent({
       editingNodeId,
       editorRefs,
       dragNodeId,
+      isManipulatingNode,
       onNodeDragStart,
       onNodeDblClick,
       onEditInput,
@@ -2834,6 +2881,7 @@ g:hover > .edge-midpoint-conn {
   border: 1.5px solid rgba(124, 138, 255, 1);
   border-radius: 2px;
   z-index: 10;
+  touch-action: none;
 }
 /* Corners */
 .resize-handle-br { width: 14px; height: 14px; bottom: -7px; right: -7px; cursor: nwse-resize; border-radius: 50%; }
@@ -2845,6 +2893,38 @@ g:hover > .edge-midpoint-conn {
 .resize-handle-l { width: 8px; height: calc(100% - 24px); top: 12px; left: -4px; cursor: ew-resize; border-radius: 3px; }
 .resize-handle-t { height: 8px; width: calc(100% - 24px); left: 12px; top: -4px; cursor: ns-resize; border-radius: 3px; }
 .resize-handle-b { height: 8px; width: calc(100% - 24px); left: 12px; bottom: -4px; cursor: ns-resize; border-radius: 3px; }
+
+/* Touch devices: only corner handles, larger, with a big invisible hit area
+   so they're easy to grab with a finger. */
+@media (pointer: coarse) {
+  .resize-handle-r,
+  .resize-handle-l,
+  .resize-handle-t,
+  .resize-handle-b { display: none; }
+
+  .resize-handle-br,
+  .resize-handle-bl,
+  .resize-handle-tr,
+  .resize-handle-tl { width: 20px; height: 20px; }
+  .resize-handle-br { bottom: -10px; right: -10px; }
+  .resize-handle-bl { bottom: -10px; left: -10px; }
+  .resize-handle-tr { top: -10px; right: -10px; }
+  .resize-handle-tl { top: -10px; left: -10px; }
+
+  /* ~44px touch target, centered on the visible dot, transparent. */
+  .resize-handle-br::before,
+  .resize-handle-bl::before,
+  .resize-handle-tr::before,
+  .resize-handle-tl::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
 
 /* ===== Connection points ===== */
 @keyframes conn-pulse {
