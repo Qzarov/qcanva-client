@@ -1596,7 +1596,7 @@ export default defineComponent({
       { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
 
-    const fontColors = ['#ffffff', '#d7dce8', '#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff'];
+    const fontColors = ['#000000', '#ffffff', '#d7dce8', '#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff'];
 
     const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
       const node = nodes.value.find((n) => n.id === nodeId);
