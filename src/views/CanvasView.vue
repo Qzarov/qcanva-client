@@ -218,6 +218,11 @@
         <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'bc'+c" class="tb-color" :style="{background: c}" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
         <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
         <span class="tb-sep"></span>
+        <!-- Text color -->
+        <span class="tb-label">Text</span>
+        <button v-for="c in canvasRef?.fontColors" :key="'fc'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{background: c}" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+        <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
+        <span class="tb-sep"></span>
         <!-- Node actions -->
         <button class="tb-btn" @click="canvasRef?.sendSelectionBackward()" title="Send backward">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="10" height="10" rx="2"/><rect x="4" y="4" width="10" height="10" rx="2"/></svg>
@@ -274,6 +279,17 @@
         <div v-if="blockSection === 'borderColor'" class="block-menu-pop">
           <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'bbc'+c" class="tb-color" :style="{ background: c }" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
           <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
+        </div>
+
+        <!-- Text color -->
+        <button class="block-menu-item" :class="{ open: blockSection === 'fontColor' }" @click="toggleBlockSection('fontColor')">
+          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeFontColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeFontColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeFontColor(canvasRef.selectedNodeId) } : {}"></span>
+          <span class="block-menu-label">Цвет текста</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'fontColor'" class="block-menu-pop">
+          <button v-for="c in canvasRef?.fontColors" :key="'bmfc'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{ background: c }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+          <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
         </div>
 
         <!-- Border style & width -->

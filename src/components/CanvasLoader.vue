@@ -193,16 +193,35 @@
         @mousedown.stop
       >
         <div class="ctx-colors">
+          <span class="ctx-label">Fill</span>
           <button
             v-for="c in ['1','2','3','4','5','6']"
             :key="c"
             class="ctx-color-btn"
-            :class="'ctx-color-' + c"
+            :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
             :title="'Color ' + c"
             @click="onCtxSetColor(c)"
           ></button>
           <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
         </div>
+        <div class="ctx-colors">
+          <span class="ctx-label">Text</span>
+          <button
+            v-for="c in fontColors"
+            :key="'ctx-font-' + c"
+            class="ctx-color-btn"
+            :class="{ active: getContextNode()?.fontColor === c }"
+            :style="{ background: c }"
+            :title="'Text ' + c"
+            @click="onCtxSetFontColor(c)"
+          ></button>
+          <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
+        </div>
+        <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
+        <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
+        <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
+        <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
+        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
         <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
         <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
       </div>
@@ -223,6 +242,7 @@
         <textarea
           v-if="editingNodeId === node.id"
           class="node-editor"
+          :style="{ color: node.fontColor || undefined }"
           :value="node.text"
           @input="onEditInput($event, node)"
           @blur="onEditEnd"
@@ -237,7 +257,7 @@
           ref="editorRefs"
         ></textarea>
         <!-- View mode -->
-        <div v-else class="node-content">
+        <div v-else class="node-content" :style="{ color: node.fontColor || undefined }">
           <div
             class="node-first-line"
             :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
@@ -463,6 +483,7 @@ interface CanvasNode {
   positionLocked?: boolean;
   transparent?: boolean;
   shape?: "rect" | "round";
+  fontColor?: string;
   styleAttributes?: Record<string, string>;
 }
 
@@ -1507,6 +1528,7 @@ export default defineComponent({
 
     // Context menu state
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "" });
+    const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
     const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
       selectedNodeIds.value = [node.id];
@@ -1574,6 +1596,8 @@ export default defineComponent({
       { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
 
+    const fontColors = ['#ffffff', '#d7dce8', '#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff'];
+
     const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.fillStyle || "gradient";
@@ -1628,6 +1652,19 @@ export default defineComponent({
         node.borderWidth = width;
         emitOp({ type: 'node-update', id: nodeId, changes: { borderWidth: width } });
       }
+    };
+
+    const getNodeFontColor = (nodeId: string | null | undefined): string | undefined => {
+      if (!nodeId) return undefined;
+      return nodes.value.find((n) => n.id === nodeId)?.fontColor;
+    };
+
+    const setNodeFontColor = (nodeId: string | null | undefined, fontColor: string | undefined) => {
+      if (!nodeId) return;
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (!node) return;
+      pushUndo();
+      updateNode(node, { fontColor });
     };
 
     const isNodeTransparent = (nodeId: string | null | undefined): boolean => {
@@ -1706,6 +1743,23 @@ export default defineComponent({
       }
       closeContextMenu();
     };
+
+    const onCtxSetFontColor = (fontColor: string | undefined) => {
+      setNodeFontColor(contextMenu.nodeId, fontColor);
+      closeContextMenu();
+    };
+
+    const withContextNodeSelected = (action: () => void) => {
+      if (contextMenu.nodeId) selectedNodeIds.value = [contextMenu.nodeId];
+      action();
+      closeContextMenu();
+    };
+
+    const onCtxSendBackward = () => withContextNodeSelected(sendSelectionBackward);
+    const onCtxBringForward = () => withContextNodeSelected(bringSelectionForward);
+    const onCtxSendToBack = () => withContextNodeSelected(sendSelectionToBack);
+    const onCtxBringToFront = () => withContextNodeSelected(bringSelectionToFront);
+    const onCtxToggleLock = () => withContextNodeSelected(() => toggleNodePositionLock(contextMenu.nodeId));
 
     const onCtxDuplicate = () => {
       const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
@@ -2610,6 +2664,7 @@ export default defineComponent({
       onCanvasDblClick,
       addTextNodeCenter,
       contextMenu,
+      getContextNode,
       setNodeColor,
       getNodeColor,
       getNodeAlign,
@@ -2617,6 +2672,7 @@ export default defineComponent({
       setNodeFirstLineAlign,
       setNodeAlign,
       borderStyles,
+      fontColors,
       getNodeBorderStyle,
       setNodeBorderStyle,
       getNodeBorderWidth,
@@ -2625,6 +2681,8 @@ export default defineComponent({
       toggleNodeFillStyle,
       getNodeBorderColor,
       setNodeBorderColor,
+      getNodeFontColor,
+      setNodeFontColor,
       isNodeTransparent,
       toggleNodeTransparent,
       getNodeShape,
@@ -2637,6 +2695,12 @@ export default defineComponent({
       sendSelectionToBack,
       onNodeContextMenu,
       onCtxSetColor,
+      onCtxSetFontColor,
+      onCtxSendBackward,
+      onCtxBringForward,
+      onCtxSendToBack,
+      onCtxBringToFront,
+      onCtxToggleLock,
       onCtxDuplicate,
       onCtxDelete,
       connDragging,
@@ -2911,10 +2975,17 @@ g:hover > .edge-midpoint-conn {
 }
 .ctx-colors {
   display: flex;
+  align-items: center;
   gap: 4px;
   padding: 4px 4px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 4px;
+}
+.ctx-label {
+  min-width: 28px;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 10px;
+  text-transform: uppercase;
 }
 .ctx-color-btn {
   width: 20px;
@@ -2924,6 +2995,9 @@ g:hover > .edge-midpoint-conn {
   cursor: pointer;
   padding: 0;
   transition: transform 0.1s;
+}
+.ctx-color-btn.active {
+  border-color: rgba(255, 255, 255, 0.72);
 }
 .ctx-color-btn:hover { transform: scale(1.2); }
 .ctx-color-1 { background: #fb464c; }
