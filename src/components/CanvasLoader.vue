@@ -20,7 +20,7 @@
         :key="group.id"
         class="canvas-group"
         :data-node-id="group.id"
-        :class="[groupColorClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id }]"
+        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id) }]"
         :style="nodePosition(group)"
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
@@ -213,7 +213,7 @@
         :key="node.id"
         class="canvas-node"
         :data-node-id="node.id"
-        :class="[nodeColorClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }]"
+        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @dblclick.stop="onNodeDblClick(node)"
@@ -251,7 +251,7 @@
           ></div>
         </div>
         <!-- Resize handles (visible when selected) -->
-        <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id">
+        <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
           <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
@@ -274,7 +274,7 @@
         :key="node.id"
         class="canvas-node canvas-node-link"
         :data-node-id="node.id"
-        :class="{ 'is-dragging': dragNodeId === node.id }"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
       >
@@ -288,14 +288,14 @@
         :key="node.id"
         class="canvas-node canvas-node-image"
         :data-node-id="node.id"
-        :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
         <div v-if="node.label" class="node-image-label">{{ node.label }}</div>
-        <template v-if="isNodeSelected(node.id)">
+        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
           <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
@@ -308,7 +308,7 @@
         :key="node.id"
         class="canvas-node canvas-node-embed"
         :data-node-id="node.id"
-        :class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id) }"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
@@ -346,7 +346,7 @@
             />
           </svg>
         </div>
-        <template v-if="isNodeSelected(node.id)">
+        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
           <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
@@ -459,6 +459,10 @@ interface CanvasNode {
   borderWidth?: number;
   borderColor?: string;
   fillStyle?: "gradient" | "solid";
+  zIndex?: number;
+  positionLocked?: boolean;
+  transparent?: boolean;
+  shape?: "rect" | "round";
   styleAttributes?: Record<string, string>;
 }
 
@@ -896,7 +900,15 @@ export default defineComponent({
         width: `${node.width}px`,
         height: `${node.height}px`,
         borderColor: node.borderColor || undefined,
+        zIndex: `${node.zIndex ?? 10}`,
       };
+      if (node.shape === "round") {
+        style.borderRadius = "9999px";
+      }
+      if (node.transparent) {
+        style.background = "transparent";
+        style.boxShadow = "none";
+      }
       const bs = node.borderStyle || "solid";
       const bw = node.borderWidth || undefined;
       if (bs === "wavy" || bs === "sawtooth") {
@@ -917,6 +929,11 @@ export default defineComponent({
       return style;
     };
 
+    const nodePresentationClass = (node: CanvasNode) => ({
+      "node-transparent": node.transparent === true,
+      "node-round": node.shape === "round",
+    });
+
     const nodeColorClass = (node: CanvasNode) => {
       if (!node.color) return "";
       const fill = node.fillStyle || "gradient";
@@ -925,6 +942,18 @@ export default defineComponent({
 
     const groupColorClass = (node: CanvasNode) => {
       return node.color ? `group-color-${node.color}` : "";
+    };
+
+    const isNodePositionLocked = (nodeId: string | null | undefined): boolean => {
+      if (!nodeId) return false;
+      return nodes.value.find((n) => n.id === nodeId)?.positionLocked === true;
+    };
+
+    const selectedEditableNodes = () => nodes.value.filter((n) => selectedNodeIds.value.includes(n.id));
+
+    const updateNode = (node: CanvasNode, changes: Partial<CanvasNode>) => {
+      Object.assign(node, changes);
+      emitOp({ type: 'node-update', id: node.id, changes });
     };
 
     const isNodeInsideGroup = (node: CanvasNode, group: CanvasNode) => {
@@ -1147,6 +1176,11 @@ export default defineComponent({
         return;
       }
       if (resizeNodeId.value) return;
+      if (node.positionLocked) {
+        selectedNodeIds.value = [node.id];
+        selectedEdgeId.value = null;
+        return;
+      }
       // Shift/Ctrl click: toggle selection
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
         const idx = selectedNodeIds.value.indexOf(node.id);
@@ -1171,7 +1205,7 @@ export default defineComponent({
       dragNodesInitial.value = new Map();
       for (const id of selectedNodeIds.value) {
         const n = nodes.value.find((nd) => nd.id === id);
-        if (n) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+        if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
       }
       startAutoPan();
     };
@@ -1222,6 +1256,7 @@ export default defineComponent({
     // Resize handlers
     const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
       updateLastPointer(e);
+      if (node.positionLocked) return;
       if (e.button === 1) {
         isPanning.value = true;
         panStart.x = e.clientX;
@@ -1594,6 +1629,74 @@ export default defineComponent({
         emitOp({ type: 'node-update', id: nodeId, changes: { borderWidth: width } });
       }
     };
+
+    const isNodeTransparent = (nodeId: string | null | undefined): boolean => {
+      if (!nodeId) return false;
+      return nodes.value.find((n) => n.id === nodeId)?.transparent === true;
+    };
+
+    const toggleNodeTransparent = (nodeId: string | null | undefined) => {
+      if (!nodeId) return;
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (!node) return;
+      pushUndo();
+      const transparent = !node.transparent;
+      updateNode(node, { transparent });
+    };
+
+    const getNodeShape = (nodeId: string | null | undefined): "rect" | "round" => {
+      if (!nodeId) return "rect";
+      return nodes.value.find((n) => n.id === nodeId)?.shape || "rect";
+    };
+
+    const toggleNodeShape = (nodeId: string | null | undefined) => {
+      if (!nodeId) return;
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (!node) return;
+      pushUndo();
+      const shape = node.shape === "round" ? "rect" : "round";
+      updateNode(node, { shape });
+    };
+
+    const toggleNodePositionLock = (nodeId: string | null | undefined) => {
+      if (!nodeId) return;
+      const node = nodes.value.find((n) => n.id === nodeId);
+      if (!node) return;
+      pushUndo();
+      const positionLocked = !node.positionLocked;
+      updateNode(node, { positionLocked });
+      if (positionLocked && resizeNodeId.value === node.id) resizeNodeId.value = null;
+      if (positionLocked && dragNodeId.value === node.id) dragNodeId.value = null;
+    };
+
+    const currentLayerBounds = () => {
+      const layers = nodes.value.map((n) => n.zIndex ?? 10);
+      return {
+        min: layers.length ? Math.min(...layers) : 0,
+        max: layers.length ? Math.max(...layers) : 0,
+      };
+    };
+
+    const changeSelectionLayer = (mode: "forward" | "backward" | "front" | "back") => {
+      const targets = selectedEditableNodes();
+      if (!targets.length) return;
+      pushUndo();
+      const bounds = currentLayerBounds();
+      for (const node of targets) {
+        const current = node.zIndex ?? 10;
+        const zIndex =
+          mode === "forward" ? current + 1 :
+          mode === "backward" ? Math.max(1, current - 1) :
+          mode === "front" ? bounds.max + 1 :
+          Math.max(1, bounds.min - 1);
+        updateNode(node, { zIndex });
+      }
+    };
+
+    const bringSelectionForward = () => changeSelectionLayer("forward");
+    const sendSelectionBackward = () => changeSelectionLayer("backward");
+    const bringSelectionToFront = () => changeSelectionLayer("front");
+    const sendSelectionToBack = () => changeSelectionLayer("back");
 
     const onCtxSetColor = (color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
@@ -2012,6 +2115,7 @@ export default defineComponent({
           if (node && handle) {
             selectedNodeIds.value = [handleNodeId];
             selectedEdgeId.value = null;
+            if (node.positionLocked) return;
             touchResizing = true;
             onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node, handle);
             return;
@@ -2022,12 +2126,17 @@ export default defineComponent({
         const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
         touchNodeId = nodeEl?.dataset.nodeId ?? null;
 
+        const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+
         if (touchNodeId && !props.readonly) {
           // Select immediately (so the style toolbar appears) and prime a drag.
           if (!selectedNodeIds.value.includes(touchNodeId)) {
             selectedNodeIds.value = [touchNodeId];
           }
           selectedEdgeId.value = null;
+          if (touchNode?.positionLocked) {
+            return;
+          }
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           dragMouseStart.x = t.clientX;
@@ -2085,6 +2194,9 @@ export default defineComponent({
         }
         if (!touchMoved) return;
 
+        const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        if (activeTouchNode?.positionLocked) return;
+
         if (touchNodeId && !props.readonly) {
           // Begin the actual node drag the first time we cross the threshold
           if (!touchDragging) {
@@ -2094,7 +2206,7 @@ export default defineComponent({
             dragNodesInitial.value = new Map();
             for (const id of selectedNodeIds.value) {
               const n = nodes.value.find((nd) => nd.id === id);
-              if (n) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+              if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
             }
             startAutoPan();
           }
@@ -2462,6 +2574,7 @@ export default defineComponent({
       nodePosition,
       nodeColorClass,
       groupColorClass,
+      nodePresentationClass,
       renderMarkdown,
       getNodeFirstLine,
       getNodeRestText,
@@ -2512,6 +2625,16 @@ export default defineComponent({
       toggleNodeFillStyle,
       getNodeBorderColor,
       setNodeBorderColor,
+      isNodeTransparent,
+      toggleNodeTransparent,
+      getNodeShape,
+      toggleNodeShape,
+      isNodePositionLocked,
+      toggleNodePositionLock,
+      bringSelectionForward,
+      sendSelectionBackward,
+      bringSelectionToFront,
+      sendSelectionToBack,
       onNodeContextMenu,
       onCtxSetColor,
       onCtxDuplicate,
@@ -2855,6 +2978,41 @@ g:hover > .edge-midpoint-conn {
 }
 .canvas-node {
   cursor: grab;
+}
+.canvas-node.is-locked,
+.canvas-group.is-locked {
+  cursor: default;
+}
+.canvas-node.is-locked::after,
+.canvas-group.is-locked::after {
+  content: "🔒";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 30;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(10, 10, 10, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  font-size: 10px;
+  pointer-events: none;
+}
+.canvas-node.node-transparent,
+.canvas-group.node-transparent {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.canvas-node.node-round,
+.canvas-group.node-round {
+  border-radius: 9999px !important;
+}
+.canvas-node.node-round .node-content,
+.canvas-node.node-round .node-editor {
+  padding: 18px 22px;
 }
 
 /* ===== Text editor ===== */

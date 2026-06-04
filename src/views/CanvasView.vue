@@ -176,6 +176,15 @@
         <button class="tb-btn tb-fill-toggle" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)" title="Toggle solid/gradient fill">
           <svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2" :fill="canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5"/></svg>
         </button>
+        <button class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)" title="Transparent background">
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <path d="M2 2h12v12H2z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+            <path d="M3 13L13 3" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+        <button class="tb-btn" :class="{ active: canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' }" @click="canvasRef?.toggleNodeShape(canvasRef.selectedNodeId)" title="Round node">
+          <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
         <span class="tb-sep"></span>
         <!-- Text align -->
         <span class="tb-label">First</span>
@@ -210,6 +219,18 @@
         <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
         <span class="tb-sep"></span>
         <!-- Node actions -->
+        <button class="tb-btn" @click="canvasRef?.sendSelectionBackward()" title="Send backward">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="10" height="10" rx="2"/><rect x="4" y="4" width="10" height="10" rx="2"/></svg>
+        </button>
+        <button class="tb-btn" @click="canvasRef?.bringSelectionForward()" title="Bring forward">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="10" height="10" rx="2"/><rect x="8" y="8" width="10" height="10" rx="2"/></svg>
+        </button>
+        <button class="tb-btn" @click="canvasRef?.sendSelectionToBack()" title="Send to back">⤓</button>
+        <button class="tb-btn" @click="canvasRef?.bringSelectionToFront()" title="Bring to front">⤒</button>
+        <button class="tb-btn" :class="{ active: canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)" title="Lock position">
+          <svg v-if="canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 019.4-2.5"/></svg>
+        </button>
         <button class="tb-btn" @click="canvasRef?.duplicateSelection()" title="Duplicate">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
         </button>
@@ -235,6 +256,12 @@
           <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
           <button class="block-menu-toggle" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)">
             {{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'Сплошная' : 'Градиент' }}
+          </button>
+          <button class="block-menu-toggle" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)">
+            {{ canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) ? 'Прозрачная' : 'С фоном' }}
+          </button>
+          <button class="block-menu-toggle" :class="{ active: canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' }" @click="canvasRef?.toggleNodeShape(canvasRef.selectedNodeId)">
+            {{ canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' ? 'Круглая' : 'Прямоугольная' }}
           </button>
         </div>
 
@@ -280,6 +307,22 @@
         <div class="block-menu-divider"></div>
 
         <!-- Actions -->
+        <button class="block-menu-item" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
+          <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <span class="block-menu-label">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
+        </button>
+        <button class="block-menu-item" @click="canvasRef?.bringSelectionForward()">
+          <span class="block-menu-label">Слой выше</span>
+        </button>
+        <button class="block-menu-item" @click="canvasRef?.sendSelectionBackward()">
+          <span class="block-menu-label">Слой ниже</span>
+        </button>
+        <button class="block-menu-item" @click="canvasRef?.bringSelectionToFront()">
+          <span class="block-menu-label">На передний план</span>
+        </button>
+        <button class="block-menu-item" @click="canvasRef?.sendSelectionToBack()">
+          <span class="block-menu-label">На задний план</span>
+        </button>
         <button class="block-menu-item" @click="canvasRef?.duplicateSelection()">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
           <span class="block-menu-label">Дублировать</span>
