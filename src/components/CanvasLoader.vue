@@ -185,47 +185,6 @@
       <!-- Selection box -->
       <div v-if="selBox.active" class="selection-box" :style="selBoxStyle"></div>
 
-      <!-- Context menu -->
-      <div
-        v-if="contextMenu.visible"
-        class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-        @mousedown.stop
-      >
-        <div class="ctx-colors">
-          <span class="ctx-label">Fill</span>
-          <button
-            v-for="c in ['1','2','3','4','5','6']"
-            :key="c"
-            class="ctx-color-btn"
-            :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
-            :title="'Color ' + c"
-            @click="onCtxSetColor(c)"
-          ></button>
-          <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
-        </div>
-        <div class="ctx-colors">
-          <span class="ctx-label">Text</span>
-          <button
-            v-for="c in fontColors"
-            :key="'ctx-font-' + c"
-            class="ctx-color-btn"
-            :class="{ active: getContextNode()?.fontColor === c }"
-            :style="{ background: c }"
-            :title="'Text ' + c"
-            @click="onCtxSetFontColor(c)"
-          ></button>
-          <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
-        </div>
-        <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
-        <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
-        <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
-        <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
-        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
-        <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
-        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
-      </div>
-
       <!-- Text nodes -->
       <div
         v-for="node in textNodes"
@@ -426,12 +385,60 @@
       </svg>
     </div>
 
+    <!-- Context menu -->
+    <div
+      v-if="contextMenu.visible"
+      class="context-menu"
+      :style="contextMenuStyle"
+      @mousedown.stop
+    >
+      <div class="ctx-colors">
+        <span class="ctx-label">Fill</span>
+        <button
+          v-for="c in ['1','2','3','4','5','6']"
+          :key="c"
+          class="ctx-color-btn"
+          :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
+          :title="'Color ' + c"
+          @click="onCtxSetColor(c)"
+        ></button>
+        <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
+      </div>
+      <div class="ctx-colors">
+        <span class="ctx-label">Text</span>
+        <button
+          v-for="c in fontColors"
+          :key="'ctx-font-' + c"
+          class="ctx-color-btn"
+          :class="{ active: getContextNode()?.fontColor === c }"
+          :style="{ background: c }"
+          :title="'Text ' + c"
+          @click="onCtxSetFontColor(c)"
+        ></button>
+        <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
+      </div>
+      <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
+      <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
+      <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
+      <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
+      <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
+      <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
+      <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+    </div>
+
     <!-- Controls -->
     <div class="canvas-controls">
       <button @click="zoomIn" title="Zoom in">+</button>
       <span class="zoom-level">{{ zoomPercent }}%</span>
       <button @click="zoomOut" title="Zoom out">−</button>
       <button @click="resetView" title="Reset view">⌂</button>
+      <span class="controls-divider"></span>
+      <button @click="undo" :disabled="!canUndo" title="Undo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
+      </button>
+      <button @click="redo" :disabled="!canRedo" title="Redo">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
+      </button>
       <span class="controls-divider"></span>
       <button v-if="!readonly" class="ctrl-add-node" @click="addTextNodeCenter" title="Add text node">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1528,16 +1535,19 @@ export default defineComponent({
 
     // Context menu state
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "" });
+    const contextMenuStyle = computed(() => ({
+      left: contextMenu.x + 'px',
+      top: contextMenu.y + 'px',
+    }));
     const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
     const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
       selectedNodeIds.value = [node.id];
-      // Position in world coords (same as nodes)
       const rect = viewport.value!.getBoundingClientRect();
-      const wx = (e.clientX - rect.left - camera.x) / camera.scale;
-      const wy = (e.clientY - rect.top - camera.y) / camera.scale;
-      contextMenu.x = wx;
-      contextMenu.y = wy;
+      const menuWidth = Math.min(260, rect.width - 16);
+      const menuHeight = Math.min(360, rect.height - 16);
+      contextMenu.x = Math.max(8, Math.min(e.clientX - rect.left, rect.width - menuWidth - 8));
+      contextMenu.y = Math.max(8, Math.min(e.clientY - rect.top, rect.height - menuHeight - 8));
       contextMenu.nodeId = node.id;
       contextMenu.visible = true;
     };
@@ -1829,6 +1839,8 @@ export default defineComponent({
     const undoStack = ref<Snapshot[]>([]);
     const redoStack = ref<Snapshot[]>([]);
     const MAX_HISTORY = 50;
+    const canUndo = computed(() => undoStack.value.length > 0);
+    const canRedo = computed(() => redoStack.value.length > 0);
 
     const takeSnapshot = (): Snapshot => ({
       nodes: JSON.stringify(nodes.value),
@@ -2664,6 +2676,7 @@ export default defineComponent({
       onCanvasDblClick,
       addTextNodeCenter,
       contextMenu,
+      contextMenuStyle,
       getContextNode,
       setNodeColor,
       getNodeColor,
@@ -2729,6 +2742,10 @@ export default defineComponent({
       onExportCanvas,
       openImagePicker,
       onImageSelected,
+      undo,
+      redo,
+      canUndo,
+      canRedo,
       applyRemoteData,
       applyRemoteOp,
       getCanvasData,
@@ -2971,11 +2988,15 @@ g:hover > .edge-midpoint-conn {
   border-radius: 8px;
   padding: 6px;
   min-width: 140px;
+  max-width: min(260px, calc(100vw - 24px));
+  max-height: min(420px, calc(100dvh - 24px));
+  overflow: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }
 .ctx-colors {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 4px;
   padding: 4px 4px 6px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
@@ -2983,6 +3004,7 @@ g:hover > .edge-midpoint-conn {
 }
 .ctx-label {
   min-width: 28px;
+  flex: 0 0 28px;
   color: rgba(255, 255, 255, 0.48);
   font-size: 10px;
   text-transform: uppercase;
@@ -3137,11 +3159,11 @@ g:hover > .edge-midpoint-conn {
   .resize-handle-br,
   .resize-handle-bl,
   .resize-handle-tr,
-  .resize-handle-tl { width: 20px; height: 20px; }
-  .resize-handle-br { bottom: -10px; right: -10px; }
-  .resize-handle-bl { bottom: -10px; left: -10px; }
-  .resize-handle-tr { top: -10px; right: -10px; }
-  .resize-handle-tl { top: -10px; left: -10px; }
+  .resize-handle-tl { width: 24px; height: 24px; border-width: 2px; }
+  .resize-handle-br { bottom: -12px; right: -12px; }
+  .resize-handle-bl { bottom: -12px; left: -12px; }
+  .resize-handle-tr { top: -12px; right: -12px; }
+  .resize-handle-tl { top: -12px; left: -12px; }
 
   /* ~44px touch target, centered on the visible dot, transparent. */
   .resize-handle-br::before,
@@ -3152,8 +3174,8 @@ g:hover > .edge-midpoint-conn {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 44px;
-    height: 44px;
+    width: 56px;
+    height: 56px;
     transform: translate(-50%, -50%);
   }
 }
@@ -3414,6 +3436,14 @@ g:hover > .edge-midpoint-conn {
   background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
+.canvas-controls button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.canvas-controls button:disabled:hover {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
 .controls-divider {
   width: 1px;
   height: 18px;
@@ -3468,23 +3498,25 @@ g:hover > .edge-midpoint-conn {
   }
 
   .context-menu {
-    min-width: 180px;
-    padding: 8px;
+    min-width: min(180px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    padding: 7px;
   }
 
   .ctx-colors {
-    gap: 8px;
+    gap: 6px;
   }
 
   .ctx-color-btn {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
   }
 
   .ctx-item {
-    min-height: 40px;
-    padding: 10px 12px;
-    font-size: 14px;
+    min-height: 34px;
+    padding: 8px 10px;
+    font-size: 13px;
   }
 
   .edge-action-btn {

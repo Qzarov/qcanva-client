@@ -272,6 +272,14 @@
           <template v-else-if="activeToolbarMenu === 'actions'">
             <div class="toolbar-popover-title">Действия</div>
             <div class="toolbar-menu-row">
+              <button class="toolbar-choice" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
+                <span>Назад</span>
+              </button>
+              <button class="toolbar-choice" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
+                <span>Вперед</span>
+              </button>
               <button class="toolbar-choice" :class="{ active: canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
                 <svg v-if="canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 019.4-2.5"/></svg>
@@ -369,6 +377,16 @@
         <div class="block-menu-divider"></div>
 
         <!-- Actions -->
+        <div class="block-menu-history">
+          <button class="block-menu-item" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
+            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
+            <span class="block-menu-label">Назад</span>
+          </button>
+          <button class="block-menu-item" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
+            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
+            <span class="block-menu-label">Вперед</span>
+          </button>
+        </div>
         <button class="block-menu-item" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
           <span class="block-menu-label">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
