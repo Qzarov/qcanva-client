@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, getCurrentUser, htmlDocuments, resourceFolders, setToken } from './client';
+import { canvas, getCurrentUser, htmlDocuments, resourceFolders, setToken, textDocuments } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -188,6 +188,45 @@ describe('htmlDocuments API client', () => {
         'Content-Type': 'application/json',
       },
     });
+  });
+});
+
+describe('textDocuments API client', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('creates a text document', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: 'doc-1', title: 'Doc' }),
+    } as Response);
+
+    await textDocuments.create({ title: 'Doc' });
+
+    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/text-documents', expect.objectContaining({
+      method: 'POST',
+      body: JSON.stringify({ title: 'Doc' }),
+    }));
+  });
+
+  it('gets one text document', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ document: { id: 'doc-1' }, role: 'owner' }),
+    } as Response);
+
+    await textDocuments.get('doc-1');
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3001/api/text-documents/doc-1',
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Content-Type': 'application/json' }),
+      }),
+    );
   });
 });
 

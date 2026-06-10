@@ -37,6 +37,11 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/docs/:id',
+      name: 'text-document',
+      component: () => import('../views/TextDocumentView.vue'),
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),

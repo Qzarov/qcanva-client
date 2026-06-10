@@ -189,7 +189,7 @@ export const auth = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
-  resourcePasswordLogin: (payload: { resourceType: 'canvas' | 'html-document'; resourceId: string; password: string }) =>
+  resourcePasswordLogin: (payload: { resourceType: 'canvas' | 'html-document' | 'text-document'; resourceId: string; password: string }) =>
     request<{ token: string; user: any }>('/auth/resource-password-login', {
       method: 'POST',
       body: JSON.stringify(payload),
@@ -210,10 +210,11 @@ export type ResourceTag = {
 export type ResourceTagSummary = ResourceTag & {
   canvasCount: number;
   htmlDocumentCount: number;
+  textDocumentCount?: number;
   totalCount: number;
 };
 
-export type ResourceType = 'canvas' | 'html-document';
+export type ResourceType = 'canvas' | 'html-document' | 'text-document';
 export type ResourceFolderRole = 'owner' | 'read' | 'edit';
 
 export type ResourceFolderSummary = {
@@ -223,13 +224,16 @@ export type ResourceFolderSummary = {
   role: ResourceFolderRole;
   canvasCount: number;
   htmlDocumentCount: number;
+  textDocumentCount?: number;
   updatedAt?: string;
   createdAt?: string;
   canvases?: any[];
   htmlDocuments?: any[];
+  textDocuments?: any[];
   items?: {
     canvases: any[];
     htmlDocuments: any[];
+    textDocuments?: any[];
   };
 };
 
@@ -343,8 +347,39 @@ export const htmlDocuments = {
   permissions: (id: string) => request<any[]>(`/html-documents/${id}/permissions`),
 };
 
+export const textDocuments = {
+  list: () => request<{ documents: any[] }>('/text-documents'),
+  publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),
+  create: (payload: { title: string; folderId?: string | null; tags?: ResourceTag[]; visibility?: string }) =>
+    request<any>('/text-documents', { method: 'POST', body: JSON.stringify(payload) }),
+  get: (id: string) => request<{ document: any; role: string }>(`/text-documents/${id}`, { skipAuthRedirect: true }),
+  snapshot: (id: string) => request<any>(`/text-documents/${id}/snapshot`, { skipAuthRedirect: true }),
+  update: (id: string, payload: Record<string, unknown>) =>
+    request<any>(`/text-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  replaceContent: (id: string, payload: { html?: string; text?: string }) =>
+    request<any>(`/text-documents/${id}/content`, { method: 'PUT', body: JSON.stringify(payload) }),
+  applyUpdate: (id: string, clientUpdateId: string, update: string) =>
+    request<any>(`/text-documents/${id}/updates`, { method: 'POST', body: JSON.stringify({ clientUpdateId, update }) }),
+  delete: (id: string) => request<any>(`/text-documents/${id}`, { method: 'DELETE' }),
+  duplicate: (id: string) => request<any>(`/text-documents/${id}/duplicate`, { method: 'POST' }),
+  transferOwnership: (id: string, email: string) =>
+    request<any>(`/text-documents/${id}/transfer-ownership`, { method: 'POST', body: JSON.stringify({ email }) }),
+  moveToFolder: (id: string, folderId: string) => resourceFolders.move(folderId, 'text-document', id),
+  history: (id: string, limit = 50, offset = 0) =>
+    request<{ items: any[] }>(`/text-documents/${id}/history?limit=${limit}&offset=${offset}`),
+  historySnapshot: (id: string, revision: number) =>
+    request<any>(`/text-documents/${id}/history/${revision}`),
+  restoreHistorySnapshot: (id: string, revision: number) =>
+    request<any>(`/text-documents/${id}/history/${revision}/restore`, { method: 'POST' }),
+  share: (id: string, email: string, role: string) =>
+    request<any>(`/text-documents/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+  revoke: (id: string, userId: string) =>
+    request<any>(`/text-documents/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
+  permissions: (id: string) => request<any[]>(`/text-documents/${id}/permissions`),
+};
+
 export const accessRequests = {
-  create: (payload: { resourceType: 'canvas' | 'html-document'; resourceId: string; requestedRole: 'read' | 'edit' }) =>
+  create: (payload: { resourceType: ResourceType; resourceId: string; requestedRole: 'read' | 'edit' }) =>
     request<any>('/access-requests', { method: 'POST', body: JSON.stringify(payload) }),
   incoming: () => request<any[]>('/access-requests/incoming'),
   resolve: (id: string, status: 'approved' | 'declined') =>

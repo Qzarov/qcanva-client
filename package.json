@@ -10,10 +10,19 @@
     "test:unit": "vitest run"
   },
   "dependencies": {
+    "@tiptap/extension-collaboration": "^2.27.2",
+    "@tiptap/extension-collaboration-cursor": "^2.26.2",
+    "@tiptap/extension-link": "^2.27.2",
+    "@tiptap/extension-task-item": "^2.27.2",
+    "@tiptap/extension-task-list": "^2.27.2",
+    "@tiptap/extension-underline": "^2.27.2",
+    "@tiptap/starter-kit": "^2.27.2",
+    "@tiptap/vue-3": "^2.27.2",
     "marked": "^16.4.1",
     "socket.io-client": "^4.8.3",
     "vue": "^3.5.22",
-    "vue-router": "^4.6.4"
+    "vue-router": "^4.6.4",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
