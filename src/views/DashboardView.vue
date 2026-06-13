@@ -206,7 +206,7 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title" @dblclick.stop="startRename(item.id)">{{ item.title || 'Untitled' }}</div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
                     <div class="card-meta">
                       <span class="badge badge-owner">Owner</span>
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
@@ -238,9 +238,8 @@
                     draggable="false"
                     @click="openHtmlDocumentFromCard(item.slug || item.id)"
                   >
-                    <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
-                      <span class="badge badge-public">HTML</span>
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -270,9 +269,8 @@
                     draggable="false"
                     @click="openTextDocumentFromCard(item.slug || item.id)"
                   >
-                    <div class="card-title">{{ item.title || 'Untitled document' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
                     <div class="card-meta">
-                      <span class="badge badge-public">Document</span>
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -312,7 +310,7 @@
             class="canvas-card"
             @click="openCanvas(c.slug || c.id)"
           >
-            <div class="card-title">{{ c.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ c.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ c.role }}</span>
               <span v-if="c.pinned" class="badge badge-pinned">Pinned</span>
@@ -352,7 +350,7 @@
             class="canvas-card"
             @click="openCanvas(item.slug || item.id)"
           >
-            <div class="card-title">{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ item.allowPublicEdit ? 'Public edit' : 'Public' }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
@@ -374,9 +372,8 @@
             class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
-            <div class="card-title">{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">HTML</span>
               <span class="badge badge-public">Public</span>
               <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -395,9 +392,8 @@
             class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
-            <div class="card-title">{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">Document</span>
               <span class="badge badge-public">Public</span>
               <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>

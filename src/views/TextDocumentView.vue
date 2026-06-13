@@ -164,7 +164,7 @@
       </div>
 
       <main class="text-doc-editor-shell">
-        <article class="text-doc-paper" :class="{ readonly: !canEditContent }">
+        <article class="text-doc-paper" :class="{ readonly: !canEditContent }" @click="focusEditor">
           <EditorContent v-if="editor" :editor="editor" />
         </article>
       </main>
@@ -300,9 +300,11 @@ export default defineComponent({
       clearPendingUpdates,
     } = useTextDocumentSocket(resolvedId);
 
-    watch(canEditContent, (editable) => {
-      editor.value?.setEditable(editable);
-    }, { immediate: true });
+    function syncEditorEditable() {
+      editor.value?.setEditable(canEditContent.value);
+    }
+
+    watch([canEditContent, editor], syncEditorEditable, { immediate: true });
 
     ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       if (!canEditContent.value || applyingInitialState || origin === 'remote') return;
@@ -528,6 +530,11 @@ export default defineComponent({
       }
     }
 
+    function focusEditor() {
+      if (!canEditContent.value) return;
+      editor.value?.commands?.focus?.();
+    }
+
     onMounted(load);
     onBeforeUnmount(() => {
       disconnect();
@@ -580,6 +587,7 @@ export default defineComponent({
       toggleHistory,
       openHistoryEntry,
       restoreSelectedHistory,
+      focusEditor,
     };
   },
 });

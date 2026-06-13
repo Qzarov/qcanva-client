@@ -3,7 +3,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
-import { canvas, htmlDocuments, resourceFolders } from '../api/client';
+import { canvas, htmlDocuments, resourceFolders, textDocuments } from '../api/client';
 
 const push = vi.fn();
 
@@ -196,6 +196,30 @@ describe('DashboardView groups', () => {
     vm.openTextDocument('doc-1');
 
     expect(push).toHaveBeenCalledWith({ name: 'text-document', params: { id: 'doc-1' } });
+  });
+
+  it('shows resource type icons before card titles instead of type badges', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [],
+      public: [{ id: 'canvas-icon', title: 'Canvas Icon', tags: [] }],
+      welcome: null,
+    });
+    vi.mocked(htmlDocuments.publicList).mockResolvedValueOnce({ documents: [{ id: 'html-icon', title: 'HTML Icon', tags: [] }] });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({ documents: [{ id: 'text-doc-icon', title: 'Doc Icon', tags: [] }] });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.toggleFolderOpen('folder-b');
+    vm.toggleFolderOpen('legacy-resource-inbox');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-resource-icon="canvas"]').exists()).toBe(true);
+    expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
+    expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
+    expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('HTML');
+    expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('Document');
   });
 
   it('shares groups through the group access modal', async () => {
