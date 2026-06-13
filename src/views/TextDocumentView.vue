@@ -262,7 +262,7 @@ export default defineComponent({
     });
 
     const editor = useEditor({
-      editable: false,
+      editable: true,
       extensions: [
         StarterKit.configure({ history: false }),
         Underline,
@@ -532,7 +532,7 @@ export default defineComponent({
 
     function focusEditor() {
       if (!canEditContent.value) return;
-      editor.value?.commands?.focus?.();
+      editor.value?.chain().focus('end').run();
     }
 
     onMounted(load);

@@ -10,6 +10,7 @@ const replace = vi.fn();
 
 const tiptapMock = vi.hoisted(() => ({
   editorRef: null as any,
+  useEditorOptions: null as any,
   setEditable: vi.fn(),
   destroy: vi.fn(),
 }));
@@ -27,7 +28,10 @@ vi.mock("@tiptap/vue-3", async () => {
       props: ["editor"],
       template: '<div class="mock-editor" />',
     },
-    useEditor: () => tiptapMock.editorRef,
+    useEditor: (options: any) => {
+      tiptapMock.useEditorOptions = options;
+      return tiptapMock.editorRef;
+    },
   };
 });
 
@@ -103,6 +107,14 @@ describe("TextDocumentView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     tiptapMock.editorRef.value = null;
+    tiptapMock.useEditorOptions = null;
+  });
+
+  it("starts the TipTap editor editable while the page is still behind the loading gate", async () => {
+    mount(TextDocumentView);
+    await flushPromises();
+
+    expect(tiptapMock.useEditorOptions?.editable).toBe(true);
   });
 
   it("enables editing when the TipTap editor instance appears after owner role is loaded", async () => {

@@ -3637,6 +3637,7 @@ html, body {
   color: #f8fafc;
   font-size: 16px;
   line-height: 1.72;
+  cursor: text;
 }
 
 .text-doc-paper .ProseMirror h1,
