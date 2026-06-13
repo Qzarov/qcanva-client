@@ -31,6 +31,15 @@ vi.mock('../api/client', () => ({
     transferOwnership: vi.fn().mockResolvedValue({ document: { id: 'doc-1' }, role: 'owner' }),
     update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },
+  textDocuments: {
+    create: vi.fn().mockResolvedValue({ id: 'text-doc-new' }),
+    delete: vi.fn(),
+    duplicate: vi.fn().mockResolvedValue({ id: 'text-doc-copy' }),
+    list: vi.fn().mockResolvedValue({ documents: [] }),
+    publicList: vi.fn().mockResolvedValue({ documents: [] }),
+    transferOwnership: vi.fn().mockResolvedValue({ document: { id: 'doc-1' }, role: 'owner' }),
+    update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
+  },
   isAdmin: vi.fn(() => false),
   isAuthenticated: vi.fn(() => true),
   resourceFolders: {
@@ -139,6 +148,54 @@ describe('DashboardView groups', () => {
     await vm.saveFolderModal();
 
     expect(resourceFolders.move).toHaveBeenCalledWith('folder-c', 'html-document', 'doc-1');
+  });
+
+  it('moves dragged text documents without reloading folders', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    vi.mocked(resourceFolders.list).mockClear();
+
+    const vm = wrapper.vm as any;
+    vm.startResourceMouseDrag(
+      {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        target: document.createElement('div'),
+      } as unknown as MouseEvent,
+      { id: 'doc-1', type: 'text-document', folderId: 'folder-a', title: 'Doc', tags: [] },
+      { id: 'folder-a', role: 'owner', name: 'Source', items: [] },
+    );
+    vm.draggingResourceId = 'doc-1';
+    vm.draggingResourceType = 'text-document';
+    vm.draggingResourceFolderId = 'folder-a';
+
+    await vm.dropResourceToFolder({ id: 'folder-b', role: 'owner', name: 'Target', items: [] });
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'text-document', 'doc-1');
+    expect(resourceFolders.list).not.toHaveBeenCalled();
+  });
+
+  it('moves text documents through the explicit move modal', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.openMoveTextDocumentFolderModal({ id: 'doc-1', type: 'text-document', folderId: 'folder-a', title: 'Doc', tags: [] });
+    vm.folderModal.folderId = 'folder-b';
+    await vm.saveFolderModal();
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'text-document', 'doc-1');
+  });
+
+  it('opens text document cards', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.openTextDocument('doc-1');
+
+    expect(push).toHaveBeenCalledWith({ name: 'text-document', params: { id: 'doc-1' } });
   });
 
   it('shares groups through the group access modal', async () => {

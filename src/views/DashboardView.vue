@@ -56,6 +56,10 @@
                 <span class="menu-icon">▤</span>
                 <span>HTML document</span>
               </button>
+              <button class="card-menu-item" @click="createTextDocument">
+                <span class="menu-icon">¶</span>
+                <span>Document</span>
+              </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
                 <span>Group</span>
@@ -91,6 +95,7 @@
         <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">All</button>
         <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">Canvas</button>
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
+        <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">Docs</button>
       </div>
       <div v-if="allTagNames.length" class="tag-filter-list">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
@@ -121,7 +126,7 @@
             <div>
               <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
               <div class="access-request-meta">
-                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : 'HTML' }}
+                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : request.resourceType === 'text-document' ? 'document' : 'HTML' }}
               </div>
             </div>
             <div class="access-request-actions">
@@ -156,7 +161,7 @@
                 <span class="folder-manager-title">
                   <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.id) }">⌄</span>
                   <span class="folder-manager-name">{{ folder.name }}</span>
-                  <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML</span>
+                  <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML / {{ folder.textDocumentCount || 0 }} docs</span>
                 </span>
               </button>
               <div class="folder-manager-actions">
@@ -227,7 +232,7 @@
                     </div>
                   </div>
                   <article
-                    v-else
+                    v-else-if="item.type === 'html-document'"
                     class="canvas-card html-doc-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
@@ -256,6 +261,38 @@
                       <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
                       <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
                       <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">Delete</button>
+                    </div>
+                  </article>
+                  <article
+                    v-else
+                    class="canvas-card html-doc-card"
+                    :class="{ dragging: draggingResourceId === item.id }"
+                    draggable="false"
+                    @click="openTextDocumentFromCard(item.slug || item.id)"
+                  >
+                    <div class="card-title">{{ item.title || 'Untitled document' }}</div>
+                    <div class="card-meta">
+                      <span class="badge badge-public">Document</span>
+                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div v-if="item.tags?.length" class="card-tags">
+                      <span
+                        v-for="tag in item.tags"
+                        :key="tag.name"
+                        class="card-tag color-tag"
+                        :style="{ '--tag-color': tag.color }"
+                      >#{{ tag.name }}</span>
+                    </div>
+                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Document actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                      <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">Duplicate</button>
+                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">Move to group</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
+                      <button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">Delete</button>
                     </div>
                   </article>
                   </template>
@@ -333,7 +370,7 @@
             </div>
           </div>
           <article
-            v-else
+            v-else-if="item.type === 'html-document'"
             class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
@@ -353,12 +390,33 @@
               >#{{ tag.name }}</span>
             </div>
           </article>
+          <article
+            v-else
+            class="canvas-card html-doc-card"
+            @click="openTextDocument(item.slug || item.id)"
+          >
+            <div class="card-title">{{ item.title || 'Untitled document' }}</div>
+            <div class="card-meta">
+              <span class="badge badge-public">Document</span>
+              <span class="badge badge-public">Public</span>
+              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+          </article>
           </template>
         </div>
       </div>
 
       <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
-        No canvases yet. Create your first one!
+        No resources yet. Create your first one!
       </div>
       <div v-else-if="!isLoggedIn && !publicFiltered.length" class="dash-empty">
         No public resources yet.
@@ -556,7 +614,7 @@
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -587,7 +645,17 @@ type HtmlDocumentRecord = {
   pinned?: boolean;
   tags: CanvasTag[];
 };
-type FolderItem = CanvasRecord | HtmlDocumentRecord;
+type TextDocumentRecord = {
+  type: 'text-document';
+  id: string;
+  slug?: string | null;
+  title: string;
+  updatedAt: string;
+  folderId?: string | null;
+  pinned?: boolean;
+  tags: CanvasTag[];
+};
+type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord;
 type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
 };
@@ -604,15 +672,17 @@ export default defineComponent({
     const shared = ref<CanvasRecord[]>([]);
     const publicCanvases = ref<CanvasRecord[]>([]);
     const publicHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
+    const publicTextDocuments = ref<TextDocumentRecord[]>([]);
     const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
     const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
     const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
+    const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const searchQuery = ref('');
     const selectedTag = ref('');
-    const contentFilter = ref<'all' | 'canvas' | 'html-document'>('all');
+    const contentFilter = ref<'all' | 'canvas' | 'html-document' | 'text-document'>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
@@ -637,7 +707,7 @@ export default defineComponent({
     const currentUser = computed(() => getCurrentUser());
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
-    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: 'canvas' | 'html-document'; folderId: string; value: string }>({
+    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string }>({
       open: false,
       resourceId: '',
       resourceType: 'canvas',
@@ -710,16 +780,27 @@ export default defineComponent({
       tags: normalizeTags(doc.tags),
     });
 
+    const normalizeTextDocument = (doc: any): TextDocumentRecord => ({
+      ...doc,
+      type: 'text-document',
+      folderId: doc.folderId || null,
+      pinned: Boolean(doc.pinned),
+      tags: normalizeTags(doc.tags),
+    });
+
     const normalizeResourceFolder = (folder: ResourceFolderSummary): ResourceFolderSummary => {
       const canvases = folder.items?.canvases || folder.canvases || [];
       const htmlDocuments = folder.items?.htmlDocuments || folder.htmlDocuments || [];
+      const docs = folder.items?.textDocuments || folder.textDocuments || [];
       return {
         ...folder,
         canvasCount: folder.canvasCount ?? canvases.length,
         htmlDocumentCount: folder.htmlDocumentCount ?? htmlDocuments.length,
+        textDocumentCount: folder.textDocumentCount ?? docs.length,
         items: {
           canvases,
           htmlDocuments,
+          textDocuments: docs,
         },
       };
     };
@@ -770,7 +851,7 @@ export default defineComponent({
 
     const sharedFiltered = computed(() => sortCanvases(shared.value.filter(matchesCanvas)));
     const publicFiltered = computed(() => sortFolderItems(
-      [...publicCanvases.value, ...publicHtmlDocuments.value]
+      [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
         .filter(matchesPublicItem),
     ));
 
@@ -788,8 +869,17 @@ export default defineComponent({
       for (const document of publicHtmlDocuments.value) {
         for (const tag of document.tags) names.add(tag.name);
       }
+      for (const document of unfiledTextDocuments.value) {
+        for (const tag of document.tags) names.add(tag.name);
+      }
+      for (const document of publicTextDocuments.value) {
+        for (const tag of document.tags) names.add(tag.name);
+      }
       for (const folder of allResourceFolders.value) {
         for (const document of folder.items?.htmlDocuments || []) {
+          for (const tag of normalizeTags(document.tags)) names.add(tag.name);
+        }
+        for (const document of folder.items?.textDocuments || []) {
           for (const tag of normalizeTags(document.tags)) names.add(tag.name);
         }
       }
@@ -810,6 +900,12 @@ export default defineComponent({
       for (const document of publicHtmlDocuments.value) {
         for (const tag of document.tags) byName.set(tag.name, tag);
       }
+      for (const document of unfiledTextDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
+      for (const document of publicTextDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
       return Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
     });
 
@@ -826,12 +922,14 @@ export default defineComponent({
       .map((folder) => {
         const canvases = (folder.items?.canvases || folder.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
-        const items = sortFolderItems([...canvases, ...htmlDocs].filter((item) => matchesFolderItem(item, folder.name)));
+        const docs = (folder.items?.textDocuments || folder.textDocuments || []).map((item) => normalizeTextDocument({ ...item, folderId: folder.id }));
+        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs].filter((item) => matchesFolderItem(item, folder.name)));
         return {
           ...folder,
           items,
           canvasCount: canvases.length,
           htmlDocumentCount: htmlDocs.length,
+          textDocumentCount: docs.length,
         };
       })
       .filter((folder) => {
@@ -839,7 +937,7 @@ export default defineComponent({
         return folder.items.length || (!hasActiveFilter && folder.role === 'owner');
       });
 
-      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value];
+      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
       if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
         folders.push({
@@ -848,6 +946,7 @@ export default defineComponent({
           role: 'owner',
           canvasCount: unfiledCanvases.value.length,
           htmlDocumentCount: unfiledHtmlDocuments.value.length,
+          textDocumentCount: unfiledTextDocuments.value.length,
           items: fallbackItems,
         });
       }
@@ -894,10 +993,19 @@ export default defineComponent({
               (folder.items?.htmlDocuments || []).map((document: any) => document.id),
             ),
           );
+          const folderTextDocumentIds = new Set(
+            [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) =>
+              (folder.items?.textDocuments || []).map((document: any) => document.id),
+            ),
+          );
           const legacyState = await htmlDocuments.list();
           unfiledHtmlDocuments.value = (legacyState.documents || [])
             .filter((document: any) => !folderDocumentIds.has(document.id))
             .map((document: any) => normalizeHtmlDocument(document));
+          const textState = await textDocuments.list();
+          unfiledTextDocuments.value = (textState.documents || [])
+            .filter((document: any) => !folderTextDocumentIds.has(document.id))
+            .map((document: any) => normalizeTextDocument(document));
         }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
         unfiledCanvases.value = own.value.filter((canvasRecord) => !canvasRecord.folderId || !ownResourceFolders.value.some((folder) => folder.id === canvasRecord.folderId));
@@ -913,6 +1021,8 @@ export default defineComponent({
         publicCanvases.value = (res.public || []).map((c: any) => normalizeCanvas(c, false));
         const publicDocuments = await htmlDocuments.publicList();
         publicHtmlDocuments.value = (publicDocuments.documents || []).map((document: any) => normalizeHtmlDocument(document));
+        const publicDocs = await textDocuments.publicList();
+        publicTextDocuments.value = (publicDocs.documents || []).map((document: any) => normalizeTextDocument(document));
         incomingRequests.value = isLoggedIn ? await accessRequests.incoming() : [];
         if (isLoggedIn) {
           sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
@@ -952,6 +1062,18 @@ export default defineComponent({
       openHtmlDocument(id);
     };
 
+    const openTextDocument = (id: string) => {
+      router.push({ name: 'text-document', params: { id } });
+    };
+
+    const openTextDocumentFromCard = (id: string) => {
+      if (suppressNextCardClick.value) {
+        suppressNextCardClick.value = false;
+        return;
+      }
+      openTextDocument(id);
+    };
+
     const createCanvas = async () => {
       openControlMenu.value = '';
       const targetFolder = await ensureFolderByName('Unsorted');
@@ -970,6 +1092,18 @@ export default defineComponent({
       );
       if (!doc) return;
       router.push(`/edit/html/${doc.id}`);
+    };
+
+    const createTextDocument = async () => {
+      openControlMenu.value = '';
+      const targetFolder = await ensureFolderByName('Unsorted');
+      const doc = await runAction(
+        'create-text-document',
+        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolder?.id }),
+        'Document created',
+      );
+      if (!doc) return;
+      openTextDocument(doc.id);
     };
 
     const openCreateGroupModal = () => {
@@ -1004,6 +1138,19 @@ export default defineComponent({
         open: true,
         resourceId: doc.id,
         resourceType: 'html-document',
+        folderId: doc.folderId || '',
+        value: currentFolder?.name || '',
+      };
+    };
+
+    const openMoveTextDocumentFolderModal = (doc: TextDocumentRecord) => {
+      closeCardMenu();
+      const currentFolder = ownResourceFolders.value.find((folder) => folder.id === doc.folderId);
+      draggingResourceFolderId.value = doc.folderId || null;
+      folderModal.value = {
+        open: true,
+        resourceId: doc.id,
+        resourceType: 'text-document',
         folderId: doc.folderId || '',
         value: currentFolder?.name || '',
       };
@@ -1045,20 +1192,30 @@ export default defineComponent({
       let movedItem: any | null = null;
       const sourceFolders = [...ownResourceFolders.value, ...sharedResourceFolders.value];
       for (const folder of sourceFolders) {
-        const list = resourceType === 'canvas' ? folder.items?.canvases || [] : folder.items?.htmlDocuments || [];
+        const list = resourceType === 'canvas'
+          ? folder.items?.canvases || []
+          : resourceType === 'html-document'
+            ? folder.items?.htmlDocuments || []
+            : folder.items?.textDocuments || [];
         const index = list.findIndex((item) => item.id === resourceId);
         if (index >= 0) {
           [movedItem] = list.splice(index, 1);
           if (resourceType === 'canvas') {
             folder.canvasCount = list.length;
-          } else {
+          } else if (resourceType === 'html-document') {
             folder.htmlDocumentCount = list.length;
+          } else {
+            folder.textDocumentCount = list.length;
           }
           break;
         }
       }
       if (!movedItem) {
-        const fallbackItems = resourceType === 'canvas' ? unfiledCanvases.value : unfiledHtmlDocuments.value;
+        const fallbackItems = resourceType === 'canvas'
+          ? unfiledCanvases.value
+          : resourceType === 'html-document'
+            ? unfiledHtmlDocuments.value
+            : unfiledTextDocuments.value;
         const index = fallbackItems.findIndex((item) => item.id === resourceId);
         if (index >= 0) {
           [movedItem] = fallbackItems.splice(index, 1);
@@ -1079,9 +1236,12 @@ export default defineComponent({
           ownCanvas.folderId = destination.id;
           ownCanvas.folder = destination.name;
         }
-      } else {
+      } else if (resourceType === 'html-document') {
         destination.items.htmlDocuments = [nextItem, ...(destination.items.htmlDocuments || [])];
         destination.htmlDocumentCount = destination.items.htmlDocuments.length;
+      } else {
+        destination.items.textDocuments = [nextItem, ...(destination.items.textDocuments || [])];
+        destination.textDocumentCount = destination.items.textDocuments.length;
       }
       return nextItem;
     };
@@ -1144,6 +1304,7 @@ export default defineComponent({
         items: {
           canvases: [...(folder.items?.canvases || [])],
           htmlDocuments: [...(folder.items?.htmlDocuments || [])],
+          textDocuments: [...(folder.items?.textDocuments || [])],
         },
       }));
       const previousSharedFolders = sharedResourceFolders.value.map((folder) => ({
@@ -1151,10 +1312,12 @@ export default defineComponent({
         items: {
           canvases: [...(folder.items?.canvases || [])],
           htmlDocuments: [...(folder.items?.htmlDocuments || [])],
+          textDocuments: [...(folder.items?.textDocuments || [])],
         },
       }));
       const previousUnfiledCanvases = [...unfiledCanvases.value];
       const previousUnfiledHtmlDocuments = [...unfiledHtmlDocuments.value];
+      const previousUnfiledTextDocuments = [...unfiledTextDocuments.value];
       const previousOwn = own.value.map((item) => ({ ...item }));
       moveResourceLocally(resourceId, resourceType, folder);
       try {
@@ -1164,6 +1327,7 @@ export default defineComponent({
         sharedResourceFolders.value = previousSharedFolders;
         unfiledCanvases.value = previousUnfiledCanvases;
         unfiledHtmlDocuments.value = previousUnfiledHtmlDocuments;
+        unfiledTextDocuments.value = previousUnfiledTextDocuments;
         own.value = previousOwn;
       }
     };
@@ -1401,7 +1565,9 @@ export default defineComponent({
         .filter((tag) => tag.name);
       const save = tagsModal.value.resourceType === 'canvas'
         ? () => canvas.update(tagsModal.value.resourceId, { tags })
-        : () => htmlDocuments.update(tagsModal.value.resourceId, { tags });
+        : tagsModal.value.resourceType === 'html-document'
+          ? () => htmlDocuments.update(tagsModal.value.resourceId, { tags })
+          : () => textDocuments.update(tagsModal.value.resourceId, { tags });
       await runAction('save-tags', save, 'Tags saved');
       closeTagsModal();
       await load();
@@ -1458,7 +1624,9 @@ export default defineComponent({
       if (!email) return;
       const transfer = transferModal.value.resourceType === 'canvas'
         ? () => canvas.transferOwnership(transferModal.value.resourceId, email)
-        : () => htmlDocuments.transferOwnership(transferModal.value.resourceId, email);
+        : transferModal.value.resourceType === 'html-document'
+          ? () => htmlDocuments.transferOwnership(transferModal.value.resourceId, email)
+          : () => textDocuments.transferOwnership(transferModal.value.resourceId, email);
       await runAction('transfer-ownership', transfer, 'Ownership transferred');
       closeTransferModal();
       await load();
@@ -1475,6 +1643,13 @@ export default defineComponent({
       closeCardMenu();
       const title = doc.title?.trim() || 'Untitled HTML';
       await runAction('duplicate-html-document', () => htmlDocuments.duplicate(doc.id), `Duplicated "${title}"`);
+      await load();
+    };
+
+    const duplicateTextDocument = async (doc: TextDocumentRecord) => {
+      closeCardMenu();
+      const title = doc.title?.trim() || 'Untitled document';
+      await runAction('duplicate-text-document', () => textDocuments.duplicate(doc.id), `Duplicated "${title}"`);
       await load();
     };
 
@@ -1495,6 +1670,14 @@ export default defineComponent({
       await load();
     };
 
+    const deleteTextDocument = async (doc: TextDocumentRecord) => {
+      const title = doc.title?.trim() || 'Untitled document';
+      const confirmed = window.confirm(`Delete document "${title}"?`);
+      if (!confirmed) return;
+      await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
+      await load();
+    };
+
     const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
       const nextPinned = !item.pinned;
@@ -1504,11 +1687,17 @@ export default defineComponent({
           () => canvas.update(item.id, { pinned: nextPinned }),
           nextPinned ? 'Canvas pinned' : 'Canvas unpinned',
         )
-        : await runAction(
-          `pin-html-document-${item.id}`,
-          () => htmlDocuments.update(item.id, { pinned: nextPinned }),
-          nextPinned ? 'HTML pinned' : 'HTML unpinned',
-        );
+        : item.type === 'html-document'
+          ? await runAction(
+            `pin-html-document-${item.id}`,
+            () => htmlDocuments.update(item.id, { pinned: nextPinned }),
+            nextPinned ? 'HTML pinned' : 'HTML unpinned',
+          )
+          : await runAction(
+            `pin-text-document-${item.id}`,
+            () => textDocuments.update(item.id, { pinned: nextPinned }),
+            nextPinned ? 'Document pinned' : 'Document unpinned',
+          );
       if (!updated) return;
       if (item.type === 'canvas') {
         applyCanvasUpdate(updated);
@@ -1682,10 +1871,12 @@ export default defineComponent({
       incomingRequests,
       createCanvas,
       createHtmlDocument,
+      createTextDocument,
       load,
       openCreateGroupModal,
       openMoveFolderModal,
       openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
       saveFolderModal,
       closeFolderModal,
       startCanvasDrag,
@@ -1705,8 +1896,11 @@ export default defineComponent({
       shareFolder,
       revokeFolderAccess,
       deleteHtmlDocument,
+      deleteTextDocument,
       openHtmlDocument,
       openHtmlDocumentFromCard,
+      openTextDocument,
+      openTextDocumentFromCard,
       openTagsModal,
       closeTagsModal,
       addTag,
@@ -1730,6 +1924,7 @@ export default defineComponent({
       openCanvasFromCard,
       duplicateCanvas,
       duplicateHtmlDocument,
+      duplicateTextDocument,
       deleteCanvas,
       togglePinned,
       logout,
