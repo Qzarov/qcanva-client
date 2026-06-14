@@ -171,4 +171,38 @@ describe("TextDocumentView", () => {
 
     expect(tiptapMock.setEditable).toHaveBeenCalledWith(true);
   });
+
+  it("does not steal mouse selection clicks from ProseMirror", async () => {
+    const wrapper = mount(TextDocumentView);
+    await flushPromises();
+
+    const chain = {
+      focus: vi.fn(() => chain),
+      toggleBold: vi.fn(() => chain),
+      toggleItalic: vi.fn(() => chain),
+      toggleUnderline: vi.fn(() => chain),
+      toggleHeading: vi.fn(() => chain),
+      toggleBulletList: vi.fn(() => chain),
+      toggleTaskList: vi.fn(() => chain),
+      run: vi.fn(),
+    };
+    tiptapMock.editorRef.value = {
+      setEditable: tiptapMock.setEditable,
+      destroy: tiptapMock.destroy,
+      isActive: vi.fn(() => false),
+      chain: vi.fn(() => chain),
+      commands: { focus: vi.fn() },
+    };
+    await nextTick();
+
+    const proseMirror = document.createElement("div");
+    proseMirror.className = "ProseMirror";
+    wrapper.vm.focusEditor({ target: proseMirror } as unknown as MouseEvent);
+
+    expect(chain.focus).not.toHaveBeenCalled();
+
+    wrapper.vm.focusEditor({ target: document.createElement("article") } as unknown as MouseEvent);
+
+    expect(chain.focus).toHaveBeenCalledWith("end");
+  });
 });

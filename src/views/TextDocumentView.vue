@@ -164,7 +164,7 @@
       </div>
 
       <main class="text-doc-editor-shell">
-        <article class="text-doc-paper" :class="{ readonly: !canEditContent }" @click="focusEditor">
+        <article class="text-doc-paper" :class="{ readonly: !canEditContent }" @click="focusEditor($event)">
           <EditorContent v-if="editor" :editor="editor" />
         </article>
       </main>
@@ -532,8 +532,10 @@ export default defineComponent({
       }
     }
 
-    function focusEditor() {
+    function focusEditor(event?: MouseEvent) {
       if (!canEditContent.value) return;
+      const target = event?.target;
+      if (target instanceof Element && target.closest('.ProseMirror')) return;
       editor.value?.chain().focus('end').run();
     }
 
