@@ -204,6 +204,7 @@ export default defineComponent({
     const awarenessProvider = {
       awareness: {
         clientID: ydoc.clientID,
+        states: awarenessStates,
         getStates: () => awarenessStates,
         getLocalState: () => localAwarenessState,
         setLocalState: (state: Record<string, unknown>) => {
