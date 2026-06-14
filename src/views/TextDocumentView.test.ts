@@ -117,6 +117,35 @@ describe("TextDocumentView", () => {
     expect(tiptapMock.useEditorOptions?.editable).toBe(true);
   });
 
+  it("does not disable the editor before the owner role has loaded", async () => {
+    mount(TextDocumentView);
+
+    const chain = {
+      focus: vi.fn(() => chain),
+      toggleBold: vi.fn(() => chain),
+      toggleItalic: vi.fn(() => chain),
+      toggleUnderline: vi.fn(() => chain),
+      toggleHeading: vi.fn(() => chain),
+      toggleBulletList: vi.fn(() => chain),
+      toggleTaskList: vi.fn(() => chain),
+      run: vi.fn(),
+    };
+    tiptapMock.editorRef.value = {
+      setEditable: tiptapMock.setEditable,
+      destroy: tiptapMock.destroy,
+      isActive: vi.fn(() => false),
+      chain: vi.fn(() => chain),
+      commands: { focus: vi.fn() },
+    };
+    await nextTick();
+
+    expect(tiptapMock.setEditable).not.toHaveBeenCalledWith(false);
+
+    await flushPromises();
+
+    expect(tiptapMock.setEditable).toHaveBeenCalledWith(true);
+  });
+
   it("enables editing when the TipTap editor instance appears after owner role is loaded", async () => {
     mount(TextDocumentView);
     await flushPromises();

@@ -301,10 +301,11 @@ export default defineComponent({
     } = useTextDocumentSocket(resolvedId);
 
     function syncEditorEditable() {
+      if (loading.value) return;
       editor.value?.setEditable(canEditContent.value);
     }
 
-    watch([canEditContent, editor], syncEditorEditable, { immediate: true });
+    watch([canEditContent, editor, loading], syncEditorEditable, { immediate: true });
 
     ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       if (!canEditContent.value || applyingInitialState || origin === 'remote') return;
