@@ -463,6 +463,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
 import { computeResizedRect } from "../canvas/resizeMath";
+import { uploadImage } from "../api/client";
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -2451,13 +2452,15 @@ export default defineComponent({
       imageInput.value?.click();
     };
 
-    const onImageSelected = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
+    const onImageSelected = async (e: Event) => {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      // Reset so the same file can be re-selected even if the upload fails.
+      input.value = "";
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        const src = typeof reader.result === "string" ? reader.result : "";
-        if (!src) return;
+      try {
+        const { url } = await uploadImage(file);
+        if (!url) return;
         const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
         const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
         const newNode: CanvasNode = {
@@ -2467,16 +2470,17 @@ export default defineComponent({
           y: centerY - 120,
           width: 320,
           height: 240,
-          file: src,
+          file: url,
           label: file.name,
         };
         pushUndo();
         nodes.value.push(newNode);
         emitOp({ type: 'node-add', node: { ...newNode } });
         selectedNodeIds.value = [newNode.id];
-      };
-      reader.readAsDataURL(file);
-      (e.target as HTMLInputElement).value = "";
+      } catch (err) {
+        console.error("Failed to upload image:", err);
+        window.alert("Failed to upload image. Please try again.");
+      }
     };
 
     const onCanvasEmbedDblClick = (canvasId: string) => {
@@ -2837,6 +2841,12 @@ export default defineComponent({
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity .12s;
+  pointer-events: none;
+}
+.canvas-node-image:hover .node-image-label {
+  opacity: 1;
 }
 
 /* Group colors */
