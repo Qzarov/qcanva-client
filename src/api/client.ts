@@ -358,3 +358,20 @@ export const tags = {
   delete: (name: string) =>
     request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };
+
+export async function uploadImage(file: File): Promise<{ key: string; url: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE}/canvas/files`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    let body: any = {};
+    try { body = await res.json(); } catch { /* ignore */ }
+    throw new ApiError(res.status, body?.message || `Upload failed (${res.status})`, body);
+  }
+  return res.json();
+}
