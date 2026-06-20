@@ -537,6 +537,7 @@
       @pointermove="onDrawPointerMove"
       @pointerup="onDrawPointerUp"
       @pointerleave="onDrawPointerUp"
+      @pointercancel="onDrawPointerCancel"
     ></div>
   </div>
 </template>
@@ -2010,6 +2011,8 @@ export default defineComponent({
       if (e.key === "Escape" && drawTool.value !== "select") {
         drawTool.value = "select";
         draftDrawing.value = null;
+        drawGestureStarted = false;
+        drawErasing = false;
         return;
       }
       // Undo/redo
@@ -2107,6 +2110,9 @@ export default defineComponent({
       };
     };
 
+    // NOTE: each erased drawing emits an immediate draw-remove op to peers. Local Ctrl+Z
+    // restores the local array but does not emit compensating draw-add ops to peers — a
+    // known limitation of the snapshot-undo + op-broadcast model (shared by nodes/edges). TODO: reconcile undo with collab.
     const eraseAt = (x: number, y: number) => {
       const tol = 6 / camera.scale;
       const hit = [...drawings.value].reverse().find((d) => hitTestDrawing(d, x, y, tol));
@@ -2176,6 +2182,12 @@ export default defineComponent({
       pushUndo();
       drawings.value = [...drawings.value, d];
       emitOp({ type: "draw-add", drawing: d } as CanvasOp);
+    };
+
+    const onDrawPointerCancel = () => {
+      drawGestureStarted = false;
+      drawErasing = false;
+      draftDrawing.value = null;
     };
 
     // Pan handlers
@@ -2941,6 +2953,7 @@ export default defineComponent({
       onDrawPointerDown,
       onDrawPointerMove,
       onDrawPointerUp,
+      onDrawPointerCancel,
       strokeToPath,
       Math,
       minimapData,
