@@ -103,3 +103,33 @@ export function applyDrawOp(list: Drawing[], op: { type: string } & Record<strin
       return list;
   }
 }
+
+export function drawingBounds(d: Drawing): { x: number; y: number; w: number; h: number } {
+  if (d.tool === "pen" || d.tool === "highlighter") {
+    const pts = d.points || [];
+    if (pts.length < 2) return { x: 0, y: 0, w: 0, h: 0 };
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (let i = 0; i + 1 < pts.length; i += 2) {
+      minX = Math.min(minX, pts[i]!); maxX = Math.max(maxX, pts[i]!);
+      minY = Math.min(minY, pts[i + 1]!); maxY = Math.max(maxY, pts[i + 1]!);
+    }
+    return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+  }
+  if (d.tool === "line" || d.tool === "arrow") {
+    const x1 = d.x1 ?? 0, y1 = d.y1 ?? 0, x2 = d.x2 ?? 0, y2 = d.y2 ?? 0;
+    return { x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) };
+  }
+  const x = d.x ?? 0, y = d.y ?? 0, w = d.w ?? 0, h = d.h ?? 0;
+  return { x: Math.min(x, x + w), y: Math.min(y, y + h), w: Math.abs(w), h: Math.abs(h) };
+}
+
+export function translateDrawing(d: Drawing, dx: number, dy: number): Drawing {
+  if (d.tool === "pen" || d.tool === "highlighter") {
+    const pts = (d.points || []).map((v, i) => (i % 2 === 0 ? v + dx : v + dy));
+    return { ...d, points: pts };
+  }
+  if (d.tool === "line" || d.tool === "arrow") {
+    return { ...d, x1: (d.x1 ?? 0) + dx, y1: (d.y1 ?? 0) + dy, x2: (d.x2 ?? 0) + dx, y2: (d.y2 ?? 0) + dy };
+  }
+  return { ...d, x: (d.x ?? 0) + dx, y: (d.y ?? 0) + dy };
+}
