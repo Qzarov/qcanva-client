@@ -44,4 +44,12 @@ describe("applyDrawOp", () => {
     list = applyDrawOp(list, { type: "nodes-move", moves: [] } as any); // non-draw → unchanged
     expect(list).toHaveLength(0);
   });
+
+  it("updates fields of the matching drawing only", () => {
+    const a: Drawing = { id: "a", tool: "rect", color: "#000", width: 2, x: 0, y: 0, w: 5, h: 5, createdBy: "u", createdAt: "t" };
+    const b: Drawing = { id: "b", tool: "pen", color: "#111", width: 1, points: [0, 0], createdBy: "u", createdAt: "t" };
+    const out = applyDrawOp([a, b], { type: "draw-update", id: "a", changes: { color: "#e03131", width: 9 } });
+    expect(out.find((d) => d.id === "a")).toMatchObject({ color: "#e03131", width: 9 });
+    expect(out.find((d) => d.id === "b")).toEqual(b); // unchanged
+  });
 });

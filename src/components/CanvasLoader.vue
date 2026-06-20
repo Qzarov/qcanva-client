@@ -522,7 +522,7 @@ type CanvasOp =
   | { type: 'edge-update'; id: string; changes: Partial<CanvasEdge> }
   | { type: 'draw-add'; drawing: Drawing }
   | { type: 'draw-remove'; id: string }
-  | { type: 'draw-update'; id: string; changes: Record<string, unknown> };
+  | { type: 'draw-update'; id: string; changes: Partial<Drawing> };
 
 interface RenderedEdge {
   id: string;
@@ -550,7 +550,7 @@ export default defineComponent({
   name: "CanvasLoader",
   props: {
     initialData: {
-      type: Object as PropType<{ nodes: any[]; edges: any[] } | null>,
+      type: Object as PropType<{ nodes: any[]; edges: any[]; drawings?: Drawing[] } | null>,
       default: null,
     },
     readonly: {
@@ -604,7 +604,7 @@ export default defineComponent({
       if (props.initialData) {
         nodes.value = props.initialData.nodes || [];
         edges.value = props.initialData.edges || [];
-        drawings.value = (props.initialData as any).drawings || [];
+        drawings.value = props.initialData.drawings || [];
       }
       nextTick(() => {
         fitToContent();
@@ -690,7 +690,7 @@ export default defineComponent({
       if (newData) {
         nodes.value = newData.nodes || [];
         edges.value = newData.edges || [];
-        drawings.value = (newData as any).drawings || [];
+        drawings.value = newData.drawings || [];
         nextTick(() => fitToContent());
       }
     });
@@ -2616,14 +2616,16 @@ export default defineComponent({
     });
 
     // Apply remote canvas data without triggering change event
-    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[] }) => {
+    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => {
       nodes.value = data.nodes;
       edges.value = data.edges;
+      drawings.value = data.drawings || [];
     };
 
     const getCanvasData = () => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
       edges: JSON.parse(JSON.stringify(edges.value)),
+      drawings: JSON.parse(JSON.stringify(drawings.value)),
     });
 
     onMounted(() => {

@@ -997,7 +997,7 @@ export default defineComponent({
       return {
         nodes: currentData.nodes,
         edges: currentData.edges,
-        drawings: canvasRef.value?.drawings || [],
+        drawings: currentData.drawings || [],
         forceSnapshot: true,
       };
     };
