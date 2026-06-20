@@ -79,3 +79,27 @@ export function hitTestDrawing(d: Drawing, px: number, py: number, tol: number):
   const insideInner = px >= x + tol && px <= x + w - tol && py >= y + tol && py <= y + h - tol;
   return insideOuter && !insideInner;
 }
+
+export type DrawOp =
+  | { type: "draw-add"; drawing: Drawing }
+  | { type: "draw-remove"; id: string }
+  | { type: "draw-update"; id: string; changes: Partial<Drawing> };
+
+// Returns a NEW array with the draw op applied; non-draw ops return the input unchanged.
+export function applyDrawOp(list: Drawing[], op: { type: string } & Record<string, unknown>): Drawing[] {
+  switch (op.type) {
+    case "draw-add": {
+      const drawing = (op as DrawOp & { type: "draw-add" }).drawing;
+      if (list.some((d) => d.id === drawing.id)) return list;
+      return [...list, drawing];
+    }
+    case "draw-remove":
+      return list.filter((d) => d.id !== (op as DrawOp & { type: "draw-remove" }).id);
+    case "draw-update": {
+      const { id, changes } = op as DrawOp & { type: "draw-update" };
+      return list.map((d) => (d.id === id ? { ...d, ...changes } : d));
+    }
+    default:
+      return list;
+  }
+}

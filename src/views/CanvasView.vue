@@ -655,6 +655,7 @@ import CanvasLoader from '../components/CanvasLoader.vue';
 interface CanvasChangePayload {
   nodes: any[];
   edges: any[];
+  drawings?: any[];
   forceSnapshot?: boolean;
 }
 
@@ -996,6 +997,7 @@ export default defineComponent({
       return {
         nodes: currentData.nodes,
         edges: currentData.edges,
+        drawings: canvasRef.value?.drawings || [],
         forceSnapshot: true,
       };
     };
@@ -1011,10 +1013,10 @@ export default defineComponent({
       if (wsConnected.value && !data.forceSnapshot && !realtimeOpsUnavailable.value) return;
       saving.value = true;
       if (wsConnected.value) {
-        sendUpdate(JSON.stringify({ nodes: data.nodes, edges: data.edges }));
+        sendUpdate(JSON.stringify({ nodes: data.nodes, edges: data.edges, drawings: data.drawings || [] }));
       } else {
         try {
-          const updated = await canvasApi.update(resolvedId.value, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges }) });
+          const updated = await canvasApi.update(resolvedId.value, { data: JSON.stringify({ nodes: data.nodes, edges: data.edges, drawings: data.drawings || [] }) });
           revision.value = updated?.revision ?? revision.value;
           setRevision(revision.value);
         } catch (err: any) {

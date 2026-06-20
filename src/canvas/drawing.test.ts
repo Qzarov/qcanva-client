@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { strokeToPath, hitTestDrawing, type Drawing } from "./drawing";
+import { strokeToPath, hitTestDrawing, applyDrawOp, type Drawing } from "./drawing";
 
 describe("strokeToPath", () => {
   it("returns an SVG path starting with a move command for a stroke", () => {
@@ -28,5 +28,20 @@ describe("hitTestDrawing", () => {
   it("hits the rectangle border but not its empty centre", () => {
     expect(hitTestDrawing(rect, 0, 50, 6)).toBe(true);
     expect(hitTestDrawing(rect, 50, 50, 6)).toBe(false);
+  });
+});
+
+describe("applyDrawOp", () => {
+  const d: Drawing = { id: "x", tool: "pen", color: "#000", width: 2, points: [0, 0], createdBy: "u", createdAt: "t" };
+  it("adds, removes and ignores unknown ops", () => {
+    let list: Drawing[] = [];
+    list = applyDrawOp(list, { type: "draw-add", drawing: d });
+    expect(list).toHaveLength(1);
+    list = applyDrawOp(list, { type: "draw-add", drawing: d }); // dedup
+    expect(list).toHaveLength(1);
+    list = applyDrawOp(list, { type: "draw-remove", id: "x" });
+    expect(list).toHaveLength(0);
+    list = applyDrawOp(list, { type: "nodes-move", moves: [] } as any); // non-draw → unchanged
+    expect(list).toHaveLength(0);
   });
 });

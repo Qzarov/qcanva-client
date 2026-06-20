@@ -464,6 +464,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextT
 import { marked } from "marked";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
+import { type Drawing, applyDrawOp } from "../canvas/drawing";
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -518,7 +519,10 @@ type CanvasOp =
   | { type: 'node-update'; id: string; changes: Partial<CanvasNode> }
   | { type: 'edge-add'; edge: CanvasEdge }
   | { type: 'edge-delete'; id: string }
-  | { type: 'edge-update'; id: string; changes: Partial<CanvasEdge> };
+  | { type: 'edge-update'; id: string; changes: Partial<CanvasEdge> }
+  | { type: 'draw-add'; drawing: Drawing }
+  | { type: 'draw-remove'; id: string }
+  | { type: 'draw-update'; id: string; changes: Record<string, unknown> };
 
 interface RenderedEdge {
   id: string;
@@ -538,6 +542,7 @@ interface RenderedEdge {
 export interface CanvasChangePayload {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
+  drawings?: Drawing[];
   forceSnapshot?: boolean;
 }
 
@@ -562,6 +567,7 @@ export default defineComponent({
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
+    const drawings = ref<Drawing[]>([]);
 
     // Pan & zoom state
     const camera = reactive({
@@ -598,6 +604,7 @@ export default defineComponent({
       if (props.initialData) {
         nodes.value = props.initialData.nodes || [];
         edges.value = props.initialData.edges || [];
+        drawings.value = (props.initialData as any).drawings || [];
       }
       nextTick(() => {
         fitToContent();
@@ -615,6 +622,7 @@ export default defineComponent({
       const payload: CanvasChangePayload = {
         nodes: JSON.parse(JSON.stringify(nodes.value)),
         edges: JSON.parse(JSON.stringify(edges.value)),
+        drawings: JSON.parse(JSON.stringify(drawings.value)),
       };
       if (forceNextChange) payload.forceSnapshot = true;
       forceNextChange = false;
@@ -669,6 +677,11 @@ export default defineComponent({
           if (edge) Object.assign(edge, op.changes);
           break;
         }
+        case 'draw-add':
+        case 'draw-remove':
+        case 'draw-update':
+          drawings.value = applyDrawOp(drawings.value, op as any);
+          break;
       }
     };
 
@@ -677,6 +690,7 @@ export default defineComponent({
       if (newData) {
         nodes.value = newData.nodes || [];
         edges.value = newData.edges || [];
+        drawings.value = (newData as any).drawings || [];
         nextTick(() => fitToContent());
       }
     });
@@ -1836,7 +1850,7 @@ export default defineComponent({
     };
 
     // Undo/redo history
-    interface Snapshot { nodes: string; edges: string; }
+    interface Snapshot { nodes: string; edges: string; drawings: string; }
     const undoStack = ref<Snapshot[]>([]);
     const redoStack = ref<Snapshot[]>([]);
     const MAX_HISTORY = 50;
@@ -1846,6 +1860,7 @@ export default defineComponent({
     const takeSnapshot = (): Snapshot => ({
       nodes: JSON.stringify(nodes.value),
       edges: JSON.stringify(edges.value),
+      drawings: JSON.stringify(drawings.value),
     });
 
     let changeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1869,6 +1884,7 @@ export default defineComponent({
       const snap = undoStack.value.pop()!;
       nodes.value = JSON.parse(snap.nodes);
       edges.value = JSON.parse(snap.edges);
+      drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       scheduleChange(true);
@@ -1880,6 +1896,7 @@ export default defineComponent({
       const snap = redoStack.value.pop()!;
       nodes.value = JSON.parse(snap.nodes);
       edges.value = JSON.parse(snap.edges);
+      drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       scheduleChange(true);
@@ -2732,6 +2749,7 @@ export default defineComponent({
       onTouchMove,
       onTouchEnd,
       nodes,
+      drawings,
       minimapData,
       onMinimapDown,
       onMinimapMove,
