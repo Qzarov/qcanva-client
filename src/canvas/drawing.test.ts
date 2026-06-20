@@ -14,9 +14,10 @@ describe("strokeToPath", () => {
 
 describe("hitTestDrawing", () => {
   const pen: Drawing = { id: "p", tool: "pen", color: "#000", width: 2, points: [0, 0, 100, 0], createdBy: "u", createdAt: "x" };
-  it("hits near a pen point", () => {
-    expect(hitTestDrawing(pen, 50, 1, 6)).toBe(false);
-    expect(hitTestDrawing(pen, 0, 1, 6)).toBe(true);
+  it("hits along a pen stroke between sample points", () => {
+    expect(hitTestDrawing(pen, 50, 1, 6)).toBe(true);   // on the segment between the two samples
+    expect(hitTestDrawing(pen, 50, 60, 6)).toBe(false); // far from the stroke
+    expect(hitTestDrawing(pen, 0, 1, 6)).toBe(true);    // near the start point
   });
   const line: Drawing = { id: "l", tool: "line", color: "#000", width: 2, x1: 0, y1: 0, x2: 100, y2: 0, createdBy: "u", createdAt: "x" };
   it("hits along a line segment", () => {
