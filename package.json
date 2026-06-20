@@ -19,6 +19,7 @@
     "@tiptap/starter-kit": "^2.27.2",
     "@tiptap/vue-3": "^2.27.2",
     "marked": "^16.4.1",
+    "perfect-freehand": "^1.2.3",
     "socket.io-client": "^4.8.3",
     "vue": "^3.5.22",
     "vue-router": "^4.6.4",
