@@ -337,6 +337,66 @@
         <div class="conn-point conn-right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
 
+      <!-- Drawings SVG layer (above nodes) -->
+      <svg class="canvas-drawings" :style="edgesSvgStyle">
+        <defs>
+          <marker id="draw-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" />
+          </marker>
+        </defs>
+        <template v-for="d in drawings" :key="d.id">
+          <path
+            v-if="d.tool === 'pen' || d.tool === 'highlighter'"
+            :d="strokeToPath(d.points || [], d.width)"
+            :fill="d.color"
+            :opacity="d.opacity ?? 1"
+            :style="d.tool === 'highlighter' ? 'mix-blend-mode: multiply' : undefined"
+          />
+          <rect
+            v-else-if="d.tool === 'rect'"
+            :x="Math.min((d.x || 0), (d.x || 0) + (d.w || 0))" :y="Math.min((d.y || 0), (d.y || 0) + (d.h || 0))"
+            :width="Math.abs(d.w || 0)" :height="Math.abs(d.h || 0)"
+            fill="none" :stroke="d.color" :stroke-width="d.width"
+          />
+          <ellipse
+            v-else-if="d.tool === 'ellipse'"
+            :cx="(d.x || 0) + (d.w || 0) / 2" :cy="(d.y || 0) + (d.h || 0) / 2"
+            :rx="Math.abs((d.w || 0) / 2)" :ry="Math.abs((d.h || 0) / 2)"
+            fill="none" :stroke="d.color" :stroke-width="d.width"
+          />
+          <line
+            v-else-if="d.tool === 'line' || d.tool === 'arrow'"
+            :x1="d.x1 || 0" :y1="d.y1 || 0" :x2="d.x2 || 0" :y2="d.y2 || 0"
+            :stroke="d.color" :stroke-width="d.width"
+            :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow)' : undefined"
+          />
+        </template>
+        <!-- in-progress preview -->
+        <path
+          v-if="draftDrawing && (draftDrawing.tool === 'pen' || draftDrawing.tool === 'highlighter')"
+          :d="strokeToPath(draftDrawing.points || [], draftDrawing.width)"
+          :fill="draftDrawing.color" :opacity="draftDrawing.opacity ?? 1"
+        />
+        <rect
+          v-else-if="draftDrawing && draftDrawing.tool === 'rect'"
+          :x="Math.min((draftDrawing.x || 0), (draftDrawing.x || 0) + (draftDrawing.w || 0))" :y="Math.min((draftDrawing.y || 0), (draftDrawing.y || 0) + (draftDrawing.h || 0))"
+          :width="Math.abs(draftDrawing.w || 0)" :height="Math.abs(draftDrawing.h || 0)"
+          fill="none" :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
+        />
+        <ellipse
+          v-else-if="draftDrawing && draftDrawing.tool === 'ellipse'"
+          :cx="(draftDrawing.x || 0) + (draftDrawing.w || 0) / 2" :cy="(draftDrawing.y || 0) + (draftDrawing.h || 0) / 2"
+          :rx="Math.abs((draftDrawing.w || 0) / 2)" :ry="Math.abs((draftDrawing.h || 0) / 2)"
+          fill="none" :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
+        />
+        <line
+          v-else-if="draftDrawing && (draftDrawing.tool === 'line' || draftDrawing.tool === 'arrow')"
+          :x1="draftDrawing.x1 || 0" :y1="draftDrawing.y1 || 0" :x2="draftDrawing.x2 || 0" :y2="draftDrawing.y2 || 0"
+          :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
+          :marker-end="draftDrawing.tool === 'arrow' ? 'url(#draw-arrow)' : undefined"
+        />
+      </svg>
+
       <!-- Remote cursors -->
       <div
         v-for="cursor in remoteCursors"
@@ -464,7 +524,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextT
 import { marked } from "marked";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
-import { type Drawing, applyDrawOp } from "../canvas/drawing";
+import { type Drawing, strokeToPath, applyDrawOp } from "../canvas/drawing";
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -568,6 +628,7 @@ export default defineComponent({
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
     const drawings = ref<Drawing[]>([]);
+    const draftDrawing = ref<Drawing | null>(null);
 
     // Pan & zoom state
     const camera = reactive({
@@ -2752,6 +2813,9 @@ export default defineComponent({
       onTouchEnd,
       nodes,
       drawings,
+      draftDrawing,
+      strokeToPath,
+      Math,
       minimapData,
       onMinimapDown,
       onMinimapMove,
@@ -2893,6 +2957,21 @@ export default defineComponent({
   pointer-events: none;
   overflow: visible;
 }
+.canvas-drawings {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 20; /* above node layer (z-index 10), below edge actions/label editors (50) and remote cursors (100) */
+}
+.canvas-drawings path,
+.canvas-drawings rect,
+.canvas-drawings ellipse,
+.canvas-drawings line {
+  pointer-events: none;
+}
+#draw-arrow path { fill: context-stroke; }
+
 .edge-hit {
   fill: none;
   stroke: transparent;
