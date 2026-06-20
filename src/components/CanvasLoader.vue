@@ -339,25 +339,39 @@
 
       <!-- Drawings SVG layer (above nodes) -->
       <svg class="canvas-drawings" :style="edgesSvgStyle">
-        <template v-for="d in drawings" :key="d.id">
+        <template v-for="d in renderList" :key="d.id">
           <path
             v-if="d.tool === 'pen' || d.tool === 'highlighter'"
             :d="strokeToPath(d.points || [], d.width)"
             :fill="d.color"
             :opacity="d.opacity ?? 1"
-            :style="d.tool === 'highlighter' ? 'mix-blend-mode: multiply' : undefined"
+            :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: 'pointer' } : { pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: 'pointer' }"
+            @pointerdown.stop="onDrawingPointerDown(d, $event)"
+            @pointermove="onDrawingPointerMove"
+            @pointerup="onDrawingPointerUp"
+            @pointercancel="onDrawingPointerUp"
           />
           <rect
             v-else-if="d.tool === 'rect'"
             :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
             :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
             fill="none" :stroke="d.color" :stroke-width="d.width"
+            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+            @pointerdown.stop="onDrawingPointerDown(d, $event)"
+            @pointermove="onDrawingPointerMove"
+            @pointerup="onDrawingPointerUp"
+            @pointercancel="onDrawingPointerUp"
           />
           <ellipse
             v-else-if="d.tool === 'ellipse'"
             :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
             :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
             fill="none" :stroke="d.color" :stroke-width="d.width"
+            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+            @pointerdown.stop="onDrawingPointerDown(d, $event)"
+            @pointermove="onDrawingPointerMove"
+            @pointerup="onDrawingPointerUp"
+            @pointercancel="onDrawingPointerUp"
           />
           <template v-else-if="d.tool === 'line' || d.tool === 'arrow'">
             <marker
@@ -372,9 +386,22 @@
               :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
               :stroke="d.color" :stroke-width="d.width"
               :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow-' + d.id + ')' : undefined"
+              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @pointermove="onDrawingPointerMove"
+              @pointerup="onDrawingPointerUp"
+              @pointercancel="onDrawingPointerUp"
             />
           </template>
         </template>
+        <!-- Selection outline -->
+        <rect
+          v-if="selectedDrawingObj"
+          :x="selectedBounds.x - 4" :y="selectedBounds.y - 4"
+          :width="selectedBounds.w + 8" :height="selectedBounds.h + 8"
+          fill="none" stroke="#1971c2" stroke-width="1.5" stroke-dasharray="6 4"
+          :style="{ pointerEvents: 'none' }"
+        />
         <!-- in-progress preview -->
         <path
           v-if="draftDrawing && (draftDrawing.tool === 'pen' || draftDrawing.tool === 'highlighter')"
@@ -547,7 +574,7 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextT
 import { marked } from "marked";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
-import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing } from "../canvas/drawing";
+import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -663,6 +690,12 @@ export default defineComponent({
     const setDrawTool = (t: ActiveDrawTool) => { drawTool.value = t; };
     const setDrawColor = (c: string) => { drawColor.value = c; };
     const setDrawWidth = (w: number) => { drawWidth.value = w; };
+
+    // Drawing selection + drag state
+    const selectedDrawingId = ref<string | null>(null);
+    let drawMoveStart: { x: number; y: number } | null = null;
+    let drawMoveOrigin: Drawing | null = null;
+    const drawMovePreview = ref<Drawing | null>(null);
 
     // Pan & zoom state
     const camera = reactive({
@@ -2077,6 +2110,7 @@ export default defineComponent({
       if (e.key === "Escape") {
         selectedNodeIds.value = [];
         selectedEdgeId.value = null;
+        selectedDrawingId.value = null;
         return;
       }
       if (editingNodeId.value || editingEdgeId.value) return;
@@ -2097,6 +2131,9 @@ export default defineComponent({
           emitOp({ type: 'node-delete', ids });
           selectedNodeIds.value = [];
           e.preventDefault();
+        } else if (selectedDrawingId.value) {
+          e.preventDefault();
+          deleteSelectedDrawing();
         }
       }
     };
@@ -2190,6 +2227,102 @@ export default defineComponent({
       draftDrawing.value = null;
     };
 
+    // Drawing selection computeds
+    const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingId.value) || null);
+    const shownDrawing = (d: Drawing): Drawing =>
+      (drawMovePreview.value && drawMovePreview.value.id === d.id ? drawMovePreview.value : d);
+    const renderList = computed(() => drawings.value.map(shownDrawing));
+    const selectedBounds = computed(() => {
+      const d = selectedDrawingObj.value;
+      if (!d) return { x: 0, y: 0, w: 0, h: 0 };
+      return drawingBounds(shownDrawing(d));
+    });
+    const selectedDrawingScreenRect = computed(() => {
+      if (!selectedDrawingObj.value) return null;
+      const b = selectedBounds.value;
+      return {
+        left: b.x * camera.scale + camera.x,
+        top: b.y * camera.scale + camera.y,
+        width: b.w * camera.scale,
+        height: b.h * camera.scale,
+      };
+    });
+
+    // Drawing pointer handlers (select + drag)
+    const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
+      if (drawTool.value !== "select") return;
+      e.stopPropagation();
+      selectedDrawingId.value = d.id;
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      drawMoveStart = toWorld(e);
+      drawMoveOrigin = d;
+      drawMovePreview.value = null;
+    };
+    const onDrawingPointerMove = (e: PointerEvent) => {
+      if (!drawMoveStart || !drawMoveOrigin) return;
+      const p = toWorld(e);
+      drawMovePreview.value = translateDrawing(drawMoveOrigin, p.x - drawMoveStart.x, p.y - drawMoveStart.y);
+    };
+    const onDrawingPointerUp = () => {
+      if (!drawMoveStart || !drawMoveOrigin) return;
+      const moved = drawMovePreview.value;
+      const origin = drawMoveOrigin;
+      drawMoveStart = null;
+      drawMoveOrigin = null;
+      drawMovePreview.value = null;
+      if (!moved) return; // pure click → selection only
+      pushUndo();
+      drawings.value = drawings.value.map((d) => (d.id === origin.id ? moved : d));
+      const changes =
+        (moved.tool === "pen" || moved.tool === "highlighter")
+          ? { points: moved.points }
+          : (moved.tool === "line" || moved.tool === "arrow")
+            ? { x1: moved.x1, y1: moved.y1, x2: moved.x2, y2: moved.y2 }
+            : { x: moved.x, y: moved.y };
+      emitOp({ type: "draw-update", id: origin.id, changes } as CanvasOp);
+    };
+
+    // Drawing action methods
+    const setSelectedDrawingColor = (color: string) => {
+      const d = selectedDrawingObj.value;
+      if (!d) return;
+      pushUndo();
+      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, color } : x));
+      emitOp({ type: "draw-update", id: d.id, changes: { color } } as CanvasOp);
+    };
+    const setSelectedDrawingWidth = (width: number) => {
+      const d = selectedDrawingObj.value;
+      if (!d) return;
+      pushUndo();
+      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, width } : x));
+      emitOp({ type: "draw-update", id: d.id, changes: { width } } as CanvasOp);
+    };
+    const duplicateSelectedDrawing = () => {
+      const d = selectedDrawingObj.value;
+      if (!d) return;
+      const copy: Drawing = { ...translateDrawing(d, 16, 16), id: genId(), createdAt: new Date().toISOString() };
+      pushUndo();
+      drawings.value = [...drawings.value, copy];
+      selectedDrawingId.value = copy.id;
+      emitOp({ type: "draw-add", drawing: copy } as CanvasOp);
+    };
+    const deleteSelectedDrawing = () => {
+      const d = selectedDrawingObj.value;
+      if (!d) return;
+      const id = d.id;
+      pushUndo();
+      selectedDrawingId.value = null;
+      drawings.value = drawings.value.filter((x) => x.id !== id);
+      emitOp({ type: "draw-remove", id } as CanvasOp);
+    };
+
+    // Clear stale selection when peer removes the selected drawing
+    watch(drawings, () => {
+      if (selectedDrawingId.value && !drawings.value.some((d) => d.id === selectedDrawingId.value)) {
+        selectedDrawingId.value = null;
+      }
+    });
+
     // Pan handlers
     const onPanStart = (e: MouseEvent) => {
       if (dragNodeId.value || connDragging.value) return;
@@ -2197,6 +2330,7 @@ export default defineComponent({
         selectedNodeIds.value = [];
       }
       selectedEdgeId.value = null;
+      selectedDrawingId.value = null;
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
 
@@ -2982,6 +3116,18 @@ export default defineComponent({
       searchNodes,
       focusNode,
       imageInput,
+      selectedDrawingId,
+      selectedDrawingObj,
+      selectedBounds,
+      selectedDrawingScreenRect,
+      renderList,
+      onDrawingPointerDown,
+      onDrawingPointerMove,
+      onDrawingPointerUp,
+      setSelectedDrawingColor,
+      setSelectedDrawingWidth,
+      duplicateSelectedDrawing,
+      deleteSelectedDrawing,
     };
   },
 });
