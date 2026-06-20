@@ -196,9 +196,6 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
             <span>Действия</span>
           </button>
-          <button v-if="role !== 'read'" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'draw' }" @click="toggleToolbarMenu('draw')" title="Drawing tools">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
-          </button>
         </div>
 
         <div v-if="activeToolbarMenu" class="toolbar-popover">
@@ -299,24 +296,39 @@
             </div>
           </template>
 
-          <template v-else-if="activeToolbarMenu === 'draw'">
-            <div class="toolbar-popover-title">Рисование</div>
-            <div class="toolbar-menu-row">
-              <button v-for="t in ['select','pen','highlighter','rect','ellipse','line','arrow','eraser']" :key="t"
-                class="toolbar-choice" :class="{ active: canvasRef?.drawTool === t }"
-                @click="canvasRef?.setDrawTool(t as any)">{{ drawToolLabel(t) }}</button>
-            </div>
-            <div class="toolbar-menu-row">
-              <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'draw-'+c"
-                class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
-                @click="canvasRef?.setDrawColor(c)"></button>
-            </div>
-            <div class="toolbar-menu-row">
-              <label>Толщина</label>
-              <input type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-                @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" />
-            </div>
-          </template>
+        </div>
+      </div>
+
+      <!-- Drawing toolbar — always available, independent of node selection -->
+      <div v-if="role !== 'read'" class="draw-toolbar" @pointerdown.stop @click.stop>
+        <button
+          class="draw-toolbar-toggle"
+          :class="{ active: drawPanelOpen || (canvasRef && canvasRef.drawTool !== 'select') }"
+          @click="drawPanelOpen = !drawPanelOpen"
+          title="Инструменты рисования"
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+        </button>
+        <div v-if="drawPanelOpen" class="draw-toolbar-panel">
+          <div class="toolbar-menu-row draw-tools-row">
+            <button
+              v-for="t in ['select','pen','highlighter','rect','ellipse','line','arrow','eraser']" :key="t"
+              class="toolbar-choice" :class="{ active: canvasRef?.drawTool === t }"
+              @click="canvasRef?.setDrawTool(t as any)"
+            >{{ drawToolLabel(t) }}</button>
+          </div>
+          <div class="toolbar-menu-row">
+            <button
+              v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'draw-'+c"
+              class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
+              @click="canvasRef?.setDrawColor(c)"
+            ></button>
+          </div>
+          <div class="toolbar-menu-row draw-width-row">
+            <label>Толщина {{ canvasRef?.drawWidth ?? 4 }}</label>
+            <input type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
+              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" />
+          </div>
         </div>
       </div>
 
@@ -1429,6 +1441,8 @@ export default defineComponent({
       ellipse: 'Эллипс', line: 'Линия', arrow: 'Стрелка', eraser: 'Ластик',
     } as Record<string, string>)[t] || t;
 
+    const drawPanelOpen = ref(false);
+
     return {
       canvasViewRef, topbarRef, nodeToolbarRef, canvasRef, aligns,
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
@@ -1453,6 +1467,7 @@ export default defineComponent({
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
       activeToolbarMenu, toggleToolbarMenu,
       drawToolLabel,
+      drawPanelOpen,
     };
   },
 });
