@@ -309,26 +309,35 @@
         }"
         @pointerdown.stop @click.stop
       >
-        <div class="toolbar-menu-row">
+        <!-- current colour → click opens the palette -->
+        <div class="draw-action-color">
           <button
-            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'dsel-'+c"
-            class="tb-color" :style="{ background: c }"
-            :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
-            @click="canvasRef?.setSelectedDrawingColor(c)"
+            class="tb-color draw-action-color-current"
+            :style="{ background: canvasRef?.selectedDrawingObj?.color || '#000' }"
+            @click="drawColorPickerOpen = !drawColorPickerOpen"
             title="Цвет"
           ></button>
-          <button class="toolbar-choice" @click="canvasRef?.duplicateSelectedDrawing()" title="Дублировать">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-          </button>
-          <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" title="Удалить">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-          </button>
+          <div v-if="drawColorPickerOpen" class="draw-action-color-pop">
+            <button
+              v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'dsel-'+c"
+              class="tb-color" :style="{ background: c }"
+              :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
+              @click="canvasRef?.setSelectedDrawingColor(c); drawColorPickerOpen = false"
+            ></button>
+          </div>
         </div>
-        <div class="toolbar-menu-row draw-width-row">
-          <input type="range" min="1" max="20"
-            :value="canvasRef?.selectedDrawingObj?.width ?? 4"
-            @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))" />
-        </div>
+        <span class="draw-action-sep"></span>
+        <input class="draw-action-width" type="range" min="1" max="20"
+          :value="canvasRef?.selectedDrawingObj?.width ?? 4"
+          @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))"
+          title="Толщина" />
+        <span class="draw-action-sep"></span>
+        <button class="toolbar-choice" @click="canvasRef?.duplicateSelectedDrawing()" title="Дублировать">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
+        </button>
+        <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" title="Удалить">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </button>
       </div>
 
       <!-- Drawing toolbar — always available, independent of node selection -->
@@ -342,25 +351,46 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
         </button>
         <div v-if="drawPanelOpen" class="draw-toolbar-panel">
-          <div class="toolbar-menu-row draw-tools-row">
-            <button
-              v-for="t in ['select','pen','highlighter','rect','ellipse','line','arrow','eraser']" :key="t"
-              class="toolbar-choice" :class="{ active: canvasRef?.drawTool === t }"
-              @click="canvasRef?.setDrawTool(t as any)"
-            >{{ drawToolLabel(t) }}</button>
+          <div class="draw-tools-col">
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'select' }" @click="canvasRef?.setDrawTool('select')" title="Выбор">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 17 2.51-7.42L20 10.09 3 3z"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" title="Перо">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'highlighter' }" @click="canvasRef?.setDrawTool('highlighter')" title="Маркер">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 12L12 2l-3 3 10 10 3-3z"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'rect' }" @click="canvasRef?.setDrawTool('rect')" title="Прямоугольник">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'ellipse' }" @click="canvasRef?.setDrawTool('ellipse')" title="Эллипс">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'line' }" @click="canvasRef?.setDrawTool('line')" title="Линия">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'arrow' }" @click="canvasRef?.setDrawTool('arrow')" title="Стрелка">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
+            </button>
+            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" title="Ластик">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
+            </button>
           </div>
-          <div class="toolbar-menu-row">
-            <button
-              v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'draw-'+c"
-              class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
-              @click="canvasRef?.setDrawColor(c)"
-            ></button>
+          <span class="draw-panel-sep"></span>
+          <!-- current colour → click opens palette -->
+          <div class="draw-action-color">
+            <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" title="Цвет"></button>
+            <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-right">
+              <button
+                v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
+                class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
+                @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
+              ></button>
+            </div>
           </div>
-          <div class="toolbar-menu-row draw-width-row">
-            <label>Толщина {{ canvasRef?.drawWidth ?? 4 }}</label>
-            <input type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" />
-          </div>
+          <input class="draw-action-width draw-panel-width" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
+            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
         </div>
       </div>
 
@@ -763,15 +793,20 @@ export default defineComponent({
       if (activeToolbarMenu.value && !(target && nodeToolbarRef.value?.contains(target))) {
         activeToolbarMenu.value = '';
       }
-      // Close the drawing panel when clicking outside it — but not while actively
-      // drawing (clicks on the .draw-capture overlay) so a stroke doesn't dismiss it.
+      // Close the drawing panel on any click outside it. The draw overlay is tied to the
+      // active tool (not the panel), so closing the panel never interrupts a stroke. Only
+      // reset to the select tool when the click is NOT on the drawing surface.
       if (drawPanelOpen.value) {
         const insidePanel = !!(target && drawToolbarRef.value?.contains(target));
-        const onDrawSurface = !!el?.closest?.('.draw-capture');
-        if (!insidePanel && !onDrawSurface) {
+        if (!insidePanel) {
           drawPanelOpen.value = false;
-          canvasRef.value?.setDrawTool('select');
+          drawPaletteColorOpen.value = false;
+          if (!el?.closest?.('.draw-capture')) canvasRef.value?.setDrawTool('select');
         }
+      }
+      // Close an open colour picker in the selected-drawing menu when clicking elsewhere.
+      if (drawColorPickerOpen.value && !el?.closest?.('.drawing-actions-toolbar')) {
+        drawColorPickerOpen.value = false;
       }
     };
 
@@ -1486,6 +1521,8 @@ export default defineComponent({
     } as Record<string, string>)[t] || t;
 
     const drawPanelOpen = ref(false);
+    const drawColorPickerOpen = ref(false);
+    const drawPaletteColorOpen = ref(false);
     const toggleDrawPanel = () => {
       drawPanelOpen.value = !drawPanelOpen.value;
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
@@ -1493,6 +1530,7 @@ export default defineComponent({
 
     return {
       canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
+      drawColorPickerOpen, drawPaletteColorOpen,
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
