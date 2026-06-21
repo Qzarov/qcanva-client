@@ -299,6 +299,38 @@
         </div>
       </div>
 
+      <!-- Floating actions toolbar for a selected drawing -->
+      <div
+        v-if="role !== 'read' && canvasRef?.selectedDrawingId && canvasRef?.selectedDrawingScreenRect"
+        class="drawing-actions-toolbar"
+        :style="{
+          left: canvasRef.selectedDrawingScreenRect.left + 'px',
+          top: Math.max(8, (topbarRef?.offsetHeight ?? 44) + canvasRef.selectedDrawingScreenRect.top - 52) + 'px'
+        }"
+        @pointerdown.stop @click.stop
+      >
+        <div class="toolbar-menu-row">
+          <button
+            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'dsel-'+c"
+            class="tb-color" :style="{ background: c }"
+            :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
+            @click="canvasRef?.setSelectedDrawingColor(c)"
+            title="Цвет"
+          ></button>
+          <button class="toolbar-choice" @click="canvasRef?.duplicateSelectedDrawing()" title="Дублировать">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
+          </button>
+          <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" title="Удалить">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+          </button>
+        </div>
+        <div class="toolbar-menu-row draw-width-row">
+          <input type="range" min="1" max="20"
+            :value="canvasRef?.selectedDrawingObj?.width ?? 4"
+            @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))" />
+        </div>
+      </div>
+
       <!-- Drawing toolbar — always available, independent of node selection -->
       <div v-if="role !== 'read'" class="draw-toolbar" @pointerdown.stop @click.stop>
         <button
