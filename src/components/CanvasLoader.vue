@@ -438,6 +438,17 @@
             stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
             class="drawing-selection-outline"
           />
+          <!-- move handle: drag anywhere inside the selection box -->
+          <rect
+            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
+            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
+            fill="transparent" stroke="none"
+            :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: 'move' }"
+            @pointerdown.stop="onDrawingPointerDown(selectedDrawingObj, $event)"
+            @pointermove="onDrawingPointerMove"
+            @pointerup="onDrawingPointerUp"
+            @pointercancel="onDrawingPointerUp"
+          />
         </g>
         <!-- in-progress preview -->
         <path
