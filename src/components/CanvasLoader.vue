@@ -348,7 +348,7 @@
               fill="transparent" stroke="transparent" stroke-width="18"
               stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"
               :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
@@ -366,7 +366,7 @@
               :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
               fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
               :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
@@ -385,7 +385,7 @@
               :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
               fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
               :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
@@ -411,7 +411,7 @@
               :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
               stroke="transparent" stroke-width="18" stroke-linecap="round" vector-effect="non-scaling-stroke"
               :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
@@ -446,7 +446,7 @@
             :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
             fill="transparent" stroke="none"
             :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: 'move' }"
-            @pointerdown.stop="onDrawingPointerDown(selectedDrawingObj, $event)"
+            @mousedown.stop @pointerdown.stop="onDrawingPointerDown(selectedDrawingObj, $event)"
             @pointermove="onDrawingPointerMove"
             @pointerup="onDrawingPointerUp"
             @pointercancel="onDrawingPointerUp"
@@ -744,9 +744,6 @@ export default defineComponent({
 
     // Drawing selection + drag state
     const selectedDrawingId = ref<string | null>(null);
-    // pointerdown on a drawing fires before the viewport's mousedown (onPanStart);
-    // this flag lets onPanStart skip its one deselect so the selection survives the click.
-    let suppressDrawingDeselectOnce = false;
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
@@ -2311,7 +2308,6 @@ export default defineComponent({
     const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
       if (drawTool.value !== "select") return;
       e.stopPropagation();
-      suppressDrawingDeselectOnce = true;
       selectedDrawingId.value = d.id;
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
@@ -2392,11 +2388,7 @@ export default defineComponent({
         selectedNodeIds.value = [];
       }
       selectedEdgeId.value = null;
-      if (suppressDrawingDeselectOnce) {
-        suppressDrawingDeselectOnce = false;
-      } else {
-        selectedDrawingId.value = null;
-      }
+      selectedDrawingId.value = null;
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
 

@@ -351,6 +351,9 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
         </button>
         <div v-if="drawPanelOpen" class="draw-toolbar-panel">
+          <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
+            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
+          <span class="draw-panel-sep"></span>
           <div class="draw-tools-col">
             <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'select' }" @click="canvasRef?.setDrawTool('select')" title="Выбор">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 17 2.51-7.42L20 10.09 3 3z"/></svg>
@@ -389,8 +392,6 @@
               ></button>
             </div>
           </div>
-          <input class="draw-action-width draw-panel-width" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
         </div>
       </div>
 

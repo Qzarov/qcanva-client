@@ -3780,6 +3780,14 @@ html, body {
   width: 100%;
   accent-color: var(--color-brands, #00ff00);
 }
+.draw-panel-width-vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  width: 24px;
+  height: 96px;
+  accent-color: var(--color-brands, #00ff00);
+}
 
 /* current-colour button + palette popover (shared by both menus) */
 .draw-action-color { position: relative; display: inline-flex; }
