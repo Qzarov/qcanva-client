@@ -395,14 +395,21 @@
             />
           </template>
         </template>
-        <!-- Selection outline -->
-        <rect
-          v-if="selectedDrawingObj"
-          :x="selectedBounds.x - 4" :y="selectedBounds.y - 4"
-          :width="selectedBounds.w + 8" :height="selectedBounds.h + 8"
-          fill="none" stroke="#1971c2" stroke-width="1.5" stroke-dasharray="6 4"
-          :style="{ pointerEvents: 'none' }"
-        />
+        <!-- Selection highlight + animated outline -->
+        <g v-if="selectedDrawingObj" :style="{ pointerEvents: 'none' }">
+          <rect
+            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
+            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
+            rx="4" fill="rgba(77,171,247,0.12)" stroke="none"
+          />
+          <rect
+            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
+            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
+            rx="4" fill="none" stroke="#4dabf7" stroke-width="2"
+            stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
+            class="drawing-selection-outline"
+          />
+        </g>
         <!-- in-progress preview -->
         <path
           v-if="draftDrawing && (draftDrawing.tool === 'pen' || draftDrawing.tool === 'highlighter')"
@@ -3258,6 +3265,12 @@ export default defineComponent({
   overflow: visible;
   pointer-events: none;
   z-index: 20; /* above node layer (z-index 10), below edge actions/label editors (50) and remote cursors (100) */
+}
+.drawing-selection-outline {
+  animation: drawing-selection-ants 0.6s linear infinite;
+}
+@keyframes drawing-selection-ants {
+  to { stroke-dashoffset: -10; }
 }
 .canvas-drawings path,
 .canvas-drawings rect,
