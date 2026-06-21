@@ -276,8 +276,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     currentRevision.value = revision;
   }
 
-  function sendChat(text: string, replyToId?: string | null) {
-    socket.value?.emit("chat-send", { text, replyToId: replyToId ?? null });
+  function sendChat(text: string, replyToId?: string | null, nodeId?: string | null, nodeLabel?: string | null) {
+    socket.value?.emit("chat-send", { text, replyToId: replyToId ?? null, nodeId: nodeId ?? null, nodeLabel: nodeLabel ?? null });
   }
 
   function onChatMessage(cb: (m: any) => void) {

@@ -10,27 +10,27 @@ const msgs = [
 
 describe("ChatPanel", () => {
   it("renders messages with author and text", () => {
-    const w = mount(ChatPanel, { props: { messages: msgs, canPost: true } });
+    const w = mount(ChatPanel, { props: { messages: msgs, canPost: true, attachedNode: null, canAttach: false } });
     expect(w.text()).toContain("Alice");
     expect(w.text()).toContain("hello");
     expect(w.text()).toContain("Bob");
   });
   it("emits send with trimmed text on Enter when canPost", async () => {
-    const w = mount(ChatPanel, { props: { messages: [], canPost: true } });
+    const w = mount(ChatPanel, { props: { messages: [], canPost: true, attachedNode: null, canAttach: false } });
     const ta = w.get("textarea");
     await ta.setValue("  hey  ");
     await ta.trigger("keydown", { key: "Enter" });
-    expect(w.emitted("send")?.[0]).toEqual([{ text: "hey", replyToId: null }]);
+    expect(w.emitted("send")?.[0]).toEqual([{ text: "hey", replyToId: null, nodeId: null, nodeLabel: null }]);
   });
   it("does not emit send when text is empty", async () => {
-    const w = mount(ChatPanel, { props: { messages: [], canPost: true } });
+    const w = mount(ChatPanel, { props: { messages: [], canPost: true, attachedNode: null, canAttach: false } });
     const ta = w.get("textarea");
     await ta.setValue("   ");
     await ta.trigger("keydown", { key: "Enter" });
     expect(w.emitted("send")).toBeFalsy();
   });
   it("hides the input when canPost is false", () => {
-    const w = mount(ChatPanel, { props: { messages: msgs, canPost: false } });
+    const w = mount(ChatPanel, { props: { messages: msgs, canPost: false, attachedNode: null, canAttach: false } });
     expect(w.find("textarea").exists()).toBe(false);
   });
   it("renders quote plaque for messages with replyToId", () => {
@@ -45,10 +45,28 @@ describe("ChatPanel", () => {
         createdAt: new Date().toISOString(),
       },
     ];
-    const w = mount(ChatPanel, { props: { messages: msgsWithReply, canPost: true } });
+    const w = mount(ChatPanel, { props: { messages: msgsWithReply, canPost: true, attachedNode: null, canAttach: false } });
     const quote = w.find(".chat-quote");
     expect(quote.exists()).toBe(true);
     expect(quote.text()).toContain("Alice");
     expect(quote.text()).toContain("hello");
+  });
+  it("renders a node chip for messages with nodeId, and clicking emits jump-node", async () => {
+    const msgsWithNode = [
+      {
+        id: "3",
+        authorName: "Alice",
+        text: "check this",
+        nodeId: "node-42",
+        nodeLabel: "My Node",
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const w = mount(ChatPanel, { props: { messages: msgsWithNode, canPost: true, attachedNode: null, canAttach: false } });
+    const chip = w.find(".chat-node-chip");
+    expect(chip.exists()).toBe(true);
+    expect(chip.text()).toContain("My Node");
+    await chip.trigger("click");
+    expect(w.emitted("jump-node")?.[0]).toEqual(["node-42"]);
   });
 });

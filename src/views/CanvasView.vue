@@ -708,7 +708,7 @@
       <!-- Chat drawer -->
       <div v-if="chatOpen" class="chat-drawer">
         <div class="chat-drawer-head"><span>Чат</span><button class="chat-drawer-close" @click="chatOpen = false">×</button></div>
-        <ChatPanel :messages="chatMessages" :can-post="role !== 'read'" @send="onChatSend" />
+        <ChatPanel :messages="chatMessages" :can-post="role !== 'read'" :attached-node="attachedNode" :can-attach="!!canvasRef?.selectedNodeId" @send="onChatSend" @attach-node="onAttachNode" @clear-node="onClearNode" @jump-node="onJumpNode" />
       </div>
 
       <!-- Keyboard Shortcuts dialog -->
@@ -991,7 +991,19 @@ export default defineComponent({
     });
     onChatError((_e) => { /* no-op: errors are server-enforced, no toast needed */ });
 
-    const onChatSend = (payload: { text: string; replyToId: string | null }) => sendChat(payload.text, payload.replyToId);
+    const attachedNode = ref<{ id: string; label: string } | null>(null);
+    const onAttachNode = () => {
+      const id = canvasRef.value?.selectedNodeId;
+      if (!id) return;
+      attachedNode.value = { id, label: canvasRef.value?.getNodeLabel?.(id) || "Нода" };
+    };
+    const onClearNode = () => { attachedNode.value = null; };
+    const onJumpNode = (nodeId: string) => { canvasRef.value?.focusNode?.(nodeId); };
+
+    const onChatSend = (payload: { text: string; replyToId: string | null; nodeId: string | null; nodeLabel: string | null }) => {
+      sendChat(payload.text, payload.replyToId, payload.nodeId, payload.nodeLabel);
+      attachedNode.value = null;
+    };
 
     const load = async () => {
       try {
@@ -1613,6 +1625,7 @@ export default defineComponent({
       drawPanelOpen,
       toggleDrawPanel,
       chatOpen, chatMessages, toggleChat, onChatSend,
+      attachedNode, onAttachNode, onClearNode, onJumpNode,
     };
   },
 });

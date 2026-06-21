@@ -21,7 +21,7 @@
         :key="group.id"
         class="canvas-group"
         :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id) }]"
+        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id }]"
         :style="nodePosition(group)"
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
@@ -192,7 +192,7 @@
         :key="node.id"
         class="canvas-node"
         :data-node-id="node.id"
-        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
+        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @dblclick.stop="onNodeDblClick(node)"
@@ -254,7 +254,7 @@
         :key="node.id"
         class="canvas-node canvas-node-link"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
       >
@@ -268,7 +268,7 @@
         :key="node.id"
         class="canvas-node canvas-node-image"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
@@ -288,7 +288,7 @@
         :key="node.id"
         class="canvas-node canvas-node-embed"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id) }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
@@ -2926,15 +2926,29 @@ export default defineComponent({
         .map((node) => node.id);
     };
 
+    const getNodeLabel = (id: string): string => {
+      const n = nodes.value.find((x) => x.id === id);
+      if (!n) return "Нода";
+      if (n.type === "image") return n.label || "Изображение";
+      const t = (n.text || n.label || "").toString().trim();
+      return t ? t.replace(/\s+/g, " ").slice(0, 40) : "Нода";
+    };
+
+    const flashNodeId = ref<string | null>(null);
+
     const focusNode = (nodeId: string) => {
       const node = nodes.value.find((item) => item.id === nodeId);
       if (!node || !viewport.value) return;
       selectedNodeIds.value = [nodeId];
       selectedEdgeId.value = null;
+      selectedDrawingId.value = null;
       const centerX = node.x + node.width / 2;
       const centerY = node.y + node.height / 2;
       camera.x = viewport.value.clientWidth / 2 - centerX * camera.scale;
       camera.y = viewport.value.clientHeight / 2 - centerY * camera.scale;
+      // brief highlight flash
+      flashNodeId.value = nodeId;
+      setTimeout(() => { if (flashNodeId.value === nodeId) flashNodeId.value = null; }, 1400);
     };
 
     // Minimap drag-to-pan
@@ -3174,6 +3188,8 @@ export default defineComponent({
       deleteSelection,
       searchNodes,
       focusNode,
+      getNodeLabel,
+      flashNodeId,
       imageInput,
       selectedDrawingId,
       selectedDrawingObj,
@@ -4033,5 +4049,13 @@ g:hover > .edge-midpoint-conn {
   z-index: 25;
   cursor: crosshair;
   touch-action: none;
+}
+
+/* Node flash highlight (used when jumping from chat node chip) */
+.canvas-node.is-flash,
+.canvas-group.is-flash { animation: node-flash 1.4s ease; }
+@keyframes node-flash {
+  0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
+  30% { box-shadow: 0 0 0 3px #4dabf7, 0 0 18px 4px rgba(77,171,247,0.7); }
 }
 </style>
