@@ -341,39 +341,63 @@
       <svg class="canvas-drawings" :style="edgesSvgStyle">
         <g :transform="edgesSvgTransform">
         <template v-for="d in renderList" :key="d.id">
-          <path
-            v-if="d.tool === 'pen' || d.tool === 'highlighter'"
-            :d="strokeToPath(d.points || [], d.width)"
-            :fill="d.color"
-            :opacity="d.opacity ?? 1"
-            :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' } : { pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-            @pointerdown.stop="onDrawingPointerDown(d, $event)"
-            @pointermove="onDrawingPointerMove"
-            @pointerup="onDrawingPointerUp"
-            @pointercancel="onDrawingPointerUp"
-          />
-          <rect
-            v-else-if="d.tool === 'rect'"
-            :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
-            :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
-            fill="none" :stroke="d.color" :stroke-width="d.width"
-            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-            @pointerdown.stop="onDrawingPointerDown(d, $event)"
-            @pointermove="onDrawingPointerMove"
-            @pointerup="onDrawingPointerUp"
-            @pointercancel="onDrawingPointerUp"
-          />
-          <ellipse
-            v-else-if="d.tool === 'ellipse'"
-            :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
-            :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
-            fill="none" :stroke="d.color" :stroke-width="d.width"
-            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-            @pointerdown.stop="onDrawingPointerDown(d, $event)"
-            @pointermove="onDrawingPointerMove"
-            @pointerup="onDrawingPointerUp"
-            @pointercancel="onDrawingPointerUp"
-          />
+          <!-- pen / highlighter: wide transparent hit path + visible path -->
+          <template v-if="d.tool === 'pen' || d.tool === 'highlighter'">
+            <path
+              :d="strokeToPath(d.points || [], d.width)"
+              fill="transparent" stroke="transparent" stroke-width="18"
+              stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"
+              :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
+              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @pointermove="onDrawingPointerMove"
+              @pointerup="onDrawingPointerUp"
+              @pointercancel="onDrawingPointerUp"
+            />
+            <path
+              :d="strokeToPath(d.points || [], d.width)"
+              :fill="d.color" :opacity="d.opacity ?? 1"
+              :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: 'none' } : { pointerEvents: 'none' }"
+            />
+          </template>
+          <!-- rect: wide transparent border hit + visible -->
+          <template v-else-if="d.tool === 'rect'">
+            <rect
+              :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
+              :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
+              fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
+              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
+              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @pointermove="onDrawingPointerMove"
+              @pointerup="onDrawingPointerUp"
+              @pointercancel="onDrawingPointerUp"
+            />
+            <rect
+              :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
+              :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
+              fill="none" :stroke="d.color" :stroke-width="d.width"
+              :style="{ pointerEvents: 'none' }"
+            />
+          </template>
+          <!-- ellipse: wide transparent border hit + visible -->
+          <template v-else-if="d.tool === 'ellipse'">
+            <ellipse
+              :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
+              :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
+              fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
+              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
+              @pointerdown.stop="onDrawingPointerDown(d, $event)"
+              @pointermove="onDrawingPointerMove"
+              @pointerup="onDrawingPointerUp"
+              @pointercancel="onDrawingPointerUp"
+            />
+            <ellipse
+              :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
+              :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
+              fill="none" :stroke="d.color" :stroke-width="d.width"
+              :style="{ pointerEvents: 'none' }"
+            />
+          </template>
+          <!-- line / arrow: wide transparent hit line + visible line -->
           <template v-else-if="d.tool === 'line' || d.tool === 'arrow'">
             <marker
               v-if="d.tool === 'arrow'"
@@ -385,13 +409,18 @@
             </marker>
             <line
               :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
-              :stroke="d.color" :stroke-width="d.width"
-              :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow-' + d.id + ')' : undefined"
+              stroke="transparent" stroke-width="18" stroke-linecap="round" vector-effect="non-scaling-stroke"
               :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
               @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
+            />
+            <line
+              :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
+              :stroke="d.color" :stroke-width="d.width"
+              :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow-' + d.id + ')' : undefined"
+              :style="{ pointerEvents: 'none' }"
             />
           </template>
         </template>
