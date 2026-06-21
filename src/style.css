@@ -3820,6 +3820,17 @@ html, body {
   align-self: stretch;
   background: var(--dark-neutral-border, #313442);
 }
+.draw-panel-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.draw-action-color-pop-left {
+  top: 0;
+  left: auto;
+  right: calc(100% + 8px);
+}
 .draw-tool-btn {
   width: 34px;
   height: 34px;

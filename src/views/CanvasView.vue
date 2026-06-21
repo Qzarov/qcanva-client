@@ -381,10 +381,15 @@
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
             </button>
             </div>
-            <!-- current colour → click opens palette -->
+          </div>
+          <span class="draw-panel-vsep"></span>
+          <div class="draw-panel-right">
+            <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
+              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
+            <!-- current colour (under the size slider) → click opens palette -->
             <div class="draw-action-color">
               <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" title="Цвет"></button>
-              <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-right">
+              <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-left">
                 <button
                   v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
                   class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
@@ -393,9 +398,6 @@
               </div>
             </div>
           </div>
-          <span class="draw-panel-vsep"></span>
-          <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
         </div>
       </div>
 
