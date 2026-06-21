@@ -20,7 +20,7 @@ describe("ChatPanel", () => {
     const ta = w.get("textarea");
     await ta.setValue("  hey  ");
     await ta.trigger("keydown", { key: "Enter" });
-    expect(w.emitted("send")?.[0]).toEqual(["hey"]);
+    expect(w.emitted("send")?.[0]).toEqual([{ text: "hey", replyToId: null }]);
   });
   it("does not emit send when text is empty", async () => {
     const w = mount(ChatPanel, { props: { messages: [], canPost: true } });
@@ -32,5 +32,23 @@ describe("ChatPanel", () => {
   it("hides the input when canPost is false", () => {
     const w = mount(ChatPanel, { props: { messages: msgs, canPost: false } });
     expect(w.find("textarea").exists()).toBe(false);
+  });
+  it("renders quote plaque for messages with replyToId", () => {
+    const msgsWithReply = [
+      {
+        id: "2",
+        authorName: "Bob",
+        text: "hi",
+        replyToId: "1",
+        replyToAuthor: "Alice",
+        replyToText: "hello",
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const w = mount(ChatPanel, { props: { messages: msgsWithReply, canPost: true } });
+    const quote = w.find(".chat-quote");
+    expect(quote.exists()).toBe(true);
+    expect(quote.text()).toContain("Alice");
+    expect(quote.text()).toContain("hello");
   });
 });

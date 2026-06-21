@@ -991,7 +991,7 @@ export default defineComponent({
     });
     onChatError((_e) => { /* no-op: errors are server-enforced, no toast needed */ });
 
-    const onChatSend = (text: string) => sendChat(text);
+    const onChatSend = (payload: { text: string; replyToId: string | null }) => sendChat(payload.text, payload.replyToId);
 
     const load = async () => {
       try {
