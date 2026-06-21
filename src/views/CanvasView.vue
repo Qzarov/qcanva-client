@@ -305,7 +305,7 @@
         class="drawing-actions-toolbar"
         :style="{
           left: canvasRef.selectedDrawingScreenRect.left + 'px',
-          top: Math.max(8, (topbarRef?.offsetHeight ?? 44) + canvasRef.selectedDrawingScreenRect.top - 52) + 'px'
+          top: Math.max(8, canvasRef.selectedDrawingScreenRect.top - 52) + 'px'
         }"
         @pointerdown.stop @click.stop
       >
