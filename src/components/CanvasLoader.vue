@@ -1,6 +1,7 @@
 <template>
   <div
     class="canvas-viewport"
+    :class="{ 'is-manipulating': isManipulatingNode }"
     ref="viewport"
     @wheel.prevent="onWheel"
     @mousedown="onPanStart"
@@ -3516,6 +3517,11 @@ g:hover > .edge-midpoint-conn {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  transition: box-shadow 0.15s ease, left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
+}
+/* During local drag/resize the node must track the cursor 1:1 — no position/size easing.
+   Remote edits, undo/redo and restore (no local manipulation) keep the smooth transition. */
+.canvas-viewport.is-manipulating .canvas-node {
   transition: box-shadow 0.15s ease;
 }
 .canvas-node:hover {
