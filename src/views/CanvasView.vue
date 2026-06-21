@@ -117,7 +117,7 @@
             />
             <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
             <span v-if="role" class="topbar-role">{{ role }}</span>
-            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare; menuOpen = false">
+            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="toggleShare(); menuOpen = false">
               Access
             </button>
             <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker(); menuOpen = false">
@@ -955,14 +955,32 @@ export default defineComponent({
       return Array.from(remoteCursors.value.values());
     });
 
+    const toggleShare = () => {
+      if (!showShare.value) {
+        // opening: close other right-side panels to avoid overlap
+        chatOpen.value = false;
+      }
+      showShare.value = !showShare.value;
+    };
+
     // Chat
     const chatOpen = ref(false);
     const chatMessages = ref<any[]>([]);
 
     const toggleChat = async () => {
+      if (!chatOpen.value) {
+        // opening: close other right-side panels to avoid overlap
+        showShare.value = false;
+        showHistory.value = false;
+      }
       chatOpen.value = !chatOpen.value;
       if (chatOpen.value) {
-        try { chatMessages.value = await canvasApi.getMessages(resolvedId.value); } catch { /* ignore */ }
+        try {
+          const liveBuffer = [...chatMessages.value];
+          const history = await canvasApi.getMessages(resolvedId.value);
+          const ids = new Set(history.map((m: any) => m.id));
+          chatMessages.value = [...history, ...liveBuffer.filter((m: any) => !ids.has(m.id))];
+        } catch { /* ignore */ }
       }
     };
 
@@ -1358,6 +1376,10 @@ export default defineComponent({
     });
 
     const toggleHistory = async () => {
+      if (!showHistory.value) {
+        // opening: close other right-side panels to avoid overlap
+        chatOpen.value = false;
+      }
       showHistory.value = !showHistory.value;
       if (showHistory.value && historyItems.value.length === 0) {
         await loadHistory();
@@ -1568,7 +1590,7 @@ export default defineComponent({
       resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
-      showShare, shareEmail, shareRole, permissions,
+      showShare, toggleShare, shareEmail, shareRole, permissions,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       slug, slugInput, savingSlug, saveSlug,
       allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
