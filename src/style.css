@@ -3763,6 +3763,27 @@ html, body {
   flex-direction: column;
   gap: 4px;
 }
+/* 3-column palette: [icons col1][icons col2] | [vertical slider] */
+.draw-panel-3col {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+.draw-panel-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.draw-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 34px);
+  gap: 4px;
+}
+.draw-panel-vsep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--dark-neutral-border, #313442);
+}
 .draw-tool-btn {
   width: 34px;
   height: 34px;

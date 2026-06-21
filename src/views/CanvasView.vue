@@ -350,11 +350,9 @@
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
         </button>
-        <div v-if="drawPanelOpen" class="draw-toolbar-panel">
-          <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
-          <span class="draw-panel-sep"></span>
-          <div class="draw-tools-col">
+        <div v-if="drawPanelOpen" class="draw-toolbar-panel draw-panel-3col">
+          <div class="draw-panel-left">
+            <div class="draw-tools-grid">
             <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'select' }" @click="canvasRef?.setDrawTool('select')" title="Выбор">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 17 2.51-7.42L20 10.09 3 3z"/></svg>
             </button>
@@ -379,19 +377,22 @@
             <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" title="Ластик">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
             </button>
-          </div>
-          <span class="draw-panel-sep"></span>
-          <!-- current colour → click opens palette -->
-          <div class="draw-action-color">
-            <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" title="Цвет"></button>
-            <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-right">
-              <button
-                v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
-                class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
-                @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
-              ></button>
+            </div>
+            <!-- current colour → click opens palette -->
+            <div class="draw-action-color">
+              <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" title="Цвет"></button>
+              <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-right">
+                <button
+                  v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
+                  class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
+                  @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
+                ></button>
+              </div>
             </div>
           </div>
+          <span class="draw-panel-vsep"></span>
+          <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
+            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
         </div>
       </div>
 
