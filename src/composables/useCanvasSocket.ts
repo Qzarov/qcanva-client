@@ -60,6 +60,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   let onRemoteOpCb: ((op: any, revision: number) => void) | null = null;
   let onRejectCb: ((reject: RevisionReject) => void) | null = null;
   let onAckCb: ((ack: { clientOpId: string; revision: number }) => void) | null = null;
+  let onChatMessageCb: ((m: any) => void) | null = null;
+  let onChatErrorCb: ((e: any) => void) | null = null;
 
   const genClientOpId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -191,6 +193,9 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
       onRejectCb?.({ ...data, pending });
     });
 
+    s.on('chat-message', (m: any) => onChatMessageCb?.(m));
+    s.on('chat-error', (e: any) => onChatErrorCb?.(e));
+
     s.on('cursor-move', (data: { socketId: string; userId: string; userName: string; x: number; y: number }) => {
       const existing = remoteCursors.value.get(data.socketId);
       const user = onlineUsers.value.find((u) => u.socketId === data.socketId);
@@ -271,6 +276,18 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     currentRevision.value = revision;
   }
 
+  function sendChat(text: string) {
+    socket.value?.emit('chat-send', { text });
+  }
+
+  function onChatMessage(cb: (m: any) => void) {
+    onChatMessageCb = cb;
+  }
+
+  function onChatError(cb: (e: any) => void) {
+    onChatErrorCb = cb;
+  }
+
   function disconnect() {
     if (socket.value) {
       socket.value.emit('leave-canvas');
@@ -302,5 +319,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     onAck,
     clearPendingOps,
     setRevision,
+    sendChat,
+    onChatMessage,
+    onChatError,
   };
 }

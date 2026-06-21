@@ -3175,6 +3175,42 @@ html, body {
   color: rgba(255,255,255,0.35);
 }
 
+/* ===== Chat drawer ===== */
+.chat-drawer {
+  position: absolute;
+  top: var(--canvas-topbar-height, 44px);
+  right: 0;
+  bottom: 0;
+  width: 320px;
+  max-width: 80vw;
+  display: flex;
+  flex-direction: column;
+  background: rgba(30,30,30,0.97);
+  border-left: 1px solid var(--dark-neutral-border, #313442);
+  z-index: 120;
+  backdrop-filter: blur(8px);
+}
+.chat-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dark-neutral-border, #313442);
+  font-weight: 600;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.chat-drawer-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 20px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 4px;
+}
+.chat-drawer-close:hover { opacity: 0.7; }
+
 /* Keyboard shortcuts dialog */
 .shortcuts-backdrop {
   position: fixed;

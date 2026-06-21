@@ -126,6 +126,9 @@
             <button class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
               History
             </button>
+            <button class="btn-ghost btn-sm" @click="toggleChat(); menuOpen = false" title="Чат">
+              Чат
+            </button>
             <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts; menuOpen = false" title="Keyboard Shortcuts">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
               <span class="topbar-action-label">Shortcuts</span>
@@ -700,6 +703,12 @@
         </div>
       </div>
 
+      <!-- Chat drawer -->
+      <div v-if="chatOpen" class="chat-drawer">
+        <div class="chat-drawer-head"><span>Чат</span><button class="chat-drawer-close" @click="chatOpen = false">×</button></div>
+        <ChatPanel :messages="chatMessages" :can-post="role !== 'read'" @send="onChatSend" />
+      </div>
+
       <!-- Keyboard Shortcuts dialog -->
       <div v-if="showShortcuts" class="shortcuts-backdrop" @click.self="showShortcuts = false">
         <div class="shortcuts-panel">
@@ -744,6 +753,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, isAuthenticated, isAdmin, setToken } from '../api/client';
+import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
@@ -758,7 +768,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { CanvasLoader },
+  components: { CanvasLoader, ChatPanel },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -930,6 +940,9 @@ export default defineComponent({
       setRevision,
       pendingOpsCount,
       clearPendingOps,
+      sendChat,
+      onChatMessage,
+      onChatError,
     } = useCanvasSocket(resolvedId);
 
     const otherUsers = computed(() => {
@@ -941,6 +954,24 @@ export default defineComponent({
     const remoteCursorsArray = computed(() => {
       return Array.from(remoteCursors.value.values());
     });
+
+    // Chat
+    const chatOpen = ref(false);
+    const chatMessages = ref<any[]>([]);
+
+    const toggleChat = async () => {
+      chatOpen.value = !chatOpen.value;
+      if (chatOpen.value) {
+        try { chatMessages.value = await canvasApi.getMessages(resolvedId.value); } catch { /* ignore */ }
+      }
+    };
+
+    onChatMessage((m) => {
+      if (!chatMessages.value.some((x) => x.id === m.id)) chatMessages.value = [...chatMessages.value, m];
+    });
+    onChatError((_e) => { /* no-op: errors are server-enforced, no toast needed */ });
+
+    const onChatSend = (text: string) => sendChat(text);
 
     const load = async () => {
       try {
@@ -1557,6 +1588,7 @@ export default defineComponent({
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,
+      chatOpen, chatMessages, toggleChat, onChatSend,
     };
   },
 });

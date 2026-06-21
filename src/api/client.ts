@@ -300,6 +300,8 @@ export const canvas = {
     request<{ revision: number; canvas: any }>(`/canvas/${id}/history/${revision}/restore`, { method: 'POST' }),
   updateHistoryAccess: (id: string, historyAccess: string) =>
     request<{ historyAccess: string }>(`/canvas/${id}/history-access`, { method: 'PUT', body: JSON.stringify({ historyAccess }) }),
+  getMessages: (id: string, limit = 100) =>
+    request<any[]>(`/canvas/${id}/messages?limit=${limit}`),
 };
 
 export const htmlDocuments = {
