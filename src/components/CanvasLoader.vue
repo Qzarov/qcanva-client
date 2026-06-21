@@ -702,6 +702,9 @@ export default defineComponent({
 
     // Drawing selection + drag state
     const selectedDrawingId = ref<string | null>(null);
+    // pointerdown on a drawing fires before the viewport's mousedown (onPanStart);
+    // this flag lets onPanStart skip its one deselect so the selection survives the click.
+    let suppressDrawingDeselectOnce = false;
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
@@ -2265,6 +2268,7 @@ export default defineComponent({
     const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
       if (drawTool.value !== "select") return;
       e.stopPropagation();
+      suppressDrawingDeselectOnce = true;
       selectedDrawingId.value = d.id;
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
@@ -2345,7 +2349,11 @@ export default defineComponent({
         selectedNodeIds.value = [];
       }
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      if (suppressDrawingDeselectOnce) {
+        suppressDrawingDeselectOnce = false;
+      } else {
+        selectedDrawingId.value = null;
+      }
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
 
