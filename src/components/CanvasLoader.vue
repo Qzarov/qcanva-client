@@ -339,6 +339,7 @@
 
       <!-- Drawings SVG layer (above nodes) -->
       <svg class="canvas-drawings" :style="edgesSvgStyle">
+        <g :transform="edgesSvgTransform">
         <template v-for="d in renderList" :key="d.id">
           <path
             v-if="d.tool === 'pen' || d.tool === 'highlighter'"
@@ -436,6 +437,7 @@
             :marker-end="draftDrawing.tool === 'arrow' ? 'url(#draw-arrow-draft)' : undefined"
           />
         </template>
+        </g>
       </svg>
 
       <!-- Remote cursors -->
