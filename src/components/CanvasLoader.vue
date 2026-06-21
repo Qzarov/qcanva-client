@@ -424,20 +424,22 @@
             />
           </template>
         </template>
-        <!-- Selection highlight + animated outline -->
-        <g v-if="selectedDrawingObj" :style="{ pointerEvents: 'none' }">
-          <rect
-            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
-            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-            rx="4" fill="rgba(77,171,247,0.12)" stroke="none"
-          />
-          <rect
-            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
-            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-            rx="4" fill="none" stroke="#4dabf7" stroke-width="2"
-            stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
-            class="drawing-selection-outline"
-          />
+        <!-- Selection highlight + animated outline (hidden while drawing or moving) -->
+        <g v-if="selectedDrawingObj && drawTool === 'select'" :style="{ pointerEvents: 'none' }">
+          <template v-if="!isDraggingDrawing">
+            <rect
+              :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
+              :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
+              rx="4" fill="rgba(77,171,247,0.12)" stroke="none"
+            />
+            <rect
+              :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
+              :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
+              rx="4" fill="none" stroke="#4dabf7" stroke-width="2"
+              stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
+              class="drawing-selection-outline"
+            />
+          </template>
           <!-- move handle: drag anywhere inside the selection box -->
           <rect
             :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
@@ -2285,6 +2287,7 @@ export default defineComponent({
 
     // Drawing selection computeds
     const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingId.value) || null);
+    const isDraggingDrawing = computed(() => drawMovePreview.value !== null);
     const shownDrawing = (d: Drawing): Drawing =>
       (drawMovePreview.value && drawMovePreview.value.id === d.id ? drawMovePreview.value : d);
     const renderList = computed(() => drawings.value.map(shownDrawing));
@@ -3181,6 +3184,7 @@ export default defineComponent({
       imageInput,
       selectedDrawingId,
       selectedDrawingObj,
+      isDraggingDrawing,
       selectedBounds,
       selectedDrawingScreenRect,
       renderList,

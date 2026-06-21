@@ -332,7 +332,7 @@
       </div>
 
       <!-- Drawing toolbar — always available, independent of node selection -->
-      <div v-if="role !== 'read'" class="draw-toolbar" @pointerdown.stop @click.stop>
+      <div v-if="role !== 'read'" ref="drawToolbarRef" class="draw-toolbar" @pointerdown.stop @click.stop>
         <button
           class="draw-toolbar-toggle"
           :class="{ active: drawPanelOpen || (canvasRef && canvasRef.drawTool !== 'select') }"
@@ -744,6 +744,7 @@ export default defineComponent({
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
+    const drawToolbarRef = ref<HTMLElement | null>(null);
     const canvasRef = ref<any>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
@@ -757,10 +758,21 @@ export default defineComponent({
       activeToolbarMenu.value = activeToolbarMenu.value === menu ? '' : menu;
     };
     const closeToolbarOnOutsidePointer = (event: PointerEvent) => {
-      if (!activeToolbarMenu.value) return;
       const target = event.target as Node | null;
-      if (target && nodeToolbarRef.value?.contains(target)) return;
-      activeToolbarMenu.value = '';
+      const el = target as HTMLElement | null;
+      if (activeToolbarMenu.value && !(target && nodeToolbarRef.value?.contains(target))) {
+        activeToolbarMenu.value = '';
+      }
+      // Close the drawing panel when clicking outside it — but not while actively
+      // drawing (clicks on the .draw-capture overlay) so a stroke doesn't dismiss it.
+      if (drawPanelOpen.value) {
+        const insidePanel = !!(target && drawToolbarRef.value?.contains(target));
+        const onDrawSurface = !!el?.closest?.('.draw-capture');
+        if (!insidePanel && !onDrawSurface) {
+          drawPanelOpen.value = false;
+          canvasRef.value?.setDrawTool('select');
+        }
+      }
     };
 
     const aligns = [
@@ -1480,7 +1492,7 @@ export default defineComponent({
     };
 
     return {
-      canvasViewRef, topbarRef, nodeToolbarRef, canvasRef, aligns,
+      canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
