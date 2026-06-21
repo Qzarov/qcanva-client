@@ -345,7 +345,7 @@
             :d="strokeToPath(d.points || [], d.width)"
             :fill="d.color"
             :opacity="d.opacity ?? 1"
-            :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: 'pointer' } : { pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: 'pointer' }"
+            :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' } : { pointerEvents: drawTool === 'select' ? 'auto' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
             @pointerdown.stop="onDrawingPointerDown(d, $event)"
             @pointermove="onDrawingPointerMove"
             @pointerup="onDrawingPointerUp"
@@ -356,7 +356,7 @@
             :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
             :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
             fill="none" :stroke="d.color" :stroke-width="d.width"
-            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
             @pointerdown.stop="onDrawingPointerDown(d, $event)"
             @pointermove="onDrawingPointerMove"
             @pointerup="onDrawingPointerUp"
@@ -367,7 +367,7 @@
             :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
             :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
             fill="none" :stroke="d.color" :stroke-width="d.width"
-            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+            :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
             @pointerdown.stop="onDrawingPointerDown(d, $event)"
             @pointermove="onDrawingPointerMove"
             @pointerup="onDrawingPointerUp"
@@ -386,7 +386,7 @@
               :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
               :stroke="d.color" :stroke-width="d.width"
               :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow-' + d.id + ')' : undefined"
-              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: 'pointer' }"
+              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
               @pointerdown.stop="onDrawingPointerDown(d, $event)"
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
@@ -1347,6 +1347,7 @@ export default defineComponent({
         return;
       }
       if (resizeNodeId.value) return;
+      selectedDrawingId.value = null;
       if (node.positionLocked) {
         selectedNodeIds.value = [node.id];
         selectedEdgeId.value = null;
@@ -1456,6 +1457,7 @@ export default defineComponent({
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
       selectedNodeIds.value = [];
+      selectedDrawingId.value = null;
     };
 
     const onDeleteEdge = () => {
@@ -2015,6 +2017,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
+      selectedDrawingId.value = null;
       scheduleChange(true);
     };
 
@@ -2027,6 +2030,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
+      selectedDrawingId.value = null;
       scheduleChange(true);
     };
 
@@ -2253,6 +2257,8 @@ export default defineComponent({
       if (drawTool.value !== "select") return;
       e.stopPropagation();
       selectedDrawingId.value = d.id;
+      selectedNodeIds.value = [];
+      selectedEdgeId.value = null;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       drawMoveStart = toWorld(e);
       drawMoveOrigin = d;
