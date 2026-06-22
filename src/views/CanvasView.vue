@@ -404,7 +404,7 @@
       <!-- Dice toolbar — left edge, below the draw toolbar -->
       <div v-if="role !== 'read'" ref="diceToolbarRef" class="dice-toolbar" @pointerdown.stop @click.stop>
         <button class="draw-toolbar-toggle" :class="{ active: diceOpen }" @click="toggleDice" title="Кубики">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.2" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/><text x="12" y="12.2" font-size="5.2" text-anchor="middle" fill="currentColor" stroke="none">20</text></svg>
         </button>
         <div v-if="diceOpen" class="dice-panel">
           <div class="dice-row">
