@@ -69,4 +69,20 @@ describe("ChatPanel", () => {
     await chip.trigger("click");
     expect(w.emitted("jump-node")?.[0]).toEqual(["node-42"]);
   });
+  it("renders a roll card for messages with rollData", () => {
+    const rollMsg = [
+      {
+        id: "4",
+        authorName: "Alice",
+        text: "",
+        rollData: JSON.stringify({ notation: "2d6+1", sides: 6, count: 2, modifier: 1, rolls: [3, 4], total: 8 }),
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    const w = mount(ChatPanel, { props: { messages: rollMsg, canPost: true, attachedNode: null, canAttach: false } });
+    const roll = w.find(".chat-roll");
+    expect(roll.exists()).toBe(true);
+    expect(roll.text()).toContain("2d6+1");
+    expect(roll.text()).toContain("= 8");
+  });
 });

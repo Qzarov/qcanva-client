@@ -280,6 +280,10 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     socket.value?.emit("chat-send", { text, replyToId: replyToId ?? null, nodeId: nodeId ?? null, nodeLabel: nodeLabel ?? null });
   }
 
+  function sendRoll(sides: number, count: number, modifier: number) {
+    socket.value?.emit("chat-roll", { sides, count, modifier });
+  }
+
   function onChatMessage(cb: (m: any) => void) {
     onChatMessageCb = cb;
   }
@@ -320,6 +324,7 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     clearPendingOps,
     setRevision,
     sendChat,
+    sendRoll,
     onChatMessage,
     onChatError,
   };

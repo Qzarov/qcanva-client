@@ -13,7 +13,12 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           </button>
         </div>
-        <div class="chat-msg-text">{{ m.text }}</div>
+        <div v-if="parseRoll(m)" class="chat-roll">
+          <span class="chat-roll-notation">{{ parseRoll(m).notation }}</span>
+          <span class="chat-roll-dice">[{{ parseRoll(m).rolls.join(', ') }}]<template v-if="parseRoll(m).modifier"> {{ parseRoll(m).modifier > 0 ? '+' + parseRoll(m).modifier : parseRoll(m).modifier }}</template></span>
+          <span class="chat-roll-total">= {{ parseRoll(m).total }}</span>
+        </div>
+        <div v-else class="chat-msg-text">{{ m.text }}</div>
         <button v-if="m.nodeId" class="chat-node-chip" @click="$emit('jump-node', m.nodeId)" :title="m.nodeLabel || 'Нода'">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/><circle cx="18" cy="18" r="3"/></svg>
           <span class="chat-node-chip-label">{{ m.nodeLabel || 'Нода' }}</span>
@@ -49,6 +54,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick } from "vue";
 const props = defineProps<{ messages: any[]; canPost: boolean; attachedNode: { id: string; label: string } | null; canAttach: boolean }>();
+const parseRoll = (m: any) => { try { return m.rollData ? JSON.parse(m.rollData) : null; } catch { return null; } };
 const emit = defineEmits<{
   (e: "send", payload: { text: string; replyToId: string | null; nodeId: string | null; nodeLabel: string | null }): void;
   (e: "attach-node"): void;
@@ -133,4 +139,9 @@ watch(() => props.messages.length, scrollToBottom);
 .chat-attach-btn { flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 8px; color: inherit; cursor: pointer; opacity: 0.6; transition: opacity 0.12s, background 0.12s; padding: 0; }
 .chat-attach-btn:hover:not(:disabled) { opacity: 1; background: rgba(255,255,255,0.05); }
 .chat-attach-btn:disabled { opacity: 0.3; cursor: default; }
+/* Dice roll card */
+.chat-roll { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.chat-roll-notation { font-size: 12px; font-weight: 600; opacity: 0.8; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 6px; padding: 1px 6px; }
+.chat-roll-dice { opacity: 0.85; }
+.chat-roll-total { font-weight: 700; font-size: 16px; color: var(--color-brands, #4dabf7); }
 </style>

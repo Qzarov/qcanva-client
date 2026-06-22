@@ -3881,6 +3881,37 @@ html, body {
   left: calc(100% + 8px);
 }
 
+/* ── Dice toolbar ──────────────────────────────────────────────── */
+.dice-toolbar {
+  position: absolute;
+  left: 12px;
+  top: calc(50% + 28px);
+  z-index: 120;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dice-panel {
+  background: rgba(30, 30, 30, 0.96);
+  border: 1px solid var(--dark-neutral-border, #313442);
+  border-radius: var(--radius-md, 12px);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+}
+.dice-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.dice-die { padding: 4px 8px; border-radius: 8px; border: 1px solid var(--dark-neutral-border, #313442); background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
+.dice-die.active { border-color: var(--color-brands, #00ff00); color: var(--color-brands, #00ff00); }
+.dice-controls { display: flex; align-items: center; gap: 6px; }
+.dice-controls label { font-size: 12px; opacity: 0.7; min-width: 44px; }
+.dice-step { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--dark-neutral-border, #313442); background: transparent; color: inherit; cursor: pointer; }
+.dice-val { min-width: 28px; text-align: center; font-size: 13px; }
+.dice-roll-btn { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--dark-neutral-border, #313442); background: var(--color-brands, #00ff00); color: var(--color-brand-on, #071307); cursor: pointer; font-weight: 600; }
+
 /* ── Floating actions menu for a selected drawing (horizontal) ───── */
 .drawing-actions-toolbar {
   position: absolute;

@@ -401,6 +401,31 @@
         </div>
       </div>
 
+      <!-- Dice toolbar — left edge, below the draw toolbar -->
+      <div v-if="role !== 'read'" ref="diceToolbarRef" class="dice-toolbar" @pointerdown.stop @click.stop>
+        <button class="draw-toolbar-toggle" :class="{ active: diceOpen }" @click="toggleDice" title="Кубики">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="16" cy="8" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/><circle cx="8" cy="16" r="1.2" fill="currentColor" stroke="none"/><circle cx="16" cy="16" r="1.2" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <div v-if="diceOpen" class="dice-panel">
+          <div class="dice-row">
+            <button v-for="s in [4,6,8,10,12,20,100]" :key="s" class="dice-die" :class="{ active: diceSides === s }" @click="diceSides = s">d{{ s }}</button>
+          </div>
+          <div class="dice-controls">
+            <label>Кол-во</label>
+            <button class="dice-step" @click="diceCount = Math.max(1, diceCount - 1)">−</button>
+            <span class="dice-val">{{ diceCount }}</span>
+            <button class="dice-step" @click="diceCount = Math.min(10, diceCount + 1)">+</button>
+          </div>
+          <div class="dice-controls">
+            <label>Мод.</label>
+            <button class="dice-step" @click="diceModifier = Math.max(-100, diceModifier - 1)">−</button>
+            <span class="dice-val">{{ diceModifier > 0 ? '+' + diceModifier : diceModifier }}</span>
+            <button class="dice-step" @click="diceModifier = Math.min(100, diceModifier + 1)">+</button>
+          </div>
+          <button class="dice-roll-btn" @click="rollDice">Бросить {{ diceCount }}d{{ diceSides }}{{ diceModifier > 0 ? '+' + diceModifier : (diceModifier < 0 ? diceModifier : '') }}</button>
+        </div>
+      </div>
+
       <!-- Mobile block settings menu — opens near the minimap when a block is selected.
            Colors/style live behind expandable buttons, so there is no scrolling. -->
       <div
@@ -789,6 +814,11 @@ export default defineComponent({
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
+    const diceToolbarRef = ref<HTMLElement | null>(null);
+    const diceOpen = ref(false);
+    const diceSides = ref(20);
+    const diceCount = ref(1);
+    const diceModifier = ref(0);
     const canvasRef = ref<any>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
@@ -821,6 +851,13 @@ export default defineComponent({
       // Close an open colour picker in the selected-drawing menu when clicking elsewhere.
       if (drawColorPickerOpen.value && !el?.closest?.('.drawing-actions-toolbar')) {
         drawColorPickerOpen.value = false;
+      }
+      // Close the dice panel when clicking outside it.
+      if (diceOpen.value) {
+        const insideDice = !!(target && diceToolbarRef.value?.contains(target));
+        if (!insideDice) {
+          diceOpen.value = false;
+        }
       }
     };
 
@@ -943,6 +980,7 @@ export default defineComponent({
       pendingOpsCount,
       clearPendingOps,
       sendChat,
+      sendRoll,
       onChatMessage,
       onChatError,
     } = useCanvasSocket(resolvedId);
@@ -1597,6 +1635,13 @@ export default defineComponent({
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
     };
 
+    const toggleDice = () => { diceOpen.value = !diceOpen.value; };
+    const rollDice = () => {
+      sendRoll(diceSides.value, diceCount.value, diceModifier.value);
+      diceOpen.value = false;
+      chatOpen.value = true;
+    };
+
     return {
       canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
@@ -1624,6 +1669,7 @@ export default defineComponent({
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,
+      diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice,
       chatOpen, chatMessages, toggleChat, onChatSend,
       attachedNode, onAttachNode, onClearNode, onJumpNode,
     };
