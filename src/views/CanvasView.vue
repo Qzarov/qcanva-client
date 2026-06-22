@@ -1007,21 +1007,21 @@ export default defineComponent({
     const chatOpen = ref(false);
     const chatMessages = ref<any[]>([]);
 
-    const toggleChat = async () => {
-      if (!chatOpen.value) {
-        // opening: close other right-side panels to avoid overlap
-        showShare.value = false;
-        showHistory.value = false;
-      }
-      chatOpen.value = !chatOpen.value;
-      if (chatOpen.value) {
-        try {
-          const liveBuffer = [...chatMessages.value];
-          const history = await canvasApi.getMessages(resolvedId.value);
-          const ids = new Set(history.map((m: any) => m.id));
-          chatMessages.value = [...history, ...liveBuffer.filter((m: any) => !ids.has(m.id))];
-        } catch { /* ignore */ }
-      }
+    const openChat = async () => {
+      // close other right-side panels to avoid overlap, then open + load history
+      showShare.value = false;
+      showHistory.value = false;
+      chatOpen.value = true;
+      try {
+        const liveBuffer = [...chatMessages.value];
+        const history = await canvasApi.getMessages(resolvedId.value);
+        const ids = new Set(history.map((m: any) => m.id));
+        chatMessages.value = [...history, ...liveBuffer.filter((m: any) => !ids.has(m.id))];
+      } catch { /* ignore */ }
+    };
+    const toggleChat = () => {
+      if (chatOpen.value) chatOpen.value = false;
+      else void openChat();
     };
 
     onChatMessage((m) => {
@@ -1639,7 +1639,9 @@ export default defineComponent({
     const rollDice = () => {
       sendRoll(diceSides.value, diceCount.value, diceModifier.value);
       diceOpen.value = false;
-      chatOpen.value = true;
+      // open the chat (loading history) so the roll lands in a populated thread;
+      // if already open, the roll just arrives live via chat-message.
+      if (!chatOpen.value) void openChat();
     };
 
     return {
