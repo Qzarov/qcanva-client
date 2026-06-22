@@ -83,6 +83,7 @@
               class="edge-hit"
               @mousedown.stop="onEdgeClick(edge.id)"
               @dblclick.stop="onEdgeDblClick(edge.id)"
+              @contextmenu.prevent.stop="onEdgeContextMenu($event, edge)"
             />
             <path
               :d="edge.path"
@@ -358,6 +359,7 @@
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
+              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
             />
             <path
               :d="strokeToPath(d.points || [], d.width)"
@@ -376,6 +378,7 @@
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
+              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
             />
             <rect
               :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
@@ -395,6 +398,7 @@
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
+              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
             />
             <ellipse
               :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
@@ -421,6 +425,7 @@
               @pointermove="onDrawingPointerMove"
               @pointerup="onDrawingPointerUp"
               @pointercancel="onDrawingPointerUp"
+              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
             />
             <line
               :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
@@ -550,39 +555,58 @@
       :style="contextMenuStyle"
       @mousedown.stop
     >
-      <div class="ctx-colors">
-        <span class="ctx-label">Fill</span>
-        <button
-          v-for="c in ['1','2','3','4','5','6']"
-          :key="c"
-          class="ctx-color-btn"
-          :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
-          :title="'Color ' + c"
-          @click="onCtxSetColor(c)"
-        ></button>
-        <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
-      </div>
-      <div class="ctx-colors">
-        <span class="ctx-label">Text</span>
-        <button
-          v-for="c in fontColors"
-          :key="'ctx-font-' + c"
-          class="ctx-color-btn"
-          :class="{ active: getContextNode()?.fontColor === c }"
-          :style="{ background: c }"
-          :title="'Text ' + c"
-          @click="onCtxSetFontColor(c)"
-        ></button>
-        <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
-      </div>
-      <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
-      <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
-      <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
-      <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
-      <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
-      <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
-      <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
-      <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+      <template v-if="contextMenu.kind === 'node'">
+        <div class="ctx-colors">
+          <span class="ctx-label">Fill</span>
+          <button
+            v-for="c in ['1','2','3','4','5','6']"
+            :key="c"
+            class="ctx-color-btn"
+            :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
+            :title="'Color ' + c"
+            @click="onCtxSetColor(c)"
+          ></button>
+          <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
+        </div>
+        <div class="ctx-colors">
+          <span class="ctx-label">Text</span>
+          <button
+            v-for="c in fontColors"
+            :key="'ctx-font-' + c"
+            class="ctx-color-btn"
+            :class="{ active: getContextNode()?.fontColor === c }"
+            :style="{ background: c }"
+            :title="'Text ' + c"
+            @click="onCtxSetFontColor(c)"
+          ></button>
+          <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
+        </div>
+        <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
+        <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
+        <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
+        <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
+        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
+        <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
+        <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
+        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+      </template>
+      <template v-else-if="contextMenu.kind === 'edge'">
+        <button class="ctx-item" @click="onEdgeToggleStyle(); closeContextMenu()">Стиль линии</button>
+        <button class="ctx-item" @click="onEdgeCycleArrow(); closeContextMenu()">Тип стрелки</button>
+        <button class="ctx-item" @click="onEdgeCycleColor(); closeContextMenu()">Цвет линии</button>
+        <button class="ctx-item" @click="onEdgeDblClick(contextMenu.id); closeContextMenu()">Подпись</button>
+        <button v-if="isOwner" class="ctx-item" @click="toggleEdgeHidden(contextMenu.id); closeContextMenu()">{{ isEdgeHidden(contextMenu.id) ? 'Показать' : 'Скрыть' }}</button>
+        <button class="ctx-item ctx-item-danger" @click="onDeleteEdge(); closeContextMenu()">Удалить</button>
+      </template>
+      <template v-else-if="contextMenu.kind === 'drawing'">
+        <div class="ctx-colors">
+          <span class="ctx-label">Цвет</span>
+          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+        </div>
+        <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
+        <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
+        <button class="ctx-item ctx-item-danger" @click="deleteSelectedDrawing(); closeContextMenu()">Удалить</button>
+      </template>
     </div>
 
     <!-- Controls -->
@@ -1755,25 +1779,51 @@ export default defineComponent({
     };
 
     // Context menu state
-    const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "" });
+    const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "", kind: "", id: "" });
     const contextMenuStyle = computed(() => ({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
     }));
     const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
-    const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
-      selectedNodeIds.value = [node.id];
+    const closeContextMenu = () => { contextMenu.visible = false; };
+
+    const positionContextMenu = (e: MouseEvent) => {
       const rect = viewport.value!.getBoundingClientRect();
       const menuWidth = Math.min(260, rect.width - 16);
       const menuHeight = Math.min(360, rect.height - 16);
       contextMenu.x = Math.max(8, Math.min(e.clientX - rect.left, rect.width - menuWidth - 8));
       contextMenu.y = Math.max(8, Math.min(e.clientY - rect.top, rect.height - menuHeight - 8));
+    };
+
+    const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
+      selectedNodeIds.value = [node.id];
+      positionContextMenu(e);
+      contextMenu.kind = "node";
       contextMenu.nodeId = node.id;
+      contextMenu.id = node.id;
       contextMenu.visible = true;
     };
 
-    const closeContextMenu = () => { contextMenu.visible = false; };
+    const onEdgeContextMenu = (e: MouseEvent, edge: { id: string }) => {
+      e.preventDefault(); e.stopPropagation();
+      onEdgeClick(edge.id);
+      positionContextMenu(e);
+      contextMenu.kind = "edge";
+      contextMenu.id = edge.id;
+      contextMenu.visible = true;
+    };
+
+    const onDrawingContextMenu = (e: MouseEvent, d: { id: string }) => {
+      e.preventDefault(); e.stopPropagation();
+      selectedDrawingId.value = d.id;
+      selectedNodeIds.value = [];
+      selectedEdgeId.value = null;
+      positionContextMenu(e);
+      contextMenu.kind = "drawing";
+      contextMenu.id = d.id;
+      contextMenu.visible = true;
+    };
 
     const setNodeColor = (nodeId: string, color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === nodeId);
@@ -3179,6 +3229,9 @@ export default defineComponent({
       bringSelectionToFront,
       sendSelectionToBack,
       onNodeContextMenu,
+      onEdgeContextMenu,
+      onDrawingContextMenu,
+      closeContextMenu,
       onCtxSetColor,
       onCtxSetFontColor,
       onCtxSendBackward,
