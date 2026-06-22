@@ -580,6 +580,7 @@
       <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
       <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
       <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
+      <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
       <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
       <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
     </div>
@@ -2406,6 +2407,7 @@ export default defineComponent({
       pushUndo();
       n.hidden = hidden;
       emitOp({ type: "node-update", id, changes: { hidden } });
+      closeContextMenu();
     };
     const isEdgeHidden = (id: string) => !!(edges.value.find((e) => e.id === id))?.hidden;
     const toggleEdgeHidden = (id: string) => {
