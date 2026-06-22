@@ -162,6 +162,11 @@
             <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>
           </svg>
         </button>
+        <button v-if="isOwner" class="edge-action-btn" @mousedown.stop="toggleEdgeHidden(selectedEdgeId!)" :title="isEdgeHidden(selectedEdgeId!) ? 'Показать' : 'Скрыть'">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><line v-if="isEdgeHidden(selectedEdgeId!)" x1="2" y1="2" x2="22" y2="22"/>
+          </svg>
+        </button>
       </div>
 
       <!-- Edge label editor (DOM overlay) -->

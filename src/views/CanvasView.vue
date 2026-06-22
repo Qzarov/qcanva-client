@@ -292,6 +292,11 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
                 <span>Дублировать</span>
               </button>
+              <button v-if="role === 'owner' && canvasRef?.selectedNodeId" class="toolbar-choice" @click="canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId)">
+                <svg v-if="canvasRef?.isNodeHidden(canvasRef.selectedNodeId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+                <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>{{ canvasRef?.isNodeHidden(canvasRef.selectedNodeId) ? 'Показать' : 'Скрыть' }}</span>
+              </button>
               <button v-if="role !== 'read'" class="toolbar-choice toolbar-choice-danger" @click="canvasRef?.deleteSelection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
                 <span>Удалить</span>
@@ -340,6 +345,9 @@
         </button>
         <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" title="Удалить">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </button>
+        <button v-if="role === 'owner'" class="toolbar-choice" @click="canvasRef?.toggleSelectedDrawingHidden()" :title="canvasRef?.isSelectedDrawingHidden() ? 'Показать' : 'Скрыть'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><line v-if="canvasRef?.isSelectedDrawingHidden()" x1="2" y1="2" x2="22" y2="22"/></svg>
         </button>
       </div>
 
@@ -766,6 +774,7 @@
         ref="canvasRef"
         :initial-data="canvasData"
         :readonly="role === 'read'"
+        :is-owner="role === 'owner'"
         :remote-cursors="remoteCursorsArray"
         @change="onCanvasChange"
         @op="onCanvasOp"
