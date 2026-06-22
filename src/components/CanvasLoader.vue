@@ -1211,7 +1211,7 @@ export default defineComponent({
       const ids = new Set(selectedNodeIds.value);
       const selectedGroups = nodes.value.filter((node) => ids.has(node.id) && node.type === "group");
       for (const group of selectedGroups) {
-        for (const node of nodes.value) {
+        for (const node of viewerNodes.value) {
           if (isNodeInsideGroup(node, group)) ids.add(node.id);
         }
       }
@@ -1687,7 +1687,7 @@ export default defineComponent({
 
     // Find which node is under the mouse (world coords)
     const findNodeAt = (wx: number, wy: number): { node: CanvasNode; side: string } | null => {
-      for (const n of nodes.value) {
+      for (const n of viewerNodes.value) {
         if (wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) {
           // Determine closest side
           const cx = n.x + n.width / 2;
