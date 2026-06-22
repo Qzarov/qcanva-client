@@ -21,7 +21,7 @@
         :key="group.id"
         class="canvas-group"
         :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id }]"
+        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
         :style="nodePosition(group)"
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
@@ -76,7 +76,7 @@
           </template>
         </defs>
         <g :transform="edgesSvgTransform">
-          <g v-for="edge in renderedEdges" :key="edge.id">
+          <g v-for="edge in renderedEdges" :key="edge.id" :style="{ opacity: edge.hidden ? 0.4 : 1 }">
             <!-- Invisible wide hit area for clicking -->
             <path
               :d="edge.path"
@@ -192,7 +192,7 @@
         :key="node.id"
         class="canvas-node"
         :data-node-id="node.id"
-        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
+        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @dblclick.stop="onNodeDblClick(node)"
@@ -254,7 +254,7 @@
         :key="node.id"
         class="canvas-node canvas-node-link"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
       >
@@ -268,7 +268,7 @@
         :key="node.id"
         class="canvas-node canvas-node-image"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
@@ -288,7 +288,7 @@
         :key="node.id"
         class="canvas-node canvas-node-embed"
         :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id }]"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
@@ -341,7 +341,7 @@
       <!-- Drawings SVG layer (above nodes) -->
       <svg class="canvas-drawings" :style="edgesSvgStyle">
         <g :transform="edgesSvgTransform">
-        <template v-for="d in renderList" :key="d.id">
+        <g v-for="d in renderList" :key="d.id" :style="{ opacity: d.hidden ? 0.4 : 1 }">
           <!-- pen / highlighter: wide transparent hit path + visible path -->
           <template v-if="d.tool === 'pen' || d.tool === 'highlighter'">
             <path
@@ -424,7 +424,7 @@
               :style="{ pointerEvents: 'none' }"
             />
           </template>
-        </template>
+        </g>
         <!-- Selection highlight + animated outline (hidden while drawing or moving) -->
         <g v-if="selectedDrawingObj && drawTool === 'select'" :style="{ pointerEvents: 'none' }">
           <template v-if="!isDraggingDrawing">
@@ -515,7 +515,7 @@
     >
       <svg :viewBox="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
         <rect
-          v-for="node in nodes"
+          v-for="node in viewerNodes"
           :key="'mm-' + node.id"
           :x="node.x"
           :y="node.y"
@@ -656,6 +656,7 @@ interface CanvasNode {
   shape?: "rect" | "round";
   fontColor?: string;
   styleAttributes?: Record<string, string>;
+  hidden?: boolean;
 }
 
 interface CanvasEdge {
@@ -671,6 +672,7 @@ interface CanvasEdge {
   arrowType?: "end" | "start" | "both" | "none";
   thickness?: number;
   styleAttributes?: Record<string, string>;
+  hidden?: boolean;
 }
 
 type CanvasOp =
@@ -699,6 +701,7 @@ interface RenderedEdge {
   dashArray?: string;
   thickness: number;
   arrowType: string;
+  hidden?: boolean;
 }
 
 export interface CanvasChangePayload {
@@ -716,6 +719,10 @@ export default defineComponent({
       default: null,
     },
     readonly: {
+      type: Boolean,
+      default: false,
+    },
+    isOwner: {
       type: Boolean,
       default: false,
     },
@@ -877,10 +884,10 @@ export default defineComponent({
 
     // Fit all content in view
     const fitToContent = () => {
-      if (!nodes.value.length || !viewport.value) return;
+      if (!viewerNodes.value.length || !viewport.value) return;
 
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of nodes.value) {
+      for (const n of viewerNodes.value) {
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
         maxX = Math.max(maxX, n.x + n.width);
@@ -912,11 +919,16 @@ export default defineComponent({
     const zoomPercent = computed(() => Math.round(camera.scale * 100));
 
     // Node filtering
-    const groups = computed(() => nodes.value.filter((n) => n.type === "group"));
-    const textNodes = computed(() => nodes.value.filter((n) => n.type === "text"));
-    const linkNodes = computed(() => nodes.value.filter((n) => n.type === "link"));
-    const imageNodes = computed(() => nodes.value.filter((n) => n.type === "image"));
-    const canvasNodes = computed(() => nodes.value.filter((n) => n.type === "canvas"));
+    // Viewer-visibility helpers: owner sees all nodes (including hidden, dimmed); non-owners see only non-hidden ones.
+    const canViewerSee = (o: { hidden?: boolean } | null | undefined): boolean => props.isOwner || !o?.hidden;
+    const viewerNodes = computed(() => (props.isOwner ? nodes.value : nodes.value.filter((n) => !n.hidden)));
+    const viewerNodeIds = computed(() => new Set(viewerNodes.value.map((n) => n.id)));
+
+    const groups = computed(() => viewerNodes.value.filter((n) => n.type === "group"));
+    const textNodes = computed(() => viewerNodes.value.filter((n) => n.type === "text"));
+    const linkNodes = computed(() => viewerNodes.value.filter((n) => n.type === "link"));
+    const imageNodes = computed(() => viewerNodes.value.filter((n) => n.type === "image"));
+    const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
 
     const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
 
@@ -1040,10 +1052,15 @@ export default defineComponent({
     };
 
     const renderedEdges = computed<RenderedEdge[]>(() => {
-      return edges.value.map((edge) => {
+      return edges.value.flatMap((edge) => {
+        // Non-owners: skip hidden edges and edges whose endpoints are hidden-for-viewer.
+        if (!canViewerSee(edge)) return [];
+        if (!viewerNodeIds.value.has(edge.toNode)) return [];
+        if (!edge.fromEdge && !viewerNodeIds.value.has(edge.fromNode)) return [];
+
         const toNode = nodeMap.value.get(edge.toNode);
         if (!toNode) {
-          return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
+          return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
         }
 
         let from: { x: number; y: number };
@@ -1053,7 +1070,7 @@ export default defineComponent({
           // Source is another edge's midpoint
           const mid = getEdgeMidpoint(edge.fromEdge);
           if (!mid) {
-            return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
+            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
           }
           from = mid;
           // Guess direction toward target
@@ -1064,7 +1081,7 @@ export default defineComponent({
         } else {
           const fromNode = nodeMap.value.get(edge.fromNode);
           if (!fromNode) {
-            return { id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" };
+            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
           }
           fromSide = edge.fromSide || "bottom";
           from = getAnchor(fromNode, fromSide);
@@ -1084,7 +1101,7 @@ export default defineComponent({
         const dashMap: Record<string, string> = { dashed: "8 4", dotted: "3 3" };
         const midX = (from.x + to.x) / 2;
         const midY = (from.y + to.y) / 2;
-        return {
+        return [{
           id: edge.id,
           path,
           label: edge.label,
@@ -1097,7 +1114,8 @@ export default defineComponent({
           dashArray: edge.lineStyle ? dashMap[edge.lineStyle] : undefined,
           thickness,
           arrowType,
-        };
+          hidden: edge.hidden,
+        }];
       });
     });
 
@@ -2159,7 +2177,7 @@ export default defineComponent({
       // Select all
       if ((e.ctrlKey || e.metaKey) && e.key === "a") {
         e.preventDefault();
-        selectedNodeIds.value = nodes.value.map((n) => n.id);
+        selectedNodeIds.value = viewerNodes.value.map((n) => n.id);
         return;
       }
       // Escape — deselect
@@ -2288,7 +2306,7 @@ export default defineComponent({
     const isDraggingDrawing = computed(() => drawMovePreview.value !== null);
     const shownDrawing = (d: Drawing): Drawing =>
       (drawMovePreview.value && drawMovePreview.value.id === d.id ? drawMovePreview.value : d);
-    const renderList = computed(() => drawings.value.map(shownDrawing));
+    const renderList = computed(() => drawings.value.filter(canViewerSee).map(shownDrawing));
     const selectedBounds = computed(() => {
       const d = selectedDrawingObj.value;
       if (!d) return { x: 0, y: 0, w: 0, h: 0 };
@@ -2373,6 +2391,32 @@ export default defineComponent({
       selectedDrawingId.value = null;
       drawings.value = drawings.value.filter((x) => x.id !== id);
       emitOp({ type: "draw-remove", id } as CanvasOp);
+    };
+
+    // Hide/show toggle methods (owner only)
+    const isNodeHidden = (id: string) => !!(nodes.value.find((n) => n.id === id))?.hidden;
+    const toggleNodeHidden = (id: string) => {
+      const n = nodes.value.find((x) => x.id === id); if (!n) return;
+      const hidden = !n.hidden;
+      pushUndo();
+      n.hidden = hidden;
+      emitOp({ type: "node-update", id, changes: { hidden } });
+    };
+    const isEdgeHidden = (id: string) => !!(edges.value.find((e) => e.id === id))?.hidden;
+    const toggleEdgeHidden = (id: string) => {
+      const e = edges.value.find((x) => x.id === id); if (!e) return;
+      const hidden = !e.hidden;
+      pushUndo();
+      e.hidden = hidden;
+      emitOp({ type: "edge-update", id, changes: { hidden } });
+    };
+    const isSelectedDrawingHidden = () => !!selectedDrawingObj.value?.hidden;
+    const toggleSelectedDrawingHidden = () => {
+      const d = selectedDrawingObj.value; if (!d) return;
+      const hidden = !d.hidden;
+      pushUndo();
+      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, hidden } : x));
+      emitOp({ type: "draw-update", id: d.id, changes: { hidden } } as CanvasOp);
     };
 
     // Clear stale selection when peer removes the selected drawing
@@ -2487,7 +2531,7 @@ export default defineComponent({
         const y2 = Math.max(selBox.startY, selBox.curY);
         // Only select if box is bigger than a tiny drag (avoid deselect on click)
         if (x2 - x1 > 5 || y2 - y1 > 5) {
-          const hits = nodes.value.filter((n) =>
+          const hits = viewerNodes.value.filter((n) =>
             n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
           ).map((n) => n.id);
           selectedNodeIds.value = hits;
@@ -2990,9 +3034,9 @@ export default defineComponent({
 
     // Minimap computed
     const minimapData = computed(() => {
-      if (!nodes.value.length || !viewport.value) return null;
+      if (!viewerNodes.value.length || !viewport.value) return null;
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of nodes.value) {
+      for (const n of viewerNodes.value) {
         minX = Math.min(minX, n.x);
         minY = Math.min(minY, n.y);
         maxX = Math.max(maxX, n.x + n.width);
@@ -3204,6 +3248,13 @@ export default defineComponent({
       setSelectedDrawingWidth,
       duplicateSelectedDrawing,
       deleteSelectedDrawing,
+      viewerNodes,
+      isNodeHidden,
+      toggleNodeHidden,
+      isEdgeHidden,
+      toggleEdgeHidden,
+      isSelectedDrawingHidden,
+      toggleSelectedDrawingHidden,
     };
   },
 });
@@ -4057,5 +4108,25 @@ g:hover > .edge-midpoint-conn {
 @keyframes node-flash {
   0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
   30% { box-shadow: 0 0 0 3px #4dabf7, 0 0 18px 4px rgba(77,171,247,0.7); }
+}
+
+/* Hidden object dim — owner-only; non-owners don't render hidden objects at all */
+.canvas-node.is-hidden,
+.canvas-group.is-hidden {
+  opacity: 0.4;
+  position: relative;
+}
+.canvas-node.is-hidden::after,
+.canvas-group.is-hidden::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #888;
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  z-index: 30;
 }
 </style>

@@ -14,6 +14,7 @@ export interface Drawing {
   color: string;
   width: number;
   opacity?: number;
+  hidden?: boolean;
   points?: number[]; // pen/highlighter: flattened [x0,y0,x1,y1,...] in canvas coords
   x?: number; y?: number; w?: number; h?: number;        // rect/ellipse
   x1?: number; y1?: number; x2?: number; y2?: number;    // line/arrow
