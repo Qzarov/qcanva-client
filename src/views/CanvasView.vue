@@ -744,6 +744,12 @@
         <ChatPanel :messages="chatMessages" :can-post="role !== 'read'" :attached-node="attachedNode" :can-attach="!!canvasRef?.selectedNodeId" @send="onChatSend" @attach-node="onAttachNode" @clear-node="onClearNode" @jump-node="onJumpNode" />
       </div>
 
+      <!-- Pick-a-node hint: shown while choosing a node to attach to a chat message -->
+      <div v-if="pickingNodeForChat" class="chat-pick-hint">
+        <span class="chat-pick-hint-text">Коснитесь ноды, чтобы прикрепить её к сообщению</span>
+        <button class="chat-pick-cancel" @click="onCancelPickNode">Отмена</button>
+      </div>
+
       <!-- Keyboard Shortcuts dialog -->
       <div v-if="showShortcuts" class="shortcuts-backdrop" @click.self="showShortcuts = false">
         <div class="shortcuts-panel">
@@ -793,6 +799,7 @@ import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
@@ -1038,18 +1045,22 @@ export default defineComponent({
     });
     onChatError((_e) => { /* no-op: errors are server-enforced, no toast needed */ });
 
-    const attachedNode = ref<{ id: string; label: string } | null>(null);
-    const onAttachNode = () => {
-      const id = canvasRef.value?.selectedNodeId;
-      if (!id) return;
-      attachedNode.value = { id, label: canvasRef.value?.getNodeLabel?.(id) || "Нода" };
-    };
-    const onClearNode = () => { attachedNode.value = null; };
+    const {
+      attachedNode,
+      picking: pickingNodeForChat,
+      attach: onAttachNode,
+      cancelPick: onCancelPickNode,
+      clear: onClearNode,
+    } = useChatNodeAttach({
+      selectedNodeId: () => canvasRef.value?.selectedNodeId ?? null,
+      getNodeLabel: (id) => canvasRef.value?.getNodeLabel?.(id) ?? "",
+      chatOpen,
+    });
     const onJumpNode = (nodeId: string) => { canvasRef.value?.focusNode?.(nodeId); };
 
     const onChatSend = (payload: { text: string; replyToId: string | null; nodeId: string | null; nodeLabel: string | null }) => {
       sendChat(payload.text, payload.replyToId, payload.nodeId, payload.nodeLabel);
-      attachedNode.value = null;
+      onClearNode();
     };
 
     const load = async () => {
@@ -1682,7 +1693,7 @@ export default defineComponent({
       toggleDrawPanel,
       diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice,
       chatOpen, chatMessages, toggleChat, onChatSend,
-      attachedNode, onAttachNode, onClearNode, onJumpNode,
+      attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };
   },
 });

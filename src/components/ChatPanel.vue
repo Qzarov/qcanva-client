@@ -40,7 +40,7 @@
         <button class="chat-attached-cancel" title="Открепить" @click="$emit('clear-node')">×</button>
       </div>
       <div class="chat-input-row">
-        <button class="chat-attach-btn" title="Прикрепить выбранную ноду" @click="$emit('attach-node')" :disabled="!canAttach && !attachedNode">
+        <button class="chat-attach-btn" :class="{ 'is-armed': canAttach || attachedNode }" :title="canAttach ? 'Прикрепить выбранную ноду' : 'Выбрать ноду для прикрепления'" @click="$emit('attach-node')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/><circle cx="18" cy="18" r="3"/></svg>
         </button>
         <textarea v-model="draft" class="chat-input" rows="1" placeholder="Написать сообщение…" @keydown="onKey"></textarea>
@@ -137,8 +137,8 @@ watch(() => props.messages.length, scrollToBottom);
 .chat-attached-cancel { background: none; border: none; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; opacity: 0.7; padding: 0; }
 /* Attach-node button in input row */
 .chat-attach-btn { flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 8px; color: inherit; cursor: pointer; opacity: 0.6; transition: opacity 0.12s, background 0.12s; padding: 0; }
-.chat-attach-btn:hover:not(:disabled) { opacity: 1; background: rgba(255,255,255,0.05); }
-.chat-attach-btn:disabled { opacity: 0.3; cursor: default; }
+.chat-attach-btn:hover { opacity: 1; background: rgba(255,255,255,0.05); }
+.chat-attach-btn.is-armed { opacity: 1; color: var(--color-brands, #4dabf7); border-color: var(--color-brands, #4dabf7); }
 /* Dice roll card */
 .chat-roll { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 14px; }
 .chat-roll-notation { font-size: 12px; font-weight: 600; opacity: 0.8; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 6px; padding: 1px 6px; }

@@ -3236,6 +3236,42 @@ html, body {
   }
 }
 
+/* Pick-a-node hint banner (while attaching a node to a chat message) */
+.chat-pick-hint {
+  position: absolute;
+  top: calc(var(--canvas-topbar-height, 44px) + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 24px);
+  padding: 8px 10px 8px 14px;
+  border-radius: 10px;
+  background: rgba(24,24,26,0.97);
+  border: 1px solid var(--color-brands, #4dabf7);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  font-size: 13px;
+}
+.chat-pick-hint-text { color: rgba(255,255,255,0.9); }
+.chat-pick-cancel {
+  flex: 0 0 auto;
+  background: none;
+  border: 1px solid var(--dark-neutral-border, #313442);
+  color: inherit;
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+.chat-pick-cancel:hover { background: rgba(255,255,255,0.06); }
+@media (max-width: 640px) {
+  .chat-pick-hint { font-size: 14px; padding: 10px 12px 10px 16px; }
+  .chat-pick-cancel { padding: 8px 14px; min-height: 40px; }
+}
+
 /* Keyboard shortcuts dialog */
 .shortcuts-backdrop {
   position: fixed;
