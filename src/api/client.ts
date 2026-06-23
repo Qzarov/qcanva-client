@@ -349,6 +349,15 @@ export const htmlDocuments = {
   permissions: (id: string) => request<any[]>(`/html-documents/${id}/permissions`),
 };
 
+export const plugins = {
+  list: () =>
+    request<Array<{ id: string; name: string; description: string; surface: string; enabled: boolean }>>(
+      '/plugins',
+    ),
+  setEnabled: (id: string, enabled: boolean) =>
+    request<any>(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+};
+
 export const textDocuments = {
   list: () => request<{ documents: any[] }>('/text-documents'),
   publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),
