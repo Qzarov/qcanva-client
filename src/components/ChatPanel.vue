@@ -144,4 +144,18 @@ watch(() => props.messages.length, scrollToBottom);
 .chat-roll-notation { font-size: 12px; font-weight: 600; opacity: 0.8; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 6px; padding: 1px 6px; }
 .chat-roll-dice { opacity: 0.85; }
 .chat-roll-total { font-weight: 700; font-size: 16px; color: var(--color-brands, #4dabf7); }
+
+/* Mobile: roomier, clearer message separation, comfortable input (16px avoids iOS zoom) */
+@media (max-width: 640px) {
+  .chat-messages { padding: 12px; gap: 12px; }
+  .chat-msg { padding-bottom: 11px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+  .chat-msg:last-child { border-bottom: none; }
+  .chat-msg-author { font-size: 14px; }
+  .chat-msg-text { font-size: 15px; }
+  .chat-input-row { padding: 10px; gap: 8px; }
+  .chat-input { font-size: 16px; padding: 8px 10px; }
+  .chat-send { padding: 0 14px; min-height: 42px; }
+  .chat-attach-btn { width: 38px; height: 38px; }
+  .chat-node-chip, .chat-quote-text, .chat-quote-author { font-size: 12px; }
+}
 </style>

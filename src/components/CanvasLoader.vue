@@ -3700,7 +3700,11 @@ g:hover > .edge-midpoint-conn {
 }
 .canvas-node.node-round .node-content,
 .canvas-node.node-round .node-editor {
-  padding: 18px 22px;
+  /* round/pill node: keep text inside the curved clip — proportional padding + vertical centering */
+  padding: 14% 16%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 /* ===== Text editor ===== */
