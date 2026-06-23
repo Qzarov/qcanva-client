@@ -248,10 +248,10 @@
           <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
         </template>
         <!-- Connection points (visible on hover) -->
-        <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
+        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
+        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
+        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
+        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
 
       <!-- Link nodes -->
@@ -338,10 +338,10 @@
           <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
           <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
         </template>
-        <div class="conn-point conn-top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
+        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
+        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
+        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
+        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
 
       <!-- Drawings SVG layer (above nodes) -->
@@ -808,6 +808,7 @@ export default defineComponent({
     let touchNodeId: string | null = null; // node under the active single-finger touch
     let touchDragging = false; // an actual node drag is in progress
     let touchResizing = false; // a resize via a touch on a resize handle is in progress
+    let touchConnecting = false; // a connection drag via a touch on a connection point is in progress
     let lastTapTime = 0;
     let lastTapTarget = ""; // node id, or "__empty__" for blank canvas
 
@@ -2691,6 +2692,22 @@ export default defineComponent({
           }
         }
 
+        // Did we start on a connection point? (touch-connect for mobile)
+        // Only the selected node shows usable connection points, so gate on selection —
+        // otherwise the invisible points on other nodes would hijack taps near their edges.
+        const connEl = (e.target as HTMLElement | null)?.closest('.conn-point') as HTMLElement | null;
+        const connNodeEl = connEl?.closest('[data-node-id]') as HTMLElement | null;
+        const connNodeId = connNodeEl?.dataset.nodeId ?? null;
+        if (connEl && connNodeId && !props.readonly && selectedNodeIds.value.includes(connNodeId)) {
+          const node = nodes.value.find((n) => n.id === connNodeId);
+          const side = connEl.dataset.connSide ?? "";
+          if (node && side && !node.positionLocked) {
+            onConnStart({ clientX: t.clientX, clientY: t.clientY } as MouseEvent, node, side);
+            touchConnecting = true;
+            return;
+          }
+        }
+
         // Did we start on a node/group?
         const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
         touchNodeId = nodeEl?.dataset.nodeId ?? null;
@@ -2724,12 +2741,15 @@ export default defineComponent({
           cameraStart.y = camera.y;
         }
       } else if (e.touches.length === 2) {
-        // Second finger down → abandon any single-finger drag/pan/resize, go to pinch
+        // Second finger down → abandon any single-finger drag/pan/resize/connect, go to pinch
         touchNodeId = null;
         touchDragging = false;
         touchResizing = false;
+        touchConnecting = false;
         dragNodeId.value = null;
         resizeNodeId.value = null;
+        connDragging.value = false;
+        connFromEdge.value = "";
         isPanning.value = false;
         stopAutoPan();
         lastTouchDist.value = getTouchDist(e);
@@ -2753,6 +2773,14 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           applyResize();
+          return;
+        }
+
+        // Connection drag via touch on a connection point — track the finger as the temp edge end.
+        if (touchConnecting && connDragging.value) {
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          updateActiveDragFromPointer();
           return;
         }
 
@@ -2814,6 +2842,33 @@ export default defineComponent({
       // Only handle when the last finger lifts
       if (e.touches.length > 0) return;
       stopAutoPan();
+
+      // Finalize a touch connection — create the edge if released over another node.
+      if (touchConnecting) {
+        if (connDragging.value && viewport.value) {
+          const rect = viewport.value.getBoundingClientRect();
+          const wx = (lastPointer.x - rect.left - camera.x) / camera.scale;
+          const wy = (lastPointer.y - rect.top - camera.y) / camera.scale;
+          const target = findNodeAt(wx, wy);
+          if (target && target.node.id !== connFromNode.value) {
+            pushUndo();
+            const newEdge: CanvasEdge = {
+              id: genId(),
+              fromNode: connFromNode.value,
+              toNode: target.node.id,
+              toSide: target.side,
+              fromSide: connFromSide.value,
+            };
+            edges.value.push(newEdge);
+            emitOp({ type: 'edge-add', edge: { ...newEdge } });
+          }
+        }
+        connDragging.value = false;
+        connFromEdge.value = "";
+        touchConnecting = false;
+        touchNodeId = null;
+        return;
+      }
 
       // Finalize a touch resize — emit the op and reset, skip tap/drag handling.
       if (touchResizing) {
