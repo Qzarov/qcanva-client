@@ -164,25 +164,28 @@
                   <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML / {{ folder.textDocumentCount || 0 }} docs</span>
                 </span>
               </button>
-              <div class="folder-manager-actions">
+              <div v-if="folder.role === 'owner'" class="folder-manager-menu">
                 <button
-                  v-if="folder.role === 'owner'"
-                  class="folder-manager-btn"
-                  @click.stop="openFolderShareModal(folder)"
+                  class="folder-manager-trigger"
+                  @click.stop="toggleFolderMenu(folder.id)"
+                  title="Group actions"
                   :disabled="isBusy"
-                >Share</button>
-                <button
-                  v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
-                  class="folder-manager-btn"
-                  @click.stop="openRenameFolderModal(folder)"
-                  :disabled="isBusy"
-                >Rename</button>
-                <button
-                  v-if="folder.name !== 'Unsorted' && folder.role === 'owner'"
-                  class="folder-manager-btn danger"
-                  @click.stop="deleteFolder(folder)"
-                  :disabled="isBusy"
-                >Delete</button>
+                >⋯</button>
+                <div v-if="openControlMenu === 'folder:' + folder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" @click="openFolderShareModal(folder)" :disabled="isBusy">Share</button>
+                  <button
+                    v-if="folder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    @click="openRenameFolderModal(folder)"
+                    :disabled="isBusy"
+                  >Rename</button>
+                  <button
+                    v-if="folder.name !== 'Unsorted'"
+                    class="card-menu-item danger"
+                    @click="deleteFolder(folder)"
+                    :disabled="isBusy"
+                  >Delete</button>
+                </div>
               </div>
             </div>
             <transition name="folder-collapse">
@@ -1464,6 +1467,7 @@ export default defineComponent({
     };
 
     const deleteFolder = async (folder: FolderSummary) => {
+      closeCardMenu();
       const confirmed = window.confirm(`Delete group "${folder.name}"? Resources will move to Unsorted.`);
       if (!confirmed) return;
       await runAction(
@@ -1733,6 +1737,12 @@ export default defineComponent({
       openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
+    const toggleFolderMenu = (folderId: string) => {
+      openMenuCanvasId.value = '';
+      const key = `folder:${folderId}`;
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+
     const toggleUserMenu = () => {
       openMenuCanvasId.value = '';
       openControlMenu.value = openControlMenu.value === 'user' ? '' : 'user';
@@ -1915,6 +1925,7 @@ export default defineComponent({
       toggleCardMenu,
       closeCardMenu,
       toggleNewMenu,
+      toggleFolderMenu,
       toggleUserMenu,
       openCanvas,
       openCanvasFromCard,

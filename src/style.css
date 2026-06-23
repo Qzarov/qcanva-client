@@ -831,6 +831,31 @@ html, body {
   gap: 8px;
   justify-content: flex-end;
 }
+.folder-manager-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+.folder-manager-trigger {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid var(--dark-neutral-border);
+  background: var(--dark-input-bg);
+  color: rgba(255,255,255,0.75);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+.folder-manager-trigger:hover {
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+}
+.folder-manager-menu .mobile-action-popover {
+  min-width: 180px;
+}
 .folder-manager-btn {
   padding: 6px 9px;
   border-radius: 7px;
@@ -1966,14 +1991,19 @@ html, body {
   }
 
   .dash-section-head,
-  .folder-manager-top,
   .folder-manager-row {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .folder-manager-top {
+    align-items: center;
+    gap: 8px;
+  }
+
   .folder-manager-main {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
   }
 
   .folder-manager-actions {

@@ -19,7 +19,7 @@
           <span class="chat-roll-total">= {{ parseRoll(m).total }}</span>
         </div>
         <div v-else class="chat-msg-text">{{ m.text }}</div>
-        <button v-if="m.nodeId" class="chat-node-chip" @click="$emit('jump-node', m.nodeId)" :title="m.nodeLabel || 'Нода'">
+        <button v-if="showNodeChip(m)" class="chat-node-chip" @click="$emit('jump-node', m.nodeId)" :title="m.nodeLabel || 'Нода'">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6"/><circle cx="18" cy="18" r="3"/></svg>
           <span class="chat-node-chip-label">{{ m.nodeLabel || 'Нода' }}</span>
         </button>
@@ -52,9 +52,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from "vue";
+import { ref, watch, nextTick, computed } from "vue";
 const props = defineProps<{ messages: any[]; canPost: boolean; attachedNode: { id: string; label: string } | null; canAttach: boolean }>();
 const parseRoll = (m: any) => { try { return m.rollData ? JSON.parse(m.rollData) : null; } catch { return null; } };
+const msgById = computed(() => {
+  const map = new Map<string, any>();
+  for (const m of props.messages) map.set(m.id, m);
+  return map;
+});
+// Hide the node chip on a reply when the quoted (base) message already shows the same node — avoids duplication.
+const showNodeChip = (m: any) => {
+  if (!m.nodeId) return false;
+  if (m.replyToId) {
+    const parent = msgById.value.get(m.replyToId);
+    if (parent && parent.nodeId === m.nodeId) return false;
+  }
+  return true;
+};
 const emit = defineEmits<{
   (e: "send", payload: { text: string; replyToId: string | null; nodeId: string | null; nodeLabel: string | null }): void;
   (e: "attach-node"): void;

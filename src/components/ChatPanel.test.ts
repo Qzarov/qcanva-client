@@ -69,6 +69,23 @@ describe("ChatPanel", () => {
     await chip.trigger("click");
     expect(w.emitted("jump-node")?.[0]).toEqual(["node-42"]);
   });
+  it("hides the node chip on a reply when the quoted base message shows the same node", () => {
+    const thread = [
+      { id: "1", authorName: "Alice", text: "look here", nodeId: "node-42", nodeLabel: "My Node", createdAt: new Date().toISOString() },
+      { id: "2", authorName: "Bob", text: "agreed", replyToId: "1", replyToAuthor: "Alice", replyToText: "look here", nodeId: "node-42", nodeLabel: "My Node", createdAt: new Date().toISOString() },
+    ];
+    const w = mount(ChatPanel, { props: { messages: thread, canPost: true, attachedNode: null, canAttach: false } });
+    // base message keeps its chip, the reply (same node) does not duplicate it
+    expect(w.findAll(".chat-node-chip").length).toBe(1);
+  });
+  it("keeps the node chip on a reply when it references a different node than the base message", () => {
+    const thread = [
+      { id: "1", authorName: "Alice", text: "look here", nodeId: "node-42", nodeLabel: "Node A", createdAt: new Date().toISOString() },
+      { id: "2", authorName: "Bob", text: "but this one", replyToId: "1", replyToAuthor: "Alice", replyToText: "look here", nodeId: "node-99", nodeLabel: "Node B", createdAt: new Date().toISOString() },
+    ];
+    const w = mount(ChatPanel, { props: { messages: thread, canPost: true, attachedNode: null, canAttach: false } });
+    expect(w.findAll(".chat-node-chip").length).toBe(2);
+  });
   it("renders a roll card for messages with rollData", () => {
     const rollMsg = [
       {
