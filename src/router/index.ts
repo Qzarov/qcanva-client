@@ -48,6 +48,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/plugins',
+      name: 'plugins',
+      component: () => import('../views/PluginsView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/canvas/:id',
       name: 'canvas',
       component: () => import('../views/CanvasView.vue'),

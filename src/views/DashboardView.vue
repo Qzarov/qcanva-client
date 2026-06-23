@@ -19,6 +19,12 @@
               <span>{{ currentUserLabel }}</span>
             </button>
             <div v-if="openControlMenu === 'user'" class="mobile-action-popover user-popover" @click.stop>
+              <router-link to="/plugins" class="card-menu-item">
+                <span class="menu-icon">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
+                </span>
+                <span>Plugins</span>
+              </router-link>
               <router-link to="/html-settings" class="card-menu-item">
                 <span class="menu-icon">⚙</span>
                 <span>Settings</span>
@@ -614,6 +620,7 @@
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { usePlugins } from '../composables/usePlugins';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -665,6 +672,7 @@ const genTagId = () => Math.random().toString(36).slice(2, 10);
 export default defineComponent({
   setup() {
     const router = useRouter();
+    const { reset: resetPlugins } = usePlugins();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -1749,6 +1757,7 @@ export default defineComponent({
     };
 
     const logout = () => {
+      resetPlugins();
       clearToken();
       router.push('/login');
     };
