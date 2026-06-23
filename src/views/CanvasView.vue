@@ -410,7 +410,7 @@
       </div>
 
       <!-- Dice toolbar — left edge, below the draw toolbar -->
-      <div v-if="role !== 'read'" ref="diceToolbarRef" class="dice-toolbar" @pointerdown.stop @click.stop>
+      <div v-if="role !== 'read' && diceEnabled" ref="diceToolbarRef" class="dice-toolbar" @pointerdown.stop @click.stop>
         <button class="draw-toolbar-toggle" :class="{ active: diceOpen }" @click="toggleDice" title="Кубики">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/><text x="12" y="12.2" font-size="5.2" text-anchor="middle" fill="currentColor" stroke="none">20</text></svg>
         </button>
@@ -799,6 +799,7 @@ import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import CanvasLoader from '../components/CanvasLoader.vue';
@@ -830,6 +831,8 @@ export default defineComponent({
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
+    const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded } = usePlugins();
+    const diceEnabled = computed(() => isPluginEnabled('dice'));
     const diceToolbarRef = ref<HTMLElement | null>(null);
     const diceOpen = ref(false);
     const diceSides = ref(20);
@@ -1629,6 +1632,7 @@ export default defineComponent({
     });
 
     onMounted(() => {
+      void ensurePluginsLoaded();
       window.addEventListener('resize', updateChromeMetrics);
       window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       void load();
@@ -1657,6 +1661,7 @@ export default defineComponent({
 
     const toggleDice = () => { diceOpen.value = !diceOpen.value; };
     const rollDice = () => {
+      if (!diceEnabled.value) return;
       sendRoll(diceSides.value, diceCount.value, diceModifier.value);
       diceOpen.value = false;
       // open the chat (loading history) so the roll lands in a populated thread;
@@ -1691,7 +1696,7 @@ export default defineComponent({
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,
-      diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice,
+      diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
       chatOpen, chatMessages, toggleChat, onChatSend,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };
