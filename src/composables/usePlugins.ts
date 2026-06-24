@@ -16,7 +16,7 @@ export function usePlugins() {
   function ensureLoaded(): Promise<void> {
     if (loaded) return Promise.resolve();
     if (!inflight) {
-      inflight = loadPlugins().finally(() => {
+      inflight = loadPlugins().catch(() => {}).finally(() => {
         inflight = null;
       });
     }

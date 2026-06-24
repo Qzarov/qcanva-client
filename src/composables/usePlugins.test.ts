@@ -42,6 +42,18 @@ describe("usePlugins", () => {
     expect(usePlugins().isEnabled("dice")).toBe(false);
   });
 
+  it("ensureLoaded resolves (does not reject) when plugins.list fails, and isEnabled stays false", async () => {
+    (api.list as any).mockRejectedValue(new Error("401"));
+    await expect(usePlugins().ensureLoaded()).resolves.toBeUndefined();
+    expect(usePlugins().isEnabled("dice")).toBe(false);
+    // loaded must remain false so a subsequent authenticated load can succeed
+    (api.list as any).mockResolvedValue([
+      { id: "dice", name: "D", description: "", surface: "canvas-chat", enabled: true },
+    ]);
+    await usePlugins().loadPlugins();
+    expect(usePlugins().isEnabled("dice")).toBe(true);
+  });
+
   it("reset clears state", async () => {
     (api.list as any).mockResolvedValue([
       { id: "dice", name: "D", description: "", surface: "canvas-chat", enabled: true },

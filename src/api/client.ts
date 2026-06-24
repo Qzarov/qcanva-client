@@ -353,6 +353,7 @@ export const plugins = {
   list: () =>
     request<Array<{ id: string; name: string; description: string; surface: string; enabled: boolean }>>(
       '/plugins',
+      { skipAuthRedirect: true },
     ),
   setEnabled: (id: string, enabled: boolean) =>
     request<any>(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
