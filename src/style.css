@@ -2795,6 +2795,11 @@ html, body {
   padding: 16px;
   box-shadow: var(--shadow-dropdown);
   z-index: 100;
+  /* Cap to the viewport below the topbar and scroll, so tall owner content
+     (Link + visibility + invite + password) is never clipped by the window. */
+  max-height: calc(100vh - var(--canvas-topbar-height, 44px) - 16px);
+  max-height: calc(100dvh - var(--canvas-topbar-height, 44px) - 16px);
+  overflow-y: auto;
 }
 .share-panel-header {
   display: flex;
