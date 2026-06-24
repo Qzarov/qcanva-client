@@ -906,7 +906,6 @@ export default defineComponent({
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
     const syncNotice = ref<{ kind: 'info' | 'warning'; text: string } | null>(null);
-    const realtimeOpsUnavailable = ref(false);
     const showSyncEvents = ref(false);
     const syncEventStore = createSyncEventStore(5);
     const syncEvents = syncEventStore.events;
@@ -997,6 +996,7 @@ export default defineComponent({
       onAck,
       setRevision,
       pendingOpsCount,
+      realtimeOpsUnavailable,
       clearPendingOps,
       sendChat,
       sendRoll,
@@ -1118,7 +1118,9 @@ export default defineComponent({
         onReject((reject) => {
           const reason = reject.reason as SyncRejectReason;
           if (reject.reason === 'timeout') {
-            realtimeOpsUnavailable.value = true;
+            // The socket composable already flipped realtimeOpsUnavailable on
+            // for this timeout, and will flip it back off on the next healthy
+            // ack/reconnect — so this is a recoverable fallback, not a latch.
             syncIssue.value = '';
             clearPendingOps();
             if (reject.clientOpId) syncEventStore.reject(reject.clientOpId, 'timeout', reject.serverRevision);

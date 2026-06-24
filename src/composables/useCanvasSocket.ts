@@ -54,6 +54,12 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   const currentRevision = ref(0);
   const pendingOps = ref<Map<string, PendingCanvasOp & { timeout: ReturnType<typeof setTimeout> }>>(new Map());
   const pendingOpsCount = ref(0);
+  // Recoverable circuit breaker: flips true when an op times out (so the view
+  // falls back to snapshot persistence) and back to false the moment the
+  // channel proves healthy again (any ack or a fresh connection). Never a
+  // permanent latch — that was the bug where real-time sync stayed dead for
+  // the rest of the session after a single transient timeout.
+  const realtimeOpsUnavailable = ref(false);
 
   // Callbacks set by consumer
   let onRemoteUpdate: ((data: string, revision: number) => void) | null = null;
@@ -99,6 +105,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
 
     s.on('connect', () => {
       connected.value = true;
+      // Fresh connection — the channel is healthy, resume real-time ops.
+      realtimeOpsUnavailable.value = false;
       s.emit('join-canvas', { canvasId: resolveCanvasId() });
     });
 
@@ -158,6 +166,9 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     });
 
     s.on('canvas-update-ack', (data: { revision: number }) => {
+      // A snapshot round-trip succeeded — the websocket works, so real-time
+      // ops can resume (this is the in-band probe while degraded).
+      realtimeOpsUnavailable.value = false;
       if (typeof data.revision === 'number') {
         currentRevision.value = data.revision;
       }
@@ -182,6 +193,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
 
     s.on('canvas-op-ack', (data: { clientOpId: string; revision: number }) => {
       removePendingOp(data.clientOpId);
+      // An op ack arrived (even a late one after a timeout) — channel healthy.
+      realtimeOpsUnavailable.value = false;
       if (typeof data.revision === 'number') {
         currentRevision.value = data.revision;
       }
@@ -229,6 +242,9 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     const retryOf = options.retryOf;
     const timeout = setTimeout(() => {
       const pending = removePendingOp(clientOpId);
+      // Op never acked in time — degrade to snapshot persistence until the
+      // channel proves healthy again (any ack / reconnect resets this).
+      realtimeOpsUnavailable.value = true;
       onRejectCb?.({
         clientOpId,
         reason: 'timeout',
@@ -312,6 +328,7 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     remoteCursors,
     currentRevision,
     pendingOpsCount,
+    realtimeOpsUnavailable,
     connect,
     disconnect,
     sendUpdate,
