@@ -1450,8 +1450,31 @@ export default defineComponent({
       if (resizeNodeId.value) return;
       selectedDrawingId.value = null;
       if (node.positionLocked) {
-        selectedNodeIds.value = [node.id];
+        // A locked block can't be moved, so a drag starting on it should behave
+        // like a drag on empty canvas — begin a marquee selection. A plain click
+        // (no movement) still just selects this block, because onPanEnd ignores
+        // sub-5px boxes. The mousemove/mouseup events bubble up to the viewport
+        // (only mousedown is .stop-ped on the block), so onPanMove/onPanEnd drive
+        // the box without any extra listeners.
+        if (e.shiftKey || e.ctrlKey || e.metaKey) {
+          const idx = selectedNodeIds.value.indexOf(node.id);
+          if (idx >= 0) {
+            selectedNodeIds.value.splice(idx, 1);
+          } else {
+            selectedNodeIds.value.push(node.id);
+          }
+        } else {
+          selectedNodeIds.value = [node.id];
+        }
         selectedEdgeId.value = null;
+        const rect = viewport.value!.getBoundingClientRect();
+        const wx = (e.clientX - rect.left - camera.x) / camera.scale;
+        const wy = (e.clientY - rect.top - camera.y) / camera.scale;
+        selBox.active = true;
+        selBox.startX = wx;
+        selBox.startY = wy;
+        selBox.curX = wx;
+        selBox.curY = wy;
         return;
       }
       // Shift/Ctrl click: toggle selection
