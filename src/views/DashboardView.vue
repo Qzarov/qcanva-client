@@ -693,7 +693,10 @@ export default defineComponent({
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
-    const openFolderNames = ref<string[]>(['Unsorted']);
+    // Folders are expanded by default and act as lightweight organizational
+    // headers. We track only the folders the user has explicitly collapsed, so
+    // any new/unseen folder shows open without a click.
+    const collapsedFolderIds = ref<string[]>([]);
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
@@ -1035,11 +1038,9 @@ export default defineComponent({
           sharedResourceTags.value = (await tags.list()).tags.map(({ name, color }) => ({ name, color }));
         }
         const availableFolders = new Set(ownResourceFolders.value.map((folder) => folder.id));
-        openFolderNames.value = openFolderNames.value.filter((name) => availableFolders.has(name));
-        const unsorted = ownResourceFolders.value.find((folder) => folder.name === 'Unsorted') || ownResourceFolders.value[0];
-        if (unsorted && !openFolderNames.value.includes(unsorted.id)) {
-          openFolderNames.value.unshift(unsorted.id);
-        }
+        // Drop collapse flags for folders that no longer exist; everything else
+        // stays expanded by default.
+        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => availableFolders.has(id));
       } finally {
         loading.value = false;
       }
@@ -1289,8 +1290,9 @@ export default defineComponent({
     const onFolderDragOver = (folder: FolderSummary) => {
       if (!canDropToFolder(folder)) return;
       dragTargetFolder.value = folder.id;
-      if (!openFolderNames.value.includes(folder.id)) {
-        openFolderNames.value = [...openFolderNames.value, folder.id];
+      // Expand the drop target if the user had collapsed it.
+      if (collapsedFolderIds.value.includes(folder.id)) {
+        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
       }
     };
 
@@ -1387,8 +1389,9 @@ export default defineComponent({
       const folder = findDropFolder(folderId);
       state.targetFolderId = folder?.id || '';
       dragTargetFolder.value = folder?.id || '';
-      if (folder && !openFolderNames.value.includes(folder.id)) {
-        openFolderNames.value = [...openFolderNames.value, folder.id];
+      // Expand the drop target if the user had collapsed it.
+      if (folder && collapsedFolderIds.value.includes(folder.id)) {
+        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
       }
     };
 
@@ -1771,14 +1774,14 @@ export default defineComponent({
       await load();
     };
 
-    const toggleFolderOpen = (folderName: string) => {
-      openFolderNames.value = openFolderNames.value.includes(folderName)
-        ? openFolderNames.value.filter((name) => name !== folderName)
-        : [...openFolderNames.value, folderName];
+    const toggleFolderOpen = (folderId: string) => {
+      collapsedFolderIds.value = collapsedFolderIds.value.includes(folderId)
+        ? collapsedFolderIds.value.filter((id) => id !== folderId)
+        : [...collapsedFolderIds.value, folderId];
     };
 
-    const isFolderOpen = (folderName: string) => {
-      return openFolderNames.value.includes(folderName);
+    const isFolderOpen = (folderId: string) => {
+      return !collapsedFolderIds.value.includes(folderId);
     };
 
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {

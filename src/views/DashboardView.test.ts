@@ -210,9 +210,8 @@ describe('DashboardView groups', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const vm = wrapper.vm as any;
-    vm.toggleFolderOpen('folder-b');
-    vm.toggleFolderOpen('legacy-resource-inbox');
+    // Folders are expanded by default, so resources inside them render without
+    // any manual expand step.
     await wrapper.vm.$nextTick();
 
     expect(wrapper.find('[data-resource-icon="canvas"]').exists()).toBe(true);
