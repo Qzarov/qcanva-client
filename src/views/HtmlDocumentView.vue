@@ -110,6 +110,14 @@
           <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
         </div>
         <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+        <template v-if="visibility === 'public'">
+          <div class="share-section-title">Public document link</div>
+          <div class="slug-row">
+            <input :value="publicUrl" class="slug-input" readonly aria-label="Public document link" />
+            <button class="btn-ghost btn-sm" @click="copyPublicLink">Copy</button>
+          </div>
+          <div class="slug-hint">Use this link for people, search engines, and AI assistants. It returns the document HTML directly.</div>
+        </template>
       </div>
 
       <div class="share-section">
@@ -312,6 +320,10 @@ export default defineComponent({
     let pendingPreviewScroll: FrameScrollPosition | null = null;
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
+    const publicUrl = computed(() => {
+      const publicId = slug.value || resolvedId.value;
+      return `${window.location.origin}/html/${encodeURIComponent(publicId)}`;
+    });
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
     const htmlSyncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
@@ -637,6 +649,15 @@ export default defineComponent({
       }
     }
 
+    async function copyPublicLink() {
+      try {
+        await navigator.clipboard.writeText(publicUrl.value);
+        showToast('Public link copied', 'success');
+      } catch {
+        showToast('Could not copy the link. Please copy it from the field.', 'error');
+      }
+    }
+
     async function savePasswordAccess() {
       try {
         await htmlDocuments.update(resolvedId.value, {
@@ -755,7 +776,7 @@ export default defineComponent({
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       showHistory, showHtmlActions, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
-      slug, slugInput, savingSlug, saveSlug,
+      slug, slugInput, savingSlug, saveSlug, publicUrl, copyPublicLink,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
       downloadDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
     };
