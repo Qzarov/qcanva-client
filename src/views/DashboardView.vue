@@ -976,7 +976,11 @@ export default defineComponent({
           items: fallbackItems,
         });
       }
-      return folders;
+      return folders.sort((a, b) => {
+        const aEmptyTechnical = (a.id === 'legacy-resource-inbox' || a.name === 'Unsorted') && a.items.length === 0;
+        const bEmptyTechnical = (b.id === 'legacy-resource-inbox' || b.name === 'Unsorted') && b.items.length === 0;
+        return Number(aEmptyTechnical) - Number(bEmptyTechnical);
+      });
     });
     const activeFolder = computed(() =>
       folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
