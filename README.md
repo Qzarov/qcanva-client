@@ -54,6 +54,17 @@ npm run dev
 npm run build
 ```
 
+## Android
+
+Android-приложение собрано на Capacitor и использует тот же Vue-код, что и веб-версия. Для синхронизации веб-ресурсов с нативным проектом:
+
+```bash
+npm run android:sync
+npm run android:open
+```
+
+В Android Studio выберите устройство или эмулятор и запустите `app`. Для debug APK можно выполнить `npm run android:build:debug`; он будет лежать в `android/app/build/outputs/apk/debug/`. Нужны Android Studio (Android SDK) и JDK 21. Перед каждым нативным релизом запускайте `npm run android:sync`: production API уже задан как `https://canvas.qzarov.pro/api` в `.env.production`.
+
 ## Changelog
 
 ### 2026-05-03 — UX-аудит: обратная связь, шорткаты, мобильная верстка

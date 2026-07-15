@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">QCanva</string>
+    <string name="title_activity_main">QCanva</string>
+    <string name="package_name">pro.qzarov.qcanva</string>
+    <string name="custom_url_scheme">pro.qzarov.qcanva</string>
+</resources>
