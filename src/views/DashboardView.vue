@@ -143,61 +143,69 @@
         </div>
       </div>
 
-      <div v-if="isLoggedIn && folderSummaries.length" class="dash-section">
-        <div class="dash-section-head">
-          <h2>Groups</h2>
-          <div class="dash-section-actions">
+      <div v-if="isLoggedIn && folderSummaries.length" class="dashboard-workspace">
+        <aside class="dashboard-folder-nav" aria-label="Groups">
+          <div class="dashboard-folder-nav-head">
+            <h2>Groups</h2>
             <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
           </div>
-        </div>
-        <div class="folder-manager-list">
+          <div class="folder-manager-list">
+            <button
+              v-for="folder in folderSummaries"
+              :key="folder.id"
+              class="folder-nav-item"
+              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id }"
+              :data-folder-id="folder.id"
+              @click.stop="selectFolder(folder.id)"
+              @dragenter.prevent="onFolderDragOver(folder)"
+              @dragover.prevent="onFolderDragOver(folder)"
+              @dragleave="onFolderDragLeave(folder)"
+              @drop.prevent="dropResourceToFolder(folder)"
+            >
+              <span class="folder-nav-name">{{ folder.name }}</span>
+              <span class="folder-nav-count">{{ folder.items.length }}</span>
+            </button>
+          </div>
+        </aside>
+        <section v-if="activeFolder" class="dashboard-folder-content">
           <div
-            v-for="folder in folderSummaries"
-            :key="folder.id"
+            :key="activeFolder.id"
             class="folder-manager-row"
-            :data-folder-id="folder.id"
-            :class="{ 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id }"
-            @dragenter.prevent="onFolderDragOver(folder)"
-            @dragover.prevent="onFolderDragOver(folder)"
-            @dragleave="onFolderDragLeave(folder)"
-            @drop.prevent="dropResourceToFolder(folder)"
           >
             <div class="folder-manager-top">
-              <button class="folder-manager-main" @click.stop="toggleFolderOpen(folder.id)">
+              <div class="folder-manager-main">
                 <span class="folder-manager-title">
-                  <span class="section-toggle-icon folder-row-toggle" :class="{ expanded: isFolderOpen(folder.id) }">⌄</span>
-                  <span class="folder-manager-name">{{ folder.name }}</span>
-                  <span class="folder-manager-count">{{ folder.canvasCount }} canvas / {{ folder.htmlDocumentCount }} HTML / {{ folder.textDocumentCount || 0 }} docs</span>
+                  <span class="folder-manager-name">{{ activeFolder.name }}</span>
+                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} canvas / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} docs</span>
                 </span>
-              </button>
-              <div v-if="folder.role === 'owner'" class="folder-manager-menu">
+              </div>
+              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button
                   class="folder-manager-trigger"
-                  @click.stop="toggleFolderMenu(folder.id)"
+                  @click.stop="toggleFolderMenu(activeFolder.id)"
                   title="Group actions"
                   :disabled="isBusy"
                 >⋯</button>
-                <div v-if="openControlMenu === 'folder:' + folder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" @click="openFolderShareModal(folder)" :disabled="isBusy">Share</button>
+                <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">Share</button>
                   <button
-                    v-if="folder.name !== 'Unsorted'"
+                    v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item"
-                    @click="openRenameFolderModal(folder)"
+                    @click="openRenameFolderModal(activeFolder)"
                     :disabled="isBusy"
                   >Rename</button>
                   <button
-                    v-if="folder.name !== 'Unsorted'"
+                    v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
-                    @click="deleteFolder(folder)"
+                    @click="deleteFolder(activeFolder)"
                     :disabled="isBusy"
                   >Delete</button>
                 </div>
               </div>
             </div>
-            <transition name="folder-collapse">
-              <div v-if="isFolderOpen(folder.id)" class="folder-manager-body">
+              <div class="folder-manager-body">
                 <div class="dash-grid">
-                  <template v-for="item in folder.items" :key="`${item.type}-${item.id}`">
+                  <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
                     v-if="item.type === 'canvas'"
                     class="canvas-card"
@@ -305,9 +313,8 @@
                   </template>
                 </div>
               </div>
-            </transition>
           </div>
-        </div>
+        </section>
       </div>
 
       <div v-if="sharedFiltered.length" class="dash-section">
@@ -697,6 +704,7 @@ export default defineComponent({
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
     const collapsedFolderIds = ref<string[]>([]);
+    const selectedFolderId = ref('');
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
@@ -962,6 +970,9 @@ export default defineComponent({
       }
       return folders;
     });
+    const activeFolder = computed(() =>
+      folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
+    );
     const isBusy = computed(() => pendingAction.value.length > 0);
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
@@ -1041,6 +1052,9 @@ export default defineComponent({
         // Drop collapse flags for folders that no longer exist; everything else
         // stays expanded by default.
         collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => availableFolders.has(id));
+        if (!folderSummaries.value.some((folder) => folder.id === selectedFolderId.value)) {
+          selectedFolderId.value = folderSummaries.value[0]?.id || '';
+        }
       } finally {
         loading.value = false;
       }
@@ -1784,6 +1798,11 @@ export default defineComponent({
       return !collapsedFolderIds.value.includes(folderId);
     };
 
+    const selectFolder = (folderId: string) => {
+      selectedFolderId.value = folderId;
+      closeCardMenu();
+    };
+
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
@@ -1886,6 +1905,8 @@ export default defineComponent({
       tagManager,
       transferModal,
       folderSummaries,
+      activeFolder,
+      selectedFolderId,
       incomingRequests,
       createCanvas,
       createHtmlDocument,
@@ -1934,6 +1955,7 @@ export default defineComponent({
       saveTransferModal,
       toggleFolderOpen,
       isFolderOpen,
+      selectFolder,
       toggleCardMenu,
       closeCardMenu,
       toggleNewMenu,

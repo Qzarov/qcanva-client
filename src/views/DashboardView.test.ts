@@ -210,12 +210,14 @@ describe('DashboardView groups', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    // Folders are expanded by default, so resources inside them render without
-    // any manual expand step.
-    await wrapper.vm.$nextTick();
-
+    // The workspace shows one selected group at a time. Verify icons stay on
+    // the cards as the user moves between groups.
     expect(wrapper.find('[data-resource-icon="canvas"]').exists()).toBe(true);
+    (wrapper.vm as any).selectFolder('folder-b');
+    await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
+    (wrapper.vm as any).selectFolder('legacy-resource-inbox');
+    await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
     expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('HTML');
     expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('Document');
