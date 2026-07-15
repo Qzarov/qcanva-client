@@ -619,6 +619,39 @@ html, body {
   border-color: var(--color-brands);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brands) 30%, transparent);
 }
+/* The dashboard is a working index, so its resource cards favour scan speed
+   over the roomier presentation used in other surfaces. */
+.dashboard .dash-grid {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.dashboard .canvas-card {
+  min-height: 102px;
+  padding: 14px 42px 14px 14px;
+  border-radius: var(--radius-md);
+}
+.dashboard .card-title,
+.dashboard .card-title-input {
+  margin-bottom: 6px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.dashboard .card-title:not(.card-title-input) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard .resource-title-icon { width: 16px; height: 16px; }
+.dashboard .card-meta { gap: 6px; font-size: 11px; }
+.dashboard .card-tags { gap: 5px; margin-top: 8px; }
+.dashboard .card-tag { padding: 2px 7px; font-size: 10px; }
+.dashboard .card-tags .card-tag:nth-child(n + 3) { display: none; }
+.dashboard .canvas-card:not(:hover):not(:focus-within) .card-manage,
+.dashboard .canvas-card:not(:hover):not(:focus-within) .card-pin:not(.active) {
+  opacity: 0;
+}
+.dashboard .card-manage,
+.dashboard .card-pin { transition: opacity var(--transition-fast), background var(--transition-fast); }
 .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; cursor: text; }
 .card-title-with-icon { display: flex; align-items: center; gap: 8px; }
 .resource-title-icon { position: relative; flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; }
@@ -1973,10 +2006,23 @@ html, body {
     gap: 12px;
   }
 
+  .dashboard .dash-grid { grid-template-columns: 1fr; }
+
 .canvas-card {
     min-height: 112px;
     padding: 18px 48px 18px 16px;
   }
+
+  .dashboard .canvas-card {
+    min-height: 112px;
+    padding: 18px 48px 18px 16px;
+  }
+
+  .dashboard .card-title,
+  .dashboard .card-title-input { font-size: 16px; }
+  .dashboard .card-tags .card-tag:nth-child(n + 3) { display: inline-flex; }
+  .dashboard .canvas-card .card-manage,
+  .dashboard .canvas-card .card-pin { opacity: 1; }
 
   .card-title,
   .card-title-input {
