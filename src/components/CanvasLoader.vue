@@ -236,6 +236,17 @@
             v-html="renderMarkdown(getNodeRestText(node.text || ''))"
           ></div>
         </div>
+        <button
+          v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !readonly"
+          class="node-edit-trigger"
+          type="button"
+          title="Edit text"
+          @touchstart.stop
+          @mousedown.stop
+          @click.stop="onNodeDblClick(node)"
+        >
+          Edit
+        </button>
         <!-- Resize handles (visible when selected) -->
         <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -3802,6 +3813,28 @@ g:hover > .edge-midpoint-conn {
   display: block;
 }
 
+/* Double-tap is fine with a mouse but unreliable on a moving canvas. The
+   explicit action is shown for a selected text card on touch screens below. */
+.node-edit-trigger {
+  display: none;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 18;
+  min-width: 58px;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(124, 138, 255, 0.8);
+  border-radius: 999px;
+  background: rgba(20, 23, 38, 0.96);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
 /* ===== Resize handles ===== */
 .resize-handle {
   position: absolute;
@@ -4167,6 +4200,12 @@ g:hover > .edge-midpoint-conn {
 }
 
 @media (max-width: 640px) {
+  .node-edit-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
   .canvas-viewport {
     touch-action: none;
   }

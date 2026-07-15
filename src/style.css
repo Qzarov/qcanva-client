@@ -61,6 +61,12 @@ html, body {
   overflow: hidden;
 }
 
+/* A dashboard card or folder name must never make the app wider than a phone. */
+#app {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
 /* ===== Auth pages ===== */
 .auth-page {
   display: flex;
@@ -2151,18 +2157,19 @@ html, body {
   .dashboard-folder-nav-head { margin-bottom: 8px; }
 
   .dashboard-folder-nav .folder-manager-list {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
   }
 
   .folder-nav-item {
-    flex: 0 0 auto;
-    width: auto;
+    min-width: 0;
+    width: 100%;
     min-height: 36px;
   }
 
-  .folder-nav-name { max-width: 160px; }
+  .folder-nav-name { max-width: none; }
   .dashboard-folder-content .folder-manager-row { min-height: 0; }
 }
 .canvas-card.dragging {
