@@ -17,6 +17,11 @@ dist-ssr
 !.env.production
 .worktrees/
 
+# Android upload key material — never commit these files.
+android/keystore.properties
+android/*.jks
+android/*.keystore
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
