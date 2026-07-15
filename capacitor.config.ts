@@ -7,6 +7,13 @@ const config: CapacitorConfig = {
   server: {
     androidScheme: 'https',
   },
+  plugins: {
+    // Use Android's HTTP stack for the existing fetch-based API client. This
+    // avoids WebView network/CORS failures while keeping browser behavior unchanged.
+    CapacitorHttp: {
+      enabled: true,
+    },
+  },
 };
 
 export default config;
