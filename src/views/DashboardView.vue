@@ -163,7 +163,15 @@
               @drop.prevent="dropResourceToFolder(folder)"
             >
               <span class="folder-nav-name">{{ folder.name }}</span>
-              <span class="folder-nav-count">{{ folder.items.length }}</span>
+              <span class="folder-nav-meta">
+                <span class="folder-nav-count">{{ folder.items.length }}</span>
+                <span
+                  v-if="isTechnicalFolder(folder)"
+                  class="folder-technical-icon"
+                  title="System folder for resources that have not been assigned to a group"
+                  aria-label="System folder"
+                >⚙</span>
+              </span>
             </button>
           </div>
         </aside>
@@ -1803,6 +1811,9 @@ export default defineComponent({
       closeCardMenu();
     };
 
+    const isTechnicalFolder = (folder: FolderSummary) =>
+      folder.id === 'legacy-resource-inbox' || folder.name === 'Unsorted';
+
     const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
@@ -1956,6 +1967,7 @@ export default defineComponent({
       toggleFolderOpen,
       isFolderOpen,
       selectFolder,
+      isTechnicalFolder,
       toggleCardMenu,
       closeCardMenu,
       toggleNewMenu,

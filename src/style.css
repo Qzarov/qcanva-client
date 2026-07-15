@@ -863,6 +863,14 @@ html, body {
   line-height: 16px;
   text-align: center;
 }
+.folder-nav-meta { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.folder-technical-icon {
+  color: var(--dark-text-muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: help;
+}
+.folder-nav-item.active .folder-technical-icon { color: color-mix(in srgb, var(--color-brands) 70%, #fff); }
 .dashboard-folder-content { min-width: 0; }
 .dashboard-folder-content .folder-manager-row { min-height: calc(100vh - 188px); }
 .canvas-card-welcome { border-color: rgba(83,223,221,0.3); }
