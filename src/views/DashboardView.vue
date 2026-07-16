@@ -655,6 +655,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
+import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { usePlugins } from '../composables/usePlugins';
@@ -774,7 +775,9 @@ export default defineComponent({
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
-    const dashboardCacheAvailable = () => typeof window !== 'undefined' && import.meta.env.MODE !== 'test';
+    // Browser navigation should always read the current resource list. The
+    // native shell keeps a short-lived snapshot only to avoid a blank screen.
+    const dashboardCacheAvailable = () => typeof window !== 'undefined' && import.meta.env.MODE !== 'test' && Capacitor.isNativePlatform();
     const writeDashboardCache = () => {
       if (!dashboardCacheAvailable()) return;
       const state: DashboardCacheState = {
@@ -1980,7 +1983,9 @@ export default defineComponent({
 
     onMounted(() => {
       const cached = restoreDashboardCache();
-      if (!cached.fresh) void load({ showLoading: !cached.found });
+      // Even a fresh native snapshot is refreshed quietly, so moving a
+      // document between a dashboard visit and a return can never hide it.
+      void load({ showLoading: !cached.found });
     });
 
     return {
