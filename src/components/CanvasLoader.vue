@@ -12,7 +12,7 @@
     @touchmove="onTouchMove"
     @touchend="onTouchEnd"
     @touchcancel="onTouchEnd"
-    @dblclick="onCanvasDblClick"
+    @dblclick.prevent="onCanvasDblClick"
   >
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
@@ -201,7 +201,7 @@
         :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
-        @dblclick.stop="onNodeDblClick(node)"
+        @dblclick.prevent.stop="onNodeDblClick(node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <!-- Edit mode -->
@@ -1803,6 +1803,7 @@ export default defineComponent({
     };
 
     const onCanvasDblClick = (e: MouseEvent) => {
+      e.preventDefault();
       createTextNodeAtClient(e.clientX, e.clientY);
     };
 
@@ -3220,16 +3221,29 @@ export default defineComponent({
       drawings: JSON.parse(JSON.stringify(drawings.value)),
     });
 
+    let previousViewportContent: string | null = null;
+    const onOrientationChange = () => window.setTimeout(fitToContent, 0);
+
     onMounted(() => {
       loadCanvas();
-      window.addEventListener("resize", fitToContent);
+      // Browser zoom on a double tap also emits resize on Android and used to
+      // reset this canvas to fit-to-content. Orientation is the only layout
+      // change that should intentionally reset the view.
+      window.addEventListener("orientationchange", onOrientationChange);
+      const viewportMeta = document.querySelector('meta[name="viewport"]');
+      if (viewportMeta) {
+        previousViewportContent = viewportMeta.getAttribute('content');
+        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+      }
       window.addEventListener("keydown", onKeyDown);
     });
 
     onUnmounted(() => {
       if (editSaveTimer) clearTimeout(editSaveTimer);
       stopAutoPan();
-      window.removeEventListener("resize", fitToContent);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      const viewportMeta = document.querySelector('meta[name="viewport"]');
+      if (viewportMeta && previousViewportContent !== null) viewportMeta.setAttribute('content', previousViewportContent);
       window.removeEventListener("keydown", onKeyDown);
     });
 

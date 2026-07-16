@@ -147,7 +147,17 @@
         <aside class="dashboard-folder-nav" aria-label="Groups">
           <div class="dashboard-folder-nav-head">
             <h2>Groups</h2>
-            <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
+            <div class="folder-nav-head-actions">
+              <button
+                class="btn-ghost btn-sm folder-create-button"
+                type="button"
+                title="Создать новую группу"
+                aria-label="Создать новую группу"
+                @click.stop="openCreateGroupModal"
+                :disabled="isBusy"
+              >+</button>
+              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
+            </div>
           </div>
           <div class="folder-manager-list">
             <button
