@@ -786,6 +786,7 @@
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
         @open-canvas="onOpenCanvas"
+        @node-edit-start="closeNodeEditingPanels"
       />
     </template>
   </div>
@@ -847,6 +848,10 @@ export default defineComponent({
       blockSection.value = blockSection.value === s ? '' : s;
     };
     const activeToolbarMenu = ref('');
+    const closeNodeEditingPanels = () => {
+      activeToolbarMenu.value = '';
+      blockSection.value = '';
+    };
     const toggleToolbarMenu = (menu: string) => {
       activeToolbarMenu.value = activeToolbarMenu.value === menu ? '' : menu;
     };
@@ -1694,7 +1699,7 @@ export default defineComponent({
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
-      activeToolbarMenu, toggleToolbarMenu,
+      activeToolbarMenu, toggleToolbarMenu, closeNodeEditingPanels,
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,

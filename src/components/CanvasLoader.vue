@@ -772,7 +772,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "node-edit-start"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -1520,6 +1520,7 @@ export default defineComponent({
     // Double-click to edit text
     const onNodeDblClick = (node: CanvasNode) => {
       if (node.type !== "text") return;
+      emit('node-edit-start', node.id);
       editingNodeId.value = node.id;
       nextTick(() => {
         const textarea = editorRefs.value?.[0];
@@ -2873,6 +2874,9 @@ export default defineComponent({
     };
 
     const onTouchEnd = (e: TouchEvent) => {
+      // Prevent Android WebView from treating the second tap as browser zoom.
+      // Textareas are deliberately excluded so their native editing stays intact.
+      if (!isEditableTarget(e.target)) e.preventDefault();
       // Only handle when the last finger lifts
       if (e.touches.length > 0) return;
       stopAutoPan();

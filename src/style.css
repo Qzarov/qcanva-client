@@ -878,7 +878,6 @@ html, body {
 }
 .folder-nav-item.active .folder-technical-icon { color: color-mix(in srgb, var(--color-brands) 70%, #fff); }
 .dashboard-folder-content { min-width: 0; }
-.dashboard-folder-content .folder-manager-row { min-height: calc(100vh - 188px); }
 .canvas-card-welcome { border-color: rgba(83,223,221,0.3); }
 .canvas-card-welcome:hover { border-color: rgba(83,223,221,0.6); }
 .badge-public { background: rgba(83,223,221,0.15); color: #53dfdd; }
@@ -993,6 +992,12 @@ html, body {
 }
 .folder-manager-body {
   width: 100%;
+  /* A group stays compact: three rows are visible, the rest scroll inside it. */
+  min-height: 330px;
+  max-height: 330px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 .folder-collapse-enter-active,
 .folder-collapse-leave-active {
@@ -2022,6 +2027,13 @@ html, body {
 
   .dashboard .dash-grid { grid-template-columns: 1fr; }
 
+  .dash-section,
+  .dash-grid,
+  .canvas-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
 .canvas-card {
     min-height: 112px;
     padding: 18px 48px 18px 16px;
@@ -2170,7 +2182,10 @@ html, body {
   }
 
   .folder-nav-name { max-width: none; }
-  .dashboard-folder-content .folder-manager-row { min-height: 0; }
+  .folder-manager-body {
+    min-height: 360px;
+    max-height: 360px;
+  }
 }
 .canvas-card.dragging {
   opacity: 0.45;
