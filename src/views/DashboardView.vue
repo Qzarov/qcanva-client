@@ -125,7 +125,7 @@
       <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
           <h2>Access requests</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
+          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
         </div>
         <div class="access-request-list">
           <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
@@ -147,7 +147,7 @@
         <aside class="dashboard-folder-nav" aria-label="Groups">
           <div class="dashboard-folder-nav-head">
             <h2>Groups</h2>
-            <button class="btn-ghost btn-sm" @click.stop="load" :disabled="isBusy">Refresh</button>
+            <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
           </div>
           <div class="folder-manager-list">
             <button
@@ -681,7 +681,25 @@ type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
 };
 
+type DashboardCacheState = {
+  own: CanvasRecord[];
+  shared: CanvasRecord[];
+  publicCanvases: CanvasRecord[];
+  publicHtmlDocuments: HtmlDocumentRecord[];
+  publicTextDocuments: TextDocumentRecord[];
+  ownResourceFolders: ResourceFolderSummary[];
+  sharedResourceFolders: ResourceFolderSummary[];
+  unfiledCanvases: CanvasRecord[];
+  unfiledHtmlDocuments: HtmlDocumentRecord[];
+  unfiledTextDocuments: TextDocumentRecord[];
+  sharedResourceTags: ResourceTag[];
+  incomingRequests: any[];
+};
+
+type DashboardCache = { savedAt: number; state: DashboardCacheState };
+
 const DEFAULT_TAG_COLOR = '#50d1b2';
+const DASHBOARD_CACHE_TTL_MS = 60_000;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
@@ -732,6 +750,56 @@ export default defineComponent({
     const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
     const currentUser = computed(() => getCurrentUser());
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
+
+    const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
+    const dashboardCacheAvailable = () => typeof window !== 'undefined' && import.meta.env.MODE !== 'test';
+    const writeDashboardCache = () => {
+      if (!dashboardCacheAvailable()) return;
+      const state: DashboardCacheState = {
+        own: own.value,
+        shared: shared.value,
+        publicCanvases: publicCanvases.value,
+        publicHtmlDocuments: publicHtmlDocuments.value,
+        publicTextDocuments: publicTextDocuments.value,
+        ownResourceFolders: ownResourceFolders.value,
+        sharedResourceFolders: sharedResourceFolders.value,
+        unfiledCanvases: unfiledCanvases.value,
+        unfiledHtmlDocuments: unfiledHtmlDocuments.value,
+        unfiledTextDocuments: unfiledTextDocuments.value,
+        sharedResourceTags: sharedResourceTags.value,
+        incomingRequests: incomingRequests.value,
+      };
+      try {
+        sessionStorage.setItem(dashboardCacheKey(), JSON.stringify({ savedAt: Date.now(), state } satisfies DashboardCache));
+      } catch {
+        // A full or unavailable storage must never prevent the dashboard opening.
+      }
+    };
+    const restoreDashboardCache = () => {
+      if (!dashboardCacheAvailable()) return { found: false, fresh: false };
+      try {
+        const raw = sessionStorage.getItem(dashboardCacheKey());
+        if (!raw) return { found: false, fresh: false };
+        const cached = JSON.parse(raw) as DashboardCache;
+        if (!cached?.state || typeof cached.savedAt !== 'number') return { found: false, fresh: false };
+        own.value = cached.state.own || [];
+        shared.value = cached.state.shared || [];
+        publicCanvases.value = cached.state.publicCanvases || [];
+        publicHtmlDocuments.value = cached.state.publicHtmlDocuments || [];
+        publicTextDocuments.value = cached.state.publicTextDocuments || [];
+        ownResourceFolders.value = cached.state.ownResourceFolders || [];
+        sharedResourceFolders.value = cached.state.sharedResourceFolders || [];
+        unfiledCanvases.value = cached.state.unfiledCanvases || [];
+        unfiledHtmlDocuments.value = cached.state.unfiledHtmlDocuments || [];
+        unfiledTextDocuments.value = cached.state.unfiledTextDocuments || [];
+        sharedResourceTags.value = cached.state.sharedResourceTags || [];
+        incomingRequests.value = cached.state.incomingRequests || [];
+        loading.value = false;
+        return { found: true, fresh: Date.now() - cached.savedAt < DASHBOARD_CACHE_TTL_MS };
+      } catch {
+        return { found: false, fresh: false };
+      }
+    };
 
     const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string }>({
       open: false,
@@ -1013,8 +1081,8 @@ export default defineComponent({
       }
     };
 
-    const load = async () => {
-      loading.value = true;
+    const load = async ({ showLoading = !own.value.length && !publicCanvases.value.length && !ownResourceFolders.value.length } = {}) => {
+      if (showLoading) loading.value = true;
       try {
         const res = await canvas.list();
         if (isLoggedIn) {
@@ -1067,8 +1135,11 @@ export default defineComponent({
         if (!folderSummaries.value.some((folder) => folder.id === selectedFolderId.value)) {
           selectedFolderId.value = folderSummaries.value[0]?.id || '';
         }
+        writeDashboardCache();
+      } catch (error) {
+        if (showLoading) setFeedback('error', error instanceof Error ? error.message : 'Failed to load dashboard');
       } finally {
-        loading.value = false;
+        if (showLoading) loading.value = false;
       }
     };
 
@@ -1885,7 +1956,10 @@ export default defineComponent({
       }
     };
 
-    onMounted(load);
+    onMounted(() => {
+      const cached = restoreDashboardCache();
+      if (!cached.fresh) void load({ showLoading: !cached.found });
+    });
 
     return {
       admin,
