@@ -996,7 +996,8 @@ html, body {
   min-height: 330px;
   max-height: 330px;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* Let a swipe continue to the dashboard once this list reaches an edge. */
+  overscroll-behavior: auto;
   padding-right: 2px;
 }
 .folder-collapse-enter-active,
