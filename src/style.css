@@ -451,6 +451,25 @@ html, body {
   background: rgba(251,70,76,0.14);
   border-color: rgba(251,70,76,0.28);
 }
+.dashboard-refresh-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: -12px 0 14px;
+  color: var(--dark-text-muted);
+  font-size: 12px;
+}
+.dashboard-refresh-spinner {
+  width: 13px;
+  height: 13px;
+  border: 2px solid color-mix(in srgb, var(--color-brands) 24%, transparent);
+  border-top-color: var(--color-brands);
+  border-radius: 50%;
+  animation: dashboard-refresh-spin .7s linear infinite;
+}
+@keyframes dashboard-refresh-spin {
+  to { transform: rotate(360deg); }
+}
 .dash-search,
 .canvas-search-input {
   padding: 10px 14px;

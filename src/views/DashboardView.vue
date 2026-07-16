@@ -115,6 +115,11 @@
       </div>
     </div>
 
+    <div v-if="isRefreshing && !loading" class="dashboard-refresh-status" role="status" aria-live="polite">
+      <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
+      <span>Обновляем список…</span>
+    </div>
+
     <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
       {{ feedback.message }}
     </div>
@@ -743,6 +748,7 @@ export default defineComponent({
     const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
+    const isRefreshing = ref(false);
     const searchQuery = ref('');
     const selectedTag = ref('');
     const contentFilter = ref<'all' | 'canvas' | 'html-document' | 'text-document'>('all');
@@ -1108,6 +1114,7 @@ export default defineComponent({
 
     const load = async ({ showLoading = !own.value.length && !publicCanvases.value.length && !ownResourceFolders.value.length } = {}) => {
       if (showLoading) loading.value = true;
+      isRefreshing.value = true;
       try {
         const res = await canvas.list();
         if (isLoggedIn) {
@@ -1165,6 +1172,7 @@ export default defineComponent({
         if (showLoading) setFeedback('error', error instanceof Error ? error.message : 'Failed to load dashboard');
       } finally {
         if (showLoading) loading.value = false;
+        isRefreshing.value = false;
       }
     };
 
@@ -1992,6 +2000,7 @@ export default defineComponent({
       admin,
       isLoggedIn,
       loading,
+      isRefreshing,
       sharedFiltered,
       publicFiltered,
       allTagNames,
