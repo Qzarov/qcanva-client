@@ -1342,6 +1342,14 @@ html, body {
 .html-sync-wrap {
   position: relative;
 }
+.html-export-wrap {
+  position: relative;
+}
+.html-export-menu {
+  left: 0;
+  right: auto;
+  min-width: 164px;
+}
 .html-mobile-actions {
   display: none;
   position: relative;
