@@ -621,6 +621,16 @@ html, body {
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   overflow: visible;
 }
+.card-open-link {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+.card-open-link:focus-visible {
+  outline: 2px solid var(--color-brands);
+  outline-offset: 2px;
+}
 .canvas-card:hover {
   border-color: var(--color-brands);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-brands) 30%, transparent);
@@ -710,6 +720,7 @@ html, body {
   cursor: pointer;
   font-size: 16px;
   border-radius: var(--radius-full);
+  z-index: 2;
 }
 .card-manage:hover {
   color: #fff;
@@ -727,6 +738,7 @@ html, body {
   cursor: pointer;
   font-size: 15px;
   border-radius: var(--radius-full);
+  z-index: 2;
 }
 .card-pin:hover,
 .card-pin.active {

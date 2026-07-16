@@ -273,6 +273,12 @@
                     draggable="false"
                     @click="openHtmlDocumentFromCard(item.slug || item.id)"
                   >
+                    <a
+                      class="card-open-link"
+                      :href="`/edit/html/${item.slug || item.id}`"
+                      :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
+                      @click.stop
+                    ></a>
                     <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
@@ -304,6 +310,12 @@
                     draggable="false"
                     @click="openTextDocumentFromCard(item.slug || item.id)"
                   >
+                    <a
+                      class="card-open-link"
+                      :href="`/docs/${item.slug || item.id}`"
+                      :aria-label="`Open document ${item.title || 'Untitled document'}`"
+                      @click.stop
+                    ></a>
                     <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
