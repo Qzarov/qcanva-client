@@ -290,6 +290,7 @@
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
+        <div v-if="node.label" class="node-image-title">{{ node.label }}</div>
         <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
         <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -889,7 +890,12 @@ export default defineComponent({
         }
         case 'node-update': {
           const node = nodes.value.find((n) => n.id === op.id);
-          if (node) Object.assign(node, op.changes);
+          if (node) {
+            Object.assign(node, op.changes);
+            if (Object.prototype.hasOwnProperty.call(op.changes, 'positionLocked') || Object.prototype.hasOwnProperty.call(op.changes, 'zIndex')) {
+              rebalanceNodeLayers(false);
+            }
+          }
           break;
         }
         case 'edge-add':
@@ -2019,12 +2025,39 @@ export default defineComponent({
       pushUndo();
       const positionLocked = !node.positionLocked;
       updateNode(node, { positionLocked });
+      // Locked objects form the bottom layer. A newly locked object is placed
+      // above previously locked ones, while still staying below every editable one.
+      rebalanceNodeLayers(true, positionLocked ? node.id : undefined);
       if (positionLocked && resizeNodeId.value === node.id) resizeNodeId.value = null;
       if (positionLocked && dragNodeId.value === node.id) dragNodeId.value = null;
     };
 
-    const currentLayerBounds = () => {
-      const layers = nodes.value.map((n) => n.zIndex ?? 10);
+    const orderedLayerNodes = (locked: boolean) => nodes.value
+      .map((node, index) => ({ node, index }))
+      .filter(({ node }) => !!node.positionLocked === locked)
+      .sort((a, b) => (a.node.zIndex ?? 10) - (b.node.zIndex ?? 10) || a.index - b.index)
+      .map(({ node }) => node);
+
+    const rebalanceNodeLayers = (emitChanges = false, newlyLockedId?: string) => {
+      const locked = orderedLayerNodes(true);
+      if (newlyLockedId) {
+        const newlyLocked = locked.find((node) => node.id === newlyLockedId);
+        if (newlyLocked) {
+          locked.splice(locked.indexOf(newlyLocked), 1);
+          locked.push(newlyLocked);
+        }
+      }
+      const ordered = [...locked, ...orderedLayerNodes(false)];
+      ordered.forEach((node, index) => {
+        const zIndex = index + 1;
+        if (node.zIndex === zIndex) return;
+        node.zIndex = zIndex;
+        if (emitChanges) emitOp({ type: "node-update", id: node.id, changes: { zIndex } });
+      });
+    };
+
+    const currentLayerBounds = (locked: boolean) => {
+      const layers = orderedLayerNodes(locked).map((n) => n.zIndex ?? 10);
       return {
         min: layers.length ? Math.min(...layers) : 0,
         max: layers.length ? Math.max(...layers) : 0,
@@ -2035,8 +2068,8 @@ export default defineComponent({
       const targets = selectedEditableNodes();
       if (!targets.length) return;
       pushUndo();
-      const bounds = currentLayerBounds();
       for (const node of targets) {
+        const bounds = currentLayerBounds(!!node.positionLocked);
         const current = node.zIndex ?? 10;
         const zIndex =
           mode === "forward" ? current + 1 :
@@ -2045,6 +2078,9 @@ export default defineComponent({
           Math.max(1, bounds.min - 1);
         updateNode(node, { zIndex });
       }
+      // Layer controls may reorder only within their partition: locked nodes
+      // always remain under editable nodes.
+      rebalanceNodeLayers(true);
     };
 
     const bringSelectionForward = () => changeSelectionLayer("forward");
@@ -3501,18 +3537,35 @@ export default defineComponent({
 }
 
 .canvas-node-image {
-  overflow: hidden;
+  overflow: visible;
   display: flex;
   align-items: stretch;
   justify-content: stretch;
   padding: 0;
 }
 .node-image {
+  display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
   pointer-events: none;
   user-select: none;
+}
+.node-image-title {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: 100%;
+  color: rgba(255,255,255,0.82);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
 }
 /* Group colors */
 .group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
