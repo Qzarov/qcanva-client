@@ -3536,7 +3536,7 @@ export default defineComponent({
   white-space: nowrap;
 }
 
-.canvas-node-image {
+.canvas-node.canvas-node-image {
   overflow: visible;
   display: flex;
   align-items: stretch;
