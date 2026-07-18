@@ -4367,7 +4367,6 @@ g:hover > .edge-midpoint-conn {
 .canvas-node.is-hidden,
 .canvas-group.is-hidden {
   opacity: 0.4;
-  position: relative;
 }
 .canvas-node.is-hidden::after,
 .canvas-group.is-hidden::after {
