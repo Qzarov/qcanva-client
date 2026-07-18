@@ -274,6 +274,17 @@
 
           <template v-else-if="activeToolbarMenu === 'actions'">
             <div class="toolbar-popover-title">Действия</div>
+            <template v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId)">
+              <div class="toolbar-popover-label">Название изображения</div>
+              <input
+                class="toolbar-text-input"
+                :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
+                placeholder="Название изображения"
+                :disabled="role === 'read'"
+                @change="updateSelectedImageTitle"
+                @keydown.stop
+              />
+            </template>
             <div class="toolbar-menu-row">
               <button class="toolbar-choice" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
@@ -508,6 +519,26 @@
           <span class="tb-sep"></span>
           <span class="block-menu-sublabel">Текст</span>
           <button v-for="a in aligns" :key="'bma-'+a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
+        </div>
+
+        <button
+          v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId)"
+          class="block-menu-item"
+          :class="{ open: blockSection === 'imageTitle' }"
+          @click="toggleBlockSection('imageTitle')"
+        >
+          <span class="block-menu-label">Название изображения</span>
+          <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div v-if="blockSection === 'imageTitle' && canvasRef?.isImageNode(canvasRef.selectedNodeId)" class="block-menu-pop">
+          <input
+            class="block-menu-text-input"
+            :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
+            placeholder="Название изображения"
+            :disabled="role === 'read'"
+            @change="updateSelectedImageTitle"
+            @keydown.stop
+          />
         </div>
 
         <div class="block-menu-divider"></div>
@@ -854,6 +885,11 @@ export default defineComponent({
     };
     const toggleToolbarMenu = (menu: string) => {
       activeToolbarMenu.value = activeToolbarMenu.value === menu ? '' : menu;
+    };
+
+    const updateSelectedImageTitle = (event: Event) => {
+      const title = (event.target as HTMLInputElement).value;
+      canvasRef.value?.setNodeTitle?.(canvasRef.value.selectedNodeId, title);
     };
     const closeToolbarOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
@@ -1699,7 +1735,7 @@ export default defineComponent({
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
-      activeToolbarMenu, toggleToolbarMenu, closeNodeEditingPanels,
+      activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,

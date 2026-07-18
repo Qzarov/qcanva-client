@@ -291,7 +291,6 @@
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
-        <div v-if="node.label" class="node-image-label">{{ node.label }}</div>
         <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
@@ -3129,6 +3128,26 @@ export default defineComponent({
       return t ? t.replace(/\s+/g, " ").slice(0, 40) : "Нода";
     };
 
+    const isImageNode = (id: string | null | undefined): boolean => {
+      return !!id && nodes.value.find((node) => node.id === id)?.type === "image";
+    };
+
+    const getNodeTitle = (id: string | null | undefined): string => {
+      if (!id) return "";
+      return nodes.value.find((node) => node.id === id)?.label || "";
+    };
+
+    const setNodeTitle = (id: string | null | undefined, title: string) => {
+      if (!id || props.readonly) return;
+      const node = nodes.value.find((item) => item.id === id);
+      if (!node || node.type !== "image") return;
+      const label = title.trim();
+      if (node.label === label) return;
+      pushUndo();
+      node.label = label;
+      emitOp({ type: "node-update", id: node.id, changes: { label } });
+    };
+
     const flashNodeId = ref<string | null>(null);
 
     const focusNode = (nodeId: string) => {
@@ -3400,6 +3419,9 @@ export default defineComponent({
       searchNodes,
       focusNode,
       getNodeLabel,
+      isImageNode,
+      getNodeTitle,
+      setNodeTitle,
       flashNodeId,
       imageInput,
       selectedDrawingId,
@@ -3492,27 +3514,6 @@ export default defineComponent({
   pointer-events: none;
   user-select: none;
 }
-.node-image-label {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  max-width: calc(100% - 16px);
-  padding: 4px 8px;
-  border-radius: 6px;
-  background: rgba(0,0,0,0.55);
-  color: rgba(255,255,255,0.9);
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 0;
-  transition: opacity .12s;
-  pointer-events: none;
-}
-.canvas-node-image:hover .node-image-label {
-  opacity: 1;
-}
-
 /* Group colors */
 .group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
 .group-color-1 .group-label { color: #fb464c; }
