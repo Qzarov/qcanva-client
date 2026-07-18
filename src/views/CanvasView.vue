@@ -281,7 +281,7 @@
                 :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
                 placeholder="Название изображения"
                 :disabled="role === 'read'"
-                @change="updateSelectedImageTitle"
+                @input="updateSelectedImageTitle"
                 @keydown.stop
               />
             </template>
@@ -536,7 +536,7 @@
             :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
             placeholder="Название изображения"
             :disabled="role === 'read'"
-            @change="updateSelectedImageTitle"
+            @input="updateSelectedImageTitle"
             @keydown.stop
           />
         </div>
