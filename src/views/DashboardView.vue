@@ -689,7 +689,7 @@
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { usePlugins } from '../composables/usePlugins';
 
 type CanvasTag = { id: string; name: string; color: string };
@@ -815,21 +815,24 @@ export default defineComponent({
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
-    const recentResourcesKey = () => `qcanva:recent-resources:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const recentResourceHistory = ref<RecentResource[]>([]);
-    const loadRecentResources = () => {
+    const loadRecentResources = async () => {
+      if (!isLoggedIn) {
+        recentResourceHistory.value = [];
+        return;
+      }
       try {
-        const saved = localStorage.getItem(recentResourcesKey());
-        const parsed = saved ? JSON.parse(saved) : [];
-        recentResourceHistory.value = Array.isArray(parsed)
-          ? parsed.filter((item): item is RecentResource => item && typeof item.id === 'string' && typeof item.routeId === 'string' && typeof item.title === 'string' && typeof item.openedAt === 'number' && ['canvas', 'html-document', 'text-document'].includes(item.type)).slice(0, RECENT_RESOURCES_LIMIT)
-          : [];
+        const rows = await recentResourcesApi.list(RECENT_RESOURCES_LIMIT);
+        recentResourceHistory.value = rows.map((row) => ({
+          id: row.resourceId,
+          routeId: row.resourceId,
+          type: row.resourceType,
+          title: '',
+          openedAt: new Date(row.updatedAt).getTime(),
+        }));
       } catch {
         recentResourceHistory.value = [];
       }
-    };
-    const saveRecentResources = () => {
-      try { localStorage.setItem(recentResourcesKey(), JSON.stringify(recentResourceHistory.value)); } catch { /* optional convenience */ }
     };
     // Browser navigation should always read the current resource list. The
     // native shell keeps a short-lived snapshot only to avoid a blank screen.
@@ -1289,7 +1292,9 @@ export default defineComponent({
       if (!item) return;
       const recent: RecentResource = { id: item.id, routeId: item.slug || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
-      saveRecentResources();
+      void recentResourcesApi.markOpened(type, item.id).catch(() => {
+        // Opening a resource must remain available if saving its recent entry fails.
+      });
     };
 
     const openCanvas = (id: string) => {
@@ -2117,7 +2122,7 @@ export default defineComponent({
     };
 
     onMounted(() => {
-      loadRecentResources();
+      void loadRecentResources();
       const cached = restoreDashboardCache();
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.

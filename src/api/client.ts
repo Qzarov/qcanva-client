@@ -406,6 +406,13 @@ export const tags = {
     request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };
 
+export const recentResources = {
+  list: (limit = 12) =>
+    request<Array<{ id: string; resourceType: 'canvas' | 'html-document' | 'text-document'; resourceId: string; updatedAt: string }>>(`/recent-resources?limit=${limit}`),
+  markOpened: (resourceType: 'canvas' | 'html-document' | 'text-document', resourceId: string) =>
+    request<any>('/recent-resources', { method: 'POST', body: JSON.stringify({ resourceType, resourceId }) }),
+};
+
 export async function uploadImage(file: File): Promise<{ key: string; url: string }> {
   const form = new FormData();
   form.append("file", file);
