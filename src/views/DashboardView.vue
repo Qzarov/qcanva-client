@@ -126,6 +126,16 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>Обновляем список…</span>
     </div>
+    <section v-if="recentResources.length" class="dash-section dashboard-recents">
+      <div class="dash-section-head"><h2>Недавние</h2></div>
+      <div class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
+        <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
+          <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
+          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }}</span>
+        </button>
+      </div>
+    </section>
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
       class="dashboard-pull-status"
@@ -299,7 +309,7 @@
                       class="card-open-link"
                       :href="`/edit/html/${item.slug || item.id}`"
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
-                      @click.stop
+                      @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
                     <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
                     <div class="card-meta">
@@ -336,7 +346,7 @@
                       class="card-open-link"
                       :href="`/docs/${item.slug || item.id}`"
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
-                      @click.stop
+                      @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
                     <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
                     <div class="card-meta">
@@ -742,10 +752,12 @@ type DashboardCacheState = {
 };
 
 type DashboardCache = { savedAt: number; state: DashboardCacheState };
+type RecentResource = { id: string; routeId: string; type: FolderItem['type']; title: string; openedAt: number };
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_PULL_THRESHOLD = 72;
+const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
@@ -803,6 +815,22 @@ export default defineComponent({
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
+    const recentResourcesKey = () => `qcanva:recent-resources:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
+    const recentResourceHistory = ref<RecentResource[]>([]);
+    const loadRecentResources = () => {
+      try {
+        const saved = localStorage.getItem(recentResourcesKey());
+        const parsed = saved ? JSON.parse(saved) : [];
+        recentResourceHistory.value = Array.isArray(parsed)
+          ? parsed.filter((item): item is RecentResource => item && typeof item.id === 'string' && typeof item.routeId === 'string' && typeof item.title === 'string' && typeof item.openedAt === 'number' && ['canvas', 'html-document', 'text-document'].includes(item.type)).slice(0, RECENT_RESOURCES_LIMIT)
+          : [];
+      } catch {
+        recentResourceHistory.value = [];
+      }
+    };
+    const saveRecentResources = () => {
+      try { localStorage.setItem(recentResourcesKey(), JSON.stringify(recentResourceHistory.value)); } catch { /* optional convenience */ }
+    };
     // Browser navigation should always read the current resource list. The
     // native shell keeps a short-lived snapshot only to avoid a blank screen.
     const dashboardCacheAvailable = () => typeof window !== 'undefined' && import.meta.env.MODE !== 'test' && Capacitor.isNativePlatform();
@@ -1107,6 +1135,24 @@ export default defineComponent({
       folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
     );
     const isBusy = computed(() => pendingAction.value.length > 0);
+    const allDashboardResources = computed<FolderItem[]>(() => [
+      ...folderSummaries.value.flatMap((folder) => folder.items),
+      ...own.value,
+      ...shared.value,
+      ...publicCanvases.value,
+      ...publicHtmlDocuments.value,
+      ...publicTextDocuments.value,
+      ...unfiledCanvases.value,
+      ...unfiledHtmlDocuments.value,
+      ...unfiledTextDocuments.value,
+    ]);
+    const recentResources = computed<RecentResource[]>(() => {
+      const available = new Map(allDashboardResources.value.map((item) => [`${item.type}:${item.id}`, item]));
+      return recentResourceHistory.value.flatMap((recent) => {
+        const item = available.get(`${recent.type}:${recent.id}`);
+        return item ? [{ ...recent, title: item.title || recent.title, routeId: item.slug || item.id }] : [];
+      });
+    });
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
       feedback.value = { type, message };
@@ -1238,7 +1284,16 @@ export default defineComponent({
       if (shouldRefresh) void load({ showLoading: false });
     };
 
+    const rememberRecentResource = (type: FolderItem['type'], routeId: string) => {
+      const item = allDashboardResources.value.find((resource) => resource.type === type && (resource.id === routeId || resource.slug === routeId));
+      if (!item) return;
+      const recent: RecentResource = { id: item.id, routeId: item.slug || item.id, type, title: item.title || '', openedAt: Date.now() };
+      recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
+      saveRecentResources();
+    };
+
     const openCanvas = (id: string) => {
+      rememberRecentResource('canvas', id);
       router.push(`/canvas/${id}`);
     };
 
@@ -1251,6 +1306,7 @@ export default defineComponent({
     };
 
     const openHtmlDocument = (id: string) => {
+      rememberRecentResource('html-document', id);
       router.push(`/edit/html/${id}`);
     };
 
@@ -1263,8 +1319,17 @@ export default defineComponent({
     };
 
     const openTextDocument = (id: string) => {
+      rememberRecentResource('text-document', id);
       router.push({ name: 'text-document', params: { id } });
     };
+
+    const openRecentResource = (item: RecentResource) => {
+      if (item.type === 'canvas') openCanvas(item.routeId);
+      else if (item.type === 'html-document') openHtmlDocument(item.routeId);
+      else openTextDocument(item.routeId);
+    };
+    const recentResourceTypeLabel = (type: FolderItem['type']) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : 'Документ';
+    const recentResourceIconClass = (type: FolderItem['type']) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : 'icon-text-doc';
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -2052,6 +2117,7 @@ export default defineComponent({
     };
 
     onMounted(() => {
+      loadRecentResources();
       const cached = restoreDashboardCache();
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
@@ -2063,6 +2129,11 @@ export default defineComponent({
       isLoggedIn,
       loading,
       isRefreshing,
+      recentResources,
+      openRecentResource,
+      rememberRecentResource,
+      recentResourceTypeLabel,
+      recentResourceIconClass,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,

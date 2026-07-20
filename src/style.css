@@ -462,6 +462,52 @@ html, body {
 .dashboard-pull-status {
   display: none;
 }
+.dashboard-recents { margin-bottom: 22px; }
+.dashboard-recents-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  scrollbar-width: thin;
+  overscroll-behavior-x: contain;
+}
+.dashboard-recent-card {
+  flex: 0 0 168px;
+  min-width: 0;
+  min-height: 90px;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 7px 8px;
+  padding: 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-md);
+  background: rgba(255,255,255,0.035);
+  color: var(--dark-text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+.dashboard-recent-card:hover {
+  border-color: color-mix(in srgb, var(--color-brands) 45%, var(--dark-neutral-border));
+  background: rgba(255,255,255,0.07);
+}
+.dashboard-recent-card .resource-title-icon { margin-top: 1px; }
+.dashboard-recent-title {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+.dashboard-recent-meta {
+  grid-column: 2;
+  color: var(--dark-text-muted);
+  font-size: 11px;
+}
 .dashboard-refresh-spinner {
   width: 13px;
   height: 13px;
