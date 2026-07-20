@@ -299,6 +299,39 @@
           <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
         </template>
       </div>
+      <!-- Interactive template nodes -->
+      <div
+        v-for="node in templateNodes"
+        :key="node.id"
+        class="canvas-node canvas-node-template"
+        :data-node-id="node.id"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-hidden': node.hidden }]"
+        :style="nodePosition(node)"
+        @mousedown.stop="onNodeDragStart($event, node)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
+      >
+        <template v-if="node.templateId === 'dnd-character'">
+          <div class="dnd-card-head">
+            <input :value="templateValue(node, 'name', 'Новый персонаж')" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'name', ($event.target as HTMLInputElement).value)" />
+            <span>ур. <input type="number" min="1" :value="templateValue(node, 'level', 1)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'level', Number(($event.target as HTMLInputElement).value) || 1)" /></span>
+          </div>
+          <div class="dnd-card-stats">
+            <label>HP <input type="number" min="0" :value="templateValue(node, 'hp', 10)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'hp', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
+            <label>AC <input type="number" min="0" :value="templateValue(node, 'ac', 10)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'ac', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
+          </div>
+          <div class="dnd-card-abilities">
+            <button v-for="ability in dndAbilities" :key="ability.key" :disabled="readonly" @mousedown.stop @click.stop="rollTemplateAbility(node, ability.key)">
+              <span>{{ ability.label }}</span><strong>{{ templateValue(node, ability.key, 10) }}</strong><em>{{ dndModifier(templateValue(node, ability.key, 10)) >= 0 ? '+' : '' }}{{ dndModifier(templateValue(node, ability.key, 10)) }}</em>
+            </button>
+          </div>
+        </template>
+        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+        </template>
+      </div>
       <!-- Canvas embed nodes -->
       <div
         v-for="node in canvasNodes"
@@ -701,6 +734,8 @@ interface CanvasNode {
   fontColor?: string;
   styleAttributes?: Record<string, string>;
   hidden?: boolean;
+  templateId?: string;
+  templateData?: Record<string, string | number | boolean>;
 }
 
 interface CanvasEdge {
@@ -775,7 +810,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start", "template-roll"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -978,7 +1013,26 @@ export default defineComponent({
     const textNodes = computed(() => viewerNodes.value.filter((n) => n.type === "text"));
     const linkNodes = computed(() => viewerNodes.value.filter((n) => n.type === "link"));
     const imageNodes = computed(() => viewerNodes.value.filter((n) => n.type === "image"));
+    const templateNodes = computed(() => viewerNodes.value.filter((n) => n.type === "template"));
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
+
+    const dndAbilities = [
+      { key: "str", label: "СИЛ" }, { key: "dex", label: "ЛОВ" }, { key: "con", label: "ТЕЛ" },
+      { key: "int", label: "ИНТ" }, { key: "wis", label: "МДР" }, { key: "cha", label: "ХАР" },
+    ];
+    const templateValue = (node: CanvasNode, key: string, fallback: string | number) => node.templateData?.[key] ?? fallback;
+    const dndModifier = (score: string | number | boolean) => Math.floor((Number(score) - 10) / 2);
+    const setTemplateValue = (node: CanvasNode, key: string, value: string | number) => {
+      if (props.readonly) return;
+      const templateData = { ...(node.templateData || {}), [key]: value };
+      pushUndo();
+      node.templateData = templateData;
+      emitOp({ type: "node-update", id: node.id, changes: { templateData } });
+    };
+    const rollTemplateAbility = (node: CanvasNode, ability: string) => {
+      const modifier = dndModifier(templateValue(node, ability, 10));
+      emit("template-roll", { nodeId: node.id, label: `${templateValue(node, "name", "Персонаж")}: ${ability.toUpperCase()}`, modifier });
+    };
 
     const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
 
@@ -1821,6 +1875,33 @@ export default defineComponent({
       if (!viewport.value) return;
       const rect = viewport.value.getBoundingClientRect();
       createTextNodeAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    };
+
+    const addDndCharacterTemplate = (data: Record<string, string | number | boolean> = {}) => {
+      if (props.readonly) return;
+      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
+      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
+      const templateData = {
+        name: "Новый персонаж", level: 1, hp: 10, ac: 10,
+        str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
+        ...data,
+      };
+      const newNode: CanvasNode = {
+        id: genId(), type: "template", templateId: "dnd-character", templateData,
+        x: snap(centerX - 160), y: snap(centerY - 128), width: 320, height: 256,
+      };
+      pushUndo();
+      nodes.value.push(newNode);
+      emitOp({ type: "node-add", node: { ...newNode } });
+      selectedNodeIds.value = [newNode.id];
+    };
+
+    const importDndCharacter = (data: unknown) => {
+      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Файл карточки имеет неверный формат");
+      const source = (data as Record<string, unknown>).templateData && typeof (data as Record<string, unknown>).templateData === "object"
+        ? (data as Record<string, Record<string, string | number | boolean>>).templateData
+        : data as Record<string, string | number | boolean>;
+      addDndCharacterTemplate(source);
     };
 
     // Context menu state
@@ -3362,6 +3443,14 @@ export default defineComponent({
       onEdgeCycleArrow,
       onCanvasDblClick,
       addTextNodeCenter,
+      addDndCharacterTemplate,
+      importDndCharacter,
+      templateNodes,
+      dndAbilities,
+      templateValue,
+      dndModifier,
+      setTemplateValue,
+      rollTemplateAbility,
       contextMenu,
       contextMenuStyle,
       getContextNode,
@@ -3570,6 +3659,31 @@ export default defineComponent({
   text-overflow: ellipsis;
   pointer-events: none;
 }
+
+.canvas-node.canvas-node-template {
+  padding: 12px;
+  overflow: visible;
+  background: linear-gradient(145deg, #252036, #171522);
+  border: 1px solid rgba(201, 163, 91, 0.7);
+  border-radius: 10px;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
+  color: #f3ead2;
+  user-select: none;
+}
+.dnd-card-head { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(201,163,91,.32); padding-bottom: 8px; }
+.dnd-card-head > input { min-width: 0; flex: 1; font: 700 17px/1.2 inherit; color: #fff3d4; background: transparent; border: 0; outline: 0; }
+.dnd-card-head span { white-space: nowrap; color: #cdbd96; font-size: 12px; }
+.dnd-card-head span input { width: 36px; color: #fff3d4; background: transparent; border: 0; outline: 0; text-align: center; font: inherit; }
+.dnd-card-stats { display: flex; gap: 8px; margin: 10px 0; }
+.dnd-card-stats label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #cdbd96; }
+.dnd-card-stats input { width: 46px; padding: 3px 4px; color: #fff3d4; background: rgba(255,255,255,.07); border: 1px solid rgba(201,163,91,.32); border-radius: 4px; font: 700 14px inherit; }
+.dnd-card-abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.dnd-card-abilities button { min-width: 0; padding: 7px 3px; color: #f5e9c9; background: rgba(201,163,91,.11); border: 1px solid rgba(201,163,91,.38); border-radius: 5px; cursor: pointer; }
+.dnd-card-abilities button:hover { background: rgba(201,163,91,.23); }
+.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }
+.dnd-card-abilities span { font-size: 10px; color: #cdbd96; }
+.dnd-card-abilities strong { font-size: 16px; line-height: 1.15; }
+.dnd-card-abilities em { font-size: 11px; color: #8ed9a4; font-style: normal; }
 /* Group colors */
 .group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
 .group-color-1 .group-label { color: #fb464c; }

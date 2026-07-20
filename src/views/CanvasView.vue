@@ -175,6 +175,11 @@
           <div><strong>{{ plugin.name }}</strong><span>{{ plugin.description }}</span></div>
           <button class="plugin-toggle" :class="{ on: plugin.enabled }" :disabled="settingPluginId === plugin.id" @click="setCanvasPlugin(plugin.id, !plugin.enabled)"><span class="plugin-toggle-knob"></span></button>
         </div>
+        <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
+          <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">Добавить карточку персонажа</button>
+          <button class="btn-ghost btn-sm" @click="dndImportInput?.click()">Импортировать карточку</button>
+          <input ref="dndImportInput" class="visually-hidden" type="file" accept="application/json,.json" @change="onDndImport" />
+        </div>
       </section>
 
       <!-- Desktop node inspector (top-left, visible when node selected) -->
@@ -826,6 +831,7 @@
         @open-canvas="onOpenCanvas"
         @open-embed="openEmbedPicker"
         @node-edit-start="closeNodeEditingPanels"
+        @template-roll="onTemplateRoll"
       />
     </template>
   </div>
@@ -875,6 +881,7 @@ export default defineComponent({
     const showPlugins = ref(false);
     const settingPluginId = ref('');
     const diceEnabled = computed(() => isPluginEnabled('dice'));
+    const interactiveTemplatesEnabled = computed(() => isPluginEnabled('interactive-templates'));
     const diceToolbarRef = ref<HTMLElement | null>(null);
     const diceOpen = ref(false);
     const diceSides = ref(20);
@@ -1115,6 +1122,33 @@ export default defineComponent({
     const onChatSend = (payload: { text: string; replyToId: string | null; nodeId: string | null; nodeLabel: string | null }) => {
       sendChat(payload.text, payload.replyToId, payload.nodeId, payload.nodeLabel);
       onClearNode();
+    };
+
+    const dndImportInput = ref<HTMLInputElement | null>(null);
+    const onDndImport = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = '';
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          canvasRef.value?.importDndCharacter?.(JSON.parse(String(reader.result)));
+          showPlugins.value = false;
+          showToast('Карточка персонажа добавлена на канвас', 'success');
+        } catch (error: any) {
+          showToast(error?.message || 'Не удалось прочитать карточку', 'error');
+        }
+      };
+      reader.readAsText(file);
+    };
+
+    const onTemplateRoll = (payload: { nodeId: string; label: string; modifier: number }) => {
+      if (!interactiveTemplatesEnabled.value || role.value === 'read') return;
+      const modifier = Math.max(-100, Math.min(100, Number(payload.modifier) || 0));
+      sendChat(`🎲 ${payload.label}: d20${modifier >= 0 ? '+' : ''}${modifier}`, null, payload.nodeId, payload.label);
+      sendRoll(20, 1, modifier);
+      if (!chatOpen.value) void openChat();
     };
 
     const setCanvasPlugin = async (pluginId: string, enabled: boolean) => {
@@ -1757,12 +1791,12 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
-      showPlugins, pluginItems, settingPluginId, setCanvasPlugin,
+      showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, dndImportInput, onDndImport,
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,
       diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
-      chatOpen, chatMessages, toggleChat, onChatSend,
+      chatOpen, chatMessages, toggleChat, onChatSend, onTemplateRoll,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };
   },
