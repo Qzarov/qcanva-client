@@ -73,6 +73,10 @@
                 <span class="menu-icon">¶</span>
                 <span>Document</span>
               </button>
+              <button class="card-menu-item" @click="createInteractiveTemplate">
+                <span class="menu-icon">⚄</span>
+                <span>Интерактивный шаблон · персонаж D&D</span>
+              </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
                 <span>Group</span>
@@ -378,6 +382,17 @@
           </div>
         </section>
       </div>
+
+      <section v-if="isLoggedIn && interactiveTemplateItems.length" class="dash-section">
+        <div class="dash-section-head"><h2>Интерактивные шаблоны</h2></div>
+        <div class="dash-grid">
+          <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" aria-hidden="true">⚄</span>{{ item.title }}</div>
+            <div class="card-meta"><span class="badge badge-owner">D&amp;D персонаж</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <button class="card-manage" @click.stop="deleteInteractiveTemplate(item)" title="Удалить шаблон" :disabled="isBusy">×</button>
+          </article>
+        </div>
+      </section>
 
       <div v-if="sharedFiltered.length" class="dash-section">
         <h2>Shared with me</h2>
@@ -689,7 +704,7 @@
 import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { usePlugins } from '../composables/usePlugins';
 
 type CanvasTag = { id: string; name: string; color: string };
@@ -776,6 +791,7 @@ export default defineComponent({
     const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
+    const interactiveTemplateItems = ref<InteractiveTemplate[]>([]);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const isRefreshing = ref(false);
@@ -1210,6 +1226,7 @@ export default defineComponent({
           unfiledTextDocuments.value = (textState.documents || [])
             .filter((document: any) => !folderTextDocumentIds.has(document.id))
             .map((document: any) => normalizeTextDocument(document));
+          interactiveTemplateItems.value = (await interactiveTemplates.list()).templates;
         }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
         unfiledCanvases.value = own.value.filter((canvasRecord) => !canvasRecord.folderId || !ownResourceFolders.value.some((folder) => folder.id === canvasRecord.folderId));
@@ -1302,6 +1319,8 @@ export default defineComponent({
       router.push(`/canvas/${id}`);
     };
 
+    const openInteractiveTemplate = (id: string) => router.push({ name: 'interactive-template', params: { id } });
+
     const openCanvasFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
         suppressNextCardClick.value = false;
@@ -1374,6 +1393,24 @@ export default defineComponent({
       );
       if (!doc) return;
       openTextDocument(doc.id);
+    };
+
+    const createInteractiveTemplate = async () => {
+      openControlMenu.value = '';
+      const template = await runAction(
+        'create-interactive-template',
+        () => interactiveTemplates.create({ templateType: 'dnd-character', title: 'Новый персонаж' }),
+        'Шаблон персонажа создан',
+      );
+      if (!template) return;
+      interactiveTemplateItems.value = [template, ...interactiveTemplateItems.value];
+      openInteractiveTemplate(template.id);
+    };
+
+    const deleteInteractiveTemplate = async (template: InteractiveTemplate) => {
+      if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
+      await runAction('delete-interactive-template', () => interactiveTemplates.delete(template.id), 'Шаблон удалён');
+      interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => item.id !== template.id);
     };
 
     const openCreateGroupModal = () => {
@@ -2182,6 +2219,10 @@ export default defineComponent({
       createCanvas,
       createHtmlDocument,
       createTextDocument,
+      createInteractiveTemplate,
+      interactiveTemplateItems,
+      openInteractiveTemplate,
+      deleteInteractiveTemplate,
       load,
       openCreateGroupModal,
       openMoveFolderModal,

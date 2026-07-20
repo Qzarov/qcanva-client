@@ -177,8 +177,12 @@
         </div>
         <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
           <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">Добавить карточку персонажа</button>
-          <button class="btn-ghost btn-sm" @click="dndImportInput?.click()">Импортировать карточку</button>
-          <input ref="dndImportInput" class="visually-hidden" type="file" accept="application/json,.json" @change="onDndImport" />
+          <button class="btn-ghost btn-sm" @click="loadTemplateImport">Импортировать из шаблонов</button>
+          <div v-if="templateImportOpen" class="canvas-template-import-list">
+            <span v-if="templateImportLoading">Загружаем шаблоны…</span>
+            <span v-else-if="!templateImportItems.length">В дашборде пока нет карточек персонажей.</span>
+            <button v-for="template in templateImportItems" :key="template.id" class="btn-ghost btn-sm" @click="importTemplateToCanvas(template)">{{ template.title }}</button>
+          </div>
         </div>
       </section>
 
@@ -840,7 +844,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accessRequests, ApiError, auth, canvas as canvasApi, isAuthenticated, isAdmin, setToken } from '../api/client';
+import { accessRequests, ApiError, auth, canvas as canvasApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, type InteractiveTemplate } from '../api/client';
 import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
@@ -1124,23 +1128,22 @@ export default defineComponent({
       onClearNode();
     };
 
-    const dndImportInput = ref<HTMLInputElement | null>(null);
-    const onDndImport = (event: Event) => {
-      const input = event.target as HTMLInputElement;
-      const file = input.files?.[0];
-      input.value = '';
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        try {
-          canvasRef.value?.importDndCharacter?.(JSON.parse(String(reader.result)));
-          showPlugins.value = false;
-          showToast('Карточка персонажа добавлена на канвас', 'success');
-        } catch (error: any) {
-          showToast(error?.message || 'Не удалось прочитать карточку', 'error');
-        }
-      };
-      reader.readAsText(file);
+    const templateImportOpen = ref(false);
+    const templateImportLoading = ref(false);
+    const templateImportItems = ref<InteractiveTemplate[]>([]);
+    const loadTemplateImport = async () => {
+      templateImportOpen.value = !templateImportOpen.value;
+      if (!templateImportOpen.value || templateImportItems.value.length) return;
+      templateImportLoading.value = true;
+      try { templateImportItems.value = (await interactiveTemplates.list()).templates.filter((item) => item.templateType === 'dnd-character'); }
+      catch (error: any) { showToast(error?.message || 'Не удалось загрузить шаблоны', 'error'); }
+      finally { templateImportLoading.value = false; }
+    };
+    const importTemplateToCanvas = (template: InteractiveTemplate) => {
+      canvasRef.value?.addDndCharacterTemplate?.({ ...template.data, name: template.data.name || template.title });
+      templateImportOpen.value = false;
+      showPlugins.value = false;
+      showToast('Карточка добавлена на канвас', 'success');
     };
 
     const onTemplateRoll = (payload: { nodeId: string; label: string; modifier: number }) => {
@@ -1791,7 +1794,7 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
-      showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, dndImportInput, onDndImport,
+      showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,

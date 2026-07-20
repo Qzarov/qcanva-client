@@ -42,6 +42,12 @@ const router = createRouter({
       component: () => import('../views/TextDocumentView.vue'),
     },
     {
+      path: '/templates/:id',
+      name: 'interactive-template',
+      component: () => import('../views/InteractiveTemplateView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),

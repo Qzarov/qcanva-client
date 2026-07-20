@@ -359,6 +359,25 @@ export const plugins = {
     request<any>(`/plugins/${resourceType}/${resourceId}/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
 };
 
+export type InteractiveTemplate = {
+  id: string;
+  title: string;
+  templateType: 'dnd-character';
+  data: Record<string, string | number | boolean>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const interactiveTemplates = {
+  list: () => request<{ templates: InteractiveTemplate[] }>('/interactive-templates'),
+  create: (payload: { templateType: 'dnd-character'; title?: string; data?: Record<string, unknown> }) =>
+    request<InteractiveTemplate>('/interactive-templates', { method: 'POST', body: JSON.stringify(payload) }),
+  get: (id: string) => request<InteractiveTemplate>(`/interactive-templates/${id}`),
+  update: (id: string, payload: { title?: string; data?: Record<string, unknown> }) =>
+    request<InteractiveTemplate>(`/interactive-templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  delete: (id: string) => request<{ deleted: boolean }>(`/interactive-templates/${id}`, { method: 'DELETE' }),
+};
+
 export const textDocuments = {
   list: () => request<{ documents: any[] }>('/text-documents'),
   publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),

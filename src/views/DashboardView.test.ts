@@ -31,6 +31,11 @@ vi.mock('../api/client', () => ({
     transferOwnership: vi.fn().mockResolvedValue({ document: { id: 'doc-1' }, role: 'owner' }),
     update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },
+  interactiveTemplates: {
+    list: vi.fn().mockResolvedValue({ templates: [] }),
+    create: vi.fn(),
+    delete: vi.fn(),
+  },
   textDocuments: {
     create: vi.fn().mockResolvedValue({ id: 'text-doc-new' }),
     delete: vi.fn(),
