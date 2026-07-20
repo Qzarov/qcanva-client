@@ -643,6 +643,9 @@
       <button @click="openImagePicker" title="Add image">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
       </button>
+      <button v-if="!readonly" @click="$emit('open-embed')" title="Вставить канвас">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
+      </button>
       <span class="controls-divider"></span>
       <button @click="onExportCanvas" title="Export .canvas file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -772,7 +775,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "node-edit-start"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);

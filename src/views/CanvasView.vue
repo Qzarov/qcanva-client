@@ -121,9 +121,6 @@
               Access
             </button>
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">Plugins</button>
-            <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker(); menuOpen = false">
-              Embed
-            </button>
             <button class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
               History
             </button>
@@ -827,6 +824,7 @@
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
         @open-canvas="onOpenCanvas"
+        @open-embed="openEmbedPicker"
         @node-edit-start="closeNodeEditingPanels"
       />
     </template>
