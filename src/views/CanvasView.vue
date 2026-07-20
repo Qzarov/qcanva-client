@@ -120,6 +120,7 @@
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="toggleShare(); menuOpen = false">
               Access
             </button>
+            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">Plugins</button>
             <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="openEmbedPicker(); menuOpen = false">
               Embed
             </button>
@@ -169,6 +170,15 @@
       <div v-if="syncNotice" class="sync-notice" :class="'sync-notice-' + syncNotice.kind">
         {{ syncNotice.text }}
       </div>
+
+      <section v-if="showPlugins && role === 'owner'" class="canvas-plugin-panel">
+        <div class="canvas-plugin-panel-head"><strong>Плагины канваса</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
+        <p v-if="!pluginItems.length" class="canvas-plugin-empty">Для этого канваса пока нет доступных плагинов.</p>
+        <div v-for="plugin in pluginItems" :key="plugin.id" class="canvas-plugin-row">
+          <div><strong>{{ plugin.name }}</strong><span>{{ plugin.description }}</span></div>
+          <button class="plugin-toggle" :class="{ on: plugin.enabled }" :disabled="settingPluginId === plugin.id" @click="setCanvasPlugin(plugin.id, !plugin.enabled)"><span class="plugin-toggle-knob"></span></button>
+        </div>
+      </section>
 
       <!-- Desktop node inspector (top-left, visible when node selected) -->
       <div
@@ -863,7 +873,9 @@ export default defineComponent({
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
-    const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded } = usePlugins();
+    const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded, pluginItems, setEnabled: setPluginEnabled } = usePlugins();
+    const showPlugins = ref(false);
+    const settingPluginId = ref('');
     const diceEnabled = computed(() => isPluginEnabled('dice'));
     const diceToolbarRef = ref<HTMLElement | null>(null);
     const diceOpen = ref(false);
@@ -1107,6 +1119,17 @@ export default defineComponent({
       onClearNode();
     };
 
+    const setCanvasPlugin = async (pluginId: string, enabled: boolean) => {
+      settingPluginId.value = pluginId;
+      try {
+        await setPluginEnabled('canvas', resolvedId.value, pluginId, enabled);
+      } catch (error: any) {
+        showToast(error?.message || 'Не удалось обновить плагин', 'error');
+      } finally {
+        settingPluginId.value = '';
+      }
+    };
+
     const load = async () => {
       try {
         accessDenied.value = false;
@@ -1126,6 +1149,7 @@ export default defineComponent({
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
+        void ensurePluginsLoaded('canvas', resolvedId.value);
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
@@ -1675,7 +1699,6 @@ export default defineComponent({
     });
 
     onMounted(() => {
-      void ensurePluginsLoaded();
       window.addEventListener('resize', updateChromeMetrics);
       window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       void load();
@@ -1736,6 +1759,7 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
+      showPlugins, pluginItems, settingPluginId, setCanvasPlugin,
       drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,

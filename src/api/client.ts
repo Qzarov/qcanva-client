@@ -350,13 +350,13 @@ export const htmlDocuments = {
 };
 
 export const plugins = {
-  list: () =>
+  list: (resourceType: 'canvas' | 'html-document' | 'text-document', resourceId: string) =>
     request<Array<{ id: string; name: string; description: string; surface: string; enabled: boolean }>>(
-      '/plugins',
+      `/plugins/${resourceType}/${resourceId}`,
       { skipAuthRedirect: true },
     ),
-  setEnabled: (id: string, enabled: boolean) =>
-    request<any>(`/plugins/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
+  setEnabled: (resourceType: 'canvas' | 'html-document' | 'text-document', resourceId: string, id: string, enabled: boolean) =>
+    request<any>(`/plugins/${resourceType}/${resourceId}/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }),
 };
 
 export const textDocuments = {

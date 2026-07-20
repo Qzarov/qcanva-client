@@ -12,69 +12,10 @@
       </h1>
     </header>
 
-    <p v-if="error" class="plugins-error">{{ error }}</p>
-
-    <div class="plugins-list">
-      <div v-for="p in items" :key="p.id" class="plugin-card">
-        <div class="plugin-info">
-          <div class="plugin-name">{{ p.name }}</div>
-          <div class="plugin-desc">{{ p.description }}</div>
-          <span class="plugin-surface">{{ surfaceLabel(p.surface) }}</span>
-        </div>
-        <button
-          class="plugin-toggle"
-          :class="{ on: p.enabled }"
-          :disabled="busyId === p.id"
-          role="switch"
-          :aria-checked="p.enabled"
-          @click="toggle(p)"
-        >
-          <span class="plugin-toggle-knob"></span>
-        </button>
-      </div>
-      <div v-if="!items.length && !error" class="plugins-empty">Плагинов пока нет</div>
-    </div>
+    <p class="plugins-empty">Плагины теперь настраиваются в конкретном канвасе или документе — так они не включаются для всех ваших ресурсов сразу.</p>
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, onMounted } from 'vue';
-import { plugins as pluginsApi } from '../api/client';
-import { usePlugins } from '../composables/usePlugins';
-
-interface PluginItem { id: string; name: string; description: string; surface: string; enabled: boolean }
-
-const items = ref<PluginItem[]>([]);
-const error = ref('');
-const busyId = ref('');
-const { setEnabled } = usePlugins();
-
-const surfaceLabel = (s: string) =>
-  s === 'canvas-chat' ? 'Чат канваса' : s === 'document' ? 'Документ' : s === 'html' ? 'HTML' : s;
-
-const load = async () => {
-  try {
-    items.value = await pluginsApi.list();
-  } catch (e: any) {
-    error.value = e?.message || 'Не удалось загрузить плагины';
-  }
-};
-
-const toggle = async (p: PluginItem) => {
-  const next = !p.enabled;
-  busyId.value = p.id;
-  try {
-    await setEnabled(p.id, next);
-    p.enabled = next;
-  } catch (e: any) {
-    error.value = e?.message || 'Не удалось сохранить';
-  } finally {
-    busyId.value = '';
-  }
-};
-
-onMounted(load);
-</script>
 
 <style scoped>
 .plugins-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }

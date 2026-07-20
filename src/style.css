@@ -508,6 +508,22 @@ html, body {
   color: var(--dark-text-muted);
   font-size: 11px;
 }
+.canvas-plugin-panel {
+  position: absolute;
+  top: calc(var(--canvas-topbar-height, 48px) + 10px);
+  right: 10px;
+  z-index: 130;
+  width: min(330px, calc(100vw - 20px));
+  padding: 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-md);
+  background: rgba(30,30,30,.97);
+  box-shadow: 0 14px 36px rgba(0,0,0,.38);
+}
+.canvas-plugin-panel-head, .canvas-plugin-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.canvas-plugin-row { padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
+.canvas-plugin-row strong, .canvas-plugin-row span { display: block; }
+.canvas-plugin-row span, .canvas-plugin-empty { margin-top: 3px; color: var(--dark-text-muted); font-size: 12px; }
 .dashboard-refresh-spinner {
   width: 13px;
   height: 13px;
