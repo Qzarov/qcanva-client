@@ -73,9 +73,9 @@
                 <span class="menu-icon">¶</span>
                 <span>Document</span>
               </button>
-              <button class="card-menu-item" @click="createInteractiveTemplate">
+              <button class="card-menu-item" @click="openInteractiveTemplatePicker">
                 <span class="menu-icon">⚄</span>
-                <span>Интерактивный шаблон · персонаж D&D</span>
+                <span>Интерактивный шаблон</span>
               </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
@@ -547,6 +547,22 @@
       </div>
     </div>
 
+    <div v-if="templatePickerOpen" class="dashboard-modal-backdrop" @click.self="closeInteractiveTemplatePicker">
+      <div class="dashboard-modal template-picker-modal">
+        <div class="dashboard-modal-head">
+          <h3>Выберите интерактивный шаблон</h3>
+          <button class="dashboard-modal-close" @click="closeInteractiveTemplatePicker">×</button>
+        </div>
+        <div class="template-picker-grid">
+          <button class="template-picker-tile" @click="createInteractiveTemplate" :disabled="isBusy">
+            <span class="template-picker-icon">⚄</span>
+            <strong>Карточка персонажа D&amp;D</strong>
+            <small>Характеристики, HP, AC и броски d20 на канвасе</small>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
@@ -792,6 +808,7 @@ export default defineComponent({
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
     const interactiveTemplateItems = ref<InteractiveTemplate[]>([]);
+    const templatePickerOpen = ref(false);
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const isRefreshing = ref(false);
@@ -1397,6 +1414,7 @@ export default defineComponent({
 
     const createInteractiveTemplate = async () => {
       openControlMenu.value = '';
+      templatePickerOpen.value = false;
       const template = await runAction(
         'create-interactive-template',
         () => interactiveTemplates.create({ templateType: 'dnd-character', title: 'Новый персонаж' }),
@@ -1406,6 +1424,12 @@ export default defineComponent({
       interactiveTemplateItems.value = [template, ...interactiveTemplateItems.value];
       openInteractiveTemplate(template.id);
     };
+
+    const openInteractiveTemplatePicker = () => {
+      openControlMenu.value = '';
+      templatePickerOpen.value = true;
+    };
+    const closeInteractiveTemplatePicker = () => { templatePickerOpen.value = false; };
 
     const deleteInteractiveTemplate = async (template: InteractiveTemplate) => {
       if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
@@ -2220,6 +2244,9 @@ export default defineComponent({
       createHtmlDocument,
       createTextDocument,
       createInteractiveTemplate,
+      templatePickerOpen,
+      openInteractiveTemplatePicker,
+      closeInteractiveTemplatePicker,
       interactiveTemplateItems,
       openInteractiveTemplate,
       deleteInteractiveTemplate,
@@ -2295,3 +2322,11 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.template-picker-modal { width: min(620px, calc(100vw - 32px)); }
+.template-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; padding-top: 6px; }
+.template-picker-tile { display: grid; gap: 8px; min-height: 172px; padding: 18px; text-align: left; color: inherit; background: rgba(124,138,255,.08); border: 1px solid rgba(124,138,255,.4); border-radius: 12px; cursor: pointer; }
+.template-picker-tile:hover { background: rgba(124,138,255,.16); border-color: rgba(143,154,255,.75); }.template-picker-tile:disabled { opacity: .6; cursor: wait; }
+.template-picker-icon { font-size: 30px; color: #9ca8ff; }.template-picker-tile strong { font-size: 15px; }.template-picker-tile small { color: var(--muted, #a8a8b6); line-height: 1.35; }
+</style>
