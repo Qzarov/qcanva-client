@@ -459,6 +459,9 @@ html, body {
   color: var(--dark-text-muted);
   font-size: 12px;
 }
+.dashboard-pull-status {
+  display: none;
+}
 .dashboard-refresh-spinner {
   width: 13px;
   height: 13px;
@@ -1780,6 +1783,22 @@ html, body {
 }
 
 @media (max-width: 720px) {
+  .dashboard-pull-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    height: 30px;
+    margin: -8px 0 10px;
+    color: var(--dark-text-muted);
+    font-size: 12px;
+    transition: color var(--transition-fast);
+  }
+  .dashboard-pull-status.ready { color: var(--color-brands); }
+  .dashboard-pull-status.refreshing { color: var(--color-brands); }
+  .dashboard-pull-icon { font-size: 16px; line-height: 1; }
+  .dashboard-pull-status.refreshing .dashboard-pull-icon { animation: dashboard-refresh-spin .7s linear infinite; }
+
   .auth-page {
     align-items: stretch;
     padding: 16px;

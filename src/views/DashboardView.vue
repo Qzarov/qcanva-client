@@ -44,7 +44,14 @@
       </div>
     </header>
 
-    <main class="app-main dashboard">
+    <main
+      ref="dashboardMain"
+      class="app-main dashboard"
+      @touchstart.passive="onDashboardPullStart"
+      @touchmove="onDashboardPullMove"
+      @touchend="onDashboardPullEnd"
+      @touchcancel="resetDashboardPull"
+    >
     <div class="dashboard-shell">
     <section v-if="isLoggedIn" class="resource-control-panel">
       <div class="resource-control-actions">
@@ -118,6 +125,16 @@
     <div v-if="isRefreshing && !loading" class="dashboard-refresh-status" role="status" aria-live="polite">
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>Обновляем список…</span>
+    </div>
+    <div
+      v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
+      class="dashboard-pull-status"
+      :class="{ ready: dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD, refreshing: isRefreshing }"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="dashboard-pull-icon" aria-hidden="true">{{ isRefreshing ? '↻' : '↓' }}</span>
+      <span>{{ isRefreshing ? 'Обновляем список…' : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить' }}</span>
     </div>
 
     <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
@@ -728,6 +745,7 @@ type DashboardCache = { savedAt: number; state: DashboardCacheState };
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
+const DASHBOARD_PULL_THRESHOLD = 72;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
@@ -749,6 +767,10 @@ export default defineComponent({
     const sharedResourceTags = ref<ResourceTag[]>([]);
     const loading = ref(true);
     const isRefreshing = ref(false);
+    const dashboardMain = ref<HTMLElement | null>(null);
+    const dashboardPullDistance = ref(0);
+    const isNativeDashboard = Capacitor.isNativePlatform();
+    let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
     const selectedTag = ref('');
     const contentFilter = ref<'all' | 'canvas' | 'html-document' | 'text-document'>('all');
@@ -1174,6 +1196,46 @@ export default defineComponent({
         if (showLoading) loading.value = false;
         isRefreshing.value = false;
       }
+    };
+
+    const resetDashboardPull = () => {
+      dashboardPullStartY = null;
+      dashboardPullDistance.value = 0;
+    };
+
+    const onDashboardPullStart = (event: TouchEvent) => {
+      if (!isNativeDashboard || isRefreshing.value || loading.value || resourceDrag.value || event.touches.length !== 1) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('.dashboard-modal-backdrop, input, textarea, select, [contenteditable="true"]')) return;
+      if ((dashboardMain.value?.scrollTop || 0) > 0) return;
+      const point = event.touches[0];
+      if (!point) return;
+      dashboardPullStartY = point.clientY;
+    };
+
+    const onDashboardPullMove = (event: TouchEvent) => {
+      if (dashboardPullStartY === null || !isNativeDashboard || resourceDrag.value?.active) return;
+      const point = event.touches[0];
+      if (!point) return;
+      const distance = point.clientY - dashboardPullStartY;
+      if (distance <= 0) {
+        dashboardPullDistance.value = 0;
+        return;
+      }
+      if ((dashboardMain.value?.scrollTop || 0) > 0) {
+        resetDashboardPull();
+        return;
+      }
+      dashboardPullDistance.value = Math.min(distance, DASHBOARD_PULL_THRESHOLD + 36);
+      // Prevent the native elastic overscroll only while this dashboard gesture
+      // is active, leaving ordinary scrolling and card dragging unchanged.
+      event.preventDefault();
+    };
+
+    const onDashboardPullEnd = () => {
+      const shouldRefresh = dashboardPullDistance.value >= DASHBOARD_PULL_THRESHOLD && !isRefreshing.value;
+      resetDashboardPull();
+      if (shouldRefresh) void load({ showLoading: false });
     };
 
     const openCanvas = (id: string) => {
@@ -2001,6 +2063,14 @@ export default defineComponent({
       isLoggedIn,
       loading,
       isRefreshing,
+      dashboardMain,
+      isNativeDashboard,
+      dashboardPullDistance,
+      DASHBOARD_PULL_THRESHOLD,
+      onDashboardPullStart,
+      onDashboardPullMove,
+      onDashboardPullEnd,
+      resetDashboardPull,
       sharedFiltered,
       publicFiltered,
       allTagNames,
