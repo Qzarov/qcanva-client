@@ -10,7 +10,7 @@
         </svg>
         <h2>Canvas not available</h2>
         <p>{{ error }}</p>
-        <router-link to="/" class="error-home-btn">Go to Dashboard</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="error-home-btn">Go to Dashboard</router-link>
       </div>
     </div>
     <div v-else-if="accessDenied" class="access-gate">
@@ -49,7 +49,7 @@
           </div>
         </div>
 
-        <router-link to="/" class="access-gate-back">← Dashboard</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">← Dashboard</router-link>
       </div>
     </div>
     <template v-else>

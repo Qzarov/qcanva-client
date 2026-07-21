@@ -3,7 +3,7 @@
     <header class="dash-header">
       <h1>Admin — Users</h1>
       <div class="dash-actions">
-        <router-link to="/" class="btn-ghost">Back to Dashboard</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Back to Dashboard</router-link>
       </div>
     </header>
 
