@@ -61,6 +61,10 @@ export default defineComponent({ setup: () => ({ year: new Date().getFullYear() 
   --purple: var(--color-brands);
   background: #0f0f12;
   font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 .landing-header { border-bottom: 1px solid var(--dark-neutral-border); }
 .landing-brand { color: var(--dark-text-primary); }
