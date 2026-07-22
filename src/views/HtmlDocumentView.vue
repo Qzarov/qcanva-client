@@ -37,12 +37,12 @@
           </div>
         </div>
 
-        <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="access-gate-back">← Documents</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">← Дашборд</router-link>
       </div>
     </div>
     <template v-else>
     <header class="html-editor-bar">
-      <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
+      <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Назад</router-link>
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
       <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">Access</button>
@@ -58,6 +58,8 @@
         </div>
       </div>
       <button class="btn-ghost html-desktop-action" @click="toggleHistory">History</button>
+      <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
       <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
         <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
           {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
@@ -263,7 +265,7 @@
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accessRequests, ApiError, auth, htmlDocuments, isAuthenticated, setToken } from '../api/client';
+import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
@@ -328,6 +330,8 @@ export default defineComponent({
     let pendingPreviewScroll: FrameScrollPosition | null = null;
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
+    const currentUser = computed(() => getCurrentUser());
+    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
     const publicUrl = computed(() => {
       const publicId = slug.value || resolvedId.value;
       return `${window.location.origin}/html/${encodeURIComponent(publicId)}`;
@@ -794,7 +798,7 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, loading, accessDenied, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,

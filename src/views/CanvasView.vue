@@ -55,7 +55,7 @@
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
-        <router-link to="/" class="topbar-back">
+        <router-link :to="{ name: 'dashboard' }" class="topbar-back">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </router-link>
         <input
@@ -81,6 +81,10 @@
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
             <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
           </span>
+          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge topbar-user" :title="currentUser.email || currentUser.name">
+            <span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span>
+          </router-link>
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">Войти</router-link>
           <div class="sync-menu-wrap">
             <button
               class="topbar-sync"
@@ -121,7 +125,7 @@
               Access
             </button>
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">Plugins</button>
-            <button class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
+            <button v-if="canViewHistory" class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
               History
             </button>
             <button class="btn-ghost btn-sm" @click="toggleChat(); menuOpen = false" title="Чат">
@@ -844,7 +848,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accessRequests, ApiError, auth, canvas as canvasApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, type InteractiveTemplate } from '../api/client';
+import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, interactiveTemplates, isAuthenticated, isAdmin, setToken, type InteractiveTemplate } from '../api/client';
 import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
@@ -985,6 +989,8 @@ export default defineComponent({
     const passwordAccessPassword = ref('');
     const passwordAccessRole = ref<'read' | 'edit'>('read');
     const canManageSettings = computed(() => isAuthenticated() && (role.value === 'owner' || role.value === 'edit'));
+    const currentUser = computed(() => getCurrentUser());
+    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
 
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1181,6 +1187,7 @@ export default defineComponent({
         }
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
+        historyAccess.value = res.canvas.historyAccess || 'owner';
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
@@ -1530,6 +1537,7 @@ export default defineComponent({
     const historyLoading = ref(false);
     const historyError = ref('');
     const historyAccess = ref('owner');
+    const canViewHistory = computed(() => isAdmin() || historyAccess.value === 'viewers' || role.value === 'owner' || (historyAccess.value === 'editors' && role.value === 'edit'));
     const hasMoreHistory = ref(false);
     const selectedHistoryItem = ref<any | null>(null);
     const selectedHistorySnapshot = ref<any | null>(null);
@@ -1771,7 +1779,7 @@ export default defineComponent({
     };
 
     return {
-      canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
+      route, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
       loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,
@@ -1783,7 +1791,7 @@ export default defineComponent({
       allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
-      isAuthenticated, isAdmin,
+      isAuthenticated, isAdmin, currentUser, userLabel, canViewHistory,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
       showHistory, historyItems, historyLoading, historyError, historyAccess, hasMoreHistory,
       selectedHistoryItem, selectedHistorySnapshot, selectedHistorySummary,

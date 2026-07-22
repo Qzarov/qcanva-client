@@ -37,18 +37,20 @@
           </div>
         </div>
 
-        <router-link :to="{ name: 'dashboard', query: { type: 'text-document' } }" class="access-gate-back">Back to documents</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">Назад к дашборду</router-link>
       </div>
     </div>
 
     <template v-else>
       <header class="text-doc-topbar">
-        <router-link :to="{ name: 'dashboard', query: { type: 'text-document' } }" class="btn-ghost">Back</router-link>
+        <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Назад</router-link>
         <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
         <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
         <div class="text-doc-topbar-actions">
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">Access</button>
           <button class="btn-ghost btn-sm" @click="toggleHistory">History</button>
+          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge text-doc-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
@@ -255,6 +257,7 @@ export default defineComponent({
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
+    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
     const syncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
       if (pendingUpdatesCount.value > 0) return { kind: 'saving', label: 'Saving' };
@@ -550,6 +553,9 @@ export default defineComponent({
       loading,
       accessDenied,
       title,
+      route,
+      currentUser,
+      userLabel,
       role,
       revision,
       currentRevision,
