@@ -30,6 +30,7 @@
             <th>Role</th>
             <th>Canvases</th>
             <th>Registered</th>
+            <th>Последняя активность</th>
           </tr>
         </thead>
         <tbody>
@@ -51,6 +52,7 @@
             </td>
             <td>{{ u.canvasCount }}</td>
             <td>{{ formatDate(u.createdAt) }}</td>
+            <td>{{ formatDateTime(u.lastActiveAt) }}</td>
           </tr>
         </tbody>
       </table>
@@ -191,9 +193,12 @@ export default defineComponent({
       new Date(d).toLocaleDateString('ru-RU', {
         day: 'numeric', month: 'short', year: 'numeric',
       });
+    const formatDateTime = (d?: string | null) => d ? new Date(d).toLocaleString('ru-RU', {
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }) : '—';
 
     onMounted(load);
-    return { users, canvases, stats, loading, superAdmin, currentUserId, changeRole, changeHistoryAccess, roleBadge, visBadge, formatDate };
+    return { users, canvases, stats, loading, superAdmin, currentUserId, changeRole, changeHistoryAccess, roleBadge, visBadge, formatDate, formatDateTime };
   },
 });
 </script>
