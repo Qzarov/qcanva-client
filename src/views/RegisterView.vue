@@ -35,7 +35,7 @@ export default defineComponent({
       try {
         const res = await auth.register(email.value, name.value, password.value);
         setToken(res.token, res.user?.role, res.user?.accessMode || 'user', res.user);
-        router.push('/');
+        router.push('/dashboard');
       } catch (e: any) {
         error.value = e.message;
       } finally {

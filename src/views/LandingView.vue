@@ -3,7 +3,10 @@
     <header class="landing-header">
       <router-link to="/" class="landing-brand"><span class="brand-mark">Q</span><span>QCanva</span></router-link>
       <nav class="landing-nav" aria-label="Навигация"><a href="#features">Возможности</a><a href="#workflow">Как работает</a></nav>
-      <div class="landing-actions"><router-link to="/login" class="landing-login">Войти</router-link><router-link to="/register" class="landing-register">Начать бесплатно</router-link></div>
+      <div class="landing-actions">
+        <router-link v-if="isLoggedIn" :to="{ name: 'dashboard' }" class="landing-register">Дашборд</router-link>
+        <template v-else><router-link to="/login" class="landing-login">Войти</router-link><router-link to="/register" class="landing-register">Начать бесплатно</router-link></template>
+      </div>
     </header>
 
     <main>
@@ -12,7 +15,7 @@
           <div class="hero-kicker"><span></span> Пространство для идей и совместной работы</div>
           <h1>Собирайте мысли<br><em>в одну картину.</em></h1>
           <p>QCanva объединяет бесконечные канвасы, документы и интерактивные шаблоны. Планируйте, обсуждайте и создавайте вместе — без переключения между сервисами.</p>
-          <div class="hero-buttons"><router-link to="/register" class="hero-primary">Создать пространство <span>→</span></router-link><a href="#workflow" class="hero-secondary">Посмотреть, как это работает</a></div>
+          <div class="hero-buttons"><router-link :to="isLoggedIn ? { name: 'dashboard' } : '/register'" class="hero-primary">{{ isLoggedIn ? 'Открыть дашборд' : 'Создать пространство' }} <span>→</span></router-link><a href="#workflow" class="hero-secondary">Посмотреть, как это работает</a></div>
           <div class="hero-note"><span class="avatars"><i>Я</i><i>А</i><i>+</i></span> Уже готово для вашей команды, проекта или кампании</div>
         </div>
         <div class="hero-visual" aria-label="Пример канваса">
@@ -35,7 +38,7 @@
 
       <section id="workflow" class="landing-workflow"><div><span>ОДНО ПРОСТРАНСТВО</span><h2>От первой мысли<br>до готового результата.</h2><p>Создайте канвас, добавьте документы, пригласите участников и держите весь контекст проекта под рукой.</p><router-link to="/register" class="text-cta">Попробовать QCanva <b>→</b></router-link></div><ol><li><b>01</b><div><strong>Создайте</strong><p>Канвас, документ или интерактивный шаблон.</p></div></li><li><b>02</b><div><strong>Соберите контекст</strong><p>Соедините заметки, ссылки, картинки и файлы.</p></div></li><li><b>03</b><div><strong>Делайте вместе</strong><p>Откройте доступ команде и работайте в реальном времени.</p></div></li></ol></section>
 
-      <section class="landing-final"><span>НАЧНИТЕ СЕЙЧАС</span><h2>Ваше следующее<br>пространство ждёт.</h2><router-link to="/register" class="hero-primary">Создать бесплатно <span>→</span></router-link></section>
+      <section class="landing-final"><span>НАЧНИТЕ СЕЙЧАС</span><h2>Ваше следующее<br>пространство ждёт.</h2><router-link :to="isLoggedIn ? { name: 'dashboard' } : '/register'" class="hero-primary">{{ isLoggedIn ? 'Открыть дашборд' : 'Создать бесплатно' }} <span>→</span></router-link></section>
     </main>
     <footer class="landing-footer"><span>© {{ year }} QCanva</span><router-link :to="{ name: 'dashboard' }">Открыть дашборд</router-link></footer>
   </div>
@@ -43,7 +46,8 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-export default defineComponent({ setup: () => ({ year: new Date().getFullYear() }) });
+import { isAuthenticated } from '../api/client';
+export default defineComponent({ setup: () => ({ year: new Date().getFullYear(), isLoggedIn: isAuthenticated() }) });
 </script>
 
 <style scoped>

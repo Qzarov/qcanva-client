@@ -34,7 +34,7 @@ export default defineComponent({
       try {
         const res = await auth.login(login.value, password.value);
         setToken(res.token, res.user?.role, res.user?.accessMode || 'user', res.user);
-        router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/');
+        router.push(typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard');
       } catch (e: any) {
         error.value = e.message;
       } finally {

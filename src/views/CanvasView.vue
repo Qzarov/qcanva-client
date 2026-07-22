@@ -1262,7 +1262,7 @@ export default defineComponent({
           return;
         }
         console.warn('Canvas is not available, redirecting to dashboard', e);
-        await router.replace('/');
+        await router.replace('/dashboard');
         return;
       }
       loading.value = false;
