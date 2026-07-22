@@ -49,11 +49,11 @@
         <div class="text-doc-topbar-actions">
           <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">Access</button>
           <button class="btn-ghost btn-sm" @click="toggleHistory">History</button>
-          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge text-doc-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
-          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
+          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge text-doc-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
         </div>
       </header>
 

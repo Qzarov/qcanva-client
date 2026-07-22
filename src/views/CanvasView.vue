@@ -81,10 +81,6 @@
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
             <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
           </span>
-          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge topbar-user" :title="currentUser.email || currentUser.name">
-            <span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span>
-          </router-link>
-          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">Войти</router-link>
           <div class="sync-menu-wrap">
             <button
               class="topbar-sync"
@@ -162,6 +158,10 @@
           <button class="topbar-menu-btn btn-ghost btn-sm" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
+          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge topbar-user" :title="currentUser.email || currentUser.name">
+            <span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span>
+          </router-link>
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">Войти</router-link>
         </div>
       </div>
 

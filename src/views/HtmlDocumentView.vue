@@ -58,8 +58,6 @@
         </div>
       </div>
       <button class="btn-ghost html-desktop-action" @click="toggleHistory">History</button>
-      <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
-      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
       <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
         <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
           {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
@@ -96,6 +94,8 @@
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
+      <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
     </header>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
       <div class="share-panel-header">
