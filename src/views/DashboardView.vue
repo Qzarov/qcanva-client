@@ -200,23 +200,26 @@
               v-for="folder in folderSummaries"
               :key="folder.id"
               class="folder-nav-item"
-              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id }"
+              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
               :data-folder-id="folder.id"
+              :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
               @click.stop="selectFolder(folder.id)"
-              @dragenter.prevent="onFolderDragOver(folder)"
-              @dragover.prevent="onFolderDragOver(folder)"
+              @dragstart.stop="onFolderDragStart($event, folder)"
+              @dragend="onFolderDragEnd"
+              @dragenter.prevent="onFolderDragEnter($event, folder)"
+              @dragover.prevent="onFolderDragOverEvent($event, folder)"
               @dragleave="onFolderDragLeave(folder)"
-              @drop.prevent="dropResourceToFolder(folder)"
+              @drop.prevent="onFolderDrop($event, folder)"
             >
               <span class="folder-nav-name">{{ folder.name }}</span>
               <span class="folder-nav-meta">
-                <span class="folder-nav-count">{{ folder.items.length }}</span>
                 <span
                   v-if="isTechnicalFolder(folder)"
                   class="folder-technical-icon"
                   title="System folder for resources that have not been assigned to a group"
                   aria-label="System folder"
                 >⚙</span>
+                <span class="folder-nav-count">{{ folder.items.length }}</span>
               </span>
             </button>
           </div>
@@ -831,6 +834,8 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
+    const folderDragId = ref('');
+    const folderDragOverId = ref('');
     const resourceDrag = ref<{
       active: boolean;
       startX: number;
@@ -1145,7 +1150,7 @@ export default defineComponent({
       })
       .filter((folder) => {
         const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
-        return folder.items.length || (!hasActiveFilter && folder.role === 'owner');
+        return folder.items.length || (!hasActiveFilter && folder.role === 'owner' && !isTechnicalFolder(folder as FolderSummary));
       });
 
       const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
@@ -1155,17 +1160,14 @@ export default defineComponent({
           id: 'legacy-resource-inbox',
           name: 'Inbox',
           role: 'owner',
+          sortOrder: Number.MAX_SAFE_INTEGER,
           canvasCount: unfiledCanvases.value.length,
           htmlDocumentCount: unfiledHtmlDocuments.value.length,
           textDocumentCount: unfiledTextDocuments.value.length,
           items: fallbackItems,
         });
       }
-      return folders.sort((a, b) => {
-        const aEmptyTechnical = (a.id === 'legacy-resource-inbox' || a.name === 'Unsorted') && a.items.length === 0;
-        const bEmptyTechnical = (b.id === 'legacy-resource-inbox' || b.name === 'Unsorted') && b.items.length === 0;
-        return Number(aEmptyTechnical) - Number(bEmptyTechnical);
-      });
+      return folders.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
     });
     const activeFolder = computed(() =>
       folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
@@ -1621,6 +1623,81 @@ export default defineComponent({
 
     const onFolderDragLeave = (folder: FolderSummary) => {
       if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
+      if (folderDragOverId.value === folder.id) folderDragOverId.value = '';
+    };
+
+    const canReorderFolder = (folder: FolderSummary) =>
+      !isBusy.value
+      && folder.role === 'owner'
+      && !isTechnicalFolder(folder)
+      && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id);
+
+    const onFolderDragStart = (event: DragEvent, folder: FolderSummary) => {
+      if (!canReorderFolder(folder)) {
+        event.preventDefault();
+        return;
+      }
+      folderDragId.value = folder.id;
+      event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    };
+
+    const onFolderDragEnd = () => {
+      folderDragId.value = '';
+      folderDragOverId.value = '';
+    };
+
+    const isFolderReorderDrag = (event: DragEvent) =>
+      Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'));
+
+    const onFolderDragEnter = (event: DragEvent, folder: FolderSummary) => {
+      if (isFolderReorderDrag(event)) {
+        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+        return;
+      }
+      onFolderDragOver(folder);
+    };
+
+    const onFolderDragOverEvent = (event: DragEvent, folder: FolderSummary) => {
+      if (isFolderReorderDrag(event)) {
+        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+        return;
+      }
+      onFolderDragOver(folder);
+    };
+
+    const reorderFolders = async (sourceId: string, targetId: string) => {
+      if (!sourceId || sourceId === targetId) return;
+      const previousFolders = ownResourceFolders.value.map((folder) => ({ ...folder }));
+      const ids = ownResourceFolders.value
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map((folder) => folder.id);
+      const sourceIndex = ids.indexOf(sourceId);
+      const targetIndex = ids.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      ids.splice(sourceIndex, 1);
+      ids.splice(ids.indexOf(targetId), 0, sourceId);
+      ownResourceFolders.value = ownResourceFolders.value.map((folder) => ({
+        ...folder,
+        sortOrder: ids.indexOf(folder.id),
+      }));
+      try {
+        await resourceFolders.reorder(ids);
+      } catch (error) {
+        ownResourceFolders.value = previousFolders;
+        setFeedback('error', error instanceof Error ? error.message : 'Could not save folder order');
+      }
+    };
+
+    const onFolderDrop = async (event: DragEvent, folder: FolderSummary) => {
+      const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
+      if (sourceId) {
+        onFolderDragEnd();
+        if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
+        return;
+      }
+      await dropResourceToFolder(folder);
     };
 
     const dropResourceToFolder = async (folder: FolderSummary) => {
@@ -2227,6 +2304,7 @@ export default defineComponent({
       draggingResourceType,
       dragTargetFolder,
       draggingResourceFolderId,
+      folderDragOverId,
       tagColors,
       tagSuggestions,
       currentUserLabel,
@@ -2263,6 +2341,11 @@ export default defineComponent({
       endResourceDrag,
       onFolderDragOver,
       onFolderDragLeave,
+      onFolderDragStart,
+      onFolderDragEnd,
+      onFolderDragEnter,
+      onFolderDragOverEvent,
+      onFolderDrop,
       dropResourceToFolder,
       canDropToFolder,
       openRenameFolderModal,

@@ -225,6 +225,7 @@ export type ResourceFolderSummary = {
   canvasCount: number;
   htmlDocumentCount: number;
   textDocumentCount?: number;
+  sortOrder?: number;
   updatedAt?: string;
   createdAt?: string;
   canvases?: any[];
@@ -247,6 +248,8 @@ export const resourceFolders = {
     request<{ deleted: boolean; id: string }>(`/resource-folders/${id}`, { method: 'DELETE' }),
   move: (id: string, resourceType: ResourceType, resourceId: string) =>
     request<any>(`/resource-folders/${id}/resources`, { method: 'PUT', body: JSON.stringify({ resourceType, resourceId }) }),
+  reorder: (folderIds: string[]) =>
+    request<{ folderIds: string[] }>('/resource-folders/order', { method: 'PUT', body: JSON.stringify({ folderIds }) }),
   share: (id: string, email: string, role: Exclude<ResourceFolderRole, 'owner'>) =>
     request<any>(`/resource-folders/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
   revoke: (id: string, userId: string) =>
