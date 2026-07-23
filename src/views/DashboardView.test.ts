@@ -228,6 +228,30 @@ describe('DashboardView groups', () => {
     expect(wrapper.findAll('.badge').map((badge) => badge.text())).not.toContain('Document');
   });
 
+  it('filters public and shared resources by the selected file type', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [{ id: 'shared-canvas', title: 'Shared canvas', tags: [] }],
+      public: [{ id: 'public-canvas', title: 'Public canvas', tags: [] }],
+      welcome: null,
+    });
+    vi.mocked(htmlDocuments.publicList).mockResolvedValueOnce({
+      documents: [{ id: 'public-html', title: 'Public HTML', tags: [] }],
+    });
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: [{ id: 'public-doc', title: 'Public doc', tags: [] }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    vm.contentFilter = 'html-document';
+    await wrapper.vm.$nextTick();
+
+    expect(vm.sharedFiltered).toEqual([]);
+    expect(vm.publicFiltered.map((item: any) => item.type)).toEqual(['html-document']);
+  });
+
   it('shares groups through the group access modal', async () => {
     const wrapper = mountDashboard();
     await flushPromises();

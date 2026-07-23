@@ -1022,6 +1022,7 @@ export default defineComponent({
     };
 
     const matchesCanvas = (c: CanvasRecord) => {
+      if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       const matchesTag = !selectedTag.value || c.tags.some((tag) => tag.name === selectedTag.value);
@@ -1037,6 +1038,7 @@ export default defineComponent({
     };
 
     const matchesPublicItem = (item: FolderItem) => {
+      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
