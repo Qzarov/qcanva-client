@@ -366,7 +366,7 @@ export type InteractiveTemplate = {
   id: string;
   title: string;
   templateType: 'dnd-character';
-  data: Record<string, string | number | boolean>;
+  data: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 };

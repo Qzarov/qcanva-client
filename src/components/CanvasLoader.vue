@@ -311,19 +311,17 @@
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <template v-if="node.templateId === 'dnd-character'">
-          <div class="dnd-card-head">
-            <input :value="templateValue(node, 'name', 'Новый персонаж')" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'name', ($event.target as HTMLInputElement).value)" />
-            <span>ур. <input type="number" min="1" :value="templateValue(node, 'level', 1)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'level', Number(($event.target as HTMLInputElement).value) || 1)" /></span>
-          </div>
-          <div class="dnd-card-stats">
-            <label>HP <input type="number" min="0" :value="templateValue(node, 'hp', 10)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'hp', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
-            <label>AC <input type="number" min="0" :value="templateValue(node, 'ac', 10)" :readonly="readonly" @mousedown.stop @change="setTemplateValue(node, 'ac', Number(($event.target as HTMLInputElement).value) || 0)" /></label>
-          </div>
-          <div class="dnd-card-abilities">
-            <button v-for="ability in dndAbilities" :key="ability.key" :disabled="readonly" @mousedown.stop @click.stop="rollTemplateAbility(node, ability.key)">
-              <span>{{ ability.label }}</span><strong>{{ templateValue(node, ability.key, 10) }}</strong><em>{{ dndModifier(templateValue(node, ability.key, 10)) >= 0 ? '+' : '' }}{{ dndModifier(templateValue(node, ability.key, 10)) }}</em>
-            </button>
-          </div>
+          <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480 }" @mousedown.stop>
+            <header class="dnd-sheet-head">
+              <div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="dndSheet(node).identity.portraitUrl" alt="" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div>
+              <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
+              <label class="dnd-level">ур.<input aria-label="Уровень" type="number" min="1" :readonly="readonly" :value="dndSheet(node).identity.level" @change="setDndNumber(node, 'level', ($event.target as HTMLInputElement).value)" /></label>
+              <button class="dnd-collapse" :aria-label="dndSheet(node).displayMode === 'compact' ? 'Развернуть карточку' : 'Свернуть карточку'" :disabled="readonly" @click.stop="toggleDndMode(node)">{{ dndSheet(node).displayMode === 'compact' ? '⤢' : '⤡' }}</button>
+            </header>
+            <div class="dnd-combat-row"><label>КД <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.armorClass" @change="setDndCombat(node, 'armorClass', ($event.target as HTMLInputElement).value)" /></label><label>Скорость <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.speed" @change="setDndCombat(node, 'speed', ($event.target as HTMLInputElement).value)" /></label><label>HP <button :disabled="readonly" @click.stop="changeDndHp(node, -1)">−</button><input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.currentHp" @change="setDndCombat(node, 'currentHp', ($event.target as HTMLInputElement).value)" /><b>/</b><input type="number" min="1" :readonly="readonly" :value="dndSheet(node).combat.maxHp" @change="setDndCombat(node, 'maxHp', ($event.target as HTMLInputElement).value)" /><button :disabled="readonly" @click.stop="changeDndHp(node, 1)">+</button></label><label class="dnd-temp">Врем. <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.temporaryHp" @change="setDndCombat(node, 'temporaryHp', ($event.target as HTMLInputElement).value)" /></label></div>
+            <div class="dnd-card-abilities"><article v-for="ability in dndAbilities" :key="ability.key"><button :disabled="readonly" @click.stop="rollTemplateAbility(node, ability.key)"><span>{{ ability.short }}</span><strong>{{ dndSheet(node).abilities[ability.key].score }}</strong><em>{{ formatDndModifier(dndSheet(node).abilities[ability.key].score) }}</em></button><input aria-label="Значение характеристики" type="number" min="1" max="30" :readonly="readonly" :value="dndSheet(node).abilities[ability.key].score" @change="setDndAbilityScore(node, ability.key, ($event.target as HTMLInputElement).value)" /><label title="Владение спасброском"><input type="checkbox" :checked="dndSheet(node).abilities[ability.key].savingThrowProficient" :disabled="readonly" @change="toggleDndSave(node, ability.key)" /> Спас {{ formatDndModifier(dndSavingThrow(node, ability.key)) }}</label></article></div>
+            <div v-if="dndSheet(node).displayMode !== 'compact' && node.width >= 720 && node.height >= 480" class="dnd-full-content"><nav class="dnd-tabs"><button v-for="tab in dndTabs" :key="tab.key" :class="{ active: dndSheet(node).activeTab === tab.key }" :disabled="readonly" @click.stop="setDndTab(node, tab.key)">{{ tab.label }}</button></nav><div class="dnd-tab-panel"><template v-if="dndSheet(node).activeTab === 'notes'"><textarea aria-label="Заметки персонажа" :readonly="readonly" :value="dndSheet(node).notes" placeholder="Заметки персонажа" @change="setDndNotes(node, ($event.target as HTMLTextAreaElement).value)" /></template><template v-else-if="dndSheet(node).activeTab === 'personality'"><label v-for="field in dndPersonalityFields" :key="field.key">{{ field.label }}<textarea :readonly="readonly" :value="dndSheet(node).personality[field.key]" @change="setDndPersonality(node, field.key, ($event.target as HTMLTextAreaElement).value)" /></label></template><template v-else><div class="dnd-list"><div v-for="item in dndTabItems(node)" :key="item.id" class="dnd-list-row"><input aria-label="Название" :readonly="readonly" :value="item.name" placeholder="Название" @change="updateDndListItem(node, item.id, 'name', ($event.target as HTMLInputElement).value)" /><template v-if="dndSheet(node).activeTab === 'equipment'"><input aria-label="Количество" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" @change="updateDndListItem(node, item.id, 'quantity', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.equipped" :disabled="readonly" @change="updateDndListItem(node, item.id, 'equipped', !item.equipped)" /> экипировано</label></template><template v-else-if="dndSheet(node).activeTab === 'goals'"><label><input type="checkbox" :checked="item.completed" :disabled="readonly" @change="updateDndListItem(node, item.id, 'completed', !item.completed)" /> готово</label></template><template v-else-if="dndSheet(node).activeTab === 'spells'"><input aria-label="Уровень заклинания" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" @change="updateDndListItem(node, item.id, 'level', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.prepared" :disabled="readonly" @change="updateDndListItem(node, item.id, 'prepared', !item.prepared)" /> подготовлено</label></template><template v-else-if="dndSheet(node).activeTab === 'features'"><input aria-label="Использований" type="number" min="0" :readonly="readonly" :value="item.currentUses || 0" @change="updateDndListItem(node, item.id, 'currentUses', Number(($event.target as HTMLInputElement).value) || 0)" /><span>/</span><input aria-label="Максимум использований" type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" @change="updateDndListItem(node, item.id, 'maxUses', Number(($event.target as HTMLInputElement).value) || 0)" /></template><input aria-label="Описание" :readonly="readonly" :value="item.description || ''" placeholder="Описание" @change="updateDndListItem(node, item.id, 'description', ($event.target as HTMLInputElement).value)" /><button class="dnd-list-remove" aria-label="Удалить запись" :disabled="readonly" @click.stop="removeDndListItem(node, item.id)">×</button></div><button class="dnd-list-add" :disabled="readonly" @click.stop="addDndListItem(node)">+ Добавить</button></div></template></div></div>
+          </section>
         </template>
         <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -704,6 +702,7 @@ import { marked } from "marked";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -735,7 +734,7 @@ interface CanvasNode {
   styleAttributes?: Record<string, string>;
   hidden?: boolean;
   templateId?: string;
-  templateData?: Record<string, string | number | boolean>;
+  templateData?: Record<string, unknown>;
 }
 
 interface CanvasEdge {
@@ -1016,23 +1015,50 @@ export default defineComponent({
     const templateNodes = computed(() => viewerNodes.value.filter((n) => n.type === "template"));
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
 
-    const dndAbilities = [
-      { key: "str", label: "СИЛ" }, { key: "dex", label: "ЛОВ" }, { key: "con", label: "ТЕЛ" },
-      { key: "int", label: "ИНТ" }, { key: "wis", label: "МДР" }, { key: "cha", label: "ХАР" },
-    ];
-    const templateValue = (node: CanvasNode, key: string, fallback: string | number) => node.templateData?.[key] ?? fallback;
-    const dndModifier = (score: string | number | boolean) => Math.floor((Number(score) - 10) / 2);
-    const setTemplateValue = (node: CanvasNode, key: string, value: string | number) => {
+    const dndAbilities = DND_ABILITIES;
+    const dndTabs = [
+      { key: 'attacks', label: 'Атаки' }, { key: 'features', label: 'Способности' }, { key: 'equipment', label: 'Снаряжение' },
+      { key: 'personality', label: 'Личность' }, { key: 'goals', label: 'Цели' }, { key: 'notes', label: 'Заметки' }, { key: 'spells', label: 'Заклинания' },
+    ] as const;
+    const dndPersonalityFields = [
+      { key: 'traits', label: 'Черты' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
+    ] as const;
+    const dndSheet = (node: CanvasNode) => normalizeDndCharacterSheet(node.templateData);
+    const updateDndSheet = (node: CanvasNode, mutate: (data: DndCharacterSheetData) => void) => {
       if (props.readonly) return;
-      const templateData = { ...(node.templateData || {}), [key]: value };
+      const data = dndSheet(node);
+      mutate(data);
+      const templateData = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
       pushUndo();
       node.templateData = templateData;
-      emitOp({ type: "node-update", id: node.id, changes: { templateData } });
+      emitOp({ type: 'node-update', id: node.id, changes: { templateData } });
     };
-    const rollTemplateAbility = (node: CanvasNode, ability: string) => {
-      const modifier = dndModifier(templateValue(node, ability, 10));
-      emit("template-roll", { nodeId: node.id, label: `${templateValue(node, "name", "Персонаж")}: ${ability.toUpperCase()}`, modifier });
+    const setDndIdentity = (node: CanvasNode, key: 'name' | 'race' | 'className', value: string) => updateDndSheet(node, (data) => { data.identity[key] = value; });
+    const setDndNumber = (node: CanvasNode, _key: 'level', value: string) => updateDndSheet(node, (data) => { data.identity.level = Math.max(1, Number(value) || 1); });
+    const setDndCombat = (node: CanvasNode, key: 'armorClass' | 'speed' | 'currentHp' | 'maxHp' | 'temporaryHp', value: string) => updateDndSheet(node, (data) => { const min = key === 'maxHp' ? 1 : 0; data.combat[key] = Math.max(min, Number(value) || 0); });
+    const changeDndHp = (node: CanvasNode, delta: number) => updateDndSheet(node, (data) => { data.combat.currentHp = Math.max(0, data.combat.currentHp + delta); });
+    const setDndAbilityScore = (node: CanvasNode, key: DndAbilityKey, value: string) => updateDndSheet(node, (data) => { data.abilities[key].score = Math.max(1, Math.min(30, Number(value) || 1)); });
+    const toggleDndSave = (node: CanvasNode, key: DndAbilityKey) => updateDndSheet(node, (data) => { data.abilities[key].savingThrowProficient = !data.abilities[key].savingThrowProficient; });
+    const toggleDndMode = (node: CanvasNode) => updateDndSheet(node, (data) => { data.displayMode = data.displayMode === 'compact' ? 'full' : 'compact'; });
+    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => updateDndSheet(node, (data) => { data.activeTab = tab; });
+    const setDndNotes = (node: CanvasNode, value: string) => updateDndSheet(node, (data) => { data.notes = value; });
+    const setDndPersonality = (node: CanvasNode, key: keyof DndCharacterSheetData['personality'], value: string) => updateDndSheet(node, (data) => { data.personality[key] = value; });
+    const dndTabItems = (node: CanvasNode): DndListItem[] => {
+      const data = dndSheet(node);
+      const tab = data.activeTab;
+      return ['attacks', 'features', 'equipment', 'spells', 'goals'].includes(tab) ? data[tab as 'attacks' | 'features' | 'equipment' | 'spells' | 'goals'] : [];
     };
+    const updateDndList = (node: CanvasNode, tab: DndTab, mutate: (items: DndListItem[]) => void) => updateDndSheet(node, (data) => {
+      if (!['attacks', 'features', 'equipment', 'spells', 'goals'].includes(tab)) return;
+      const key = tab as 'attacks' | 'features' | 'equipment' | 'spells' | 'goals';
+      mutate(data[key]);
+    });
+    const addDndListItem = (node: CanvasNode) => updateDndList(node, dndSheet(node).activeTab, (items) => { items.push({ id: genId(), name: '' }); });
+    const updateDndListItem = (node: CanvasNode, id: string, key: keyof DndListItem, value: string | number | boolean) => updateDndList(node, dndSheet(node).activeTab, (items) => { const item = items.find((entry) => entry.id === id); if (item) item[key] = value as never; });
+    const removeDndListItem = (node: CanvasNode, id: string) => updateDndList(node, dndSheet(node).activeTab, (items) => { const index = items.findIndex((entry) => entry.id === id); if (index >= 0) items.splice(index, 1); });
+    const formatDndModifier = (score: number) => formatModifier(abilityModifier(score));
+    const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
+    const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
 
     const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
 
@@ -1445,10 +1471,17 @@ export default defineComponent({
         camera: { x: camera.x, y: camera.y, scale: camera.scale },
         cameraStart: { x: resizeCameraStart.x, y: resizeCameraStart.y },
       });
-      node.x = r.x;
-      node.y = r.y;
-      node.width = r.width;
-      node.height = r.height;
+      if (node.templateId === 'dnd-character') {
+        node.x = r.x;
+        node.y = r.y;
+        node.width = Math.max(320, r.width);
+        node.height = Math.max(220, r.height);
+      } else {
+        node.x = r.x;
+        node.y = r.y;
+        node.width = r.width;
+        node.height = r.height;
+      }
     };
 
     const updateActiveDragFromPointer = () => {
@@ -1877,18 +1910,14 @@ export default defineComponent({
       createTextNodeAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
     };
 
-    const addDndCharacterTemplate = (data: Record<string, string | number | boolean> = {}) => {
+    const addDndCharacterTemplate = (data: Record<string, unknown> = {}) => {
       if (props.readonly) return;
       const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
       const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const templateData = {
-        name: "Новый персонаж", level: 1, hp: 10, ac: 10,
-        str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10,
-        ...data,
-      };
+      const templateData = { ...createDndCharacterSheet(), ...data };
       const newNode: CanvasNode = {
         id: genId(), type: "template", templateId: "dnd-character", templateData,
-        x: snap(centerX - 160), y: snap(centerY - 128), width: 320, height: 256,
+        x: snap(centerX - 550), y: snap(centerY - 380), width: 1100, height: 760,
       };
       pushUndo();
       nodes.value.push(newNode);
@@ -1899,8 +1928,8 @@ export default defineComponent({
     const importDndCharacter = (data: unknown) => {
       if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Файл карточки имеет неверный формат");
       const source = (data as Record<string, unknown>).templateData && typeof (data as Record<string, unknown>).templateData === "object"
-        ? (data as Record<string, Record<string, string | number | boolean>>).templateData
-        : data as Record<string, string | number | boolean>;
+        ? (data as Record<string, Record<string, unknown>>).templateData
+        : data as Record<string, unknown>;
       addDndCharacterTemplate(source);
     };
 
@@ -3447,9 +3476,25 @@ export default defineComponent({
       importDndCharacter,
       templateNodes,
       dndAbilities,
-      templateValue,
-      dndModifier,
-      setTemplateValue,
+      dndTabs,
+      dndPersonalityFields,
+      dndSheet,
+      setDndIdentity,
+      setDndNumber,
+      setDndCombat,
+      changeDndHp,
+      setDndAbilityScore,
+      toggleDndSave,
+      toggleDndMode,
+      setDndTab,
+      setDndNotes,
+      setDndPersonality,
+      dndTabItems,
+      addDndListItem,
+      updateDndListItem,
+      removeDndListItem,
+      formatDndModifier,
+      dndSavingThrow,
       rollTemplateAbility,
       contextMenu,
       contextMenuStyle,
@@ -3661,29 +3706,23 @@ export default defineComponent({
 }
 
 .canvas-node.canvas-node-template {
-  padding: 12px;
+  padding: 0;
   overflow: visible;
-  background: linear-gradient(145deg, #252036, #171522);
-  border: 1px solid rgba(201, 163, 91, 0.7);
+  background: #171a19;
+  border: 1px solid #3b4940;
   border-radius: 10px;
   box-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
-  color: #f3ead2;
+  color: var(--dark-text-primary, #f0f6f1);
   user-select: none;
 }
-.dnd-card-head { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid rgba(201,163,91,.32); padding-bottom: 8px; }
-.dnd-card-head > input { min-width: 0; flex: 1; font: 700 17px/1.2 inherit; color: #fff3d4; background: transparent; border: 0; outline: 0; }
-.dnd-card-head span { white-space: nowrap; color: #cdbd96; font-size: 12px; }
-.dnd-card-head span input { width: 36px; color: #fff3d4; background: transparent; border: 0; outline: 0; text-align: center; font: inherit; }
-.dnd-card-stats { display: flex; gap: 8px; margin: 10px 0; }
-.dnd-card-stats label { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #cdbd96; }
-.dnd-card-stats input { width: 46px; padding: 3px 4px; color: #fff3d4; background: rgba(255,255,255,.07); border: 1px solid rgba(201,163,91,.32); border-radius: 4px; font: 700 14px inherit; }
-.dnd-card-abilities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.dnd-card-abilities button { min-width: 0; padding: 7px 3px; color: #f5e9c9; background: rgba(201,163,91,.11); border: 1px solid rgba(201,163,91,.38); border-radius: 5px; cursor: pointer; }
-.dnd-card-abilities button:hover { background: rgba(201,163,91,.23); }
-.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }
-.dnd-card-abilities span { font-size: 10px; color: #cdbd96; }
-.dnd-card-abilities strong { font-size: 16px; line-height: 1.15; }
-.dnd-card-abilities em { font-size: 11px; color: #8ed9a4; font-style: normal; }
+.dnd-sheet { box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: text; }
+.dnd-sheet.is-compact { min-width: 0; min-height: 0; padding: 12px; }.dnd-sheet.is-compact .dnd-combat-row { margin: 10px 0; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(6, 1fr); }.dnd-sheet.is-compact .dnd-card-abilities article > input, .dnd-sheet.is-compact .dnd-card-abilities label { display: none; }
+.dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: #222825; border: 1px solid #3b4940; border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--color-brands, #00ff00); box-shadow: 0 0 0 2px #00ff0030; }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
+.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait { display: grid; flex: 0 0 56px; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 10px; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
+.dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: #aab7ae; font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid #435248; border-radius: 5px; color: #bceac8; background: transparent; cursor: pointer; }.dnd-combat-row b { color: #77857c; }.dnd-temp input { width: 42px; }
+.dnd-card-abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }.dnd-card-abilities article { display: grid; gap: 5px; padding: 7px; border: 1px solid #354039; border-radius: 7px; background: #1e2421; }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: #2a362e; }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: #aab7ae; font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: #77ee9a; font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }
+.dnd-full-content { margin-top: 16px; border-top: 1px solid #354039; }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: #aab7ae; background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: #3f874f; color: #baf5c7; background: #1d3924; }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: #aab7ae; font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: #94a299; font-size: 12px; }
+.dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid #354039; border-radius: 6px; background: #1b211e; }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid #435248; border-radius: 5px; color: #c0edca; background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: #5bbc70; background: #1d3924; }
 /* Group colors */
 .group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
 .group-color-1 .group-label { color: #fb464c; }

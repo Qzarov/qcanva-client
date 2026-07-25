@@ -10,12 +10,12 @@
         <span class="template-kind">Интерактивный шаблон · D&D</span>
       </div>
       <section class="character-sheet">
-        <div class="character-sheet-head"><input v-model="data.name" @change="save" /><span>ур. <input v-model.number="data.level" type="number" min="1" @change="save" /></span></div>
+        <div class="character-sheet-head"><input v-model="data.identity.name" @change="save" /><span>ур. <input v-model.number="data.identity.level" type="number" min="1" @change="save" /></span></div>
         <div class="character-sheet-stats">
-          <label>HP <input v-model.number="data.hp" type="number" min="0" @change="save" /></label>
-          <label>AC <input v-model.number="data.ac" type="number" min="0" @change="save" /></label>
+          <label>HP <input v-model.number="data.combat.currentHp" type="number" min="0" @change="save" /></label>
+          <label>AC <input v-model.number="data.combat.armorClass" type="number" min="0" @change="save" /></label>
         </div>
-        <div class="character-sheet-abilities"><label v-for="ability in abilities" :key="ability.key">{{ ability.label }}<input v-model.number="data[ability.key]" type="number" @change="save" /></label></div>
+        <div class="character-sheet-abilities"><label v-for="ability in abilities" :key="ability.key">{{ ability.short }}<input v-model.number="data.abilities[ability.key].score" type="number" min="1" max="30" @change="save" /></label></div>
       </section>
     </main>
     <p v-else-if="error" class="template-error">{{ error }}</p>
@@ -26,15 +26,15 @@
 import { defineComponent, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { interactiveTemplates, type InteractiveTemplate } from '../api/client';
+import { DND_ABILITIES, createDndCharacterSheet, normalizeDndCharacterSheet } from '../dnd/characterSheet';
 
-const defaults = { name: 'Новый персонаж', level: 1, hp: 10, ac: 10, str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 };
 export default defineComponent({
   setup() {
     const route = useRoute(); const template = ref<InteractiveTemplate | null>(null); const saving = ref(false); const error = ref('');
-    const data = reactive<Record<string, string | number>>({ ...defaults });
-    const abilities = [{ key: 'str', label: 'СИЛ' }, { key: 'dex', label: 'ЛОВ' }, { key: 'con', label: 'ТЕЛ' }, { key: 'int', label: 'ИНТ' }, { key: 'wis', label: 'МДР' }, { key: 'cha', label: 'ХАР' }];
+    const data = reactive(createDndCharacterSheet());
+    const abilities = DND_ABILITIES;
     const save = async () => { if (!template.value) return; saving.value = true; try { template.value = await interactiveTemplates.update(template.value.id, { title: template.value.title, data }); } catch (e: any) { error.value = e?.message || 'Не удалось сохранить шаблон'; } finally { saving.value = false; } };
-    onMounted(async () => { try { template.value = await interactiveTemplates.get(String(route.params.id)); Object.assign(data, defaults, template.value.data); } catch (e: any) { error.value = e?.message || 'Шаблон не найден'; } });
+    onMounted(async () => { try { template.value = await interactiveTemplates.get(String(route.params.id)); Object.assign(data, normalizeDndCharacterSheet(template.value.data)); } catch (e: any) { error.value = e?.message || 'Шаблон не найден'; } });
     return { template, data, abilities, saving, error, save };
   },
 });
