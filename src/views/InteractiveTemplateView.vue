@@ -1,7 +1,7 @@
 <template>
   <div class="template-page">
     <header class="template-header">
-      <router-link to="/" class="btn-ghost">← Дашборд</router-link>
+      <router-link :to="{ name: 'dashboard' }" class="btn-ghost">← Дашборд</router-link>
       <span v-if="saving" class="template-save-status">Сохраняем…</span>
     </header>
     <main v-if="template" class="template-editor">
