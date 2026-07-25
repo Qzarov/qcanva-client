@@ -313,7 +313,7 @@
         <template v-if="node.templateId === 'dnd-character'">
           <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480 }" @mousedown.stop>
             <header class="dnd-sheet-head">
-              <div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="dndSheet(node).identity.portraitUrl" alt="" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div>
+              <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="dndSheet(node).identity.portraitUrl" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
               <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
               <label class="dnd-level">ур.<input aria-label="Уровень" type="number" min="1" :readonly="readonly" :value="dndSheet(node).identity.level" @change="setDndNumber(node, 'level', ($event.target as HTMLInputElement).value)" /></label>
               <button class="dnd-collapse" :aria-label="dndSheet(node).displayMode === 'compact' ? 'Развернуть карточку' : 'Свернуть карточку'" :disabled="readonly" @click.stop="toggleDndMode(node)">{{ dndSheet(node).displayMode === 'compact' ? '⤢' : '⤡' }}</button>
@@ -684,6 +684,7 @@
     </div>
     <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
     <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
+    <input type="file" ref="dndPortraitInput" accept="image/*" style="display:none" @change="onDndPortraitSelected" />
     <div
       v-if="drawTool !== 'select'"
       class="draw-capture"
@@ -1033,7 +1034,7 @@ export default defineComponent({
       node.templateData = templateData;
       emitOp({ type: 'node-update', id: node.id, changes: { templateData } });
     };
-    const setDndIdentity = (node: CanvasNode, key: 'name' | 'race' | 'className', value: string) => updateDndSheet(node, (data) => { data.identity[key] = value; });
+    const setDndIdentity = (node: CanvasNode, key: 'name' | 'race' | 'className' | 'portraitUrl', value: string) => updateDndSheet(node, (data) => { data.identity[key] = value; });
     const setDndNumber = (node: CanvasNode, _key: 'level', value: string) => updateDndSheet(node, (data) => { data.identity.level = Math.max(1, Number(value) || 1); });
     const setDndCombat = (node: CanvasNode, key: 'armorClass' | 'speed' | 'currentHp' | 'maxHp' | 'temporaryHp', value: string) => updateDndSheet(node, (data) => { const min = key === 'maxHp' ? 1 : 0; data.combat[key] = Math.max(min, Number(value) || 0); });
     const changeDndHp = (node: CanvasNode, delta: number) => updateDndSheet(node, (data) => { data.combat.currentHp = Math.max(0, data.combat.currentHp + delta); });
@@ -3141,6 +3142,8 @@ export default defineComponent({
     // File operations
     const fileInput = ref<HTMLInputElement | null>(null);
     const imageInput = ref<HTMLInputElement | null>(null);
+    const dndPortraitInput = ref<HTMLInputElement | null>(null);
+    const dndPortraitNodeId = ref<string | null>(null);
 
     const onNewCanvas = () => {
       pushUndo();
@@ -3224,6 +3227,27 @@ export default defineComponent({
       } catch (err) {
         console.error("Failed to upload image:", err);
         window.alert("Failed to upload image. Please try again.");
+      }
+    };
+
+    const openDndPortraitPicker = (node: CanvasNode) => {
+      dndPortraitNodeId.value = node.id;
+      dndPortraitInput.value?.click();
+    };
+
+    const onDndPortraitSelected = async (e: Event) => {
+      const input = e.target as HTMLInputElement;
+      const file = input.files?.[0];
+      input.value = '';
+      const node = nodes.value.find((item) => item.id === dndPortraitNodeId.value);
+      dndPortraitNodeId.value = null;
+      if (!file || !node || node.templateId !== 'dnd-character') return;
+      try {
+        const { url } = await uploadImage(file);
+        if (url) setDndIdentity(node, 'portraitUrl', url);
+      } catch (err) {
+        console.error('Failed to upload D&D portrait:', err);
+        window.alert('Не удалось загрузить портрет. Попробуйте ещё раз.');
       }
     };
 
@@ -3580,6 +3604,9 @@ export default defineComponent({
       onExportCanvas,
       openImagePicker,
       onImageSelected,
+      dndPortraitInput,
+      openDndPortraitPicker,
+      onDndPortraitSelected,
       undo,
       redo,
       canUndo,
@@ -3718,7 +3745,7 @@ export default defineComponent({
 .dnd-sheet { box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: text; }
 .dnd-sheet.is-compact { min-width: 0; min-height: 0; padding: 12px; }.dnd-sheet.is-compact .dnd-combat-row { margin: 10px 0; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(6, 1fr); }.dnd-sheet.is-compact .dnd-card-abilities article > input, .dnd-sheet.is-compact .dnd-card-abilities label { display: none; }
 .dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: #222825; border: 1px solid #3b4940; border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--color-brands, #00ff00); box-shadow: 0 0 0 2px #00ff0030; }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
-.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait { display: grid; flex: 0 0 56px; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 10px; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
+.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 50%; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid #5c7665; border-radius: 50%; color: #d8f9df; background: #1d3924; font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
 .dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: #aab7ae; font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid #435248; border-radius: 5px; color: #bceac8; background: transparent; cursor: pointer; }.dnd-combat-row b { color: #77857c; }.dnd-temp input { width: 42px; }
 .dnd-card-abilities { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }.dnd-card-abilities article { display: grid; gap: 5px; padding: 7px; border: 1px solid #354039; border-radius: 7px; background: #1e2421; }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: #2a362e; }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: #aab7ae; font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: #77ee9a; font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }
 .dnd-full-content { margin-top: 16px; border-top: 1px solid #354039; }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: #aab7ae; background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: #3f874f; color: #baf5c7; background: #1d3924; }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: #aab7ae; font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: #94a299; font-size: 12px; }
