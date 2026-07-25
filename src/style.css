@@ -524,6 +524,10 @@ html, body {
 .canvas-plugin-row { padding: 10px 0; border-top: 1px solid rgba(255,255,255,.08); }
 .canvas-plugin-row strong, .canvas-plugin-row span { display: block; }
 .canvas-plugin-row span, .canvas-plugin-empty { margin-top: 3px; color: var(--dark-text-muted); font-size: 12px; }
+.canvas-plugin-row .plugin-toggle { position: relative; flex: 0 0 auto; width: 62px; height: 30px; padding: 0; border: 1px solid #4a5250; border-radius: 999px; background: #292e2c; color: #adb8b1; cursor: pointer; transition: background .16s, border-color .16s, box-shadow .16s; }
+.canvas-plugin-row .plugin-toggle:hover:not(:disabled) { border-color: #718078; }.canvas-plugin-row .plugin-toggle:focus-visible { outline: 2px solid var(--color-brands); outline-offset: 2px; }.canvas-plugin-row .plugin-toggle.on { border-color: color-mix(in srgb, var(--color-brands) 70%, #7dff9e); background: color-mix(in srgb, var(--color-brands) 32%, #123119); color: #d9ffe3; }.canvas-plugin-row .plugin-toggle:disabled { opacity: .68; cursor: wait; }
+.canvas-plugin-row .plugin-toggle-label { position: absolute; top: 0; right: 7px; margin: 0; color: inherit; font-size: 10px; font-weight: 800; line-height: 28px; transition: opacity .16s; }.canvas-plugin-row .plugin-toggle.on .plugin-toggle-label { right: auto; left: 7px; }.canvas-plugin-row .plugin-toggle-knob { position: absolute; z-index: 1; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #d7dfd9; box-shadow: 0 1px 3px #0006; transition: transform .16s, background .16s; }.canvas-plugin-row .plugin-toggle.on .plugin-toggle-knob { transform: translateX(32px); background: #fff; }.canvas-plugin-row .plugin-toggle.loading .plugin-toggle-knob { animation: plugin-toggle-pulse .75s ease-in-out infinite alternate; }
+@keyframes plugin-toggle-pulse { to { opacity: .45; } }
 .dashboard-refresh-spinner {
   width: 13px;
   height: 13px;

@@ -177,7 +177,16 @@
         <p v-if="!pluginItems.length" class="canvas-plugin-empty">Для этого канваса пока нет доступных плагинов.</p>
         <div v-for="plugin in pluginItems" :key="plugin.id" class="canvas-plugin-row">
           <div><strong>{{ plugin.name }}</strong><span>{{ plugin.description }}</span></div>
-          <button class="plugin-toggle" :class="{ on: plugin.enabled }" :disabled="settingPluginId === plugin.id" @click="setCanvasPlugin(plugin.id, !plugin.enabled)"><span class="plugin-toggle-knob"></span></button>
+          <button
+            class="plugin-toggle"
+            :class="{ on: plugin.enabled, loading: settingPluginId === plugin.id }"
+            role="switch"
+            :aria-checked="plugin.enabled"
+            :aria-label="`${plugin.name}: ${plugin.enabled ? 'включён' : 'выключен'}`"
+            :title="plugin.enabled ? 'Выключить плагин' : 'Включить плагин'"
+            :disabled="settingPluginId === plugin.id"
+            @click="setCanvasPlugin(plugin.id, !plugin.enabled)"
+          ><span class="plugin-toggle-label">{{ plugin.enabled ? 'Вкл' : 'Выкл' }}</span><span class="plugin-toggle-knob"></span></button>
         </div>
         <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
           <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">Добавить карточку персонажа</button>
