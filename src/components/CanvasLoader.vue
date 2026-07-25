@@ -309,9 +309,14 @@
         :style="nodePosition(node)"
         @mousedown.stop="onNodeDragStart($event, node)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
+        :tabindex="isNodeSelected(node.id) ? 0 : -1"
+        @keydown.enter.prevent="enterDndInteraction(node)"
+        @keydown.esc.stop="exitDndInteraction(node)"
       >
         <template v-if="node.templateId === 'dnd-character'">
-          <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480 }" @mousedown.stop>
+          <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480, 'is-interacting': isDndInteracting(node) }" @mousedown="onDndSheetMouseDown($event, node)" @dblclick.stop="enterDndInteraction(node)">
+            <div class="dnd-mode-bar"><span>{{ isDndInteracting(node) ? 'Режим взаимодействия' : 'Режим перемещения' }}</span><button type="button" @mousedown.stop @click.stop="toggleDndInteraction(node)">{{ isDndInteracting(node) ? 'Готово' : 'Редактировать' }}</button></div>
+            <div class="dnd-sheet-content" :inert="!isDndInteracting(node)">
             <header class="dnd-sheet-head">
               <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="dndSheet(node).identity.portraitUrl" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
               <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
@@ -321,9 +326,10 @@
             <div class="dnd-combat-row"><label>КД <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.armorClass" @change="setDndCombat(node, 'armorClass', ($event.target as HTMLInputElement).value)" /></label><label>Скорость <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.speed" @change="setDndCombat(node, 'speed', ($event.target as HTMLInputElement).value)" /></label><label>HP <button :disabled="readonly" @click.stop="changeDndHp(node, -1)">−</button><input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.currentHp" @change="setDndCombat(node, 'currentHp', ($event.target as HTMLInputElement).value)" /><b>/</b><input type="number" min="1" :readonly="readonly" :value="dndSheet(node).combat.maxHp" @change="setDndCombat(node, 'maxHp', ($event.target as HTMLInputElement).value)" /><button :disabled="readonly" @click.stop="changeDndHp(node, 1)">+</button></label><label class="dnd-temp">Врем. <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.temporaryHp" @change="setDndCombat(node, 'temporaryHp', ($event.target as HTMLInputElement).value)" /></label></div>
             <div class="dnd-card-abilities"><article v-for="ability in dndAbilities" :key="ability.key"><button :disabled="readonly" @click.stop="rollTemplateAbility(node, ability.key)"><span>{{ ability.short }}</span><strong>{{ dndSheet(node).abilities[ability.key].score }}</strong><em>{{ formatDndModifier(dndSheet(node).abilities[ability.key].score) }}</em></button><input aria-label="Значение характеристики" type="number" min="1" max="30" :readonly="readonly" :value="dndSheet(node).abilities[ability.key].score" @change="setDndAbilityScore(node, ability.key, ($event.target as HTMLInputElement).value)" /><label title="Владение спасброском"><input type="checkbox" :checked="dndSheet(node).abilities[ability.key].savingThrowProficient" :disabled="readonly" @change="toggleDndSave(node, ability.key)" /> Спас {{ formatDndModifier(dndSavingThrow(node, ability.key)) }}</label></article></div>
             <div v-if="dndSheet(node).displayMode !== 'compact' && node.width >= 720 && node.height >= 480" class="dnd-full-content"><nav class="dnd-tabs"><button v-for="tab in dndTabs" :key="tab.key" :class="{ active: dndSheet(node).activeTab === tab.key }" :disabled="readonly" @click.stop="setDndTab(node, tab.key)">{{ tab.label }}</button></nav><div class="dnd-tab-panel"><template v-if="dndSheet(node).activeTab === 'notes'"><textarea aria-label="Заметки персонажа" :readonly="readonly" :value="dndSheet(node).notes" placeholder="Заметки персонажа" @change="setDndNotes(node, ($event.target as HTMLTextAreaElement).value)" /></template><template v-else-if="dndSheet(node).activeTab === 'personality'"><label v-for="field in dndPersonalityFields" :key="field.key">{{ field.label }}<textarea :readonly="readonly" :value="dndSheet(node).personality[field.key]" @change="setDndPersonality(node, field.key, ($event.target as HTMLTextAreaElement).value)" /></label></template><template v-else><div class="dnd-list"><div v-for="item in dndTabItems(node)" :key="item.id" class="dnd-list-row"><input aria-label="Название" :readonly="readonly" :value="item.name" placeholder="Название" @change="updateDndListItem(node, item.id, 'name', ($event.target as HTMLInputElement).value)" /><template v-if="dndSheet(node).activeTab === 'equipment'"><input aria-label="Количество" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" @change="updateDndListItem(node, item.id, 'quantity', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.equipped" :disabled="readonly" @change="updateDndListItem(node, item.id, 'equipped', !item.equipped)" /> экипировано</label></template><template v-else-if="dndSheet(node).activeTab === 'goals'"><label><input type="checkbox" :checked="item.completed" :disabled="readonly" @change="updateDndListItem(node, item.id, 'completed', !item.completed)" /> готово</label></template><template v-else-if="dndSheet(node).activeTab === 'spells'"><input aria-label="Уровень заклинания" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" @change="updateDndListItem(node, item.id, 'level', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.prepared" :disabled="readonly" @change="updateDndListItem(node, item.id, 'prepared', !item.prepared)" /> подготовлено</label></template><template v-else-if="dndSheet(node).activeTab === 'features'"><input aria-label="Использований" type="number" min="0" :readonly="readonly" :value="item.currentUses || 0" @change="updateDndListItem(node, item.id, 'currentUses', Number(($event.target as HTMLInputElement).value) || 0)" /><span>/</span><input aria-label="Максимум использований" type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" @change="updateDndListItem(node, item.id, 'maxUses', Number(($event.target as HTMLInputElement).value) || 0)" /></template><input aria-label="Описание" :readonly="readonly" :value="item.description || ''" placeholder="Описание" @change="updateDndListItem(node, item.id, 'description', ($event.target as HTMLInputElement).value)" /><button class="dnd-list-remove" aria-label="Удалить запись" :disabled="readonly" @click.stop="removeDndListItem(node, item.id)">×</button></div><button class="dnd-list-add" :disabled="readonly" @click.stop="addDndListItem(node)">+ Добавить</button></div></template></div></div>
+            </div>
           </section>
         </template>
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
+        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id) && !isDndInteracting(node)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
           <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
@@ -1027,13 +1033,25 @@ export default defineComponent({
     // The selected tab is presentation state only: it must not create canvas
     // operations, history entries, or affect other collaborators.
     const dndActiveTabs = reactive<Record<string, DndCharacterSheetData['activeTab']>>({});
+    const dndInteractionNodeId = ref<string | null>(null);
+    const isDndInteracting = (node: CanvasNode) => !props.readonly && dndInteractionNodeId.value === node.id;
+    const enterDndInteraction = (node: CanvasNode) => {
+      if (node.templateId === 'dnd-character' && !props.readonly) dndInteractionNodeId.value = node.id;
+    };
+    const exitDndInteraction = (node: CanvasNode) => {
+      if (dndInteractionNodeId.value === node.id) dndInteractionNodeId.value = null;
+    };
+    const toggleDndInteraction = (node: CanvasNode) => isDndInteracting(node) ? exitDndInteraction(node) : enterDndInteraction(node);
+    const onDndSheetMouseDown = (event: MouseEvent, node: CanvasNode) => {
+      if (isDndInteracting(node)) event.stopPropagation();
+    };
     const dndSheet = (node: CanvasNode) => {
       const data = normalizeDndCharacterSheet(node.templateData);
       data.activeTab = dndActiveTabs[node.id] || data.activeTab;
       return data;
     };
     const updateDndSheet = (node: CanvasNode, mutate: (data: DndCharacterSheetData) => void) => {
-      if (props.readonly) return;
+      if (props.readonly || !isDndInteracting(node)) return;
       const data = normalizeDndCharacterSheet(node.templateData);
       mutate(data);
       const templateData = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
@@ -1049,7 +1067,7 @@ export default defineComponent({
     const setDndAbilityScore = (node: CanvasNode, key: DndAbilityKey, value: string) => updateDndSheet(node, (data) => { data.abilities[key].score = Math.max(1, Math.min(30, Number(value) || 1)); });
     const toggleDndSave = (node: CanvasNode, key: DndAbilityKey) => updateDndSheet(node, (data) => { data.abilities[key].savingThrowProficient = !data.abilities[key].savingThrowProficient; });
     const toggleDndMode = (node: CanvasNode) => updateDndSheet(node, (data) => { data.displayMode = data.displayMode === 'compact' ? 'full' : 'compact'; });
-    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => { dndActiveTabs[node.id] = tab; };
+    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => { if (isDndInteracting(node)) dndActiveTabs[node.id] = tab; };
     const setDndNotes = (node: CanvasNode, value: string) => updateDndSheet(node, (data) => { data.notes = value; });
     const setDndPersonality = (node: CanvasNode, key: keyof DndCharacterSheetData['personality'], value: string) => updateDndSheet(node, (data) => { data.personality[key] = value; });
     const dndTabItems = (node: CanvasNode): DndListItem[] => {
@@ -1067,7 +1085,7 @@ export default defineComponent({
     const removeDndListItem = (node: CanvasNode, id: string) => updateDndList(node, dndSheet(node).activeTab, (items) => { const index = items.findIndex((entry) => entry.id === id); if (index >= 0) items.splice(index, 1); });
     const formatDndModifier = (score: number) => formatModifier(abilityModifier(score));
     const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
-    const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
+    const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { if (!isDndInteracting(node)) return; const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
 
     const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
 
@@ -3511,6 +3529,11 @@ export default defineComponent({
       dndTabs,
       dndPersonalityFields,
       dndSheet,
+      isDndInteracting,
+      enterDndInteraction,
+      exitDndInteraction,
+      toggleDndInteraction,
+      onDndSheetMouseDown,
       setDndIdentity,
       setDndNumber,
       setDndCombat,
@@ -3750,7 +3773,8 @@ export default defineComponent({
   color: var(--dark-text-primary, #f0f6f1);
   user-select: none;
 }
-.dnd-sheet { box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: text; }
+.dnd-sheet { box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: none; }.dnd-sheet.is-interacting { border-color: color-mix(in srgb, var(--color-brands, #00ff00) 72%, #fff); user-select: text; }.dnd-sheet-content[inert] { opacity: .72; pointer-events: none; }
+.dnd-mode-bar { display: flex; align-items: center; justify-content: space-between; margin: -6px -6px 12px; padding: 6px 7px; border: 1px solid #354039; border-radius: 6px; color: #aab7ae; background: #111513; font-size: 10px; }.dnd-sheet.is-interacting .dnd-mode-bar { border-color: #3f874f; color: #baf5c7; background: #16281a; }.dnd-mode-bar button { padding: 3px 7px; border: 1px solid #4a5b50; border-radius: 4px; color: inherit; background: transparent; font-size: 10px; cursor: pointer; }.dnd-mode-bar button:hover { border-color: var(--color-brands, #00ff00); }
 .dnd-sheet.is-compact { min-width: 0; min-height: 0; padding: 12px; }.dnd-sheet.is-compact .dnd-combat-row { margin: 10px 0; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(6, 1fr); }.dnd-sheet.is-compact .dnd-card-abilities article > input, .dnd-sheet.is-compact .dnd-card-abilities label { display: none; }
 .dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: #222825; border: 1px solid #3b4940; border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--color-brands, #00ff00); box-shadow: 0 0 0 2px #00ff0030; }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
 .dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 50%; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid #5c7665; border-radius: 50%; color: #d8f9df; background: #1d3924; font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
