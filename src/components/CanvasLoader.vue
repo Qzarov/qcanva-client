@@ -1024,12 +1024,20 @@ export default defineComponent({
     const dndPersonalityFields = [
       { key: 'traits', label: 'Черты' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
     ] as const;
-    const dndSheet = (node: CanvasNode) => normalizeDndCharacterSheet(node.templateData);
+    // The selected tab is presentation state only: it must not create canvas
+    // operations, history entries, or affect other collaborators.
+    const dndActiveTabs = reactive<Record<string, DndCharacterSheetData['activeTab']>>({});
+    const dndSheet = (node: CanvasNode) => {
+      const data = normalizeDndCharacterSheet(node.templateData);
+      data.activeTab = dndActiveTabs[node.id] || data.activeTab;
+      return data;
+    };
     const updateDndSheet = (node: CanvasNode, mutate: (data: DndCharacterSheetData) => void) => {
       if (props.readonly) return;
-      const data = dndSheet(node);
+      const data = normalizeDndCharacterSheet(node.templateData);
       mutate(data);
       const templateData = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+      delete templateData.activeTab;
       pushUndo();
       node.templateData = templateData;
       emitOp({ type: 'node-update', id: node.id, changes: { templateData } });
@@ -1041,7 +1049,7 @@ export default defineComponent({
     const setDndAbilityScore = (node: CanvasNode, key: DndAbilityKey, value: string) => updateDndSheet(node, (data) => { data.abilities[key].score = Math.max(1, Math.min(30, Number(value) || 1)); });
     const toggleDndSave = (node: CanvasNode, key: DndAbilityKey) => updateDndSheet(node, (data) => { data.abilities[key].savingThrowProficient = !data.abilities[key].savingThrowProficient; });
     const toggleDndMode = (node: CanvasNode) => updateDndSheet(node, (data) => { data.displayMode = data.displayMode === 'compact' ? 'full' : 'compact'; });
-    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => updateDndSheet(node, (data) => { data.activeTab = tab; });
+    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => { dndActiveTabs[node.id] = tab; };
     const setDndNotes = (node: CanvasNode, value: string) => updateDndSheet(node, (data) => { data.notes = value; });
     const setDndPersonality = (node: CanvasNode, key: keyof DndCharacterSheetData['personality'], value: string) => updateDndSheet(node, (data) => { data.personality[key] = value; });
     const dndTabItems = (node: CanvasNode): DndListItem[] => {
@@ -1915,7 +1923,7 @@ export default defineComponent({
       if (props.readonly) return;
       const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
       const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const templateData = { ...createDndCharacterSheet(), ...data };
+      const { activeTab: _activeTab, ...templateData } = { ...createDndCharacterSheet(), ...data };
       const newNode: CanvasNode = {
         id: genId(), type: "template", templateId: "dnd-character", templateData,
         x: snap(centerX - 550), y: snap(centerY - 380), width: 1100, height: 760,
