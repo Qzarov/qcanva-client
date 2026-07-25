@@ -767,6 +767,8 @@ html, body {
 .resource-title-icon.icon-html::after { right: 4px; border-right: 2px solid #ffa760; border-top: 2px solid #ffa760; transform: rotate(45deg); }
 .resource-title-icon.icon-text-doc { border: 1px solid rgba(176,196,255,0.58); background: linear-gradient(135deg, rgba(176,196,255,0.18), rgba(255,255,255,0.04)); }
 .resource-title-icon.icon-text-doc::before { content: ""; position: absolute; left: 4px; top: 5px; width: 9px; height: 1px; background: #b0c4ff; box-shadow: 0 4px 0 rgba(176,196,255,0.8), 0 8px 0 rgba(176,196,255,0.55); }
+.resource-title-icon.icon-template { border: 1px solid rgba(119,238,154,0.62); background: linear-gradient(135deg, rgba(0,255,0,0.18), rgba(68,207,110,0.06)); }
+.resource-title-icon.icon-template::before { content: ""; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border: 1px solid #77ee9a; border-radius: 2px; box-shadow: 3px 3px 0 -1px rgba(119,238,154,0.55); }
 .card-title-input {
   font-size: 16px;
   font-weight: 600;

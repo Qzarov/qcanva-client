@@ -390,7 +390,7 @@
         <div class="dash-section-head"><h2>Интерактивные шаблоны</h2></div>
         <div class="dash-grid">
           <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" aria-hidden="true">⚄</span>{{ item.title }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
             <div class="card-meta"><span class="badge badge-owner">D&amp;D персонаж</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" @click.stop="deleteInteractiveTemplate(item)" title="Удалить шаблон" :disabled="isBusy">×</button>
           </article>
