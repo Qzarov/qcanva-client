@@ -430,8 +430,8 @@ export const tags = {
 
 export const recentResources = {
   list: (limit = 12) =>
-    request<Array<{ id: string; resourceType: 'canvas' | 'html-document' | 'text-document'; resourceId: string; updatedAt: string }>>(`/recent-resources?limit=${limit}`),
-  markOpened: (resourceType: 'canvas' | 'html-document' | 'text-document', resourceId: string) =>
+    request<Array<{ id: string; resourceType: 'canvas' | 'html-document' | 'text-document' | 'interactive-template'; resourceId: string; updatedAt: string }>>(`/recent-resources?limit=${limit}`),
+  markOpened: (resourceType: 'canvas' | 'html-document' | 'text-document' | 'interactive-template', resourceId: string) =>
     request<any>('/recent-resources', { method: 'POST', body: JSON.stringify({ resourceType, resourceId }) }),
 };
 

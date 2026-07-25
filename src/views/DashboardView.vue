@@ -786,7 +786,9 @@ type DashboardCacheState = {
 };
 
 type DashboardCache = { savedAt: number; state: DashboardCacheState };
-type RecentResource = { id: string; routeId: string; type: FolderItem['type']; title: string; openedAt: number };
+type RecentResourceType = FolderItem['type'] | 'interactive-template';
+type RecentResource = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
+type RecentResourceItem = FolderItem | (InteractiveTemplate & { type: 'interactive-template' });
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
@@ -1186,11 +1188,15 @@ export default defineComponent({
       ...unfiledHtmlDocuments.value,
       ...unfiledTextDocuments.value,
     ]);
+    const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
+      ...allDashboardResources.value,
+      ...interactiveTemplateItems.value.map((item) => ({ ...item, type: 'interactive-template' as const })),
+    ]);
     const recentResources = computed<RecentResource[]>(() => {
-      const available = new Map(allDashboardResources.value.map((item) => [`${item.type}:${item.id}`, item]));
+      const available = new Map(allRecentResourceItems.value.map((item) => [`${item.type}:${item.id}`, item]));
       return recentResourceHistory.value.flatMap((recent) => {
         const item = available.get(`${recent.type}:${recent.id}`);
-        return item ? [{ ...recent, title: item.title || recent.title, routeId: item.slug || item.id }] : [];
+        return item ? [{ ...recent, title: item.title || recent.title, routeId: ('slug' in item && item.slug) || item.id }] : [];
       });
     });
 
@@ -1325,10 +1331,10 @@ export default defineComponent({
       if (shouldRefresh) void load({ showLoading: false });
     };
 
-    const rememberRecentResource = (type: FolderItem['type'], routeId: string) => {
-      const item = allDashboardResources.value.find((resource) => resource.type === type && (resource.id === routeId || resource.slug === routeId));
+    const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
+      const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
-      const recent: RecentResource = { id: item.id, routeId: item.slug || item.id, type, title: item.title || '', openedAt: Date.now() };
+      const recent: RecentResource = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
       void recentResourcesApi.markOpened(type, item.id).catch(() => {
         // Opening a resource must remain available if saving its recent entry fails.
@@ -1340,7 +1346,10 @@ export default defineComponent({
       router.push(`/canvas/${id}`);
     };
 
-    const openInteractiveTemplate = (id: string) => router.push({ name: 'interactive-template', params: { id } });
+    const openInteractiveTemplate = (id: string) => {
+      rememberRecentResource('interactive-template', id);
+      router.push({ name: 'interactive-template', params: { id } });
+    };
 
     const openCanvasFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -1371,10 +1380,11 @@ export default defineComponent({
     const openRecentResource = (item: RecentResource) => {
       if (item.type === 'canvas') openCanvas(item.routeId);
       else if (item.type === 'html-document') openHtmlDocument(item.routeId);
-      else openTextDocument(item.routeId);
+      else if (item.type === 'text-document') openTextDocument(item.routeId);
+      else openInteractiveTemplate(item.routeId);
     };
-    const recentResourceTypeLabel = (type: FolderItem['type']) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : 'Документ';
-    const recentResourceIconClass = (type: FolderItem['type']) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : 'icon-text-doc';
+    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : type === 'text-document' ? 'Документ' : 'Шаблон';
+    const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {

@@ -3,7 +3,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
-import { canvas, htmlDocuments, resourceFolders, textDocuments } from '../api/client';
+import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 
 const push = vi.fn();
 
@@ -35,6 +35,10 @@ vi.mock('../api/client', () => ({
     list: vi.fn().mockResolvedValue({ templates: [] }),
     create: vi.fn(),
     delete: vi.fn(),
+  },
+  recentResources: {
+    list: vi.fn().mockResolvedValue([]),
+    markOpened: vi.fn().mockResolvedValue({}),
   },
   textDocuments: {
     create: vi.fn().mockResolvedValue({ id: 'text-doc-new' }),
@@ -201,6 +205,19 @@ describe('DashboardView groups', () => {
     vm.openTextDocument('doc-1');
 
     expect(push).toHaveBeenCalledWith({ name: 'text-document', params: { id: 'doc-1' } });
+  });
+
+  it('adds interactive templates to recent resources when opened', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{ id: 'template-1', title: 'Лира', templateType: 'dnd-character', data: {}, createdAt: '', updatedAt: '' }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await (wrapper.vm as any).openInteractiveTemplate('template-1');
+
+    expect(recentResources.markOpened).toHaveBeenCalledWith('interactive-template', 'template-1');
+    expect(push).toHaveBeenCalledWith({ name: 'interactive-template', params: { id: 'template-1' } });
   });
 
   it('shows resource type icons before card titles instead of type badges', async () => {
