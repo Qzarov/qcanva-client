@@ -131,8 +131,14 @@
       <span>Обновляем список…</span>
     </div>
     <section v-if="recentResources.length" class="dash-section dashboard-recents">
-      <div class="dash-section-head"><h2>Недавние</h2></div>
-      <div class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
+      <div class="dash-section-head">
+        <h2>Недавние</h2>
+        <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
+          <button class="dashboard-recents-nav-button" type="button" aria-label="Предыдущий элемент" title="Предыдущий элемент" @click="scrollRecentResources(-1)">‹</button>
+          <button class="dashboard-recents-nav-button" type="button" aria-label="Следующий элемент" title="Следующий элемент" @click="scrollRecentResources(1)">›</button>
+        </div>
+      </div>
+      <div ref="recentResourcesStrip" class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
         <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
           <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
           <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
@@ -856,6 +862,7 @@ export default defineComponent({
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const recentResourceHistory = ref<RecentResource[]>([]);
+    const recentResourcesStrip = ref<HTMLElement | null>(null);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1388,6 +1395,13 @@ export default defineComponent({
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat('ru-RU', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
+    const scrollRecentResources = (direction: -1 | 1) => {
+      const strip = recentResourcesStrip.value;
+      if (!strip) return;
+      const card = strip.querySelector<HTMLElement>('.dashboard-recent-card');
+      const gap = Number.parseFloat(getComputedStyle(strip).gap) || 10;
+      strip.scrollBy({ left: direction * ((card?.offsetWidth || 168) + gap), behavior: 'smooth' });
+    };
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -2293,6 +2307,8 @@ export default defineComponent({
       recentResourceTypeLabel,
       recentResourceIconClass,
       formatRecentOpenedAt,
+      recentResourcesStrip,
+      scrollRecentResources,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,

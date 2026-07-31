@@ -468,8 +468,32 @@ html, body {
   gap: 10px;
   overflow-x: auto;
   padding: 2px 2px 8px;
-  scrollbar-width: thin;
+  scrollbar-width: none;
   overscroll-behavior-x: contain;
+}
+.dashboard-recents-strip::-webkit-scrollbar { display: none; }
+.dashboard-recents-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-recents-nav-button {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.035);
+  color: var(--dark-text-primary);
+  font-size: 23px;
+  line-height: 1;
+  cursor: pointer;
+}
+.dashboard-recents-nav-button:hover {
+  border-color: color-mix(in srgb, var(--color-brands) 45%, var(--dark-neutral-border));
+  background: rgba(255,255,255,0.08);
 }
 .dashboard-recent-card {
   flex: 0 0 168px;
