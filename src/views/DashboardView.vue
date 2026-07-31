@@ -136,7 +136,7 @@
         <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
           <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
           <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
-          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }}</span>
+          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
         </button>
       </div>
     </section>
@@ -869,7 +869,7 @@ export default defineComponent({
           type: row.resourceType,
           title: '',
           openedAt: new Date(row.updatedAt).getTime(),
-        }));
+        })).sort((a, b) => b.openedAt - a.openedAt);
       } catch {
         recentResourceHistory.value = [];
       }
@@ -1194,7 +1194,7 @@ export default defineComponent({
     ]);
     const recentResources = computed<RecentResource[]>(() => {
       const available = new Map(allRecentResourceItems.value.map((item) => [`${item.type}:${item.id}`, item]));
-      return recentResourceHistory.value.flatMap((recent) => {
+      return [...recentResourceHistory.value].sort((a, b) => b.openedAt - a.openedAt).flatMap((recent) => {
         const item = available.get(`${recent.type}:${recent.id}`);
         return item ? [{ ...recent, title: item.title || recent.title, routeId: ('slug' in item && item.slug) || item.id }] : [];
       });
@@ -1385,6 +1385,9 @@ export default defineComponent({
     };
     const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : type === 'text-document' ? 'Документ' : 'Шаблон';
     const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
+    const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+    }).format(openedAt);
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -2289,6 +2292,7 @@ export default defineComponent({
       rememberRecentResource,
       recentResourceTypeLabel,
       recentResourceIconClass,
+      formatRecentOpenedAt,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,
