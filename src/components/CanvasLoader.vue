@@ -816,7 +816,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start", "template-roll"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -3021,6 +3021,8 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
+        } else if (touchNodeId && props.readonly) {
+          emit('readonly-action');
         } else if (isPanning.value) {
           camera.x = cameraStart.x + (t.clientX - panStart.x);
           camera.y = cameraStart.y + (t.clientY - panStart.y);
@@ -3106,6 +3108,8 @@ export default defineComponent({
           if (node && node.type === 'text') onNodeDblClick(node);
           lastTapTime = 0;
           lastTapTarget = "";
+        } else if (isDouble && props.readonly) {
+          emit('readonly-action');
         } else {
           lastTapTime = now;
           lastTapTarget = touchNodeId;
@@ -3117,6 +3121,8 @@ export default defineComponent({
           createTextNodeAtClient(touchStartX, touchStartY);
           lastTapTime = 0;
           lastTapTarget = "";
+        } else if (isDouble && props.readonly) {
+          emit('readonly-action');
         } else {
           // Single tap on blank space → deselect / close
           if (editingNodeId.value) onEditEnd();

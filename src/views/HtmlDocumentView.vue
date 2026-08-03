@@ -256,7 +256,7 @@
         class="html-source html-source-full"
         spellcheck="false"
       ></textarea>
-      <pre v-else class="html-source html-source-readonly"><code>{{ html }}</code></pre>
+      <pre v-else class="html-source html-source-readonly" @dblclick="notifyReadOnlyEditAttempt"><code>{{ html }}</code></pre>
     </main>
     </template>
   </div>
@@ -269,6 +269,7 @@ import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthen
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
+import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
@@ -289,6 +290,7 @@ export default defineComponent({
     const slugInput = ref('');
     const savingSlug = ref(false);
     const { show: showToast } = useToast();
+    const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const title = ref('');
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
@@ -807,7 +809,7 @@ export default defineComponent({
       showHistory, showHtmlActions, showExportMenu, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
       slug, slugInput, savingSlug, saveSlug, publicUrl, copyPublicLink,
-      doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet,
+      doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet, notifyReadOnlyEditAttempt,
       downloadDocument, exportPdfDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
     };
   },

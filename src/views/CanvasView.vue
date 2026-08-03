@@ -849,6 +849,7 @@
         @open-embed="openEmbedPicker"
         @node-edit-start="closeNodeEditingPanels"
         @template-roll="onTemplateRoll"
+        @readonly-action="notifyReadOnlyEditAttempt"
       />
     </template>
   </div>
@@ -865,6 +866,7 @@ import { useCanvasSocket } from '../composables/useCanvasSocket';
 import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
+import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 interface CanvasChangePayload {
@@ -890,6 +892,7 @@ export default defineComponent({
     const savingSlug = ref(false);
 
     const { show: showToast } = useToast();
+    const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
@@ -1809,7 +1812,7 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
-      showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword,
+      showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       drawToolLabel,

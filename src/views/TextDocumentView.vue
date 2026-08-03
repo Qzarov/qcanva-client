@@ -189,6 +189,7 @@ import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments } from '../api/client';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
+import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 
 export default defineComponent({
@@ -199,6 +200,7 @@ export default defineComponent({
     const id = route.params.id as string;
     const resolvedId = ref(id);
     const { show: showToast } = useToast();
+    const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
 
     const ydoc = new Y.Doc();
     const awarenessStates = new Map<number, Record<string, unknown>>();
@@ -536,7 +538,10 @@ export default defineComponent({
     }
 
     function focusEditor(event?: MouseEvent) {
-      if (!canEditContent.value) return;
+      if (!canEditContent.value) {
+        notifyReadOnlyEditAttempt();
+        return;
+      }
       const target = event?.target;
       if (target instanceof Element && target.closest('.ProseMirror')) return;
       editor.value?.chain().focus('end').run();
