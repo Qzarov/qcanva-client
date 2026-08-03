@@ -440,22 +440,18 @@ export default defineComponent({
       downloadHtmlDocument(title.value, html.value);
     }
 
-    function exportPdfDocument() {
-      syncHtmlFromPreview();
-      // Browsers own PDF generation. Opening a dedicated print document keeps
-      // document styles intact and lets users choose "Save as PDF" reliably.
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        showToast('Allow pop-ups to export this document as PDF.', 'error');
-        return;
+    async function exportPdfDocument() {
+      try {
+        const blob = await htmlDocuments.exportPdf(resolvedId.value);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${(title.value || 'qcanva-document').replace(/[\\/:*?"<>|]+/g, '-').trim() || 'qcanva-document'}.pdf`;
+        link.click();
+        URL.revokeObjectURL(url);
+      } catch (error: any) {
+        showToast(error?.message || 'Failed to export PDF', 'error');
       }
-      printWindow.document.open();
-      printWindow.document.write(html.value);
-      printWindow.document.close();
-      window.setTimeout(() => {
-        printWindow.focus();
-        printWindow.print();
-      }, 250);
     }
 
     async function save() {

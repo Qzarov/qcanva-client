@@ -308,6 +308,13 @@ export const canvas = {
 };
 
 export const htmlDocuments = {
+  exportPdf: async (id: string) => {
+    const response = await fetch(`${API_BASE}/html-documents/${encodeURIComponent(id)}/export/pdf`, {
+      headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {},
+    });
+    if (!response.ok) throw new ApiError(response.status, 'Failed to export PDF');
+    return response.blob();
+  },
   list: () => request<{ groups: any[]; documents: any[] }>('/html-documents'),
   publicList: () => request<{ documents: any[] }>('/html-documents/public', { skipAuthRedirect: true }),
   createGroup: (name: string) =>
