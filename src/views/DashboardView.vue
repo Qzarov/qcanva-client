@@ -62,7 +62,7 @@
           <span class="menu-icon">#</span>
           <span>Manage tags</span>
         </button>
-        <button class="btn-ghost" @click.stop="importFile">
+        <button class="btn-ghost" @click.stop="importFile()">
           <span class="menu-icon">⇧</span>
           <span>Import</span>
         </button>
@@ -255,6 +255,7 @@
                   :disabled="isBusy"
                 >⋯</button>
                 <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" @click="importToFolder(activeFolder)" :disabled="isBusy">Импорт</button>
                   <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">Share</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
@@ -2276,11 +2277,14 @@ export default defineComponent({
     });
 
     const fileInput = ref<HTMLInputElement | null>(null);
+    const importFolderId = ref<string | null>(null);
 
-    const importFile = () => {
+    const importFile = (folderId: string | null = null) => {
+      importFolderId.value = folderId;
       openControlMenu.value = '';
       fileInput.value?.click();
     };
+    const importToFolder = (folder: FolderSummary) => importFile(folder.id);
 
     const onFileSelected = async (e: Event) => {
       const file = (e.target as HTMLInputElement).files?.[0];
@@ -2289,11 +2293,11 @@ export default defineComponent({
         const text = await file.text();
         const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
         const title = file.name.replace(/\.(canvas|json|html?|htm)$/i, '') || 'Imported';
+        const targetFolderId = importFolderId.value || (await ensureFolderByName('Unsorted'))?.id;
         if (isHtml) {
-          const targetFolder = await ensureFolderByName('Unsorted');
           const doc = await runAction(
             'import-html-document',
-            () => htmlDocuments.create({ title, html: text, folderId: targetFolder?.id }),
+            () => htmlDocuments.create({ title, html: text, folderId: targetFolderId }),
             `Imported ${title}`,
           );
           if (!doc) return;
@@ -2302,10 +2306,9 @@ export default defineComponent({
         }
 
         const data = JSON.parse(text);
-        const targetFolder = await ensureFolderByName('Unsorted');
         const c = await runAction(
           'import-canvas',
-          () => canvas.create(title, JSON.stringify(data), targetFolder?.id),
+          () => canvas.create(title, JSON.stringify(data), targetFolderId),
           `Imported ${title}`,
         );
         if (!c) return;
@@ -2313,8 +2316,10 @@ export default defineComponent({
       } catch (err) {
         setFeedback('error', err instanceof Error ? err.message : 'Failed to import file');
         console.error('Failed to import file:', err);
+      } finally {
+        importFolderId.value = null;
+        (e.target as HTMLInputElement).value = '';
       }
-      (e.target as HTMLInputElement).value = '';
     };
 
     const renamingId = ref('');
@@ -2492,6 +2497,7 @@ export default defineComponent({
       finishRename,
       fileInput,
       importFile,
+      importToFolder,
       onFileSelected,
       resolveAccessRequest,
     };
