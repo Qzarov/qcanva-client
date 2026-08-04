@@ -54,7 +54,8 @@ jobs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/qcanva-upload.jks
           chmod 600 android/qcanva-upload.jks
           {
-            echo 'storeFile=qcanva-upload.jks'
+            # app/build.gradle resolves relative signing paths from android/app.
+            echo 'storeFile=../qcanva-upload.jks'
             echo "storePassword=$ANDROID_KEYSTORE_PASSWORD"
             echo "keyAlias=$ANDROID_KEY_ALIAS"
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
