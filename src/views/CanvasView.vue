@@ -171,6 +171,7 @@
       <div v-if="syncNotice" class="sync-notice" :class="'sync-notice-' + syncNotice.kind">
         {{ syncNotice.text }}
       </div>
+      <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
       <section v-if="showPlugins && role === 'owner'" class="canvas-plugin-panel">
         <div class="canvas-plugin-panel-head"><strong>Плагины канваса</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
@@ -867,6 +868,7 @@ import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
+import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 interface CanvasChangePayload {
@@ -966,6 +968,7 @@ export default defineComponent({
     ];
 
     const loading = ref(true);
+    const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
     const error = ref('');
     const accessDenied = ref(false);
     const requestingAccess = ref(false);
@@ -1007,6 +1010,7 @@ export default defineComponent({
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let isApplyingRemote = false;
+    let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     let chromeResizeObserver: ResizeObserver | null = null;
 
     const syncStatus = computed(() => {
@@ -1187,6 +1191,7 @@ export default defineComponent({
       try {
         accessDenied.value = false;
         const res = await canvasApi.get(resolvedId.value);
+        writeNativeResourceCache('canvas', [canvasId, res.canvas.id, res.canvas.slug || ''], res);
         // Canonicalize to the real id (the URL may have been a slug) so the WS
         // room and all mutations use it.
         resolvedId.value = res.canvas.id;
@@ -1280,11 +1285,19 @@ export default defineComponent({
           loading.value = false;
           return;
         }
+        if (canvasData.value) {
+          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          return;
+        }
         console.warn('Canvas is not available, redirecting to dashboard', e);
         await router.replace('/dashboard');
         return;
       }
       loading.value = false;
+      if (cacheStatus.value?.kind === 'refreshing') {
+        cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+        cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
+      }
     };
 
     const requestCanvasAccess = async () => {
@@ -1756,12 +1769,34 @@ export default defineComponent({
     onMounted(() => {
       window.addEventListener('resize', updateChromeMetrics);
       window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
+      const cached = readNativeResourceCache<any>('canvas', canvasId);
+      if (cached?.value?.canvas?.data) {
+        const res = cached.value;
+        resolvedId.value = res.canvas.id;
+        slug.value = res.canvas.slug || null;
+        slugInput.value = slug.value || '';
+        title.value = res.canvas.title;
+        canvasData.value = JSON.parse(res.canvas.data);
+        historyAccess.value = res.canvas.historyAccess || 'owner';
+        revision.value = res.canvas.revision ?? 0;
+        setRevision(revision.value);
+        role.value = res.role;
+        isPublic.value = res.canvas.isPublic;
+        visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
+        allowPublicEdit.value = !!res.canvas.allowPublicEdit;
+        listedInPublic.value = res.canvas.listedInPublic !== false;
+        passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
+        passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
+        loading.value = false;
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+      }
       void load();
       void nextTick(observeChromeMetrics);
     });
     onUnmounted(() => {
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
+      if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
       window.removeEventListener('resize', updateChromeMetrics);
       window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
@@ -1793,7 +1828,7 @@ export default defineComponent({
     return {
       route, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
-      loading, error, accessDenied, requestingAccess, accessRequestSent, requestedRole,
+      loading, error, accessDenied, cacheStatus, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,

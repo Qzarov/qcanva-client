@@ -4417,3 +4417,24 @@ html, body {
 }
 .drawing-actions-toolbar .draw-action-width { width: 90px; accent-color: var(--color-brands, #00ff00); }
 .draw-action-sep { width: 1px; height: 22px; background: var(--dark-neutral-border, #313442); }
+
+/* Native app: a cached resource is visible while the latest version arrives. */
+.resource-cache-status {
+  position: fixed;
+  z-index: 500;
+  top: calc(env(safe-area-inset-top, 0px) + 58px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--dark-neutral-border, #313442);
+  border-radius: 10px;
+  background: rgba(24, 28, 34, .96);
+  color: #eef4ee;
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+  pointer-events: none;
+}
+.resource-cache-status-refreshing { border-color: #6f9eff; }
+.resource-cache-status-success { border-color: #44cf6e; }
+.resource-cache-status-error { border-color: #f1a34f; }

@@ -97,6 +97,7 @@
       <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
       <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
     </header>
+    <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
       <div class="share-panel-header">
         <h3>Access</h3>
@@ -270,6 +271,7 @@ import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
+import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
@@ -301,6 +303,9 @@ export default defineComponent({
     const allowPublicEdit = ref(false);
     const listedInPublic = ref(true);
     const loading = ref(true);
+    const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
+    const hydratedFromCache = ref(false);
+    let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     const accessDenied = ref(false);
     const requestedRole = ref<'read' | 'edit'>('read');
     const requestingAccess = ref(false);
@@ -362,9 +367,10 @@ export default defineComponent({
 
     async function load() {
       try {
-        loading.value = true;
+        if (!hydratedFromCache.value) loading.value = true;
         accessDenied.value = false;
         const res = await htmlDocuments.get(resolvedId.value);
+        writeNativeResourceCache('html', [id, res.document.id, res.document.slug || ''], res);
         // Canonicalize to the real id (URL may have been a slug).
         resolvedId.value = res.document.id;
         slug.value = res.document.slug || null;
@@ -422,9 +428,17 @@ export default defineComponent({
           await router.replace({ name: 'dashboard', query: { type: 'html' } });
           return;
         }
+        if (hydratedFromCache.value) {
+          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          return;
+        }
         throw e;
       } finally {
         loading.value = false;
+        if (cacheStatus.value?.kind === 'refreshing') {
+          cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+          cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
+        }
       }
     }
 
@@ -789,14 +803,36 @@ export default defineComponent({
     }
 
     onMounted(() => {
+      const cached = readNativeResourceCache<any>('html', id);
+      if (cached?.value?.document) {
+        const res = cached.value;
+        resolvedId.value = res.document.id;
+        slug.value = res.document.slug || null;
+        slugInput.value = slug.value || '';
+        title.value = res.document.title;
+        html.value = res.document.html;
+        savedSnapshot.value = { title: title.value, html: html.value };
+        revision.value = res.document.revision ?? 0;
+        setRevision(revision.value);
+        visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
+        allowPublicEdit.value = !!res.document.allowPublicEdit;
+        listedInPublic.value = res.document.listedInPublic !== false;
+        passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
+        passwordAccessRole.value = res.document.passwordAccessRole || 'read';
+        role.value = res.role;
+        hydratedFromCache.value = true;
+        loading.value = false;
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+      }
       void load();
       window.addEventListener('keydown', onEditorKeydown);
     });
     onBeforeUnmount(() => {
+      if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,

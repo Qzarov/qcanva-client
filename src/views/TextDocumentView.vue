@@ -56,6 +56,7 @@
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
         </div>
       </header>
+      <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
       <section v-if="showShare && role === 'owner'" class="share-panel text-doc-share-panel">
         <div class="share-panel-header">
@@ -190,6 +191,7 @@ import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setTok
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
+import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 
 export default defineComponent({
@@ -229,6 +231,9 @@ export default defineComponent({
     const role = ref('read');
     const revision = ref(0);
     const loading = ref(true);
+    const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
+    const hydratedFromCache = ref(false);
+    let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     const accessDenied = ref(false);
     const requestedRole = ref<'read' | 'edit'>('read');
     const requestingAccess = ref(false);
@@ -320,9 +325,10 @@ export default defineComponent({
 
     async function load() {
       try {
-        loading.value = true;
+        if (!hydratedFromCache.value) loading.value = true;
         accessDenied.value = false;
         const res = await textDocuments.get(resolvedId.value);
+        writeNativeResourceCache('text-document', [id, res.document.id, res.document.slug || ''], res);
         resolvedId.value = res.document.id;
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
@@ -372,9 +378,17 @@ export default defineComponent({
           await router.replace({ name: 'dashboard', query: { type: 'text-document' } });
           return;
         }
+        if (hydratedFromCache.value) {
+          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          return;
+        }
         throw e;
       } finally {
         loading.value = false;
+        if (cacheStatus.value?.kind === 'refreshing') {
+          cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+          cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
+        }
       }
     }
 
@@ -547,15 +561,44 @@ export default defineComponent({
       editor.value?.chain().focus('end').run();
     }
 
-    onMounted(load);
+    onMounted(() => {
+      const cached = readNativeResourceCache<any>('text-document', id);
+      if (cached?.value?.document) {
+        const res = cached.value;
+        resolvedId.value = res.document.id;
+        slug.value = res.document.slug || null;
+        slugInput.value = slug.value || '';
+        title.value = res.document.title || 'Untitled document';
+        savedTitle.value = title.value;
+        role.value = res.role;
+        revision.value = res.document.revision ?? 0;
+        setRevision(revision.value);
+        visibility.value = res.document.visibility || 'private';
+        allowPublicEdit.value = !!res.document.allowPublicEdit;
+        listedInPublic.value = res.document.listedInPublic !== false;
+        passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
+        passwordAccessRole.value = res.document.passwordAccessRole || 'read';
+        const state = res.document.snapshot?.yjsState;
+        if (state) {
+          applyingInitialState = true;
+          Y.applyUpdate(ydoc, base64ToUint8Array(state), 'remote');
+          applyingInitialState = false;
+        }
+        hydratedFromCache.value = true;
+        loading.value = false;
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+      }
+      void load();
+    });
     onBeforeUnmount(() => {
+      if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
       disconnect();
       editor.value?.destroy();
       ydoc.destroy();
     });
 
     return {
-      loading,
+      loading, cacheStatus,
       accessDenied,
       title,
       route,
