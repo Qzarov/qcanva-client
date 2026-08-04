@@ -255,6 +255,8 @@ html, body {
   font-weight: 700;
   color: var(--dark-text-primary);
 }
+.dashboard-brand { display: flex; align-items: center; gap: 10px; }
+.dashboard-brand > img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }
 .app-main {
   min-height: 0;
   overflow-y: auto;

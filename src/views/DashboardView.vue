@@ -2,9 +2,12 @@
   <div class="app-layout" @click="closeCardMenu">
     <header class="app-header">
       <div class="app-header-inner">
-        <div>
-          <h1>QCanva</h1>
-          <p v-if="!isLoggedIn" class="dash-subtitle">Public resources available without registration.</p>
+        <div class="dashboard-brand">
+          <img src="/qcanva-logo.png" alt="QCanva" />
+          <div>
+            <h1>QCanva</h1>
+            <p v-if="!isLoggedIn" class="dash-subtitle">Public resources available without registration.</p>
+          </div>
         </div>
         <div class="header-user-slot">
           <template v-if="isLoggedIn">

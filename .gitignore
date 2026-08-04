@@ -21,6 +21,10 @@ dist-ssr
 android/keystore.properties
 android/*.jks
 android/*.keystore
+android/*.pem
+android/pepk_out.zip
+pepk.jar
+pepk.jar:Zone.Identifier
 
 # Editor directories and files
 .vscode/*

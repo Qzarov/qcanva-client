@@ -1,7 +1,7 @@
 <template>
   <div class="landing">
     <header class="landing-header">
-      <router-link to="/" class="landing-brand"><span class="brand-mark">Q</span><span>QCanva</span></router-link>
+      <router-link to="/" class="landing-brand"><img class="brand-logo" src="/qcanva-logo.png" alt="QCanva" /><span>QCanva</span></router-link>
       <nav class="landing-nav" aria-label="Навигация"><a href="#features">Возможности</a><a href="#workflow">Как работает</a><a href="#agents">Для агентов</a></nav>
       <div class="landing-actions">
         <router-link v-if="isLoggedIn" :to="{ name: 'dashboard' }" class="landing-register">Дашборд</router-link>
@@ -19,7 +19,7 @@
           <div class="hero-note"><span class="avatars"><i>Я</i><i>А</i><i>+</i></span> Уже готово для вашей команды, проекта или кампании</div>
         </div>
         <div class="hero-visual" aria-label="Пример канваса">
-          <div class="visual-toolbar"><span class="visual-logo">Q</span><span></span><span></span><span></span><b>Поделиться</b></div>
+          <div class="visual-toolbar"><img class="visual-logo" src="/qcanva-logo.png" alt="" /><span></span><span></span><span></span><b>Поделиться</b></div>
           <div class="canvas-grid"></div>
           <div class="canvas-card card-plan"><small>ПЛАН</small><strong>Запуск проекта</strong><div><i></i><i></i><i></i></div></div>
           <div class="canvas-card card-note"><span>✦</span><strong>Идея</strong><p>Собрать всё важное в одном месте</p></div>
@@ -77,7 +77,7 @@ export default defineComponent({ setup: () => ({ year: new Date().getFullYear(),
 }
 .landing-header { border-bottom: 1px solid var(--dark-neutral-border); }
 .landing-brand { color: var(--dark-text-primary); }
-.brand-mark { color: var(--color-brand-on); background: var(--color-brands); border-radius: var(--radius-sm); font-family: inherit; }
+.brand-logo { width: 30px; height: 30px; border-radius: 9px; object-fit: cover; }
 .landing-nav a, .landing-login, .landing-footer a { color: var(--dark-text-secondary); }
 .landing-register { color: var(--color-brand-on); background: var(--color-brands); border-radius: var(--radius-sm); }
 .landing-hero { background: linear-gradient(135deg, rgba(0,42,0,.7), rgba(31,33,40,.98)); border: 1px solid var(--dark-neutral-border); border-radius: var(--radius-xl); }
@@ -93,7 +93,7 @@ export default defineComponent({ setup: () => ({ year: new Date().getFullYear(),
 .avatars i { border-color: #102010; color: var(--color-brand-on); background: var(--color-brands); }
 .avatars i:nth-child(2) { background: var(--accent-green); }.avatars i:last-child { color: var(--dark-text-primary); background: var(--dark-neutral-bg); }
 .hero-visual { border: 1px solid var(--dark-neutral-border); border-radius: var(--radius-lg); background: var(--dark-neutral-bg); box-shadow: var(--shadow-card); transform: rotate(0); }
-.visual-toolbar { background: rgba(0,32,0,.84); border-bottom-color: var(--dark-neutral-border); }.visual-toolbar b { color: var(--color-brand-on); background: var(--color-brands); }.visual-logo { color: var(--color-brand-on); background: var(--color-brands); }
+.visual-toolbar { background: rgba(0,32,0,.84); border-bottom-color: var(--dark-neutral-border); }.visual-toolbar b { color: var(--color-brand-on); background: var(--color-brands); }.visual-logo { object-fit: cover; color: var(--color-brand-on); background: var(--color-brands); }
 .card-plan { color: var(--dark-text-primary); background: rgba(0,42,0,.95); border: 1px solid #22502a; }.card-plan i { background: var(--color-brands); }
 .card-note { color: #102515; background: var(--accent-green); }.card-doc { color: var(--dark-text-primary); background: #292d37; border: 1px solid #444958; }.canvas-card p { color: var(--dark-text-secondary); }.canvas-lines { stroke: var(--color-brands); opacity: .75; }
 .landing-features article { padding: 20px; border: 1px solid var(--dark-neutral-border); border-radius: var(--radius-md); background: var(--dark-card-bg); }.section-intro { padding: 20px 0; }.feature-icon { color: var(--color-brand-on); background: var(--color-brands); }.coral { background: var(--accent-yellow); }.mint { background: var(--accent-green); }.landing-features h3 { color: var(--dark-text-primary); }.landing-features p { color: var(--dark-text-muted); }
