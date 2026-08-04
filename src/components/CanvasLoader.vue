@@ -760,12 +760,17 @@ interface CanvasEdge {
   hidden?: boolean;
 }
 
+type NodeUpdateChanges = Omit<Partial<CanvasNode>, 'color' | 'borderColor'> & {
+  color?: string | null;
+  borderColor?: string | null;
+};
+
 type CanvasOp =
   | { type: 'nodes-move'; moves: { id: string; x: number; y: number }[] }
   | { type: 'node-resize'; id: string; x: number; y: number; width: number; height: number }
   | { type: 'node-add'; node: CanvasNode }
   | { type: 'node-delete'; ids: string[] }
-  | { type: 'node-update'; id: string; changes: Partial<CanvasNode> }
+  | { type: 'node-update'; id: string; changes: NodeUpdateChanges }
   | { type: 'edge-add'; edge: CanvasEdge }
   | { type: 'edge-delete'; id: string }
   | { type: 'edge-update'; id: string; changes: Partial<CanvasEdge> }
@@ -2012,7 +2017,8 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.color = color;
-        emitOp({ type: 'node-update', id: nodeId, changes: { color } });
+        // JSON drops `undefined`, so clearing a fill must be encoded explicitly.
+        emitOp({ type: 'node-update', id: nodeId, changes: { color: color ?? null } });
       }
     };
 
@@ -2085,7 +2091,8 @@ export default defineComponent({
       if (node) {
         pushUndo();
         node.borderColor = color;
-        emitOp({ type: 'node-update', id: nodeId, changes: { borderColor: color } });
+        // JSON drops `undefined`, so clearing a border must be encoded explicitly.
+        emitOp({ type: 'node-update', id: nodeId, changes: { borderColor: color ?? null } });
       }
     };
 
