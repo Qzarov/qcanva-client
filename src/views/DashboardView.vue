@@ -57,8 +57,24 @@
     >
     <div class="dashboard-shell">
     <section v-if="isLoggedIn" class="resource-control-panel">
-      <div class="resource-control-actions">
-          <div class="control-menu">
+      <div class="dash-actions-secondary">
+        <button class="btn-ghost" @click.stop="openTagManager">
+          <span class="menu-icon">#</span>
+          <span>Manage tags</span>
+        </button>
+        <button class="btn-ghost" @click.stop="importFile">
+          <span class="menu-icon">⇧</span>
+          <span>Import</span>
+        </button>
+        <router-link v-if="admin" to="/admin" class="btn-ghost">
+          <span class="menu-icon">◎</span>
+          <span>Admin</span>
+        </router-link>
+      </div>
+    </section>
+    <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
+    <div class="dash-toolbar">
+      <div class="control-menu dashboard-new-menu">
             <button class="btn-primary" @click.stop="toggleNewMenu">
               <span class="menu-icon">+</span>
               <span>New</span>
@@ -86,24 +102,6 @@
               </button>
             </div>
           </div>
-          <div class="dash-actions-secondary">
-            <button class="btn-ghost" @click.stop="openTagManager">
-              <span class="menu-icon">#</span>
-              <span>Manage tags</span>
-            </button>
-            <button class="btn-ghost" @click.stop="importFile">
-              <span class="menu-icon">⇧</span>
-              <span>Import</span>
-            </button>
-            <router-link v-if="admin" to="/admin" class="btn-ghost">
-              <span class="menu-icon">◎</span>
-              <span>Admin</span>
-            </router-link>
-          </div>
-      </div>
-    </section>
-    <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
-    <div class="dash-toolbar">
       <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
       <select v-model="sortMode" class="dash-sort-select">
         <option value="updated-desc">Newest first</option>
@@ -126,6 +124,7 @@
           :class="{ active: selectedTag === tag }"
           @click.stop="selectedTag = tag"
         >#{{ tag }}</button>
+        <span class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
     </div>
 
@@ -141,12 +140,15 @@
           <button class="dashboard-recents-nav-button" type="button" aria-label="Следующий элемент" title="Следующий элемент" @click="scrollRecentResources(1)">›</button>
         </div>
       </div>
-      <div ref="recentResourcesStrip" class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
-        <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-          <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
-          <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
-          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
-        </button>
+      <div class="dashboard-recents-strip-wrap">
+        <div ref="recentResourcesStrip" class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
+          <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+            <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
+            <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
+            <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
+          </button>
+        </div>
+        <span class="dashboard-recents-swipe-hint" aria-hidden="true">›</span>
       </div>
     </section>
     <div
@@ -238,7 +240,7 @@
             :key="activeFolder.id"
             class="folder-manager-row"
           >
-            <div class="folder-manager-top">
+              <div class="folder-manager-top">
               <div class="folder-manager-main">
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
@@ -268,8 +270,12 @@
                   >Delete</button>
                 </div>
               </div>
-            </div>
-              <div class="folder-manager-body">
+              </div>
+              <div v-if="activeFolder.items.length > 6" class="folder-scroll-controls" aria-label="Прокрутка элементов группы">
+                <button type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
+                <button type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
+              </div>
+              <div ref="activeFolderBody" class="folder-manager-body">
                 <div class="dash-grid">
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
@@ -729,7 +735,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, nextTick } from 'vue';
+import { defineComponent, ref, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
@@ -866,6 +872,7 @@ export default defineComponent({
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const recentResourceHistory = ref<RecentResource[]>([]);
     const recentResourcesStrip = ref<HTMLElement | null>(null);
+    const activeFolderBody = ref<HTMLElement | null>(null);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1087,33 +1094,43 @@ export default defineComponent({
 
     const allTagNames = computed(() => {
       const names = new Set<string>();
-      for (const tag of sharedResourceTags.value) names.add(tag.name);
+      const addTags = (tags: CanvasTag[], type: FolderItem['type']) => {
+        if (contentFilter.value !== 'all' && contentFilter.value !== type) return;
+        for (const tag of tags) names.add(tag.name);
+      };
       for (const list of [own.value, shared.value, publicCanvases.value]) {
         for (const canvas of list) {
-          for (const tag of canvas.tags) names.add(tag.name);
+          addTags(canvas.tags, 'canvas');
         }
       }
       for (const document of unfiledHtmlDocuments.value) {
-        for (const tag of document.tags) names.add(tag.name);
+        addTags(document.tags, 'html-document');
       }
       for (const document of publicHtmlDocuments.value) {
-        for (const tag of document.tags) names.add(tag.name);
+        addTags(document.tags, 'html-document');
       }
       for (const document of unfiledTextDocuments.value) {
-        for (const tag of document.tags) names.add(tag.name);
+        addTags(document.tags, 'text-document');
       }
       for (const document of publicTextDocuments.value) {
-        for (const tag of document.tags) names.add(tag.name);
+        addTags(document.tags, 'text-document');
       }
       for (const folder of allResourceFolders.value) {
+        for (const canvas of folder.items?.canvases || []) {
+          addTags(normalizeTags(canvas.tags), 'canvas');
+        }
         for (const document of folder.items?.htmlDocuments || []) {
-          for (const tag of normalizeTags(document.tags)) names.add(tag.name);
+          addTags(normalizeTags(document.tags), 'html-document');
         }
         for (const document of folder.items?.textDocuments || []) {
-          for (const tag of normalizeTags(document.tags)) names.add(tag.name);
+          addTags(normalizeTags(document.tags), 'text-document');
         }
       }
       return Array.from(names).sort();
+    });
+
+    watch(contentFilter, () => {
+      if (selectedTag.value && !allTagNames.value.includes(selectedTag.value)) selectedTag.value = '';
     });
 
     const tagSuggestions = computed(() => {
@@ -1404,6 +1421,9 @@ export default defineComponent({
       const card = strip.querySelector<HTMLElement>('.dashboard-recent-card');
       const gap = Number.parseFloat(getComputedStyle(strip).gap) || 10;
       strip.scrollBy({ left: direction * ((card?.offsetWidth || 168) + gap), behavior: 'smooth' });
+    };
+    const scrollActiveFolder = (direction: -1 | 1) => {
+      activeFolderBody.value?.scrollBy({ top: direction * 250, behavior: 'smooth' });
     };
 
     const openTextDocumentFromCard = (id: string) => {
@@ -2312,6 +2332,8 @@ export default defineComponent({
       formatRecentOpenedAt,
       recentResourcesStrip,
       scrollRecentResources,
+      activeFolderBody,
+      scrollActiveFolder,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,

@@ -474,6 +474,9 @@ html, body {
   overscroll-behavior-x: contain;
 }
 .dashboard-recents-strip::-webkit-scrollbar { display: none; }
+.dashboard-recents-strip-wrap { position: relative; }
+.dashboard-recents-swipe-hint,
+.tag-filter-scroll-hint { display: none; }
 .dashboard-recents-nav {
   display: inline-flex;
   align-items: center;
@@ -1147,6 +1150,7 @@ html, body {
   overscroll-behavior: auto;
   padding-right: 2px;
 }
+.folder-scroll-controls { display: none; }
 .folder-collapse-enter-active,
 .folder-collapse-leave-active {
   transition: max-height 0.24s ease, opacity 0.2s ease, transform 0.2s ease, margin-top 0.24s ease;
@@ -1966,7 +1970,7 @@ html, body {
   }
 
   .resource-control-panel {
-    padding: 8px;
+    display: none;
   }
 
   .resource-control-actions .btn-primary,
@@ -2030,25 +2034,71 @@ html, body {
     text-decoration: none;
   }
 
-  .dash-search {
-    width: 100%;
-    max-width: none;
-    min-height: 44px;
-    font-size: 16px;
+  .dash-toolbar {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) 88px;
+    gap: 6px;
+    margin-bottom: 18px;
   }
 
-  .dash-sort-select,
-  .content-type-tabs,
-  .tag-filter-list {
+  .dashboard-new-menu .btn-primary {
+    min-height: 38px;
+    padding: 5px 8px;
+    gap: 4px;
+    font-size: 12px;
+  }
+
+  .dash-search {
     width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding: 7px 9px;
+    font-size: 14px;
   }
 
   .dash-sort-select {
+    width: 88px;
+    min-width: 0;
+    min-height: 38px;
+    padding: 6px;
+    font-size: 12px;
     flex-basis: auto;
+  }
+
+  .content-type-tabs,
+  .tag-filter-list {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .content-type-tabs button {
     flex: 1;
+  }
+
+  .tag-filter-list {
+    position: relative;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding: 1px 28px 5px 1px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tag-filter-list::-webkit-scrollbar { display: none; }
+  .tag-filter { flex: 0 0 auto; padding: 5px 10px; }
+  .tag-filter-scroll-hint {
+    display: grid;
+    position: sticky;
+    right: 0;
+    flex: 0 0 auto;
+    width: 20px;
+    margin-left: -26px;
+    place-items: center;
+    color: var(--color-brands);
+    font-size: 22px;
+    line-height: 1;
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--dark-neutral-bg) 45%);
   }
 
   .home-tabs {
@@ -2357,6 +2407,74 @@ html, body {
   .folder-manager-body {
     min-height: 360px;
     max-height: 360px;
+  }
+
+  .dashboard-recents { margin-top: 22px; }
+  .dashboard-recents-nav { display: none; }
+  .dashboard-recents-strip { gap: 8px; padding-bottom: 6px; }
+  .dashboard-recent-card {
+    flex-basis: 132px;
+    min-height: 76px;
+    padding: 9px;
+    grid-template-columns: 17px minmax(0, 1fr);
+    gap: 5px 6px;
+  }
+  .dashboard-recent-title { font-size: 12px; -webkit-line-clamp: 2; }
+  .dashboard-recent-meta { font-size: 10px; }
+  .dashboard-recents-swipe-hint {
+    display: grid;
+    position: absolute;
+    z-index: 2;
+    top: 50%;
+    right: 0;
+    width: 28px;
+    height: 34px;
+    transform: translateY(-50%);
+    place-items: center;
+    border: 1px solid color-mix(in srgb, var(--color-brands) 48%, var(--dark-neutral-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--dark-neutral-bg) 88%, transparent);
+    color: var(--color-brands);
+    font-size: 24px;
+    line-height: 1;
+    pointer-events: none;
+  }
+
+  .dashboard .dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .dashboard .canvas-card {
+    min-height: 128px;
+    padding: 12px 32px 12px 12px;
+    border-radius: 10px;
+  }
+  .dashboard .card-title,
+  .dashboard .card-title-input { font-size: 13px; }
+  .dashboard .card-meta { gap: 4px; }
+  .dashboard .badge,
+  .dashboard .card-date { font-size: 9px; }
+  .dashboard .card-tags { gap: 3px; margin-top: 7px; }
+  .dashboard .card-tag { padding: 2px 6px; font-size: 9px; }
+  .dashboard .card-folder,
+  .dashboard .card-owner { font-size: 10px; }
+  .dashboard .canvas-card .card-manage,
+  .dashboard .canvas-card .card-pin {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+  .folder-scroll-controls {
+    display: inline-flex;
+    align-self: flex-end;
+    gap: 5px;
+    margin-top: -2px;
+  }
+  .folder-scroll-controls .btn-ghost {
+    min-height: 28px;
+    width: 30px;
+    padding: 0;
+    font-size: 15px;
   }
 }
 .canvas-card.dragging {
