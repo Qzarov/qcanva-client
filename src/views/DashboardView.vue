@@ -115,7 +115,7 @@
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
         <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">Docs</button>
       </div>
-      <div v-if="allTagNames.length" class="tag-filter-list">
+      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
         <button
           v-for="tag in allTagNames"
@@ -124,7 +124,7 @@
           :class="{ active: selectedTag === tag }"
           @click.stop="selectedTag = tag"
         >#{{ tag }}</button>
-        <span class="tag-filter-scroll-hint" aria-hidden="true">›</span>
+        <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
     </div>
 
@@ -148,7 +148,7 @@
             <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
           </button>
         </div>
-        <span class="dashboard-recents-swipe-hint" aria-hidden="true">›</span>
+        <span v-if="hasRecentOverflow" class="dashboard-recents-swipe-hint" aria-hidden="true">›</span>
       </div>
     </section>
     <div
@@ -271,11 +271,11 @@
                 </div>
               </div>
               </div>
-              <div v-if="activeFolder.items.length > 6" class="folder-scroll-controls" aria-label="Прокрутка элементов группы">
-                <button type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
-                <button type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
+              <div v-if="canScrollFolderUp || canScrollFolderDown" class="folder-scroll-controls" aria-label="Прокрутка элементов группы">
+                <button v-if="canScrollFolderUp" type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
+                <button v-if="canScrollFolderDown" type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
               </div>
-              <div ref="activeFolderBody" class="folder-manager-body">
+              <div ref="activeFolderBody" class="folder-manager-body" @scroll="updateFolderScrollControls">
                 <div class="dash-grid">
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
@@ -735,7 +735,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted, computed, nextTick, watch } from 'vue';
+import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
@@ -872,7 +872,12 @@ export default defineComponent({
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const recentResourceHistory = ref<RecentResource[]>([]);
     const recentResourcesStrip = ref<HTMLElement | null>(null);
+    const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
+    const hasTagOverflow = ref(false);
+    const hasRecentOverflow = ref(false);
+    const canScrollFolderUp = ref(false);
+    const canScrollFolderDown = ref(false);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1425,6 +1430,28 @@ export default defineComponent({
     const scrollActiveFolder = (direction: -1 | 1) => {
       activeFolderBody.value?.scrollBy({ top: direction * 250, behavior: 'smooth' });
     };
+
+    const updateFolderScrollControls = () => {
+      const body = activeFolderBody.value;
+      if (!body) {
+        canScrollFolderUp.value = false;
+        canScrollFolderDown.value = false;
+        return;
+      }
+      canScrollFolderUp.value = body.scrollTop > 2;
+      canScrollFolderDown.value = body.scrollTop + body.clientHeight < body.scrollHeight - 2;
+    };
+
+    const refreshOverflowIndicators = () => {
+      void nextTick(() => {
+        const tagsList = tagFilterList.value;
+        hasTagOverflow.value = Boolean(tagsList && tagsList.scrollWidth > tagsList.clientWidth + 2);
+        const recentsStrip = recentResourcesStrip.value;
+        hasRecentOverflow.value = Boolean(recentsStrip && recentsStrip.scrollWidth > recentsStrip.clientWidth + 2);
+        updateFolderScrollControls();
+      });
+    };
+    watch([allTagNames, recentResources, activeFolder], refreshOverflowIndicators, { flush: 'post' });
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -2317,7 +2344,10 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
+      window.addEventListener('resize', refreshOverflowIndicators);
+      refreshOverflowIndicators();
     });
+    onBeforeUnmount(() => window.removeEventListener('resize', refreshOverflowIndicators));
 
     return {
       admin,
@@ -2332,8 +2362,14 @@ export default defineComponent({
       formatRecentOpenedAt,
       recentResourcesStrip,
       scrollRecentResources,
+      tagFilterList,
       activeFolderBody,
       scrollActiveFolder,
+      updateFolderScrollControls,
+      hasTagOverflow,
+      hasRecentOverflow,
+      canScrollFolderUp,
+      canScrollFolderDown,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,
