@@ -6,6 +6,8 @@ def hasReleaseSigning = releasePropertiesFile.exists()
 if (hasReleaseSigning) {
     releasePropertiesFile.withInputStream { releaseProperties.load(it) }
 }
+def releaseVersionCode = (System.getenv('VERSION_CODE') ?: '1').toInteger()
+def releaseVersionName = System.getenv('VERSION_NAME') ?: '1.0'
 
 android {
     namespace = "pro.qzarov.qcanva"
@@ -14,10 +16,10 @@ android {
         applicationId "pro.qzarov.qcanva"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        // CI supplies these properties from the release tag. Local builds keep
+        // CI supplies these values from the release tag. Local builds keep
         // the existing defaults, so Android Studio needs no extra setup.
-        versionCode (project.findProperty('versionCode') ?: '1').toInteger()
-        versionName (project.findProperty('versionName') ?: '1.0')
+        versionCode releaseVersionCode
+        versionName releaseVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
