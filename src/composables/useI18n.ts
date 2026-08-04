@@ -20,6 +20,13 @@ const messages = {
     recents: 'Недавние', groups: 'Группы', sharedWithMe: 'Доступные мне', public: 'Публичные',
     refresh: 'Обновить', share: 'Доступ', rename: 'Переименовать', delete: 'Удалить',
     loading: 'Загрузка…', updatingList: 'Обновляем список…', dashboard: 'Дашборд',
+    publicResources: 'Публичные материалы доступны без регистрации.', interactiveTemplate: 'Интерактивный шаблон',
+    accessRequests: 'Запросы доступа', approve: 'Одобрить', decline: 'Отклонить', owner: 'Владелец', pinned: 'Закреплено',
+    duplicate: 'Дублировать', moveToGroup: 'Переместить в группу', editTags: 'Изменить теги', pin: 'Закрепить', unpin: 'Открепить', transferOwnership: 'Передать владельца',
+    groupActions: 'Действия с группой', createGroup: 'Создать группу', moveToGroupTitle: 'Переместить в группу', groupName: 'Название группы', chooseGroup: 'Выберите группу для этого ресурса.',
+    cancel: 'Отмена', save: 'Сохранить', close: 'Закрыть', editGroup: 'Переименовать группу', shareGroup: 'Открыть доступ к группе', invitePeople: 'Пригласить людей', email: 'Электронная почта',
+    canView: 'Просмотр', canEdit: 'Редактирование', noInvited: 'Пока никого не пригласили.', loadingAccess: 'Загружаем доступ…', addTag: 'Добавить тег', noTags: 'Тегов пока нет.', refs: 'использований',
+    publicEdit: 'Публичное редактирование', unknownOwner: 'Неизвестный владелец', untitled: 'Без названия', untitledHtml: 'HTML без названия', untitledDocument: 'Документ без названия',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -31,6 +38,13 @@ const messages = {
     recents: 'Recent', groups: 'Groups', sharedWithMe: 'Shared with me', public: 'Public',
     refresh: 'Refresh', share: 'Share', rename: 'Rename', delete: 'Delete',
     loading: 'Loading…', updatingList: 'Updating list…', dashboard: 'Dashboard',
+    publicResources: 'Public resources available without registration.', interactiveTemplate: 'Interactive template',
+    accessRequests: 'Access requests', approve: 'Approve', decline: 'Decline', owner: 'Owner', pinned: 'Pinned',
+    duplicate: 'Duplicate', moveToGroup: 'Move to group', editTags: 'Edit tags', pin: 'Pin', unpin: 'Unpin', transferOwnership: 'Transfer ownership',
+    groupActions: 'Group actions', createGroup: 'Create group', moveToGroupTitle: 'Move to group', groupName: 'Group name', chooseGroup: 'Choose a group for this resource.',
+    cancel: 'Cancel', save: 'Save', close: 'Close', editGroup: 'Rename group', shareGroup: 'Share group', invitePeople: 'Invite people', email: 'Email',
+    canView: 'Can view', canEdit: 'Can edit', noInvited: 'No invited people yet.', loadingAccess: 'Loading access…', addTag: 'Add tag', noTags: 'No tags yet.', refs: 'refs',
+    publicEdit: 'Public edit', unknownOwner: 'Unknown owner', untitled: 'Untitled', untitledHtml: 'Untitled HTML', untitledDocument: 'Untitled document',
   },
 } as const;
 

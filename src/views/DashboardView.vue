@@ -6,7 +6,7 @@
           <img src="/qcanva-logo.png" alt="QCanva" />
           <div>
             <h1>QCanva</h1>
-            <p v-if="!isLoggedIn" class="dash-subtitle">Public resources available without registration.</p>
+            <p v-if="!isLoggedIn" class="dash-subtitle">{{ t('publicResources') }}</p>
           </div>
         </div>
         <div class="header-user-slot">
@@ -95,7 +95,7 @@
               </button>
               <button class="card-menu-item" @click="openInteractiveTemplatePicker">
                 <span class="menu-icon">⚄</span>
-                <span>Интерактивный шаблон</span>
+                <span>{{ t('interactiveTemplate') }}</span>
               </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
@@ -167,13 +167,13 @@
       {{ feedback.message }}
     </div>
 
-    <div v-if="loading" class="dash-loading">Loading...</div>
+    <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
       <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
-          <h2>Access requests</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
+          <h2>{{ t('accessRequests') }}</h2>
+          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
         </div>
         <div class="access-request-list">
           <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
@@ -184,8 +184,8 @@
               </div>
             </div>
             <div class="access-request-actions">
-              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">Decline</button>
-              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">Approve</button>
+              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">{{ t('decline') }}</button>
+              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">{{ t('approve') }}</button>
             </div>
           </div>
         </div>
@@ -194,7 +194,7 @@
       <div v-if="isLoggedIn && folderSummaries.length" class="dashboard-workspace">
         <aside class="dashboard-folder-nav" aria-label="Groups">
           <div class="dashboard-folder-nav-head">
-            <h2>Groups</h2>
+            <h2>{{ t('groups') }}</h2>
             <div class="folder-nav-head-actions">
               <button
                 class="btn-ghost btn-sm folder-create-button"
@@ -204,7 +204,7 @@
                 @click.stop="openCreateGroupModal"
                 :disabled="isBusy"
               >+</button>
-              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">Refresh</button>
+              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
             </div>
           </div>
           <div class="folder-manager-list">
@@ -245,31 +245,31 @@
               <div class="folder-manager-main">
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
-                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} canvas / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} docs</span>
+                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
                 </span>
               </div>
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button
                   class="folder-manager-trigger"
                   @click.stop="toggleFolderMenu(activeFolder.id)"
-                  title="Group actions"
+                  :title="t('groupActions')"
                   :disabled="isBusy"
                 >⋯</button>
                 <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" @click="importToFolder(activeFolder)" :disabled="isBusy">Импорт</button>
-                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">Share</button>
+                  <button class="card-menu-item" @click="importToFolder(activeFolder)" :disabled="isBusy">{{ t('import') }}</button>
+                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item"
                     @click="openRenameFolderModal(activeFolder)"
                     :disabled="isBusy"
-                  >Rename</button>
+                  >{{ t('rename') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
                     @click="deleteFolder(activeFolder)"
                     :disabled="isBusy"
-                  >Delete</button>
+                  >{{ t('delete') }}</button>
                 </div>
               </div>
               </div>
@@ -297,10 +297,10 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span>{{ item.title || t('untitled') }}</div>
                     <div class="card-meta">
-                      <span class="badge badge-owner">Owner</span>
-                      <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+                      <span class="badge badge-owner">{{ t('owner') }}</span>
+                      <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div v-if="item.tags?.length" class="card-tags">
@@ -314,12 +314,12 @@
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
-                      <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">Duplicate</button>
-                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">Move to group</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
-                      <button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">Delete</button>
+                      <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
+                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
+                      <button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button>
                     </div>
                   </div>
                   <article
@@ -404,7 +404,7 @@
       </div>
 
       <section v-if="isLoggedIn && interactiveTemplateItems.length" class="dash-section">
-        <div class="dash-section-head"><h2>Интерактивные шаблоны</h2></div>
+        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
           <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
@@ -415,7 +415,7 @@
       </section>
 
       <div v-if="sharedFiltered.length" class="dash-section">
-        <h2>Shared with me</h2>
+        <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
           <div
             v-for="c in sharedFiltered"
@@ -455,7 +455,7 @@
       </div>
 
       <div v-if="publicFiltered.length" class="dash-section">
-        <h2>Public</h2>
+        <h2>{{ t('public') }}</h2>
         <div class="dash-grid">
           <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
           <div
@@ -465,11 +465,11 @@
           >
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ item.allowPublicEdit ? 'Public edit' : 'Public' }}</span>
-              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
-            <div class="card-owner">{{ item.ownerName || item.ownerEmail || 'Unknown owner' }}</div>
+            <div class="card-owner">{{ item.ownerName || item.ownerEmail || t('unknownOwner') }}</div>
             <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -487,8 +487,8 @@
           >
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">Public</span>
-              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="badge badge-public">{{ t('public') }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
@@ -507,8 +507,8 @@
           >
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">Public</span>
-              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="badge badge-public">{{ t('public') }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
@@ -819,7 +819,7 @@ export default defineComponent({
   components: { LanguageToggle },
   setup() {
     const router = useRouter();
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
     const { reset: resetPlugins } = usePlugins();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
@@ -1423,7 +1423,7 @@ export default defineComponent({
     };
     const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : type === 'text-document' ? 'Документ' : 'Шаблон';
     const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
-    const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat('ru-RU', {
+    const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
     const scrollRecentResources = (direction: -1 | 1) => {
@@ -2277,7 +2277,7 @@ export default defineComponent({
     const isTechnicalFolder = (folder: FolderSummary) =>
       folder.id === 'legacy-resource-inbox' || folder.name === 'Unsorted';
 
-    const formatDate = (d: string) => new Date(d).toLocaleDateString('ru-RU', {
+    const formatDate = (d: string) => new Date(d).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
 
