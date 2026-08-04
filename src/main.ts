@@ -4,7 +4,9 @@ import { Capacitor } from '@capacitor/core'
 import App from './App.vue'
 import router from './router'
 import './style.css'
+import { applyInitialLocale } from './composables/useI18n'
 
+applyInitialLocale()
 const app = createApp(App)
 app.use(router)
 app.mount('#app')

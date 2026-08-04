@@ -10,6 +10,7 @@
           </div>
         </div>
         <div class="header-user-slot">
+          <LanguageToggle />
           <template v-if="isLoggedIn">
           <div class="user-menu">
             <button class="current-user-badge" :title="currentUserLabel" @click.stop="toggleUserMenu">
@@ -26,22 +27,22 @@
                 <span class="menu-icon">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
                 </span>
-                <span>Plugins</span>
+                <span>{{ t('plugins') }}</span>
               </router-link>
               <router-link to="/html-settings" class="card-menu-item">
                 <span class="menu-icon">⚙</span>
-                <span>Settings</span>
+                <span>{{ t('settings') }}</span>
               </router-link>
               <button class="card-menu-item" @click="logout">
                 <span class="menu-icon">↪</span>
-                <span>Sign out</span>
+                <span>{{ t('signOut') }}</span>
               </button>
             </div>
           </div>
           </template>
           <template v-else>
-            <router-link to="/login" class="btn-ghost">Login</router-link>
-            <router-link to="/register" class="btn-primary">Register</router-link>
+            <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
+            <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
         </div>
       </div>
@@ -60,15 +61,15 @@
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
           <span class="menu-icon">#</span>
-          <span>Manage tags</span>
+          <span>{{ t('manageTags') }}</span>
         </button>
         <button class="btn-ghost" @click.stop="importFile()">
           <span class="menu-icon">⇧</span>
-          <span>Import</span>
+          <span>{{ t('import') }}</span>
         </button>
         <router-link v-if="admin" to="/admin" class="btn-ghost">
           <span class="menu-icon">◎</span>
-          <span>Admin</span>
+          <span>{{ t('admin') }}</span>
         </router-link>
       </div>
     </section>
@@ -77,20 +78,20 @@
       <div class="control-menu dashboard-new-menu">
             <button class="btn-primary" @click.stop="toggleNewMenu">
               <span class="menu-icon">+</span>
-              <span>New</span>
+              <span>{{ t('new') }}</span>
             </button>
             <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
               <button class="card-menu-item" @click="createCanvas">
                 <span class="menu-icon">▦</span>
-                <span>New canvas</span>
+                <span>{{ t('newCanvas') }}</span>
               </button>
               <button class="card-menu-item" @click="createHtmlDocument">
                 <span class="menu-icon">▤</span>
-                <span>HTML document</span>
+                <span>{{ t('htmlDocument') }}</span>
               </button>
               <button class="card-menu-item" @click="createTextDocument">
                 <span class="menu-icon">¶</span>
-                <span>Document</span>
+                <span>{{ t('document') }}</span>
               </button>
               <button class="card-menu-item" @click="openInteractiveTemplatePicker">
                 <span class="menu-icon">⚄</span>
@@ -98,25 +99,25 @@
               </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <span class="menu-icon">□</span>
-                <span>Group</span>
+                <span>{{ t('group') }}</span>
               </button>
             </div>
           </div>
-      <input v-model.trim="searchQuery" class="dash-search" placeholder="Search by title, group or tag" />
+      <input v-model.trim="searchQuery" class="dash-search" :placeholder="t('search')" />
       <select v-model="sortMode" class="dash-sort-select">
-        <option value="updated-desc">Newest first</option>
-        <option value="updated-asc">Oldest first</option>
-        <option value="title-asc">Title A-Z</option>
-        <option value="title-desc">Title Z-A</option>
+        <option value="updated-desc">{{ t('newest') }}</option>
+        <option value="updated-asc">{{ t('oldest') }}</option>
+        <option value="title-asc">{{ t('titleAsc') }}</option>
+        <option value="title-desc">{{ t('titleDesc') }}</option>
       </select>
       <div class="content-type-tabs">
-        <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">All</button>
-        <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">Canvas</button>
+        <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">{{ t('all') }}</button>
+        <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
-        <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">Docs</button>
+        <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
       </div>
       <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list">
-        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">All</button>
+        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
         <button
           v-for="tag in allTagNames"
           :key="tag"
@@ -130,11 +131,11 @@
 
     <div v-if="isRefreshing && !loading" class="dashboard-refresh-status" role="status" aria-live="polite">
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
-      <span>Обновляем список…</span>
+      <span>{{ t('updatingList') }}</span>
     </div>
     <section v-if="recentResources.length" class="dash-section dashboard-recents">
       <div class="dash-section-head">
-        <h2>Недавние</h2>
+        <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
           <button class="dashboard-recents-nav-button" type="button" aria-label="Предыдущий элемент" title="Предыдущий элемент" @click="scrollRecentResources(-1)">‹</button>
           <button class="dashboard-recents-nav-button" type="button" aria-label="Следующий элемент" title="Следующий элемент" @click="scrollRecentResources(1)">›</button>
@@ -159,7 +160,7 @@
       aria-live="polite"
     >
       <span class="dashboard-pull-icon" aria-hidden="true">{{ isRefreshing ? '↻' : '↓' }}</span>
-      <span>{{ isRefreshing ? 'Обновляем список…' : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить' }}</span>
+      <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить' }}</span>
     </div>
 
     <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
@@ -741,6 +742,8 @@ import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { usePlugins } from '../composables/usePlugins';
+import { useI18n } from '../composables/useI18n';
+import LanguageToggle from '../components/LanguageToggle.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -813,8 +816,10 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
+  components: { LanguageToggle },
   setup() {
     const router = useRouter();
+    const { t } = useI18n();
     const { reset: resetPlugins } = usePlugins();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
@@ -2356,6 +2361,7 @@ export default defineComponent({
 
     return {
       admin,
+      t,
       isLoggedIn,
       loading,
       isRefreshing,
