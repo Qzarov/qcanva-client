@@ -643,7 +643,6 @@
         <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
         <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
         <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
-        <button v-if="getContextNode()?.type === 'group'" class="ctx-item" @click="onCtxRenameGroup">Rename group</button>
         <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
         <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
@@ -2026,15 +2025,6 @@ export default defineComponent({
       contextMenu.visible = true;
     };
 
-    const onCtxRenameGroup = () => {
-      const group = getContextNode();
-      if (!group || group.type !== "group") return;
-      const label = window.prompt("Название группы", group.label || "Новая группа");
-      if (label === null) return;
-      updateNode(group, { label: label.trim() || "Новая группа" });
-      closeContextMenu();
-    };
-
     const onEdgeContextMenu = (e: MouseEvent, edge: { id: string }) => {
       e.preventDefault(); e.stopPropagation();
       onEdgeClick(edge.id);
@@ -3387,6 +3377,10 @@ export default defineComponent({
       return !!id && nodes.value.find((node) => node.id === id)?.type === "image";
     };
 
+    const isGroupNode = (id: string | null | undefined): boolean => {
+      return !!id && nodes.value.find((node) => node.id === id)?.type === "group";
+    };
+
     const getNodeTitle = (id: string | null | undefined): string => {
       if (!id) return "";
       return nodes.value.find((node) => node.id === id)?.label || "";
@@ -3395,8 +3389,8 @@ export default defineComponent({
     const setNodeTitle = (id: string | null | undefined, title: string) => {
       if (!id || props.readonly) return;
       const node = nodes.value.find((item) => item.id === id);
-      if (!node || node.type !== "image") return;
-      const label = title.trim();
+      if (!node || (node.type !== "image" && node.type !== "group")) return;
+      const label = title.trim() || (node.type === "group" ? "Новая группа" : "");
       if (node.label === label) return;
       pushUndo();
       node.label = label;
@@ -3650,7 +3644,6 @@ export default defineComponent({
       onCtxSendToBack,
       onCtxBringToFront,
       onCtxToggleLock,
-      onCtxRenameGroup,
       onCtxDuplicate,
       onCtxDelete,
       connDragging,
@@ -3709,6 +3702,7 @@ export default defineComponent({
       focusNode,
       getNodeLabel,
       isImageNode,
+      isGroupNode,
       getNodeTitle,
       setNodeTitle,
       flashNodeId,

@@ -308,14 +308,14 @@
 
           <template v-else-if="activeToolbarMenu === 'actions'">
             <div class="toolbar-popover-title">Действия</div>
-            <template v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId)">
-              <div class="toolbar-popover-label">Название изображения</div>
+            <template v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId)">
+              <div class="toolbar-popover-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения' }}</div>
               <input
                 class="toolbar-text-input"
                 :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
-                placeholder="Название изображения"
+                :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения'"
                 :disabled="role === 'read'"
-                @input="updateSelectedImageTitle"
+                @input="updateSelectedNodeTitle"
                 @keydown.stop
               />
             </template>
@@ -556,21 +556,21 @@
         </div>
 
         <button
-          v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId)"
+          v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId)"
           class="block-menu-item"
           :class="{ open: blockSection === 'imageTitle' }"
           @click="toggleBlockSection('imageTitle')"
         >
-          <span class="block-menu-label">Название изображения</span>
+          <span class="block-menu-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения' }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
-        <div v-if="blockSection === 'imageTitle' && canvasRef?.isImageNode(canvasRef.selectedNodeId)" class="block-menu-pop">
+        <div v-if="blockSection === 'imageTitle' && (canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId))" class="block-menu-pop">
           <input
             class="block-menu-text-input"
             :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
-            placeholder="Название изображения"
+            :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения'"
             :disabled="role === 'read'"
-            @input="updateSelectedImageTitle"
+            @input="updateSelectedNodeTitle"
             @keydown.stop
           />
         </div>
@@ -930,7 +930,7 @@ export default defineComponent({
       activeToolbarMenu.value = activeToolbarMenu.value === menu ? '' : menu;
     };
 
-    const updateSelectedImageTitle = (event: Event) => {
+    const updateSelectedNodeTitle = (event: Event) => {
       const title = (event.target as HTMLInputElement).value;
       canvasRef.value?.setNodeTitle?.(canvasRef.value.selectedNodeId, title);
     };
@@ -1852,7 +1852,7 @@ export default defineComponent({
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
-      activeToolbarMenu, toggleToolbarMenu, updateSelectedImageTitle, closeNodeEditingPanels,
+      activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       drawToolLabel,
       drawPanelOpen,
