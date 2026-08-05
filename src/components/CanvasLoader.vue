@@ -27,6 +27,16 @@
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
       >
         <span v-if="group.label" class="group-label">{{ group.label }}</span>
+        <template v-if="isNodeSelected(group.id) && !readonly && !isNodePositionLocked(group.id)">
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, group, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, group, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, group, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, group, 'tl')"></div>
+          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, group, 'r')"></div>
+          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, group, 'l')"></div>
+          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, group, 't')"></div>
+          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, group, 'b')"></div>
+        </template>
       </div>
 
       <!-- Edges (SVG layer) -->
@@ -633,6 +643,7 @@
         <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
         <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
         <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
+        <button v-if="getContextNode()?.type === 'group'" class="ctx-item" @click="onCtxRenameGroup">Rename group</button>
         <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
         <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
@@ -673,6 +684,9 @@
       <span class="controls-divider"></span>
       <button v-if="!readonly" class="ctrl-add-node" @click="addTextNodeCenter" title="Add text node">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </button>
+      <button v-if="!readonly" class="ctrl-add-node" @click="addGroupCenter" title="Создать группу">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
       </button>
       <button @click="duplicateSelection" title="Duplicate selection">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
@@ -1942,6 +1956,26 @@ export default defineComponent({
       createTextNodeAtClient(rect.left + rect.width / 2, rect.top + rect.height / 2);
     };
 
+    const addGroupCenter = () => {
+      if (props.readonly || !viewport.value) return;
+      const centerX = (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale);
+      const centerY = (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale);
+      const newGroup: CanvasNode = {
+        id: genId(),
+        type: "group",
+        label: "Новая группа",
+        x: snap(centerX - 250),
+        y: snap(centerY - 150),
+        width: 500,
+        height: 300,
+        color: "4",
+      };
+      pushUndo();
+      nodes.value.push(newGroup);
+      emitOp({ type: "node-add", node: { ...newGroup } });
+      selectedNodeIds.value = [newGroup.id];
+    };
+
     const addDndCharacterTemplate = (data: Record<string, unknown> = {}) => {
       if (props.readonly) return;
       const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
@@ -1990,6 +2024,15 @@ export default defineComponent({
       contextMenu.nodeId = node.id;
       contextMenu.id = node.id;
       contextMenu.visible = true;
+    };
+
+    const onCtxRenameGroup = () => {
+      const group = getContextNode();
+      if (!group || group.type !== "group") return;
+      const label = window.prompt("Название группы", group.label || "Новая группа");
+      if (label === null) return;
+      updateNode(group, { label: label.trim() || "Новая группа" });
+      closeContextMenu();
     };
 
     const onEdgeContextMenu = (e: MouseEvent, edge: { id: string }) => {
@@ -3535,6 +3578,7 @@ export default defineComponent({
       onEdgeCycleArrow,
       onCanvasDblClick,
       addTextNodeCenter,
+      addGroupCenter,
       addDndCharacterTemplate,
       importDndCharacter,
       templateNodes,
@@ -3606,6 +3650,7 @@ export default defineComponent({
       onCtxSendToBack,
       onCtxBringToFront,
       onCtxToggleLock,
+      onCtxRenameGroup,
       onCtxDuplicate,
       onCtxDelete,
       connDragging,
