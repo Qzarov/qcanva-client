@@ -1970,6 +1970,7 @@ export default defineComponent({
       if (props.readonly || !viewport.value) return;
       const centerX = (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale);
       const centerY = (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale);
+      const lowestZIndex = Math.min(0, ...nodes.value.map((node) => node.zIndex ?? 10));
       const newGroup: CanvasNode = {
         id: genId(),
         type: "group",
@@ -1979,6 +1980,8 @@ export default defineComponent({
         width: 500,
         height: 300,
         color: "4",
+        // Groups are background containers: new ones must never cover existing blocks.
+        zIndex: lowestZIndex - 1,
       };
       pushUndo();
       nodes.value.push(newGroup);
