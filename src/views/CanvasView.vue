@@ -206,22 +206,22 @@
 
       <!-- Desktop node inspector (top-left, visible when node selected) -->
       <div
-        v-if="canvasRef?.selectedNodeId && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        v-if="canvasRef?.selectedNodeIds?.length && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         ref="nodeToolbarRef"
         class="node-toolbar"
         @pointerdown.stop
         @click.stop
       >
         <div class="node-toolbar-tabs">
-          <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'fill' }" @click="toggleToolbarMenu('fill')" title="Background settings">
+          <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'fill' }" @click="toggleToolbarMenu('fill')" title="Background settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 15l5-5 4 4 2-2 5 5"/></svg>
             <span>Фон</span>
           </button>
-          <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'text' }" @click="toggleToolbarMenu('text')" title="Text settings">
+          <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'text' }" @click="toggleToolbarMenu('text')" title="Text settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
             <span>Текст</span>
           </button>
-          <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'border' }" @click="toggleToolbarMenu('border')" title="Border settings">
+          <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'border' }" @click="toggleToolbarMenu('border')" title="Border settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 5v14M15 5v14M5 9h14M5 15h14"/></svg>
             <span>Рамка</span>
           </button>
@@ -235,7 +235,7 @@
           </button>
         </div>
 
-        <div v-if="activeToolbarMenu" class="toolbar-popover">
+        <div v-if="activeToolbarMenu && (canvasRef?.selectedNodeId || activeToolbarMenu === 'layers' || activeToolbarMenu === 'actions')" class="toolbar-popover">
           <template v-if="activeToolbarMenu === 'fill'">
             <div class="toolbar-popover-title">Фон</div>
             <div class="toolbar-grid">
@@ -308,6 +308,7 @@
 
           <template v-else-if="activeToolbarMenu === 'actions'">
             <div class="toolbar-popover-title">Действия</div>
+            <div v-if="!canvasRef?.selectedNodeId" class="toolbar-popover-label">Выбрано объектов: {{ canvasRef?.selectedNodeIds?.length }}</div>
             <template v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId)">
               <div class="toolbar-popover-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения' }}</div>
               <input
@@ -328,19 +329,19 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
                 <span>Вперед</span>
               </button>
-              <button class="toolbar-choice" :class="{ active: canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
-                <svg v-if="canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+              <button class="toolbar-choice" :class="{ active: canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked() }" @click="canvasRef?.selectedNodeId ? canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId) : canvasRef?.toggleSelectedNodesPositionLock()">
+                <svg v-if="canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 019.4-2.5"/></svg>
-                <span>{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
+                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
               </button>
               <button class="toolbar-choice" @click="canvasRef?.duplicateSelection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
                 <span>Дублировать</span>
               </button>
-              <button v-if="role === 'owner' && canvasRef?.selectedNodeId" class="toolbar-choice" @click="canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId)">
-                <svg v-if="canvasRef?.isNodeHidden(canvasRef.selectedNodeId)" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+              <button v-if="role === 'owner'" class="toolbar-choice" @click="canvasRef?.selectedNodeId ? canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId) : canvasRef?.toggleSelectedNodesHidden()">
+                <svg v-if="canvasRef?.selectedNodeId ? canvasRef?.isNodeHidden(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesHidden()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span>{{ canvasRef?.isNodeHidden(canvasRef.selectedNodeId) ? 'Показать' : 'Скрыть' }}</span>
+                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodeHidden(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesHidden()) ? 'Показать' : 'Скрыть' }}</span>
               </button>
               <button v-if="role !== 'read'" class="toolbar-choice toolbar-choice-danger" @click="canvasRef?.deleteSelection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>

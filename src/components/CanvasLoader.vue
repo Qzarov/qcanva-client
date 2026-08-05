@@ -2226,6 +2226,25 @@ export default defineComponent({
       if (positionLocked && dragNodeId.value === node.id) dragNodeId.value = null;
     };
 
+    const areSelectedNodesPositionLocked = () => {
+      const targets = selectedEditableNodes();
+      return targets.length > 0 && targets.every((node) => node.positionLocked === true);
+    };
+
+    const toggleSelectedNodesPositionLock = () => {
+      const targets = selectedEditableNodes();
+      if (!targets.length) return;
+      const positionLocked = !targets.every((node) => node.positionLocked === true);
+      pushUndo();
+      for (const node of targets) {
+        updateNode(node, { positionLocked });
+        if (positionLocked && resizeNodeId.value === node.id) resizeNodeId.value = null;
+        if (positionLocked && dragNodeId.value === node.id) dragNodeId.value = null;
+      }
+      // Keep the invariant that every locked object stays under editable ones.
+      rebalanceNodeLayers(true);
+    };
+
     const orderedLayerNodes = (locked: boolean) => nodes.value
       .map((node, index) => ({ node, index }))
       .filter(({ node }) => !!node.positionLocked === locked)
@@ -2724,6 +2743,17 @@ export default defineComponent({
       n.hidden = hidden;
       emitOp({ type: "node-update", id, changes: { hidden } });
       closeContextMenu();
+    };
+    const areSelectedNodesHidden = () => {
+      const targets = selectedEditableNodes();
+      return targets.length > 0 && targets.every((node) => node.hidden === true);
+    };
+    const toggleSelectedNodesHidden = () => {
+      const targets = selectedEditableNodes();
+      if (!targets.length) return;
+      const hidden = !targets.every((node) => node.hidden === true);
+      pushUndo();
+      for (const node of targets) updateNode(node, { hidden });
     };
     const isEdgeHidden = (id: string) => !!(edges.value.find((e) => e.id === id))?.hidden;
     const toggleEdgeHidden = (id: string) => {
@@ -3637,6 +3667,8 @@ export default defineComponent({
       toggleNodeShape,
       isNodePositionLocked,
       toggleNodePositionLock,
+      areSelectedNodesPositionLocked,
+      toggleSelectedNodesPositionLock,
       bringSelectionForward,
       sendSelectionBackward,
       bringSelectionToFront,
@@ -3731,6 +3763,8 @@ export default defineComponent({
       viewerNodes,
       isNodeHidden,
       toggleNodeHidden,
+      areSelectedNodesHidden,
+      toggleSelectedNodesHidden,
       isEdgeHidden,
       toggleEdgeHidden,
       isSelectedDrawingHidden,
