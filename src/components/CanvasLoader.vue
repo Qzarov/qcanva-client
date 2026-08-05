@@ -1498,6 +1498,17 @@ export default defineComponent({
     // Store initial positions of all dragged nodes for multi-drag
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
 
+    // The selection may also contain locked blocks (for example, after marquee
+    // selection around a group). Only nodes recorded at drag start are movable;
+    // sending every selected id would make the server reject the whole batch
+    // and force a disruptive resync.
+    const getDraggedMoves = () => Array.from(dragNodesInitial.value.keys())
+      .map((id) => {
+        const node = nodes.value.find((item) => item.id === id);
+        return node ? { id, x: node.x, y: node.y } : null;
+      })
+      .filter(Boolean) as { id: string; x: number; y: number }[];
+
     const updateLastPointer = (e: PointerLike) => {
       lastPointer.x = e.clientX;
       lastPointer.y = e.clientY;
@@ -2849,11 +2860,8 @@ export default defineComponent({
       }
       isPanning.value = false;
       // Emit move op at end of drag
-      if (dragNodeId.value && selectedNodeIds.value.length > 0) {
-        const moves = selectedNodeIds.value.map((id) => {
-          const n = nodes.value.find((nd) => nd.id === id);
-          return n ? { id, x: n.x, y: n.y } : null;
-        }).filter(Boolean) as { id: string; x: number; y: number }[];
+      if (dragNodeId.value) {
+        const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
       }
       // Emit resize op at end of resize
@@ -3175,11 +3183,8 @@ export default defineComponent({
       }
 
       // Commit a node move op at the end of a touch drag
-      if (touchDragging && dragNodeId.value && selectedNodeIds.value.length > 0) {
-        const moves = selectedNodeIds.value.map((id) => {
-          const n = nodes.value.find((nd) => nd.id === id);
-          return n ? { id, x: n.x, y: n.y } : null;
-        }).filter(Boolean) as { id: string; x: number; y: number }[];
+      if (touchDragging && dragNodeId.value) {
+        const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
       }
 
