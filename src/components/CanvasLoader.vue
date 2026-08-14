@@ -704,6 +704,9 @@
     <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
     <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
     <input type="file" ref="dndPortraitInput" accept="image/*" style="display:none" @change="onDndPortraitSelected" />
+    <div v-if="imageUploadStatus" class="image-upload-status" role="status" aria-live="polite">
+      <span class="image-upload-spinner" aria-hidden="true"></span>{{ imageUploadStatus }}
+    </div>
     <div
       v-if="drawTool !== 'select'"
       class="draw-capture"
@@ -3253,6 +3256,7 @@ export default defineComponent({
     const fileInput = ref<HTMLInputElement | null>(null);
     const imageInput = ref<HTMLInputElement | null>(null);
     const dndPortraitInput = ref<HTMLInputElement | null>(null);
+    const imageUploadStatus = ref("");
     const dndPortraitNodeId = ref<string | null>(null);
 
     const onNewCanvas = () => {
@@ -3316,6 +3320,7 @@ export default defineComponent({
       input.value = "";
       if (!file) return;
       try {
+        imageUploadStatus.value = "Загружаем изображение…";
         const { url } = await uploadImage(file);
         if (!url) return;
         const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
@@ -3337,6 +3342,8 @@ export default defineComponent({
       } catch (err) {
         console.error("Failed to upload image:", err);
         window.alert(err instanceof Error ? err.message : "Не удалось загрузить изображение. Попробуйте ещё раз.");
+      } finally {
+        imageUploadStatus.value = "";
       }
     };
 
@@ -3353,11 +3360,14 @@ export default defineComponent({
       dndPortraitNodeId.value = null;
       if (!file || !node || node.templateId !== 'dnd-character') return;
       try {
+        imageUploadStatus.value = 'Загружаем портрет…';
         const { url } = await uploadImage(file);
         if (url) setDndIdentity(node, 'portraitUrl', url);
       } catch (err) {
         console.error('Failed to upload D&D portrait:', err);
         window.alert(err instanceof Error ? err.message : 'Не удалось загрузить портрет. Попробуйте ещё раз.');
+      } finally {
+        imageUploadStatus.value = '';
       }
     };
 
@@ -3726,6 +3736,7 @@ export default defineComponent({
       onExportCanvas,
       openImagePicker,
       onImageSelected,
+      imageUploadStatus,
       dndPortraitInput,
       openDndPortraitPicker,
       onDndPortraitSelected,
@@ -4506,6 +4517,33 @@ g:hover > .edge-midpoint-conn {
   padding: 4px 8px;
   z-index: 10;
 }
+.image-upload-status {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9px;
+  background: rgba(30, 30, 30, 0.94);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  color: #f5f7f5;
+  font-size: 13px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.image-upload-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #6ee89d;
+  border-radius: 50%;
+  animation: image-upload-spin .75s linear infinite;
+}
+@keyframes image-upload-spin { to { transform: rotate(360deg); } }
 .canvas-controls button {
   width: 28px;
   height: 28px;
