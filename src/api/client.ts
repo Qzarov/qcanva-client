@@ -1,5 +1,17 @@
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+
+function validateImageUpload(file: File): void {
+  if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
+    throw new ApiError(415, 'Неподдерживаемый формат файла. Можно загрузить PNG, JPG, WEBP или GIF.');
+  }
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+    throw new ApiError(413, 'Файл слишком большой. Максимальный размер — 50 МБ.');
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   body: any;
@@ -443,6 +455,7 @@ export const recentResources = {
 };
 
 export async function uploadImage(file: File): Promise<{ key: string; url: string }> {
+  validateImageUpload(file);
   const form = new FormData();
   form.append("file", file);
   const token = getAccessToken();
@@ -454,6 +467,12 @@ export async function uploadImage(file: File): Promise<{ key: string; url: strin
   if (!res.ok) {
     let body: any = {};
     try { body = await res.json(); } catch { /* ignore */ }
+    if (res.status === 413) {
+      throw new ApiError(413, 'Файл слишком большой. Максимальный размер — 50 МБ.', body);
+    }
+    if (res.status === 415) {
+      throw new ApiError(415, 'Неподдерживаемый формат файла. Можно загрузить PNG, JPG, WEBP или GIF.', body);
+    }
     throw new ApiError(res.status, body?.message || `Upload failed (${res.status})`, body);
   }
   return res.json();

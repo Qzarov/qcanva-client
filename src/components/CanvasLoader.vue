@@ -3336,7 +3336,7 @@ export default defineComponent({
         selectedNodeIds.value = [newNode.id];
       } catch (err) {
         console.error("Failed to upload image:", err);
-        window.alert("Failed to upload image. Please try again.");
+        window.alert(err instanceof Error ? err.message : "Не удалось загрузить изображение. Попробуйте ещё раз.");
       }
     };
 
@@ -3357,7 +3357,7 @@ export default defineComponent({
         if (url) setDndIdentity(node, 'portraitUrl', url);
       } catch (err) {
         console.error('Failed to upload D&D portrait:', err);
-        window.alert('Не удалось загрузить портрет. Попробуйте ещё раз.');
+        window.alert(err instanceof Error ? err.message : 'Не удалось загрузить портрет. Попробуйте ещё раз.');
       }
     };
 
