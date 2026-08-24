@@ -915,6 +915,7 @@ import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
+import { CANVAS_ORIGIN_QUERY } from '../composables/useResourceBackTarget';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 interface CanvasChangePayload {
@@ -1891,7 +1892,7 @@ export default defineComponent({
         canvasRef.value?.addDocumentEmbed('text', doc.id);
         showDocPicker.value = false;
         await flushCanvasChanges();
-        router.push(`/docs/${doc.id}`);
+        router.push(documentRoute('text', doc.id));
       } catch (err: any) {
         showToast(err?.message || 'Не удалось создать документ', 'error');
       } finally {
@@ -1899,8 +1900,14 @@ export default defineComponent({
       }
     };
 
+    /** Documents opened from a canvas carry it along so their back button returns here. */
+    const documentRoute = (kind: 'html' | 'text', id: string) => ({
+      path: kind === 'text' ? `/docs/${id}` : `/edit/html/${id}`,
+      query: { [CANVAS_ORIGIN_QUERY]: resolvedId.value },
+    });
+
     const onOpenDocument = (payload: { kind: 'html' | 'text'; id: string }) => {
-      router.push(payload.kind === 'text' ? `/docs/${payload.id}` : `/edit/html/${payload.id}`);
+      router.push(documentRoute(payload.kind, payload.id));
     };
 
     const onOpenCanvas = (targetCanvasId: string) => {

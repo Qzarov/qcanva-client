@@ -75,9 +75,24 @@ describe('CanvasLoader document nodes', () => {
 
     expect(textGet).toHaveBeenCalledWith('txt-1');
     expect(wrapper.find('.embed-title').text()).toBe('Notes');
-    const srcdoc = wrapper.find('.doc-frame').attributes('srcdoc') || '';
+    const frame = wrapper.find('.doc-frame');
+    const srcdoc = frame.attributes('srcdoc') || '';
     expect(srcdoc).toContain('<!doctype html>');
     expect(srcdoc).toContain('<h2>Plan</h2>');
+    // The wrapper is ours, so it follows the dark editor palette.
+    expect(srcdoc).toContain('background:#191b20');
+    expect(srcdoc).toContain('color:#f8fafc');
+    expect(frame.classes()).toContain('doc-frame-text');
+  });
+
+  it('leaves an HTML document on the light frame, since it carries its own styling', async () => {
+    const wrapper = mountWith([docNode()]);
+    await flushPromises();
+    await flushPromises();
+
+    const frame = wrapper.find('.doc-frame');
+    expect(frame.classes()).toContain('doc-frame-html');
+    expect(frame.classes()).not.toContain('doc-frame-text');
   });
 
   it('falls back to a text excerpt instead of an iframe when the node is too small', async () => {

@@ -15,8 +15,9 @@ const tiptapMock = vi.hoisted(() => ({
   destroy: vi.fn(),
 }));
 
+const routeQuery: Record<string, string> = {};
 vi.mock("vue-router", () => ({
-  useRoute: () => ({ params: { id: "doc-1" }, fullPath: "/docs/doc-1" }),
+  useRoute: () => ({ params: { id: "doc-1" }, fullPath: "/docs/doc-1", query: routeQuery }),
   useRouter: () => ({ push, replace }),
 }));
 
@@ -108,6 +109,28 @@ describe("TextDocumentView", () => {
     vi.clearAllMocks();
     tiptapMock.editorRef.value = null;
     tiptapMock.useEditorOptions = null;
+    for (const key of Object.keys(routeQuery)) delete routeQuery[key];
+  });
+
+  describe("back button", () => {
+    it("returns to the dashboard when the document was not opened from a canvas", async () => {
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      const back = wrapper.find("header .btn-ghost");
+      expect(back.text()).toBe("Назад");
+      expect(back.attributes("href")).toBeUndefined();
+    });
+
+    it("returns to the originating canvas when the origin is in the URL", async () => {
+      routeQuery.fromCanvas = "canvas-77";
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      const back = wrapper.find("header .btn-ghost");
+      expect(back.text()).toBe("Назад к канвасу");
+      expect(back.attributes("to")).toBe("/canvas/canvas-77");
+    });
   });
 
   it("starts the TipTap editor editable while the page is still behind the loading gate", async () => {

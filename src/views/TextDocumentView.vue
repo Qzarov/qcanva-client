@@ -37,13 +37,13 @@
           </div>
         </div>
 
-        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">Назад к дашборду</router-link>
+        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
       </div>
     </div>
 
     <template v-else>
       <header class="text-doc-topbar">
-        <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Назад</router-link>
+        <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
         <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
         <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
         <div class="text-doc-topbar-actions">
@@ -178,6 +178,7 @@
 <script lang="ts">
 import { computed, defineComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -199,6 +200,7 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
+    const { backTarget } = useResourceBackTarget();
     const id = route.params.id as string;
     const resolvedId = ref(id);
     const { show: showToast } = useToast();
@@ -350,7 +352,7 @@ export default defineComponent({
         }
         const preferred = slug.value || res.document.id;
         if (route.params.id !== preferred) {
-          router.replace({ name: 'text-document', params: { id: preferred } }).catch(() => {});
+          router.replace({ name: 'text-document', params: { id: preferred }, query: route.query }).catch(() => {});
         }
         editor.value?.setEditable(canEditContent.value);
         if (res.role === 'owner') await loadPermissions();
@@ -440,7 +442,7 @@ export default defineComponent({
         const updated = await textDocuments.update(resolvedId.value, { slug: slugInput.value.trim() || null });
         slug.value = updated.slug || null;
         slugInput.value = slug.value || '';
-        await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value } });
+        await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: route.query });
         showToast('Link saved', 'success');
       } catch (e: any) {
         showToast(e.message || 'Failed to save link', 'error');
@@ -598,6 +600,7 @@ export default defineComponent({
     });
 
     return {
+      backTarget,
       loading, cacheStatus,
       accessDenied,
       title,

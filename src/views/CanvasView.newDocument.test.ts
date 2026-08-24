@@ -168,12 +168,31 @@ describe('CanvasView "+ Новый документ"', () => {
     expect(savedData.nodes).toEqual([
       { id: 'n1', type: 'document', documentKind: 'text', documentId: 'text-doc-new' },
     ]);
-    expect(push).toHaveBeenCalledWith('/docs/text-doc-new');
+    expect(push).toHaveBeenCalledWith({
+      path: '/docs/text-doc-new',
+      query: { fromCanvas: 'canvas-1' },
+    });
 
     // Ordering matters: persist, then navigate.
     const saveOrder = canvasUpdate.mock.invocationCallOrder[0] ?? Infinity;
     const pushOrder = push.mock.invocationCallOrder[0] ?? -Infinity;
     expect(saveOrder).toBeLessThan(pushOrder);
+  });
+
+  it('tags the canvas origin when opening an existing document node', async () => {
+    const wrapper = await mountAndOpenPicker();
+
+    (wrapper.vm as any).onOpenDocument({ kind: 'text', id: 'txt-7' });
+    expect(push).toHaveBeenCalledWith({
+      path: '/docs/txt-7',
+      query: { fromCanvas: 'canvas-1' },
+    });
+
+    (wrapper.vm as any).onOpenDocument({ kind: 'html', id: 'doc-9' });
+    expect(push).toHaveBeenCalledWith({
+      path: '/edit/html/doc-9',
+      query: { fromCanvas: 'canvas-1' },
+    });
   });
 
   it('does not navigate when document creation fails', async () => {
@@ -210,7 +229,12 @@ describe('CanvasView "+ Новый документ"', () => {
       expect(push).not.toHaveBeenCalled();
 
       pendingOpsCount.value = 0;
-      await vi.waitFor(() => expect(push).toHaveBeenCalledWith('/docs/text-doc-new'));
+      await vi.waitFor(() =>
+        expect(push).toHaveBeenCalledWith({
+          path: '/docs/text-doc-new',
+          query: { fromCanvas: 'canvas-1' },
+        }),
+      );
       expect(canvasUpdate).not.toHaveBeenCalled();
     } finally {
       wsConnected.value = false;

@@ -37,12 +37,12 @@
           </div>
         </div>
 
-        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">← Дашборд</router-link>
+        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
       </div>
     </div>
     <template v-else>
     <header class="html-editor-bar">
-      <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Назад</router-link>
+      <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
       <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">Access</button>
@@ -266,6 +266,7 @@
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
@@ -284,6 +285,7 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
+    const { backTarget } = useResourceBackTarget();
     // The URL param may be a UUID id or a human-readable slug. `resolvedId`
     // holds the real document id after load (used for the WS room + mutations).
     const id = route.params.id as string;
@@ -393,7 +395,7 @@ export default defineComponent({
         // Prettify the address bar: prefer the slug when present.
         const preferred = slug.value || res.document.id;
         if (route.params.id !== preferred) {
-          router.replace(`/edit/html/${preferred}`).catch(() => {});
+          router.replace({ path: `/edit/html/${preferred}`, query: route.query }).catch(() => {});
         }
         if (!canEditContent.value) {
           viewMode.value = 'preview';
@@ -682,7 +684,7 @@ export default defineComponent({
         slugInput.value = slug.value || '';
         showToast(slug.value ? 'Link updated' : 'Link removed', 'success');
         const preferred = slug.value || resolvedId.value;
-        if (route.params.id !== preferred) router.replace(`/edit/html/${preferred}`).catch(() => {});
+        if (route.params.id !== preferred) router.replace({ path: `/edit/html/${preferred}`, query: route.query }).catch(() => {});
       } catch (err: any) {
         showToast(err?.message || 'Failed to update link', 'error');
         slugInput.value = slug.value || '';
@@ -832,6 +834,7 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
+      backTarget,
       title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,

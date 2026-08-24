@@ -428,7 +428,7 @@
           <div v-else-if="documentData(node).error" class="embed-error">{{ documentData(node).errorText }}</div>
           <iframe
             v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
-            class="doc-frame"
+            :class="['doc-frame', node.documentKind === 'text' ? 'doc-frame-text' : 'doc-frame-html']"
             :srcdoc="documentData(node).srcdoc"
             sandbox=""
             loading="lazy"
@@ -1200,13 +1200,15 @@ export default defineComponent({
     /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
     const wrapDocumentFragment = (html: string) =>
       '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      "html,body{margin:0;padding:12px 14px;background:#fff;color:#1a1a1a;" +
+      "html,body{margin:0;padding:12px 14px;background:#191b20;color:#f8fafc;" +
       "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
       "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
-      "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid #ddd;color:#555}" +
-      "img{max-width:100%;height:auto}hr{border:0;border-top:1px solid #e5e5e5;margin:1em 0}" +
-      "table{border-collapse:collapse;max-width:100%}td,th{border:1px solid #ddd;padding:4px 6px}" +
-      "pre{background:#f4f4f5;padding:8px;border-radius:4px;overflow:auto}" +
+      "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}" +
+      "blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid rgba(255,255,255,0.2);color:rgba(248,250,252,0.7)}" +
+      "a{color:#7dd3fc}" +
+      "img{max-width:100%;height:auto}hr{border:0;border-top:1px solid rgba(255,255,255,0.12);margin:1em 0}" +
+      "table{border-collapse:collapse;max-width:100%}td,th{border:1px solid rgba(255,255,255,0.16);padding:4px 6px}" +
+      "pre{background:rgba(255,255,255,0.06);padding:8px;border-radius:4px;overflow:auto}" +
       "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
       "</style></head><body>" + html + "</body></html>";
 
