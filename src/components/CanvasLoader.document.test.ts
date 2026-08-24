@@ -117,6 +117,33 @@ describe('CanvasLoader document nodes', () => {
     expect(wrapper.find('.embed-error').text()).toBe('Документ не выбран');
   });
 
+  it('labels a blank document instead of showing an empty frame', async () => {
+    // A freshly created text document has no content yet.
+    textGet.mockResolvedValue({
+      document: { title: 'Untitled document', snapshot: { html: '<p></p>' } },
+      role: 'owner',
+    });
+    const wrapper = mountWith([docNode({ documentKind: 'text', documentId: 'txt-new' })]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find('.embed-title').text()).toBe('Untitled document');
+    expect(wrapper.find('.doc-frame').exists()).toBe(false);
+    expect(wrapper.find('.doc-excerpt').text()).toBe('Пустой документ');
+  });
+
+  it('still renders a frame for a text-free document that has media', async () => {
+    textGet.mockResolvedValue({
+      document: { title: 'Diagram', snapshot: { html: '<img src="/api/x.png">' } },
+      role: 'owner',
+    });
+    const wrapper = mountWith([docNode({ documentKind: 'text', documentId: 'txt-img' })]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find('.doc-frame').exists()).toBe(true);
+  });
+
   it('addDocumentEmbed appends a document node and emits a node-add op', async () => {
     const wrapper = mountWith([]);
     await flushPromises();

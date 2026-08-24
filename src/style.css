@@ -3738,6 +3738,27 @@ html, body {
   padding: 16px;
   z-index: 100;
 }
+.doc-picker-new {
+  width: 100%;
+  padding: 7px 10px;
+  margin-bottom: 8px;
+  border: 1px dashed color-mix(in srgb, var(--color-brands) 55%, transparent);
+  border-radius: var(--radius-full);
+  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.doc-picker-new:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-brands) 22%, transparent);
+  border-style: solid;
+}
+.doc-picker-new:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .doc-picker-tabs {
   display: flex;
   gap: 4px;

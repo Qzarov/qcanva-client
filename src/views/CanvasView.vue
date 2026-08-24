@@ -794,6 +794,14 @@
           class="embed-search-input"
           placeholder="Поиск документов..."
         />
+        <button
+          class="doc-picker-new"
+          :disabled="creatingDocument"
+          title="Создать новый текстовый документ и добавить его на канвас"
+          @click="createAndEmbedDocument"
+        >
+          {{ creatingDocument ? 'Создаём...' : '+ Новый документ' }}
+        </button>
         <div v-if="docLoading" class="history-loading">Loading...</div>
         <div v-else class="embed-canvas-list">
           <div
@@ -1847,6 +1855,50 @@ export default defineComponent({
       showDocPicker.value = false;
     };
 
+    /**
+     * Leaving the canvas unmounts the view, so a freshly added node must reach the
+     * server first: wait for the realtime ack, or force a snapshot when there is
+     * no usable realtime channel (the 1s debounce would be dropped on navigate).
+     */
+    const flushCanvasChanges = async () => {
+      if (wsConnected.value && !realtimeOpsUnavailable.value) {
+        const deadline = Date.now() + 4000;
+        while (pendingOpsCount.value > 0 && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return;
+      }
+      if (saveTimeout) clearTimeout(saveTimeout);
+      await persistCurrentSnapshot();
+    };
+
+    const creatingDocument = ref(false);
+
+    const createAndEmbedDocument = async () => {
+      if (creatingDocument.value) return;
+      if (role.value !== 'owner' && role.value !== 'edit') {
+        notifyReadOnlyEditAttempt();
+        return;
+      }
+      creatingDocument.value = true;
+      try {
+        const doc = await textDocumentsApi.create({ title: 'Untitled document' });
+        if (!doc?.id) throw new Error('Не удалось создать документ');
+        embedDocuments.value = [
+          { id: doc.id, title: doc.title || 'Untitled document', kind: 'text' },
+          ...embedDocuments.value,
+        ];
+        canvasRef.value?.addDocumentEmbed('text', doc.id);
+        showDocPicker.value = false;
+        await flushCanvasChanges();
+        router.push(`/docs/${doc.id}`);
+      } catch (err: any) {
+        showToast(err?.message || 'Не удалось создать документ', 'error');
+      } finally {
+        creatingDocument.value = false;
+      }
+    };
+
     const onOpenDocument = (payload: { kind: 'html' | 'text'; id: string }) => {
       router.push(payload.kind === 'text' ? `/docs/${payload.id}` : `/edit/html/${payload.id}`);
     };
@@ -1944,6 +1996,7 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas,
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
+      creatingDocument, createAndEmbedDocument,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,

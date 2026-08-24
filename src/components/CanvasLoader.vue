@@ -427,7 +427,7 @@
           <div v-if="documentData(node).loading" class="embed-loading">Loading...</div>
           <div v-else-if="documentData(node).error" class="embed-error">{{ documentData(node).errorText }}</div>
           <iframe
-            v-else-if="isDocPreviewRich(node)"
+            v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
             class="doc-frame"
             :srcdoc="documentData(node).srcdoc"
             sandbox=""
@@ -1172,6 +1172,7 @@ export default defineComponent({
       loading: boolean;
       error: boolean;
       errorText: string;
+      empty: boolean;
     };
 
     const embeddedDocumentCache = reactive<Record<string, EmbeddedDocumentEntry>>({});
@@ -1192,6 +1193,10 @@ export default defineComponent({
         .replace(/\s+/g, " ")
         .trim();
 
+    /** A document with no text and no embedded media renders as a blank frame, so label it instead. */
+    const isBlankDocument = (html: string) =>
+      !stripHtmlToText(html) && !/<(img|svg|video|canvas|iframe|table|hr)\b/i.test(html);
+
     /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
     const wrapDocumentFragment = (html: string) =>
       '<!doctype html><html><head><meta charset="utf-8"><style>' +
@@ -1208,7 +1213,7 @@ export default defineComponent({
     const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
       const key = documentCacheKey(kind, id);
       if (embeddedDocumentCache[key]) return;
-      embeddedDocumentCache[key] = { title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "" };
+      embeddedDocumentCache[key] = { title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false };
       try {
         const { htmlDocuments, textDocuments } = await import("../api/client");
         let title = "";
@@ -1230,18 +1235,19 @@ export default defineComponent({
           loading: false,
           error: false,
           errorText: "",
+          empty: isBlankDocument(html),
         };
       } catch {
-        embeddedDocumentCache[key] = { title: "Error", srcdoc: "", excerpt: "", loading: false, error: true, errorText: "Cannot load document" };
+        embeddedDocumentCache[key] = { title: "Error", srcdoc: "", excerpt: "", loading: false, error: true, errorText: "Cannot load document", empty: false };
       }
     };
 
     const EMPTY_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
-      title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "",
+      title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false,
     };
     const MISSING_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
       title: "Документ не выбран", srcdoc: "", excerpt: "", loading: false, error: true,
-      errorText: "Документ не выбран",
+      errorText: "Документ не выбран", empty: false,
     };
 
     const documentData = (node: CanvasNode): EmbeddedDocumentEntry => {
