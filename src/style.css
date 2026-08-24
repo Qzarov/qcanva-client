@@ -3669,6 +3669,60 @@ html, body {
 }
 .embed-error { color: rgba(251,70,76,0.6); }
 
+/* ===== Document embed nodes ===== */
+.canvas-node-doc {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  cursor: grab;
+  border-color: color-mix(in srgb, var(--color-brands) 40%, transparent);
+}
+.canvas-node-doc:hover {
+  border-color: color-mix(in srgb, var(--color-brands) 70%, transparent);
+}
+.canvas-node-doc .embed-header {
+  gap: 6px;
+}
+.doc-kind-badge {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(255, 255, 255, 0.08);
+}
+.doc-preview {
+  padding: 0;
+  background: rgba(0, 0, 0, 0.15);
+  align-items: stretch;
+  justify-content: stretch;
+  position: relative;
+}
+.doc-preview .embed-loading,
+.doc-preview .embed-error {
+  margin: auto;
+}
+/* pointer-events:none keeps node drag, selection and marquee working over the preview */
+.doc-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  pointer-events: none;
+  background: #fff;
+}
+.doc-excerpt {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.6);
+  overflow: hidden;
+}
+
 /* ===== Embed picker panel ===== */
 .embed-picker-panel {
   position: absolute;
@@ -3684,6 +3738,27 @@ html, body {
   padding: 16px;
   z-index: 100;
 }
+.doc-picker-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.doc-picker-tabs button {
+  flex: 1;
+  padding: 4px 8px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+}
+.doc-picker-tabs button.active {
+  background: color-mix(in srgb, var(--color-brands) 25%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands) 60%, transparent);
+  color: #fff;
+}
+
 .embed-search-input {
   width: 100%;
   padding: 6px 10px;

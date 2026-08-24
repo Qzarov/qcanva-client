@@ -778,6 +778,37 @@
         </div>
       </div>
 
+      <!-- Embed document picker -->
+      <div v-if="showDocPicker" class="embed-picker-panel">
+        <div class="history-panel-header">
+          <h3>Вставить документ</h3>
+          <button class="btn-ghost btn-sm" @click="showDocPicker = false">×</button>
+        </div>
+        <div class="doc-picker-tabs">
+          <button :class="{ active: docKindFilter === 'all' }" @click="docKindFilter = 'all'">Все</button>
+          <button :class="{ active: docKindFilter === 'html' }" @click="docKindFilter = 'html'">HTML</button>
+          <button :class="{ active: docKindFilter === 'text' }" @click="docKindFilter = 'text'">Текстовые</button>
+        </div>
+        <input
+          v-model.trim="docSearch"
+          class="embed-search-input"
+          placeholder="Поиск документов..."
+        />
+        <div v-if="docLoading" class="history-loading">Loading...</div>
+        <div v-else class="embed-canvas-list">
+          <div
+            v-for="d in filteredEmbedDocuments"
+            :key="d.kind + ':' + d.id"
+            class="embed-canvas-item"
+            @click="doEmbedDocument(d.kind, d.id)"
+          >
+            <span class="embed-canvas-title">{{ d.title || 'Untitled' }}</span>
+            <span class="doc-kind-badge">{{ d.kind === 'text' ? 'DOC' : 'HTML' }}</span>
+          </div>
+          <div v-if="filteredEmbedDocuments.length === 0" class="history-empty">Документы не найдены</div>
+        </div>
+      </div>
+
       <!-- Embed canvas picker -->
       <div v-if="showEmbedPicker" class="embed-picker-panel">
         <div class="history-panel-header">
@@ -853,6 +884,8 @@
         @cursor-move="onCursorMove"
         @open-canvas="onOpenCanvas"
         @open-embed="openEmbedPicker"
+        @open-doc-embed="openDocPicker"
+        @open-document="onOpenDocument"
         @node-edit-start="closeNodeEditingPanels"
         @template-roll="onTemplateRoll"
         @readonly-action="notifyReadOnlyEditAttempt"
@@ -864,7 +897,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, interactiveTemplates, isAuthenticated, isAdmin, setToken, type InteractiveTemplate } from '../api/client';
+import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
 import ChatPanel from '../components/ChatPanel.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
@@ -1733,6 +1766,7 @@ export default defineComponent({
 
     const openEmbedPicker = async () => {
       showEmbedPicker.value = true;
+      showDocPicker.value = false;
       if (embedCanvases.value.length === 0) {
         embedLoading.value = true;
         try {
@@ -1759,6 +1793,62 @@ export default defineComponent({
     const doEmbed = (embedCanvasId: string) => {
       canvasRef.value?.addCanvasEmbed(embedCanvasId);
       showEmbedPicker.value = false;
+    };
+
+    // --- Embed Document ---
+    const showDocPicker = ref(false);
+    const docSearch = ref('');
+    const docKindFilter = ref<'all' | 'html' | 'text'>('all');
+    const embedDocuments = ref<{ id: string; title: string; kind: 'html' | 'text' }[]>([]);
+    const docLoading = ref(false);
+
+    const openDocPicker = async () => {
+      showDocPicker.value = true;
+      showEmbedPicker.value = false;
+      if (embedDocuments.value.length > 0) return;
+      docLoading.value = true;
+      try {
+        const [htmlRes, textRes] = await Promise.allSettled([
+          htmlDocumentsApi.list(),
+          textDocumentsApi.list(),
+        ]);
+        const collected: { id: string; title: string; kind: 'html' | 'text' }[] = [];
+        if (htmlRes.status === 'fulfilled') {
+          for (const d of htmlRes.value.documents || []) {
+            collected.push({ id: d.id, title: d.title || 'Untitled', kind: 'html' });
+          }
+        }
+        if (textRes.status === 'fulfilled') {
+          for (const d of textRes.value.documents || []) {
+            collected.push({ id: d.id, title: d.title || 'Untitled', kind: 'text' });
+          }
+        }
+        if (htmlRes.status === 'rejected' && textRes.status === 'rejected') {
+          throw htmlRes.reason;
+        }
+        embedDocuments.value = collected;
+      } catch (err: any) {
+        showToast(err?.message || 'Не удалось загрузить документы', 'error');
+      } finally {
+        docLoading.value = false;
+      }
+    };
+
+    const filteredEmbedDocuments = computed(() => {
+      const q = docSearch.value.toLowerCase();
+      return embedDocuments.value.filter((d) => {
+        if (docKindFilter.value !== 'all' && d.kind !== docKindFilter.value) return false;
+        return !q || d.title.toLowerCase().includes(q);
+      });
+    });
+
+    const doEmbedDocument = (kind: 'html' | 'text', documentId: string) => {
+      canvasRef.value?.addDocumentEmbed(kind, documentId);
+      showDocPicker.value = false;
+    };
+
+    const onOpenDocument = (payload: { kind: 'html' | 'text'; id: string }) => {
+      router.push(payload.kind === 'text' ? `/docs/${payload.id}` : `/edit/html/${payload.id}`);
     };
 
     const onOpenCanvas = (targetCanvasId: string) => {
@@ -1852,6 +1942,8 @@ export default defineComponent({
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
       openEmbedPicker, doEmbed, onOpenCanvas,
+      showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
+      openDocPicker, doEmbedDocument, onOpenDocument,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,

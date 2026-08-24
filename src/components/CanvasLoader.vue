@@ -402,6 +402,53 @@
         <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
 
+      <!-- Document embed nodes -->
+      <div
+        v-for="node in documentNodes"
+        :key="node.id"
+        class="canvas-node canvas-node-doc"
+        :data-node-id="node.id"
+        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
+        :style="nodePosition(node)"
+        @mousedown.stop="onNodeDragStart($event, node)"
+        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
+        @dblclick.stop="onDocumentEmbedDblClick(node)"
+      >
+        <div class="embed-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
+            <template v-if="node.documentKind === 'text'"><path d="M8 13h8M8 17h5"/></template>
+            <template v-else><path d="M9.5 12.5L8 14l1.5 1.5"/><path d="M14.5 12.5L16 14l-1.5 1.5"/></template>
+          </svg>
+          <span class="embed-title">{{ documentData(node).title || 'Loading...' }}</span>
+          <span class="doc-kind-badge">{{ node.documentKind === 'text' ? 'DOC' : 'HTML' }}</span>
+        </div>
+        <div class="embed-preview doc-preview">
+          <div v-if="documentData(node).loading" class="embed-loading">Loading...</div>
+          <div v-else-if="documentData(node).error" class="embed-error">{{ documentData(node).errorText }}</div>
+          <iframe
+            v-else-if="isDocPreviewRich(node)"
+            class="doc-frame"
+            :srcdoc="documentData(node).srcdoc"
+            sandbox=""
+            loading="lazy"
+            tabindex="-1"
+            aria-hidden="true"
+          ></iframe>
+          <p v-else class="doc-excerpt">{{ documentData(node).excerpt || 'Пустой документ' }}</p>
+        </div>
+        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
+          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
+          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
+          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
+          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
+        </template>
+        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
+        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
+        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
+        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
+      </div>
+
       <!-- Drawings SVG layer (above nodes) -->
       <svg class="canvas-drawings" :style="edgesSvgStyle">
         <g :transform="edgesSvgTransform">
@@ -696,6 +743,9 @@
       <button v-if="!readonly" @click="$emit('open-embed')" title="Вставить канвас">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
       </button>
+      <button v-if="!readonly" @click="$emit('open-doc-embed')" title="Вставить документ">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
+      </button>
       <span class="controls-divider"></span>
       <button @click="onExportCanvas" title="Export .canvas file">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -743,6 +793,8 @@ interface CanvasNode {
   color?: string;
   label?: string;
   canvasId?: string;
+  documentKind?: "html" | "text";
+  documentId?: string;
   textAlign?: "left" | "center" | "right" | "justify";
   firstLineTextAlign?: "left" | "center" | "right" | "justify";
   borderStyle?: string;
@@ -837,7 +889,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "node-edit-start", "template-roll", "readonly-action"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -905,6 +957,9 @@ export default defineComponent({
         for (const node of nodes.value) {
           if (node.type === 'canvas' && node.canvasId) {
             loadEmbeddedCanvas(node.canvasId);
+          }
+          if (node.type === 'document' && node.documentId) {
+            loadEmbeddedDocument(node.documentKind === 'text' ? 'text' : 'html', node.documentId);
           }
         }
       });
@@ -1042,6 +1097,7 @@ export default defineComponent({
     const imageNodes = computed(() => viewerNodes.value.filter((n) => n.type === "image"));
     const templateNodes = computed(() => viewerNodes.value.filter((n) => n.type === "template"));
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
+    const documentNodes = computed(() => viewerNodes.value.filter((n) => n.type === "document"));
 
     const dndAbilities = DND_ABILITIES;
     const dndTabs = [
@@ -1107,6 +1163,123 @@ export default defineComponent({
     const formatDndModifier = (score: number) => formatModifier(abilityModifier(score));
     const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
     const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { if (!isDndInteracting(node)) return; const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
+
+    // ===== Embedded document nodes =====
+    type EmbeddedDocumentEntry = {
+      title: string;
+      srcdoc: string;
+      excerpt: string;
+      loading: boolean;
+      error: boolean;
+      errorText: string;
+    };
+
+    const embeddedDocumentCache = reactive<Record<string, EmbeddedDocumentEntry>>({});
+
+    const documentCacheKey = (kind: "html" | "text", id: string) => kind + ":" + id;
+
+    const documentNodeKind = (node: CanvasNode): "html" | "text" =>
+      node.documentKind === "text" ? "text" : "html";
+
+    const stripHtmlToText = (html: string) =>
+      html
+        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
+    const wrapDocumentFragment = (html: string) =>
+      '<!doctype html><html><head><meta charset="utf-8"><style>' +
+      "html,body{margin:0;padding:12px 14px;background:#fff;color:#1a1a1a;" +
+      "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
+      "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
+      "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid #ddd;color:#555}" +
+      "img{max-width:100%;height:auto}hr{border:0;border-top:1px solid #e5e5e5;margin:1em 0}" +
+      "table{border-collapse:collapse;max-width:100%}td,th{border:1px solid #ddd;padding:4px 6px}" +
+      "pre{background:#f4f4f5;padding:8px;border-radius:4px;overflow:auto}" +
+      "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
+      "</style></head><body>" + html + "</body></html>";
+
+    const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
+      const key = documentCacheKey(kind, id);
+      if (embeddedDocumentCache[key]) return;
+      embeddedDocumentCache[key] = { title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "" };
+      try {
+        const { htmlDocuments, textDocuments } = await import("../api/client");
+        let title = "";
+        let html = "";
+        if (kind === "html") {
+          const res: any = await htmlDocuments.get(id);
+          title = res?.document?.title || "Untitled";
+          html = res?.document?.html || "";
+        } else {
+          const res: any = await textDocuments.get(id);
+          title = res?.document?.title || "Untitled";
+          html = res?.document?.snapshot?.html || "";
+        }
+        embeddedDocumentCache[key] = {
+          title,
+          // HTML documents are stored as complete documents; text documents come back as a fragment.
+          srcdoc: kind === "html" ? html : wrapDocumentFragment(html),
+          excerpt: stripHtmlToText(html).slice(0, 400),
+          loading: false,
+          error: false,
+          errorText: "",
+        };
+      } catch {
+        embeddedDocumentCache[key] = { title: "Error", srcdoc: "", excerpt: "", loading: false, error: true, errorText: "Cannot load document" };
+      }
+    };
+
+    const EMPTY_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
+      title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "",
+    };
+    const MISSING_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
+      title: "Документ не выбран", srcdoc: "", excerpt: "", loading: false, error: true,
+      errorText: "Документ не выбран",
+    };
+
+    const documentData = (node: CanvasNode): EmbeddedDocumentEntry => {
+      if (!node.documentId) return MISSING_DOCUMENT_ENTRY;
+      const key = documentCacheKey(documentNodeKind(node), node.documentId);
+      if (!embeddedDocumentCache[key]) {
+        loadEmbeddedDocument(documentNodeKind(node), node.documentId);
+      }
+      return embeddedDocumentCache[key] || EMPTY_DOCUMENT_ENTRY;
+    };
+
+    /** Below this size an iframe is unreadable, so fall back to a plain-text excerpt. */
+    const isDocPreviewRich = (node: CanvasNode) => node.width >= 220 && node.height >= 140;
+
+    const onDocumentEmbedDblClick = (node: CanvasNode) => {
+      if (!node.documentId) return;
+      emit("open-document", { kind: documentNodeKind(node), id: node.documentId });
+    };
+
+    const addDocumentEmbed = (kind: "html" | "text", documentId: string) => {
+      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
+      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
+      const newNode: CanvasNode = {
+        id: genId(),
+        type: "document",
+        x: centerX - 210,
+        y: centerY - 160,
+        width: 420,
+        height: 320,
+        documentKind: kind,
+        documentId,
+      };
+      pushUndo();
+      nodes.value.push(newNode);
+      emitOp({ type: 'node-add', node: { ...newNode } });
+      selectedNodeIds.value = [newNode.id];
+      loadEmbeddedDocument(kind, documentId);
+    };
 
     const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
 
@@ -3572,6 +3745,11 @@ export default defineComponent({
       linkNodes,
       imageNodes,
       canvasNodes,
+      documentNodes,
+      documentData,
+      isDocPreviewRich,
+      onDocumentEmbedDblClick,
+      addDocumentEmbed,
       getEmbeddedCanvasData,
       embeddedCanvasViewBox,
       embeddedEdgePath,
