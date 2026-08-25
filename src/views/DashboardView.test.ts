@@ -426,6 +426,28 @@ describe('DashboardView groups', () => {
       expect(vm.selectedFolderId).toBe('folder-c');
     });
 
+    it('shows the open subfolder name and counts right next to the arrow', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.selectFolder('folder-c');
+      await nextTick();
+
+      const header = wrapper.find('.folder-manager-main');
+      expect(header.exists()).toBe(true);
+      // The arrow and the title block are siblings, in that order, so the folder
+      // info reads as belonging to the arrow rather than drifting to the far edge.
+      const children = Array.from(header.element.children).map((node) => node.className);
+      expect(children[0]).toContain('folder-up-button');
+      expect(children[1]).toContain('folder-manager-title');
+
+      const title = wrapper.find('.folder-manager-title');
+      expect(title.find('.folder-manager-name').text()).toBe('Archive');
+      expect(title.find('.folder-manager-count').exists()).toBe(true);
+    });
+
     it('offers a way back up only when the open folder has a parent', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
@@ -691,6 +713,104 @@ describe('DashboardView groups', () => {
       labels = wrapper.findAll('.card-menu-item').map((node: any) => node.text());
       expect(labels).toContain('Добавить папку');
       expect(labels).not.toContain('Add folder');
+    });
+  });
+
+  describe('remembering the open folder', () => {
+    const KEY = 'qcanva:dashboard:folder:v1:user-1';
+
+    function withNesting() {
+      vi.mocked(resourceFolders.list).mockResolvedValue({
+        own: [
+          { id: 'folder-a', name: 'Alpha', role: 'owner', parentId: null, canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
+          { id: 'folder-b', name: 'Beta', role: 'owner', parentId: null, canvases: [], htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-b' }] },
+          { id: 'folder-c', name: 'Nested', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+        ],
+        shared: [],
+      } as never);
+    }
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('stores the folder that was opened', async () => {
+      withNesting();
+      const wrapper = mountDashboard();
+      await flushPromises();
+
+      (wrapper.vm as any).selectFolder('folder-b');
+
+      expect(localStorage.getItem(KEY)).toBe('folder-b');
+    });
+
+    it('opens the remembered folder on the next load', async () => {
+      localStorage.setItem(KEY, 'folder-b');
+      withNesting();
+      const wrapper = mountDashboard();
+      await flushPromises();
+
+      expect((wrapper.vm as any).selectedFolderId).toBe('folder-b');
+    });
+
+    it('opens a remembered nested folder and unfolds the way to it', async () => {
+      localStorage.setItem(KEY, 'folder-c');
+      withNesting();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      // A nested folder is hidden until its ancestors are expanded, so restoring
+      // it has to expand them rather than give up and fall back.
+      expect(vm.selectedFolderId).toBe('folder-c');
+      expect(vm.expandedTreeIds).toContain('folder-b');
+      expect(vm.folderSummaries.map((folder: any) => folder.id)).toContain('folder-c');
+    });
+
+    it('falls back to the first folder when the remembered one is gone', async () => {
+      localStorage.setItem(KEY, 'folder-deleted');
+      withNesting();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      expect(vm.selectedFolderId).toBe(vm.folderSummaries[0]?.id);
+      expect(vm.selectedFolderId).not.toBe('folder-deleted');
+      // The stale pointer is cleared so it stops losing to the fallback each load.
+      expect(localStorage.getItem(KEY)).toBeNull();
+    });
+
+    it('keeps the remembered folder per user', async () => {
+      localStorage.setItem('qcanva:dashboard:folder:v1:someone-else', 'folder-b');
+      withNesting();
+      const wrapper = mountDashboard();
+      await flushPromises();
+
+      // Another account's pointer must not be picked up.
+      expect((wrapper.vm as any).selectedFolderId).toBe('folder-a');
+    });
+
+    it('survives storage being unavailable', async () => {
+      const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new Error('denied');
+      });
+      const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('denied');
+      });
+      try {
+        withNesting();
+        const wrapper = mountDashboard();
+        await flushPromises();
+        const vm = wrapper.vm as any;
+
+        // The dashboard still picks a folder rather than throwing.
+        expect(vm.selectedFolderId).toBe('folder-a');
+        expect(() => vm.selectFolder('folder-b')).not.toThrow();
+        expect(vm.selectedFolderId).toBe('folder-b');
+      } finally {
+        getItem.mockRestore();
+        setItem.mockRestore();
+      }
     });
   });
 });

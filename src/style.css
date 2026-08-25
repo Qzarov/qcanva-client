@@ -1074,10 +1074,14 @@ html, body {
   cursor: pointer;
   padding: 0;
 }
+/* flex:1 keeps the name and counts next to the up arrow: the header row is
+   space-between, so without it the second child is pushed to the far edge. */
 .folder-manager-title {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex: 1;
+  min-width: 0;
   flex-wrap: wrap;
 }
 .folder-row-toggle {

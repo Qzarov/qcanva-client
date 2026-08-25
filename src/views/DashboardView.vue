@@ -978,6 +978,25 @@ export default defineComponent({
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
+    const lastFolderKey = () => `qcanva:dashboard:folder:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
+
+    const readLastFolderId = () => {
+      try {
+        return localStorage.getItem(lastFolderKey()) || '';
+      } catch {
+        // A browser with site data blocked must not break the dashboard.
+        return '';
+      }
+    };
+
+    const writeLastFolderId = (folderId: string) => {
+      try {
+        if (folderId) localStorage.setItem(lastFolderKey(), folderId);
+        else localStorage.removeItem(lastFolderKey());
+      } catch {
+        // Ignore: remembering the folder is a convenience, not a requirement.
+      }
+    };
     const recentResourceHistory = ref<RecentResource[]>([]);
     const recentResourcesStrip = ref<HTMLElement | null>(null);
     const tagFilterList = ref<HTMLElement | null>(null);
@@ -1504,9 +1523,9 @@ export default defineComponent({
         // Drop collapse flags for folders that no longer exist; everything else
         // stays expanded by default.
         collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => availableFolders.has(id));
-        if (!folderSummaries.value.some((folder) => folder.id === selectedFolderId.value)) {
-          selectedFolderId.value = folderSummaries.value[0]?.id || '';
-        }
+        const knownFolders = new Set(allResourceFolders.value.map((folder) => folder.id));
+        expandedTreeIds.value = expandedTreeIds.value.filter((id) => knownFolders.has(id));
+        restoreSelectedFolder();
         writeDashboardCache();
       } catch (error) {
         if (showLoading) setFeedback('error', error instanceof Error ? error.message : 'Failed to load dashboard');
@@ -2626,10 +2645,11 @@ export default defineComponent({
       return !collapsedFolderIds.value.includes(folderId);
     };
 
-    const selectFolder = (folderId: string) => {
-      selectedFolderId.value = folderId;
-      // Subtrees start folded, so reveal the chain down to the folder being
-      // opened; otherwise the selected folder would be invisible in the sidebar.
+    /**
+     * Subtrees start folded, so reveal the chain down to a folder before it is
+     * opened; otherwise the selected folder would be invisible in the sidebar.
+     */
+    const expandAncestorsOf = (folderId: string) => {
       const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
       const ancestors: string[] = [];
       let parentId = byId.get(folderId)?.parentId ?? null;
@@ -2640,9 +2660,42 @@ export default defineComponent({
         parentId = byId.get(parentId)?.parentId ?? null;
       }
       if (ancestors.length) {
-        const next = new Set([...expandedTreeIds.value, ...ancestors]);
-        expandedTreeIds.value = [...next];
+        expandedTreeIds.value = [...new Set([...expandedTreeIds.value, ...ancestors])];
       }
+    };
+
+    /**
+     * Pick which folder is open after a load: keep the current one, else the one
+     * remembered from last time, else the first in the tree. The remembered id is
+     * checked against every known folder rather than the visible tree, since a
+     * nested folder is hidden until its ancestors are expanded.
+     */
+    const restoreSelectedFolder = () => {
+      const isVisible = (id: string) =>
+        Boolean(id) && folderSummaries.value.some((folder) => folder.id === id);
+      if (isVisible(selectedFolderId.value)) return;
+
+      const known = new Set(allResourceFolders.value.map((folder) => folder.id));
+      const remembered = readLastFolderId();
+      if (remembered && known.has(remembered)) {
+        expandAncestorsOf(remembered);
+        // Expanding changes the tree, so re-check that the folder actually shows.
+        if (isVisible(remembered)) {
+          selectedFolderId.value = remembered;
+          return;
+        }
+      }
+      const fallback = folderSummaries.value[0]?.id || '';
+      selectedFolderId.value = fallback;
+      // A stale pointer is cleared so it cannot keep losing the race with the
+      // fallback on every load.
+      if (remembered && !known.has(remembered)) writeLastFolderId('');
+    };
+
+    const selectFolder = (folderId: string) => {
+      selectedFolderId.value = folderId;
+      expandAncestorsOf(folderId);
+      writeLastFolderId(folderId);
       closeCardMenu();
     };
 
@@ -2812,6 +2865,7 @@ export default defineComponent({
       isTreeExpanded,
       toggleTreeExpanded,
       activeSubfolders,
+      restoreSelectedFolder,
       subfolderModal,
       openSubfolderModal,
       closeSubfolderModal,
