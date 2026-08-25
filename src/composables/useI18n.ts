@@ -29,6 +29,7 @@ const messages = {
     publicEdit: 'Публичное редактирование', unknownOwner: 'Неизвестный владелец', untitled: 'Без названия', untitledHtml: 'HTML без названия', untitledDocument: 'Документ без названия',
     description: 'Описание', descriptionEmpty: 'Описание не заполнено.', descriptionPlaceholder: 'Опишите, что это за документ и зачем он нужен',
     addFolder: 'Добавить папку', addFolderTitle: 'Новая папка внутри', folderName: 'Название папки', createFolder: 'Создать папку', folderCreated: 'Папка создана',
+    upOneLevel: 'На уровень выше', subfolders: 'Подпапки', emptyFolder: 'Пусто',
     collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
   },
   en: {
@@ -50,6 +51,7 @@ const messages = {
     publicEdit: 'Public edit', unknownOwner: 'Unknown owner', untitled: 'Untitled', untitledHtml: 'Untitled HTML', untitledDocument: 'Untitled document',
     description: 'Description', descriptionEmpty: 'No description yet.', descriptionPlaceholder: 'Describe what this document is and what it is for',
     addFolder: 'Add folder', addFolderTitle: 'New folder inside', folderName: 'Folder name', createFolder: 'Create folder', folderCreated: 'Folder created',
+    upOneLevel: 'Up one level', subfolders: 'Subfolders', emptyFolder: 'Empty',
     collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
   },
 } as const;

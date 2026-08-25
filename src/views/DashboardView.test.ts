@@ -328,45 +328,122 @@ describe('DashboardView groups', () => {
           { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
           { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-b' }] },
           { id: 'folder-c', name: 'Archive', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+          { id: 'folder-d', name: 'Deep', role: 'owner', parentId: 'folder-c', canvases: [], htmlDocuments: [] },
         ],
         shared: [],
       } as never);
     }
 
-    it('orders the sidebar as a tree and tags each folder with its depth', async () => {
+    it('keeps subtrees folded until they are opened', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
       const vm = wrapper.vm as any;
 
+      const ids = () => vm.folderSummaries.map((folder: any) => folder.id);
+      // A child folder is hidden by default.
+      expect(ids()).toContain('folder-b');
+      expect(ids()).not.toContain('folder-c');
+
+      vm.toggleTreeExpanded('folder-b');
+      await nextTick();
+      expect(ids()).toContain('folder-c');
+      // Its own child stays folded: expanding is one level at a time.
+      expect(ids()).not.toContain('folder-d');
+
+      vm.toggleTreeExpanded('folder-b');
+      await nextTick();
+      expect(ids()).not.toContain('folder-c');
+    });
+
+    it('orders an opened subtree as parent then child, tagged with depth', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      vm.toggleTreeExpanded('folder-b');
+      await nextTick();
+
       const rows = vm.folderSummaries.map((folder: any) => [folder.id, folder.depth]);
       const b = rows.findIndex(([id]: [string]) => id === 'folder-b');
       const c = rows.findIndex(([id]: [string]) => id === 'folder-c');
-      expect(b).toBeGreaterThanOrEqual(0);
-      // The child follows its parent and sits one level deeper.
       expect(c).toBe(b + 1);
       expect(rows[b][1]).toBe(0);
       expect(rows[c][1]).toBe(1);
       expect(vm.folderSummaries[b].hasChildren).toBe(true);
     });
 
-    it('hides a subtree while its parent is collapsed', async () => {
+    it('reveals the whole chain when a nested folder is opened', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
       const vm = wrapper.vm as any;
-      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(true);
 
-      vm.toggleTreeCollapsed('folder-b');
+      // Jumping straight to a grandchild must expand both ancestors.
+      vm.selectFolder('folder-d');
       await nextTick();
 
-      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(false);
-      // The parent itself stays visible.
-      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-b')).toBe(true);
+      expect(vm.expandedTreeIds).toContain('folder-b');
+      expect(vm.expandedTreeIds).toContain('folder-c');
+      const ids = vm.folderSummaries.map((folder: any) => folder.id);
+      expect(ids).toContain('folder-d');
+    });
 
-      vm.toggleTreeCollapsed('folder-b');
+    it('lists the subfolders of the folder that is open', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.selectFolder('folder-b');
       await nextTick();
-      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(true);
+      expect(vm.activeSubfolders.map((child: any) => child.id)).toEqual(['folder-c']);
+
+      const cards = wrapper.findAll('.subfolder-card');
+      expect(cards).toHaveLength(1);
+      expect(cards[0]?.text()).toContain('Archive');
+
+      // Rendered ahead of the folder's own items, not merely present.
+      const html = wrapper.html();
+      const subfolderAt = html.indexOf('subfolder-card');
+      const itemAt = html.indexOf('Doc 1');
+      expect(subfolderAt).toBeGreaterThan(-1);
+      expect(itemAt).toBeGreaterThan(-1);
+      expect(subfolderAt).toBeLessThan(itemAt);
+    });
+
+    it('opens a subfolder when its card is clicked', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      vm.selectFolder('folder-b');
+      await nextTick();
+
+      await wrapper.find('.subfolder-card').trigger('click');
+      await nextTick();
+
+      expect(vm.selectedFolderId).toBe('folder-c');
+    });
+
+    it('offers a way back up only when the open folder has a parent', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.selectFolder('folder-b');
+      await nextTick();
+      expect(wrapper.find('.folder-up-button').exists()).toBe(false);
+
+      vm.selectFolder('folder-c');
+      await nextTick();
+      const up = wrapper.find('.folder-up-button');
+      expect(up.exists()).toBe(true);
+
+      await up.trigger('click');
+      await nextTick();
+      expect(vm.selectedFolderId).toBe('folder-b');
     });
 
     it('creates a subfolder inside the folder it was opened from', async () => {
@@ -389,16 +466,13 @@ describe('DashboardView groups', () => {
       const wrapper = mountDashboard();
       await flushPromises();
       const vm = wrapper.vm as any;
-
-      vm.toggleTreeCollapsed('folder-b');
-      await nextTick();
-      expect(vm.collapsedTreeIds).toContain('folder-b');
+      expect(vm.expandedTreeIds).not.toContain('folder-b');
 
       vm.openSubfolderModal({ id: 'folder-b', name: 'Target' });
       vm.subfolderModal.value = 'Specs';
       await vm.saveSubfolderModal();
 
-      expect(vm.collapsedTreeIds).not.toContain('folder-b');
+      expect(vm.expandedTreeIds).toContain('folder-b');
     });
 
     it('does not create a folder without a name', async () => {

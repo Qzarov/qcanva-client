@@ -227,10 +227,10 @@
               <span
                 v-if="folder.hasChildren"
                 class="folder-nav-twisty"
-                :class="{ collapsed: isTreeCollapsed(folder.id) }"
+                :class="{ collapsed: !isTreeExpanded(folder.id) }"
                 role="button"
-                :aria-label="isTreeCollapsed(folder.id) ? t('expandSubfolders') : t('collapseSubfolders')"
-                @click.stop="toggleTreeCollapsed(folder.id)"
+                :aria-label="isTreeExpanded(folder.id) ? t('collapseSubfolders') : t('expandSubfolders')"
+                @click.stop="toggleTreeExpanded(folder.id)"
               >▾</span>
               <span v-else class="folder-nav-twisty-spacer"></span>
               <span class="folder-nav-name">{{ folder.name }}</span>
@@ -253,6 +253,14 @@
           >
               <div class="folder-manager-top">
               <div class="folder-manager-main">
+                <button
+                  v-if="activeFolder.parentId"
+                  type="button"
+                  class="folder-up-button"
+                  :title="t('upOneLevel')"
+                  :aria-label="t('upOneLevel')"
+                  @click.stop="selectFolder(activeFolder.parentId)"
+                >←</button>
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
                   <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
@@ -292,7 +300,20 @@
                 <button v-if="canScrollFolderUp" type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
                 <button v-if="canScrollFolderDown" type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
               </div>
-              <div ref="activeFolderBody" class="folder-manager-body" @scroll="updateFolderScrollControls">
+              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
+                <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
+                  <button
+                    v-for="child in activeSubfolders"
+                    :key="'subfolder-' + child.id"
+                    type="button"
+                    class="subfolder-card"
+                    @click="selectFolder(child.id)"
+                  >
+                    <span class="subfolder-card-icon" aria-hidden="true">▤</span>
+                    <span class="subfolder-card-name">{{ child.name }}</span>
+                    <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
+                  </button>
+                </div>
                 <div class="dash-grid">
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
@@ -327,8 +348,8 @@
                       >#{{ tag.name }}</span>
                     </div>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
                       <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
                       <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
@@ -365,8 +386,8 @@
                       >#{{ tag.name }}</span>
                     </div>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="HTML actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
                       <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
                       <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
@@ -403,8 +424,8 @@
                       >#{{ tag.name }}</span>
                     </div>
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Document actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
                       <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
                       <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
@@ -459,11 +480,11 @@
             <button
               v-if="c.role === 'edit'"
               class="card-manage"
-              @click.stop="toggleCardMenu(c.id)"
+              @click.stop="toggleCardMenu(c.id, $event)"
               title="Canvas actions"
               :disabled="isBusy"
             >⋯</button>
-            <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
+            <div v-if="openMenuCanvasId === c.id" class="card-menu" :style="cardMenuStyle" @click.stop>
               <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
               <button class="card-menu-item" @click="openDescriptionModal(c)" :disabled="isBusy">{{ t('description') }}</button>
               <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? t('unpin') : t('pin') }}</button>
@@ -1256,16 +1277,26 @@ export default defineComponent({
       if (!folderModal.value.resourceId) return Boolean(folderModal.value.value.trim());
       return Boolean(folderModal.value.folderId && folderModal.value.folderId !== draggingResourceFolderId.value);
     });
-    /** Subtrees folded away in the sidebar tree. */
-    const collapsedTreeIds = ref<string[]>([]);
+    /**
+     * Subtrees the user has opened. Tracking the open ones (rather than the closed
+     * ones) is what makes a subtree start folded, including folders that only
+     * appear after a reload.
+     */
+    const expandedTreeIds = ref<string[]>([]);
 
-    const isTreeCollapsed = (folderId: string) =>
-      collapsedTreeIds.value.includes(folderId);
+    const isTreeExpanded = (folderId: string) =>
+      expandedTreeIds.value.includes(folderId);
 
-    const toggleTreeCollapsed = (folderId: string) => {
-      collapsedTreeIds.value = isTreeCollapsed(folderId)
-        ? collapsedTreeIds.value.filter((id) => id !== folderId)
-        : [...collapsedTreeIds.value, folderId];
+    const toggleTreeExpanded = (folderId: string) => {
+      expandedTreeIds.value = isTreeExpanded(folderId)
+        ? expandedTreeIds.value.filter((id) => id !== folderId)
+        : [...expandedTreeIds.value, folderId];
+    };
+
+    const expandTree = (folderId: string) => {
+      if (!isTreeExpanded(folderId)) {
+        expandedTreeIds.value = [...expandedTreeIds.value, folderId];
+      }
     };
 
     /**
@@ -1297,8 +1328,7 @@ export default defineComponent({
           if (!hidden) {
             ordered.push({ ...node, depth, hasChildren: children.length > 0 });
           }
-          const collapsed = isTreeCollapsed(node.id);
-          walk(children, depth + 1, hidden || collapsed);
+          walk(children, depth + 1, hidden || !isTreeExpanded(node.id));
         }
       };
       walk(roots, 0, false);
@@ -2375,14 +2405,71 @@ export default defineComponent({
       patch(publicCanvases.value);
     };
 
-    const toggleCardMenu = (canvasId: string) => {
+    /**
+     * The folder body scrolls (max-height + overflow-y), which clips an absolutely
+     * positioned menu. On desktop the menu is therefore pinned to the viewport at
+     * the trigger's position. Below 720px the stylesheet turns it into a bottom
+     * sheet, so no inline position is applied there.
+     */
+    const cardMenuStyle = ref<Record<string, string> | null>(null);
+    const CARD_MENU_WIDTH = 220;
+    const CARD_MENU_GAP = 6;
+    const CARD_MENU_MIN_SPACE = 200;
+
+    const isFloatingMenuLayout = () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(min-width: 721px)').matches;
+
+    const computeCardMenuStyle = (trigger: EventTarget | null) => {
+      if (!isFloatingMenuLayout()) return null;
+      const element = trigger as HTMLElement | null;
+      if (!element?.getBoundingClientRect) return null;
+      const rect = element.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      // Right-align with the trigger, but keep the whole menu on screen.
+      const left = Math.max(
+        12,
+        Math.min(rect.right - CARD_MENU_WIDTH, viewportWidth - CARD_MENU_WIDTH - 12),
+      );
+      const spaceBelow = viewportHeight - rect.bottom;
+      const style: Record<string, string> = {
+        position: 'fixed',
+        left: `${Math.round(left)}px`,
+        right: 'auto',
+        width: `${CARD_MENU_WIDTH}px`,
+        overflowY: 'auto',
+      };
+      if (spaceBelow < CARD_MENU_MIN_SPACE && rect.top > spaceBelow) {
+        // Not enough room underneath, so hang the menu above the trigger.
+        style.top = 'auto';
+        style.bottom = `${Math.round(viewportHeight - rect.top + CARD_MENU_GAP)}px`;
+        style.maxHeight = `${Math.max(120, Math.round(rect.top - CARD_MENU_GAP - 12))}px`;
+      } else {
+        style.top = `${Math.round(rect.bottom + CARD_MENU_GAP)}px`;
+        style.bottom = 'auto';
+        style.maxHeight = `${Math.max(120, Math.round(spaceBelow - CARD_MENU_GAP - 12))}px`;
+      }
+      return style;
+    };
+
+    const onFolderBodyScroll = () => {
+      updateFolderScrollControls();
+      if (openMenuCanvasId.value) closeCardMenu();
+    };
+
+    const toggleCardMenu = (canvasId: string, event?: Event) => {
       openControlMenu.value = '';
-      openMenuCanvasId.value = openMenuCanvasId.value === canvasId ? '' : canvasId;
+      const closing = openMenuCanvasId.value === canvasId;
+      openMenuCanvasId.value = closing ? '' : canvasId;
+      cardMenuStyle.value = closing ? null : computeCardMenuStyle(event?.currentTarget ?? null);
     };
 
     const closeCardMenu = () => {
       openMenuCanvasId.value = '';
       openControlMenu.value = '';
+      cardMenuStyle.value = null;
     };
 
     const toggleNewMenu = () => {
@@ -2425,6 +2512,23 @@ export default defineComponent({
       value: '',
     });
 
+    /** Direct children of the folder currently open, shown ahead of its items. */
+    const activeSubfolders = computed(() => {
+      const parentId = activeFolder.value?.id;
+      if (!parentId) return [];
+      return allResourceFolders.value
+        .filter((folder) => (folder.parentId ?? null) === parentId)
+        .map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          count:
+            (folder.canvasCount || 0) +
+            (folder.htmlDocumentCount || 0) +
+            (folder.textDocumentCount || 0),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    });
+
     const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
       subfolderModal.value = {
@@ -2451,7 +2555,7 @@ export default defineComponent({
       closeSubfolderModal();
       if (!created) return;
       // Unfold the parent so the folder that was just created is actually visible.
-      collapsedTreeIds.value = collapsedTreeIds.value.filter((id) => id !== parentId);
+      expandTree(parentId);
       await load();
     };
 
@@ -2524,6 +2628,21 @@ export default defineComponent({
 
     const selectFolder = (folderId: string) => {
       selectedFolderId.value = folderId;
+      // Subtrees start folded, so reveal the chain down to the folder being
+      // opened; otherwise the selected folder would be invisible in the sidebar.
+      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
+      const ancestors: string[] = [];
+      let parentId = byId.get(folderId)?.parentId ?? null;
+      const guard = new Set<string>();
+      while (parentId && !guard.has(parentId)) {
+        guard.add(parentId);
+        ancestors.push(parentId);
+        parentId = byId.get(parentId)?.parentId ?? null;
+      }
+      if (ancestors.length) {
+        const next = new Set([...expandedTreeIds.value, ...ancestors]);
+        expandedTreeIds.value = [...next];
+      }
       closeCardMenu();
     };
 
@@ -2689,14 +2808,17 @@ export default defineComponent({
       openCreateGroupModal,
       openMoveFolderModal,
       openMoveHtmlFolderModal,
-      collapsedTreeIds,
-      isTreeCollapsed,
-      toggleTreeCollapsed,
+      expandedTreeIds,
+      isTreeExpanded,
+      toggleTreeExpanded,
+      activeSubfolders,
       subfolderModal,
       openSubfolderModal,
       closeSubfolderModal,
       saveSubfolderModal,
       descriptionModal,
+      cardMenuStyle,
+      onFolderBodyScroll,
       openDescriptionModal,
       closeDescriptionModal,
       saveDescriptionModal,
