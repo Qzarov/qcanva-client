@@ -226,6 +226,9 @@ export type ResourceTagSummary = ResourceTag & {
   totalCount: number;
 };
 
+/** Keep in step with MAX_DESCRIPTION_LENGTH on the server. */
+export const MAX_DESCRIPTION_LENGTH = 2000;
+
 export type ResourceType = 'canvas' | 'html-document' | 'text-document';
 export type ResourceFolderRole = 'owner' | 'read' | 'edit';
 
@@ -233,6 +236,7 @@ export type ResourceFolderSummary = {
   id: string;
   name: string;
   ownerId?: string;
+  parentId?: string | null;
   role: ResourceFolderRole;
   canvasCount: number;
   htmlDocumentCount: number;
@@ -252,8 +256,11 @@ export type ResourceFolderSummary = {
 
 export const resourceFolders = {
   list: () => request<{ own: ResourceFolderSummary[]; shared: ResourceFolderSummary[] }>('/resource-folders'),
-  create: (name: string) =>
-    request<ResourceFolderSummary>('/resource-folders', { method: 'POST', body: JSON.stringify({ name }) }),
+  create: (name: string, parentId?: string | null) =>
+    request<ResourceFolderSummary>('/resource-folders', { method: 'POST', body: JSON.stringify({ name, parentId: parentId ?? null }) }),
+  /** Re-parent a folder; a null parentId moves it back to the root. */
+  moveFolder: (id: string, parentId: string | null) =>
+    request<{ id: string; parentId: string | null }>(`/resource-folders/${id}/parent`, { method: 'PUT', body: JSON.stringify({ parentId }) }),
   rename: (id: string, name: string) =>
     request<ResourceFolderSummary>(`/resource-folders/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
   delete: (id: string) =>
@@ -279,6 +286,7 @@ export const canvas = {
     id: string,
     updates: {
       title?: string;
+      description?: string | null;
       slug?: string | null;
       data?: string;
       isPublic?: boolean;
@@ -336,7 +344,7 @@ export const htmlDocuments = {
   create: (payload: { title: string; html: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
-  update: (id: string, payload: { title?: string; slug?: string | null; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; pinned?: boolean; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
+  update: (id: string, payload: { title?: string; description?: string | null; slug?: string | null; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; pinned?: boolean; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   duplicate: (id: string) =>
     request<any>(`/html-documents/${id}/duplicate`, { method: 'POST' }),

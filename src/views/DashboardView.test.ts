@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { nextTick } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
@@ -19,6 +20,7 @@ vi.mock('../api/client', () => ({
   canvas: {
     create: vi.fn().mockResolvedValue({ id: 'canvas-new' }),
     list: vi.fn().mockResolvedValue({ own: [], shared: [], public: [], welcome: null }),
+    update: vi.fn().mockResolvedValue({ id: 'canvas-1' }),
   },
   clearToken: vi.fn(),
   getCurrentUser: vi.fn(() => ({ id: 'user-1', email: 'admin@example.com', name: 'Admin' })),
@@ -51,8 +53,10 @@ vi.mock('../api/client', () => ({
   },
   isAdmin: vi.fn(() => false),
   isAuthenticated: vi.fn(() => true),
+  MAX_DESCRIPTION_LENGTH: 2000,
   resourceFolders: {
     create: vi.fn().mockResolvedValue({ id: 'folder-new', name: 'Work', role: 'owner', items: { canvases: [], htmlDocuments: [] } }),
+    moveFolder: vi.fn().mockResolvedValue({ id: 'folder-c', parentId: 'folder-b' }),
     delete: vi.fn(),
     list: vi.fn().mockResolvedValue({
       own: [
@@ -313,5 +317,201 @@ describe('DashboardView groups', () => {
     await vm.saveTransferModal();
 
     expect(htmlDocuments.transferOwnership).toHaveBeenCalledWith('doc-1', 'next@example.com');
+  });
+
+  describe('nested folders', () => {
+    // The component reads folders from resourceFolders.list, so nesting is set up there.
+    function withNestedFolders() {
+      vi.mocked(resourceFolders.list).mockResolvedValue({
+        own: [
+          { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
+          { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-b' }] },
+          { id: 'folder-c', name: 'Archive', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+        ],
+        shared: [],
+      } as never);
+    }
+
+    it('orders the sidebar as a tree and tags each folder with its depth', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      const rows = vm.folderSummaries.map((folder: any) => [folder.id, folder.depth]);
+      const b = rows.findIndex(([id]: [string]) => id === 'folder-b');
+      const c = rows.findIndex(([id]: [string]) => id === 'folder-c');
+      expect(b).toBeGreaterThanOrEqual(0);
+      // The child follows its parent and sits one level deeper.
+      expect(c).toBe(b + 1);
+      expect(rows[b][1]).toBe(0);
+      expect(rows[c][1]).toBe(1);
+      expect(vm.folderSummaries[b].hasChildren).toBe(true);
+    });
+
+    it('hides a subtree while its parent is collapsed', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(true);
+
+      vm.toggleTreeCollapsed('folder-b');
+      await nextTick();
+
+      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(false);
+      // The parent itself stays visible.
+      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-b')).toBe(true);
+
+      vm.toggleTreeCollapsed('folder-b');
+      await nextTick();
+      expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(true);
+    });
+
+    it('offers every folder except the one being moved and its subtree as a parent', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openFolderParentModal({ id: 'folder-b', name: 'Target', parentId: null });
+      await nextTick();
+
+      const ids = vm.folderParentOptions.map((option: any) => option.id);
+      expect(ids).not.toContain('folder-b');
+      // Its descendant must not be offered either, or the tree would cycle.
+      expect(ids).not.toContain('folder-c');
+      expect(ids).toContain('folder-a');
+    });
+
+    it('moves a folder under the chosen parent', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openFolderParentModal({ id: 'folder-c', name: 'Archive', parentId: null });
+      vm.folderParentModal.parentId = 'folder-b';
+      await vm.saveFolderParentModal();
+
+      expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-c', 'folder-b');
+      expect(vm.folderParentModal.open).toBe(false);
+    });
+
+    it('moves a folder back to the root when no parent is picked', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openFolderParentModal({ id: 'folder-c', name: 'Archive', parentId: 'folder-b' });
+      vm.folderParentModal.parentId = '';
+      await vm.saveFolderParentModal();
+
+      expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-c', null);
+    });
+  });
+
+  describe('resource descriptions', () => {
+    it('opens an editable description for the user\'s own resource', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({
+        id: 'canvas-1',
+        type: 'canvas',
+        title: 'Canvas 1',
+        description: 'Existing note',
+        isOwn: true,
+      });
+      await nextTick();
+
+      expect(vm.descriptionModal).toMatchObject({
+        open: true,
+        resourceId: 'canvas-1',
+        resourceType: 'canvas',
+        value: 'Existing note',
+        canEdit: true,
+      });
+    });
+
+    it('opens a read-only description for a resource owned by somebody else', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({
+        id: 'canvas-9',
+        type: 'canvas',
+        title: 'Shared canvas',
+        description: 'Their note',
+        ownerId: 'someone-else',
+      });
+      await nextTick();
+
+      expect(vm.descriptionModal.canEdit).toBe(false);
+    });
+
+    it('saves a canvas description', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({ id: 'canvas-1', type: 'canvas', title: 'Canvas 1', isOwn: true });
+      vm.descriptionModal.value = '  About this canvas  ';
+      await vm.saveDescriptionModal();
+
+      expect(canvas.update).toHaveBeenCalledWith('canvas-1', {
+        description: 'About this canvas',
+      });
+      expect(vm.descriptionModal.open).toBe(false);
+    });
+
+    it('saves a text document description through the text document API', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({ id: 'text-1', type: 'text-document', title: 'Doc', isOwn: true });
+      vm.descriptionModal.value = 'Notes';
+      await vm.saveDescriptionModal();
+
+      expect(textDocuments.update).toHaveBeenCalledWith('text-1', { description: 'Notes' });
+    });
+
+    it('clears a description to null rather than an empty string', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({
+        id: 'doc-1',
+        type: 'html-document',
+        title: 'Doc 1',
+        description: 'was set',
+        isOwn: true,
+      });
+      vm.descriptionModal.value = '   ';
+      await vm.saveDescriptionModal();
+
+      expect(htmlDocuments.update).toHaveBeenCalledWith('doc-1', { description: null });
+    });
+
+    it('does not save when the viewer cannot edit', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openDescriptionModal({
+        id: 'canvas-9',
+        type: 'canvas',
+        title: 'Shared',
+        ownerId: 'someone-else',
+      });
+      vm.descriptionModal.value = 'sneaky edit';
+      await vm.saveDescriptionModal();
+
+      expect(canvas.update).not.toHaveBeenCalled();
+      expect(vm.descriptionModal.open).toBe(false);
+    });
   });
 });

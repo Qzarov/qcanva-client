@@ -214,6 +214,7 @@
               class="folder-nav-item"
               :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
               :data-folder-id="folder.id"
+              :style="{ paddingLeft: 10 + (folder.depth || 0) * 14 + 'px' }"
               :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
               @click.stop="selectFolder(folder.id)"
               @dragstart.stop="onFolderDragStart($event, folder)"
@@ -223,6 +224,15 @@
               @dragleave="onFolderDragLeave(folder)"
               @drop.prevent="onFolderDrop($event, folder)"
             >
+              <span
+                v-if="folder.hasChildren"
+                class="folder-nav-twisty"
+                :class="{ collapsed: isTreeCollapsed(folder.id) }"
+                role="button"
+                :aria-label="isTreeCollapsed(folder.id) ? 'Развернуть вложенные папки' : 'Свернуть вложенные папки'"
+                @click.stop="toggleTreeCollapsed(folder.id)"
+              >▾</span>
+              <span v-else class="folder-nav-twisty-spacer"></span>
               <span class="folder-nav-name">{{ folder.name }}</span>
               <span class="folder-nav-meta">
                 <span
@@ -264,6 +274,12 @@
                     @click="openRenameFolderModal(activeFolder)"
                     :disabled="isBusy"
                   >{{ t('rename') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    @click="openFolderParentModal(activeFolder)"
+                    :disabled="isBusy"
+                  >Переместить в папку</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
@@ -316,6 +332,7 @@
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
                       <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">Описание</button>
                       <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
                       <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
                       <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
@@ -353,6 +370,7 @@
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
                       <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">Duplicate</button>
                       <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">Move to group</button>
+                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">Описание</button>
                       <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
                       <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
                       <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
@@ -447,6 +465,7 @@
             >⋯</button>
             <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
               <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to group</button>
+              <button class="card-menu-item" @click="openDescriptionModal(c)" :disabled="isBusy">Описание</button>
               <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? 'Unpin' : 'Pin' }}</button>
               <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
             </div>
@@ -579,6 +598,70 @@
             <strong>Карточка персонажа D&amp;D</strong>
             <small>Характеристики, HP, AC и броски d20 на канвасе</small>
           </button>
+        </div>
+      </div>
+    </div>
+
+
+    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Переместить «{{ folderParentModal.name }}»</h3>
+          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+        </div>
+        <div class="folder-parent-list">
+          <button
+            class="folder-parent-option"
+            :class="{ active: folderParentModal.parentId === '' }"
+            @click="folderParentModal.parentId = ''"
+          >В корень</button>
+          <button
+            v-for="option in folderParentOptions"
+            :key="option.id"
+            class="folder-parent-option"
+            :class="{ active: folderParentModal.parentId === option.id }"
+            :style="{ paddingLeft: 12 + (option.depth || 0) * 14 + 'px' }"
+            @click="folderParentModal.parentId = option.id"
+          >{{ option.name }}</button>
+          <p v-if="!folderParentOptions.length" class="dashboard-modal-note">Других папок пока нет.</p>
+        </div>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">Отмена</button>
+          <button class="btn-primary" @click="saveFolderParentModal" :disabled="isBusy">
+            {{ actionLabel('move-folder-parent', 'Переместить') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ descriptionModal.title || 'Описание' }}</h3>
+          <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
+        </div>
+        <textarea
+          v-if="descriptionModal.canEdit"
+          v-model="descriptionModal.value"
+          class="dashboard-modal-textarea"
+          :maxlength="MAX_DESCRIPTION_LENGTH"
+          placeholder="Опишите, что это за документ и зачем он нужен"
+        ></textarea>
+        <p v-else-if="descriptionModal.value" class="description-readonly">{{ descriptionModal.value }}</p>
+        <p v-else class="dashboard-modal-note">Описание не заполнено.</p>
+        <p v-if="descriptionModal.canEdit" class="dashboard-modal-note">
+          {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
+        </p>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
+            {{ descriptionModal.canEdit ? 'Отмена' : 'Закрыть' }}
+          </button>
+          <button
+            v-if="descriptionModal.canEdit"
+            class="btn-primary"
+            @click="saveDescriptionModal"
+            :disabled="isBusy"
+          >{{ actionLabel('save-description', 'Сохранить') }}</button>
         </div>
       </div>
     </div>
@@ -740,7 +823,7 @@
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { usePlugins } from '../composables/usePlugins';
 import { useI18n } from '../composables/useI18n';
 import LanguageToggle from '../components/LanguageToggle.vue';
@@ -758,6 +841,7 @@ type CanvasRecord = {
   isOwn?: boolean;
   folder: string;
   folderId?: string | null;
+  description?: string | null;
   pinned?: boolean;
   tags: CanvasTag[];
   allowPublicEdit?: boolean;
@@ -771,6 +855,7 @@ type HtmlDocumentRecord = {
   title: string;
   updatedAt: string;
   folderId?: string | null;
+  description?: string | null;
   pinned?: boolean;
   tags: CanvasTag[];
 };
@@ -781,12 +866,16 @@ type TextDocumentRecord = {
   title: string;
   updatedAt: string;
   folderId?: string | null;
+  description?: string | null;
   pinned?: boolean;
   tags: CanvasTag[];
 };
 type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord;
 type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
+  /** Nesting level in the sidebar tree; set while ordering the flat list. */
+  depth?: number;
+  hasChildren?: boolean;
 };
 
 type DashboardCacheState = {
@@ -1175,6 +1264,55 @@ export default defineComponent({
       if (!folderModal.value.resourceId) return Boolean(folderModal.value.value.trim());
       return Boolean(folderModal.value.folderId && folderModal.value.folderId !== draggingResourceFolderId.value);
     });
+    /** Subtrees folded away in the sidebar tree. */
+    const collapsedTreeIds = ref<string[]>([]);
+
+    const isTreeCollapsed = (folderId: string) =>
+      collapsedTreeIds.value.includes(folderId);
+
+    const toggleTreeCollapsed = (folderId: string) => {
+      collapsedTreeIds.value = isTreeCollapsed(folderId)
+        ? collapsedTreeIds.value.filter((id) => id !== folderId)
+        : [...collapsedTreeIds.value, folderId];
+    };
+
+    /**
+     * Arrange the flat folder list into parent-then-children order and tag each
+     * entry with its depth. Folders whose parent is missing from the visible set
+     * are treated as roots so nothing can disappear from the sidebar.
+     */
+    const buildFolderTree = (folders: FolderSummary[]): FolderSummary[] => {
+      const present = new Set(folders.map((folder) => folder.id));
+      const childrenOf = new Map<string, FolderSummary[]>();
+      const roots: FolderSummary[] = [];
+      for (const folder of folders) {
+        const parentId = folder.parentId && present.has(folder.parentId) ? folder.parentId : null;
+        if (!parentId) {
+          roots.push(folder);
+          continue;
+        }
+        const siblings = childrenOf.get(parentId) || [];
+        siblings.push(folder);
+        childrenOf.set(parentId, siblings);
+      }
+      const bySortOrder = (a: FolderSummary, b: FolderSummary) =>
+        (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.name.localeCompare(b.name);
+
+      const ordered: FolderSummary[] = [];
+      const walk = (nodes: FolderSummary[], depth: number, hidden: boolean) => {
+        for (const node of nodes.slice().sort(bySortOrder)) {
+          const children = childrenOf.get(node.id) || [];
+          if (!hidden) {
+            ordered.push({ ...node, depth, hasChildren: children.length > 0 });
+          }
+          const collapsed = isTreeCollapsed(node.id);
+          walk(children, depth + 1, hidden || collapsed);
+        }
+      };
+      walk(roots, 0, false);
+      return ordered;
+    };
+
     const folderSummaries = computed<FolderSummary[]>(() => {
       const folders = allResourceFolders.value
       .map((folder) => {
@@ -1195,6 +1333,33 @@ export default defineComponent({
         return folder.items.length || (!hasActiveFilter && folder.role === 'owner' && !isTechnicalFolder(folder as FolderSummary));
       });
 
+      // A parent that is empty itself must stay visible when a descendant survived
+      // the filter, otherwise its subtree would vanish from the sidebar.
+      type FolderRow = (typeof folders)[number];
+      const kept = new Map<string, FolderRow>(
+        folders.map((folder) => [folder.id, folder]),
+      );
+      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
+      for (const folder of [...folders]) {
+        let parentId = folder.parentId ?? null;
+        const guard = new Set<string>();
+        while (parentId && !kept.has(parentId) && !guard.has(parentId)) {
+          guard.add(parentId);
+          const parent = byId.get(parentId);
+          if (!parent) break;
+          const ancestor = {
+            ...(parent as unknown as FolderRow),
+            items: [],
+            canvasCount: 0,
+            htmlDocumentCount: 0,
+            textDocumentCount: 0,
+          } satisfies FolderRow;
+          kept.set(parent.id, ancestor);
+          folders.push(ancestor);
+          parentId = parent.parentId ?? null;
+        }
+      }
+
       const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
       if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
@@ -1209,7 +1374,7 @@ export default defineComponent({
           items: fallbackItems,
         });
       }
-      return folders.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+      return buildFolderTree(folders);
     });
     const activeFolder = computed(() =>
       folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
@@ -2259,6 +2424,119 @@ export default defineComponent({
       await load();
     };
 
+
+    // ---- folder nesting ----
+    const folderParentModal = ref<{ open: boolean; folderId: string; name: string; parentId: string }>({
+      open: false,
+      folderId: '',
+      name: '',
+      parentId: '',
+    });
+
+    /** Own folders that may receive this one: not itself, not its own subtree. */
+    const folderParentOptions = computed(() => {
+      const movingId = folderParentModal.value.folderId;
+      if (!movingId) return [];
+      const byParent = new Map<string | null, ResourceFolderSummary[]>();
+      for (const folder of ownResourceFolders.value) {
+        const key = folder.parentId ?? null;
+        byParent.set(key, [...(byParent.get(key) || []), folder]);
+      }
+      const options: { id: string; name: string; depth: number }[] = [];
+      const walk = (parentId: string | null, depth: number) => {
+        for (const folder of (byParent.get(parentId) || []).slice().sort((a, b) => a.name.localeCompare(b.name))) {
+          if (folder.id === movingId) continue; // skips the whole subtree
+          options.push({ id: folder.id, name: folder.name, depth });
+          walk(folder.id, depth + 1);
+        }
+      };
+      walk(null, 0);
+      return options;
+    });
+
+    const openFolderParentModal = (folder: FolderSummary) => {
+      openControlMenu.value = '';
+      folderParentModal.value = {
+        open: true,
+        folderId: folder.id,
+        name: folder.name,
+        parentId: folder.parentId || '',
+      };
+    };
+
+    const closeFolderParentModal = () => {
+      folderParentModal.value = { open: false, folderId: '', name: '', parentId: '' };
+    };
+
+    const saveFolderParentModal = async () => {
+      const { folderId, parentId } = folderParentModal.value;
+      if (!folderId) return closeFolderParentModal();
+      const done = await runAction(
+        'move-folder-parent',
+        () => resourceFolders.moveFolder(folderId, parentId || null),
+        'Папка перемещена',
+      );
+      closeFolderParentModal();
+      if (done) await load();
+    };
+
+    // ---- resource descriptions ----
+    const descriptionModal = ref<{
+      open: boolean;
+      resourceId: string;
+      resourceType: FolderItem['type'];
+      title: string;
+      value: string;
+      canEdit: boolean;
+    }>({ open: false, resourceId: '', resourceType: 'canvas', title: '', value: '', canEdit: false });
+
+    /** True when the signed-in user owns this resource, so it may be edited here. */
+    const isOwnResource = (item: FolderItem) => {
+      const ownerId = (item as { ownerId?: string }).ownerId;
+      if (ownerId) return ownerId === currentUser.value?.id;
+      // Records without an ownerId come from the user's own listings.
+      return (item as { isOwn?: boolean }).isOwn !== false;
+    };
+
+    const openDescriptionModal = (item: FolderItem) => {
+      closeCardMenu();
+      openControlMenu.value = '';
+      descriptionModal.value = {
+        open: true,
+        resourceId: item.id,
+        resourceType: item.type,
+        title: item.title || 'Без названия',
+        value: item.description || '',
+        // Shared-in resources are read-only here; the owner edits their own.
+        canEdit: isOwnResource(item),
+      };
+    };
+
+    const closeDescriptionModal = () => {
+      descriptionModal.value = {
+        open: false,
+        resourceId: '',
+        resourceType: 'canvas',
+        title: '',
+        value: '',
+        canEdit: false,
+      };
+    };
+
+    const saveDescriptionModal = async () => {
+      const { resourceId, resourceType, value, canEdit } = descriptionModal.value;
+      if (!resourceId || !canEdit) return closeDescriptionModal();
+      const description = value.trim() ? value.trim() : null;
+      const save = () => {
+        if (resourceType === 'canvas') return canvas.update(resourceId, { description });
+        if (resourceType === 'html-document') return htmlDocuments.update(resourceId, { description });
+        return textDocuments.update(resourceId, { description });
+      };
+      const done = await runAction('save-description', save, 'Описание сохранено');
+      closeDescriptionModal();
+      if (done) await load();
+    };
+
     const toggleFolderOpen = (folderId: string) => {
       collapsedFolderIds.value = collapsedFolderIds.value.includes(folderId)
         ? collapsedFolderIds.value.filter((id) => id !== folderId)
@@ -2436,6 +2714,19 @@ export default defineComponent({
       openCreateGroupModal,
       openMoveFolderModal,
       openMoveHtmlFolderModal,
+      collapsedTreeIds,
+      isTreeCollapsed,
+      toggleTreeCollapsed,
+      folderParentModal,
+      folderParentOptions,
+      openFolderParentModal,
+      closeFolderParentModal,
+      saveFolderParentModal,
+      descriptionModal,
+      openDescriptionModal,
+      closeDescriptionModal,
+      saveDescriptionModal,
+      MAX_DESCRIPTION_LENGTH,
       openMoveTextDocumentFolderModal,
       saveFolderModal,
       closeFolderModal,

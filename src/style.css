@@ -4675,3 +4675,84 @@ html, body {
 .resource-cache-status-refreshing { border-color: #6f9eff; }
 .resource-cache-status-success { border-color: #44cf6e; }
 .resource-cache-status-error { border-color: #f1a34f; }
+
+/* ===== Nested folder tree ===== */
+.folder-nav-twisty {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.45);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.folder-nav-twisty:hover {
+  color: #fff;
+}
+.folder-nav-twisty.collapsed {
+  transform: rotate(-90deg);
+}
+.folder-nav-twisty-spacer {
+  flex-shrink: 0;
+  width: 14px;
+}
+
+/* ===== Folder parent picker ===== */
+.folder-parent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.folder-parent-option {
+  text-align: left;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  cursor: pointer;
+}
+.folder-parent-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.folder-parent-option.active {
+  background: color-mix(in srgb, var(--color-brands) 25%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands) 60%, transparent);
+  color: #fff;
+}
+
+/* ===== Resource description ===== */
+.dashboard-modal-textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+.dashboard-modal-textarea:focus {
+  border-color: color-mix(in srgb, var(--color-brands) 60%, transparent);
+}
+.description-readonly {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow-y: auto;
+}

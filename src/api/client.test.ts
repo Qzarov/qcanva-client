@@ -25,7 +25,7 @@ describe('resourceFolders API client', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/resource-folders', {
       method: 'POST',
-      body: JSON.stringify({ name: 'Work' }),
+      body: JSON.stringify({ name: 'Work', parentId: null }),
       headers: {
         'Content-Type': 'application/json',
         Authorization: 'Bearer token-1',
