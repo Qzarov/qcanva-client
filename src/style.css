@@ -4405,6 +4405,19 @@ html, body {
   margin: 0.7em 0;
 }
 
+.text-doc-paper .ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.text-doc-paper .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-brands);
+  outline-offset: 2px;
+}
+
 .text-doc-paper .ProseMirror a {
   color: #7dd3fc;
 }

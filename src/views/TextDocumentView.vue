@@ -164,10 +164,28 @@
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">List</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">Tasks</button>
+        <button class="btn-ghost btn-sm" :disabled="uploadingImage" title="Добавить фотографию" @click="openImagePicker">
+          {{ uploadingImage ? 'Загрузка…' : 'Фото' }}
+        </button>
       </div>
+      <input
+        ref="imageInput"
+        type="file"
+        accept="image/*"
+        multiple
+        style="display:none"
+        @change="onImageSelected"
+      />
 
       <main class="text-doc-editor-shell">
-        <article class="text-doc-paper" :class="{ readonly: !canEditContent }" @click="focusEditor($event)">
+        <article
+          class="text-doc-paper"
+          :class="{ readonly: !canEditContent }"
+          @click="focusEditor($event)"
+          @paste="onEditorPaste"
+          @drop="onEditorDrop"
+          @dragover.prevent
+        >
           <EditorContent v-if="editor" :editor="editor" />
         </article>
       </main>
@@ -184,11 +202,12 @@ import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import TaskList from '@tiptap/extension-task-list';
+import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
-import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments } from '../api/client';
+import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage } from '../api/client';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -274,6 +293,56 @@ export default defineComponent({
       return { kind: 'offline', label: 'Offline' };
     });
 
+    const imageInput = ref<HTMLInputElement | null>(null);
+    const uploadingImage = ref(false);
+
+    const insertImages = async (files: File[]) => {
+      if (!canEditContent.value || !files.length) return;
+      uploadingImage.value = true;
+      try {
+        for (const file of files) {
+          // Upload first: a local blob URL would be meaningless to collaborators.
+          const { url } = await uploadImage(file);
+          if (!url) throw new Error('Сервер не вернул ссылку на изображение');
+          editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run();
+        }
+      } catch (err: any) {
+        showToast(err?.message || 'Не удалось загрузить изображение', 'error');
+      } finally {
+        uploadingImage.value = false;
+      }
+    };
+
+    const openImagePicker = () => {
+      if (!canEditContent.value) return;
+      imageInput.value?.click();
+    };
+
+    const onImageSelected = async (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const files = Array.from(input.files || []);
+      input.value = '';
+      await insertImages(files);
+    };
+
+    const imageFilesFrom = (list: FileList | null | undefined) =>
+      Array.from(list || []).filter((file) => file.type.startsWith('image/'));
+
+    const onEditorPaste = (event: ClipboardEvent) => {
+      const files = imageFilesFrom(event.clipboardData?.files);
+      if (!files.length || !canEditContent.value) return;
+      // Let the default paste run for anything that is not an image.
+      event.preventDefault();
+      void insertImages(files);
+    };
+
+    const onEditorDrop = (event: DragEvent) => {
+      const files = imageFilesFrom(event.dataTransfer?.files);
+      if (!files.length || !canEditContent.value) return;
+      event.preventDefault();
+      void insertImages(files);
+    };
+
     const editor = useEditor({
       editable: true,
       extensions: [
@@ -282,6 +351,8 @@ export default defineComponent({
         Link.configure({ openOnClick: false }),
         TaskList,
         TaskItem.configure({ nested: true }),
+        // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
+        Image.configure({ inline: false, allowBase64: false }),
         Collaboration.configure({ document: ydoc }),
         CollaborationCursor.configure({
           provider: awarenessProvider,
@@ -601,6 +672,12 @@ export default defineComponent({
 
     return {
       backTarget,
+      imageInput,
+      uploadingImage,
+      openImagePicker,
+      onImageSelected,
+      onEditorPaste,
+      onEditorDrop,
       loading, cacheStatus,
       accessDenied,
       title,

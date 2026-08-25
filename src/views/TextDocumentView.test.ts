@@ -8,6 +8,9 @@ import TextDocumentView from "./TextDocumentView.vue";
 const push = vi.fn();
 const replace = vi.fn();
 
+const uploadImageMock = vi.hoisted(() => vi.fn());
+const showToastMock = vi.hoisted(() => vi.fn());
+
 const tiptapMock = vi.hoisted(() => ({
   editorRef: null as any,
   useEditorOptions: null as any,
@@ -45,6 +48,9 @@ vi.mock("@tiptap/extension-link", () => ({
   default: { configure: vi.fn(() => ({})) },
 }));
 vi.mock("@tiptap/extension-task-list", () => ({ default: {} }));
+vi.mock("@tiptap/extension-image", () => ({
+  default: { configure: vi.fn(() => ({})) },
+}));
 vi.mock("@tiptap/extension-task-item", () => ({
   default: { configure: vi.fn(() => ({})) },
 }));
@@ -68,6 +74,7 @@ vi.mock("../api/client", () => ({
   getCurrentUser: vi.fn(() => ({ id: "user-1", email: "owner@example.com" })),
   isAuthenticated: vi.fn(() => true),
   setToken: vi.fn(),
+  uploadImage: (...args: unknown[]) => uploadImageMock(...args),
   textDocuments: {
     get: vi.fn().mockResolvedValue({
       document: {
@@ -101,7 +108,7 @@ vi.mock("../composables/useTextDocumentSocket", () => ({
 }));
 
 vi.mock("../composables/useToast", () => ({
-  useToast: () => ({ show: vi.fn() }),
+  useToast: () => ({ show: showToastMock }),
 }));
 
 describe("TextDocumentView", () => {
@@ -227,5 +234,176 @@ describe("TextDocumentView", () => {
     wrapper.vm.focusEditor({ target: document.createElement("article") } as unknown as MouseEvent);
 
     expect(chain.focus).toHaveBeenCalledWith("end");
+  });
+
+  describe("images", () => {
+    function attachEditor() {
+      const chain = {
+        focus: vi.fn(() => chain),
+        setImage: vi.fn((_attrs: { src: string; alt?: string }) => chain),
+        run: vi.fn(),
+      };
+      tiptapMock.editorRef.value = {
+        setEditable: tiptapMock.setEditable,
+        destroy: tiptapMock.destroy,
+        isActive: vi.fn(() => false),
+        chain: vi.fn(() => chain),
+        commands: { focus: vi.fn() },
+      };
+      return chain;
+    }
+
+    const imageFile = (name = "photo.png") =>
+      new File(["binary"], name, { type: "image/png" });
+
+    it("registers the image node with base64 disabled", async () => {
+      mount(TextDocumentView);
+      await flushPromises();
+
+      const Image = (await import("@tiptap/extension-image")).default as any;
+      expect(Image.configure).toHaveBeenCalledWith({
+        inline: false,
+        allowBase64: false,
+      });
+    });
+
+    it("offers a photo button in the toolbar for editors", async () => {
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      attachEditor();
+      await nextTick();
+
+      const button = wrapper
+        .findAll(".text-doc-toolbar button")
+        .find((candidate) => candidate.text() === "Фото");
+      expect(button).toBeTruthy();
+    });
+
+    it("uploads the file and inserts the returned URL, never the local file", async () => {
+      uploadImageMock.mockResolvedValue({
+        key: "images/a.png",
+        url: "/api/canvas/files/images/a.png",
+      });
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      const chain = attachEditor();
+      await nextTick();
+
+      const file = imageFile();
+      await (wrapper.vm as any).onEditorPaste({
+        clipboardData: { files: [file] },
+        preventDefault: vi.fn(),
+      });
+      await flushPromises();
+
+      expect(uploadImageMock).toHaveBeenCalledWith(file);
+      expect(chain.setImage).toHaveBeenCalledWith({
+        src: "/api/canvas/files/images/a.png",
+        alt: "photo.png",
+      });
+      // A collaborator could not resolve a blob: or data: source.
+      const src = chain.setImage.mock.calls[0]?.[0]?.src as string;
+      expect(src.startsWith("blob:")).toBe(false);
+      expect(src.startsWith("data:")).toBe(false);
+    });
+
+    it("reports an upload failure and inserts nothing", async () => {
+      uploadImageMock.mockRejectedValue(new Error("Файл слишком большой"));
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      const chain = attachEditor();
+      await nextTick();
+
+      await (wrapper.vm as any).onEditorPaste({
+        clipboardData: { files: [imageFile()] },
+        preventDefault: vi.fn(),
+      });
+      await flushPromises();
+
+      expect(chain.setImage).not.toHaveBeenCalled();
+      expect(showToastMock).toHaveBeenCalledWith("Файл слишком большой", "error");
+    });
+
+    it("treats a missing URL as a failure rather than inserting an empty image", async () => {
+      uploadImageMock.mockResolvedValue({ key: "images/a.png", url: "" });
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      const chain = attachEditor();
+      await nextTick();
+
+      await (wrapper.vm as any).onEditorPaste({
+        clipboardData: { files: [imageFile()] },
+        preventDefault: vi.fn(),
+      });
+      await flushPromises();
+
+      expect(chain.setImage).not.toHaveBeenCalled();
+      expect(showToastMock).toHaveBeenCalled();
+    });
+
+    it("leaves a non-image paste to the default handler", async () => {
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      attachEditor();
+      await nextTick();
+
+      const preventDefault = vi.fn();
+      const textFile = new File(["x"], "notes.txt", { type: "text/plain" });
+      await (wrapper.vm as any).onEditorPaste({
+        clipboardData: { files: [textFile] },
+        preventDefault,
+      });
+      await flushPromises();
+
+      expect(preventDefault).not.toHaveBeenCalled();
+      expect(uploadImageMock).not.toHaveBeenCalled();
+    });
+
+    it("uploads images dropped onto the page", async () => {
+      uploadImageMock.mockResolvedValue({ key: "k", url: "/api/img/d.png" });
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      const chain = attachEditor();
+      await nextTick();
+
+      const preventDefault = vi.fn();
+      await (wrapper.vm as any).onEditorDrop({
+        dataTransfer: { files: [imageFile("dropped.png")] },
+        preventDefault,
+      });
+      await flushPromises();
+
+      expect(preventDefault).toHaveBeenCalled();
+      expect(chain.setImage).toHaveBeenCalledWith({
+        src: "/api/img/d.png",
+        alt: "dropped.png",
+      });
+    });
+
+    it("uploads every selected file when several are picked", async () => {
+      uploadImageMock
+        .mockResolvedValueOnce({ key: "1", url: "/api/img/1.png" })
+        .mockResolvedValueOnce({ key: "2", url: "/api/img/2.png" });
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+      const chain = attachEditor();
+      await nextTick();
+
+      await (wrapper.vm as any).onEditorDrop({
+        dataTransfer: { files: [imageFile("1.png"), imageFile("2.png")] },
+        preventDefault: vi.fn(),
+      });
+      await flushPromises();
+
+      expect(uploadImageMock).toHaveBeenCalledTimes(2);
+      expect(chain.setImage).toHaveBeenNthCalledWith(1, {
+        src: "/api/img/1.png",
+        alt: "1.png",
+      });
+      expect(chain.setImage).toHaveBeenNthCalledWith(2, {
+        src: "/api/img/2.png",
+        alt: "2.png",
+      });
+    });
   });
 });
