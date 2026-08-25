@@ -584,24 +584,31 @@
           v-if="!folderModal.resourceId"
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
-          placeholder="Group name"
+          :placeholder="t('groupName')"
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
-        <div v-if="folderModal.resourceId" class="dashboard-modal-note">Choose an existing Group for this resource.</div>
-        <div v-if="folderModal.resourceId && folderOptions.length" class="folder-chip-list">
+        <div v-if="folderModal.resourceId" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
+        <div v-if="folderModal.resourceId && folderOptions.length" class="folder-parent-list">
           <button
             v-for="folder in folderOptions"
             :key="folder.id"
-            class="folder-chip"
+            class="folder-parent-option folder-destination"
             :class="{ active: folderModal.folderId === folder.id }"
+            :style="{ paddingLeft: 12 + folder.depth * 16 + 'px' }"
             @click="folderModal.folderId = folder.id; folderModal.value = folder.name"
-          >{{ folder.name }}</button>
+          >
+            <span class="folder-destination-name">
+              <span v-if="folder.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ folder.name }}
+            </span>
+            <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
+          </button>
         </div>
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
-            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? 'Move' : 'Create') }}
+            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? t('move') : t('create')) }}
           </button>
         </div>
       </div>
@@ -682,20 +689,20 @@
     <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>Rename group</h3>
+          <h3>{{ t('editGroup') }}</h3>
           <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
         </div>
         <input
           v-model.trim="renameFolderModal.value"
           class="dashboard-modal-input"
-          placeholder="Group name"
+          :placeholder="t('groupName')"
           @keydown.enter.prevent="saveRenameFolderModal"
         />
-        <p class="dashboard-modal-note">All resources in this group will move to the new group name.</p>
+        <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
           <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
-            {{ actionLabel('rename-folder', 'Save') }}
+            {{ actionLabel('rename-folder', t('save')) }}
           </button>
         </div>
       </div>
@@ -1289,7 +1296,29 @@ export default defineComponent({
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
-    const folderOptions = computed(() => ownResourceFolders.value.slice().sort((a, b) => a.name.localeCompare(b.name)));
+    /**
+     * Destinations for the move dialog, in tree order. Each carries its depth and
+     * the path to its parent, so picking a nested folder is unambiguous.
+     */
+    const folderOptions = computed(() => {
+      const byParent = new Map<string | null, ResourceFolderSummary[]>();
+      for (const folder of ownResourceFolders.value) {
+        const key = folder.parentId ?? null;
+        byParent.set(key, [...(byParent.get(key) || []), folder]);
+      }
+      const options: { id: string; name: string; depth: number; path: string }[] = [];
+      const walk = (parentId: string | null, depth: number, trail: string[]) => {
+        const children = (byParent.get(parentId) || [])
+          .slice()
+          .sort((a, b) => a.name.localeCompare(b.name));
+        for (const folder of children) {
+          options.push({ id: folder.id, name: folder.name, depth, path: trail.join(' / ') });
+          walk(folder.id, depth + 1, [...trail, folder.name]);
+        }
+      };
+      walk(null, 0, []);
+      return options;
+    });
     const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
     const canSaveFolderModal = computed(() => {
       if (!folderModal.value.open) return false;

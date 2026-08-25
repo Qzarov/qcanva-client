@@ -813,4 +813,85 @@ describe('DashboardView groups', () => {
       }
     });
   });
+
+  describe('move destination picker', () => {
+    function withTree() {
+      vi.mocked(resourceFolders.list).mockResolvedValue({
+        own: [
+          { id: 'root-b', name: 'Beta', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+          { id: 'root-a', name: 'Alpha', role: 'owner', parentId: null, canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'root-a' }], htmlDocuments: [] },
+          { id: 'child', name: 'Nested', role: 'owner', parentId: 'root-b', canvases: [], htmlDocuments: [] },
+          { id: 'grandchild', name: 'Deeper', role: 'owner', parentId: 'child', canvases: [], htmlDocuments: [] },
+        ],
+        shared: [],
+      } as never);
+    }
+
+    it('lists destinations in tree order with depth and the path to the parent', async () => {
+      withTree();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      expect(vm.folderOptions).toEqual([
+        { id: 'root-a', name: 'Alpha', depth: 0, path: '' },
+        { id: 'root-b', name: 'Beta', depth: 0, path: '' },
+        // A child follows its parent, and its path names the way in.
+        { id: 'child', name: 'Nested', depth: 1, path: 'Beta' },
+        { id: 'grandchild', name: 'Deeper', depth: 2, path: 'Beta / Nested' },
+      ]);
+    });
+
+    it('renders each destination indented and labelled with its path', async () => {
+      withTree();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openMoveFolderModal({ id: 'canvas-1', title: 'Canvas 1', folderId: 'root-a', folder: 'Alpha' });
+      await nextTick();
+
+      const rows = wrapper.findAll('.folder-destination');
+      expect(rows).toHaveLength(4);
+
+      const nested = rows.find((row: any) => row.text().includes('Nested'));
+      expect(nested?.attributes('style')).toContain('padding-left: 28px');
+      expect(nested?.find('.folder-destination-path').text()).toBe('Beta');
+
+      const deeper = rows.find((row: any) => row.text().includes('Deeper'));
+      expect(deeper?.attributes('style')).toContain('padding-left: 44px');
+      expect(deeper?.find('.folder-destination-path').text()).toBe('Beta / Nested');
+    });
+
+    it('marks a root destination as being at the root', async () => {
+      withTree();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      const { setLocale } = useI18n();
+      setLocale('en');
+
+      vm.openMoveFolderModal({ id: 'canvas-1', title: 'Canvas 1', folderId: 'root-a', folder: 'Alpha' });
+      await nextTick();
+
+      const alpha = wrapper.findAll('.folder-destination').find((row: any) => row.text().includes('Alpha'));
+      expect(alpha?.find('.folder-destination-path').text()).toBe('At the root');
+    });
+
+    it('moves the resource into the nested folder that was picked', async () => {
+      withTree();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openMoveFolderModal({ id: 'canvas-1', title: 'Canvas 1', folderId: 'root-a', folder: 'Alpha' });
+      await nextTick();
+
+      const nested = wrapper.findAll('.folder-destination').find((row: any) => row.text().includes('Nested'));
+      await nested?.trigger('click');
+      await vm.saveFolderModal();
+
+      expect(resourceFolders.move).toHaveBeenCalledWith('child', 'canvas', 'canvas-1');
+    });
+  });
 });

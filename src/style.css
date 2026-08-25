@@ -4826,3 +4826,38 @@ html, body {
   background: rgba(255, 255, 255, 0.09);
   font-size: 11px;
 }
+
+/* ===== Move destination picker ===== */
+.folder-destination {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.folder-destination-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.folder-destination-branch {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+}
+/* The path to the parent is what makes a nested destination unambiguous. */
+.folder-destination-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+}
+.folder-destination.active .folder-destination-path {
+  color: rgba(255, 255, 255, 0.7);
+}
