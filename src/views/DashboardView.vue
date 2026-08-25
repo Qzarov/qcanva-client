@@ -214,7 +214,7 @@
               class="folder-nav-item"
               :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
               :data-folder-id="folder.id"
-              :style="{ paddingLeft: 10 + (folder.depth || 0) * 14 + 'px' }"
+              :style="{ paddingLeft: 9 + (folder.depth || 0) * 14 + 'px' }"
               :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
               @click.stop="selectFolder(folder.id)"
               @dragstart.stop="onFolderDragStart($event, folder)"
@@ -229,7 +229,7 @@
                 class="folder-nav-twisty"
                 :class="{ collapsed: isTreeCollapsed(folder.id) }"
                 role="button"
-                :aria-label="isTreeCollapsed(folder.id) ? 'Развернуть вложенные папки' : 'Свернуть вложенные папки'"
+                :aria-label="isTreeCollapsed(folder.id) ? t('expandSubfolders') : t('collapseSubfolders')"
                 @click.stop="toggleTreeCollapsed(folder.id)"
               >▾</span>
               <span v-else class="folder-nav-twisty-spacer"></span>
@@ -275,11 +275,10 @@
                     :disabled="isBusy"
                   >{{ t('rename') }}</button>
                   <button
-                    v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item"
-                    @click="openFolderParentModal(activeFolder)"
+                    @click="openSubfolderModal(activeFolder)"
                     :disabled="isBusy"
-                  >Переместить в папку</button>
+                  >{{ t('addFolder') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
@@ -332,7 +331,7 @@
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
                       <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">Описание</button>
+                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
                       <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
                       <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
                       <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
@@ -368,13 +367,13 @@
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="HTML actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
-                      <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">Duplicate</button>
-                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">Move to group</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">Описание</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
-                      <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">Delete</button>
+                      <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
+                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
+                      <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
                     </div>
                   </article>
                   <article
@@ -406,12 +405,13 @@
                     <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id)" title="Document actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" @click.stop>
-                      <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">Duplicate</button>
-                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">Move to group</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">Edit tags</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? 'Unpin' : 'Pin' }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">Transfer ownership</button>
-                      <button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">Delete</button>
+                      <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
+                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
+                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
+                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
+                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
+                      <button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
                     </div>
                   </article>
                   </template>
@@ -464,10 +464,10 @@
               :disabled="isBusy"
             >⋯</button>
             <div v-if="openMenuCanvasId === c.id" class="card-menu" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">Move to group</button>
-              <button class="card-menu-item" @click="openDescriptionModal(c)" :disabled="isBusy">Описание</button>
-              <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? 'Unpin' : 'Pin' }}</button>
-              <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">Edit tags</button>
+              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button class="card-menu-item" @click="openDescriptionModal(c)" :disabled="isBusy">{{ t('description') }}</button>
+              <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? t('unpin') : t('pin') }}</button>
+              <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">{{ t('editTags') }}</button>
             </div>
           </div>
         </div>
@@ -603,33 +603,25 @@
     </div>
 
 
-    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
+    <div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>Переместить «{{ folderParentModal.name }}»</h3>
-          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+          <h3>{{ t('addFolderTitle') }}: {{ subfolderModal.parentName }}</h3>
+          <button class="dashboard-modal-close" @click="closeSubfolderModal">x</button>
         </div>
-        <div class="folder-parent-list">
-          <button
-            class="folder-parent-option"
-            :class="{ active: folderParentModal.parentId === '' }"
-            @click="folderParentModal.parentId = ''"
-          >В корень</button>
-          <button
-            v-for="option in folderParentOptions"
-            :key="option.id"
-            class="folder-parent-option"
-            :class="{ active: folderParentModal.parentId === option.id }"
-            :style="{ paddingLeft: 12 + (option.depth || 0) * 14 + 'px' }"
-            @click="folderParentModal.parentId = option.id"
-          >{{ option.name }}</button>
-          <p v-if="!folderParentOptions.length" class="dashboard-modal-note">Других папок пока нет.</p>
-        </div>
+        <input
+          v-model.trim="subfolderModal.value"
+          class="dashboard-modal-input"
+          :placeholder="t('folderName')"
+          @keydown.enter.prevent="saveSubfolderModal"
+        />
         <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">Отмена</button>
-          <button class="btn-primary" @click="saveFolderParentModal" :disabled="isBusy">
-            {{ actionLabel('move-folder-parent', 'Переместить') }}
-          </button>
+          <button class="btn-ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button
+            class="btn-primary"
+            @click="saveSubfolderModal"
+            :disabled="isBusy || !subfolderModal.value.trim()"
+          >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
         </div>
       </div>
     </div>
@@ -637,7 +629,7 @@
     <div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ descriptionModal.title || 'Описание' }}</h3>
+          <h3>{{ descriptionModal.title || t('description') }}</h3>
           <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
         </div>
         <textarea
@@ -645,23 +637,23 @@
           v-model="descriptionModal.value"
           class="dashboard-modal-textarea"
           :maxlength="MAX_DESCRIPTION_LENGTH"
-          placeholder="Опишите, что это за документ и зачем он нужен"
+          :placeholder="t('descriptionPlaceholder')"
         ></textarea>
         <p v-else-if="descriptionModal.value" class="description-readonly">{{ descriptionModal.value }}</p>
-        <p v-else class="dashboard-modal-note">Описание не заполнено.</p>
+        <p v-else class="dashboard-modal-note">{{ t('descriptionEmpty') }}</p>
         <p v-if="descriptionModal.canEdit" class="dashboard-modal-note">
           {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
         </p>
         <div class="dashboard-modal-actions">
           <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
-            {{ descriptionModal.canEdit ? 'Отмена' : 'Закрыть' }}
+            {{ descriptionModal.canEdit ? t('cancel') : t('close') }}
           </button>
           <button
             v-if="descriptionModal.canEdit"
             class="btn-primary"
             @click="saveDescriptionModal"
             :disabled="isBusy"
-          >{{ actionLabel('save-description', 'Сохранить') }}</button>
+          >{{ actionLabel('save-description', t('save')) }}</button>
         </div>
       </div>
     </div>
@@ -788,7 +780,7 @@
             </div>
             <span class="tag-manager-count">{{ tag.totalCount }} refs</span>
             <button class="btn-ghost btn-sm" @click="saveManagedTag(tag)" :disabled="isBusy || !tag.name.trim()">Save</button>
-            <button class="btn-ghost btn-sm danger" @click="deleteManagedTag(tag)" :disabled="isBusy">Delete</button>
+            <button class="btn-ghost btn-sm danger" @click="deleteManagedTag(tag)" :disabled="isBusy">{{ t('delete') }}</button>
           </div>
         </div>
       </div>
@@ -2426,58 +2418,41 @@ export default defineComponent({
 
 
     // ---- folder nesting ----
-    const folderParentModal = ref<{ open: boolean; folderId: string; name: string; parentId: string }>({
+    const subfolderModal = ref<{ open: boolean; parentId: string; parentName: string; value: string }>({
       open: false,
-      folderId: '',
-      name: '',
       parentId: '',
+      parentName: '',
+      value: '',
     });
 
-    /** Own folders that may receive this one: not itself, not its own subtree. */
-    const folderParentOptions = computed(() => {
-      const movingId = folderParentModal.value.folderId;
-      if (!movingId) return [];
-      const byParent = new Map<string | null, ResourceFolderSummary[]>();
-      for (const folder of ownResourceFolders.value) {
-        const key = folder.parentId ?? null;
-        byParent.set(key, [...(byParent.get(key) || []), folder]);
-      }
-      const options: { id: string; name: string; depth: number }[] = [];
-      const walk = (parentId: string | null, depth: number) => {
-        for (const folder of (byParent.get(parentId) || []).slice().sort((a, b) => a.name.localeCompare(b.name))) {
-          if (folder.id === movingId) continue; // skips the whole subtree
-          options.push({ id: folder.id, name: folder.name, depth });
-          walk(folder.id, depth + 1);
-        }
-      };
-      walk(null, 0);
-      return options;
-    });
-
-    const openFolderParentModal = (folder: FolderSummary) => {
+    const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
-      folderParentModal.value = {
+      subfolderModal.value = {
         open: true,
-        folderId: folder.id,
-        name: folder.name,
-        parentId: folder.parentId || '',
+        parentId: folder.id,
+        parentName: folder.name,
+        value: '',
       };
     };
 
-    const closeFolderParentModal = () => {
-      folderParentModal.value = { open: false, folderId: '', name: '', parentId: '' };
+    const closeSubfolderModal = () => {
+      subfolderModal.value = { open: false, parentId: '', parentName: '', value: '' };
     };
 
-    const saveFolderParentModal = async () => {
-      const { folderId, parentId } = folderParentModal.value;
-      if (!folderId) return closeFolderParentModal();
-      const done = await runAction(
-        'move-folder-parent',
-        () => resourceFolders.moveFolder(folderId, parentId || null),
-        'Папка перемещена',
+    const saveSubfolderModal = async () => {
+      const { parentId, value } = subfolderModal.value;
+      const name = value.trim();
+      if (!parentId || !name) return closeSubfolderModal();
+      const created = await runAction(
+        'create-subfolder',
+        () => resourceFolders.create(name, parentId),
+        t('folderCreated'),
       );
-      closeFolderParentModal();
-      if (done) await load();
+      closeSubfolderModal();
+      if (!created) return;
+      // Unfold the parent so the folder that was just created is actually visible.
+      collapsedTreeIds.value = collapsedTreeIds.value.filter((id) => id !== parentId);
+      await load();
     };
 
     // ---- resource descriptions ----
@@ -2532,7 +2507,7 @@ export default defineComponent({
         if (resourceType === 'html-document') return htmlDocuments.update(resourceId, { description });
         return textDocuments.update(resourceId, { description });
       };
-      const done = await runAction('save-description', save, 'Описание сохранено');
+      const done = await runAction('save-description', save, t('save'));
       closeDescriptionModal();
       if (done) await load();
     };
@@ -2717,11 +2692,10 @@ export default defineComponent({
       collapsedTreeIds,
       isTreeCollapsed,
       toggleTreeCollapsed,
-      folderParentModal,
-      folderParentOptions,
-      openFolderParentModal,
-      closeFolderParentModal,
-      saveFolderParentModal,
+      subfolderModal,
+      openSubfolderModal,
+      closeSubfolderModal,
+      saveSubfolderModal,
       descriptionModal,
       openDescriptionModal,
       closeDescriptionModal,

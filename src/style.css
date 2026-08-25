@@ -1007,7 +1007,10 @@ html, body {
   border-color: color-mix(in srgb, var(--color-brands) 80%, #fff);
   box-shadow: inset 0 2px 0 var(--color-brands);
 }
-.folder-nav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
+/* flex:1 keeps the name left-aligned next to the twisty: the row is space-between,
+   so without it a third child pushes the name into the middle. min-width:0 keeps
+   the ellipsis working inside the flex item. */
+.folder-nav-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
 .folder-nav-count {
   flex: 0 0 auto;
   min-width: 20px;

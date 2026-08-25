@@ -5,6 +5,7 @@ import { mount, flushPromises } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
+import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 
@@ -368,45 +369,50 @@ describe('DashboardView groups', () => {
       expect(vm.folderSummaries.some((folder: any) => folder.id === 'folder-c')).toBe(true);
     });
 
-    it('offers every folder except the one being moved and its subtree as a parent', async () => {
+    it('creates a subfolder inside the folder it was opened from', async () => {
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      vm.openSubfolderModal({ id: 'folder-b', name: 'Target' });
+      expect(vm.subfolderModal).toMatchObject({ open: true, parentId: 'folder-b', parentName: 'Target' });
+
+      vm.subfolderModal.value = '  Specs  ';
+      await vm.saveSubfolderModal();
+
+      expect(resourceFolders.create).toHaveBeenCalledWith('Specs', 'folder-b');
+      expect(vm.subfolderModal.open).toBe(false);
+    });
+
+    it('unfolds the parent so a freshly created subfolder is visible', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
       const vm = wrapper.vm as any;
 
-      vm.openFolderParentModal({ id: 'folder-b', name: 'Target', parentId: null });
+      vm.toggleTreeCollapsed('folder-b');
       await nextTick();
+      expect(vm.collapsedTreeIds).toContain('folder-b');
 
-      const ids = vm.folderParentOptions.map((option: any) => option.id);
-      expect(ids).not.toContain('folder-b');
-      // Its descendant must not be offered either, or the tree would cycle.
-      expect(ids).not.toContain('folder-c');
-      expect(ids).toContain('folder-a');
+      vm.openSubfolderModal({ id: 'folder-b', name: 'Target' });
+      vm.subfolderModal.value = 'Specs';
+      await vm.saveSubfolderModal();
+
+      expect(vm.collapsedTreeIds).not.toContain('folder-b');
     });
 
-    it('moves a folder under the chosen parent', async () => {
+    it('does not create a folder without a name', async () => {
       const wrapper = mountDashboard();
       await flushPromises();
       const vm = wrapper.vm as any;
+      vi.mocked(resourceFolders.create).mockClear();
 
-      vm.openFolderParentModal({ id: 'folder-c', name: 'Archive', parentId: null });
-      vm.folderParentModal.parentId = 'folder-b';
-      await vm.saveFolderParentModal();
+      vm.openSubfolderModal({ id: 'folder-b', name: 'Target' });
+      vm.subfolderModal.value = '   ';
+      await vm.saveSubfolderModal();
 
-      expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-c', 'folder-b');
-      expect(vm.folderParentModal.open).toBe(false);
-    });
-
-    it('moves a folder back to the root when no parent is picked', async () => {
-      const wrapper = mountDashboard();
-      await flushPromises();
-      const vm = wrapper.vm as any;
-
-      vm.openFolderParentModal({ id: 'folder-c', name: 'Archive', parentId: 'folder-b' });
-      vm.folderParentModal.parentId = '';
-      await vm.saveFolderParentModal();
-
-      expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-c', null);
+      expect(resourceFolders.create).not.toHaveBeenCalled();
+      expect(vm.subfolderModal.open).toBe(false);
     });
   });
 
@@ -512,6 +518,105 @@ describe('DashboardView groups', () => {
 
       expect(canvas.update).not.toHaveBeenCalled();
       expect(vm.descriptionModal.open).toBe(false);
+    });
+  });
+
+  describe('menu localisation', () => {
+    // These menus used to mix hardcoded Russian and English. Rather than checking
+    // one label, sweep every card and folder menu for text from the other
+    // language, which is what a hardcoded string looks like from the outside.
+    const CYRILLIC = /[\u0400-\u04ff]/;
+
+    function withEveryResourceType() {
+      vi.mocked(resourceFolders.list).mockResolvedValue({
+        own: [
+          {
+            id: 'folder-a',
+            name: 'Everything',
+            role: 'owner',
+            parentId: null,
+            canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }],
+            htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-a' }],
+            textDocuments: [{ id: 'text-1', title: 'Text 1', folderId: 'folder-a' }],
+          },
+        ],
+        shared: [],
+      } as never);
+    }
+
+    async function menuLabelsFor(vm: any, wrapper: any, cardId: string) {
+      vm.toggleCardMenu(cardId);
+      await nextTick();
+      const labels = wrapper.findAll('.card-menu-item').map((node: any) => node.text());
+      vm.toggleCardMenu(cardId);
+      await nextTick();
+      return labels;
+    }
+
+    it('shows no Russian anywhere in the card menus under the English locale', async () => {
+      const { setLocale } = useI18n();
+      setLocale('en');
+      withEveryResourceType();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      vm.selectFolder('folder-a');
+      await nextTick();
+
+      const seen: string[] = [];
+      for (const cardId of ['canvas-1', 'doc-1', 'text-1']) {
+        const labels = await menuLabelsFor(vm, wrapper, cardId);
+        expect(labels.length).toBeGreaterThan(0);
+        seen.push(...labels);
+      }
+
+      const russian = seen.filter((label) => CYRILLIC.test(label));
+      expect(russian).toEqual([]);
+      // Sanity: the description entry really is present in all three menus.
+      expect(seen.filter((label) => label === 'Description')).toHaveLength(3);
+    });
+
+    it('shows no English left in the card menus under the Russian locale', async () => {
+      const { setLocale } = useI18n();
+      setLocale('ru');
+      withEveryResourceType();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      vm.selectFolder('folder-a');
+      await nextTick();
+
+      const seen: string[] = [];
+      for (const cardId of ['canvas-1', 'doc-1', 'text-1']) {
+        seen.push(...(await menuLabelsFor(vm, wrapper, cardId)));
+      }
+
+      for (const stale of ['Move to group', 'Edit tags', 'Transfer ownership', 'Duplicate', 'Delete', 'Pin', 'Unpin', 'Description']) {
+        expect(seen).not.toContain(stale);
+      }
+      expect(seen.filter((label) => label === 'Описание')).toHaveLength(3);
+    });
+
+    it('localises the folder menu, including the add-folder action', async () => {
+      const { setLocale } = useI18n();
+      setLocale('en');
+      withEveryResourceType();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+      vm.selectFolder('folder-a');
+      vm.toggleFolderMenu('folder-a');
+      await nextTick();
+
+      let labels = wrapper.findAll('.card-menu-item').map((node: any) => node.text());
+      expect(labels).toContain('Add folder');
+      expect(labels.filter((label: string) => CYRILLIC.test(label))).toEqual([]);
+
+      setLocale('ru');
+      await nextTick();
+      labels = wrapper.findAll('.card-menu-item').map((node: any) => node.text());
+      expect(labels).toContain('Добавить папку');
+      expect(labels).not.toContain('Add folder');
     });
   });
 });

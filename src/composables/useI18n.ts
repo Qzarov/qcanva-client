@@ -27,6 +27,9 @@ const messages = {
     cancel: 'Отмена', save: 'Сохранить', close: 'Закрыть', editGroup: 'Переименовать группу', shareGroup: 'Открыть доступ к группе', invitePeople: 'Пригласить людей', email: 'Электронная почта',
     canView: 'Просмотр', canEdit: 'Редактирование', noInvited: 'Пока никого не пригласили.', loadingAccess: 'Загружаем доступ…', addTag: 'Добавить тег', noTags: 'Тегов пока нет.', refs: 'использований',
     publicEdit: 'Публичное редактирование', unknownOwner: 'Неизвестный владелец', untitled: 'Без названия', untitledHtml: 'HTML без названия', untitledDocument: 'Документ без названия',
+    description: 'Описание', descriptionEmpty: 'Описание не заполнено.', descriptionPlaceholder: 'Опишите, что это за документ и зачем он нужен',
+    addFolder: 'Добавить папку', addFolderTitle: 'Новая папка внутри', folderName: 'Название папки', createFolder: 'Создать папку', folderCreated: 'Папка создана',
+    collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -45,6 +48,9 @@ const messages = {
     cancel: 'Cancel', save: 'Save', close: 'Close', editGroup: 'Rename group', shareGroup: 'Share group', invitePeople: 'Invite people', email: 'Email',
     canView: 'Can view', canEdit: 'Can edit', noInvited: 'No invited people yet.', loadingAccess: 'Loading access…', addTag: 'Add tag', noTags: 'No tags yet.', refs: 'refs',
     publicEdit: 'Public edit', unknownOwner: 'Unknown owner', untitled: 'Untitled', untitledHtml: 'Untitled HTML', untitledDocument: 'Untitled document',
+    description: 'Description', descriptionEmpty: 'No description yet.', descriptionPlaceholder: 'Describe what this document is and what it is for',
+    addFolder: 'Add folder', addFolderTitle: 'New folder inside', folderName: 'Folder name', createFolder: 'Create folder', folderCreated: 'Folder created',
+    collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
   },
 } as const;
 
