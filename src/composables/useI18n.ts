@@ -32,6 +32,7 @@ const messages = {
     upOneLevel: 'На уровень выше', subfolders: 'Подпапки', emptyFolder: 'Пусто',
     move: 'Переместить', create: 'Создать', inRoot: 'В корне', chooseFolder: 'Выберите папку, куда переместить. Вложенные папки показаны с отступом.',
     renameGroupNote: 'Все ресурсы этой группы останутся в ней под новым названием.',
+    add: 'Добавить', addTextNode: 'Текстовый блок', addGroupNode: 'Группа', addImage: 'Изображение', addCanvasEmbed: 'Канвас', addDocumentEmbed: 'Документ',
     collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
   },
   en: {
@@ -56,6 +57,7 @@ const messages = {
     upOneLevel: 'Up one level', subfolders: 'Subfolders', emptyFolder: 'Empty',
     move: 'Move', create: 'Create', inRoot: 'At the root', chooseFolder: 'Choose the folder to move into. Nested folders are shown indented.',
     renameGroupNote: 'Every resource in this group stays in it under the new name.',
+    add: 'Add', addTextNode: 'Text block', addGroupNode: 'Group', addImage: 'Image', addCanvasEmbed: 'Canvas', addDocumentEmbed: 'Document',
     collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
   },
 } as const;

@@ -728,23 +728,33 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
       </button>
       <span class="controls-divider"></span>
-      <button v-if="!readonly" class="ctrl-add-node" @click="addTextNodeCenter" title="Add text node">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-      </button>
-      <button v-if="!readonly" class="ctrl-add-node" @click="addGroupCenter" title="Создать группу">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-      </button>
+      <div v-if="!readonly" ref="addMenuWrap" class="ctrl-add-wrap">
+        <button
+          class="ctrl-add-node ctrl-add-trigger"
+          :class="{ active: addMenuOpen }"
+          :title="t('add')"
+          :aria-label="t('add')"
+          aria-haspopup="true"
+          :aria-expanded="addMenuOpen ? 'true' : 'false'"
+          @click.stop="toggleAddMenu"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <div v-if="addMenuOpen" class="ctrl-add-menu" role="menu" @click.stop>
+          <button
+            v-for="entry in addMenuEntries"
+            :key="entry.key"
+            class="ctrl-add-menu-item"
+            role="menuitem"
+            @click="runAddMenuEntry(entry.key)"
+          >
+            <span class="ctrl-add-menu-icon" v-html="entry.icon"></span>
+            <span>{{ entry.label }}</span>
+          </button>
+        </div>
+      </div>
       <button @click="duplicateSelection" title="Duplicate selection">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-      </button>
-      <button @click="openImagePicker" title="Add image">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-      </button>
-      <button v-if="!readonly" @click="$emit('open-embed')" title="Вставить канвас">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M8 12h8M12 8v8"/></svg>
-      </button>
-      <button v-if="!readonly" @click="$emit('open-doc-embed')" title="Вставить документ">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M12 12v6"/></svg>
       </button>
       <span class="controls-divider"></span>
       <button @click="onExportCanvas" title="Export .canvas file">
@@ -772,6 +782,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
+import { useI18n } from "../composables/useI18n";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
@@ -891,6 +902,9 @@ export default defineComponent({
   },
   emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
+    // Only the new add menu is localised here; the rest of this component still
+    // carries hardcoded labels from before i18n existed.
+    const { t } = useI18n();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
@@ -2638,8 +2652,59 @@ export default defineComponent({
     };
 
     // Delete edge or node on keydown
+    /**
+     * Every "add" action lives behind one trigger. Icons are inline SVG markup so
+     * the list stays declarative; they are authored here, never user input.
+     */
+    const addMenuOpen = ref(false);
+    const addMenuWrap = ref<HTMLElement | null>(null);
+
+    const ADD_MENU_ICONS: Record<string, string> = {
+      text: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/></svg>',
+      group: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>',
+      image: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+      canvas: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>',
+      document: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>',
+    };
+
+    const addMenuEntries = computed(() => [
+      { key: 'text', label: t('addTextNode'), icon: ADD_MENU_ICONS.text },
+      { key: 'group', label: t('addGroupNode'), icon: ADD_MENU_ICONS.group },
+      { key: 'image', label: t('addImage'), icon: ADD_MENU_ICONS.image },
+      { key: 'canvas', label: t('addCanvasEmbed'), icon: ADD_MENU_ICONS.canvas },
+      { key: 'document', label: t('addDocumentEmbed'), icon: ADD_MENU_ICONS.document },
+    ]);
+
+    const closeAddMenu = () => {
+      addMenuOpen.value = false;
+    };
+
+    const toggleAddMenu = () => {
+      addMenuOpen.value = !addMenuOpen.value;
+    };
+
+    const runAddMenuEntry = (key: string) => {
+      closeAddMenu();
+      if (key === 'text') return addTextNodeCenter();
+      if (key === 'group') return addGroupCenter();
+      if (key === 'image') return openImagePicker();
+      if (key === 'canvas') return emit('open-embed');
+      if (key === 'document') return emit('open-doc-embed');
+    };
+
+    const onDocumentPointerDown = (event: PointerEvent) => {
+      if (!addMenuOpen.value) return;
+      const target = event.target as Node | null;
+      if (target && addMenuWrap.value?.contains(target)) return;
+      closeAddMenu();
+    };
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditableEventTarget(e.target)) return;
+      if (e.key === "Escape" && addMenuOpen.value) {
+        closeAddMenu();
+        return;
+      }
       if (e.key === "Escape" && drawTool.value !== "select") {
         drawTool.value = "select";
         draftDrawing.value = null;
@@ -3733,6 +3798,7 @@ export default defineComponent({
         viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
       }
       window.addEventListener("keydown", onKeyDown);
+      document.addEventListener("pointerdown", onDocumentPointerDown, true);
     });
 
     onUnmounted(() => {
@@ -3742,9 +3808,17 @@ export default defineComponent({
       const viewportMeta = document.querySelector('meta[name="viewport"]');
       if (viewportMeta && previousViewportContent !== null) viewportMeta.setAttribute('content', previousViewportContent);
       window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
     });
 
     return {
+      t,
+      addMenuOpen,
+      addMenuWrap,
+      addMenuEntries,
+      toggleAddMenu,
+      closeAddMenu,
+      runAddMenuEntry,
       viewport,
       worldStyle,
       zoomPercent,
@@ -4755,6 +4829,55 @@ g:hover > .edge-midpoint-conn {
 .canvas-controls button:disabled:hover {
   background: transparent;
   color: rgba(255, 255, 255, 0.7);
+}
+.ctrl-add-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ctrl-add-trigger.active {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+/* The toolbar sits at the bottom of the canvas, so the menu opens upward. */
+.ctrl-add-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(30, 30, 30, 0.97);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  z-index: 40;
+}
+.canvas-controls .ctrl-add-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  height: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+}
+.canvas-controls .ctrl-add-menu-item:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #fff;
+}
+.ctrl-add-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: 0 0 auto;
+  opacity: 0.65;
 }
 .controls-divider {
   width: 1px;
