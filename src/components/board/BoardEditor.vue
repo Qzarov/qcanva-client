@@ -281,9 +281,7 @@ function dropOnColumn(columnId: string, position: number) {
   const target = orderedColumns.value.find((column) => column.id === columnId);
   const moving = orderedColumns.value.find((column) => column.id === payload.id);
   if (!target || !moving || target.id === moving.id) return;
-  let targetPosition = target.position;
-  if (moving.position < target.position) targetPosition -= 1;
-  forwardOperation({ type: 'column-move', columnId: moving.id, position: Math.max(0, targetPosition) });
+  forwardOperation({ type: 'column-move', columnId: moving.id, position: target.position });
 }
 
 function requestColumnRemoval(columnId: string) {

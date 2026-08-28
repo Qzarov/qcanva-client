@@ -162,6 +162,17 @@ describe('BoardEditor', () => {
       type: 'column-move', columnId: 'todo', position: 2,
     });
   });
+
+  it('moves a dragged column after the column it is dropped on', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps });
+
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
+    await wrapper.get('[data-column-id="done"]').trigger('drop');
+
+    expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
+      type: 'column-move', columnId: 'todo', position: 1,
+    });
+  });
 });
 
 describe('BoardCardDialog', () => {
