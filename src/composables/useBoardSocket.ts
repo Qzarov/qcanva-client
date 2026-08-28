@@ -12,6 +12,7 @@ type PendingBoardOperation = {
   before: BoardData;
   op: BoardOperation;
   baseRevision: number;
+  sent: boolean;
 };
 
 type BoardOperationReject = {
@@ -29,6 +30,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
   const role = ref<BoardRole | null>(null);
   const revision = ref(0);
   const pendingOperations = new Map<string, PendingBoardOperation>();
+  const acknowledgedSelfOperations = new Set<string>();
   const pendingCount = ref(0);
   const syncStatus = ref<BoardSyncStatus>('idle');
   const lastClientOpId = ref<string | null>(null);
@@ -36,7 +38,28 @@ export function useBoardSocket(boardId: string | { value: string }) {
   const generateClientOpId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   const updatePendingCount = () => { pendingCount.value = pendingOperations.size; };
   const clearPending = () => { pendingOperations.clear(); updatePendingCount(); };
-  const optimisticRevision = () => revision.value + pendingOperations.size;
+
+  function rememberAcknowledgedSelfOperation(clientOpId: string) {
+    acknowledgedSelfOperations.add(clientOpId);
+    if (acknowledgedSelfOperations.size > 100) {
+      acknowledgedSelfOperations.delete(acknowledgedSelfOperations.values().next().value!);
+    }
+  }
+
+  function dispatchNextPendingOperation() {
+    if (Array.from(pendingOperations.values()).some((pending) => pending.sent)) return;
+    const next = Array.from(pendingOperations.entries()).find(([, pending]) => !pending.sent);
+    if (!next) return;
+    const [clientOpId, pending] = next;
+    pending.baseRevision = revision.value;
+    pending.sent = true;
+    socket.value?.emit('board-op', {
+      boardId: resolveBoardId(),
+      baseRevision: pending.baseRevision,
+      clientOpId,
+      op: pending.op,
+    });
+  }
 
   function canRetryMove(op: BoardOperation, snapshot: BoardData): boolean {
     if (op.type === 'card-move') {
@@ -69,19 +92,26 @@ export function useBoardSocket(boardId: string | { value: string }) {
     } catch {
       return undefined;
     }
-    const baseRevision = optimisticRevision();
-    pendingOperations.set(clientOpId, { before: clone(data.value), op, baseRevision });
+    pendingOperations.set(clientOpId, { before: clone(data.value), op, baseRevision: revision.value, sent: false });
     updatePendingCount();
     data.value = next;
     lastClientOpId.value = clientOpId;
-    socket.value?.emit('board-op', { boardId: resolveBoardId(), baseRevision, clientOpId, op });
+    dispatchNextPendingOperation();
     return clientOpId;
   }
 
   async function handleReject(reject: BoardOperationReject) {
     const pending = reject.clientOpId ? pendingOperations.get(reject.clientOpId) : undefined;
-    if (reject.clientOpId) pendingOperations.delete(reject.clientOpId);
-    updatePendingCount();
+    const laterPendingOperations: BoardOperation[] = [];
+    let foundRejectedOperation = false;
+    for (const [clientOpId, queued] of pendingOperations) {
+      if (clientOpId === reject.clientOpId) {
+        foundRejectedOperation = true;
+        continue;
+      }
+      if (foundRejectedOperation) laterPendingOperations.push(queued.op);
+    }
+    clearPending();
 
     if (reject.reason === 'forbidden') {
       clearPending();
@@ -93,7 +123,10 @@ export function useBoardSocket(boardId: string | { value: string }) {
 
     if (pending) data.value = pending.before;
     const snapshot = await requestSnapshot();
-    if (snapshot && pending && canRetryMove(pending.op, snapshot)) sendOperation(pending.op);
+    if (!snapshot) return;
+    for (const op of laterPendingOperations) {
+      if (canRetryMove(op, data.value!)) sendOperation(op);
+    }
   }
 
   function connect() {
@@ -111,6 +144,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
     nextSocket.on('disconnect', () => {
       if (syncStatus.value !== 'forbidden') syncStatus.value = 'idle';
       clearPending();
+      acknowledgedSelfOperations.clear();
     });
     nextSocket.on('board-room-state', (state: { data: BoardData; revision: number; role: BoardRole }) => {
       data.value = clone(state.data);
@@ -119,6 +153,10 @@ export function useBoardSocket(boardId: string | { value: string }) {
       syncStatus.value = 'synced';
     });
     nextSocket.on('board-op-applied', (event: { clientOpId: string; op: BoardOperation; revision: number }) => {
+      if (acknowledgedSelfOperations.delete(event.clientOpId)) {
+        revision.value = Math.max(revision.value, event.revision);
+        return;
+      }
       if (pendingOperations.has(event.clientOpId)) return;
       if (event.revision !== revision.value + 1 || !data.value) {
         void requestSnapshot();
@@ -134,12 +172,15 @@ export function useBoardSocket(boardId: string | { value: string }) {
     nextSocket.on('board-op-ack', (ack: { clientOpId: string; revision: number }) => {
       if (!pendingOperations.delete(ack.clientOpId)) return;
       updatePendingCount();
+      rememberAcknowledgedSelfOperation(ack.clientOpId);
       revision.value = Math.max(revision.value, ack.revision);
       syncStatus.value = 'synced';
+      dispatchNextPendingOperation();
     });
     nextSocket.on('board-op-reject', (reject: BoardOperationReject) => { void handleReject(reject); });
     nextSocket.on('board-access-revoked', () => {
       clearPending();
+      acknowledgedSelfOperations.clear();
       data.value = null;
       role.value = null;
       syncStatus.value = 'forbidden';
@@ -154,6 +195,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
       socket.value = null;
     }
     clearPending();
+    acknowledgedSelfOperations.clear();
     if (syncStatus.value !== 'forbidden') syncStatus.value = 'idle';
   }
 

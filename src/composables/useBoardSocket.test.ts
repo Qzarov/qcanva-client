@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useBoardSocket } from './useBoardSocket';
 import type { BoardData } from '../boards/types';
+import { interactiveTemplates } from '../api/client';
 
 const sockets: any[] = [];
 
@@ -33,6 +34,16 @@ const boardFixture: BoardData = {
   labels: [],
 };
 
+const boardWithArchive: BoardData = {
+  ...boardFixture,
+  columns: [...boardFixture.columns, { id: 'archive', title: 'Archive', position: 2 }],
+};
+
+async function flushAsyncWork() {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 describe('useBoardSocket', () => {
   afterEach(() => {
     sockets.length = 0;
@@ -57,6 +68,106 @@ describe('useBoardSocket', () => {
 
     expect(board.pendingCount.value).toBe(0);
     expect(board.revision.value).toBe(4);
+  });
+
+  it('ignores the matching self broadcast that follows an acknowledgement', () => {
+    const snapshot = vi.spyOn(interactiveTemplates, 'snapshot');
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardFixture;
+    board.revision.value = 3;
+
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 });
+    const clientOpId = board.lastClientOpId.value!;
+    sockets[0].emitFromServer('board-op-ack', { clientOpId, revision: 4 });
+    sockets[0].emitFromServer('board-op-applied', {
+      clientOpId,
+      revision: 4,
+      op: { type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 },
+    });
+
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(board.revision.value).toBe(4);
+    expect(board.data.value?.cards[0]?.columnId).toBe('done');
+  });
+
+  it('resyncs from a snapshot when a remote operation skips a revision', async () => {
+    const snapshot = vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
+      template: { data: boardFixture }, role: 'edit', revision: 5,
+    } as any);
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardWithArchive;
+    board.revision.value = 3;
+
+    sockets[0].emitFromServer('board-op-applied', {
+      clientOpId: 'other-client-op',
+      revision: 5,
+      op: { type: 'column-move', columnId: 'done', position: 0 },
+    });
+    await flushAsyncWork();
+
+    expect(snapshot).toHaveBeenCalledWith('board-1');
+    expect(board.data.value).toEqual(boardFixture);
+    expect(board.revision.value).toBe(5);
+  });
+
+  it('replays a later valid move after an earlier operation is rejected', async () => {
+    vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
+      template: { data: boardFixture }, role: 'edit', revision: 3,
+    } as any);
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardFixture;
+    board.revision.value = 3;
+
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 });
+    const rejectedClientOpId = board.lastClientOpId.value!;
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'todo', position: 0 });
+
+    expect(sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op')).toHaveLength(1);
+    sockets[0].emitFromServer('board-op-reject', { clientOpId: rejectedClientOpId, reason: 'revision_mismatch' });
+    await flushAsyncWork();
+
+    const emittedOperations = sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op');
+    expect(emittedOperations).toHaveLength(2);
+    expect(emittedOperations[1]?.[1]).toMatchObject({
+      baseRevision: 3,
+      op: { type: 'card-move', cardId: 'c1', columnId: 'todo', position: 0 },
+    });
+    expect(board.pendingCount.value).toBe(1);
+  });
+
+  it('does not replay a queued move whose target vanished from the snapshot', async () => {
+    vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
+      template: { data: boardFixture }, role: 'edit', revision: 3,
+    } as any);
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardWithArchive;
+    board.revision.value = 3;
+
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 });
+    const rejectedClientOpId = board.lastClientOpId.value!;
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'archive', position: 0 });
+    sockets[0].emitFromServer('board-op-reject', { clientOpId: rejectedClientOpId, reason: 'revision_mismatch' });
+    await flushAsyncWork();
+
+    expect(sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op')).toHaveLength(1);
+    expect(board.pendingCount.value).toBe(0);
+    expect(board.data.value?.cards[0]?.columnId).toBe('todo');
+  });
+
+  it('clears pending operations when the socket disconnects', () => {
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardFixture;
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 });
+
+    sockets[0].emitFromServer('disconnect');
+
+    expect(board.pendingCount.value).toBe(0);
+    expect(board.syncStatus.value).toBe('idle');
   });
 
   it('clears board data when access is revoked', () => {
