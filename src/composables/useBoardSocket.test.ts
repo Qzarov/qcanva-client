@@ -185,6 +185,7 @@ describe('useBoardSocket', () => {
 
     expect(snapshot).toHaveBeenCalledWith('board-1');
     expect(board.pendingCount.value).toBe(1);
+    expect(board.data.value?.cards[0]?.columnId).toBe('done');
   });
 
   it('clears pending operations when the socket disconnects', () => {

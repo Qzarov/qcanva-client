@@ -69,6 +69,18 @@ export function useBoardSocket(boardId: string | { value: string }) {
     return op.type === 'column-move' && snapshot.columns.some((column) => column.id === op.columnId);
   }
 
+  function reapplyRetainedPendingOperations() {
+    if (!data.value) return;
+    for (const [clientOpId, pending] of pendingOperations) {
+      try {
+        data.value = applyBoardOperation(data.value, pending.op);
+      } catch {
+        pendingOperations.delete(clientOpId);
+      }
+    }
+    updatePendingCount();
+  }
+
   async function requestSnapshot(): Promise<BoardData | null> {
     if (syncStatus.value !== 'forbidden') syncStatus.value = 'resyncing';
     try {
@@ -76,6 +88,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
       data.value = clone(snapshot.template.data as BoardData);
       role.value = snapshot.role;
       revision.value = snapshot.revision;
+      reapplyRetainedPendingOperations();
       syncStatus.value = 'synced';
       return data.value;
     } catch {

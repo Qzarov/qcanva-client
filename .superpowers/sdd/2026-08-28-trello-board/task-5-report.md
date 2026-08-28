@@ -101,3 +101,21 @@ npx vitest run src/boards/operations.test.ts src/composables/useBoardSocket.test
 ```
 
 Result: 3 files, 25 tests passed. `npm run build` also completed successfully.
+
+## Fix round 3 — retain optimistic projection on unmatched rejects
+
+### RED
+
+The unmatched-reject regression retained its pending count but failed the
+visible-state assertion: snapshot replacement moved the pending card back to
+its server position.
+
+### GREEN
+
+Fresh snapshots now replay every retained, still-applicable pending operation
+in order before exposing the synchronized state. Operations that no longer
+apply are removed from the pending map. The unmatched-reject test verifies the
+card stays in its optimistic column after snapshot recovery.
+
+Verification: the focused board suite passed 25 tests and `npm run build`
+completed successfully.
