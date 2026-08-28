@@ -213,7 +213,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.board-template-page { display:flex; min-height:100vh; flex-direction:column; overflow:hidden; background:#111613; color:#edf5ef; }
+.board-template-page { display:flex; height:100dvh; min-height:0; flex-direction:column; overflow:hidden; background:#111613; color:#edf5ef; }
 .board-template-header { display:grid; grid-template-columns:minmax(120px,1fr) minmax(220px,auto) minmax(120px,1fr); align-items:center; gap:16px; min-height:62px; padding:0 20px; border-bottom:1px solid #303d35; background:#151b18; }
 .board-template-back { color:#a7b5ab; font-size:13px; text-decoration:none; }
 .board-template-back:hover { color:#edf5ef; }
@@ -223,7 +223,7 @@ onUnmounted(() => {
 .board-template-title h1 { margin:0; font-size:18px; }
 .board-template-title span,.board-template-saving { color:#829087; font-size:10px; }
 .board-template-saving { justify-self:end; }
-.board-template-main { display:flex; min-height:0; flex:1; }
+.board-template-main { display:flex; min-width:0; min-height:0; flex:1; }
 .board-template-state { display:grid; place-content:center; justify-items:center; width:100%; min-height:420px; color:#9eaca2; }
 .board-template-spinner { width:28px; height:28px; border:3px solid #344139; border-top-color:#70cc89; border-radius:50%; animation:board-spin .8s linear infinite; }
 .board-template-state--error h2 { margin:0 0 8px; color:#ffb0b0; font-size:18px; }

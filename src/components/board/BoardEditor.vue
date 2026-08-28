@@ -327,7 +327,7 @@ function createId(prefix: string): string {
 </script>
 
 <style scoped>
-.board-editor { display:flex; min-height:0; flex:1; flex-direction:column; color:#edf5ef; }
+.board-editor { display:flex; width:100%; min-width:0; min-height:0; flex:1; flex-direction:column; color:#edf5ef; }
 .board-editor__toolbar { display:flex; align-items:center; gap:12px; padding:11px 20px; border-bottom:1px solid #2f3b34; }
 .board-editor__toolbar > div:first-child { margin-right:auto; }
 .board-editor__eyebrow { color:#dce8df; font-size:13px; font-weight:700; }
@@ -347,7 +347,7 @@ function createId(prefix: string): string {
 .board-label-manager input[type="color"] { width:34px; padding:2px; }
 .board-label-manager button { padding:6px 9px; border:1px solid #405047; border-radius:6px; background:#29342e; color:#dbe7de; cursor:pointer; }
 .board-label-manager__row button { color:#f0a2a2; }
-.board-editor__viewport { display:flex; flex:1; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
+.board-editor__viewport { display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
 .board-editor__column-dropzone { display:none; }
 .board-editor__column-dropzone--active { display:flex; flex:0 0 42px; align-self:stretch; align-items:center; justify-content:center; min-height:150px; border:2px dashed #5aa96d; border-radius:10px; background:#327b4229; color:#b8f3c4; font-size:11px; font-weight:700; text-align:center; cursor:copy; }
 .board-editor__column-dropzone span { writing-mode:vertical-rl; transform:rotate(180deg); }

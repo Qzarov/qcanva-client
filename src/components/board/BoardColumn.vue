@@ -14,7 +14,7 @@
         draggable="true"
         title="Перетащить колонку"
         aria-label="Перетащить колонку"
-        @dragstart.stop="emit('drag-column')"
+        @dragstart.stop="startColumnDrag"
         @dragend.stop="emit('drag-end')"
       >⠿</button>
       <input
@@ -71,7 +71,7 @@
 import type { BoardCard as BoardCardType, BoardColumn, BoardLabel } from '../../boards/types';
 import BoardCard from './BoardCard.vue';
 
-defineProps<{
+const props = defineProps<{
   column: BoardColumn;
   cards: BoardCardType[];
   labels: BoardLabel[];
@@ -92,6 +92,12 @@ const emit = defineEmits<{
 function updateTitle(event: Event) {
   const title = (event.target as HTMLInputElement).value.trim();
   if (title) emit('update-column', title);
+}
+
+function startColumnDrag(event: DragEvent) {
+  event.dataTransfer?.setData('text/plain', `board-column:${props.column.id}`);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+  emit('drag-column');
 }
 </script>
 

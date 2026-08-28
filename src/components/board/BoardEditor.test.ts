@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { mount } from '@vue/test-utils';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { BoardChecklistItem, BoardData, BoardOperation } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardEditor from './BoardEditor.vue';
@@ -163,6 +163,16 @@ describe('BoardEditor', () => {
     });
   });
 
+  it('registers a native data transfer when starting a column drag', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps });
+    const dataTransfer = { effectAllowed: '', setData: vi.fn() };
+
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart', { dataTransfer });
+
+    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'board-column:todo');
+    expect(dataTransfer.effectAllowed).toBe('move');
+  });
+
   it('moves a dragged column after the column it is dropped on', async () => {
     const wrapper = mount(BoardEditor, { props: editableBoardProps });
 
@@ -188,6 +198,7 @@ describe('BoardEditor', () => {
       type: 'column-move', columnId: 'todo', position: 2,
     });
   });
+
 });
 
 describe('BoardCardDialog', () => {
