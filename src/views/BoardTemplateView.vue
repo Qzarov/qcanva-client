@@ -30,7 +30,7 @@
         v-else-if="data && role"
         :data="data"
         :role="role"
-        :participants="participants"
+        :participants="editorParticipants"
         @operation="submitOperation"
         @manage-access="shareDialogOpen = true"
       />
@@ -39,8 +39,8 @@
     <BoardShareDialog
       v-if="shareDialogOpen && role === 'owner'"
       :board-id="boardId"
-      :participants="participants"
-      @updated="participants = $event"
+      :participants="permissions"
+      @updated="handlePermissionsUpdated"
       @close="shareDialogOpen = false"
     />
   </div>
@@ -50,7 +50,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { interactiveTemplates, type InteractiveTemplate } from '../api/client';
-import type { BoardOperation } from '../boards/types';
+import type { BoardOperation, BoardParticipant } from '../boards/types';
 import BoardEditor from '../components/board/BoardEditor.vue';
 import BoardShareDialog from '../components/board/BoardShareDialog.vue';
 import { useBoardSocket } from '../composables/useBoardSocket';
@@ -65,7 +65,7 @@ const templateType = ref<InteractiveTemplate['templateType'] | null>(null);
 const loading = ref(true);
 const loadError = ref('');
 const savingTitle = ref(false);
-const participants = ref<Participant[]>([]);
+const permissions = ref<Participant[]>([]);
 const shareDialogOpen = ref(false);
 let connected = false;
 let loadSequence = 0;
@@ -73,6 +73,7 @@ let loadSequence = 0;
 const {
   data,
   role,
+  participants: boardParticipants,
   pendingCount,
   syncStatus,
   connect,
@@ -80,6 +81,19 @@ const {
   sendOperation,
   requestSnapshot,
 } = useBoardSocket(boardId);
+
+const editorParticipants = computed<BoardParticipant[]>(() => {
+  const participants = new Map(boardParticipants.value.map((participant) => [participant.userId, {
+    userId: participant.userId,
+    name: participant.name?.trim() || 'Участник',
+  }]));
+  for (const permission of permissions.value) {
+    if (!participants.has(permission.userId)) {
+      participants.set(permission.userId, { userId: permission.userId, name: permission.name?.trim() || permission.email?.trim() || 'Участник' });
+    }
+  }
+  return Array.from(participants.values());
+});
 
 const syncLabel = computed(() => {
   if (pendingCount.value > 0) return `Синхронизация · ${pendingCount.value}`;
@@ -104,6 +118,7 @@ watch(boardId, load, { immediate: true });
 
 async function load() {
   const sequence = ++loadSequence;
+  const loadingBoardId = boardId.value;
   if (connected) {
     disconnect();
     connected = false;
@@ -112,21 +127,25 @@ async function load() {
   loadError.value = '';
   data.value = null;
   role.value = null;
+  boardParticipants.value = [];
   shareDialogOpen.value = false;
-  participants.value = [];
+  permissions.value = [];
   template.value = null;
   templateType.value = null;
   try {
-    const loadedTemplate = await interactiveTemplates.get(boardId.value);
-    if (sequence !== loadSequence) return;
+    const loadedTemplate = await interactiveTemplates.get(loadingBoardId);
+    if (sequence !== loadSequence || boardId.value !== loadingBoardId) return;
     template.value = loadedTemplate;
     templateType.value = loadedTemplate.templateType;
     if (loadedTemplate.templateType === 'dnd-character') return;
 
-    const snapshot = await requestSnapshot();
-    if (sequence !== loadSequence || !snapshot) return;
-    if (role.value === 'owner') await loadParticipants();
-    if (sequence !== loadSequence) return;
+    const snapshot = await requestSnapshot({
+      boardId: loadingBoardId,
+      isCurrent: () => sequence === loadSequence && boardId.value === loadingBoardId,
+    });
+    if (sequence !== loadSequence || boardId.value !== loadingBoardId || !snapshot) return;
+    if (role.value === 'owner') await loadParticipants(loadingBoardId);
+    if (sequence !== loadSequence || boardId.value !== loadingBoardId) return;
     connect();
     connected = true;
   } catch (cause: any) {
@@ -148,13 +167,24 @@ function normalizeParticipant(value: any): Participant | null {
   };
 }
 
-async function loadParticipants() {
+async function loadParticipants(loadingBoardId = boardId.value) {
   try {
-    const response = await interactiveTemplates.permissions(boardId.value);
-    participants.value = response.map(normalizeParticipant).filter(Boolean) as Participant[];
+    const response = await interactiveTemplates.permissions(loadingBoardId);
+    if (loadingBoardId !== boardId.value) return;
+    permissions.value = response.map(normalizeParticipant).filter(Boolean) as Participant[];
   } catch {
-    participants.value = [];
+    if (loadingBoardId === boardId.value) permissions.value = [];
   }
+}
+
+function handlePermissionsUpdated(updated: Participant[]) {
+  permissions.value = updated;
+  const currentBoardId = boardId.value;
+  const currentLoadSequence = loadSequence;
+  void requestSnapshot({
+    boardId: currentBoardId,
+    isCurrent: () => loadSequence === currentLoadSequence && boardId.value === currentBoardId,
+  });
 }
 
 async function saveTitle() {

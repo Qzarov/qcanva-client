@@ -288,6 +288,35 @@ describe('BoardCardDialog', () => {
     expect((wrapper.get('[aria-label="Завершить: Локальный пункт"]').element as HTMLInputElement).checked).toBe(false);
   });
 
+  it('accepts a later remote checklist update after the local optimistic value is reflected', async () => {
+    const wrapper = mount(BoardCardDialog, {
+      props: { card: board.cards[0]!, labels: board.labels, participants },
+    });
+    await wrapper.get('[aria-label="Пункт: Готово"]').setValue('Локально сохранено');
+
+    await wrapper.setProps({
+      card: {
+        ...board.cards[0]!,
+        checklist: [
+          { ...board.cards[0]!.checklist[0]!, title: 'Локально сохранено' },
+          board.cards[0]!.checklist[1]!,
+        ],
+      },
+    });
+    await wrapper.setProps({
+      card: {
+        ...board.cards[0]!,
+        checklist: [
+          { ...board.cards[0]!.checklist[0]!, title: 'Позднее удалённое изменение' },
+          board.cards[0]!.checklist[1]!,
+        ],
+      },
+    });
+
+    expect((wrapper.get('.board-checklist__title').element as HTMLInputElement).value)
+      .toBe('Позднее удалённое изменение');
+  });
+
   it('does not clear an existing participant id when saving another field without permission choices', async () => {
     const wrapper = mount(BoardCardDialog, {
       props: { card: board.cards[0]!, labels: board.labels, participants: [] },

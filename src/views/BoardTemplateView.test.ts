@@ -13,14 +13,22 @@ const requestSnapshot = vi.fn();
 const socketState = {
   data: ref<any>(null),
   role: ref<any>(null),
+  participants: ref<any[]>([]),
   revision: ref(0),
   pendingCount: ref(0),
   syncStatus: ref<any>('idle'),
 };
+const routeState = vi.hoisted(() => ({ params: null as { id: string } | null }));
 
-vi.mock('vue-router', () => ({
-  useRoute: () => ({ params: { id: 'template-1' } }),
-}));
+vi.mock('vue-router', async () => {
+  const vue = await vi.importActual<typeof import('vue')>('vue');
+  return {
+    useRoute: () => {
+      routeState.params = vue.reactive({ id: 'template-1' });
+      return { params: routeState.params };
+    },
+  };
+});
 
 vi.mock('../api/client', () => ({
   uploadImage: vi.fn(),
@@ -49,6 +57,7 @@ describe('BoardTemplateView', () => {
     vi.clearAllMocks();
     socketState.data.value = null;
     socketState.role.value = null;
+    socketState.participants.value = [];
     socketState.revision.value = 0;
     socketState.pendingCount.value = 0;
     socketState.syncStatus.value = 'idle';
@@ -62,6 +71,10 @@ describe('BoardTemplateView', () => {
     requestSnapshot.mockImplementation(async () => {
       socketState.data.value = { version: 1, columns: [], cards: [], labels: [] };
       socketState.role.value = 'edit';
+      socketState.participants.value = [
+        { userId: 'owner', name: 'Owner' },
+        { userId: 'unassigned-editor', name: 'Unassigned Editor' },
+      ];
       socketState.syncStatus.value = 'synced';
       return socketState.data.value;
     });
@@ -75,6 +88,10 @@ describe('BoardTemplateView', () => {
     expect(connect).toHaveBeenCalledOnce();
     expect(interactiveTemplates.permissions).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="board-editor"]').exists()).toBe(true);
+    expect(wrapper.getComponent({ name: 'BoardEditor' }).props('participants')).toEqual([
+      { userId: 'owner', name: 'Owner' },
+      { userId: 'unassigned-editor', name: 'Unassigned Editor' },
+    ]);
 
     wrapper.getComponent({ name: 'BoardEditor' }).vm.$emit('operation', { type: 'column-add', column: { id: 'new', title: 'Новая', position: 0 } });
     expect(sendOperation).toHaveBeenCalledWith({ type: 'column-add', column: { id: 'new', title: 'Новая', position: 0 } });
@@ -105,7 +122,7 @@ describe('BoardTemplateView', () => {
       id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
     });
     vi.mocked(interactiveTemplates.permissions).mockResolvedValue([
-      { userId: 'user-2', email: 'reader@example.com', role: 'read' },
+      { userId: 'user-2', email: 'reader@example.com', name: 'Reader', role: 'read' },
     ]);
     requestSnapshot.mockImplementation(async () => {
       socketState.data.value = { version: 1, columns: [], cards: [], labels: [] };
@@ -120,6 +137,9 @@ describe('BoardTemplateView', () => {
     await flushPromises();
 
     expect(interactiveTemplates.permissions).toHaveBeenCalledWith('template-1');
+    expect(wrapper.getComponent({ name: 'BoardEditor' }).props('participants')).toEqual([
+      { userId: 'user-2', name: 'Reader' },
+    ]);
     await wrapper.getComponent({ name: 'BoardEditor' }).vm.$emit('manage-access');
     await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-testid="share-dialog"]').exists()).toBe(true);
@@ -168,5 +188,37 @@ describe('BoardTemplateView', () => {
     expect(socketState.role.value).toBeNull();
     expect(wrapper.text()).toContain('Доска не найдена');
     expect(wrapper.find('[data-testid="board-editor"]').exists()).toBe(false);
+  });
+
+  it('does not apply an old delayed snapshot after a newer route load fails', async () => {
+    const oldSnapshot = new Promise<any>((resolve) => {
+      requestSnapshot.mockImplementationOnce(async (guard: any) => {
+        const result = await new Promise<any>((release) => { resolve(() => release({ version: 1, columns: [{ id: 'old' }], cards: [], labels: [] })); });
+        if (guard?.isCurrent && !guard.isCurrent()) return null;
+        socketState.data.value = result;
+        socketState.role.value = 'edit';
+        return result;
+      });
+    });
+    vi.mocked(interactiveTemplates.get)
+      .mockResolvedValueOnce({ id: 'template-1', title: 'Old', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '' })
+      .mockRejectedValueOnce(new Error('Новая доска не найдена'));
+
+    const wrapper = mount(BoardTemplateView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+    const releaseOld = await oldSnapshot;
+
+    routeState.params!.id = 'template-2';
+    await flushPromises();
+    expect(interactiveTemplates.get).toHaveBeenNthCalledWith(2, 'template-2');
+    expect(requestSnapshot).toHaveBeenCalledWith(expect.objectContaining({ boardId: 'template-1', isCurrent: expect.any(Function) }));
+    releaseOld();
+    await flushPromises();
+
+    expect(socketState.data.value).toBeNull();
+    expect(socketState.role.value).toBeNull();
+    expect(wrapper.text()).toContain('Новая доска не найдена');
   });
 });

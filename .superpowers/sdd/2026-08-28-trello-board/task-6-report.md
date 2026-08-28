@@ -107,3 +107,77 @@ npx vitest run --exclude '.claude/**' && npm run build
 
 Result: 30 files, 161 tests passed; `vue-tsc -b && vite build` completed
 successfully with 308 modules transformed.
+
+## Fix round 2 — safe participants and overlapping-load reconciliation
+
+### RED
+
+Added regressions for the remaining review findings. Before implementation:
+
+- authorized snapshots did not contain board participants, so an unassigned
+  editor was absent from the assignee selector;
+- the realtime composable exposed no participant state;
+- a delayed old snapshot could mutate shared refs after a newer route load;
+- a checklist field stayed permanently dirty after its matching optimistic
+  value appeared, blocking later remote updates to the same field.
+
+### GREEN
+
+- Board snapshots now return every authorized participant as only
+  `{ userId, name }`, including the owner. Permission roles, emails, and access
+  management remain confined to the owner-only sharing endpoint/dialog.
+- REST snapshots and socket room state populate the composable's safe
+  participant list, which is supplied to editors and readers.
+- Each template load captures a monotonic sequence and board ID. The snapshot
+  layer receives the guard and checks it before mutating data, role, revision,
+  or participants; the overlapping delayed-old/new-failed route test verifies
+  stale state cannot return.
+- Checklist dirty fields now retain their submitted expected values. Matching
+  optimistic projection clears the marker; mismatched/unreflected local edits
+  remain protected, and subsequent remote changes apply normally.
+
+Verification:
+
+```text
+npx vitest run src/components/board/BoardEditor.test.ts src/views/BoardTemplateView.test.ts src/composables/useBoardSocket.test.ts --exclude '.claude/**'
+```
+
+Result: 3 files, 32 tests passed.
+
+```text
+npx vitest run --exclude '.claude/**'
+npm run build
+```
+
+Frontend result: 30 files, 164 tests passed; `vue-tsc -b && vite build`
+completed successfully with 308 modules transformed.
+
+```text
+npm test -- --runInBand
+npm run build
+```
+
+Backend result: 28 suites, 248 tests passed; Nest build completed
+successfully.
+
+## Fix round 2 follow-up — participant boundary hardening
+
+The editor-facing participant list now sanitizes both REST snapshot and
+socket room-state payloads to `{ userId, name }`, dropping permission roles,
+emails, malformed entries, and blank names. Permission details remain owned
+by the owner-only sharing flow. Added focused regressions for snapshot and
+room-state sanitization, plus the owner permissions-to-editor mapping.
+
+Verification:
+
+```text
+npx vitest run src/components/board/BoardEditor.test.ts src/views/BoardTemplateView.test.ts src/composables/useBoardSocket.test.ts --exclude '.claude/**'
+```
+
+Result: 3 files, 33 tests passed.
+
+```text
+npm run build
+```
+
+Result: `vue-tsc -b && vite build` succeeded with 308 modules transformed.

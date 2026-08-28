@@ -118,9 +118,9 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import type { BoardCard, BoardChecklistItem, BoardLabel, BoardOperation } from '../../boards/types';
+import type { BoardCard, BoardChecklistItem, BoardLabel, BoardOperation, BoardParticipant } from '../../boards/types';
 
-type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
+type Participant = BoardParticipant;
 type DirtyCardField = 'title' | 'description' | 'dueAt' | 'labelIds' | 'assignee';
 type DirtyChecklistField = 'title' | 'completed' | 'position' | 'local';
 
@@ -148,7 +148,9 @@ const checklist = ref<BoardChecklistItem[]>([]);
 const newChecklistTitle = ref('');
 const dirtyFields = new Set<DirtyCardField>();
 const dirtyChecklistFields = new Map<string, Set<DirtyChecklistField>>();
+const submittedChecklistValues = new Map<string, Map<DirtyChecklistField, unknown>>();
 const removedChecklistIds = new Set<string>();
+const submittedChecklistRemovals = new Set<string>();
 let currentCardId = '';
 
 const participantOptions = computed<Participant[]>(() => {
@@ -156,8 +158,7 @@ const participantOptions = computed<Participant[]>(() => {
   if (props.card.assigneeUserId && !participants.has(props.card.assigneeUserId)) {
     participants.set(props.card.assigneeUserId, {
       userId: props.card.assigneeUserId,
-      name: props.card.assigneeName || undefined,
-      role: 'edit',
+      name: props.card.assigneeName || 'Участник',
     });
   }
   return Array.from(participants.values());
@@ -175,7 +176,9 @@ function resetDraft() {
   currentCardId = props.card.id;
   dirtyFields.clear();
   dirtyChecklistFields.clear();
+  submittedChecklistValues.clear();
   removedChecklistIds.clear();
+  submittedChecklistRemovals.clear();
   draft.title = props.card.title;
   draft.description = props.card.description;
   draft.labelIds = [...props.card.labelIds];
@@ -204,6 +207,35 @@ function checklistDirty(checklistId: string, field: DirtyChecklistField) {
   dirtyChecklistFields.set(checklistId, fields);
 }
 
+function rememberSubmittedChecklistValue(checklistId: string, field: DirtyChecklistField, value: unknown) {
+  const submitted = submittedChecklistValues.get(checklistId) || new Map<DirtyChecklistField, unknown>();
+  submitted.set(field, value);
+  submittedChecklistValues.set(checklistId, submitted);
+}
+
+function clearReflectedChecklistFields(remote: BoardChecklistItem) {
+  const dirty = dirtyChecklistFields.get(remote.id);
+  const submitted = submittedChecklistValues.get(remote.id);
+  if (!dirty || !submitted) return;
+  const remoteValues: Record<Exclude<DirtyChecklistField, 'local'>, unknown> = {
+    title: remote.title,
+    completed: remote.completed,
+    position: remote.position,
+  };
+  for (const field of ['title', 'completed', 'position'] as const) {
+    if (submitted.has(field) && Object.is(submitted.get(field), remoteValues[field])) {
+      dirty.delete(field);
+      submitted.delete(field);
+    }
+  }
+  if (submitted.get('local') === true) {
+    dirty.delete('local');
+    submitted.delete('local');
+  }
+  if (dirty.size === 0) dirtyChecklistFields.delete(remote.id);
+  if (submitted.size === 0) submittedChecklistValues.delete(remote.id);
+}
+
 function mergeRemoteCard(card: BoardCard) {
   if (!dirtyFields.has('title')) draft.title = card.title;
   if (!dirtyFields.has('description')) draft.description = card.description;
@@ -219,9 +251,16 @@ function mergeRemoteCard(card: BoardCard) {
 function mergeRemoteChecklist(remoteChecklist: BoardChecklistItem[]) {
   const localById = new Map(checklist.value.map((item) => [item.id, item]));
   const remoteIds = new Set(remoteChecklist.map((item) => item.id));
+  for (const checklistId of submittedChecklistRemovals) {
+    if (!remoteIds.has(checklistId)) {
+      submittedChecklistRemovals.delete(checklistId);
+      removedChecklistIds.delete(checklistId);
+    }
+  }
   const merged = remoteChecklist
     .filter((item) => !removedChecklistIds.has(item.id))
     .map((remote) => {
+      clearReflectedChecklistFields(remote);
       const local = localById.get(remote.id);
       const dirty = dirtyChecklistFields.get(remote.id);
       if (!local || !dirty) return { ...remote };
@@ -241,7 +280,7 @@ function mergeRemoteChecklist(remoteChecklist: BoardChecklistItem[]) {
 }
 
 function participantLabel(participant: Participant): string {
-  return participant.name?.trim() || participant.email?.trim() || 'Участник';
+  return participant.name?.trim() || 'Участник';
 }
 
 function selectParticipant() {
@@ -270,7 +309,12 @@ function addChecklist() {
     position: checklist.value.length,
   };
   checklist.value.push(item);
-  for (const field of ['title', 'completed', 'position', 'local'] as const) checklistDirty(item.id, field);
+  for (const [field, value] of [
+    ['title', item.title], ['completed', item.completed], ['position', item.position], ['local', true],
+  ] as const) {
+    checklistDirty(item.id, field);
+    rememberSubmittedChecklistValue(item.id, field, value);
+  }
   newChecklistTitle.value = '';
   operation({ type: 'checklist-add', cardId: props.card.id, item });
 }
@@ -279,8 +323,14 @@ function updateChecklist(checklistId: string, changes: Partial<BoardChecklistIte
   const item = checklist.value.find((entry) => entry.id === checklistId);
   if (!item) return;
   Object.assign(item, changes);
-  if ('completed' in changes) checklistDirty(checklistId, 'completed');
-  if ('title' in changes) checklistDirty(checklistId, 'title');
+  if ('completed' in changes) {
+    checklistDirty(checklistId, 'completed');
+    rememberSubmittedChecklistValue(checklistId, 'completed', changes.completed);
+  }
+  if ('title' in changes) {
+    checklistDirty(checklistId, 'title');
+    rememberSubmittedChecklistValue(checklistId, 'title', changes.title);
+  }
   operation({ type: 'checklist-update', cardId: props.card.id, checklistId, changes });
 }
 
@@ -293,11 +343,15 @@ function editChecklistTitle(checklistId: string, event: Event) {
 
 function commitChecklistTitle(checklistId: string) {
   const item = checklist.value.find((entry) => entry.id === checklistId);
-  if (item) operation({ type: 'checklist-update', cardId: props.card.id, checklistId, changes: { title: item.title } });
+  if (item) {
+    rememberSubmittedChecklistValue(checklistId, 'title', item.title);
+    operation({ type: 'checklist-update', cardId: props.card.id, checklistId, changes: { title: item.title } });
+  }
 }
 
 function removeChecklist(checklistId: string) {
   removedChecklistIds.add(checklistId);
+  submittedChecklistRemovals.add(checklistId);
   checklist.value = checklist.value.filter((entry) => entry.id !== checklistId);
   checklist.value.forEach((item, index) => { item.position = index; });
   operation({ type: 'checklist-remove', cardId: props.card.id, checklistId });
@@ -311,7 +365,10 @@ function moveChecklist(checklistId: string, position: number) {
   if (!item) return;
   checklist.value.splice(position, 0, item);
   checklist.value.forEach((entry, nextPosition) => { entry.position = nextPosition; });
-  checklist.value.forEach((entry) => checklistDirty(entry.id, 'position'));
+  checklist.value.forEach((entry) => {
+    checklistDirty(entry.id, 'position');
+    rememberSubmittedChecklistValue(entry.id, 'position', entry.position);
+  });
   operation({ type: 'checklist-move', cardId: props.card.id, checklistId, position });
 }
 

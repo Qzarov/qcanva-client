@@ -51,6 +51,38 @@ describe('useBoardSocket', () => {
     localStorage.clear();
   });
 
+  it('exposes the safe participant list returned with a board snapshot', async () => {
+    vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
+      template: { data: boardFixture }, role: 'edit', revision: 3,
+      participants: [
+        { userId: 'owner', name: 'Owner', email: 'owner@example.com', role: 'owner' },
+        { userId: 'editor', name: 'Editor', email: 'editor@example.com', role: 'edit' },
+      ],
+    } as any);
+    const board = useBoardSocket('board-1');
+
+    await board.requestSnapshot();
+
+    expect(board.participants.value).toEqual([
+      { userId: 'owner', name: 'Owner' },
+      { userId: 'editor', name: 'Editor' },
+    ]);
+  });
+
+  it('sanitizes participant data received from a board room', () => {
+    const board = useBoardSocket('board-1');
+    board.connect();
+
+    sockets[0].emitFromServer('board-room-state', {
+      data: boardFixture,
+      revision: 4,
+      role: 'edit',
+      participants: [{ userId: 'editor', name: 'Editor', email: 'secret@example.com', role: 'owner' }],
+    });
+
+    expect(board.participants.value).toEqual([{ userId: 'editor', name: 'Editor' }]);
+  });
+
   it('keeps an optimistic move until matching ack', () => {
     const board = useBoardSocket('board-1');
     board.connect();

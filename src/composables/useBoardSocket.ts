@@ -2,11 +2,12 @@ import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { interactiveTemplates } from '../api/client';
 import { applyBoardOperation } from '../boards/operations';
-import type { BoardData, BoardOperation, BoardRole } from '../boards/types';
+import type { BoardData, BoardOperation, BoardParticipant, BoardRole } from '../boards/types';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
 
 export type BoardSyncStatus = 'idle' | 'connecting' | 'synced' | 'resyncing' | 'forbidden' | 'error';
+export type BoardSnapshotGuard = { boardId: string; isCurrent: () => boolean };
 
 type PendingBoardOperation = {
   before: BoardData;
@@ -23,11 +24,27 @@ type BoardOperationReject = {
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
+function safeParticipants(value: unknown): BoardParticipant[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((participant) => {
+      if (!participant || typeof participant !== 'object') return null;
+      const entry = participant as { userId?: unknown; name?: unknown };
+      if (typeof entry.userId !== 'string' || !entry.userId) return null;
+      return {
+        userId: entry.userId,
+        name: typeof entry.name === 'string' && entry.name.trim() ? entry.name.trim() : 'Участник',
+      };
+    })
+    .filter((participant): participant is BoardParticipant => participant !== null);
+}
+
 export function useBoardSocket(boardId: string | { value: string }) {
   const resolveBoardId = () => typeof boardId === 'string' ? boardId : boardId.value;
   const socket = ref<Socket | null>(null);
   const data = ref<BoardData | null>(null);
   const role = ref<BoardRole | null>(null);
+  const participants = ref<BoardParticipant[]>([]);
   const revision = ref(0);
   const pendingOperations = new Map<string, PendingBoardOperation>();
   const acknowledgedSelfOperations = new Set<string>();
@@ -81,17 +98,21 @@ export function useBoardSocket(boardId: string | { value: string }) {
     updatePendingCount();
   }
 
-  async function requestSnapshot(): Promise<BoardData | null> {
+  async function requestSnapshot(guard?: BoardSnapshotGuard): Promise<BoardData | null> {
+    const requestedBoardId = guard?.boardId || resolveBoardId();
     if (syncStatus.value !== 'forbidden') syncStatus.value = 'resyncing';
     try {
-      const snapshot = await interactiveTemplates.snapshot(resolveBoardId());
+      const snapshot = await interactiveTemplates.snapshot(requestedBoardId);
+      if (requestedBoardId !== resolveBoardId() || (guard && !guard.isCurrent())) return null;
       data.value = clone(snapshot.template.data as BoardData);
       role.value = snapshot.role;
+      participants.value = safeParticipants(snapshot.participants);
       revision.value = snapshot.revision;
       reapplyRetainedPendingOperations();
       syncStatus.value = 'synced';
       return data.value;
     } catch {
+      if (requestedBoardId !== resolveBoardId() || (guard && !guard.isCurrent())) return null;
       if (syncStatus.value !== 'forbidden') syncStatus.value = 'error';
       return null;
     }
@@ -167,10 +188,11 @@ export function useBoardSocket(boardId: string | { value: string }) {
       clearPending();
       acknowledgedSelfOperations.clear();
     });
-    nextSocket.on('board-room-state', (state: { data: BoardData; revision: number; role: BoardRole }) => {
+    nextSocket.on('board-room-state', (state: { data: BoardData; revision: number; role: BoardRole; participants?: BoardParticipant[] }) => {
       data.value = clone(state.data);
       revision.value = state.revision;
       role.value = state.role;
+      if (Array.isArray(state.participants)) participants.value = safeParticipants(state.participants);
       syncStatus.value = 'synced';
     });
     nextSocket.on('board-op-applied', (event: { clientOpId: string; op: BoardOperation; revision: number }) => {
@@ -204,6 +226,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
       acknowledgedSelfOperations.clear();
       data.value = null;
       role.value = null;
+      participants.value = [];
       syncStatus.value = 'forbidden';
     });
     socket.value = nextSocket;
@@ -225,6 +248,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
   return {
     data,
     role,
+    participants,
     revision,
     pendingCount,
     syncStatus,
