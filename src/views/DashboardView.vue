@@ -447,7 +447,7 @@
         <div class="dash-grid">
           <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
-            <div class="card-meta"><span class="badge badge-owner">D&amp;D персонаж</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" @click.stop="deleteInteractiveTemplate(item)" title="Удалить шаблон" :disabled="isBusy">×</button>
           </article>
         </div>
@@ -621,10 +621,17 @@
           <button class="dashboard-modal-close" @click="closeInteractiveTemplatePicker">×</button>
         </div>
         <div class="template-picker-grid">
-          <button class="template-picker-tile" @click="createInteractiveTemplate" :disabled="isBusy">
+          <button class="template-picker-tile" data-template-type="dnd-character" @click="createInteractiveTemplate('dnd-character')" :disabled="isBusy">
             <span class="template-picker-icon">⚄</span>
             <strong>Карточка персонажа D&amp;D</strong>
             <small>Характеристики, HP, AC и броски d20 на канвасе</small>
+          </button>
+          <button class="template-picker-tile" data-template-type="trello-board" @click="createInteractiveTemplate('trello-board')" :disabled="isBusy">
+            <span class="template-picker-icon" aria-hidden="true">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 8v8M16 8v5" /></svg>
+            </span>
+            <strong>Канбан-доска</strong>
+            <small>Списки и карточки задач в стиле Trello</small>
           </button>
         </div>
       </div>
@@ -1526,7 +1533,9 @@ export default defineComponent({
           unfiledTextDocuments.value = (textState.documents || [])
             .filter((document: any) => !folderTextDocumentIds.has(document.id))
             .map((document: any) => normalizeTextDocument(document));
-          interactiveTemplateItems.value = (await interactiveTemplates.list()).templates;
+          const templateState = await interactiveTemplates.list();
+          const templates = [...(templateState.templates || []), ...(templateState.own || []), ...(templateState.shared || [])];
+          interactiveTemplateItems.value = [...new Map(templates.map((item) => [item.id, item])).values()];
         }
         own.value = res.own.map((c: any) => normalizeCanvas(c, true));
         unfiledCanvases.value = own.value.filter((canvasRecord) => !canvasRecord.folderId || !ownResourceFolders.value.some((folder) => folder.id === canvasRecord.folderId));
@@ -1734,13 +1743,17 @@ export default defineComponent({
       openTextDocument(doc.id);
     };
 
-    const createInteractiveTemplate = async () => {
+    const interactiveTemplateTypeLabel = (templateType: InteractiveTemplate['templateType']) =>
+      templateType === 'trello-board' ? 'Канбан-доска' : 'D&D персонаж';
+
+    const createInteractiveTemplate = async (templateType: InteractiveTemplate['templateType'] = 'dnd-character') => {
       openControlMenu.value = '';
       templatePickerOpen.value = false;
+      const isBoard = templateType === 'trello-board';
       const template = await runAction(
         'create-interactive-template',
-        () => interactiveTemplates.create({ templateType: 'dnd-character', title: 'Новый персонаж' }),
-        'Шаблон персонажа создан',
+        () => interactiveTemplates.create({ templateType, title: isBoard ? '' : 'Новый персонаж' }),
+        isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
       );
       if (!template) return;
       interactiveTemplateItems.value = [template, ...interactiveTemplateItems.value];
@@ -2880,6 +2893,7 @@ export default defineComponent({
       createHtmlDocument,
       createTextDocument,
       createInteractiveTemplate,
+      interactiveTemplateTypeLabel,
       templatePickerOpen,
       openInteractiveTemplatePicker,
       closeInteractiveTemplatePicker,

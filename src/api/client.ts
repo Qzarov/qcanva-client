@@ -405,7 +405,7 @@ export const interactiveTemplates = {
   create: (payload: { templateType: InteractiveTemplate['templateType']; title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>('/interactive-templates', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<InteractiveTemplate>(`/interactive-templates/${id}`),
-  snapshot: (id: string) => request<{ template: InteractiveTemplate; role: 'owner' | 'read' | 'edit'; revision: number }>(`/interactive-templates/${id}/snapshot`, { skipAuthRedirect: true }),
+  snapshot: (id: string) => request<{ template: InteractiveTemplate; role: 'owner' | 'read' | 'edit'; revision: number; participants: Array<{ userId: string; name: string }> }>(`/interactive-templates/${id}/snapshot`, { skipAuthRedirect: true }),
   update: (id: string, payload: { title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>(`/interactive-templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/interactive-templates/${id}`, { method: 'DELETE' }),

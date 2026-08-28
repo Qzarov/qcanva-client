@@ -108,6 +108,28 @@ describe('DashboardView groups', () => {
     expect(push).not.toHaveBeenCalled();
   });
 
+  it('creates a board from the template picker and opens it', async () => {
+    const boardTemplate = {
+      id: 'board-1',
+      title: 'Новая доска',
+      templateType: 'trello-board' as const,
+      data: {},
+      createdAt: '',
+      updatedAt: '',
+    };
+    vi.mocked(interactiveTemplates.create).mockResolvedValueOnce(boardTemplate);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    (wrapper.vm as any).openInteractiveTemplatePicker();
+    await wrapper.vm.$nextTick();
+    await wrapper.find('[data-template-type="trello-board"]').trigger('click');
+    await flushPromises();
+
+    expect(interactiveTemplates.create).toHaveBeenCalledWith({ templateType: 'trello-board', title: '' });
+    expect(push).toHaveBeenCalledWith({ name: 'interactive-template', params: { id: 'board-1' } });
+  });
+
   it('moves dragged canvas by stored source folder instead of old own canvas list', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
