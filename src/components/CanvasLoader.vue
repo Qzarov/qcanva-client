@@ -1586,7 +1586,7 @@ export default defineComponent({
       );
     };
 
-    const getCopySelectionIds = () => {
+    const getSelectionWithGroupContents = () => {
       const ids = new Set(selectedNodeIds.value);
       const selectedGroups = nodes.value.filter((node) => ids.has(node.id) && node.type === "group");
       for (const group of selectedGroups) {
@@ -1865,7 +1865,7 @@ export default defineComponent({
       dragCameraStart.y = camera.y;
       // Store initial positions of all selected nodes
       dragNodesInitial.value = new Map();
-      for (const id of selectedNodeIds.value) {
+      for (const id of getSelectionWithGroupContents()) {
         const n = nodes.value.find((nd) => nd.id === id);
         if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
       }
@@ -2589,7 +2589,7 @@ export default defineComponent({
 
     const duplicateSelection = () => {
       if (!selectedNodeIds.value.length) return;
-      const ids = getCopySelectionIds();
+      const ids = getSelectionWithGroupContents();
       clipboard.value = {
         nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
         edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
@@ -2777,7 +2777,7 @@ export default defineComponent({
       // Copy
       if ((e.ctrlKey || e.metaKey) && e.key === "c" && selectedNodeIds.value.length > 0) {
         e.preventDefault();
-        const ids = getCopySelectionIds();
+        const ids = getSelectionWithGroupContents();
         clipboard.value = {
           nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
           edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
@@ -3400,7 +3400,7 @@ export default defineComponent({
             pushUndo();
             dragNodeId.value = touchNodeId;
             dragNodesInitial.value = new Map();
-            for (const id of selectedNodeIds.value) {
+            for (const id of getSelectionWithGroupContents()) {
               const n = nodes.value.find((nd) => nd.id === id);
               if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
             }

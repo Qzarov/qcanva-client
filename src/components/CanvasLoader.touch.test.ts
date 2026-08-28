@@ -79,6 +79,37 @@ describe('CanvasLoader mobile connection (touch)', () => {
     expect(edge.toNode).toBe('B');
   });
 
+  it('moves nodes fully inside a dragged group together with the group', async () => {
+    const group = { id: 'group', type: 'group', x: 0, y: 0, width: 400, height: 300 };
+    const text = { id: 'text', type: 'text', text: 'Text', x: 48, y: 48, width: 120, height: 60 };
+    const image = { id: 'image', type: 'image', file: 'image.png', x: 216, y: 144, width: 96, height: 96 };
+    const outside = { id: 'outside', type: 'text', text: 'Outside', x: 432, y: 0, width: 120, height: 60 };
+    const wrapper = mount(CanvasLoader, {
+      props: {
+        initialData: { nodes: [group, text, image, outside], edges: [] },
+        readonly: false,
+      },
+    });
+    await flushPromises();
+
+    const viewport = wrapper.find('.canvas-viewport');
+    const groupElement = wrapper.find('[data-node-id="group"]');
+
+    await groupElement.trigger('mousedown', { button: 0, clientX: 350, clientY: 450 });
+    await viewport.trigger('mousemove', { clientX: 398, clientY: 498 });
+    await viewport.trigger('mouseup', { clientX: 398, clientY: 498 });
+
+    const moves = (wrapper.emitted('op') ?? [])
+      .map((args) => args[0] as any)
+      .find((op) => op?.type === 'nodes-move')?.moves;
+
+    expect(moves).toEqual([
+      { id: 'group', x: 48, y: 48 },
+      { id: 'text', x: 96, y: 96 },
+      { id: 'image', x: 264, y: 192 },
+    ]);
+  });
+
   it('adds a board preview link node without copying board cards', async () => {
     const wrapper = mount(CanvasLoader, {
       props: { initialData: { nodes: [], edges: [] }, readonly: false },
