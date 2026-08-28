@@ -49,7 +49,7 @@ const router = createRouter({
     {
       path: '/templates/:id',
       name: 'interactive-template',
-      component: () => import('../views/InteractiveTemplateView.vue'),
+      component: () => import('../views/BoardTemplateView.vue'),
       meta: { requiresAuth: true },
     },
     {
