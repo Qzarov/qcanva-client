@@ -9,23 +9,23 @@
       <div class="board-card-dialog__body">
         <label class="board-field board-field--wide">
           <span>Название</span>
-          <input v-model="draft.title" data-testid="card-title" :disabled="readOnly" />
+          <input v-model="draft.title" data-testid="card-title" :disabled="readOnly" @input="markDirty('title')" />
         </label>
 
         <label class="board-field board-field--wide">
           <span>Описание</span>
-          <textarea v-model="draft.description" data-testid="card-description" rows="5" :disabled="readOnly" />
+          <textarea v-model="draft.description" data-testid="card-description" rows="5" :disabled="readOnly" @input="markDirty('description')" />
         </label>
 
         <label class="board-field">
           <span>Срок</span>
-          <input v-model="dueAtLocal" type="datetime-local" data-testid="card-due-at" :disabled="readOnly" />
+          <input v-model="dueAtLocal" type="datetime-local" data-testid="card-due-at" :disabled="readOnly" @input="markDirty('dueAt')" />
         </label>
 
         <fieldset class="board-field board-label-picker" :disabled="readOnly">
           <legend>Метки</legend>
           <label v-for="label in labels" :key="label.id">
-            <input v-model="draft.labelIds" type="checkbox" :value="label.id" />
+            <input v-model="draft.labelIds" type="checkbox" :value="label.id" @change="markDirty('labelIds')" />
             <span :style="{ '--label-color': label.color }">{{ label.title }}</span>
           </label>
           <span v-if="labels.length === 0" class="board-field-hint">На доске пока нет меток</span>
@@ -41,7 +41,7 @@
               @change="selectParticipant"
             >
               <option value="">Не выбран</option>
-              <option v-for="participant in participants" :key="participant.userId" :value="participant.userId">
+              <option v-for="participant in participantOptions" :key="participant.userId" :value="participant.userId">
                 {{ participantLabel(participant) }}
               </option>
             </select>
@@ -53,7 +53,7 @@
               data-testid="assignee-free-text"
               placeholder="Например, подрядчик"
               :disabled="readOnly"
-              @input="selectedParticipantId = ''"
+              @input="useFreeTextAssignee"
             />
           </label>
         </div>
@@ -74,7 +74,8 @@
                 :value="item.title"
                 :disabled="readOnly"
                 :aria-label="`Пункт: ${item.title}`"
-                @change="updateChecklist(item.id, { title: ($event.target as HTMLInputElement).value })"
+                @input="editChecklistTitle(item.id, $event)"
+                @change="commitChecklistTitle(item.id)"
               />
               <template v-if="!readOnly">
                 <button type="button" :disabled="index === 0" aria-label="Переместить выше" @click="moveChecklist(item.id, index - 1)">↑</button>
@@ -97,6 +98,13 @@
       </div>
 
       <footer class="board-card-dialog__footer">
+        <button
+          v-if="!readOnly"
+          type="button"
+          class="board-button board-button--danger board-card-dialog__delete"
+          data-testid="delete-card"
+          @click="removeCard"
+        >Удалить карточку</button>
         <button type="button" class="board-button board-button--ghost" @click="emit('close')">
           {{ readOnly ? 'Закрыть' : 'Отмена' }}
         </button>
@@ -109,10 +117,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import type { BoardCard, BoardChecklistItem, BoardLabel, BoardOperation } from '../../boards/types';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
+type DirtyCardField = 'title' | 'description' | 'dueAt' | 'labelIds' | 'assignee';
+type DirtyChecklistField = 'title' | 'completed' | 'position' | 'local';
 
 const props = withDefaults(defineProps<{
   card: BoardCard;
@@ -136,6 +146,22 @@ const dueAtLocal = ref('');
 const selectedParticipantId = ref('');
 const checklist = ref<BoardChecklistItem[]>([]);
 const newChecklistTitle = ref('');
+const dirtyFields = new Set<DirtyCardField>();
+const dirtyChecklistFields = new Map<string, Set<DirtyChecklistField>>();
+const removedChecklistIds = new Set<string>();
+let currentCardId = '';
+
+const participantOptions = computed<Participant[]>(() => {
+  const participants = new Map(props.participants.map((participant) => [participant.userId, participant]));
+  if (props.card.assigneeUserId && !participants.has(props.card.assigneeUserId)) {
+    participants.set(props.card.assigneeUserId, {
+      userId: props.card.assigneeUserId,
+      name: props.card.assigneeName || undefined,
+      role: 'edit',
+    });
+  }
+  return Array.from(participants.values());
+});
 
 function fromIsoDateTime(value: string | null): string {
   if (!value) return '';
@@ -146,6 +172,10 @@ function fromIsoDateTime(value: string | null): string {
 }
 
 function resetDraft() {
+  currentCardId = props.card.id;
+  dirtyFields.clear();
+  dirtyChecklistFields.clear();
+  removedChecklistIds.clear();
   draft.title = props.card.title;
   draft.description = props.card.description;
   draft.labelIds = [...props.card.labelIds];
@@ -156,15 +186,74 @@ function resetDraft() {
   newChecklistTitle.value = '';
 }
 
-watch(() => props.card.id, resetDraft, { immediate: true });
+watch(() => props.card, (card) => {
+  if (card.id !== currentCardId) {
+    resetDraft();
+    return;
+  }
+  mergeRemoteCard(card);
+}, { immediate: true, deep: true });
+
+function markDirty(field: DirtyCardField) {
+  dirtyFields.add(field);
+}
+
+function checklistDirty(checklistId: string, field: DirtyChecklistField) {
+  const fields = dirtyChecklistFields.get(checklistId) || new Set<DirtyChecklistField>();
+  fields.add(field);
+  dirtyChecklistFields.set(checklistId, fields);
+}
+
+function mergeRemoteCard(card: BoardCard) {
+  if (!dirtyFields.has('title')) draft.title = card.title;
+  if (!dirtyFields.has('description')) draft.description = card.description;
+  if (!dirtyFields.has('dueAt')) dueAtLocal.value = fromIsoDateTime(card.dueAt);
+  if (!dirtyFields.has('labelIds')) draft.labelIds = [...card.labelIds];
+  if (!dirtyFields.has('assignee')) {
+    draft.assigneeName = card.assigneeName;
+    selectedParticipantId.value = card.assigneeUserId || '';
+  }
+  mergeRemoteChecklist(card.checklist);
+}
+
+function mergeRemoteChecklist(remoteChecklist: BoardChecklistItem[]) {
+  const localById = new Map(checklist.value.map((item) => [item.id, item]));
+  const remoteIds = new Set(remoteChecklist.map((item) => item.id));
+  const merged = remoteChecklist
+    .filter((item) => !removedChecklistIds.has(item.id))
+    .map((remote) => {
+      const local = localById.get(remote.id);
+      const dirty = dirtyChecklistFields.get(remote.id);
+      if (!local || !dirty) return { ...remote };
+      return {
+        id: remote.id,
+        title: dirty.has('title') ? local.title : remote.title,
+        completed: dirty.has('completed') ? local.completed : remote.completed,
+        position: dirty.has('position') ? local.position : remote.position,
+      };
+    });
+  for (const local of checklist.value) {
+    if (!remoteIds.has(local.id) && dirtyChecklistFields.has(local.id) && !removedChecklistIds.has(local.id)) {
+      merged.push({ ...local });
+    }
+  }
+  checklist.value = merged.sort((a, b) => a.position - b.position);
+}
 
 function participantLabel(participant: Participant): string {
   return participant.name?.trim() || participant.email?.trim() || 'Участник';
 }
 
 function selectParticipant() {
-  const participant = props.participants.find((entry) => entry.userId === selectedParticipantId.value);
+  markDirty('assignee');
+  const participant = participantOptions.value.find((entry) => entry.userId === selectedParticipantId.value);
   if (participant) draft.assigneeName = participantLabel(participant);
+  else draft.assigneeName = null;
+}
+
+function useFreeTextAssignee() {
+  selectedParticipantId.value = '';
+  markDirty('assignee');
 }
 
 function operation(payload: BoardOperation) {
@@ -181,6 +270,7 @@ function addChecklist() {
     position: checklist.value.length,
   };
   checklist.value.push(item);
+  for (const field of ['title', 'completed', 'position', 'local'] as const) checklistDirty(item.id, field);
   newChecklistTitle.value = '';
   operation({ type: 'checklist-add', cardId: props.card.id, item });
 }
@@ -189,10 +279,25 @@ function updateChecklist(checklistId: string, changes: Partial<BoardChecklistIte
   const item = checklist.value.find((entry) => entry.id === checklistId);
   if (!item) return;
   Object.assign(item, changes);
+  if ('completed' in changes) checklistDirty(checklistId, 'completed');
+  if ('title' in changes) checklistDirty(checklistId, 'title');
   operation({ type: 'checklist-update', cardId: props.card.id, checklistId, changes });
 }
 
+function editChecklistTitle(checklistId: string, event: Event) {
+  const item = checklist.value.find((entry) => entry.id === checklistId);
+  if (!item) return;
+  item.title = (event.target as HTMLInputElement).value;
+  checklistDirty(checklistId, 'title');
+}
+
+function commitChecklistTitle(checklistId: string) {
+  const item = checklist.value.find((entry) => entry.id === checklistId);
+  if (item) operation({ type: 'checklist-update', cardId: props.card.id, checklistId, changes: { title: item.title } });
+}
+
 function removeChecklist(checklistId: string) {
+  removedChecklistIds.add(checklistId);
   checklist.value = checklist.value.filter((entry) => entry.id !== checklistId);
   checklist.value.forEach((item, index) => { item.position = index; });
   operation({ type: 'checklist-remove', cardId: props.card.id, checklistId });
@@ -206,26 +311,30 @@ function moveChecklist(checklistId: string, position: number) {
   if (!item) return;
   checklist.value.splice(position, 0, item);
   checklist.value.forEach((entry, nextPosition) => { entry.position = nextPosition; });
+  checklist.value.forEach((entry) => checklistDirty(entry.id, 'position'));
   operation({ type: 'checklist-move', cardId: props.card.id, checklistId, position });
 }
 
 function save() {
-  const participant = props.participants.find((entry) => entry.userId === selectedParticipantId.value);
-  const dueDate = dueAtLocal.value ? new Date(dueAtLocal.value) : null;
-  const dueAt = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate.toISOString() : null;
-  const assigneeName = (participant ? participantLabel(participant) : draft.assigneeName?.trim()) || null;
-  operation({
-    type: 'card-update',
-    cardId: props.card.id,
-    changes: {
-      title: draft.title.trim() || 'Без названия',
-      description: draft.description,
-      dueAt,
-      labelIds: [...draft.labelIds],
-      assigneeName,
-      assigneeUserId: participant?.userId || null,
-    },
-  });
+  const changes: Partial<BoardCard> = {};
+  if (dirtyFields.has('title')) changes.title = draft.title.trim() || 'Без названия';
+  if (dirtyFields.has('description')) changes.description = draft.description;
+  if (dirtyFields.has('dueAt')) {
+    const dueDate = dueAtLocal.value ? new Date(dueAtLocal.value) : null;
+    changes.dueAt = dueDate && !Number.isNaN(dueDate.getTime()) ? dueDate.toISOString() : null;
+  }
+  if (dirtyFields.has('labelIds')) changes.labelIds = [...draft.labelIds];
+  if (dirtyFields.has('assignee')) {
+    const participant = participantOptions.value.find((entry) => entry.userId === selectedParticipantId.value);
+    changes.assigneeName = (participant ? participantLabel(participant) : draft.assigneeName?.trim()) || null;
+    changes.assigneeUserId = selectedParticipantId.value || null;
+  }
+  if (Object.keys(changes).length) operation({ type: 'card-update', cardId: props.card.id, changes });
+  emit('close');
+}
+
+function removeCard() {
+  operation({ type: 'card-remove', cardId: props.card.id });
   emit('close');
 }
 
@@ -271,5 +380,7 @@ function createId(prefix: string): string {
 .board-field-hint { color:#78867d; font-size:12px; }
 .board-button--ghost { background:transparent; color:#becac1; }
 .board-button--primary { border-color:#51a268; background:#31864a; color:#fff; }
+.board-button--danger { border-color:#814747; background:#743737; color:#fff; }
+.board-card-dialog__delete { margin-right:auto; }
 @media (max-width:600px) { .board-card-dialog__body,.board-card-dialog__assignee { grid-template-columns:1fr; } .board-card-dialog__assignee>* { grid-column:1; } }
 </style>

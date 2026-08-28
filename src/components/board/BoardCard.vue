@@ -9,6 +9,7 @@
     @click="$emit('open')"
     @keydown.enter="$emit('open')"
     @dragstart="onDragStart"
+    @dragend="emit('dragend')"
   >
     <div v-if="cardLabels.length" class="board-card__labels">
       <span
@@ -43,6 +44,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   open: [];
   dragstart: [event: DragEvent];
+  dragend: [];
 }>();
 
 const cardLabels = computed(() => props.labels.filter((label) => props.card.labelIds.includes(label.id)));

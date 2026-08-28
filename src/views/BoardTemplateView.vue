@@ -110,6 +110,8 @@ async function load() {
   }
   loading.value = true;
   loadError.value = '';
+  data.value = null;
+  role.value = null;
   shareDialogOpen.value = false;
   participants.value = [];
   template.value = null;

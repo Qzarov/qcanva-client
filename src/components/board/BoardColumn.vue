@@ -15,6 +15,7 @@
         title="Перетащить колонку"
         aria-label="Перетащить колонку"
         @dragstart.stop="emit('drag-column')"
+        @dragend.stop="emit('drag-end')"
       >⠿</button>
       <input
         v-if="editable"
@@ -50,6 +51,7 @@
           :editable="editable"
           @open="emit('open-card', card.id)"
           @dragstart="emit('drag-card', card.id)"
+          @dragend="emit('drag-end')"
         />
       </div>
       <p v-if="cards.length === 0" class="board-column__empty">Здесь пока нет карточек</p>
@@ -84,6 +86,7 @@ const emit = defineEmits<{
   'drag-card': [cardId: string];
   'drop-card': [position: number];
   'drag-column': [];
+  'drag-end': [];
 }>();
 
 function updateTitle(event: Event) {

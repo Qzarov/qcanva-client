@@ -7,13 +7,45 @@
       </div>
       <div class="board-editor__participants" aria-label="Участники доски">
         <span
-          v-for="participant in participants.slice(0, 4)"
+          v-for="participant in availableParticipants.slice(0, 4)"
           :key="participant.userId"
           class="board-editor__avatar"
           :title="participantLabel(participant)"
         >{{ participantLabel(participant).slice(0, 1).toUpperCase() }}</span>
-        <span v-if="participants.length > 4" class="board-editor__participant-count">+{{ participants.length - 4 }}</span>
+        <span v-if="availableParticipants.length > 4" class="board-editor__participant-count">+{{ availableParticipants.length - 4 }}</span>
       </div>
+      <details v-if="editable" class="board-label-manager" data-testid="label-manager">
+        <summary>Метки</summary>
+        <div class="board-label-manager__popover">
+          <div v-for="label in data.labels" :key="label.id" class="board-label-manager__row">
+            <input
+              :value="label.title"
+              :data-testid="`label-title-${label.id}`"
+              aria-label="Название метки"
+              @change="updateLabelTitle(label.id, $event)"
+            />
+            <input
+              type="color"
+              :value="label.color"
+              :data-testid="`label-color-${label.id}`"
+              aria-label="Цвет метки"
+              @change="updateLabelColor(label.id, $event)"
+            />
+            <button
+              type="button"
+              :data-testid="`remove-label-${label.id}`"
+              aria-label="Удалить метку"
+              @click="removeLabel(label.id)"
+            >×</button>
+          </div>
+          <p v-if="data.labels.length === 0">Создайте первую метку</p>
+          <form class="board-label-manager__new" @submit.prevent="addLabel">
+            <input v-model="newLabelTitle" data-testid="new-label-title" placeholder="Новая метка" aria-label="Название новой метки" />
+            <input v-model="newLabelColor" data-testid="new-label-color" type="color" aria-label="Цвет новой метки" />
+            <button type="button" data-testid="add-label" @click="addLabel">Добавить</button>
+          </form>
+        </div>
+      </details>
       <button
         v-if="role === 'owner'"
         type="button"
@@ -38,9 +70,17 @@
         @drag-card="startCardDrag($event)"
         @drop-card="dropOnColumn(column.id, $event)"
         @drag-column="startColumnDrag(column.id)"
+        @drag-end="clearDrag"
       />
 
-      <form v-if="editable" class="board-editor__new-column" @submit.prevent="addColumn">
+      <form
+        v-if="editable"
+        class="board-editor__new-column"
+        data-testid="column-end-drop"
+        @dragover.prevent
+        @drop.stop="dropColumnAtEnd"
+        @submit.prevent="addColumn"
+      >
         <input v-model="newColumnTitle" aria-label="Название новой колонки" placeholder="Название колонки" />
         <button type="submit" data-testid="add-column">＋ Добавить колонку</button>
       </form>
@@ -50,7 +90,7 @@
       v-if="selectedCard"
       :card="selectedCard"
       :labels="data.labels"
-      :participants="participants"
+      :participants="availableParticipants"
       :read-only="!editable"
       @operation="forwardOperation"
       @close="selectedCardId = null"
@@ -114,11 +154,26 @@ const orderedColumns = computed(() => [...props.data.columns].sort((a, b) => a.p
 const selectedCardId = ref<string | null>(null);
 const selectedCard = computed(() => props.data.cards.find((card) => card.id === selectedCardId.value) || null);
 const newColumnTitle = ref('');
+const newLabelTitle = ref('');
+const newLabelColor = ref('#22c55e');
 const dragPayload = ref<DragPayload | null>(null);
 const columnPendingRemoval = ref<{ id: string; title: string } | null>(null);
 const removalTargetColumnId = ref('');
 const otherColumns = computed(() => orderedColumns.value.filter((column) => column.id !== columnPendingRemoval.value?.id));
 const roleLabel = computed(() => ({ owner: 'Владелец', edit: 'Можно редактировать', read: 'Только просмотр' })[props.role]);
+const availableParticipants = computed<Participant[]>(() => {
+  const participants = new Map(props.participants.map((participant) => [participant.userId, participant]));
+  for (const card of props.data.cards) {
+    if (card.assigneeUserId && !participants.has(card.assigneeUserId)) {
+      participants.set(card.assigneeUserId, {
+        userId: card.assigneeUserId,
+        name: card.assigneeName || undefined,
+        role: 'edit',
+      });
+    }
+  }
+  return Array.from(participants.values());
+});
 
 function participantLabel(participant: Participant): string {
   return participant.name?.trim() || participant.email?.trim() || 'Участник';
@@ -148,6 +203,30 @@ function updateColumn(columnId: string, title: string) {
   forwardOperation({ type: 'column-update', columnId, title });
 }
 
+function addLabel() {
+  const title = newLabelTitle.value.trim();
+  if (!title || !editable.value) return;
+  forwardOperation({
+    type: 'label-add',
+    label: { id: createId('label'), title, color: newLabelColor.value },
+  });
+  newLabelTitle.value = '';
+}
+
+function updateLabelTitle(labelId: string, event: Event) {
+  const title = (event.target as HTMLInputElement).value.trim();
+  if (title) forwardOperation({ type: 'label-update', labelId, changes: { title } });
+}
+
+function updateLabelColor(labelId: string, event: Event) {
+  const color = (event.target as HTMLInputElement).value;
+  forwardOperation({ type: 'label-update', labelId, changes: { color } });
+}
+
+function removeLabel(labelId: string) {
+  forwardOperation({ type: 'label-remove', labelId });
+}
+
 function addCard(columnId: string) {
   if (!editable.value) return;
   const card: BoardCard = {
@@ -172,6 +251,19 @@ function startCardDrag(cardId: string) {
 
 function startColumnDrag(columnId: string) {
   if (editable.value) dragPayload.value = { kind: 'column', id: columnId };
+}
+
+function clearDrag() {
+  dragPayload.value = null;
+}
+
+function dropColumnAtEnd() {
+  const payload = dragPayload.value;
+  dragPayload.value = null;
+  if (!editable.value || payload?.kind !== 'column') return;
+  const moving = orderedColumns.value.find((column) => column.id === payload.id);
+  if (!moving || moving.position === orderedColumns.value.length - 1) return;
+  forwardOperation({ type: 'column-move', columnId: moving.id, position: orderedColumns.value.length });
 }
 
 function dropOnColumn(columnId: string, position: number) {
@@ -235,6 +327,16 @@ function createId(prefix: string): string {
 .board-editor__participant-count { background:#303a34; color:#b9c6bc; }
 .board-editor__access { padding:7px 12px; border:1px solid #46594e; border-radius:8px; background:#202923; color:#d6e3d9; cursor:pointer; }
 .board-editor__access:hover { border-color:#6a8975; }
+.board-label-manager { position:relative; }
+.board-label-manager summary { padding:7px 10px; border:1px solid #46594e; border-radius:8px; color:#d6e3d9; font-size:12px; cursor:pointer; list-style:none; }
+.board-label-manager summary::-webkit-details-marker { display:none; }
+.board-label-manager__popover { position:absolute; z-index:30; top:calc(100% + 8px); right:0; display:grid; gap:8px; width:290px; padding:12px; border:1px solid #405047; border-radius:10px; background:#1b221e; box-shadow:0 16px 45px #0008; }
+.board-label-manager__popover p { margin:2px 0; color:#829087; font-size:11px; }
+.board-label-manager__row,.board-label-manager__new { display:grid; grid-template-columns:1fr 34px auto; gap:6px; }
+.board-label-manager input { box-sizing:border-box; min-width:0; padding:7px; border:1px solid #3b4941; border-radius:6px; background:#222a26; color:#edf5ef; }
+.board-label-manager input[type="color"] { width:34px; padding:2px; }
+.board-label-manager button { padding:6px 9px; border:1px solid #405047; border-radius:6px; background:#29342e; color:#dbe7de; cursor:pointer; }
+.board-label-manager__row button { color:#f0a2a2; }
 .board-editor__viewport { display:flex; flex:1; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
 .board-editor__new-column { display:grid; flex:0 0 260px; gap:8px; padding:10px; border:1px dashed #3c4b42; border-radius:12px; background:#171d1a99; }
 .board-editor__new-column input { padding:9px; border:1px solid #3a4941; border-radius:7px; background:#212925; color:#edf5ef; }

@@ -73,6 +73,7 @@ describe('BoardTemplateView', () => {
 
     expect(requestSnapshot).toHaveBeenCalledOnce();
     expect(connect).toHaveBeenCalledOnce();
+    expect(interactiveTemplates.permissions).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="board-editor"]').exists()).toBe(true);
 
     wrapper.getComponent({ name: 'BoardEditor' }).vm.$emit('operation', { type: 'column-add', column: { id: 'new', title: 'Новая', position: 0 } });
@@ -151,5 +152,21 @@ describe('BoardTemplateView', () => {
     expect(wrapper.text()).toContain('Нет доступа к доске');
     expect(wrapper.find('[data-testid="board-editor"]').exists()).toBe(false);
     expect(connect).not.toHaveBeenCalled();
+  });
+
+  it('clears stale socket data and role before a failed board load', async () => {
+    socketState.data.value = { version: 1, columns: [{ id: 'stale' }], cards: [], labels: [] };
+    socketState.role.value = 'owner';
+    vi.mocked(interactiveTemplates.get).mockRejectedValue(new Error('Доска не найдена'));
+
+    const wrapper = mount(BoardTemplateView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await flushPromises();
+
+    expect(socketState.data.value).toBeNull();
+    expect(socketState.role.value).toBeNull();
+    expect(wrapper.text()).toContain('Доска не найдена');
+    expect(wrapper.find('[data-testid="board-editor"]').exists()).toBe(false);
   });
 });
