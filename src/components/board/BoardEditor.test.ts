@@ -101,6 +101,21 @@ describe('BoardEditor', () => {
     });
   });
 
+  it('restores a deleted column and its cards with Ctrl+Z', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps });
+
+    await wrapper.get('[data-column-id="todo"] [data-testid="delete-column"]').trigger('click');
+    await wrapper.get('[data-testid="delete-column-cards"]').trigger('click');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('operation')?.map(([operation]) => operation)).toEqual([
+      { type: 'column-remove', columnId: 'todo', disposition: { kind: 'delete-cards' } },
+      { type: 'column-add', column: board.columns[0] },
+      { type: 'card-add', card: board.cards[0] },
+    ]);
+  });
+
   it('supports adding, updating, and removing labels from an empty label set', async () => {
     const wrapper = mount(BoardEditor, {
       props: { ...editableBoardProps, data: { ...board, labels: [] } },

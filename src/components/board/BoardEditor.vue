@@ -142,13 +142,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
-import type { BoardCard, BoardData, BoardOperation, BoardParticipant, BoardRole } from '../../boards/types';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import type { BoardCard, BoardColumn as BoardColumnData, BoardData, BoardOperation, BoardParticipant, BoardRole } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardColumn from './BoardColumn.vue';
 
 type Participant = BoardParticipant;
 type DragPayload = { kind: 'card'; id: string } | { kind: 'column'; id: string };
+type HistoryEntry = { undo: BoardOperation[]; redo: BoardOperation[] };
 
 const props = defineProps<{
   data: BoardData;
@@ -170,6 +171,8 @@ const newLabelTitle = ref('');
 const newLabelColor = ref('#22c55e');
 const dragPayload = ref<DragPayload | null>(null);
 const isColumnDragging = computed(() => dragPayload.value?.kind === 'column');
+const undoHistory = ref<HistoryEntry[]>([]);
+const redoHistory = ref<HistoryEntry[]>([]);
 const columnPendingRemoval = ref<{ id: string; title: string } | null>(null);
 const removalTargetColumnId = ref('');
 const otherColumns = computed(() => orderedColumns.value.filter((column) => column.id !== columnPendingRemoval.value?.id));
@@ -198,8 +201,64 @@ function cardsInColumn(columnId: string): BoardCard[] {
 }
 
 function forwardOperation(operation: BoardOperation) {
-  if (editable.value) emit('operation', operation);
+  if (!editable.value) return;
+  const undo = undoOperations(operation);
+  if (undo.length) {
+    undoHistory.value.push({ undo, redo: [operation] });
+    if (undoHistory.value.length > 50) undoHistory.value.shift();
+    redoHistory.value = [];
+  }
+  emit('operation', operation);
 }
+
+function undoOperations(operation: BoardOperation): BoardOperation[] {
+  if (operation.type !== 'column-remove') return [];
+  const column = props.data.columns.find((entry) => entry.id === operation.columnId);
+  if (!column) return [];
+  const cards = cardsInColumn(column.id);
+  const restoreColumn: BoardOperation = { type: 'column-add', column: { ...column } as BoardColumnData };
+  if (operation.disposition?.kind === 'move-cards') {
+    return [
+      restoreColumn,
+      ...cards.map((card) => ({ type: 'card-move', cardId: card.id, columnId: column.id, position: card.position } as BoardOperation)),
+    ];
+  }
+  return [restoreColumn, ...cards.map((card) => ({ type: 'card-add', card: { ...card } } as BoardOperation))];
+}
+
+function applyHistoryEntry(entry: HistoryEntry, direction: 'undo' | 'redo') {
+  for (const operation of entry[direction]) emit('operation', operation);
+}
+
+function undoLastOperation() {
+  if (!editable.value) return;
+  const entry = undoHistory.value.pop();
+  if (!entry) return;
+  applyHistoryEntry(entry, 'undo');
+  redoHistory.value.push(entry);
+}
+
+function redoLastOperation() {
+  if (!editable.value) return;
+  const entry = redoHistory.value.pop();
+  if (!entry) return;
+  applyHistoryEntry(entry, 'redo');
+  undoHistory.value.push(entry);
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (isEditableTarget(event.target) || !(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'z') return;
+  event.preventDefault();
+  if (event.shiftKey) redoLastOperation();
+  else undoLastOperation();
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown));
+onUnmounted(() => window.removeEventListener('keydown', onKeydown));
 
 function addColumn() {
   const title = newColumnTitle.value.trim();
