@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, getCurrentUser, htmlDocuments, resourceFolders, setToken, textDocuments } from './client';
+import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, resourceFolders, setToken, textDocuments } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -187,6 +187,35 @@ describe('htmlDocuments API client', () => {
       headers: {
         'Content-Type': 'application/json',
       },
+    });
+  });
+});
+
+describe('interactiveTemplates board API client', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('requests a board snapshot and shares board access', async () => {
+    localStorage.setItem('token', 'token-1');
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ template: {}, role: 'edit', revision: 2 }),
+    } as Response);
+
+    await interactiveTemplates.snapshot('board-1');
+    await interactiveTemplates.share('board-1', 'reader@example.com', 'read');
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, 'http://localhost:3001/api/interactive-templates/board-1/snapshot', {
+      skipAuthRedirect: true,
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token-1' },
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(2, 'http://localhost:3001/api/interactive-templates/board-1/share', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'reader@example.com', role: 'read' }),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token-1' },
     });
   });
 });

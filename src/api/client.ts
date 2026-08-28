@@ -392,20 +392,28 @@ export const plugins = {
 export type InteractiveTemplate = {
   id: string;
   title: string;
-  templateType: 'dnd-character';
+  templateType: 'dnd-character' | 'trello-board';
   data: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+  revision?: number;
+  role?: 'owner' | 'read' | 'edit';
 };
 
 export const interactiveTemplates = {
-  list: () => request<{ templates: InteractiveTemplate[] }>('/interactive-templates'),
-  create: (payload: { templateType: 'dnd-character'; title?: string; data?: Record<string, unknown> }) =>
+  list: () => request<{ own?: InteractiveTemplate[]; shared?: InteractiveTemplate[]; templates: InteractiveTemplate[] }>('/interactive-templates'),
+  create: (payload: { templateType: InteractiveTemplate['templateType']; title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>('/interactive-templates', { method: 'POST', body: JSON.stringify(payload) }),
   get: (id: string) => request<InteractiveTemplate>(`/interactive-templates/${id}`),
+  snapshot: (id: string) => request<{ template: InteractiveTemplate; role: 'owner' | 'read' | 'edit'; revision: number }>(`/interactive-templates/${id}/snapshot`, { skipAuthRedirect: true }),
   update: (id: string, payload: { title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>(`/interactive-templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   delete: (id: string) => request<{ deleted: boolean }>(`/interactive-templates/${id}`, { method: 'DELETE' }),
+  share: (id: string, email: string, role: 'read' | 'edit') =>
+    request<any>(`/interactive-templates/${id}/share`, { method: 'POST', body: JSON.stringify({ email, role }) }),
+  revoke: (id: string, userId: string) =>
+    request<any>(`/interactive-templates/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
+  permissions: (id: string) => request<any[]>(`/interactive-templates/${id}/share`),
 };
 
 export const textDocuments = {
