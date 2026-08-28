@@ -339,6 +339,11 @@
             </div>
           </section>
         </template>
+        <BoardPreview
+          v-else-if="node.templateId === 'trello-board-preview'"
+          :board-id="boardPreviewId(node)"
+          @open-board="openBoardPreview"
+        />
         <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id) && !isDndInteracting(node)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
@@ -787,6 +792,7 @@ import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
+import BoardPreview from './board/BoardPreview.vue';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -900,7 +906,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
+  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
     // Only the new add menu is localised here; the rest of this component still
     // carries hardcoded labels from before i18n existed.
@@ -2200,6 +2206,30 @@ export default defineComponent({
       nodes.value.push(newNode);
       emitOp({ type: "node-add", node: { ...newNode } });
       selectedNodeIds.value = [newNode.id];
+    };
+
+    const addBoardPreview = ({ boardId, title }: { boardId: string; title?: string }) => {
+      if (props.readonly || !boardId) return;
+      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
+      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
+      const templateData = title ? { boardId, title } : { boardId };
+      const newNode: CanvasNode = {
+        id: genId(), type: 'template', templateId: 'trello-board-preview', templateData,
+        x: snap(centerX - 360), y: snap(centerY - 190), width: 720, height: 380,
+      };
+      pushUndo();
+      nodes.value.push(newNode);
+      emitOp({ type: 'node-add', node: { ...newNode } });
+      selectedNodeIds.value = [newNode.id];
+    };
+
+    const boardPreviewId = (node: CanvasNode): string => {
+      const boardId = node.templateData?.boardId;
+      return typeof boardId === 'string' ? boardId : '';
+    };
+
+    const openBoardPreview = (boardId: string) => {
+      if (boardId) emit('open-board', boardId);
     };
 
     const importDndCharacter = (data: unknown) => {
@@ -3882,8 +3912,11 @@ export default defineComponent({
       addTextNodeCenter,
       addGroupCenter,
       addDndCharacterTemplate,
+      addBoardPreview,
       importDndCharacter,
       templateNodes,
+      boardPreviewId,
+      openBoardPreview,
       dndAbilities,
       dndTabs,
       dndPersonalityFields,

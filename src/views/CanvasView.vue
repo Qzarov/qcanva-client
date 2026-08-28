@@ -198,7 +198,7 @@
           <button class="btn-ghost btn-sm" @click="loadTemplateImport">Импортировать из шаблонов</button>
           <div v-if="templateImportOpen" class="canvas-template-import-list">
             <span v-if="templateImportLoading">Загружаем шаблоны…</span>
-            <span v-else-if="!templateImportItems.length">В дашборде пока нет карточек персонажей.</span>
+            <span v-else-if="!templateImportItems.length">В дашборде пока нет шаблонов.</span>
             <button v-for="template in templateImportItems" :key="template.id" class="btn-ghost btn-sm" @click="importTemplateToCanvas(template)">{{ template.title }}</button>
           </div>
         </div>
@@ -891,6 +891,7 @@
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
         @open-canvas="onOpenCanvas"
+        @open-board="onOpenBoard"
         @open-embed="openEmbedPicker"
         @open-doc-embed="openDocPicker"
         @open-document="onOpenDocument"
@@ -1204,15 +1205,19 @@ export default defineComponent({
       templateImportOpen.value = !templateImportOpen.value;
       if (!templateImportOpen.value || templateImportItems.value.length) return;
       templateImportLoading.value = true;
-      try { templateImportItems.value = (await interactiveTemplates.list()).templates.filter((item) => item.templateType === 'dnd-character'); }
+      try { templateImportItems.value = (await interactiveTemplates.list()).templates; }
       catch (error: any) { showToast(error?.message || 'Не удалось загрузить шаблоны', 'error'); }
       finally { templateImportLoading.value = false; }
     };
     const importTemplateToCanvas = (template: InteractiveTemplate) => {
-      canvasRef.value?.addDndCharacterTemplate?.({ ...template.data, name: template.data.name || template.title });
+      if (template.templateType === 'trello-board') {
+        canvasRef.value?.addBoardPreview?.({ boardId: template.id, title: template.title });
+      } else {
+        canvasRef.value?.addDndCharacterTemplate?.({ ...template.data, name: template.data.name || template.title });
+      }
       templateImportOpen.value = false;
       showPlugins.value = false;
-      showToast('Карточка добавлена на канвас', 'success');
+      showToast(template.templateType === 'trello-board' ? 'Доска добавлена на канвас' : 'Карточка добавлена на канвас', 'success');
     };
 
     const onTemplateRoll = (payload: { nodeId: string; label: string; modifier: number }) => {
@@ -1913,6 +1918,9 @@ export default defineComponent({
     const onOpenCanvas = (targetCanvasId: string) => {
       router.push('/canvas/' + targetCanvasId);
     };
+    const onOpenBoard = (boardId: string) => {
+      router.push({ name: 'interactive-template', params: { id: boardId } });
+    };
 
     watchPostEffect(() => {
       topbarRef.value;
@@ -2000,7 +2008,7 @@ export default defineComponent({
       toggleHistory, loadMoreHistory, changeHistoryAccess, openHistorySnapshot, restoreSelectedHistorySnapshot,
       opLabel, opCategory, opDetail, formatHistoryDate,
       showEmbedPicker, embedSearch, filteredEmbedCanvases, embedLoading,
-      openEmbedPicker, doEmbed, onOpenCanvas,
+      openEmbedPicker, doEmbed, onOpenCanvas, onOpenBoard,
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
       creatingDocument, createAndEmbedDocument,

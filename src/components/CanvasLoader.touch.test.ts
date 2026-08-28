@@ -78,4 +78,25 @@ describe('CanvasLoader mobile connection (touch)', () => {
     expect(edge.fromNode).toBe('A');
     expect(edge.toNode).toBe('B');
   });
+
+  it('adds a board preview link node without copying board cards', async () => {
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [] }, readonly: false },
+    });
+    await flushPromises();
+
+    (wrapper.vm as any).addBoardPreview({ boardId: 'board-1', title: 'Релиз' });
+
+    const node = (wrapper.emitted('op') ?? [])
+      .map((args) => args[0] as any)
+      .find((op) => op?.type === 'node-add')?.node;
+    expect(node).toMatchObject({
+      type: 'template',
+      templateId: 'trello-board-preview',
+      templateData: { boardId: 'board-1', title: 'Релиз' },
+      width: 720,
+      height: 380,
+    });
+    expect(node.templateData.cards).toBeUndefined();
+  });
 });

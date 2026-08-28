@@ -43,6 +43,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
   const resolveBoardId = () => typeof boardId === 'string' ? boardId : boardId.value;
   const socket = ref<Socket | null>(null);
   const data = ref<BoardData | null>(null);
+  const boardTitle = ref('');
   const role = ref<BoardRole | null>(null);
   const participants = ref<BoardParticipant[]>([]);
   const revision = ref(0);
@@ -105,6 +106,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
       const snapshot = await interactiveTemplates.snapshot(requestedBoardId);
       if (requestedBoardId !== resolveBoardId() || (guard && !guard.isCurrent())) return null;
       data.value = clone(snapshot.template.data as BoardData);
+      boardTitle.value = snapshot.template.title || '';
       role.value = snapshot.role;
       participants.value = safeParticipants(snapshot.participants);
       revision.value = snapshot.revision;
@@ -154,6 +156,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
     if (reject.reason === 'forbidden') {
       clearPending();
       data.value = null;
+      boardTitle.value = '';
       role.value = null;
       syncStatus.value = 'forbidden';
       return;
@@ -247,6 +250,7 @@ export function useBoardSocket(boardId: string | { value: string }) {
 
   return {
     data,
+    boardTitle,
     role,
     participants,
     revision,
