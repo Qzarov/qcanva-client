@@ -174,14 +174,14 @@ describe('BoardEditor', () => {
     });
   });
 
-  it('shows column drop zones while dragging and moves to the highlighted end zone', async () => {
+  it('activates pre-rendered column drop zones while dragging and moves to the highlighted end zone', async () => {
     const wrapper = mount(BoardEditor, { props: editableBoardProps });
 
-    expect(wrapper.find('[data-testid="column-drop-before-done"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="column-drop-before-done"]').classes()).not.toContain('board-editor__column-dropzone--active');
 
     await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
 
-    expect(wrapper.find('[data-testid="column-drop-before-done"]').exists()).toBe(true);
+    expect(wrapper.get('[data-testid="column-drop-before-done"]').classes()).toContain('board-editor__column-dropzone--active');
     await wrapper.get('[data-testid="column-end-drop"]').trigger('drop');
 
     expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
