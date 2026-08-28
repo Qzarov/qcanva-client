@@ -56,29 +56,41 @@
     </header>
 
     <div class="board-editor__viewport">
-      <BoardColumn
-        v-for="column in orderedColumns"
-        :key="column.id"
-        :column="column"
-        :cards="cardsInColumn(column.id)"
-        :labels="data.labels"
-        :editable="editable"
-        @open-card="selectedCardId = $event"
-        @add-card="addCard(column.id)"
-        @remove-column="requestColumnRemoval(column.id)"
-        @update-column="updateColumn(column.id, $event)"
-        @drag-card="startCardDrag($event)"
-        @drop-card="dropOnColumn(column.id, $event)"
-        @drag-column="startColumnDrag(column.id)"
-        @drag-end="clearDrag"
-      />
+      <template v-for="column in orderedColumns" :key="column.id">
+        <div
+          v-if="isColumnDragging"
+          class="board-editor__column-dropzone"
+          :data-testid="`column-drop-before-${column.id}`"
+          @dragover.prevent
+          @drop.stop="dropColumnAt(column.position)"
+        ><span>Переместить сюда</span></div>
+        <BoardColumn
+          :column="column"
+          :cards="cardsInColumn(column.id)"
+          :labels="data.labels"
+          :editable="editable"
+          @open-card="selectedCardId = $event"
+          @add-card="addCard(column.id)"
+          @remove-column="requestColumnRemoval(column.id)"
+          @update-column="updateColumn(column.id, $event)"
+          @drag-card="startCardDrag($event)"
+          @drop-card="dropOnColumn(column.id, $event)"
+          @drag-column="startColumnDrag(column.id)"
+          @drag-end="clearDrag"
+        />
+      </template>
+
+      <div
+        v-if="isColumnDragging"
+        class="board-editor__column-dropzone"
+        data-testid="column-end-drop"
+        @dragover.prevent
+        @drop.stop="dropColumnAt(orderedColumns.length)"
+      ><span>Переместить сюда</span></div>
 
       <form
         v-if="editable"
         class="board-editor__new-column"
-        data-testid="column-end-drop"
-        @dragover.prevent
-        @drop.stop="dropColumnAtEnd"
         @submit.prevent="addColumn"
       >
         <input v-model="newColumnTitle" aria-label="Название новой колонки" placeholder="Название колонки" />
@@ -157,6 +169,7 @@ const newColumnTitle = ref('');
 const newLabelTitle = ref('');
 const newLabelColor = ref('#22c55e');
 const dragPayload = ref<DragPayload | null>(null);
+const isColumnDragging = computed(() => dragPayload.value?.kind === 'column');
 const columnPendingRemoval = ref<{ id: string; title: string } | null>(null);
 const removalTargetColumnId = ref('');
 const otherColumns = computed(() => orderedColumns.value.filter((column) => column.id !== columnPendingRemoval.value?.id));
@@ -256,13 +269,13 @@ function clearDrag() {
   dragPayload.value = null;
 }
 
-function dropColumnAtEnd() {
+function dropColumnAt(position: number) {
   const payload = dragPayload.value;
   dragPayload.value = null;
   if (!editable.value || payload?.kind !== 'column') return;
   const moving = orderedColumns.value.find((column) => column.id === payload.id);
-  if (!moving || moving.position === orderedColumns.value.length - 1) return;
-  forwardOperation({ type: 'column-move', columnId: moving.id, position: orderedColumns.value.length });
+  if (!moving || moving.position === position) return;
+  forwardOperation({ type: 'column-move', columnId: moving.id, position });
 }
 
 function dropOnColumn(columnId: string, position: number) {
@@ -335,6 +348,8 @@ function createId(prefix: string): string {
 .board-label-manager button { padding:6px 9px; border:1px solid #405047; border-radius:6px; background:#29342e; color:#dbe7de; cursor:pointer; }
 .board-label-manager__row button { color:#f0a2a2; }
 .board-editor__viewport { display:flex; flex:1; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
+.board-editor__column-dropzone { display:flex; flex:0 0 42px; align-self:stretch; align-items:center; justify-content:center; min-height:150px; border:2px dashed #5aa96d; border-radius:10px; background:#327b4229; color:#b8f3c4; font-size:11px; font-weight:700; text-align:center; cursor:copy; }
+.board-editor__column-dropzone span { writing-mode:vertical-rl; transform:rotate(180deg); }
 .board-editor__new-column { display:grid; flex:0 0 260px; gap:8px; padding:10px; border:1px dashed #3c4b42; border-radius:12px; background:#171d1a99; }
 .board-editor__new-column input { padding:9px; border:1px solid #3a4941; border-radius:7px; background:#212925; color:#edf5ef; }
 .board-editor__new-column button { padding:9px; border:0; border-radius:7px; background:#2c673d; color:#fff; font-weight:650; cursor:pointer; }

@@ -173,6 +173,21 @@ describe('BoardEditor', () => {
       type: 'column-move', columnId: 'todo', position: 1,
     });
   });
+
+  it('shows column drop zones while dragging and moves to the highlighted end zone', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps });
+
+    expect(wrapper.find('[data-testid="column-drop-before-done"]').exists()).toBe(false);
+
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
+
+    expect(wrapper.find('[data-testid="column-drop-before-done"]').exists()).toBe(true);
+    await wrapper.get('[data-testid="column-end-drop"]').trigger('drop');
+
+    expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
+      type: 'column-move', columnId: 'todo', position: 2,
+    });
+  });
 });
 
 describe('BoardCardDialog', () => {
