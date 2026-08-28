@@ -112,7 +112,7 @@ describe('useBoardSocket', () => {
     expect(board.revision.value).toBe(5);
   });
 
-  it('replays a later valid move after an earlier operation is rejected', async () => {
+  it('retries a rejected card move before replaying later valid moves', async () => {
     vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
       template: { data: boardFixture }, role: 'edit', revision: 3,
     } as any);
@@ -133,6 +133,14 @@ describe('useBoardSocket', () => {
     expect(emittedOperations).toHaveLength(2);
     expect(emittedOperations[1]?.[1]).toMatchObject({
       baseRevision: 3,
+      op: { type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 },
+    });
+    sockets[0].emitFromServer('board-op-ack', { clientOpId: emittedOperations[1]?.[1].clientOpId, revision: 4 });
+
+    const replayedOperations = sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op');
+    expect(replayedOperations).toHaveLength(3);
+    expect(replayedOperations[2]?.[1]).toMatchObject({
+      baseRevision: 4,
       op: { type: 'card-move', cardId: 'c1', columnId: 'todo', position: 0 },
     });
     expect(board.pendingCount.value).toBe(1);
@@ -153,9 +161,30 @@ describe('useBoardSocket', () => {
     sockets[0].emitFromServer('board-op-reject', { clientOpId: rejectedClientOpId, reason: 'revision_mismatch' });
     await flushAsyncWork();
 
-    expect(sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op')).toHaveLength(1);
-    expect(board.pendingCount.value).toBe(0);
-    expect(board.data.value?.cards[0]?.columnId).toBe('todo');
+    const emittedOperations = sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'board-op');
+    expect(emittedOperations).toHaveLength(2);
+    expect(emittedOperations[1]?.[1]).toMatchObject({
+      op: { type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 },
+    });
+    expect(board.pendingCount.value).toBe(1);
+    expect(board.data.value?.cards[0]?.columnId).toBe('done');
+  });
+
+  it('resyncs an unmatched reject without clearing unrelated pending operations', async () => {
+    const snapshot = vi.spyOn(interactiveTemplates, 'snapshot').mockResolvedValue({
+      template: { data: boardFixture }, role: 'edit', revision: 3,
+    } as any);
+    const board = useBoardSocket('board-1');
+    board.connect();
+    board.data.value = boardFixture;
+    board.revision.value = 3;
+    board.sendOperation({ type: 'card-move', cardId: 'c1', columnId: 'done', position: 0 });
+
+    sockets[0].emitFromServer('board-op-reject', { reason: 'invalid_op' });
+    await flushAsyncWork();
+
+    expect(snapshot).toHaveBeenCalledWith('board-1');
+    expect(board.pendingCount.value).toBe(1);
   });
 
   it('clears pending operations when the socket disconnects', () => {

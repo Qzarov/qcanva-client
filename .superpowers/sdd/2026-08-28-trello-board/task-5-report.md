@@ -78,3 +78,26 @@ Ran `npm run build`; `vue-tsc -b && vite build` completed successfully.
 The socket now records acknowledged self operation IDs, serializes outbound
 operations, and reconstructs/replays only later valid moves after a rejected
 operation's fresh snapshot.
+
+## Fix round 2 — rejection replay ordering
+
+### RED
+
+The added rejection tests initially showed that a `revision_mismatch` replayed
+only later queued moves, while an unmatched reject cleared every unrelated
+pending operation.
+
+### GREEN
+
+`revision_mismatch` now retries the rejected valid card/column move first,
+then queues later valid moves behind it. A reject without a matching client
+operation ID requests a fresh snapshot without clearing unrelated pending
+operations.
+
+Verification:
+
+```text
+npx vitest run src/boards/operations.test.ts src/composables/useBoardSocket.test.ts src/api/client.test.ts --exclude '.claude/**'
+```
+
+Result: 3 files, 25 tests passed. `npm run build` also completed successfully.

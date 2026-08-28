@@ -102,6 +102,11 @@ export function useBoardSocket(boardId: string | { value: string }) {
 
   async function handleReject(reject: BoardOperationReject) {
     const pending = reject.clientOpId ? pendingOperations.get(reject.clientOpId) : undefined;
+    if (!pending) {
+      await requestSnapshot();
+      return;
+    }
+
     const laterPendingOperations: BoardOperation[] = [];
     let foundRejectedOperation = false;
     for (const [clientOpId, queued] of pendingOperations) {
@@ -111,7 +116,6 @@ export function useBoardSocket(boardId: string | { value: string }) {
       }
       if (foundRejectedOperation) laterPendingOperations.push(queued.op);
     }
-    clearPending();
 
     if (reject.reason === 'forbidden') {
       clearPending();
@@ -121,10 +125,14 @@ export function useBoardSocket(boardId: string | { value: string }) {
       return;
     }
 
+    clearPending();
     if (pending) data.value = pending.before;
     const snapshot = await requestSnapshot();
     if (!snapshot) return;
-    for (const op of laterPendingOperations) {
+    const operationsToReplay = reject.reason === 'revision_mismatch'
+      ? [pending.op, ...laterPendingOperations]
+      : laterPendingOperations;
+    for (const op of operationsToReplay) {
       if (canRetryMove(op, data.value!)) sendOperation(op);
     }
   }
