@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount } from '@vue/test-utils';
+import { ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BoardData } from '../../boards/types';
 import BoardPreview from './BoardPreview.vue';
@@ -28,33 +29,30 @@ const board: BoardData = {
   labels: [{ id: 'urgent', title: 'Срочно', color: '#ef4444' }],
 };
 
-const socket = vi.hoisted(() => ({
-  data: { __v_isRef: true, value: null as BoardData | null },
-  role: { __v_isRef: true, value: null as 'owner' | 'read' | 'edit' | null },
-  boardTitle: { __v_isRef: true, value: '' },
-  syncStatus: { __v_isRef: true, value: 'idle' },
-  requestSnapshot: vi.fn(),
-  connect: vi.fn(),
-  disconnect: vi.fn(),
-}));
+const socketFactory = vi.hoisted(() => ({ current: null as any }));
+let socket: any;
 
 vi.mock('../../composables/useBoardSocket', () => ({
-  useBoardSocket: () => socket,
+  useBoardSocket: () => socketFactory.current,
 }));
 
 describe('BoardPreview', () => {
   beforeEach(() => {
-    socket.data.value = board;
-    socket.role.value = 'edit';
-    socket.boardTitle.value = 'Команда';
-    socket.syncStatus.value = 'synced';
-    socket.requestSnapshot.mockReset().mockImplementation(async () => {
+    socket = {
+      data: ref<BoardData | null>(board),
+      role: ref<'owner' | 'read' | 'edit' | null>('edit'),
+      boardTitle: ref('Команда'),
+      syncStatus: ref('synced'),
+      requestSnapshot: vi.fn(),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    socketFactory.current = socket;
+    socket.requestSnapshot.mockImplementation(async () => {
       socket.data.value = board;
       socket.boardTitle.value = 'Команда';
       return board;
     });
-    socket.connect.mockReset();
-    socket.disconnect.mockReset();
   });
 
   it('renders only three columns and opens the source without edit controls', async () => {
@@ -78,5 +76,26 @@ describe('BoardPreview', () => {
     expect(socket.connect).toHaveBeenCalledOnce();
     wrapper.unmount();
     expect(socket.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('renders no board data when the authorized snapshot is unavailable', async () => {
+    socket.requestSnapshot.mockResolvedValue(null);
+    const wrapper = mount(BoardPreview, { props: { boardId: 'missing-board' } });
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Доска недоступна');
+    expect(wrapper.findAll('[data-testid="preview-column"]')).toHaveLength(0);
+  });
+
+  it('rerenders when the read-only board socket applies a remote operation', async () => {
+    const wrapper = mount(BoardPreview, { props: { boardId: 'board-1' } });
+    await flushPromises();
+    socket.data.value = {
+      ...board,
+      cards: board.cards.map((card) => card.id === 'card-1' ? { ...card, title: 'Обновлено коллегой' } : card),
+    };
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.text()).toContain('Обновлено коллегой');
   });
 });

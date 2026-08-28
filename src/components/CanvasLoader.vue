@@ -2228,8 +2228,29 @@ export default defineComponent({
       return typeof boardId === 'string' ? boardId : '';
     };
 
-    const openBoardPreview = (boardId: string) => {
+    let suppressedBoardPreviewClickId: string | null = null;
+    let clearSuppressedBoardPreviewClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const emitOpenBoardPreview = (boardId: string) => {
       if (boardId) emit('open-board', boardId);
+    };
+
+    const suppressBoardPreviewClick = (boardId: string) => {
+      if (!boardId) return;
+      suppressedBoardPreviewClickId = boardId;
+      if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
+      clearSuppressedBoardPreviewClickTimer = setTimeout(() => {
+        suppressedBoardPreviewClickId = null;
+        clearSuppressedBoardPreviewClickTimer = null;
+      }, 0);
+    };
+
+    const openBoardPreview = (boardId: string) => {
+      if (suppressedBoardPreviewClickId === boardId) {
+        suppressedBoardPreviewClickId = null;
+        return;
+      }
+      emitOpenBoardPreview(boardId);
     };
 
     const importDndCharacter = (data: unknown) => {
@@ -3173,6 +3194,13 @@ export default defineComponent({
       isPanning.value = false;
       // Emit move op at end of drag
       if (dragNodeId.value) {
+        const draggedNode = nodes.value.find((node) => node.id === dragNodeId.value);
+        if (draggedNode?.templateId === 'trello-board-preview' && Math.hypot(
+          e.clientX - dragMouseStart.x,
+          e.clientY - dragMouseStart.y,
+        ) > TAP_MOVE_THRESHOLD) {
+          suppressBoardPreviewClick(boardPreviewId(draggedNode));
+        }
         const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
       }
@@ -3462,17 +3490,23 @@ export default defineComponent({
 
       if (!touchMoved && touchNodeId) {
         // Tap on a node
-        const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === touchNodeId;
-        if (isDouble && !props.readonly) {
-          const node = nodes.value.find((n) => n.id === touchNodeId);
-          if (node && node.type === 'text') onNodeDblClick(node);
+        const node = nodes.value.find((candidate) => candidate.id === touchNodeId);
+        if (node?.templateId === 'trello-board-preview') {
+          emitOpenBoardPreview(boardPreviewId(node));
           lastTapTime = 0;
           lastTapTarget = "";
-        } else if (isDouble && props.readonly) {
-          emit('readonly-action');
         } else {
-          lastTapTime = now;
-          lastTapTarget = touchNodeId;
+          const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === touchNodeId;
+          if (isDouble && !props.readonly) {
+            if (node && node.type === 'text') onNodeDblClick(node);
+            lastTapTime = 0;
+            lastTapTarget = "";
+          } else if (isDouble && props.readonly) {
+            emit('readonly-action');
+          } else {
+            lastTapTime = now;
+            lastTapTarget = touchNodeId;
+          }
         }
       } else if (!touchMoved && !touchNodeId) {
         // Tap on empty canvas
@@ -3833,6 +3867,7 @@ export default defineComponent({
 
     onUnmounted(() => {
       if (editSaveTimer) clearTimeout(editSaveTimer);
+      if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
       stopAutoPan();
       window.removeEventListener("orientationchange", onOrientationChange);
       const viewportMeta = document.querySelector('meta[name="viewport"]');
