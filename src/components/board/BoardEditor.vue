@@ -131,11 +131,11 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { BoardCard, BoardData, BoardOperation, BoardRole } from '../../boards/types';
+import type { BoardCard, BoardData, BoardOperation, BoardParticipant, BoardRole } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardColumn from './BoardColumn.vue';
 
-type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
+type Participant = BoardParticipant;
 type DragPayload = { kind: 'card'; id: string } | { kind: 'column'; id: string };
 
 const props = defineProps<{
@@ -167,8 +167,7 @@ const availableParticipants = computed<Participant[]>(() => {
     if (card.assigneeUserId && !participants.has(card.assigneeUserId)) {
       participants.set(card.assigneeUserId, {
         userId: card.assigneeUserId,
-        name: card.assigneeName || undefined,
-        role: 'edit',
+        name: card.assigneeName || 'Участник',
       });
     }
   }
@@ -176,7 +175,7 @@ const availableParticipants = computed<Participant[]>(() => {
 });
 
 function participantLabel(participant: Participant): string {
-  return participant.name?.trim() || participant.email?.trim() || 'Участник';
+  return participant.name?.trim() || 'Участник';
 }
 
 function cardsInColumn(columnId: string): BoardCard[] {

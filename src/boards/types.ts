@@ -30,6 +30,7 @@ export type BoardOperation =
   | { type: 'label-add' | 'label-update' | 'label-remove' | 'checklist-add' | 'checklist-update' | 'checklist-remove' | 'checklist-move'; [key: string]: unknown };
 
 export type BoardRole = 'owner' | 'read' | 'edit';
+export type BoardParticipant = { userId: string; name: string };
 
 export class BoardOperationError extends Error {
   constructor(code: string) {
