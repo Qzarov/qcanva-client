@@ -456,41 +456,72 @@
       <div v-if="sharedFiltered.length" class="dash-section">
         <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
+          <template v-for="item in sharedFiltered" :key="'shared-' + item.type + '-' + item.id">
           <div
-            v-for="c in sharedFiltered"
-            :key="'shared-' + c.id"
+            v-if="item.type === 'canvas'"
             class="canvas-card"
-            @click="openCanvas(c.slug || c.id)"
+            @click="openCanvas(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ c.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
-              <span class="badge badge-shared">{{ c.role }}</span>
-              <span v-if="c.pinned" class="badge badge-pinned">Pinned</span>
-              <span class="card-date">{{ formatDate(c.updatedAt) }}</span>
+              <span class="badge badge-shared">{{ item.role }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
-            <div v-if="c.folder" class="card-folder">{{ c.folder }}</div>
-            <div v-if="c.tags?.length" class="card-tags">
+            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
+            <div v-if="item.tags?.length" class="card-tags">
               <span
-                v-for="tag in c.tags"
+                v-for="tag in item.tags"
                 :key="tag.name"
                 class="card-tag color-tag"
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
             <button
-              v-if="c.role === 'edit'"
+              v-if="item.role === 'edit'"
               class="card-manage"
-              @click.stop="toggleCardMenu(c.id, $event)"
+              @click.stop="toggleCardMenu(item.id, $event)"
               title="Canvas actions"
               :disabled="isBusy"
             >⋯</button>
-            <div v-if="openMenuCanvasId === c.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(c)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button class="card-menu-item" @click="openDescriptionModal(c)" :disabled="isBusy">{{ t('description') }}</button>
-              <button class="card-menu-item" @click="togglePinned(c)" :disabled="isBusy">{{ c.pinned ? t('unpin') : t('pin') }}</button>
-              <button class="card-menu-item" @click="openTagsModal(c)" :disabled="isBusy">{{ t('editTags') }}</button>
+            <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
+              <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
+              <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
             </div>
           </div>
+          <article
+            v-else-if="item.type === 'html-document'"
+            class="canvas-card html-doc-card"
+            @click="openHtmlDocument(item.slug || item.id)"
+          >
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-meta">
+              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
+            </div>
+          </article>
+          <article
+            v-else
+            class="canvas-card html-doc-card"
+            @click="openTextDocument(item.slug || item.id)"
+          >
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+            <div class="card-meta">
+              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
+              <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
+            </div>
+          </article>
+          </template>
         </div>
       </div>
 
@@ -878,6 +909,9 @@ type CanvasRecord = {
 type HtmlDocumentRecord = {
   type: 'html-document';
   id: string;
+  ownerId?: string;
+  role?: string;
+  visibility?: 'private' | 'authenticated' | 'public';
   slug?: string | null;
   title: string;
   updatedAt: string;
@@ -889,6 +923,9 @@ type HtmlDocumentRecord = {
 type TextDocumentRecord = {
   type: 'text-document';
   id: string;
+  ownerId?: string;
+  role?: string;
+  visibility?: 'private' | 'authenticated' | 'public';
   slug?: string | null;
   title: string;
   updatedAt: string;
@@ -911,6 +948,8 @@ type DashboardCacheState = {
   publicCanvases: CanvasRecord[];
   publicHtmlDocuments: HtmlDocumentRecord[];
   publicTextDocuments: TextDocumentRecord[];
+  sharedHtmlDocuments: HtmlDocumentRecord[];
+  sharedTextDocuments: TextDocumentRecord[];
   ownResourceFolders: ResourceFolderSummary[];
   sharedResourceFolders: ResourceFolderSummary[];
   unfiledCanvases: CanvasRecord[];
@@ -944,6 +983,8 @@ export default defineComponent({
     const publicCanvases = ref<CanvasRecord[]>([]);
     const publicHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const publicTextDocuments = ref<TextDocumentRecord[]>([]);
+    const sharedHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
+    const sharedTextDocuments = ref<TextDocumentRecord[]>([]);
     const ownResourceFolders = ref<ResourceFolderSummary[]>([]);
     const sharedResourceFolders = ref<ResourceFolderSummary[]>([]);
     const unfiledCanvases = ref<CanvasRecord[]>([]);
@@ -1048,6 +1089,8 @@ export default defineComponent({
         publicCanvases: publicCanvases.value,
         publicHtmlDocuments: publicHtmlDocuments.value,
         publicTextDocuments: publicTextDocuments.value,
+        sharedHtmlDocuments: sharedHtmlDocuments.value,
+        sharedTextDocuments: sharedTextDocuments.value,
         ownResourceFolders: ownResourceFolders.value,
         sharedResourceFolders: sharedResourceFolders.value,
         unfiledCanvases: unfiledCanvases.value,
@@ -1074,6 +1117,8 @@ export default defineComponent({
         publicCanvases.value = cached.state.publicCanvases || [];
         publicHtmlDocuments.value = cached.state.publicHtmlDocuments || [];
         publicTextDocuments.value = cached.state.publicTextDocuments || [];
+        sharedHtmlDocuments.value = cached.state.sharedHtmlDocuments || [];
+        sharedTextDocuments.value = cached.state.sharedTextDocuments || [];
         ownResourceFolders.value = cached.state.ownResourceFolders || [];
         sharedResourceFolders.value = cached.state.sharedResourceFolders || [];
         unfiledCanvases.value = cached.state.unfiledCanvases || [];
@@ -1210,16 +1255,6 @@ export default defineComponent({
       return matchesQuery && matchesTag;
     };
 
-    const sortCanvases = (items: CanvasRecord[]) => [...items].sort((a, b) => {
-      if (Boolean(a.pinned) !== Boolean(b.pinned)) return a.pinned ? -1 : 1;
-      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
-        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
-        return sortMode.value === 'title-asc' ? result : -result;
-      }
-      const result = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
-      return sortMode.value === 'updated-asc' ? result : -result;
-    });
-
     const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
       if (Boolean(a.pinned) !== Boolean(b.pinned)) {
         return a.pinned ? -1 : 1;
@@ -1232,7 +1267,10 @@ export default defineComponent({
       return sortMode.value === 'updated-asc' ? result : -result;
     });
 
-    const sharedFiltered = computed(() => sortCanvases(shared.value.filter(matchesCanvas)));
+    const sharedFiltered = computed(() => sortFolderItems(
+      [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
+        .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
+    ));
     const publicFiltered = computed(() => sortFolderItems(
       [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
         .filter(matchesPublicItem),
@@ -1252,10 +1290,16 @@ export default defineComponent({
       for (const document of unfiledHtmlDocuments.value) {
         addTags(document.tags, 'html-document');
       }
+      for (const document of sharedHtmlDocuments.value) {
+        addTags(document.tags, 'html-document');
+      }
       for (const document of publicHtmlDocuments.value) {
         addTags(document.tags, 'html-document');
       }
       for (const document of unfiledTextDocuments.value) {
+        addTags(document.tags, 'text-document');
+      }
+      for (const document of sharedTextDocuments.value) {
         addTags(document.tags, 'text-document');
       }
       for (const document of publicTextDocuments.value) {
@@ -1290,10 +1334,16 @@ export default defineComponent({
       for (const document of unfiledHtmlDocuments.value) {
         for (const tag of document.tags) byName.set(tag.name, tag);
       }
+      for (const document of sharedHtmlDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
       for (const document of publicHtmlDocuments.value) {
         for (const tag of document.tags) byName.set(tag.name, tag);
       }
       for (const document of unfiledTextDocuments.value) {
+        for (const tag of document.tags) byName.set(tag.name, tag);
+      }
+      for (const document of sharedTextDocuments.value) {
         for (const tag of document.tags) byName.set(tag.name, tag);
       }
       for (const document of publicTextDocuments.value) {
@@ -1461,6 +1511,8 @@ export default defineComponent({
       ...folderSummaries.value.flatMap((folder) => folder.items),
       ...own.value,
       ...shared.value,
+      ...sharedHtmlDocuments.value,
+      ...sharedTextDocuments.value,
       ...publicCanvases.value,
       ...publicHtmlDocuments.value,
       ...publicTextDocuments.value,
@@ -1527,10 +1579,22 @@ export default defineComponent({
           );
           const legacyState = await htmlDocuments.list();
           unfiledHtmlDocuments.value = (legacyState.documents || [])
+            .filter((document: any) => document.ownerId === currentUser.value?.id)
+            .filter((document: any) => !folderDocumentIds.has(document.id))
+            .map((document: any) => normalizeHtmlDocument(document));
+          sharedHtmlDocuments.value = (legacyState.documents || [])
+            .filter((document: any) => document.ownerId !== currentUser.value?.id)
+            .filter((document: any) => document.visibility !== 'public')
             .filter((document: any) => !folderDocumentIds.has(document.id))
             .map((document: any) => normalizeHtmlDocument(document));
           const textState = await textDocuments.list();
           unfiledTextDocuments.value = (textState.documents || [])
+            .filter((document: any) => document.ownerId === currentUser.value?.id)
+            .filter((document: any) => !folderTextDocumentIds.has(document.id))
+            .map((document: any) => normalizeTextDocument(document));
+          sharedTextDocuments.value = (textState.documents || [])
+            .filter((document: any) => document.ownerId !== currentUser.value?.id)
+            .filter((document: any) => document.visibility !== 'public')
             .filter((document: any) => !folderTextDocumentIds.has(document.id))
             .map((document: any) => normalizeTextDocument(document));
           const templateState = await interactiveTemplates.list();

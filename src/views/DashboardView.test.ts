@@ -255,7 +255,18 @@ describe('DashboardView groups', () => {
       welcome: null,
     });
     vi.mocked(htmlDocuments.publicList).mockResolvedValueOnce({ documents: [{ id: 'html-icon', title: 'HTML Icon', tags: [] }] });
-    vi.mocked(textDocuments.list).mockResolvedValueOnce({ documents: [{ id: 'text-doc-icon', title: 'Doc Icon', tags: [] }] });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({
+      documents: [
+        {
+          id: 'text-doc-icon',
+          ownerId: 'user-1',
+          title: 'Doc Icon',
+          visibility: 'private',
+          folderId: null,
+          tags: [],
+        },
+      ],
+    });
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -294,6 +305,105 @@ describe('DashboardView groups', () => {
 
     expect(vm.sharedFiltered).toEqual([]);
     expect(vm.publicFiltered.map((item: any) => item.type)).toEqual(['html-document']);
+  });
+
+  it('keeps another users public documents out of the personal Inbox', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({ own: [], shared: [] });
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      groups: [],
+      documents: [
+        {
+          id: 'public-html',
+          ownerId: 'other-user',
+          title: 'Public HTML',
+          visibility: 'public',
+          folderId: 'other-folder',
+          tags: [],
+        },
+      ],
+    });
+    vi.mocked(htmlDocuments.publicList).mockResolvedValueOnce({
+      documents: [
+        {
+          id: 'public-html',
+          ownerId: 'other-user',
+          title: 'Public HTML',
+          visibility: 'public',
+          folderId: 'other-folder',
+          tags: [],
+        },
+      ],
+    });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({
+      documents: [
+        {
+          id: 'public-text',
+          ownerId: 'other-user',
+          title: 'Public document',
+          visibility: 'public',
+          folderId: 'other-folder',
+          tags: [],
+        },
+      ],
+    });
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: [
+        {
+          id: 'public-text',
+          ownerId: 'other-user',
+          title: 'Public document',
+          visibility: 'public',
+          folderId: 'other-folder',
+          tags: [],
+        },
+      ],
+    });
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    expect(vm.folderSummaries.some((folder: any) => folder.id === 'legacy-resource-inbox')).toBe(false);
+    expect(vm.publicFiltered.map((item: any) => item.id).sort()).toEqual(['public-html', 'public-text']);
+  });
+
+  it('keeps explicitly shared private documents in Shared instead of the personal Inbox', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({ own: [], shared: [] });
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      groups: [],
+      documents: [
+        {
+          id: 'shared-html',
+          ownerId: 'other-user',
+          title: 'Shared HTML',
+          visibility: 'private',
+          folderId: null,
+          tags: [],
+        },
+      ],
+    });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({
+      documents: [
+        {
+          id: 'shared-text',
+          ownerId: 'other-user',
+          title: 'Shared document',
+          visibility: 'private',
+          folderId: null,
+          role: 'read',
+          tags: [],
+        },
+      ],
+    });
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    expect(vm.folderSummaries.some((folder: any) => folder.id === 'legacy-resource-inbox')).toBe(false);
+    expect(vm.sharedFiltered.map((item: any) => item.id).sort()).toEqual(['shared-html', 'shared-text']);
+    expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
+    expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
   });
 
   it('shares groups through the group access modal', async () => {
