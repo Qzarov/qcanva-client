@@ -271,6 +271,26 @@ describe('BoardEditor', () => {
     expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
       type: 'column-move', columnId: 'todo', position: 1,
     });
+    wrapper.unmount();
+  });
+
+  it('finishes a column move when the release is stopped inside the board', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps, attachTo: document.body });
+    const todo = wrapper.get('[data-column-id="todo"]');
+    const done = wrapper.get('[data-column-id="done"]');
+    Object.defineProperty(todo.element, 'getBoundingClientRect', { value: () => ({ left: 0, width: 294 }) as DOMRect });
+    Object.defineProperty(done.element, 'getBoundingClientRect', { value: () => ({ left: 310, width: 294 }) as DOMRect });
+    done.element.addEventListener('pointerup', (event) => event.stopPropagation());
+
+    wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').element.dispatchEvent(pointerEvent('pointerdown', 0));
+    window.dispatchEvent(pointerEvent('pointermove', 700));
+    done.element.dispatchEvent(pointerEvent('pointerup', 700));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
+      type: 'column-move', columnId: 'todo', position: 1,
+    });
+    wrapper.unmount();
   });
 
 });

@@ -18,6 +18,15 @@ const boardFixture: BoardData = {
 };
 
 describe('applyBoardOperation', () => {
+  it('reorders columns without mutating the prior snapshot', () => {
+    const result = applyBoardOperation(boardFixture, {
+      type: 'column-move', columnId: 'todo', position: 1,
+    });
+
+    expect(result.columns.map((column) => column.id)).toEqual(['done', 'todo']);
+    expect(boardFixture.columns.map((column) => column.id)).toEqual(['todo', 'done']);
+  });
+
   it('moves a card to its requested column without mutating the prior snapshot', () => {
     const result = applyBoardOperation(boardFixture, {
       type: 'card-move', cardId: 'c1', columnId: 'done', position: 0,

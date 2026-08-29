@@ -32,6 +32,9 @@ function renumber(items: Array<{ position: number }>): void {
   items.sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
   items.forEach((item, index) => { item.position = index; });
 }
+function reindex(items: Array<{ position: number }>): void {
+  items.forEach((item, index) => { item.position = index; });
+}
 function find<T extends { id: string }>(items: T[], id: unknown, code = 'not_found'): T {
   const item = items.find((entry) => entry.id === id);
   if (!item) throw new BoardOperationError(code);
@@ -57,7 +60,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const columnIndex = clamp(column.position, data.columns.length);
       column.position = columnIndex;
       data.columns.splice(columnIndex, 0, column);
-      renumber(data.columns);
+      reindex(data.columns);
       break;
     }
     case 'column-update': find(data.columns, operation.columnId).title = operation.title; break;
@@ -65,7 +68,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const column = find(data.columns, operation.columnId);
       data.columns.splice(data.columns.indexOf(column), 1);
       data.columns.splice(clamp(operation.position, data.columns.length), 0, column);
-      renumber(data.columns);
+      reindex(data.columns);
       break;
     }
     case 'column-remove': {
@@ -92,7 +95,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const cardIndex = clamp(card.position, siblings.length);
       card.position = cardIndex;
       siblings.splice(cardIndex, 0, card);
-      renumber(siblings);
+      reindex(siblings);
       sortCardsByBoardOrder(data);
       break;
     }
@@ -104,7 +107,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       card.columnId = operation.columnId;
       const siblings = cardsIn(data, operation.columnId).filter((entry) => entry.id !== card.id);
       siblings.splice(clamp(operation.position, siblings.length), 0, card);
-      renumber(siblings);
+      reindex(siblings);
       renumber(cardsIn(data, old));
       break;
     }
@@ -133,7 +136,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const item = clone(operation.item as BoardChecklistItem);
       requiredId(item?.id);
       card.checklist.splice(clamp(item.position, card.checklist.length), 0, item);
-      renumber(card.checklist);
+      reindex(card.checklist);
       break;
     }
     case 'checklist-update': {
@@ -145,7 +148,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const card = find(data.cards, operation.cardId);
       const item = find(card.checklist, operation.checklistId);
       card.checklist.splice(card.checklist.indexOf(item), 1);
-      renumber(card.checklist);
+      reindex(card.checklist);
       break;
     }
     case 'checklist-move': {
@@ -153,7 +156,7 @@ export function applyBoardOperation(source: BoardData, operation: BoardOperation
       const item = find(card.checklist, operation.checklistId);
       card.checklist.splice(card.checklist.indexOf(item), 1);
       card.checklist.splice(clamp(operation.position as number, card.checklist.length), 0, item);
-      renumber(card.checklist);
+      reindex(card.checklist);
       break;
     }
   }

@@ -357,6 +357,9 @@ function startColumnDrag(columnId: string, event: PointerEvent) {
   window.addEventListener('pointermove', onColumnPointerMove);
   window.addEventListener('pointerup', onColumnPointerUp);
   window.addEventListener('pointercancel', cancelColumnPointerDrag);
+  document.addEventListener('pointermove', onColumnPointerMove, true);
+  document.addEventListener('pointerup', onColumnPointerUp, true);
+  document.addEventListener('pointercancel', cancelColumnPointerDrag, true);
 }
 
 function resolveColumnDropPosition(clientX: number): number {
@@ -381,6 +384,9 @@ function stopColumnPointerListeners() {
   window.removeEventListener('pointermove', onColumnPointerMove);
   window.removeEventListener('pointerup', onColumnPointerUp);
   window.removeEventListener('pointercancel', cancelColumnPointerDrag);
+  document.removeEventListener('pointermove', onColumnPointerMove, true);
+  document.removeEventListener('pointerup', onColumnPointerUp, true);
+  document.removeEventListener('pointercancel', cancelColumnPointerDrag, true);
 }
 
 function cancelColumnPointerDrag() {
