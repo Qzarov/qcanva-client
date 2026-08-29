@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { BoardChecklistItem, BoardData, BoardOperation } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardEditor from './BoardEditor.vue';
@@ -170,7 +170,7 @@ describe('BoardEditor', () => {
   it('moves a dragged column to the end drop target', async () => {
     const wrapper = mount(BoardEditor, { props: editableBoardProps });
 
-    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('pointerdown');
     await wrapper.get('[data-testid="column-end-drop"]').trigger('drop');
 
     expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
@@ -178,20 +178,40 @@ describe('BoardEditor', () => {
     });
   });
 
-  it('registers a native data transfer when starting a column drag', async () => {
+  it('starts a column drag from the pointer handle', async () => {
     const wrapper = mount(BoardEditor, { props: editableBoardProps });
-    const dataTransfer = { effectAllowed: '', setData: vi.fn() };
 
-    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart', { dataTransfer });
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('pointerdown');
 
-    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'board-column:todo');
-    expect(dataTransfer.effectAllowed).toBe('move');
+    expect(wrapper.get('[data-testid="column-drop-before-done"]').classes()).toContain('board-editor__column-dropzone--active');
+  });
+
+  it('places a pointer-dragged column at the position under the cursor', async () => {
+    const wrapper = mount(BoardEditor, {
+      props: {
+        ...editableBoardProps,
+        data: { ...board, columns: [...board.columns, { id: 'archive', title: 'Архив', position: 2 }] },
+      },
+    });
+    const rect = (left: number) => () => ({ left, width: 294 }) as DOMRect;
+    Object.defineProperty(wrapper.get('[data-column-id="todo"]').element, 'getBoundingClientRect', { value: rect(0) });
+    Object.defineProperty(wrapper.get('[data-column-id="done"]').element, 'getBoundingClientRect', { value: rect(310) });
+    Object.defineProperty(wrapper.get('[data-column-id="archive"]').element, 'getBoundingClientRect', { value: rect(620) });
+
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('pointerdown');
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 500 }));
+    window.dispatchEvent(new MouseEvent('pointerup', { clientX: 500 }));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
+      type: 'column-move', columnId: 'todo', position: 1,
+    });
   });
 
   it('moves a dragged column after the column it is dropped on', async () => {
     const wrapper = mount(BoardEditor, { props: editableBoardProps });
 
-    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('pointerdown');
     await wrapper.get('[data-column-id="done"]').trigger('drop');
 
     expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
@@ -204,7 +224,7 @@ describe('BoardEditor', () => {
 
     expect(wrapper.get('[data-testid="column-drop-before-done"]').classes()).not.toContain('board-editor__column-dropzone--active');
 
-    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('dragstart');
+    await wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').trigger('pointerdown');
 
     expect(wrapper.get('[data-testid="column-drop-before-done"]').classes()).toContain('board-editor__column-dropzone--active');
     await wrapper.get('[data-testid="column-end-drop"]').trigger('drop');

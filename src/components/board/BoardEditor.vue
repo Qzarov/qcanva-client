@@ -59,12 +59,16 @@
       <template v-for="column in orderedColumns" :key="column.id">
         <div
           class="board-editor__column-dropzone"
-          :class="{ 'board-editor__column-dropzone--active': isColumnDragging }"
+          :class="{
+            'board-editor__column-dropzone--active': isColumnDragging,
+            'board-editor__column-dropzone--highlighted': isColumnDragging && isDropPositionBefore(column.id),
+          }"
           :data-testid="`column-drop-before-${column.id}`"
           @dragover.prevent
           @drop.stop="dropColumnAt(column.position)"
         ><span>Переместить сюда</span></div>
         <BoardColumn
+          :ref="(element) => registerColumnElement(column.id, element)"
           :column="column"
           :cards="cardsInColumn(column.id)"
           :labels="data.labels"
@@ -75,14 +79,17 @@
           @update-column="updateColumn(column.id, $event)"
           @drag-card="startCardDrag($event)"
           @drop-card="dropOnColumn(column.id, $event)"
-          @drag-column="startColumnDrag(column.id)"
+          @drag-column="startColumnDrag(column.id, $event)"
           @drag-end="clearDrag"
         />
       </template>
 
       <div
         class="board-editor__column-dropzone"
-        :class="{ 'board-editor__column-dropzone--active': isColumnDragging }"
+        :class="{
+          'board-editor__column-dropzone--active': isColumnDragging,
+          'board-editor__column-dropzone--highlighted': isColumnDragging && columnDropPosition === movableColumns.length,
+        }"
         data-testid="column-end-drop"
         @dragover.prevent
         @drop.stop="dropColumnAt(orderedColumns.length)"
@@ -171,6 +178,8 @@ const newLabelTitle = ref('');
 const newLabelColor = ref('#22c55e');
 const dragPayload = ref<DragPayload | null>(null);
 const isColumnDragging = computed(() => dragPayload.value?.kind === 'column');
+const columnDropPosition = ref<number | null>(null);
+const columnElements = new Map<string, HTMLElement>();
 const undoHistory = ref<HistoryEntry[]>([]);
 const redoHistory = ref<HistoryEntry[]>([]);
 const columnPendingRemoval = ref<{ id: string; title: string } | null>(null);
@@ -258,7 +267,10 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown));
-onUnmounted(() => window.removeEventListener('keydown', onKeydown));
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown);
+  stopColumnPointerListeners();
+});
 
 function addColumn() {
   const title = newColumnTitle.value.trim();
@@ -320,17 +332,71 @@ function startCardDrag(cardId: string) {
   if (editable.value) dragPayload.value = { kind: 'card', id: cardId };
 }
 
-function startColumnDrag(columnId: string) {
-  if (editable.value) dragPayload.value = { kind: 'column', id: columnId };
+const movableColumns = computed(() => orderedColumns.value.filter((column) => column.id !== dragPayload.value?.id));
+
+function registerColumnElement(columnId: string, element: unknown) {
+  const root = element instanceof HTMLElement
+    ? element
+    : (element as { $el?: unknown } | null)?.$el;
+  if (root instanceof HTMLElement) columnElements.set(columnId, root);
+  else columnElements.delete(columnId);
+}
+
+function isDropPositionBefore(columnId: string): boolean {
+  return movableColumns.value.findIndex((column) => column.id === columnId) === columnDropPosition.value;
+}
+
+function startColumnDrag(columnId: string, event: PointerEvent) {
+  if (!editable.value || event.button !== 0) return;
+  event.preventDefault();
+  dragPayload.value = { kind: 'column', id: columnId };
+  columnDropPosition.value = orderedColumns.value.find((column) => column.id === columnId)?.position ?? null;
+  window.addEventListener('pointermove', onColumnPointerMove);
+  window.addEventListener('pointerup', onColumnPointerUp);
+  window.addEventListener('pointercancel', cancelColumnPointerDrag);
+}
+
+function resolveColumnDropPosition(clientX: number): number {
+  for (let index = 0; index < movableColumns.value.length; index += 1) {
+    const column = movableColumns.value[index];
+    if (!column) continue;
+    const element = columnElements.get(column.id);
+    if (element && clientX < element.getBoundingClientRect().left + element.getBoundingClientRect().width / 2) return index;
+  }
+  return movableColumns.value.length;
+}
+
+function onColumnPointerMove(event: PointerEvent) {
+  if (!isColumnDragging.value) return;
+  columnDropPosition.value = resolveColumnDropPosition(event.clientX);
+}
+
+function stopColumnPointerListeners() {
+  window.removeEventListener('pointermove', onColumnPointerMove);
+  window.removeEventListener('pointerup', onColumnPointerUp);
+  window.removeEventListener('pointercancel', cancelColumnPointerDrag);
+}
+
+function cancelColumnPointerDrag() {
+  stopColumnPointerListeners();
+  dragPayload.value = null;
+  columnDropPosition.value = null;
+}
+
+function onColumnPointerUp(event: PointerEvent) {
+  const position = columnDropPosition.value ?? resolveColumnDropPosition(event.clientX);
+  dropColumnAt(position);
 }
 
 function clearDrag() {
+  stopColumnPointerListeners();
   dragPayload.value = null;
+  columnDropPosition.value = null;
 }
 
 function dropColumnAt(position: number) {
   const payload = dragPayload.value;
-  dragPayload.value = null;
+  clearDrag();
   if (!editable.value || payload?.kind !== 'column') return;
   const moving = orderedColumns.value.find((column) => column.id === payload.id);
   if (!moving || moving.position === position) return;
@@ -409,6 +475,7 @@ function createId(prefix: string): string {
 .board-editor__viewport { display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
 .board-editor__column-dropzone { display:none; }
 .board-editor__column-dropzone--active { display:flex; flex:0 0 42px; align-self:stretch; align-items:center; justify-content:center; min-height:150px; border:2px dashed #5aa96d; border-radius:10px; background:#327b4229; color:#b8f3c4; font-size:11px; font-weight:700; text-align:center; cursor:copy; }
+.board-editor__column-dropzone--highlighted { border-style:solid; background:#35994b66; box-shadow:0 0 0 3px #5ee17842; }
 .board-editor__column-dropzone span { writing-mode:vertical-rl; transform:rotate(180deg); }
 .board-editor__new-column { display:grid; flex:0 0 260px; gap:8px; padding:10px; border:1px dashed #3c4b42; border-radius:12px; background:#171d1a99; }
 .board-editor__new-column input { padding:9px; border:1px solid #3a4941; border-radius:7px; background:#212925; color:#edf5ef; }

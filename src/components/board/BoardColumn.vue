@@ -11,11 +11,10 @@
         type="button"
         class="board-column__drag"
         data-testid="board-drag-handle"
-        draggable="true"
+        :draggable="false"
         title="Перетащить колонку"
         aria-label="Перетащить колонку"
-        @dragstart.stop="startColumnDrag"
-        @dragend.stop="emit('drag-end')"
+        @pointerdown.stop="emit('drag-column', $event)"
       >⠿</button>
       <input
         v-if="editable"
@@ -71,7 +70,7 @@
 import type { BoardCard as BoardCardType, BoardColumn, BoardLabel } from '../../boards/types';
 import BoardCard from './BoardCard.vue';
 
-const props = defineProps<{
+defineProps<{
   column: BoardColumn;
   cards: BoardCardType[];
   labels: BoardLabel[];
@@ -85,7 +84,7 @@ const emit = defineEmits<{
   'update-column': [title: string];
   'drag-card': [cardId: string];
   'drop-card': [position: number];
-  'drag-column': [];
+  'drag-column': [event: PointerEvent];
   'drag-end': [];
 }>();
 
@@ -94,11 +93,6 @@ function updateTitle(event: Event) {
   if (title) emit('update-column', title);
 }
 
-function startColumnDrag(event: DragEvent) {
-  event.dataTransfer?.setData('text/plain', `board-column:${props.column.id}`);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-  emit('drag-column');
-}
 </script>
 
 <style scoped>
@@ -106,7 +100,8 @@ function startColumnDrag(event: DragEvent) {
 .board-column__header { display:flex; align-items:center; gap:7px; min-height:35px; padding:0 2px 9px; }
 .board-column__header h2 { flex:1; margin:0; padding-left:5px; color:#eef6f0; font-size:14px; }
 .board-column__drag,.board-column__delete { flex:none; border:0; background:transparent; color:#839188; cursor:pointer; }
-.board-column__drag { padding:2px 1px; font-size:18px; cursor:grab; }
+.board-column__drag { padding:2px 1px; font-size:18px; cursor:grab; touch-action:none; user-select:none; }
+.board-column__drag:active { cursor:grabbing; }
 .board-column__delete { width:26px; height:26px; border-radius:6px; font-size:19px; }
 .board-column__delete:hover { color:#ffaaaa; background:#3b2424; }
 .board-column__title-input { flex:1; min-width:0; padding:5px 6px; border:1px solid transparent; border-radius:6px; background:transparent; color:#eef6f0; font:600 14px/1.2 inherit; }
