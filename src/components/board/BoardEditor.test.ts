@@ -60,6 +60,69 @@ describe('BoardEditor', () => {
     });
   });
 
+  it('populates dataTransfer on dragstart and does not open card dialog after drag', async () => {
+    const wrapper = mount(BoardEditor, { props: editableBoardProps });
+    const cardEl = wrapper.find('[data-card-id="c1"]');
+
+    const dataTransfer = {
+      effectAllowed: '',
+      data: {} as Record<string, string>,
+      setData(type: string, val: string) { this.data[type] = val; },
+    };
+
+    await cardEl.trigger('dragstart', { dataTransfer });
+    expect(dataTransfer.effectAllowed).toBe('move');
+    expect(dataTransfer.data['text/plain']).toBe('c1');
+
+    await cardEl.trigger('dragend');
+    await cardEl.trigger('click');
+    expect(wrapper.findComponent(BoardCardDialog).exists()).toBe(false);
+  });
+
+  it('reorders cards inside the same column downwards and upwards', async () => {
+    const multiCardBoard: BoardData = {
+      ...board,
+      cards: [
+        { ...board.cards[0]!, id: 'c1', position: 0 },
+        { ...board.cards[0]!, id: 'c2', position: 1, title: 'Вторая' },
+        { ...board.cards[0]!, id: 'c3', position: 2, title: 'Третья' },
+      ],
+    };
+    const wrapper = mount(BoardEditor, { props: { ...editableBoardProps, data: multiCardBoard } });
+
+    // Drag c1 downwards and drop onto bottom half of c2
+    await wrapper.find('[data-card-id="c1"]').trigger('dragstart');
+    const c2Slot = wrapper.findAll('.board-column__card-slot')[1]!;
+    Object.defineProperty(c2Slot.element, 'getBoundingClientRect', {
+      value: () => ({ top: 100, height: 60 }),
+    });
+    await c2Slot.trigger('dragover', { clientY: 140 }); // lower half -> after c2
+    await c2Slot.trigger('drop');
+
+    expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
+      type: 'card-move',
+      cardId: 'c1',
+      columnId: 'todo',
+      position: 1,
+    });
+
+    // Drag c3 upwards and drop onto top half of c1
+    await wrapper.find('[data-card-id="c3"]').trigger('dragstart');
+    const c1Slot = wrapper.findAll('.board-column__card-slot')[0]!;
+    Object.defineProperty(c1Slot.element, 'getBoundingClientRect', {
+      value: () => ({ top: 20, height: 60 }),
+    });
+    await c1Slot.trigger('dragover', { clientY: 30 }); // top half -> before c1
+    await c1Slot.trigger('drop');
+
+    expect(wrapper.emitted('operation')?.[1]?.[0]).toEqual({
+      type: 'card-move',
+      cardId: 'c3',
+      columnId: 'todo',
+      position: 0,
+    });
+  });
+
   it('hides every mutation control and drag affordance for readers', () => {
     const wrapper = mount(BoardEditor, { props: { ...editableBoardProps, role: 'read' as const } });
 

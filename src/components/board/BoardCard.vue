@@ -1,15 +1,15 @@
 <template>
   <article
     class="board-card"
-    :class="{ 'board-card--overdue': overdue }"
+    :class="{ 'board-card--overdue': overdue, 'board-card--dragging': isDragging }"
     :data-card-id="card.id"
     :draggable="editable"
     tabindex="0"
     role="button"
-    @click="$emit('open')"
+    @click="onClick"
     @keydown.enter="$emit('open')"
     @dragstart="onDragStart"
-    @dragend="emit('dragend')"
+    @dragend="onDragEnd"
   >
     <div v-if="cardLabels.length" class="board-card__labels">
       <span
@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { BoardCard, BoardLabel } from '../../boards/types';
 
 const props = defineProps<{
@@ -46,6 +46,10 @@ const emit = defineEmits<{
   dragstart: [event: DragEvent];
   dragend: [];
 }>();
+
+const isDragging = ref(false);
+let dragSuppressClickTimer: ReturnType<typeof setTimeout> | null = null;
+let suppressClick = false;
 
 const cardLabels = computed(() => props.labels.filter((label) => props.card.labelIds.includes(label.id)));
 const overdue = computed(() => Boolean(props.card.dueAt && props.card.dueAt < new Date().toISOString()));
@@ -64,7 +68,29 @@ function onDragStart(event: DragEvent) {
     event.preventDefault();
     return;
   }
+  isDragging.value = true;
+  suppressClick = true;
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', props.card.id);
+    event.dataTransfer.setData('application/json', JSON.stringify({ type: 'card', id: props.card.id }));
+  }
   emit('dragstart', event);
+}
+
+function onDragEnd() {
+  isDragging.value = false;
+  if (dragSuppressClickTimer) clearTimeout(dragSuppressClickTimer);
+  dragSuppressClickTimer = setTimeout(() => {
+    suppressClick = false;
+    dragSuppressClickTimer = null;
+  }, 100);
+  emit('dragend');
+}
+
+function onClick() {
+  if (suppressClick || isDragging.value) return;
+  emit('open');
 }
 </script>
 
@@ -72,6 +98,7 @@ function onDragStart(event: DragEvent) {
 .board-card { display:grid; gap:10px; padding:13px; border:1px solid #34423a; border-radius:10px; background:#202724; color:#edf5ef; cursor:pointer; box-shadow:0 2px 6px #0003; transition:border-color .16s, transform .16s; }
 .board-card:hover,.board-card:focus-visible { border-color:#55705e; transform:translateY(-1px); outline:none; }
 .board-card[draggable="true"] { cursor:grab; }
+.board-card--dragging { opacity: 0.45; }
 .board-card--overdue { border-color:#9d4747; box-shadow:inset 3px 0 #e45d5d, 0 2px 6px #0003; }
 .board-card h3 { margin:0; font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
 .board-card__labels { display:flex; flex-wrap:wrap; gap:5px; }
