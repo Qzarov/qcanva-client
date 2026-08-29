@@ -414,14 +414,18 @@ function columnDropIndicatorLeft(): number {
   const container = viewport.value;
   if (!container || columnDropPosition.value === null) return 0;
   const viewportRect = container.getBoundingClientRect();
+  const indicatorWidth = 46;
   const nextColumn = movableColumns.value[columnDropPosition.value];
   const nextElement = nextColumn ? columnElements.get(nextColumn.id) : undefined;
-  if (nextElement) return nextElement.getBoundingClientRect().left - viewportRect.left + container.scrollLeft - 4;
+  if (nextElement) {
+    const nextLeft = nextElement.getBoundingClientRect().left - viewportRect.left + container.scrollLeft;
+    return Math.max(container.scrollLeft + 6, nextLeft - (14 / 2) - (indicatorWidth / 2));
+  }
   const lastColumn = movableColumns.value[movableColumns.value.length - 1];
   const lastElement = lastColumn ? columnElements.get(lastColumn.id) : undefined;
   return lastElement
-    ? lastElement.getBoundingClientRect().right - viewportRect.left + container.scrollLeft + 4
-    : container.scrollLeft + 20;
+    ? (lastElement.getBoundingClientRect().right - viewportRect.left + container.scrollLeft) + (14 / 2) - (indicatorWidth / 2)
+    : container.scrollLeft + 16;
 }
 
 function dropColumnAt(position: number) {
@@ -503,7 +507,8 @@ function createId(prefix: string): string {
 .board-label-manager button { padding:6px 9px; border:1px solid #405047; border-radius:6px; background:#29342e; color:#dbe7de; cursor:pointer; }
 .board-label-manager__row button { color:#f0a2a2; }
 .board-editor__viewport { position:relative; display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
-.board-editor__column-drop-indicator { position:absolute; z-index:5; top:16px; bottom:22px; left:0; width:8px; border-radius:999px; background:#66e681; box-shadow:0 0 0 3px #66e68133, 0 0 22px #66e68199; pointer-events:none; transition:transform 70ms linear; }
+.board-editor__column-drop-indicator { position:absolute; z-index:5; top:18px; bottom:26px; left:0; width:46px; border:2px dashed #66e681cc; border-radius:13px; background:radial-gradient(circle at center, #66e68126 0%, #66e6810d 100%), #142017cc; box-shadow:0 0 0 1px #66e68122, 0 8px 24px #00000059, inset 0 0 16px #66e6811a; pointer-events:none; transition:transform 80ms ease-out; backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; }
+.board-editor__column-drop-indicator::after { content:''; width:4px; height:42px; border-radius:999px; background:#66e681; box-shadow:0 0 12px #66e681cc, 0 0 20px #66e68188; }
 .board-editor__column-dropzone span { writing-mode:vertical-rl; transform:rotate(180deg); }
 .board-editor__new-column { display:grid; flex:0 0 260px; gap:8px; padding:10px; border:1px dashed #3c4b42; border-radius:12px; background:#171d1a99; }
 .board-editor__new-column input { padding:9px; border:1px solid #3a4941; border-radius:7px; background:#212925; color:#edf5ef; }
