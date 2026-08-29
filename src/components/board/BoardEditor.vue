@@ -72,6 +72,8 @@
           @drag-card="startCardDrag($event)"
           @drop-card="dropOnColumn(column.id, $event)"
           @drag-column="startColumnDrag(column.id, $event)"
+          @drag-column-end="onColumnPointerUp"
+          @drag-column-cancel="cancelColumnPointerDrag"
           @drag-end="clearDrag"
         />
       </template>

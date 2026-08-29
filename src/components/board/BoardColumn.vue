@@ -17,6 +17,8 @@
         title="Перетащить колонку"
         aria-label="Перетащить колонку"
         @pointerdown.stop="emit('drag-column', $event)"
+        @pointerup.stop="emit('drag-column-end', $event)"
+        @pointercancel.stop="emit('drag-column-cancel')"
       >⠿</button>
       <input
         v-if="editable"
@@ -89,6 +91,8 @@ const emit = defineEmits<{
   'drag-card': [cardId: string];
   'drop-card': [position: number];
   'drag-column': [event: PointerEvent];
+  'drag-column-end': [event: PointerEvent];
+  'drag-column-cancel': [];
   'drag-end': [];
 }>();
 

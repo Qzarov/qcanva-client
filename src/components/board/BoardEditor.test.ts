@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { BoardChecklistItem, BoardData, BoardOperation } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
+import BoardColumn from './BoardColumn.vue';
 import BoardEditor from './BoardEditor.vue';
 
 function pointerEvent(type: string, clientX: number, pointerId = 1): MouseEvent {
@@ -201,7 +202,7 @@ describe('BoardEditor', () => {
 
     wrapper.get('[data-column-id="todo"] [data-testid="board-drag-handle"]').element.dispatchEvent(pointerEvent('pointerdown', 0));
     window.dispatchEvent(pointerEvent('pointermove', 500));
-    window.dispatchEvent(pointerEvent('pointerup', 500));
+    wrapper.findComponent(BoardColumn).vm.$emit('drag-column-end', pointerEvent('pointerup', 500));
     await wrapper.vm.$nextTick();
 
     expect(wrapper.emitted('operation')?.[0]?.[0]).toEqual({
