@@ -1,6 +1,8 @@
 <template>
   <section
     class="board-column"
+    :class="{ 'board-column--dragging': dragging }"
+    :style="dragOffsetX ? { transform: `translateX(${dragOffsetX}px)` } : undefined"
     :data-column-id="column.id"
     @dragover.prevent
     @drop="emit('drop-card', cards.length)"
@@ -75,6 +77,8 @@ defineProps<{
   cards: BoardCardType[];
   labels: BoardLabel[];
   editable: boolean;
+  dragOffsetX?: number;
+  dragging?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -96,7 +100,8 @@ function updateTitle(event: Event) {
 </script>
 
 <style scoped>
-.board-column { display:flex; flex:0 0 294px; flex-direction:column; max-height:calc(100vh - 190px); padding:10px; border:1px solid #303d35; border-radius:13px; background:#181e1b; box-shadow:0 10px 24px #0002; }
+.board-column { display:flex; flex:0 0 294px; flex-direction:column; max-height:calc(100vh - 190px); padding:10px; border:1px solid #303d35; border-radius:13px; background:#181e1b; box-shadow:0 10px 24px #0002; will-change:transform; }
+.board-column--dragging { z-index:4; box-shadow:0 18px 42px #0009, 0 0 0 2px #66e68188; cursor:grabbing; }
 .board-column__header { display:flex; align-items:center; gap:7px; min-height:35px; padding:0 2px 9px; }
 .board-column__header h2 { flex:1; margin:0; padding-left:5px; color:#eef6f0; font-size:14px; }
 .board-column__drag,.board-column__delete { flex:none; border:0; background:transparent; color:#839188; cursor:pointer; }

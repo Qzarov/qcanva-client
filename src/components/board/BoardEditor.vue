@@ -55,24 +55,16 @@
       >Доступ</button>
     </header>
 
-    <div class="board-editor__viewport">
+    <div ref="viewport" class="board-editor__viewport">
       <template v-for="column in orderedColumns" :key="column.id">
-        <div
-          class="board-editor__column-dropzone"
-          :class="{
-            'board-editor__column-dropzone--active': isColumnDragging,
-            'board-editor__column-dropzone--highlighted': isColumnDragging && isDropPositionBefore(column.id),
-          }"
-          :data-testid="`column-drop-before-${column.id}`"
-          @dragover.prevent
-          @drop.stop="dropColumnAt(column.position)"
-        ><span>Переместить сюда</span></div>
         <BoardColumn
           :ref="(element) => registerColumnElement(column.id, element)"
           :column="column"
           :cards="cardsInColumn(column.id)"
           :labels="data.labels"
           :editable="editable"
+          :drag-offset-x="columnDragOffset(column.id)"
+          :dragging="dragPayload?.kind === 'column' && dragPayload.id === column.id && columnDragMoved"
           @open-card="selectedCardId = $event"
           @add-card="addCard(column.id)"
           @remove-column="requestColumnRemoval(column.id)"
@@ -85,15 +77,11 @@
       </template>
 
       <div
-        class="board-editor__column-dropzone"
-        :class="{
-          'board-editor__column-dropzone--active': isColumnDragging,
-          'board-editor__column-dropzone--highlighted': isColumnDragging && columnDropPosition === movableColumns.length,
-        }"
-        data-testid="column-end-drop"
-        @dragover.prevent
-        @drop.stop="dropColumnAt(orderedColumns.length)"
-      ><span>Переместить сюда</span></div>
+        v-if="isColumnDragging"
+        class="board-editor__column-drop-indicator"
+        data-testid="column-drop-indicator"
+        :style="columnDropIndicatorStyle"
+      ></div>
 
       <form
         v-if="editable"
@@ -177,7 +165,12 @@ const newColumnTitle = ref('');
 const newLabelTitle = ref('');
 const newLabelColor = ref('#22c55e');
 const dragPayload = ref<DragPayload | null>(null);
-const isColumnDragging = computed(() => dragPayload.value?.kind === 'column');
+const viewport = ref<HTMLElement | null>(null);
+const columnDragMoved = ref(false);
+const columnDragStartX = ref(0);
+const columnDragOffsetX = ref(0);
+const columnDragPointerId = ref<number | null>(null);
+const isColumnDragging = computed(() => dragPayload.value?.kind === 'column' && columnDragMoved.value);
 const columnDropPosition = ref<number | null>(null);
 const columnElements = new Map<string, HTMLElement>();
 const undoHistory = ref<HistoryEntry[]>([]);
@@ -334,6 +327,8 @@ function startCardDrag(cardId: string) {
 
 const movableColumns = computed(() => orderedColumns.value.filter((column) => column.id !== dragPayload.value?.id));
 
+const columnDropIndicatorStyle = computed(() => ({ transform: `translateX(${columnDropIndicatorLeft()}px)` }));
+
 function registerColumnElement(columnId: string, element: unknown) {
   const root = element instanceof HTMLElement
     ? element
@@ -342,14 +337,14 @@ function registerColumnElement(columnId: string, element: unknown) {
   else columnElements.delete(columnId);
 }
 
-function isDropPositionBefore(columnId: string): boolean {
-  return movableColumns.value.findIndex((column) => column.id === columnId) === columnDropPosition.value;
-}
-
 function startColumnDrag(columnId: string, event: PointerEvent) {
   if (!editable.value || event.button !== 0) return;
   event.preventDefault();
   dragPayload.value = { kind: 'column', id: columnId };
+  columnDragStartX.value = event.clientX;
+  columnDragOffsetX.value = 0;
+  columnDragMoved.value = false;
+  columnDragPointerId.value = event.pointerId;
   columnDropPosition.value = orderedColumns.value.find((column) => column.id === columnId)?.position ?? null;
   window.addEventListener('pointermove', onColumnPointerMove);
   window.addEventListener('pointerup', onColumnPointerUp);
@@ -367,7 +362,10 @@ function resolveColumnDropPosition(clientX: number): number {
 }
 
 function onColumnPointerMove(event: PointerEvent) {
-  if (!isColumnDragging.value) return;
+  if (dragPayload.value?.kind !== 'column' || (columnDragPointerId.value !== null && event.pointerId !== columnDragPointerId.value)) return;
+  columnDragOffsetX.value = event.clientX - columnDragStartX.value;
+  if (!columnDragMoved.value && Math.abs(columnDragOffsetX.value) < 5) return;
+  columnDragMoved.value = true;
   columnDropPosition.value = resolveColumnDropPosition(event.clientX);
 }
 
@@ -381,17 +379,38 @@ function cancelColumnPointerDrag() {
   stopColumnPointerListeners();
   dragPayload.value = null;
   columnDropPosition.value = null;
+  columnDragOffsetX.value = 0;
+  columnDragMoved.value = false;
+  columnDragPointerId.value = null;
 }
 
 function onColumnPointerUp(event: PointerEvent) {
+  if (columnDragPointerId.value !== null && event.pointerId !== columnDragPointerId.value) return;
+  if (!columnDragMoved.value) return cancelColumnPointerDrag();
   const position = columnDropPosition.value ?? resolveColumnDropPosition(event.clientX);
   dropColumnAt(position);
 }
 
 function clearDrag() {
-  stopColumnPointerListeners();
-  dragPayload.value = null;
-  columnDropPosition.value = null;
+  cancelColumnPointerDrag();
+}
+
+function columnDragOffset(columnId: string): number {
+  return dragPayload.value?.kind === 'column' && dragPayload.value.id === columnId ? columnDragOffsetX.value : 0;
+}
+
+function columnDropIndicatorLeft(): number {
+  const container = viewport.value;
+  if (!container || columnDropPosition.value === null) return 0;
+  const viewportRect = container.getBoundingClientRect();
+  const nextColumn = movableColumns.value[columnDropPosition.value];
+  const nextElement = nextColumn ? columnElements.get(nextColumn.id) : undefined;
+  if (nextElement) return nextElement.getBoundingClientRect().left - viewportRect.left + container.scrollLeft - 4;
+  const lastColumn = movableColumns.value[movableColumns.value.length - 1];
+  const lastElement = lastColumn ? columnElements.get(lastColumn.id) : undefined;
+  return lastElement
+    ? lastElement.getBoundingClientRect().right - viewportRect.left + container.scrollLeft + 4
+    : container.scrollLeft + 20;
 }
 
 function dropColumnAt(position: number) {
@@ -472,10 +491,8 @@ function createId(prefix: string): string {
 .board-label-manager input[type="color"] { width:34px; padding:2px; }
 .board-label-manager button { padding:6px 9px; border:1px solid #405047; border-radius:6px; background:#29342e; color:#dbe7de; cursor:pointer; }
 .board-label-manager__row button { color:#f0a2a2; }
-.board-editor__viewport { display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
-.board-editor__column-dropzone { display:none; }
-.board-editor__column-dropzone--active { display:flex; flex:0 0 42px; align-self:stretch; align-items:center; justify-content:center; min-height:150px; border:2px dashed #5aa96d; border-radius:10px; background:#327b4229; color:#b8f3c4; font-size:11px; font-weight:700; text-align:center; cursor:copy; }
-.board-editor__column-dropzone--highlighted { border-style:solid; background:#35994b66; box-shadow:0 0 0 3px #5ee17842; }
+.board-editor__viewport { position:relative; display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, #233029 0, transparent 42%), #111613; }
+.board-editor__column-drop-indicator { position:absolute; z-index:5; top:16px; bottom:22px; width:8px; border-radius:999px; background:#66e681; box-shadow:0 0 0 3px #66e68133, 0 0 22px #66e68199; pointer-events:none; transition:transform 70ms linear; }
 .board-editor__column-dropzone span { writing-mode:vertical-rl; transform:rotate(180deg); }
 .board-editor__new-column { display:grid; flex:0 0 260px; gap:8px; padding:10px; border:1px dashed #3c4b42; border-radius:12px; background:#171d1a99; }
 .board-editor__new-column input { padding:9px; border:1px solid #3a4941; border-radius:7px; background:#212925; color:#edf5ef; }
