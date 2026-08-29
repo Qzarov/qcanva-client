@@ -170,6 +170,7 @@ const columnDragMoved = ref(false);
 const columnDragStartX = ref(0);
 const columnDragOffsetX = ref(0);
 const columnDragPointerId = ref<number | null>(null);
+let columnDragCaptureTarget: HTMLElement | null = null;
 const isColumnDragging = computed(() => dragPayload.value?.kind === 'column' && columnDragMoved.value);
 const columnDropPosition = ref<number | null>(null);
 const columnElements = new Map<string, HTMLElement>();
@@ -345,6 +346,11 @@ function startColumnDrag(columnId: string, event: PointerEvent) {
   columnDragOffsetX.value = 0;
   columnDragMoved.value = false;
   columnDragPointerId.value = event.pointerId;
+  const target = event.currentTarget;
+  if (target instanceof HTMLElement && typeof target.setPointerCapture === 'function') {
+    target.setPointerCapture(event.pointerId);
+    columnDragCaptureTarget = target;
+  }
   columnDropPosition.value = orderedColumns.value.find((column) => column.id === columnId)?.position ?? null;
   window.addEventListener('pointermove', onColumnPointerMove);
   window.addEventListener('pointerup', onColumnPointerUp);
@@ -362,7 +368,7 @@ function resolveColumnDropPosition(clientX: number): number {
 }
 
 function onColumnPointerMove(event: PointerEvent) {
-  if (dragPayload.value?.kind !== 'column' || (columnDragPointerId.value !== null && event.pointerId !== columnDragPointerId.value)) return;
+  if (dragPayload.value?.kind !== 'column') return;
   columnDragOffsetX.value = event.clientX - columnDragStartX.value;
   if (!columnDragMoved.value && Math.abs(columnDragOffsetX.value) < 5) return;
   columnDragMoved.value = true;
@@ -377,6 +383,10 @@ function stopColumnPointerListeners() {
 
 function cancelColumnPointerDrag() {
   stopColumnPointerListeners();
+  if (columnDragCaptureTarget && columnDragPointerId.value !== null && columnDragCaptureTarget.hasPointerCapture?.(columnDragPointerId.value)) {
+    columnDragCaptureTarget.releasePointerCapture?.(columnDragPointerId.value);
+  }
+  columnDragCaptureTarget = null;
   dragPayload.value = null;
   columnDropPosition.value = null;
   columnDragOffsetX.value = 0;
@@ -385,7 +395,6 @@ function cancelColumnPointerDrag() {
 }
 
 function onColumnPointerUp(event: PointerEvent) {
-  if (columnDragPointerId.value !== null && event.pointerId !== columnDragPointerId.value) return;
   if (!columnDragMoved.value) return cancelColumnPointerDrag();
   const position = columnDropPosition.value ?? resolveColumnDropPosition(event.clientX);
   dropColumnAt(position);
