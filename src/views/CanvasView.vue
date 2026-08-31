@@ -1919,7 +1919,11 @@ export default defineComponent({
       router.push('/canvas/' + targetCanvasId);
     };
     const onOpenBoard = (boardId: string) => {
-      router.push({ name: 'interactive-template', params: { id: boardId } });
+      router.push({
+        name: 'interactive-template',
+        params: { id: boardId },
+        query: { [CANVAS_ORIGIN_QUERY]: resolvedId.value },
+      });
     };
 
     watchPostEffect(() => {

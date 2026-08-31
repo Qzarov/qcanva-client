@@ -195,6 +195,18 @@ describe('CanvasView "+ Новый документ"', () => {
     });
   });
 
+  it('tags the canvas origin when opening a board preview', async () => {
+    const wrapper = await mountAndOpenPicker();
+
+    (wrapper.vm as any).onOpenBoard('board-5');
+
+    expect(push).toHaveBeenCalledWith({
+      name: 'interactive-template',
+      params: { id: 'board-5' },
+      query: { fromCanvas: 'canvas-1' },
+    });
+  });
+
   it('does not navigate when document creation fails', async () => {
     textDocumentCreate.mockRejectedValue(new Error('quota exceeded'));
     const wrapper = await mountAndOpenPicker();

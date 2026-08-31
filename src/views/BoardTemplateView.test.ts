@@ -18,14 +18,17 @@ const socketState = {
   pendingCount: ref(0),
   syncStatus: ref<any>('idle'),
 };
-const routeState = vi.hoisted(() => ({ params: null as { id: string } | null }));
+const routeState = vi.hoisted(() => ({
+  params: null as { id: string } | null,
+  query: {} as Record<string, unknown>,
+}));
 
 vi.mock('vue-router', async () => {
   const vue = await vi.importActual<typeof import('vue')>('vue');
   return {
     useRoute: () => {
       routeState.params = vue.reactive({ id: 'template-1' });
-      return { params: routeState.params };
+      return { params: routeState.params, query: routeState.query };
     },
   };
 });
@@ -61,7 +64,57 @@ describe('BoardTemplateView', () => {
     socketState.revision.value = 0;
     socketState.pendingCount.value = 0;
     socketState.syncStatus.value = 'idle';
+    routeState.query = {};
     vi.mocked(interactiveTemplates.permissions).mockResolvedValue([]);
+  });
+
+  it('returns to the originating canvas from the Back button', async () => {
+    routeState.query = { fromCanvas: 'canvas-77' };
+    vi.mocked(interactiveTemplates.get).mockResolvedValue({
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+    });
+    requestSnapshot.mockResolvedValue(null);
+
+    const wrapper = mount(BoardTemplateView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+
+    const back = wrapper.getComponent({ name: 'RouterLink' });
+    expect(back.props('to')).toBe('/canvas/canvas-77');
+    expect(back.text()).toBe('← Назад');
+  });
+
+  it('returns to the dashboard from the Back button without a canvas origin', async () => {
+    vi.mocked(interactiveTemplates.get).mockResolvedValue({
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+    });
+    requestSnapshot.mockResolvedValue(null);
+
+    const wrapper = mount(BoardTemplateView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+
+    const back = wrapper.getComponent({ name: 'RouterLink' });
+    expect(back.props('to')).toEqual({ name: 'dashboard' });
+    expect(back.text()).toBe('← Назад');
   });
 
   it('loads and connects the collaborative editor for a board template', async () => {
