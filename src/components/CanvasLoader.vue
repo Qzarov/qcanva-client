@@ -888,6 +888,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
+  components: { BoardPreview },
   props: {
     initialData: {
       type: Object as PropType<{ nodes: any[]; edges: any[]; drawings?: Drawing[] } | null>,
