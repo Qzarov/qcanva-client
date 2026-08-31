@@ -130,6 +130,130 @@ describe('DashboardView groups', () => {
     expect(push).toHaveBeenCalledWith({ name: 'interactive-template', params: { id: 'board-1' } });
   });
 
+  it('offers move but never delete for a shared interactive template', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{
+        id: 'board-shared',
+        title: 'Тест канбан',
+        templateType: 'trello-board',
+        data: {},
+        role: 'edit',
+        createdAt: '',
+        updatedAt: '',
+      }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.find('[data-menu-trigger="interactive-template:board-shared"]').trigger('click');
+
+    const menu = wrapper.find('[data-card-menu="interactive-template:board-shared"]');
+    expect(menu.find('[data-action="move-to-folder"]').exists()).toBe(true);
+    expect(menu.find('[data-action="delete"]').exists()).toBe(false);
+  });
+
+  it('offers move and delete for an owned interactive template', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{
+        id: 'board-owned',
+        title: 'Моя доска',
+        templateType: 'trello-board',
+        data: {},
+        role: 'owner',
+        createdAt: '',
+        updatedAt: '',
+      }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.find('[data-menu-trigger="interactive-template:board-owned"]').trigger('click');
+
+    const menu = wrapper.find('[data-card-menu="interactive-template:board-owned"]');
+    expect(menu.find('[data-action="move-to-folder"]').exists()).toBe(true);
+    expect(menu.find('[data-action="delete"]').exists()).toBe(true);
+  });
+
+  it('refreshes folders after deleting an owned interactive template', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    vi.mocked(resourceFolders.list).mockClear();
+
+    await (wrapper.vm as any).deleteInteractiveTemplate({
+      id: 'board-owned',
+      title: 'Моя доска',
+      templateType: 'trello-board',
+      role: 'owner',
+    });
+
+    expect(interactiveTemplates.delete).toHaveBeenCalledWith('board-owned');
+    expect(resourceFolders.list).toHaveBeenCalledTimes(1);
+    confirm.mockRestore();
+  });
+
+  it('moves public resources from their three-dot menu', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [],
+      public: [{ id: 'canvas-public', title: 'Public canvas', tags: [] }],
+      welcome: null,
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.find('[data-menu-trigger="public:canvas:canvas-public"]').trigger('click');
+    await wrapper.find('[data-card-menu="public:canvas:canvas-public"] [data-action="move-to-folder"]').trigger('click');
+    (wrapper.vm as any).folderModal.folderId = 'folder-b';
+    await (wrapper.vm as any).saveFolderModal();
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'canvas', 'canvas-public');
+  });
+
+  it('shows a filed interactive template inside its folder and not in the template section', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [{
+        id: 'folder-board',
+        name: 'Boards',
+        role: 'owner',
+        canvasCount: 0,
+        htmlDocumentCount: 0,
+        canvases: [],
+        htmlDocuments: [],
+        textDocuments: [],
+        interactiveTemplates: [{
+          id: 'board-filed',
+          type: 'interactive-template',
+          title: 'Фарма доска',
+          templateType: 'trello-board',
+          data: {},
+          role: 'edit',
+          ownerId: 'owner-2',
+          folderId: 'folder-board',
+          createdAt: '',
+          updatedAt: '',
+        }],
+      }],
+      shared: [],
+    });
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{
+        id: 'board-filed',
+        title: 'Фарма доска',
+        templateType: 'trello-board',
+        data: {},
+        role: 'edit',
+        createdAt: '',
+        updatedAt: '',
+      }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.find('[data-folder-resource="interactive-template:board-filed"]').exists()).toBe(true);
+    expect(wrapper.find('[data-template-resource="board-filed"]').exists()).toBe(false);
+  });
+
   it('moves dragged canvas by stored source folder instead of old own canvas list', async () => {
     const wrapper = mountDashboard();
     await flushPromises();

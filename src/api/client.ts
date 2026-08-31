@@ -229,7 +229,7 @@ export type ResourceTagSummary = ResourceTag & {
 /** Keep in step with MAX_DESCRIPTION_LENGTH on the server. */
 export const MAX_DESCRIPTION_LENGTH = 2000;
 
-export type ResourceType = 'canvas' | 'html-document' | 'text-document';
+export type ResourceType = 'canvas' | 'html-document' | 'text-document' | 'interactive-template';
 export type ResourceFolderRole = 'owner' | 'read' | 'edit';
 
 export type ResourceFolderSummary = {
@@ -241,16 +241,19 @@ export type ResourceFolderSummary = {
   canvasCount: number;
   htmlDocumentCount: number;
   textDocumentCount?: number;
+  interactiveTemplateCount?: number;
   sortOrder?: number;
   updatedAt?: string;
   createdAt?: string;
   canvases?: any[];
   htmlDocuments?: any[];
   textDocuments?: any[];
+  interactiveTemplates?: any[];
   items?: {
     canvases: any[];
     htmlDocuments: any[];
     textDocuments?: any[];
+    interactiveTemplates?: any[];
   };
 };
 
@@ -398,6 +401,8 @@ export type InteractiveTemplate = {
   updatedAt: string;
   revision?: number;
   role?: 'owner' | 'read' | 'edit';
+  ownerId?: string;
+  folderId?: string | null;
 };
 
 export const interactiveTemplates = {

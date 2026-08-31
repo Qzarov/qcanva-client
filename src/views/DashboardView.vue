@@ -335,7 +335,7 @@
                     />
                     <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span>{{ item.title || t('untitled') }}</div>
                     <div class="card-meta">
-                      <span class="badge badge-owner">{{ t('owner') }}</span>
+                      <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                       <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -347,16 +347,11 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
                     </div>
                   </div>
                   <article
@@ -385,16 +380,28 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
+                    </div>
+                  </article>
+                  <article
+                    v-else-if="item.type === 'interactive-template'"
+                    class="canvas-card html-doc-card interactive-template-card"
+                    :data-folder-resource="`interactive-template:${item.id}`"
+                    @click="openInteractiveTemplate(item.id)"
+                  >
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
+                    <div class="card-meta">
+                      <span class="badge" :class="item.role === 'owner' ? 'badge-owner' : 'badge-shared'">{{ interactiveTemplateTypeLabel(item.templateType) }}</span>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
                     </div>
                   </article>
                   <article
@@ -423,16 +430,11 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
                     </div>
                   </article>
                   </template>
@@ -442,13 +444,17 @@
         </section>
       </div>
 
-      <section v-if="isLoggedIn && interactiveTemplateItems.length" class="dash-section">
+      <section v-if="isLoggedIn && visibleInteractiveTemplateItems.length" class="dash-section" data-section="interactive-templates">
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
-          <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
+          <article v-for="item in visibleInteractiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
             <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" @click.stop="deleteInteractiveTemplate(item)" title="Удалить шаблон" :disabled="isBusy">×</button>
+            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
           </article>
         </div>
       </section>
@@ -478,17 +484,14 @@
               >#{{ tag.name }}</span>
             </div>
             <button
-              v-if="item.role === 'edit'"
               class="card-manage"
-              @click.stop="toggleCardMenu(item.id, $event)"
+              :data-menu-trigger="`shared:${item.type}:${item.id}`"
+              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
               title="Canvas actions"
               :disabled="isBusy"
             >⋯</button>
-            <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-              <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-              <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
             </div>
           </div>
           <article
@@ -505,9 +508,13 @@
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           <article
-            v-else
+            v-else-if="item.type === 'text-document'"
             class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
@@ -519,6 +526,10 @@
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
             </div>
           </article>
           </template>
@@ -550,6 +561,10 @@
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </div>
           <article
             v-else-if="item.type === 'html-document'"
@@ -570,9 +585,13 @@
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           <article
-            v-else
+            v-else-if="item.type === 'text-document'"
             class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
@@ -589,6 +608,10 @@
                 class="card-tag color-tag"
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
             </div>
           </article>
           </template>
@@ -905,6 +928,7 @@ type CanvasRecord = {
   allowPublicEdit?: boolean;
   ownerName?: string;
   ownerEmail?: string;
+  ownerId?: string;
 };
 type HtmlDocumentRecord = {
   type: 'html-document';
@@ -934,7 +958,15 @@ type TextDocumentRecord = {
   pinned?: boolean;
   tags: CanvasTag[];
 };
-type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord;
+type InteractiveTemplateRecord = InteractiveTemplate & {
+  type: 'interactive-template';
+  ownerId?: string;
+  folderId?: string | null;
+  tags: CanvasTag[];
+  pinned?: false;
+  description?: null;
+};
+type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord | InteractiveTemplateRecord;
 type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
   /** Nesting level in the sidebar tree; set while ordering the flat list. */
@@ -960,9 +992,9 @@ type DashboardCacheState = {
 };
 
 type DashboardCache = { savedAt: number; state: DashboardCacheState };
-type RecentResourceType = FolderItem['type'] | 'interactive-template';
+type RecentResourceType = FolderItem['type'];
 type RecentResource = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
-type RecentResourceItem = FolderItem | (InteractiveTemplate & { type: 'interactive-template' });
+type RecentResourceItem = FolderItem;
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
@@ -1001,7 +1033,7 @@ export default defineComponent({
     let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
     const selectedTag = ref('');
-    const contentFilter = ref<'all' | 'canvas' | 'html-document' | 'text-document'>('all');
+    const contentFilter = ref<'all' | FolderItem['type']>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
@@ -1030,6 +1062,8 @@ export default defineComponent({
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
     const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
     const currentUser = computed(() => getCurrentUser());
+    const isOwnedResource = (item: { ownerId?: string }) =>
+      !item.ownerId || item.ownerId === currentUser.value?.id;
     const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
@@ -1214,19 +1248,30 @@ export default defineComponent({
       tags: normalizeTags(doc.tags),
     });
 
+    const normalizeInteractiveTemplate = (template: any): InteractiveTemplateRecord => ({
+      ...template,
+      type: 'interactive-template',
+      folderId: template.folderId || null,
+      tags: [],
+      pinned: false,
+    });
+
     const normalizeResourceFolder = (folder: ResourceFolderSummary): ResourceFolderSummary => {
       const canvases = folder.items?.canvases || folder.canvases || [];
       const htmlDocuments = folder.items?.htmlDocuments || folder.htmlDocuments || [];
       const docs = folder.items?.textDocuments || folder.textDocuments || [];
+      const templates = folder.items?.interactiveTemplates || folder.interactiveTemplates || [];
       return {
         ...folder,
         canvasCount: folder.canvasCount ?? canvases.length,
         htmlDocumentCount: folder.htmlDocumentCount ?? htmlDocuments.length,
         textDocumentCount: folder.textDocumentCount ?? docs.length,
+        interactiveTemplateCount: folder.interactiveTemplateCount ?? templates.length,
         items: {
           canvases,
           htmlDocuments,
           textDocuments: docs,
+          interactiveTemplates: templates,
         },
       };
     };
@@ -1267,12 +1312,28 @@ export default defineComponent({
       return sortMode.value === 'updated-asc' ? result : -result;
     });
 
+    const placedResourceKeys = computed(() => new Set(
+      [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) => [
+        ...(folder.items?.canvases || folder.canvases || []).map((item: any) => `canvas:${item.id}`),
+        ...(folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item: any) => `html-document:${item.id}`),
+        ...(folder.items?.textDocuments || folder.textDocuments || []).map((item: any) => `text-document:${item.id}`),
+        ...(folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item: any) => `interactive-template:${item.id}`),
+      ]),
+    ));
+    const visibleInteractiveTemplateItems = computed(() =>
+      interactiveTemplateItems.value.filter(
+        (item) => !placedResourceKeys.value.has(`interactive-template:${item.id}`),
+      ),
+    );
+
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
+        .filter((item) => !placedResourceKeys.value.has(`${item.type}:${item.id}`))
         .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
     ));
     const publicFiltered = computed(() => sortFolderItems(
       [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
+        .filter((item) => !placedResourceKeys.value.has(`${item.type}:${item.id}`))
         .filter(matchesPublicItem),
     ));
 
@@ -1446,13 +1507,15 @@ export default defineComponent({
         const canvases = (folder.items?.canvases || folder.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
         const docs = (folder.items?.textDocuments || folder.textDocuments || []).map((item) => normalizeTextDocument({ ...item, folderId: folder.id }));
-        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs].filter((item) => matchesFolderItem(item, folder.name)));
+        const templates = (folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item) => normalizeInteractiveTemplate({ ...item, folderId: folder.id }));
+        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates].filter((item) => matchesFolderItem(item, folder.name)));
         return {
           ...folder,
           items,
           canvasCount: canvases.length,
           htmlDocumentCount: htmlDocs.length,
           textDocumentCount: docs.length,
+          interactiveTemplateCount: templates.length,
         };
       })
       .filter((folder) => {
@@ -1480,6 +1543,7 @@ export default defineComponent({
             canvasCount: 0,
             htmlDocumentCount: 0,
             textDocumentCount: 0,
+            interactiveTemplateCount: 0,
           } satisfies FolderRow;
           kept.set(parent.id, ancestor);
           folders.push(ancestor);
@@ -1498,6 +1562,7 @@ export default defineComponent({
           canvasCount: unfiledCanvases.value.length,
           htmlDocumentCount: unfiledHtmlDocuments.value.length,
           textDocumentCount: unfiledTextDocuments.value.length,
+          interactiveTemplateCount: 0,
           items: fallbackItems,
         });
       }
@@ -1519,10 +1584,10 @@ export default defineComponent({
       ...unfiledCanvases.value,
       ...unfiledHtmlDocuments.value,
       ...unfiledTextDocuments.value,
+      ...visibleInteractiveTemplateItems.value.map(normalizeInteractiveTemplate),
     ]);
     const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
       ...allDashboardResources.value,
-      ...interactiveTemplateItems.value.map((item) => ({ ...item, type: 'interactive-template' as const })),
     ]);
     const recentResources = computed<RecentResource[]>(() => {
       const available = new Map(allRecentResourceItems.value.map((item) => [`${item.type}:${item.id}`, item]));
@@ -1820,7 +1885,7 @@ export default defineComponent({
         isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
       );
       if (!template) return;
-      interactiveTemplateItems.value = [template, ...interactiveTemplateItems.value];
+      interactiveTemplateItems.value = [{ ...template, role: 'owner' }, ...interactiveTemplateItems.value];
       openInteractiveTemplate(template.id);
     };
 
@@ -1834,6 +1899,7 @@ export default defineComponent({
       if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
       await runAction('delete-interactive-template', () => interactiveTemplates.delete(template.id), 'Шаблон удалён');
       interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => item.id !== template.id);
+      await load({ showLoading: false });
     };
 
     const openCreateGroupModal = () => {
@@ -1884,6 +1950,26 @@ export default defineComponent({
         folderId: doc.folderId || '',
         value: currentFolder?.name || '',
       };
+    };
+
+    const openMoveInteractiveTemplateFolderModal = (template: InteractiveTemplate) => {
+      closeCardMenu();
+      const currentFolder = ownResourceFolders.value.find((folder) => folder.id === template.folderId);
+      draggingResourceFolderId.value = template.folderId || null;
+      folderModal.value = {
+        open: true,
+        resourceId: template.id,
+        resourceType: 'interactive-template',
+        folderId: template.folderId || '',
+        value: currentFolder?.name || '',
+      };
+    };
+
+    const openMoveResourceFolderModal = (item: FolderItem) => {
+      if (item.type === 'canvas') return openMoveFolderModal(item);
+      if (item.type === 'html-document') return openMoveHtmlFolderModal(item);
+      if (item.type === 'text-document') return openMoveTextDocumentFolderModal(item);
+      return openMoveInteractiveTemplateFolderModal(item);
     };
 
     const closeFolderModal = () => {
@@ -2943,6 +3029,7 @@ export default defineComponent({
       tagColors,
       tagSuggestions,
       currentUserLabel,
+      isOwnedResource,
       folderModal,
       renameFolderModal,
       folderShareModal,
@@ -2962,12 +3049,15 @@ export default defineComponent({
       openInteractiveTemplatePicker,
       closeInteractiveTemplatePicker,
       interactiveTemplateItems,
+      visibleInteractiveTemplateItems,
       openInteractiveTemplate,
       deleteInteractiveTemplate,
       load,
       openCreateGroupModal,
       openMoveFolderModal,
       openMoveHtmlFolderModal,
+      openMoveInteractiveTemplateFolderModal,
+      openMoveResourceFolderModal,
       expandedTreeIds,
       isTreeExpanded,
       toggleTreeExpanded,
