@@ -158,3 +158,62 @@ Result: no newly added hardcoded literals in this fix round.
 - `ThemeMenu` and `AccountMenu` no longer advertise menu semantics for mixed-content popovers; both now expose dialog semantics and keyboard-open/focus behavior that matches their contents.
 - The shared CSS cleanup stayed within the reviewed selectors and adjacent chrome only; resource accents, status colors, syntax colors, drawing tools, and authored content colors were left unchanged.
 - `vue-tsc` caught one test-only typing issue after the first green keyboard run, and the final verification pass was rerun after fixing that cast.
+
+## Fix Round 2
+
+Reviewed head: `ff9879d`
+
+### Scope completed
+
+- Converted the remaining inactive shared dashboard/card chrome to semantic tokens in `src/style.css` only:
+  - `.card-manage` inactive color and hover background/text
+  - `.card-pin` inactive color
+  - `.card-delete` inactive color and destructive hover text/background
+  - `.dash-section h2` section heading text color
+- Left state accents intentionally unchanged where they indicate state instead of shared chrome:
+  - pinned state yellow on `.card-pin:hover` / `.card-pin.active`
+  - other resource/status/content accents outside the reviewed selectors
+
+### Files changed
+
+- `src/style.css`
+
+### Verification
+
+Focused dashboard and theme/menu tests:
+
+```bash
+npm run test:unit -- src/views/DashboardView.test.ts src/components/ThemeSelector.test.ts src/components/ThemeMenu.test.ts src/components/AccountMenu.test.ts
+```
+
+Result: `4` files passed, `61` tests passed.
+
+Build:
+
+```bash
+npm run build
+```
+
+Result: success (`vue-tsc -b && vite build`).
+
+Whitespace / patch hygiene:
+
+```bash
+git diff --check
+```
+
+Result: clean.
+
+Newly added literal audit:
+
+```bash
+git diff -- src/style.css | rg '^\+.*(#[0-9A-Fa-f]{3,8}|rgba?\()'
+```
+
+Result: no newly added hardcoded literals in this fix round.
+
+### Self-review
+
+- This round stayed limited to the reviewed shared dashboard/card selectors and did not expand into unrelated admin, doc-picker, shortcut, or authored-content literals.
+- Destructive hover now resolves from `--ui-danger` through `color-mix(...)`, so the destructive accent remains semantic while inactive control chrome follows the current theme.
+- The pinned yellow state remains literal by design because it communicates item state, not neutral application chrome.

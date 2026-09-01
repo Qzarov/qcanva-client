@@ -884,15 +884,15 @@ body {
   height: 24px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.35);
+  color: var(--ui-text-muted);
   cursor: pointer;
   font-size: 16px;
   border-radius: var(--radius-full);
   z-index: 2;
 }
 .card-manage:hover {
-  color: #fff;
-  background: rgba(255,255,255,0.08);
+  color: var(--ui-text);
+  background: var(--ui-surface-subtle);
 }
 .card-pin {
   position: absolute;
@@ -902,7 +902,7 @@ body {
   height: 24px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.35);
+  color: var(--ui-text-muted);
   cursor: pointer;
   font-size: 15px;
   border-radius: var(--radius-full);
@@ -972,14 +972,14 @@ body {
   height: 24px;
   border: none;
   background: transparent;
-  color: rgba(255,255,255,0.3);
+  color: var(--ui-text-muted);
   cursor: pointer;
   font-size: 14px;
   border-radius: var(--radius-full);
 }
-.card-delete:hover { color: #fb464c; background: rgba(251,70,76,0.15); }
+.card-delete:hover { color: var(--ui-danger); background: color-mix(in srgb, var(--ui-danger) 15%, transparent); }
 .dash-section { margin-top: 32px; }
-.dash-section h2 { font-size: 18px; margin-bottom: 0; color: rgba(255,255,255,0.6); }
+.dash-section h2 { font-size: 18px; margin-bottom: 0; color: var(--ui-text-secondary); }
 .dashboard-workspace {
   display: grid;
   grid-template-columns: 244px minmax(0, 1fr);
