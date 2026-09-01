@@ -7,7 +7,15 @@ import {
   type ThemePreference,
 } from '../theme/theme';
 
-const storage = typeof localStorage === 'undefined' ? undefined : localStorage;
+const getStorage = (): Storage | undefined => {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+};
+
+const storage = getStorage();
 const media = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)');
 const preference = ref<ThemePreference>(readThemePreference(storage));
 const prefersDark = ref(media?.matches ?? false);

@@ -46,6 +46,23 @@ describe('useTheme', () => {
     setItem.mockRestore();
   });
 
+  it('keeps working when obtaining storage throws', async () => {
+    const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      get: () => { throw new Error('denied'); },
+    });
+
+    try {
+      const { useTheme } = await import('./useTheme');
+      expect(() => useTheme().setPreference('dark')).not.toThrow();
+      expect(document.documentElement.dataset.theme).toBe('dark');
+    } finally {
+      if (storageDescriptor) Object.defineProperty(globalThis, 'localStorage', storageDescriptor);
+      else Reflect.deleteProperty(globalThis, 'localStorage');
+    }
+  });
+
   it('replaces the media listener when the module is reset', async () => {
     await import('./useTheme');
     vi.resetModules();
