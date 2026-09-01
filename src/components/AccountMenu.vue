@@ -2,17 +2,20 @@
   <div
     class="account-menu"
     :class="[`account-menu--${placement}`, { 'account-menu--compact': compact }]"
-    @keydown.esc.stop="close"
+    @keydown.esc.stop="close(true)"
   >
     <button
+      ref="triggerRef"
       type="button"
       class="account-menu-trigger current-user-badge"
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
       :aria-expanded="open"
       :aria-label="userLabel"
+      :aria-controls="open ? popoverId : undefined"
       :title="userTitle"
       data-account-menu-trigger
-      @click.stop="open = !open"
+      @click.stop="toggleFromClick"
+      @keydown.down.prevent.stop="openFromKeyboard"
     >
       <span class="current-user-icon" aria-hidden="true">{{ avatarLabel }}</span>
       <span v-if="!compact">{{ userLabel }}</span>
@@ -22,25 +25,34 @@
       class="account-menu-backdrop"
       data-account-menu-backdrop
       aria-hidden="true"
-      @click="close"
+      @click="close(false)"
     ></div>
-    <div v-if="open" class="account-menu-popover" role="menu" data-account-menu @click.stop>
+    <div
+      v-if="open"
+      :id="popoverId"
+      ref="popoverRef"
+      class="account-menu-popover"
+      role="dialog"
+      :aria-label="userLabel"
+      data-account-menu
+      @click.stop
+    >
       <div class="account-menu-identity">
         <strong>{{ userLabel }}</strong>
         <span v-if="currentUser?.email && currentUser.email !== userLabel">{{ currentUser.email }}</span>
       </div>
       <div class="account-menu-theme">
         <span>{{ t('theme') }}</span>
-        <ThemeSelector />
+        <ThemeSelector ref="selectorRef" />
       </div>
       <nav class="account-menu-links" :aria-label="userLabel">
-        <router-link to="/plugins" class="account-menu-item" role="menuitem" @click="close">
+        <router-link to="/plugins" class="account-menu-item" @click="close(false)">
           <span aria-hidden="true">◇</span>{{ t('plugins') }}
         </router-link>
-        <router-link to="/html-settings" class="account-menu-item" role="menuitem" @click="close">
+        <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
           <span aria-hidden="true">⚙</span>{{ t('settings') }}
         </router-link>
-        <button type="button" class="account-menu-item account-menu-sign-out" role="menuitem" data-account-menu-sign-out @click="signOut">
+        <button type="button" class="account-menu-item account-menu-sign-out" data-account-menu-sign-out @click="signOut">
           <span aria-hidden="true">↪</span>{{ t('signOut') }}
         </button>
       </nav>
@@ -49,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
 import { useI18n } from '../composables/useI18n';
@@ -74,10 +86,43 @@ const userTitle = computed(() => currentUser?.email || currentUser?.name || user
 const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || 'U');
 const compact = computed(() => props.compact);
 const placement = computed(() => props.placement);
+const triggerRef = ref<HTMLButtonElement | null>(null);
+const popoverRef = ref<HTMLDivElement | null>(null);
+const selectorRef = ref<InstanceType<typeof ThemeSelector> | null>(null);
+const popoverId = 'account-menu-popover';
 
-const close = () => { open.value = false; };
+const focusTrigger = () => {
+  triggerRef.value?.focus();
+};
+
+const openMenu = async (focusTheme = false) => {
+  open.value = true;
+  if (!focusTheme) return;
+  await nextTick();
+  selectorRef.value?.focusFirstChoice();
+};
+
+const close = (restoreFocus = false) => {
+  open.value = false;
+  if (restoreFocus) {
+    void nextTick(() => focusTrigger());
+  }
+};
+
+const toggleFromClick = () => {
+  if (open.value) {
+    close(false);
+    return;
+  }
+  void openMenu(false);
+};
+
+const openFromKeyboard = () => {
+  void openMenu(true);
+};
+
 const signOut = () => {
-  close();
+  close(false);
   resetPlugins();
   clearToken();
   void router.push({ name: 'landing' });

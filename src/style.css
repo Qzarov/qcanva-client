@@ -108,11 +108,6 @@ body {
   background: var(--ui-page);
 }
 
-:where(button, a, input, select, textarea):focus-visible {
-  outline: 2px solid var(--ui-focus);
-  outline-offset: 2px;
-}
-
 /* A dashboard card or folder name must never make the app wider than a phone. */
 #app {
   min-width: 0;
@@ -860,10 +855,10 @@ body {
   font-size: 16px;
   font-weight: 600;
   margin-bottom: 8px;
-  background: rgba(255,255,255,0.06);
-  border: 1px solid color-mix(in srgb, var(--color-brands) 50%, transparent);
+  background: var(--ui-surface-subtle);
+  border: 1px solid color-mix(in srgb, var(--color-brands) 50%, var(--ui-border));
   border-radius: var(--radius-full);
-  color: #fff;
+  color: var(--ui-text);
   padding: 2px 6px;
   outline: none;
   width: 100%;
@@ -924,10 +919,10 @@ body {
   right: 8px;
   min-width: 220px;
   padding: 6px;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
-  background: var(--dark-menu-bg);
-  box-shadow: var(--shadow-dropdown);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
   backdrop-filter: blur(10px);
   z-index: 120;
 }
@@ -938,14 +933,14 @@ body {
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--dark-text-primary);
+  color: var(--ui-text);
   text-align: left;
   font-size: 13px;
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 .card-menu-item:hover {
-  background: rgba(255,255,255,0.06);
+  background: var(--ui-surface-subtle);
 }
 .card-menu-item.danger {
   color: #ff9da1;
@@ -998,9 +993,9 @@ body {
   max-height: calc(100vh - 112px);
   overflow-y: auto;
   padding: 12px;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
-  background: rgba(255,255,255,0.025);
+  background: var(--ui-surface);
 }
 .dashboard-folder-nav-head {
   display: flex;
@@ -1011,7 +1006,7 @@ body {
 }
 .dashboard-folder-nav-head h2 {
   margin: 0;
-  color: rgba(255,255,255,0.66);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -1040,16 +1035,16 @@ body {
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--dark-text-muted);
+  color: var(--ui-text-muted);
   cursor: pointer;
   text-align: left;
   transition: background .15s, border-color .15s, color .15s;
 }
-.folder-nav-item:hover { background: rgba(255,255,255,.055); color: rgba(255,255,255,.88); }
+.folder-nav-item:hover { background: var(--ui-surface-subtle); color: var(--ui-text); }
 .folder-nav-item.active {
   border-color: color-mix(in srgb, var(--color-brands) 42%, transparent);
   background: color-mix(in srgb, var(--color-brands) 13%, transparent);
-  color: #fff;
+  color: var(--ui-text);
 }
 .folder-nav-item.folder-drop-active {
   border-color: var(--color-brands);
@@ -1070,7 +1065,7 @@ body {
   min-width: 20px;
   padding: 2px 6px;
   border-radius: var(--radius-full);
-  background: rgba(255,255,255,.08);
+  background: var(--ui-surface-subtle);
   color: inherit;
   font-size: 11px;
   line-height: 16px;
@@ -1078,7 +1073,7 @@ body {
 }
 .folder-nav-meta { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
 .folder-technical-icon {
-  color: var(--dark-text-muted);
+  color: var(--ui-text-muted);
   font-size: 12px;
   line-height: 1;
   cursor: help;
@@ -1099,9 +1094,9 @@ body {
   flex-direction: column;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-sm);
-  background: rgba(255,255,255,0.03);
+  background: var(--ui-surface);
   transition: border-color 0.15s, background 0.15s;
   overflow: visible;
 }
@@ -1144,12 +1139,12 @@ body {
   font-size: 12px;
 }
 .folder-manager-name {
-  color: rgba(255,255,255,0.9);
+  color: var(--ui-text);
   font-size: 13px;
   font-weight: 600;
 }
 .folder-manager-count {
-  color: var(--dark-text-muted);
+  color: var(--ui-text-muted);
   font-size: 11px;
   font-weight: 500;
 }
@@ -1170,16 +1165,16 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  border: 1px solid var(--dark-neutral-border);
-  background: var(--dark-input-bg);
-  color: rgba(255,255,255,0.75);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
 .folder-manager-trigger:hover {
-  background: rgba(255,255,255,0.08);
-  color: #fff;
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
 }
 .folder-manager-menu .mobile-action-popover {
   min-width: 180px;
@@ -1187,14 +1182,15 @@ body {
 .folder-manager-btn {
   padding: 6px 9px;
   border-radius: 7px;
-  border: 1px solid var(--dark-neutral-border);
-  background: var(--dark-input-bg);
-  color: rgba(255,255,255,0.75);
+  border: 1px solid var(--ui-border);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
   font-size: 12px;
   cursor: pointer;
 }
 .folder-manager-btn:hover {
-  background: rgba(255,255,255,0.08);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .folder-manager-btn.danger:hover {
   color: #fff;
@@ -3897,17 +3893,18 @@ body {
   max-width: 80vw;
   display: flex;
   flex-direction: column;
-  background: rgba(30,30,30,0.97);
-  border-left: 1px solid var(--dark-neutral-border, #313442);
+  background: var(--ui-surface-elevated);
+  border-left: 1px solid var(--ui-border);
   z-index: 120;
   backdrop-filter: blur(8px);
+  color: var(--ui-text);
 }
 .chat-drawer-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--dark-neutral-border, #313442);
+  border-bottom: 1px solid var(--ui-border);
   font-weight: 600;
   font-size: 14px;
   flex-shrink: 0;
@@ -3927,7 +3924,7 @@ body {
   border-radius: 8px;
   flex: 0 0 auto;
 }
-.chat-drawer-close:hover { opacity: 0.7; background: rgba(255,255,255,0.06); }
+.chat-drawer-close:hover { opacity: 0.7; background: var(--ui-surface-subtle); }
 
 /* Mobile: chat becomes a full-width sheet with a large, always-reachable close */
 @media (max-width: 640px) {
@@ -3935,7 +3932,7 @@ body {
     left: 0;
     width: 100%;
     max-width: 100%;
-    background: rgba(24,24,26,0.99);
+    background: var(--ui-surface-elevated);
   }
   .chat-drawer-head {
     padding: 12px 14px;
@@ -3961,24 +3958,24 @@ body {
   max-width: calc(100% - 24px);
   padding: 8px 10px 8px 14px;
   border-radius: 10px;
-  background: rgba(24,24,26,0.97);
-  border: 1px solid var(--color-brands, #4dabf7);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-brand);
+  box-shadow: var(--ui-shadow);
   backdrop-filter: blur(8px);
   font-size: 13px;
 }
-.chat-pick-hint-text { color: rgba(255,255,255,0.9); }
+.chat-pick-hint-text { color: var(--ui-text); }
 .chat-pick-cancel {
   flex: 0 0 auto;
   background: none;
-  border: 1px solid var(--dark-neutral-border, #313442);
+  border: 1px solid var(--ui-border);
   color: inherit;
   border-radius: 8px;
   padding: 6px 12px;
   cursor: pointer;
   font: inherit;
 }
-.chat-pick-cancel:hover { background: rgba(255,255,255,0.06); }
+.chat-pick-cancel:hover { background: var(--ui-surface-subtle); }
 @media (max-width: 640px) {
   .chat-pick-hint { font-size: 14px; padding: 10px 12px 10px 16px; }
   .chat-pick-cancel { padding: 8px 14px; min-height: 40px; }
@@ -4916,7 +4913,11 @@ body {
   color: rgba(255, 255, 255, 0.7);
 }
 
-:where(button, a, input, select, textarea):focus-visible {
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
 }

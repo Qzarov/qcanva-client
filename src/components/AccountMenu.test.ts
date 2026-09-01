@@ -17,6 +17,9 @@ vi.mock('../composables/usePlugins', () => ({
 
 describe('AccountMenu', () => {
   beforeEach(() => {
+    localStorage.clear();
+    document.documentElement.removeAttribute('data-theme');
+    document.body.innerHTML = '';
     push.mockClear();
     resetPlugins.mockClear();
     vi.mocked(clearToken).mockClear();
@@ -50,5 +53,23 @@ describe('AccountMenu', () => {
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     expect(wrapper.text()).toContain('Plugins');
     expect(wrapper.text()).toContain('Settings');
+  });
+
+  it('opens from ArrowDown and focuses the theme choices with dialog semantics', async () => {
+    const wrapper = mount(AccountMenu, {
+      attachTo: document.body,
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+
+    const trigger = wrapper.get('[data-account-menu-trigger]');
+    expect(trigger.attributes('aria-haspopup')).toBe('dialog');
+
+    (trigger.element as HTMLButtonElement).focus();
+    await trigger.trigger('keydown', { key: 'ArrowDown' });
+
+    const firstChoice = wrapper.get('[data-theme-choice="system"]');
+    expect(wrapper.get('[data-account-menu]').attributes('role')).toBe('dialog');
+    expect(wrapper.get('[data-account-menu-trigger]').attributes('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(firstChoice.element);
   });
 });

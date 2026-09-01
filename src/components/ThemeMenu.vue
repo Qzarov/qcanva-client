@@ -1,13 +1,16 @@
 <template>
-  <div class="theme-menu" @keydown.esc.stop="close">
+  <div class="theme-menu" @keydown.esc.stop="close(true)">
     <button
+      ref="triggerRef"
       type="button"
       class="theme-menu-trigger"
-      aria-haspopup="menu"
+      aria-haspopup="dialog"
       :aria-expanded="open"
       :aria-label="t('theme')"
+      :aria-controls="open ? popoverId : undefined"
       data-theme-menu-trigger
-      @click.stop="open = !open"
+      @click.stop="toggleFromClick"
+      @keydown.down.prevent.stop="openFromKeyboard"
     >
       <span aria-hidden="true">◐</span>
     </button>
@@ -16,22 +19,68 @@
       class="theme-menu-backdrop"
       data-theme-menu-backdrop
       aria-hidden="true"
-      @click="close"
+      @click="close(false)"
     ></div>
-    <div v-if="open" class="theme-menu-popover" role="menu" data-theme-menu @click.stop>
-      <ThemeSelector />
+    <div
+      v-if="open"
+      :id="popoverId"
+      ref="popoverRef"
+      class="theme-menu-popover"
+      role="dialog"
+      :aria-label="t('theme')"
+      data-theme-menu
+      @click.stop
+    >
+      <ThemeSelector ref="selectorRef" />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import ThemeSelector from './ThemeSelector.vue';
 
 const { t } = useI18n();
 const open = ref(false);
-const close = () => { open.value = false; };
+const triggerRef = ref<HTMLButtonElement | null>(null);
+const popoverRef = ref<HTMLDivElement | null>(null);
+const selectorRef = ref<InstanceType<typeof ThemeSelector> | null>(null);
+const popoverId = 'theme-menu-popover';
+
+const focusTrigger = () => {
+  triggerRef.value?.focus();
+};
+
+const focusFirstChoice = () => {
+  selectorRef.value?.focusFirstChoice();
+};
+
+const openMenu = async (focusFirst = false) => {
+  open.value = true;
+  if (!focusFirst) return;
+  await nextTick();
+  focusFirstChoice();
+};
+
+const close = (restoreFocus = false) => {
+  open.value = false;
+  if (restoreFocus) {
+    void nextTick(() => focusTrigger());
+  }
+};
+
+const toggleFromClick = () => {
+  if (open.value) {
+    close(false);
+    return;
+  }
+  void openMenu(false);
+};
+
+const openFromKeyboard = () => {
+  void openMenu(true);
+};
 </script>
 
 <style scoped>
