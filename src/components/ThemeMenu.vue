@@ -47,18 +47,19 @@ const close = () => { open.value = false; };
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-sm);
-  color: var(--dark-text-secondary);
-  background: var(--dark-input-bg);
+  color: var(--ui-text-secondary);
+  background: var(--ui-surface-subtle);
   font-size: 18px;
   cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
 }
 .theme-menu-trigger:hover,
 .theme-menu-trigger:focus-visible {
-  border-color: color-mix(in srgb, var(--color-brands) 55%, var(--dark-neutral-border));
-  color: var(--dark-text-primary);
-  outline: none;
+  border-color: color-mix(in srgb, var(--color-brands) 55%, var(--ui-border));
+  color: var(--ui-text);
+  background: var(--ui-brand-soft);
 }
 .theme-menu-backdrop {
   position: fixed;
@@ -72,10 +73,18 @@ const close = () => { open.value = false; };
   right: 0;
   min-width: 210px;
   padding: 10px;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
-  background: var(--dark-menu-bg);
-  box-shadow: var(--shadow-dropdown);
+  color: var(--ui-text);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
   backdrop-filter: blur(12px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-menu-popover {
+    transition: none;
+  }
 }
 </style>

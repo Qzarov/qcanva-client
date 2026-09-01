@@ -34,3 +34,45 @@ const options = computed(() => [
   { value: 'dark' as ThemePreference, icon: '☾', label: t('themeDark') },
 ]);
 </script>
+
+<style scoped>
+.theme-selector {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.theme-selector-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--ui-text-secondary);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.theme-selector-option:hover {
+  color: var(--ui-text);
+  background: var(--ui-surface-subtle);
+}
+
+.theme-selector-option.active {
+  border-color: var(--ui-border);
+  color: var(--ui-text);
+  background: var(--ui-brand-soft);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-selector-option {
+    transition: none;
+  }
+}
+</style>

@@ -110,12 +110,13 @@ const signOut = () => {
   right: 0;
   width: min(260px, calc(100vw - 24px));
   padding: 8px;
-  border: 1px solid var(--dark-neutral-border);
+  border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
-  color: var(--dark-text-primary);
-  background: var(--dark-menu-bg);
-  box-shadow: var(--shadow-dropdown);
+  color: var(--ui-text);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
   backdrop-filter: blur(12px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 .account-menu--sidebar .account-menu-popover {
   top: auto;
@@ -127,7 +128,7 @@ const signOut = () => {
   display: grid;
   gap: 2px;
   padding: 8px 10px 10px;
-  border-bottom: 1px solid var(--dark-neutral-border);
+  border-bottom: 1px solid var(--ui-border);
 }
 .account-menu-identity strong,
 .account-menu-identity span {
@@ -140,14 +141,14 @@ const signOut = () => {
 }
 .account-menu-identity span,
 .account-menu-theme > span {
-  color: var(--dark-text-muted);
+  color: var(--ui-text-muted);
   font-size: 11px;
 }
 .account-menu-theme {
   display: grid;
   gap: 7px;
   padding: 10px;
-  border-bottom: 1px solid var(--dark-neutral-border);
+  border-bottom: 1px solid var(--ui-border);
 }
 .account-menu-links {
   display: grid;
@@ -161,7 +162,7 @@ const signOut = () => {
   padding: 9px 10px;
   border: 0;
   border-radius: var(--radius-sm);
-  color: var(--dark-text-primary);
+  color: var(--ui-text);
   background: transparent;
   font: inherit;
   font-size: 13px;
@@ -171,17 +172,22 @@ const signOut = () => {
 }
 .account-menu-item:hover,
 .account-menu-item:focus-visible {
-  background: var(--dark-input-bg);
-  outline: none;
+  background: var(--ui-surface-subtle);
 }
 .account-menu-item > span {
   display: inline-grid;
   place-items: center;
   width: 18px;
-  color: var(--dark-text-muted);
+  color: var(--ui-text-muted);
 }
 .account-menu-sign-out {
   color: var(--accent-red);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .account-menu-popover {
+    transition: none;
+  }
 }
 @media (max-width: 520px) {
   .account-menu--sidebar .account-menu-popover {
