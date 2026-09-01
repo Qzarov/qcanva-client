@@ -34,6 +34,7 @@ const messages = {
     renameGroupNote: 'Все ресурсы этой группы останутся в ней под новым названием.',
     add: 'Добавить', addTextNode: 'Текстовый блок', addGroupNode: 'Группа', addImage: 'Изображение', addCanvasEmbed: 'Канвас', addDocumentEmbed: 'Документ',
     collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
+    theme: 'Тема', themeSystem: 'Системная', themeLight: 'Светлая', themeDark: 'Тёмная',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -59,6 +60,7 @@ const messages = {
     renameGroupNote: 'Every resource in this group stays in it under the new name.',
     add: 'Add', addTextNode: 'Text block', addGroupNode: 'Group', addImage: 'Image', addCanvasEmbed: 'Canvas', addDocumentEmbed: 'Document',
     collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
+    theme: 'Theme', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark',
   },
 } as const;
 
