@@ -5,15 +5,20 @@ import { clearToken } from '../api/client';
 import AccountMenu from './AccountMenu.vue';
 
 const push = vi.fn();
+const resetPlugins = vi.hoisted(() => vi.fn());
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }));
 vi.mock('../api/client', () => ({
   clearToken: vi.fn(),
   getCurrentUser: vi.fn(() => ({ id: 'u1', name: 'Ada', email: 'ada@example.com' })),
 }));
+vi.mock('../composables/usePlugins', () => ({
+  usePlugins: () => ({ reset: resetPlugins }),
+}));
 
 describe('AccountMenu', () => {
   beforeEach(() => {
     push.mockClear();
+    resetPlugins.mockClear();
     vi.mocked(clearToken).mockClear();
   });
 
@@ -24,12 +29,15 @@ describe('AccountMenu', () => {
     expect(wrapper.findAll('[role="radio"]')).toHaveLength(3);
   });
 
-  it('clears authentication and returns to the landing page on sign out', async () => {
+  it('clears plugin and authentication state before returning to the landing page', async () => {
     const wrapper = mount(AccountMenu, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } });
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     await wrapper.get('[data-account-menu-sign-out]').trigger('click');
+    expect(resetPlugins).toHaveBeenCalledOnce();
     expect(clearToken).toHaveBeenCalledOnce();
     expect(push).toHaveBeenCalledWith({ name: 'landing' });
+    expect(resetPlugins.mock.invocationCallOrder[0]!).toBeLessThan(vi.mocked(clearToken).mock.invocationCallOrder[0]!);
+    expect(vi.mocked(clearToken).mock.invocationCallOrder[0]!).toBeLessThan(push.mock.invocationCallOrder[0]!);
   });
 
   it('supports compact sidebar placement without changing its menu', async () => {

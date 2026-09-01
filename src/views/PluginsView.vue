@@ -10,12 +10,21 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
         Plugins
       </h1>
+      <AccountMenu class="plugins-account-menu" />
     </header>
 
     <p class="plugins-empty">Плагины теперь настраиваются в конкретном канвасе или документе — так они не включаются для всех ваших ресурсов сразу.</p>
   </div>
 </template>
 
+<script lang="ts">
+import { defineComponent } from 'vue';
+import AccountMenu from '../components/AccountMenu.vue';
+
+export default defineComponent({
+  components: { AccountMenu },
+});
+</script>
 
 <style scoped>
 .plugins-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
@@ -23,6 +32,7 @@
 .plugins-back { display: inline-flex; align-items: center; gap: 6px; color: var(--dark-text-muted, #98a2b3); text-decoration: none; font-size: 13px; }
 .plugins-back:hover { color: #fff; }
 .plugins-title { display: flex; align-items: center; gap: 8px; font-size: 22px; margin: 0; }
+.plugins-account-menu { margin-left: auto; }
 .plugins-error { color: #ff9da1; font-size: 13px; margin-bottom: 12px; }
 .plugins-list { display: flex; flex-direction: column; gap: 12px; }
 .plugin-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 12px; background: var(--dark-input-bg, rgba(255,255,255,0.03)); }

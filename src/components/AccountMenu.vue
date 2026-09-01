@@ -53,6 +53,7 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import { usePlugins } from '../composables/usePlugins';
 import ThemeSelector from './ThemeSelector.vue';
 
 const props = withDefaults(defineProps<{
@@ -65,6 +66,7 @@ const props = withDefaults(defineProps<{
 
 const router = useRouter();
 const { t } = useI18n();
+const { reset: resetPlugins } = usePlugins();
 const open = ref(false);
 const currentUser = getCurrentUser();
 const userLabel = computed(() => currentUser?.name || currentUser?.email || 'User');
@@ -76,6 +78,7 @@ const placement = computed(() => props.placement);
 const close = () => { open.value = false; };
 const signOut = () => {
   close();
+  resetPlugins();
   clearToken();
   void router.push({ name: 'landing' });
 };
