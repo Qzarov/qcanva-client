@@ -12,33 +12,7 @@
         <div class="header-user-slot">
           <LanguageToggle />
           <template v-if="isLoggedIn">
-          <div class="user-menu">
-            <button class="current-user-badge" :title="currentUserLabel" @click.stop="toggleUserMenu">
-              <span class="current-user-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21a8 8 0 0 0-16 0" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </span>
-              <span>{{ currentUserLabel }}</span>
-            </button>
-            <div v-if="openControlMenu === 'user'" class="mobile-action-popover user-popover" @click.stop>
-              <router-link to="/plugins" class="card-menu-item">
-                <span class="menu-icon">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
-                </span>
-                <span>{{ t('plugins') }}</span>
-              </router-link>
-              <router-link to="/html-settings" class="card-menu-item">
-                <span class="menu-icon">⚙</span>
-                <span>{{ t('settings') }}</span>
-              </router-link>
-              <button class="card-menu-item" @click="logout">
-                <span class="menu-icon">↪</span>
-                <span>{{ t('signOut') }}</span>
-              </button>
-            </div>
-          </div>
+            <AccountMenu />
           </template>
           <template v-else>
             <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
@@ -904,9 +878,9 @@
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
-import { usePlugins } from '../composables/usePlugins';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import AccountMenu from '../components/AccountMenu.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
@@ -1003,11 +977,10 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { LanguageToggle },
+  components: { AccountMenu, LanguageToggle },
   setup() {
     const router = useRouter();
     const { t, locale } = useI18n();
-    const { reset: resetPlugins } = usePlugins();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -1064,7 +1037,6 @@ export default defineComponent({
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
       !item.ownerId || item.ownerId === currentUser.value?.id;
-    const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const lastFolderKey = () => `qcanva:dashboard:folder:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
@@ -2694,17 +2666,6 @@ export default defineComponent({
       openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
-    const toggleUserMenu = () => {
-      openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'user' ? '' : 'user';
-    };
-
-    const logout = () => {
-      resetPlugins();
-      clearToken();
-      router.push('/login');
-    };
-
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
       await runAction(
         `access-request-${id}`,
@@ -3028,7 +2989,6 @@ export default defineComponent({
       folderDragOverId,
       tagColors,
       tagSuggestions,
-      currentUserLabel,
       isOwnedResource,
       folderModal,
       renameFolderModal,
@@ -3125,7 +3085,6 @@ export default defineComponent({
       closeCardMenu,
       toggleNewMenu,
       toggleFolderMenu,
-      toggleUserMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
@@ -3133,7 +3092,6 @@ export default defineComponent({
       duplicateTextDocument,
       deleteCanvas,
       togglePinned,
-      logout,
       formatDate,
       renamingId,
       renameInput,

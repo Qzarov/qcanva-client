@@ -14,7 +14,10 @@
         <h1 v-else>{{ template.title }}</h1>
         <span>{{ syncLabel }}</span>
       </div>
-      <span v-if="savingTitle" class="board-template-saving">Сохраняем…</span>
+      <div class="board-template-actions">
+        <span v-if="savingTitle" class="board-template-saving">Сохраняем…</span>
+        <AccountMenu />
+      </div>
     </header>
 
     <main class="board-template-main">
@@ -53,6 +56,7 @@ import { interactiveTemplates, type InteractiveTemplate } from '../api/client';
 import type { BoardOperation, BoardParticipant } from '../boards/types';
 import BoardEditor from '../components/board/BoardEditor.vue';
 import BoardShareDialog from '../components/board/BoardShareDialog.vue';
+import AccountMenu from '../components/AccountMenu.vue';
 import { useBoardSocket } from '../composables/useBoardSocket';
 import { CANVAS_ORIGIN_QUERY, resolveBackTarget } from '../composables/useResourceBackTarget';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
@@ -224,12 +228,12 @@ onUnmounted(() => {
 .board-template-title input:focus { border-color:#475c4f; outline:none; background:#202823; }
 .board-template-title h1 { margin:0; font-size:18px; }
 .board-template-title span,.board-template-saving { color:#829087; font-size:10px; }
-.board-template-saving { justify-self:end; }
+.board-template-actions { display:flex; align-items:center; justify-self:end; gap:10px; }
 .board-template-main { display:flex; min-width:0; min-height:0; flex:1; }
 .board-template-state { display:grid; place-content:center; justify-items:center; width:100%; min-height:420px; color:#9eaca2; }
 .board-template-spinner { width:28px; height:28px; border:3px solid #344139; border-top-color:#70cc89; border-radius:50%; animation:board-spin .8s linear infinite; }
 .board-template-state--error h2 { margin:0 0 8px; color:#ffb0b0; font-size:18px; }
 .board-template-state--error p { margin:0; color:#8b9890; font-size:12px; }
 @keyframes board-spin { to { transform:rotate(360deg); } }
-@media (max-width:640px) { .board-template-header { grid-template-columns:auto 1fr; } .board-template-title { justify-items:end; } .board-template-title input { width:55vw; text-align:right; } .board-template-saving { display:none; } }
+@media (max-width:640px) { .board-template-header { grid-template-columns:auto minmax(0,1fr) auto; gap:8px; padding-inline:12px; } .board-template-title { justify-items:end; } .board-template-title input { width:100%; text-align:right; } .board-template-saving { display:none; } }
 </style>

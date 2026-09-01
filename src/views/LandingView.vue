@@ -4,6 +4,7 @@
       <router-link to="/" class="landing-brand"><img class="brand-logo" src="/qcanva-logo.png" alt="QCanva" /><span>QCanva</span></router-link>
       <nav class="landing-nav" aria-label="Навигация"><a href="#features">Возможности</a><a href="#use-cases">Сценарии</a><a href="#agents">Для агентов</a><a href="#templates">Примеры</a></nav>
       <div class="landing-actions">
+        <ThemeMenu class="public-theme-control" />
         <router-link v-if="isLoggedIn" :to="{ name: 'dashboard' }" class="landing-register">Дашборд</router-link>
         <template v-else><router-link to="/login" class="landing-login">Войти</router-link><router-link to="/register" class="landing-register">Начать бесплатно</router-link></template>
       </div>
@@ -86,6 +87,7 @@
 <script lang="ts">
 import { computed, defineComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import { isAuthenticated } from '../api/client';
+import ThemeMenu from '../components/ThemeMenu.vue';
 
 const cases = {
   product: { label: 'Product planning', title: 'Product planning · launch / Q4', copy: 'Roadmap, исследования, решения и задачи живут в одном пространстве — от первой идеи до релиза.', tiles: [['Запуск v2', 'MVP → beta → public', 'roadmap'], ['Research notes', 'Проблемы, инсайты, конкуренты', 'document'], ['One context', 'Проект без переключения вкладок', 'decision'], ['После созвона', '3 решения добавлены в roadmap', 'ai summary'], ['Prototype', 'owner · Ярослав', 'task']] },
@@ -96,6 +98,7 @@ const cases = {
 } as const;
 
 export default defineComponent({
+  components: { ThemeMenu },
   setup() {
     const activeCase = ref<keyof typeof cases>('product');
     const parallaxBoard = ref<HTMLElement | null>(null);

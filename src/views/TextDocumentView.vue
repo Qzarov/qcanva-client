@@ -52,7 +52,7 @@
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
-          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge text-doc-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+          <AccountMenu v-if="currentUser" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
         </div>
       </header>
@@ -213,9 +213,10 @@ import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
+import AccountMenu from '../components/AccountMenu.vue';
 
 export default defineComponent({
-  components: { EditorContent },
+  components: { AccountMenu, EditorContent },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -285,7 +286,6 @@ export default defineComponent({
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
-    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
     const syncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
       if (pendingUpdatesCount.value > 0) return { kind: 'saving', label: 'Saving' };
@@ -683,7 +683,6 @@ export default defineComponent({
       title,
       route,
       currentUser,
-      userLabel,
       role,
       revision,
       currentRevision,
