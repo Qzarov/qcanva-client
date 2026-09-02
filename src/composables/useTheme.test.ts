@@ -15,6 +15,7 @@ describe('useTheme', () => {
   beforeEach(() => {
     vi.resetModules();
     localStorage.clear();
+    document.head.innerHTML = '<meta name="theme-color" content="#071307">';
     media.matches = false;
     listeners.clear();
   });
@@ -24,6 +25,24 @@ describe('useTheme', () => {
     useTheme().setPreference('dark');
     expect(localStorage.getItem(THEME_STORAGE_KEY)).toBe('dark');
     expect(document.documentElement.dataset.theme).toBe('dark');
+  });
+
+  it('updates the browser chrome color for the effective theme', async () => {
+    const { useTheme } = await import('./useTheme');
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+
+    expect(themeColor?.content).toBe('#f5f7f4');
+
+    useTheme().setPreference('light');
+    expect(themeColor?.content).toBe('#f5f7f4');
+
+    useTheme().setPreference('dark');
+    expect(themeColor?.content).toBe('#071307');
+
+    useTheme().setPreference('system');
+    media.matches = true;
+    listeners.forEach((listener) => listener({ matches: true } as MediaQueryListEvent));
+    expect(themeColor?.content).toBe('#071307');
   });
 
   it('reacts to OS changes only in system mode', async () => {

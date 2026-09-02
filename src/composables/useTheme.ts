@@ -32,7 +32,10 @@ type ThemeGlobal = typeof globalThis & {
 
 const applyTheme = () => {
   if (typeof document === 'undefined') return;
-  applyEffectiveTheme(document.documentElement, resolveEffectiveTheme(preference.value, prefersDark.value));
+  const theme = resolveEffectiveTheme(preference.value, prefersDark.value);
+  applyEffectiveTheme(document.documentElement, theme);
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = theme === 'light' ? '#f5f7f4' : '#071307';
 };
 
 const setPreference = (value: ThemePreference) => {
@@ -58,6 +61,8 @@ if (media) {
   media.addEventListener('change', mediaListener);
   themeGlobal[mediaListenerKey] = { media, listener: mediaListener };
 }
+
+applyTheme();
 
 export function useTheme() {
   return {

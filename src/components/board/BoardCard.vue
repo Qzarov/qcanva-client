@@ -95,17 +95,17 @@ function onClick() {
 </script>
 
 <style scoped>
-.board-card { display:grid; gap:10px; padding:13px; border:1px solid #34423a; border-radius:10px; background:#202724; color:#edf5ef; cursor:pointer; box-shadow:0 2px 6px #0003; transition:border-color .16s, transform .16s; }
-.board-card:hover,.board-card:focus-visible { border-color:#55705e; transform:translateY(-1px); outline:none; }
+.board-card { display:grid; gap:10px; padding:13px; border:1px solid var(--ui-border); border-radius:10px; background:var(--ui-surface-elevated); color:var(--ui-text); cursor:pointer; box-shadow:0 2px 6px color-mix(in srgb, var(--ui-text) 18%, transparent); transition:border-color .16s, transform .16s; }
+.board-card:hover,.board-card:focus-visible { border-color:var(--ui-focus); transform:translateY(-1px); outline:none; }
 .board-card[draggable="true"] { cursor:grab; }
 .board-card--dragging { opacity: 0.45; }
-.board-card--overdue { border-color:#9d4747; box-shadow:inset 3px 0 #e45d5d, 0 2px 6px #0003; }
+.board-card--overdue { border-color:var(--ui-danger); box-shadow:inset 3px 0 var(--ui-danger), 0 2px 6px color-mix(in srgb, var(--ui-text) 18%, transparent); }
 .board-card h3 { margin:0; font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
 .board-card__labels { display:flex; flex-wrap:wrap; gap:5px; }
-.board-card__label { padding:2px 7px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 32%, #1a211e); color:#f4fff6; font-size:10px; font-weight:650; }
-.board-card__meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:#aebbb2; font-size:11px; }
-.board-card__due { padding:3px 6px; border-radius:5px; background:#151a18; }
-.board-card--overdue .board-card__due { color:#ffb2b2; background:#3a2020; }
+.board-card__label { padding:2px 7px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 32%, var(--ui-surface-subtle)); color:var(--ui-text); font-size:10px; font-weight:650; }
+.board-card__meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--ui-text-secondary); font-size:11px; }
+.board-card__due { padding:3px 6px; border-radius:5px; background:var(--ui-surface-subtle); }
+.board-card--overdue .board-card__due { color:var(--ui-danger); background:var(--ui-danger-soft); }
 .board-card__assignee { display:flex; align-items:center; gap:4px; min-width:0; }
 .board-card__assignee::first-letter { font-weight:700; }
 .board-card__assignee > span { max-width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
