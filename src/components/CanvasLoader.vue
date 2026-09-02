@@ -4466,11 +4466,11 @@ g:hover > .edge-midpoint-conn {
   border-color: color-mix(in srgb, var(--ui-text) 20%, var(--ui-border));
 }
 .canvas-node.is-selected {
-  border-color: var(--ui-focus);
+  border-color: var(--content-canvas-selection);
 }
 .canvas-node.is-dragging {
   box-shadow: var(--ui-shadow);
-  border-color: var(--ui-focus);
+  border-color: var(--content-canvas-selection);
   z-index: 100;
   cursor: grabbing;
 }
@@ -4559,8 +4559,8 @@ g:hover > .edge-midpoint-conn {
 /* ===== Resize handles ===== */
 .resize-handle {
   position: absolute;
-  background: var(--ui-focus);
-  border: 1.5px solid var(--ui-focus);
+  background: var(--content-canvas-selection);
+  border: 1.5px solid var(--content-canvas-selection);
   border-radius: 2px;
   z-index: 10;
   touch-action: none;
@@ -4619,8 +4619,8 @@ g:hover > .edge-midpoint-conn {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: var(--ui-focus);
-  border: 2px solid var(--ui-focus);
+  background: var(--content-canvas-selection);
+  border: 2px solid var(--content-canvas-selection);
   opacity: 0;
   transition: opacity 0.15s ease;
   cursor: crosshair;

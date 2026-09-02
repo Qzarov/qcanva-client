@@ -166,3 +166,45 @@ Result: patch is whitespace-clean; all four fixed content/contrast rules are pre
 - Outer `.text-doc-page`, topbar, toolbar, panels, controls, canvas selection chrome, and plugin surfaces remain semantic and theme-aware.
 - Only the fixed authored-content palette was restored; no serialized/exported HTML, iframe-authored HTML, TipTap content values, node model values, drawing values, or explicit node palette was changed.
 - The deferred encoded-chevron Minor was not touched.
+
+## Fix Round 2
+
+Base reviewed commit: `6b12e5f` (`style(theme): restore authored content boundaries`)
+
+Implementation commit: `style(theme): restore default-node selection contrast` (repository HEAD)
+
+### Root cause and fix
+
+The default canvas-node surface is deliberately fixed at `#262626` for authored content, but its selected and dragging borders, resize handles, and connection points used theme-specific `--ui-focus`. In the light theme, `--ui-focus` is `#145b25`, whose WCAG contrast against `#262626` is only `1.84:1`.
+
+Added `--content-canvas-selection: #4dabf7`, the existing bright canvas selection color. Its contrast against the fixed default node surface is `6.11:1`, exceeding the 3:1 non-text selection-indicator requirement. Applied it only to `.canvas-node.is-selected`, `.canvas-node.is-dragging`, `.resize-handle`, and `.conn-point`; node model data, explicit node palettes, groups, drawing selections, and general page focus remain unchanged.
+
+No new automated test was added: the existing jsdom suites cannot honestly compute browser CSS-variable contrast, and a source-string assertion would repeat the rejected test pattern. The targeted audit runs an independent WCAG contrast calculation and verifies the affected selectors.
+
+### Verification
+
+```bash
+npm run test:unit -- src/components/CanvasLoader.addMenu.test.ts src/components/CanvasLoader.board-preview.test.ts src/components/CanvasLoader.document.test.ts src/components/CanvasLoader.touch.test.ts
+```
+
+Result: 4 files, 27 tests passed.
+
+```bash
+npm run build
+```
+
+Result: `vue-tsc -b && vite build` succeeded.
+
+```bash
+git diff --check
+rg -n -C 1 -- "content-canvas-selection|canvas-node\\.is-selected|canvas-node\\.is-dragging|resize-handle \\{|conn-point \\{" src/style.css src/components/CanvasLoader.vue
+node -e "...WCAG contrast calculation for #4dabf7 against #262626..."
+```
+
+Result: whitespace-clean; the fixed token is used by every affected selected-node affordance; contrast is `6.11:1`.
+
+### Self-review
+
+- The token is intentionally fixed because it overlays a fixed authored-node surface; outer canvas chrome remains theme-aware.
+- The deferred encoded-chevron Minor was not touched.
+- This change is limited to token/selector scope, so the requested conditional full-suite run was not required.
