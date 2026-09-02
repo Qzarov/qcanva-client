@@ -22,6 +22,7 @@
   --ui-brand: #00ff00;
   --ui-brand-on: #071307;
   --ui-brand-soft: rgba(0, 255, 0, 0.12);
+  --ui-brand-soft-on: #f8fff8;
   --ui-success: #44cf6e;
   --ui-success-soft: rgba(68, 207, 110, 0.14);
   --ui-warning: #e0de71;
@@ -30,6 +31,7 @@
   --ui-info-soft: rgba(83, 223, 221, 0.14);
   --ui-danger: #fb464c;
   --ui-danger-soft: rgba(251, 70, 76, 0.14);
+  --ui-danger-on: #071307;
   --ui-focus: #8cff8c;
   color-scheme: dark;
 }
@@ -50,6 +52,7 @@
   --ui-brand: #20cf45;
   --ui-brand-on: #06220c;
   --ui-brand-soft: #ddf7e2;
+  --ui-brand-soft-on: #172019;
   --ui-success: #23864a;
   --ui-success-soft: #e0f5e7;
   --ui-warning: #8a6f00;
@@ -58,6 +61,7 @@
   --ui-info-soft: #dff7fa;
   --ui-danger: #c9343d;
   --ui-danger-soft: #fae4e6;
+  --ui-danger-on: #ffffff;
   --ui-focus: #145b25;
   color-scheme: light;
 }
@@ -68,6 +72,8 @@
   --content-document-surface-readonly: #17191d;
   --content-canvas-node-surface: #262626;
   --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
+  --content-preview-text: #f8fff8;
+  --content-preview-muted: #b9c8ba;
   /* #4dabf7 is 6.11:1 against the fixed #262626 node surface. */
   --content-canvas-selection: #4dabf7;
 

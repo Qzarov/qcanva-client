@@ -143,7 +143,7 @@ async function revoke(userId: string) {
 .board-share-dialog__error { margin:14px 20px 0; padding:9px 11px; border-radius:7px; background:var(--ui-danger-soft); color:var(--ui-danger); font-size:12px; }
 .board-share-dialog__list { display:grid; gap:2px; padding:12px 20px 20px; }
 .board-share-dialog__list article { display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:10px; padding:10px 4px; border-bottom:1px solid var(--ui-border); }
-.board-share-dialog__avatar { display:grid; place-items:center; width:32px; height:32px; border-radius:50%; background:var(--ui-brand-soft); color:var(--ui-brand-on); font-size:12px; font-weight:700; }
+.board-share-dialog__avatar { display:grid; place-items:center; width:32px; height:32px; border-radius:50%; background:var(--ui-brand-soft); color:var(--ui-brand-soft-on); font-size:12px; font-weight:700; }
 .board-share-dialog__list strong,.board-share-dialog__list small { display:block; }
 .board-share-dialog__list strong { font-size:13px; }
 .board-share-dialog__list small { margin-top:2px; color:var(--ui-text-muted); font-size:10px; }

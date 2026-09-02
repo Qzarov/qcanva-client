@@ -498,7 +498,7 @@ function createId(prefix: string): string {
 .board-editor__eyebrow { color:var(--ui-text); font-size:13px; font-weight:700; }
 .board-editor__toolbar p { margin:2px 0 0; color:var(--ui-text-muted); font-size:11px; }
 .board-editor__participants { display:flex; padding-left:8px; }
-.board-editor__avatar,.board-editor__participant-count { display:grid; place-items:center; width:28px; height:28px; margin-left:-7px; border:2px solid var(--ui-surface-solid); border-radius:50%; background:var(--ui-brand-soft); color:var(--ui-brand-on); font-size:11px; font-weight:700; }
+.board-editor__avatar,.board-editor__participant-count { display:grid; place-items:center; width:28px; height:28px; margin-left:-7px; border:2px solid var(--ui-surface-solid); border-radius:50%; background:var(--ui-brand-soft); color:var(--ui-brand-soft-on); font-size:11px; font-weight:700; }
 .board-editor__participant-count { background:var(--ui-surface-subtle); color:var(--ui-text-secondary); }
 .board-editor__access { padding:7px 12px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface-subtle); color:var(--ui-text); cursor:pointer; }
 .board-editor__access:hover { border-color:var(--ui-focus); }
@@ -528,5 +528,5 @@ function createId(prefix: string): string {
 .board-delete-dialog__actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; margin-top:20px; }
 .board-button { padding:9px 12px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface-subtle); color:var(--ui-text); cursor:pointer; }
 .board-button--ghost { background:transparent; }
-.board-button--danger { border-color:var(--ui-danger); background:var(--ui-danger); color:#fff; }
+.board-button--danger { border-color:var(--ui-danger); background:var(--ui-danger); color:var(--ui-danger-on); }
 </style>

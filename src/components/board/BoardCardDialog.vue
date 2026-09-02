@@ -437,7 +437,7 @@ function createId(prefix: string): string {
 .board-field-hint { color:var(--ui-text-muted); font-size:12px; }
 .board-button--ghost { background:transparent; color:var(--ui-text-secondary); }
 .board-button--primary { border-color:var(--ui-brand); background:var(--ui-brand); color:var(--ui-brand-on); }
-.board-button--danger { border-color:var(--ui-danger); background:var(--ui-danger); color:#fff; }
+.board-button--danger { border-color:var(--ui-danger); background:var(--ui-danger); color:var(--ui-danger-on); }
 .board-card-dialog__delete { margin-right:auto; }
 @media (max-width:600px) { .board-card-dialog__body,.board-card-dialog__assignee { grid-template-columns:1fr; } .board-card-dialog__assignee>* { grid-column:1; } }
 </style>
