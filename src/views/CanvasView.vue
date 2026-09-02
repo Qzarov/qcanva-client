@@ -1252,6 +1252,7 @@ export default defineComponent({
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
         historyAccess.value = res.canvas.historyAccess || 'owner';
+        canvasFolderId.value = res.canvas.folderId ?? null;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
@@ -1873,6 +1874,9 @@ export default defineComponent({
       await persistCurrentSnapshot();
     };
 
+    /** Folder the canvas itself lives in, so a document created here joins it. */
+    const canvasFolderId = ref<string | null>(null);
+
     const creatingDocument = ref(false);
 
     const createAndEmbedDocument = async () => {
@@ -1883,7 +1887,14 @@ export default defineComponent({
       }
       creatingDocument.value = true;
       try {
-        const doc = await textDocumentsApi.create({ title: 'Untitled document' });
+        // Only the owner's folder is a valid destination: folderId on a canvas
+        // always belongs to that canvas's owner, and a document may only be
+        // filed into a folder its own owner holds.
+        const folderId = role.value === 'owner' ? canvasFolderId.value : null;
+        const doc = await textDocumentsApi.create({
+          title: 'Untitled document',
+          ...(folderId ? { folderId } : {}),
+        });
         if (!doc?.id) throw new Error('Не удалось создать документ');
         embedDocuments.value = [
           { id: doc.id, title: doc.title || 'Untitled document', kind: 'text' },
@@ -1932,6 +1943,7 @@ export default defineComponent({
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
         historyAccess.value = res.canvas.historyAccess || 'owner';
+        canvasFolderId.value = res.canvas.folderId ?? null;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
@@ -2003,7 +2015,7 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas,
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
-      creatingDocument, createAndEmbedDocument,
+      creatingDocument, createAndEmbedDocument, canvasFolderId,
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,

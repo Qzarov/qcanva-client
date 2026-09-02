@@ -38,22 +38,27 @@ vi.mock('../components/ChatPanel.vue', () => ({
 
 const canvasUpdate = vi.fn().mockResolvedValue({ revision: 8 });
 const textDocumentCreate = vi.fn();
+/** Mutated per test: the folder the canvas sits in, and the viewer's role. */
+const canvasFixture = { folderId: null as string | null, role: 'owner' as string };
 
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {},
   accessRequests: { create: vi.fn() },
   auth: { login: vi.fn() },
   canvas: {
-    get: vi.fn().mockResolvedValue({
-      canvas: {
-        id: 'canvas-1',
-        title: 'Canvas',
-        data: JSON.stringify({ nodes: [], edges: [], drawings: [] }),
-        revision: 7,
-        visibility: 'private',
-      },
-      role: 'owner',
-    }),
+    get: vi.fn(() =>
+      Promise.resolve({
+        canvas: {
+          id: 'canvas-1',
+          title: 'Canvas',
+          data: JSON.stringify({ nodes: [], edges: [], drawings: [] }),
+          revision: 7,
+          visibility: 'private',
+          folderId: canvasFixture.folderId,
+        },
+        role: canvasFixture.role,
+      }),
+    ),
     update: (...args: unknown[]) => canvasUpdate(...args),
     listPermissions: vi.fn().mockResolvedValue([]),
   },
@@ -135,6 +140,11 @@ beforeEach(() => {
   canvasUpdate.mockClear();
   showToast.mockReset();
   canvasNodes.length = 0;
+  // Without this the spy accumulates calls across tests and
+  // toHaveBeenCalledWith matches an earlier test's call.
+  textDocumentCreate.mockClear();
+  canvasFixture.folderId = null;
+  canvasFixture.role = 'owner';
   textDocumentCreate.mockResolvedValue({ id: 'text-doc-new', title: 'Untitled document' });
 });
 
@@ -240,5 +250,48 @@ describe('CanvasView "+ Новый документ"', () => {
       wsConnected.value = false;
       pendingOpsCount.value = 0;
     }
+  });
+
+  describe('folder of the new document', () => {
+    it('creates the document in the folder the canvas lives in', async () => {
+      canvasFixture.folderId = 'folder-7';
+      const wrapper = await mountAndOpenPicker();
+
+      await wrapper.find('.doc-picker-new').trigger('click');
+      await flushPromises();
+
+      expect(textDocumentCreate).toHaveBeenCalledWith({
+        title: 'Untitled document',
+        folderId: 'folder-7',
+      });
+    });
+
+    it('sends no folder when the canvas is not in one', async () => {
+      canvasFixture.folderId = null;
+      const wrapper = await mountAndOpenPicker();
+
+      await wrapper.find('.doc-picker-new').trigger('click');
+      await flushPromises();
+
+      // Not folderId: null — the field is omitted entirely, as before.
+      expect(textDocumentCreate).toHaveBeenCalledWith({
+        title: 'Untitled document',
+      });
+    });
+
+    it("does not file the document into another owner's folder", async () => {
+      // A canvas shared with this user carries its owner's folderId. Filing a
+      // document there would point it at a folder this user does not hold.
+      canvasFixture.folderId = 'folder-of-someone-else';
+      canvasFixture.role = 'edit';
+      const wrapper = await mountAndOpenPicker();
+
+      await wrapper.find('.doc-picker-new').trigger('click');
+      await flushPromises();
+
+      expect(textDocumentCreate).toHaveBeenCalledWith({
+        title: 'Untitled document',
+      });
+    });
   });
 });
