@@ -50,7 +50,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.35)" />
+            <polygon points="0 0, 8 3, 0 6" fill="color-mix(in srgb, var(--ui-text) 35%, transparent)" />
           </marker>
           <marker
             id="arrowhead-start"
@@ -60,7 +60,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="8 0, 0 3, 8 6" fill="rgba(255,255,255,0.35)" />
+            <polygon points="8 0, 0 3, 8 6" fill="color-mix(in srgb, var(--ui-text) 35%, transparent)" />
           </marker>
           <template v-for="color in edgeColors" :key="color">
             <marker
@@ -380,8 +380,8 @@
               :y="en.y"
               :width="en.width || 100"
               :height="en.height || 60"
-              :fill="en.type === 'group' ? 'rgba(255,255,255,0.05)' : 'rgba(124,138,255,0.25)'"
-              :stroke="en.type === 'group' ? 'rgba(255,255,255,0.1)' : 'rgba(124,138,255,0.5)'"
+              :fill="en.type === 'group' ? 'var(--ui-surface-subtle)' : 'color-mix(in srgb, var(--ui-focus) 25%, transparent)'"
+              :stroke="en.type === 'group' ? 'var(--ui-border)' : 'color-mix(in srgb, var(--ui-focus) 50%, transparent)'"
               stroke-width="2"
               rx="3"
             />
@@ -389,7 +389,7 @@
               v-for="ee in getEmbeddedCanvasData(node.canvasId!).edges"
               :key="'embe-' + ee.id"
               :d="embeddedEdgePath(ee, getEmbeddedCanvasData(node.canvasId!).nodes)"
-              stroke="rgba(255,255,255,0.2)"
+              stroke="color-mix(in srgb, var(--ui-text) 20%, transparent)"
               stroke-width="1.5"
               fill="none"
             />
@@ -551,12 +551,12 @@
             <rect
               :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
               :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="rgba(77,171,247,0.12)" stroke="none"
+              rx="4" fill="color-mix(in srgb, var(--ui-focus) 12%, transparent)" stroke="none"
             />
             <rect
               :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
               :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="none" stroke="#4dabf7" stroke-width="2"
+              rx="4" fill="none" stroke="var(--ui-focus)" stroke-width="2"
               stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
               class="drawing-selection-outline"
             />
@@ -641,7 +641,7 @@
           :y="node.y"
           :width="node.width"
           :height="node.height"
-          :fill="node.type === 'group' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)'"
+          :fill="node.type === 'group' ? 'var(--ui-surface-subtle)' : 'color-mix(in srgb, var(--ui-text) 30%, transparent)'"
           rx="2"
         />
         <rect
@@ -649,8 +649,8 @@
           :y="minimapData.vpY"
           :width="minimapData.vpW"
           :height="minimapData.vpH"
-          fill="rgba(124,138,255,0.08)"
-          stroke="rgba(124,138,255,0.6)"
+          fill="color-mix(in srgb, var(--ui-focus) 8%, transparent)"
+          stroke="var(--ui-focus)"
           stroke-width="3"
           rx="2"
           style="cursor: grab"
@@ -4121,8 +4121,8 @@ export default defineComponent({
   height: 100%;
   overflow: hidden;
   touch-action: none;
-  background-color: #1e1e1e;
-  background-image: radial-gradient(circle, #333 1px, transparent 1px);
+  background-color: var(--ui-canvas);
+  background-image: radial-gradient(circle, var(--ui-border) 1px, transparent 1px);
   background-size: 24px 24px;
   cursor: grab;
   position: relative;
@@ -4144,13 +4144,13 @@ export default defineComponent({
 .canvas-group {
   position: absolute;
   border-radius: 12px;
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid var(--ui-border);
+  background: var(--ui-surface-subtle);
   cursor: grab;
 }
 .canvas-group.is-selected {
-  border-color: rgba(124, 138, 255, 0.7);
-  box-shadow: 0 0 0 1px rgba(124, 138, 255, 0.35);
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-focus) 35%, transparent);
 }
 .canvas-group.is-dragging {
   cursor: grabbing;
@@ -4161,7 +4161,7 @@ export default defineComponent({
   left: 10px;
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ui-text-muted);
   white-space: nowrap;
 }
 
@@ -4186,7 +4186,7 @@ export default defineComponent({
   bottom: calc(100% + 6px);
   left: 0;
   width: 100%;
-  color: rgba(255,255,255,0.82);
+  color: var(--ui-text);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
@@ -4269,23 +4269,23 @@ export default defineComponent({
 }
 .edge-line {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.25);
+  stroke: color-mix(in srgb, var(--ui-text) 25%, transparent);
   stroke-width: 2;
   pointer-events: none;
   transition: stroke 0.15s ease;
 }
 .edge-line.edge-selected {
-  stroke: rgba(124, 138, 255, 0.8);
+  stroke: var(--ui-focus);
   stroke-width: 2.5;
 }
 .edge-line.edge-temp {
-  stroke: rgba(124, 138, 255, 0.5);
+  stroke: color-mix(in srgb, var(--ui-focus) 50%, transparent);
   stroke-width: 2;
   stroke-dasharray: 6 4;
 }
 .edge-midpoint-conn {
-  fill: rgba(124, 138, 255, 0.5);
-  stroke: rgba(124, 138, 255, 0.8);
+  fill: color-mix(in srgb, var(--ui-focus) 50%, transparent);
+  stroke: var(--ui-focus);
   stroke-width: 1.5;
   cursor: crosshair;
   opacity: 0;
@@ -4296,12 +4296,12 @@ g:hover > .edge-midpoint-conn {
   opacity: 1;
 }
 .edge-label-bg {
-  fill: rgba(30, 30, 30, 0.85);
-  stroke: rgba(255, 255, 255, 0.12);
+  fill: var(--ui-surface-elevated);
+  stroke: var(--ui-border);
   stroke-width: 1;
 }
 .edge-label {
-  fill: rgba(255, 255, 255, 0.75);
+  fill: var(--ui-text-secondary);
   font-size: 12px;
   text-anchor: middle;
   dominant-baseline: auto;
@@ -4320,11 +4320,11 @@ g:hover > .edge-midpoint-conn {
 .edge-action-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
-  background: rgba(30, 30, 30, 0.95);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -4333,13 +4333,13 @@ g:hover > .edge-midpoint-conn {
   transition: background 0.12s, color 0.12s;
 }
 .edge-action-btn:hover {
-  background: rgba(60, 60, 60, 0.95);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .edge-delete-btn:hover {
-  background: rgba(251, 70, 76, 0.3);
-  border-color: rgba(251, 70, 76, 0.5);
-  color: #fb464c;
+  background: var(--ui-danger-soft);
+  border-color: color-mix(in srgb, var(--ui-danger) 50%, transparent);
+  color: var(--ui-danger);
 }
 
 /* ===== Edge label editor (DOM overlay) ===== */
@@ -4351,25 +4351,25 @@ g:hover > .edge-midpoint-conn {
 .edge-label-input {
   width: 140px;
   padding: 4px 10px;
-  border: 1.5px solid rgba(124, 138, 255, 0.6);
+  border: 1.5px solid var(--ui-focus);
   border-radius: 6px;
-  background: rgba(30, 30, 30, 0.95);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ui-text);
   font-size: 12px;
   text-align: center;
   outline: none;
 }
 .edge-label-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--ui-text-muted);
 }
 
 
 /* ===== Selection box ===== */
 .selection-box {
   position: absolute;
-  border: 1.5px solid rgba(124, 138, 255, 0.6);
-  background: rgba(124, 138, 255, 0.08);
+  border: 1.5px solid var(--ui-focus);
+  background: color-mix(in srgb, var(--ui-focus) 8%, transparent);
   border-radius: 2px;
   pointer-events: none;
   z-index: 5;
@@ -4379,16 +4379,16 @@ g:hover > .edge-midpoint-conn {
 .context-menu {
   position: absolute;
   z-index: 200;
-  background: rgba(30, 30, 30, 0.97);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 6px;
   min-width: 140px;
   max-width: min(260px, calc(100vw - 24px));
   max-height: min(420px, calc(100dvh - 24px));
   overflow: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--ui-shadow);
 }
 .ctx-colors {
   display: flex;
@@ -4396,13 +4396,13 @@ g:hover > .edge-midpoint-conn {
   flex-wrap: wrap;
   gap: 4px;
   padding: 4px 4px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--ui-border);
   margin-bottom: 4px;
 }
 .ctx-label {
   min-width: 28px;
   flex: 0 0 28px;
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--ui-text-muted);
   font-size: 10px;
   text-transform: uppercase;
 }
@@ -4416,7 +4416,7 @@ g:hover > .edge-midpoint-conn {
   transition: transform 0.1s;
 }
 .ctx-color-btn.active {
-  border-color: rgba(255, 255, 255, 0.72);
+  border-color: var(--ui-text);
 }
 .ctx-color-btn:hover { transform: scale(1.2); }
 .ctx-color-1 { background: #fb464c; }
@@ -4425,35 +4425,35 @@ g:hover > .edge-midpoint-conn {
 .ctx-color-4 { background: #44cf6e; }
 .ctx-color-5 { background: #53dfdd; }
 .ctx-color-6 { background: #a882ff; }
-.ctx-color-none { background: #444; font-size: 10px; color: #aaa; display: flex; align-items: center; justify-content: center; }
+.ctx-color-none { background: var(--ui-surface-subtle); font-size: 10px; color: var(--ui-text-muted); display: flex; align-items: center; justify-content: center; }
 .ctx-item {
   display: block;
   width: 100%;
   padding: 6px 10px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
 }
-.ctx-item:hover { background: rgba(255, 255, 255, 0.08); }
-.ctx-item-danger:hover { background: rgba(251, 70, 76, 0.2); color: #fb464c; }
+.ctx-item:hover { background: var(--ui-surface-subtle); }
+.ctx-item-danger:hover { background: var(--ui-danger-soft); color: var(--ui-danger); }
 
 /* Arrowhead color */
 #arrowhead polygon {
-  fill: rgba(255, 255, 255, 0.25);
+  fill: color-mix(in srgb, var(--ui-text) 25%, transparent);
 }
 
 /* ===== Nodes ===== */
 .canvas-node {
   position: absolute;
-  background: #262626;
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: var(--ui-surface);
+  border: 1.5px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--ui-shadow);
   transition: box-shadow 0.15s ease, left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
 /* During local drag/resize the node must track the cursor 1:1 — no position/size easing.
@@ -4462,15 +4462,15 @@ g:hover > .edge-midpoint-conn {
   transition: box-shadow 0.15s ease;
 }
 .canvas-node:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: var(--ui-shadow);
+  border-color: color-mix(in srgb, var(--ui-text) 20%, var(--ui-border));
 }
 .canvas-node.is-selected {
-  border-color: rgba(124, 138, 255, 0.6);
+  border-color: var(--ui-focus);
 }
 .canvas-node.is-dragging {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
-  border-color: rgba(124, 138, 255, 0.5);
+  box-shadow: var(--ui-shadow);
+  border-color: var(--ui-focus);
   z-index: 100;
   cursor: grabbing;
 }
@@ -4494,8 +4494,8 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(10, 10, 10, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
   font-size: 10px;
   pointer-events: none;
 }
@@ -4523,10 +4523,10 @@ g:hover > .edge-midpoint-conn {
   height: 100%;
   box-sizing: border-box;
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--ui-surface-subtle);
   border: none;
   outline: none;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ui-text);
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -4545,10 +4545,10 @@ g:hover > .edge-midpoint-conn {
   min-width: 58px;
   min-height: 36px;
   padding: 0 12px;
-  border: 1px solid rgba(124, 138, 255, 0.8);
+  border: 1px solid var(--ui-focus);
   border-radius: 999px;
-  background: rgba(20, 23, 38, 0.96);
-  color: #fff;
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -4559,8 +4559,8 @@ g:hover > .edge-midpoint-conn {
 /* ===== Resize handles ===== */
 .resize-handle {
   position: absolute;
-  background: rgba(124, 138, 255, 0.8);
-  border: 1.5px solid rgba(124, 138, 255, 1);
+  background: var(--ui-focus);
+  border: 1.5px solid var(--ui-focus);
   border-radius: 2px;
   z-index: 10;
   touch-action: none;
@@ -4619,8 +4619,8 @@ g:hover > .edge-midpoint-conn {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(124, 138, 255, 0.7);
-  border: 2px solid rgba(124, 138, 255, 1);
+  background: var(--ui-focus);
+  border: 2px solid var(--ui-focus);
   opacity: 0;
   transition: opacity 0.15s ease;
   cursor: crosshair;
@@ -4763,7 +4763,7 @@ g:hover > .edge-midpoint-conn {
   margin-bottom: 4px;
 }
 .node-content .callout-body {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   font-size: 13px;
 }
 .node-content .callout-body p { margin: 0; }
@@ -4796,7 +4796,7 @@ g:hover > .edge-midpoint-conn {
 }
 .node-link-header {
   padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4817,9 +4817,9 @@ g:hover > .edge-midpoint-conn {
   left: 16px;
   width: 180px;
   height: 120px;
-  background: rgba(30, 30, 30, 0.85);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
   z-index: 10;
@@ -4839,9 +4839,9 @@ g:hover > .edge-midpoint-conn {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(30, 30, 30, 0.9);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 4px 8px;
   z-index: 10;
@@ -4855,11 +4855,11 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
   gap: 9px;
   padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--ui-border);
   border-radius: 9px;
-  background: rgba(30, 30, 30, 0.94);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  color: #f5f7f5;
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-text);
   font-size: 13px;
   transform: translateX(-50%);
   pointer-events: none;
@@ -4867,8 +4867,8 @@ g:hover > .edge-midpoint-conn {
 .image-upload-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.28);
-  border-top-color: #6ee89d;
+  border: 2px solid var(--ui-border);
+  border-top-color: var(--ui-success);
   border-radius: 50%;
   animation: image-upload-spin .75s linear infinite;
 }
@@ -4888,8 +4888,8 @@ g:hover > .edge-midpoint-conn {
   padding: 0;
 }
 .canvas-controls button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .canvas-controls button:disabled {
   opacity: 0.35;
@@ -4897,7 +4897,7 @@ g:hover > .edge-midpoint-conn {
 }
 .canvas-controls button:disabled:hover {
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
 }
 .ctrl-add-wrap {
   position: relative;
@@ -4905,8 +4905,8 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
 }
 .ctrl-add-trigger.active {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
 }
 /* The toolbar sits at the bottom of the canvas, so the menu opens upward. */
 .ctrl-add-menu {
@@ -4915,11 +4915,11 @@ g:hover > .edge-midpoint-conn {
   right: 0;
   min-width: 190px;
   padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
-  background: rgba(30, 30, 30, 0.97);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--ui-shadow);
   z-index: 40;
 }
 .canvas-controls .ctrl-add-menu-item {
@@ -4931,14 +4931,14 @@ g:hover > .edge-midpoint-conn {
   height: auto;
   padding: 8px 10px;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   text-align: left;
   white-space: nowrap;
 }
 .canvas-controls .ctrl-add-menu-item:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .ctrl-add-menu-icon {
   display: inline-flex;
@@ -4951,12 +4951,12 @@ g:hover > .edge-midpoint-conn {
 .controls-divider {
   width: 1px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--ui-border);
   margin: 0 2px;
 }
 .zoom-level {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ui-text-muted);
   min-width: 40px;
   text-align: center;
 }
@@ -4969,7 +4969,7 @@ g:hover > .edge-midpoint-conn {
   background: transparent;
 }
 .node-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--ui-text) 15%, transparent);
   border-radius: 2px;
 }
 
@@ -4981,7 +4981,7 @@ g:hover > .edge-midpoint-conn {
   transition: left 0.1s linear, top 0.1s linear;
 }
 .remote-cursor svg {
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+  filter: drop-shadow(0 1px 2px var(--ui-overlay));
 }
 .remote-cursor-name {
   position: absolute;
@@ -5084,8 +5084,8 @@ g:hover > .edge-midpoint-conn {
 .canvas-node.is-flash,
 .canvas-group.is-flash { animation: node-flash 1.4s ease; }
 @keyframes node-flash {
-  0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
-  30% { box-shadow: 0 0 0 3px #4dabf7, 0 0 18px 4px rgba(77,171,247,0.7); }
+  0%, 100% { box-shadow: var(--ui-shadow); }
+  30% { box-shadow: 0 0 0 3px var(--ui-focus), 0 0 18px 4px color-mix(in srgb, var(--ui-focus) 70%, transparent); }
 }
 
 /* Hidden object dim — owner-only; non-owners don't render hidden objects at all */
@@ -5102,8 +5102,8 @@ g:hover > .edge-midpoint-conn {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #888;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  background: var(--ui-text-muted);
+  box-shadow: 0 0 0 2px var(--ui-surface-elevated);
   z-index: 30;
 }
 </style>

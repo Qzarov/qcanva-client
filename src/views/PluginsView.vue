@@ -29,21 +29,21 @@ export default defineComponent({
 <style scoped>
 .plugins-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
 .plugins-head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.plugins-back { display: inline-flex; align-items: center; gap: 6px; color: var(--dark-text-muted, #98a2b3); text-decoration: none; font-size: 13px; }
-.plugins-back:hover { color: #fff; }
+.plugins-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-text-muted); text-decoration: none; font-size: 13px; }
+.plugins-back:hover { color: var(--ui-text); }
 .plugins-title { display: flex; align-items: center; gap: 8px; font-size: 22px; margin: 0; }
 .plugins-account-menu { margin-left: auto; }
-.plugins-error { color: #ff9da1; font-size: 13px; margin-bottom: 12px; }
+.plugins-error { color: var(--ui-danger); font-size: 13px; margin-bottom: 12px; }
 .plugins-list { display: flex; flex-direction: column; gap: 12px; }
-.plugin-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--dark-neutral-border, #313442); border-radius: 12px; background: var(--dark-input-bg, rgba(255,255,255,0.03)); }
+.plugin-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface-subtle); }
 .plugin-info { min-width: 0; }
 .plugin-name { font-weight: 600; font-size: 15px; }
 .plugin-desc { font-size: 13px; opacity: 0.7; margin-top: 2px; }
-.plugin-surface { display: inline-block; margin-top: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--dark-neutral-border, #313442); opacity: 0.8; }
-.plugin-toggle { flex-shrink: 0; width: 46px; height: 26px; border-radius: 999px; border: 1px solid var(--dark-neutral-border, #313442); background: rgba(255,255,255,0.08); position: relative; cursor: pointer; transition: background 0.15s; }
-.plugin-toggle.on { background: var(--color-brands, #4dabf7); }
+.plugin-surface { display: inline-block; margin-top: 8px; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--ui-border); opacity: 0.8; }
+.plugin-toggle { flex-shrink: 0; width: 46px; height: 26px; border-radius: 999px; border: 1px solid var(--ui-border); background: var(--ui-surface-subtle); position: relative; cursor: pointer; transition: background 0.15s; }
+.plugin-toggle.on { background: var(--color-brands); }
 .plugin-toggle:disabled { opacity: 0.5; cursor: default; }
-.plugin-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.plugin-toggle-knob { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--ui-surface-elevated); transition: transform 0.15s; }
 .plugin-toggle.on .plugin-toggle-knob { transform: translateX(20px); }
 .plugins-empty { opacity: 0.6; font-size: 13px; text-align: center; padding: 24px; }
 </style>

@@ -3,7 +3,7 @@
     <div v-if="loading" class="canvas-loading">Loading canvas...</div>
     <div v-else-if="error" class="canvas-error">
       <div class="error-modal">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(251,70,76,0.8)" stroke-width="1.5">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--ui-danger)" stroke-width="1.5">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -79,7 +79,7 @@
             >{{ u.name.charAt(0).toUpperCase() }}</div>
           </div>
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
-            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
+            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="var(--ui-success)"/></svg>
           </span>
           <div class="sync-menu-wrap">
             <button
