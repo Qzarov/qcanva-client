@@ -88,4 +88,61 @@ describe('useTheme', () => {
     await import('./useTheme');
     expect(listeners).toHaveLength(1);
   });
+
+  it('falls back to light when matchMedia is absent', async () => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+
+    const { useTheme } = await import('./useTheme');
+
+    expect(useTheme().effectiveTheme.value).toBe('light');
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('falls back to light when obtaining matchMedia throws', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => { throw new Error('media denied'); }));
+    vi.resetModules();
+
+    await expect(import('./useTheme')).resolves.toBeDefined();
+    const { useTheme } = await import('./useTheme');
+    expect(useTheme().effectiveTheme.value).toBe('light');
+  });
+
+  it('does not abort when media listener registration throws', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({
+      matches: true,
+      addEventListener: () => { throw new Error('listener denied'); },
+      removeEventListener: () => { throw new Error('listener denied'); },
+    })));
+    vi.resetModules();
+
+    await expect(import('./useTheme')).resolves.toBeDefined();
+    const { useTheme } = await import('./useTheme');
+    expect(useTheme().effectiveTheme.value).toBe('dark');
+  });
+
+  it('does not abort when removing a stale media listener throws', async () => {
+    const staleMedia = {
+      matches: false,
+      addEventListener: vi.fn((_name, listener) => listeners.add(listener)),
+      removeEventListener: vi.fn(() => { throw new Error('listener denied'); }),
+    };
+    const freshMedia = {
+      matches: true,
+      addEventListener: vi.fn((_name, listener) => listeners.add(listener)),
+      removeEventListener: vi.fn(),
+    };
+    vi.stubGlobal('matchMedia', vi.fn()
+      .mockReturnValueOnce(staleMedia)
+      .mockReturnValueOnce(freshMedia));
+
+    await import('./useTheme');
+    vi.resetModules();
+
+    await expect(import('./useTheme')).resolves.toBeDefined();
+    const { useTheme } = await import('./useTheme');
+    expect(useTheme().effectiveTheme.value).toBe('dark');
+    expect(staleMedia.removeEventListener).toHaveBeenCalledOnce();
+    expect(freshMedia.addEventListener).toHaveBeenCalledOnce();
+  });
 });

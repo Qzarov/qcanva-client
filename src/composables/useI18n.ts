@@ -2,8 +2,20 @@ import { computed, ref } from 'vue';
 
 export type UiLocale = 'ru' | 'en';
 const STORAGE_KEY = 'qcanva:locale';
+const getStorage = (): Storage | undefined => {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+};
 const initialLocale = (): UiLocale => {
-  const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = getStorage()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    // Storage is optional in private and embedded browsing contexts.
+  }
   if (stored === 'ru' || stored === 'en') return stored;
   return typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 };
@@ -67,7 +79,11 @@ const messages = {
 export function useI18n() {
   const setLocale = (value: UiLocale) => {
     locale.value = value;
-    localStorage.setItem(STORAGE_KEY, value);
+    try {
+      getStorage()?.setItem(STORAGE_KEY, value);
+    } catch {
+      // Keep the in-memory and document locale even when persistence is denied.
+    }
     document.documentElement.lang = value;
   };
   const toggleLocale = () => setLocale(locale.value === 'ru' ? 'en' : 'ru');

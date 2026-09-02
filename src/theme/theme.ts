@@ -20,14 +20,26 @@ export function resolveEffectiveTheme(preference: ThemePreference, prefersDark: 
   return preference === 'system' ? (prefersDark ? 'dark' : 'light') : preference;
 }
 
+export function readPrefersDark(media: Pick<MediaQueryList, 'matches'> | null | undefined): boolean {
+  try {
+    return media?.matches === true;
+  } catch {
+    return false;
+  }
+}
+
 export function applyEffectiveTheme(root: HTMLElement, theme: EffectiveTheme): void {
   root.dataset.theme = theme;
   root.style.colorScheme = theme;
 }
 
-export function bootstrapTheme(root: HTMLElement, storage: ReadableStorage | null | undefined, media: Pick<MediaQueryList, 'matches'>) {
+export function bootstrapTheme(
+  root: HTMLElement,
+  storage: ReadableStorage | null | undefined,
+  media?: Pick<MediaQueryList, 'matches'> | null,
+) {
   const preference = readThemePreference(storage);
-  const effectiveTheme = resolveEffectiveTheme(preference, media.matches);
+  const effectiveTheme = resolveEffectiveTheme(preference, readPrefersDark(media));
   applyEffectiveTheme(root, effectiveTheme);
   return { preference, effectiveTheme };
 }

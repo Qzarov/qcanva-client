@@ -153,11 +153,11 @@ function onCardDragEnd() {
 .board-column--dragging { z-index:4; box-shadow:var(--ui-shadow), 0 0 0 2px var(--ui-brand); cursor:grabbing; }
 .board-column__header { display:flex; align-items:center; gap:7px; min-height:35px; padding:0 2px 9px; }
 .board-column__header h2 { flex:1; margin:0; padding-left:5px; color:var(--ui-text); font-size:14px; }
-.board-column__drag,.board-column__delete { flex:none; border:0; background:transparent; color:var(--ui-text-muted); cursor:pointer; }
+.board-column__drag,.board-column__delete { flex:none; border:0; background:transparent; color:var(--ui-text-secondary); cursor:pointer; }
 .board-column__drag { padding:2px 1px; font-size:18px; cursor:grab; touch-action:none; user-select:none; }
 .board-column__drag:active { cursor:grabbing; }
 .board-column__delete { width:26px; height:26px; border-radius:6px; font-size:19px; }
-.board-column__delete:hover { color:var(--ui-danger); background:var(--ui-danger-soft); }
+.board-column__delete:hover { color:var(--ui-danger-foreground); background:var(--ui-danger-soft); }
 .board-column__title-input { flex:1; min-width:0; padding:5px 6px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--ui-text); font:600 14px/1.2 inherit; }
 .board-column__title-input:focus { border-color:var(--ui-focus); outline:none; background:var(--ui-surface-subtle); }
 .board-column__count { flex:none; min-width:21px; padding:2px 5px; border-radius:999px; background:var(--ui-surface-subtle); color:var(--ui-text-secondary); font-size:11px; text-align:center; }
@@ -165,7 +165,7 @@ function onCardDragEnd() {
 .board-column__card-slot { position:relative; }
 .board-column__card-slot--over-top::before { content:''; position:absolute; top:-5px; left:0; right:0; height:3px; background:var(--ui-brand); border-radius:999px; z-index:2; box-shadow:0 0 8px var(--ui-brand); }
 .board-column__card-slot--over-bottom::after { content:''; position:absolute; bottom:-5px; left:0; right:0; height:3px; background:var(--ui-brand); border-radius:999px; z-index:2; box-shadow:0 0 8px var(--ui-brand); }
-.board-column__empty { margin:6px 8px 10px; color:var(--ui-text-muted); font-size:12px; text-align:center; }
+.board-column__empty { margin:6px 8px 10px; color:var(--ui-text-secondary); font-size:12px; text-align:center; }
 .board-column__add-card { margin-top:2px; padding:9px; border:0; border-radius:8px; background:transparent; color:var(--ui-text-secondary); text-align:left; cursor:pointer; }
 .board-column__add-card:hover { background:var(--ui-surface-subtle); color:var(--ui-text); }
 </style>

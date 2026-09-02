@@ -29,11 +29,11 @@ export default defineComponent({
 <style scoped>
 .plugins-page { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
 .plugins-head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
-.plugins-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-text-muted); text-decoration: none; font-size: 13px; }
+.plugins-back { display: inline-flex; align-items: center; gap: 6px; color: var(--ui-text-secondary); text-decoration: none; font-size: 13px; }
 .plugins-back:hover { color: var(--ui-text); }
 .plugins-title { display: flex; align-items: center; gap: 8px; font-size: 22px; margin: 0; }
 .plugins-account-menu { margin-left: auto; }
-.plugins-error { color: var(--ui-danger); font-size: 13px; margin-bottom: 12px; }
+.plugins-error { color: var(--ui-danger-foreground); font-size: 13px; margin-bottom: 12px; }
 .plugins-list { display: flex; flex-direction: column; gap: 12px; }
 .plugin-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--ui-border); border-radius: 12px; background: var(--ui-surface-subtle); }
 .plugin-info { min-width: 0; }

@@ -22,7 +22,10 @@
         class="canvas-group"
         :data-node-id="group.id"
         :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
-        :style="nodePosition(group)"
+        :style="[nodePosition(group), {
+          '--group-content-surface': 'var(--content-canvas-group-surface)',
+          '--group-content-border': 'var(--content-canvas-group-border)',
+        }]"
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
       >
@@ -50,7 +53,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="0 0, 8 3, 0 6" fill="color-mix(in srgb, var(--ui-text) 35%, transparent)" />
+            <polygon points="0 0, 8 3, 0 6" fill="var(--content-canvas-edge-arrow)" />
           </marker>
           <marker
             id="arrowhead-start"
@@ -60,7 +63,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="8 0, 0 3, 8 6" fill="color-mix(in srgb, var(--ui-text) 35%, transparent)" />
+            <polygon points="8 0, 0 3, 8 6" fill="var(--content-canvas-edge-arrow)" />
           </marker>
           <template v-for="color in edgeColors" :key="color">
             <marker
@@ -100,7 +103,7 @@
               class="edge-line"
               :class="{ 'edge-selected': selectedEdgeId === edge.id }"
               :style="{
-                stroke: edge.color || undefined,
+                stroke: edge.color || 'var(--content-canvas-edge)',
                 strokeWidth: edge.thickness,
                 strokeDasharray: edge.dashArray || undefined,
               }"
@@ -218,7 +221,10 @@
         <textarea
           v-if="editingNodeId === node.id"
           class="node-editor"
-          :style="{ color: node.fontColor || undefined }"
+          :style="{
+            backgroundColor: 'var(--content-canvas-editor-surface)',
+            color: node.fontColor || 'var(--content-canvas-editor-text)',
+          }"
           :value="node.text"
           @input="onEditInput($event, node)"
           @blur="onEditEnd"
@@ -380,8 +386,8 @@
               :y="en.y"
               :width="en.width || 100"
               :height="en.height || 60"
-              :fill="en.type === 'group' ? 'var(--ui-surface-subtle)' : 'color-mix(in srgb, var(--ui-focus) 25%, transparent)'"
-              :stroke="en.type === 'group' ? 'var(--ui-border)' : 'color-mix(in srgb, var(--ui-focus) 50%, transparent)'"
+              :fill="en.type === 'group' ? 'rgba(255,255,255,0.05)' : 'rgba(124,138,255,0.25)'"
+              :stroke="en.type === 'group' ? 'rgba(255,255,255,0.1)' : 'rgba(124,138,255,0.5)'"
               stroke-width="2"
               rx="3"
             />
@@ -389,7 +395,7 @@
               v-for="ee in getEmbeddedCanvasData(node.canvasId!).edges"
               :key="'embe-' + ee.id"
               :d="embeddedEdgePath(ee, getEmbeddedCanvasData(node.canvasId!).nodes)"
-              stroke="color-mix(in srgb, var(--ui-text) 20%, transparent)"
+              stroke="rgba(255,255,255,0.2)"
               stroke-width="1.5"
               fill="none"
             />
@@ -641,7 +647,7 @@
           :y="node.y"
           :width="node.width"
           :height="node.height"
-          :fill="node.type === 'group' ? 'var(--ui-surface-subtle)' : 'color-mix(in srgb, var(--ui-text) 30%, transparent)'"
+          :fill="node.type === 'group' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)'"
           rx="2"
         />
         <rect
@@ -649,8 +655,8 @@
           :y="minimapData.vpY"
           :width="minimapData.vpW"
           :height="minimapData.vpH"
-          fill="color-mix(in srgb, var(--ui-focus) 8%, transparent)"
-          stroke="var(--ui-focus)"
+          fill="rgba(124,138,255,0.08)"
+          stroke="rgba(124,138,255,0.6)"
           stroke-width="3"
           rx="2"
           style="cursor: grab"
@@ -4144,13 +4150,13 @@ export default defineComponent({
 .canvas-group {
   position: absolute;
   border-radius: 12px;
-  border: 1.5px solid var(--ui-border);
-  background: var(--ui-surface-subtle);
+  border: 1.5px solid var(--group-content-border);
+  background: var(--group-content-surface);
   cursor: grab;
 }
 .canvas-group.is-selected {
-  border-color: var(--ui-focus);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-focus) 35%, transparent);
+  border-color: var(--content-canvas-selection);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--content-canvas-selection) 44%, transparent);
 }
 .canvas-group.is-dragging {
   cursor: grabbing;
@@ -4161,7 +4167,7 @@ export default defineComponent({
   left: 10px;
   font-size: 14px;
   font-weight: 600;
-  color: var(--ui-text-muted);
+  color: var(--content-canvas-group-label);
   white-space: nowrap;
 }
 
@@ -4186,7 +4192,7 @@ export default defineComponent({
   bottom: calc(100% + 6px);
   left: 0;
   width: 100%;
-  color: var(--ui-text);
+  color: var(--content-canvas-image-title);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
@@ -4269,7 +4275,7 @@ export default defineComponent({
 }
 .edge-line {
   fill: none;
-  stroke: color-mix(in srgb, var(--ui-text) 25%, transparent);
+  stroke: var(--content-canvas-edge);
   stroke-width: 2;
   pointer-events: none;
   transition: stroke 0.15s ease;
@@ -4296,12 +4302,12 @@ g:hover > .edge-midpoint-conn {
   opacity: 1;
 }
 .edge-label-bg {
-  fill: var(--ui-surface-elevated);
-  stroke: var(--ui-border);
+  fill: var(--content-canvas-edge-label-surface);
+  stroke: var(--content-canvas-edge-label-border);
   stroke-width: 1;
 }
 .edge-label {
-  fill: var(--ui-text-secondary);
+  fill: var(--content-canvas-edge-label-text);
   font-size: 12px;
   text-anchor: middle;
   dominant-baseline: auto;
@@ -4339,7 +4345,7 @@ g:hover > .edge-midpoint-conn {
 .edge-delete-btn:hover {
   background: var(--ui-danger-soft);
   border-color: color-mix(in srgb, var(--ui-danger) 50%, transparent);
-  color: var(--ui-danger);
+  color: var(--ui-danger-foreground);
 }
 
 /* ===== Edge label editor (DOM overlay) ===== */
@@ -4361,7 +4367,7 @@ g:hover > .edge-midpoint-conn {
   outline: none;
 }
 .edge-label-input::placeholder {
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
 }
 
 
@@ -4402,7 +4408,7 @@ g:hover > .edge-midpoint-conn {
 .ctx-label {
   min-width: 28px;
   flex: 0 0 28px;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
   font-size: 10px;
   text-transform: uppercase;
 }
@@ -4425,7 +4431,7 @@ g:hover > .edge-midpoint-conn {
 .ctx-color-4 { background: #44cf6e; }
 .ctx-color-5 { background: #53dfdd; }
 .ctx-color-6 { background: #a882ff; }
-.ctx-color-none { background: var(--ui-surface-subtle); font-size: 10px; color: var(--ui-text-muted); display: flex; align-items: center; justify-content: center; }
+.ctx-color-none { background: var(--ui-surface-subtle); font-size: 10px; color: var(--ui-text-secondary); display: flex; align-items: center; justify-content: center; }
 .ctx-item {
   display: block;
   width: 100%;
@@ -4439,21 +4445,21 @@ g:hover > .edge-midpoint-conn {
   border-radius: 4px;
 }
 .ctx-item:hover { background: var(--ui-surface-subtle); }
-.ctx-item-danger:hover { background: var(--ui-danger-soft); color: var(--ui-danger); }
+.ctx-item-danger:hover { background: var(--ui-danger-soft); color: var(--ui-danger-foreground); }
 
 /* Arrowhead color */
 #arrowhead polygon {
-  fill: color-mix(in srgb, var(--ui-text) 25%, transparent);
+  fill: var(--content-canvas-edge);
 }
 
 /* ===== Nodes ===== */
 .canvas-node {
   position: absolute;
   background: var(--content-canvas-node-surface);
-  border: 1.5px solid var(--ui-border);
+  border: 1.5px solid var(--content-canvas-node-border);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: var(--ui-shadow);
+  box-shadow: var(--content-canvas-node-shadow);
   transition: box-shadow 0.15s ease, left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
 /* During local drag/resize the node must track the cursor 1:1 — no position/size easing.
@@ -4462,14 +4468,14 @@ g:hover > .edge-midpoint-conn {
   transition: box-shadow 0.15s ease;
 }
 .canvas-node:hover {
-  box-shadow: var(--ui-shadow);
-  border-color: color-mix(in srgb, var(--ui-text) 20%, var(--ui-border));
+  box-shadow: var(--content-canvas-node-shadow);
+  border-color: var(--content-canvas-node-border-hover);
 }
 .canvas-node.is-selected {
   border-color: var(--content-canvas-selection);
 }
 .canvas-node.is-dragging {
-  box-shadow: var(--ui-shadow);
+  box-shadow: var(--content-canvas-node-shadow);
   border-color: var(--content-canvas-selection);
   z-index: 100;
   cursor: grabbing;
@@ -4523,10 +4529,10 @@ g:hover > .edge-midpoint-conn {
   height: 100%;
   box-sizing: border-box;
   padding: 12px 16px;
-  background: var(--ui-surface-subtle);
+  background: var(--content-canvas-editor-surface);
   border: none;
   outline: none;
-  color: var(--ui-text);
+  color: var(--content-canvas-editor-text);
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -4956,7 +4962,7 @@ g:hover > .edge-midpoint-conn {
 }
 .zoom-level {
   font-size: 12px;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
   min-width: 40px;
   text-align: center;
 }

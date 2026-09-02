@@ -79,7 +79,7 @@ export default defineComponent({
   height: 22px;
   border: none;
   background: transparent;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
   font-size: 16px;
   cursor: pointer;
   border-radius: 4px;

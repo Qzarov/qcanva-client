@@ -48,4 +48,21 @@ describe('theme model', () => {
     expect(bootstrapTheme(document.documentElement, localStorage, media)).toEqual({ preference: 'dark', effectiveTheme: 'dark' });
     expect(document.documentElement.dataset.theme).toBe('dark');
   });
+
+  it('falls back to light when system preference lookup is unavailable', () => {
+    expect(bootstrapTheme(document.documentElement, null, undefined as any)).toEqual({
+      preference: 'system',
+      effectiveTheme: 'light',
+    });
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
+
+  it('falls back to light when reading the media match throws', () => {
+    const media = Object.defineProperty({}, 'matches', {
+      get: () => { throw new Error('media denied'); },
+    }) as MediaQueryList;
+
+    expect(() => bootstrapTheme(document.documentElement, null, media)).not.toThrow();
+    expect(document.documentElement.dataset.theme).toBe('light');
+  });
 });

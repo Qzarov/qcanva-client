@@ -227,13 +227,13 @@ onUnmounted(() => {
 .board-template-title input { width:min(400px,44vw); padding:5px 9px; border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ui-text); font-size:18px; font-weight:700; text-align:center; }
 .board-template-title input:focus { border-color:var(--ui-focus); outline:none; background:var(--ui-surface-subtle); }
 .board-template-title h1 { margin:0; font-size:18px; }
-.board-template-title span,.board-template-saving { color:var(--ui-text-muted); font-size:10px; }
+.board-template-title span,.board-template-saving { color:var(--ui-text-secondary); font-size:10px; }
 .board-template-actions { display:flex; align-items:center; justify-self:end; gap:10px; }
 .board-template-main { display:flex; min-width:0; min-height:0; flex:1; }
 .board-template-state { display:grid; place-content:center; justify-items:center; width:100%; min-height:420px; color:var(--ui-text-secondary); }
 .board-template-spinner { width:28px; height:28px; border:3px solid var(--ui-border); border-top-color:var(--ui-brand); border-radius:50%; animation:board-spin .8s linear infinite; }
-.board-template-state--error h2 { margin:0 0 8px; color:var(--ui-danger); font-size:18px; }
-.board-template-state--error p { margin:0; color:var(--ui-text-muted); font-size:12px; }
+.board-template-state--error h2 { margin:0 0 8px; color:var(--ui-danger-foreground); font-size:18px; }
+.board-template-state--error p { margin:0; color:var(--ui-text-secondary); font-size:12px; }
 @keyframes board-spin { to { transform:rotate(360deg); } }
 @media (max-width:640px) { .board-template-header { grid-template-columns:auto minmax(0,1fr) auto; gap:8px; padding-inline:12px; } .board-template-title { justify-items:end; } .board-template-title input { width:100%; text-align:right; } .board-template-saving { display:none; } }
 </style>

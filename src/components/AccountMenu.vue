@@ -68,6 +68,8 @@ import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
 import ThemeSelector from './ThemeSelector.vue';
 
+const emit = defineEmits<{ opened: [] }>();
+
 const props = withDefaults(defineProps<{
   compact?: boolean;
   placement?: 'header' | 'sidebar';
@@ -96,6 +98,7 @@ const focusTrigger = () => {
 };
 
 const openMenu = async (focusTheme = false) => {
+  emit('opened');
   open.value = true;
   if (!focusTheme) return;
   await nextTick();
@@ -127,6 +130,8 @@ const signOut = () => {
   clearToken();
   void router.push({ name: 'landing' });
 };
+
+defineExpose({ close });
 </script>
 
 <style scoped>
@@ -186,7 +191,7 @@ const signOut = () => {
 }
 .account-menu-identity span,
 .account-menu-theme > span {
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
   font-size: 11px;
 }
 .account-menu-theme {
@@ -223,7 +228,7 @@ const signOut = () => {
   display: inline-grid;
   place-items: center;
   width: 18px;
-  color: var(--ui-text-muted);
+  color: var(--ui-text-secondary);
 }
 .account-menu-sign-out {
   color: var(--accent-red);

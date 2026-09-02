@@ -496,7 +496,7 @@ function createId(prefix: string): string {
 .board-editor__toolbar { display:flex; align-items:center; gap:12px; padding:11px 20px; border-bottom:1px solid var(--ui-border); }
 .board-editor__toolbar > div:first-child { margin-right:auto; }
 .board-editor__eyebrow { color:var(--ui-text); font-size:13px; font-weight:700; }
-.board-editor__toolbar p { margin:2px 0 0; color:var(--ui-text-muted); font-size:11px; }
+.board-editor__toolbar p { margin:2px 0 0; color:var(--ui-text-secondary); font-size:11px; }
 .board-editor__participants { display:flex; padding-left:8px; }
 .board-editor__avatar,.board-editor__participant-count { display:grid; place-items:center; width:28px; height:28px; margin-left:-7px; border:2px solid var(--ui-surface-solid); border-radius:50%; background:var(--ui-brand-soft); color:var(--ui-brand-soft-on); font-size:11px; font-weight:700; }
 .board-editor__participant-count { background:var(--ui-surface-subtle); color:var(--ui-text-secondary); }
@@ -506,12 +506,12 @@ function createId(prefix: string): string {
 .board-label-manager summary { padding:7px 10px; border:1px solid var(--ui-border); border-radius:8px; color:var(--ui-text); font-size:12px; cursor:pointer; list-style:none; }
 .board-label-manager summary::-webkit-details-marker { display:none; }
 .board-label-manager__popover { position:absolute; z-index:30; top:calc(100% + 8px); right:0; display:grid; gap:8px; width:290px; padding:12px; border:1px solid var(--ui-border); border-radius:10px; background:var(--ui-surface-elevated); box-shadow:var(--ui-shadow); }
-.board-label-manager__popover p { margin:2px 0; color:var(--ui-text-muted); font-size:11px; }
+.board-label-manager__popover p { margin:2px 0; color:var(--ui-text-secondary); font-size:11px; }
 .board-label-manager__row,.board-label-manager__new { display:grid; grid-template-columns:1fr 34px auto; gap:6px; }
 .board-label-manager input { box-sizing:border-box; min-width:0; padding:7px; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface-subtle); color:var(--ui-text); }
 .board-label-manager input[type="color"] { width:34px; padding:2px; }
 .board-label-manager button { padding:6px 9px; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface-subtle); color:var(--ui-text); cursor:pointer; }
-.board-label-manager__row button { color:var(--ui-danger); }
+.board-label-manager__row button { color:var(--ui-danger-foreground); }
 .board-editor__viewport { position:relative; display:flex; flex:1; min-width:0; align-items:flex-start; gap:14px; min-height:0; overflow-x:auto; padding:18px 20px 26px; overscroll-behavior-x:contain; background:radial-gradient(circle at 70% 0%, var(--ui-brand-soft) 0, transparent 42%), var(--ui-page); }
 .board-editor__column-drop-indicator { position:absolute; z-index:5; top:18px; bottom:26px; left:0; width:46px; border:2px dashed var(--ui-brand); border-radius:13px; background:radial-gradient(circle at center, var(--ui-brand-soft) 0%, transparent 100%), var(--ui-surface-elevated); box-shadow:0 0 0 1px var(--ui-brand-soft), var(--ui-shadow); pointer-events:none; transition:transform 80ms ease-out; backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; }
 .board-editor__column-drop-indicator::after { content:''; width:4px; height:42px; border-radius:999px; background:var(--ui-brand); box-shadow:0 0 12px var(--ui-brand), 0 0 20px var(--ui-brand-soft); }

@@ -12,7 +12,7 @@
         <div class="header-user-slot">
           <LanguageToggle />
           <template v-if="isLoggedIn">
-            <AccountMenu />
+            <AccountMenu ref="accountMenu" @opened="closeControlMenusForAccount" />
           </template>
           <template v-else>
             <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
@@ -1010,6 +1010,7 @@ export default defineComponent({
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
+    const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null);
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -2643,6 +2644,7 @@ export default defineComponent({
     };
 
     const toggleCardMenu = (canvasId: string, event?: Event) => {
+      accountMenu.value?.close(false);
       openControlMenu.value = '';
       const closing = openMenuCanvasId.value === canvasId;
       openMenuCanvasId.value = closing ? '' : canvasId;
@@ -2656,14 +2658,22 @@ export default defineComponent({
     };
 
     const toggleNewMenu = () => {
+      accountMenu.value?.close(false);
       openMenuCanvasId.value = '';
       openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
     const toggleFolderMenu = (folderId: string) => {
+      accountMenu.value?.close(false);
       openMenuCanvasId.value = '';
       const key = `folder:${folderId}`;
       openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+
+    const closeControlMenusForAccount = () => {
+      openMenuCanvasId.value = '';
+      openControlMenu.value = '';
+      cardMenuStyle.value = null;
     };
 
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
@@ -2982,6 +2992,8 @@ export default defineComponent({
       actionLabel,
       openMenuCanvasId,
       openControlMenu,
+      accountMenu,
+      closeControlMenusForAccount,
       draggingResourceId,
       draggingResourceType,
       dragTargetFolder,

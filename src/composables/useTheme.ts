@@ -2,6 +2,7 @@ import { computed, readonly, ref } from 'vue';
 import {
   applyEffectiveTheme,
   readThemePreference,
+  readPrefersDark,
   resolveEffectiveTheme,
   THEME_STORAGE_KEY,
   type ThemePreference,
@@ -15,10 +16,18 @@ const getStorage = (): Storage | undefined => {
   }
 };
 
+const getMedia = (): MediaQueryList | undefined => {
+  try {
+    return typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)');
+  } catch {
+    return undefined;
+  }
+};
+
 const storage = getStorage();
-const media = typeof matchMedia === 'undefined' ? undefined : matchMedia('(prefers-color-scheme: dark)');
+const media = getMedia();
 const preference = ref<ThemePreference>(readThemePreference(storage));
-const prefersDark = ref(media?.matches ?? false);
+const prefersDark = ref(readPrefersDark(media));
 const mediaListenerKey = '__qcanvaThemeMediaListener__';
 
 type MediaListenerState = {
@@ -57,9 +66,17 @@ const mediaListener = (event: MediaQueryListEvent) => {
 if (media) {
   const themeGlobal = globalThis as ThemeGlobal;
   const previousListener = themeGlobal[mediaListenerKey];
-  previousListener?.media.removeEventListener('change', previousListener.listener);
-  media.addEventListener('change', mediaListener);
-  themeGlobal[mediaListenerKey] = { media, listener: mediaListener };
+  try {
+    previousListener?.media.removeEventListener('change', previousListener.listener);
+  } catch {
+    // Some embedded browsers expose a partial MediaQueryList implementation.
+  }
+  try {
+    media.addEventListener('change', mediaListener);
+    themeGlobal[mediaListenerKey] = { media, listener: mediaListener };
+  } catch {
+    Reflect.deleteProperty(themeGlobal, mediaListenerKey);
+  }
 }
 
 applyTheme();

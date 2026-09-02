@@ -72,4 +72,21 @@ describe('AccountMenu', () => {
     expect(wrapper.get('[data-account-menu-trigger]').attributes('aria-expanded')).toBe('true');
     expect(document.activeElement).toBe(firstChoice.element);
   });
+
+  it('restores focus to the trigger after closing with Escape', async () => {
+    const wrapper = mount(AccountMenu, {
+      attachTo: document.body,
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+
+    const trigger = wrapper.get('[data-account-menu-trigger]');
+    await trigger.trigger('click');
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
+
+    await wrapper.trigger('keydown', { key: 'Escape' });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+  });
 });

@@ -26,7 +26,7 @@
           <legend>Метки</legend>
           <label v-for="label in labels" :key="label.id">
             <input v-model="draft.labelIds" type="checkbox" :value="label.id" @change="markDirty('labelIds')" />
-            <span :style="{ '--label-color': label.color }">{{ label.title }}</span>
+            <span :style="{ '--label-color': label.color, '--label-content-surface': 'var(--content-board-label-dialog-surface)', '--label-content-text': 'var(--content-board-label-dialog-text)' }">{{ label.title }}</span>
           </label>
           <span v-if="labels.length === 0" class="board-field-hint">На доске пока нет меток</span>
         </fieldset>
@@ -421,7 +421,7 @@ function createId(prefix: string): string {
 .board-label-picker legend { width:100%; margin-bottom:6px; color:var(--ui-text-secondary); font-size:12px; }
 .board-label-picker label { display:flex; align-items:center; gap:5px; cursor:pointer; }
 .board-label-picker input { width:auto; }
-.board-label-picker label span { padding:4px 9px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 35%, var(--ui-surface-subtle)); color:var(--ui-text); font-size:11px; }
+.board-label-picker label span { padding:4px 9px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 35%, var(--label-content-surface)); color:var(--label-content-text); font-size:11px; }
 .board-card-dialog__assignee { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .board-checklist h3 { margin:0 0 9px; font-size:14px; }
 .board-checklist ol { display:grid; gap:6px; margin:0; padding:0; list-style:none; }
@@ -430,11 +430,11 @@ function createId(prefix: string): string {
 .board-checklist__title { flex:1; min-width:0; }
 .board-checklist li button { flex:none; width:28px; height:28px; padding:0; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface-subtle); color:var(--ui-text-secondary); cursor:pointer; }
 .board-checklist li button:disabled { opacity:.35; cursor:default; }
-.board-checklist li .board-checklist__remove:hover { color:var(--ui-danger); background:var(--ui-danger-soft); }
+.board-checklist li .board-checklist__remove:hover { color:var(--ui-danger-foreground); background:var(--ui-danger-soft); }
 .board-checklist__new { display:flex; gap:8px; margin-top:10px; }
 .board-checklist__new button,.board-button { padding:9px 14px; border:1px solid var(--ui-border); border-radius:8px; font-weight:600; cursor:pointer; }
 .board-checklist__new button { flex:none; background:var(--ui-surface-subtle); color:var(--ui-text); }
-.board-field-hint { color:var(--ui-text-muted); font-size:12px; }
+.board-field-hint { color:var(--ui-text-secondary); font-size:12px; }
 .board-button--ghost { background:transparent; color:var(--ui-text-secondary); }
 .board-button--primary { border-color:var(--ui-brand); background:var(--ui-brand); color:var(--ui-brand-on); }
 .board-button--danger { border-color:var(--ui-danger); background:var(--ui-danger); color:var(--ui-danger-on); }

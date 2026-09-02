@@ -93,6 +93,22 @@ describe('DashboardView groups', () => {
     vi.clearAllMocks();
   });
 
+  it('keeps the account and legacy control popovers mutually exclusive', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('.dashboard-new-menu > button').trigger('click');
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
+
+    await wrapper.get('.dashboard-new-menu > button').trigger('click');
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
+  });
+
   it('creates a group without creating or opening a canvas', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
