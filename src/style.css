@@ -63,6 +63,12 @@
 }
 
 :root {
+  /* Authored document and canvas-node content keeps its fixed palette. */
+  --content-document-surface: #191b20;
+  --content-document-surface-readonly: #17191d;
+  --content-canvas-node-surface: #262626;
+  --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
+
   /* Brand */
   --color-brands: var(--ui-brand);
   --color-brands-light: var(--ui-focus);
@@ -617,7 +623,7 @@ body {
 .canvas-plugin-row strong, .canvas-plugin-row span { display: block; }
 .canvas-plugin-row span, .canvas-plugin-empty { margin-top: 3px; color: var(--dark-text-muted); font-size: 12px; }
 .canvas-plugin-row .plugin-toggle { position: relative; flex: 0 0 auto; width: 62px; height: 30px; padding: 0; border: 1px solid var(--ui-border); border-radius: 999px; background: var(--ui-surface-subtle); color: var(--ui-text-secondary); cursor: pointer; transition: background .16s, border-color .16s, box-shadow .16s; }
-.canvas-plugin-row .plugin-toggle:hover:not(:disabled) { border-color: var(--ui-text-muted); }.canvas-plugin-row .plugin-toggle:focus-visible { outline: 2px solid var(--color-brands); outline-offset: 2px; }.canvas-plugin-row .plugin-toggle.on { border-color: color-mix(in srgb, var(--color-brands) 70%, var(--ui-focus)); background: color-mix(in srgb, var(--color-brands) 32%, var(--ui-surface)); color: var(--ui-brand); }.canvas-plugin-row .plugin-toggle:disabled { opacity: .68; cursor: wait; }
+.canvas-plugin-row .plugin-toggle:hover:not(:disabled) { border-color: var(--ui-text-muted); }.canvas-plugin-row .plugin-toggle:focus-visible { outline: 2px solid var(--color-brands); outline-offset: 2px; }.canvas-plugin-row .plugin-toggle.on { border-color: color-mix(in srgb, var(--color-brands) 70%, var(--ui-focus)); background: color-mix(in srgb, var(--color-brands) 32%, var(--ui-surface)); color: var(--ui-text); }.canvas-plugin-row .plugin-toggle:disabled { opacity: .68; cursor: wait; }
 .canvas-plugin-row .plugin-toggle-label { position: absolute; top: 0; right: 7px; margin: 0; color: inherit; font-size: 10px; font-weight: 800; line-height: 28px; transition: opacity .16s; }.canvas-plugin-row .plugin-toggle.on .plugin-toggle-label { right: auto; left: 7px; }.canvas-plugin-row .plugin-toggle-knob { position: absolute; z-index: 1; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: var(--ui-surface-elevated); box-shadow: var(--ui-shadow); transition: transform .16s, background .16s; }.canvas-plugin-row .plugin-toggle.on .plugin-toggle-knob { transform: translateX(32px); background: var(--ui-surface-solid); }.canvas-plugin-row .plugin-toggle.loading .plugin-toggle-knob { animation: plugin-toggle-pulse .75s ease-in-out infinite alternate; }
 @keyframes plugin-toggle-pulse { to { opacity: .45; } }
 .dashboard-refresh-spinner {
@@ -4441,14 +4447,14 @@ body {
 
 .text-doc-paper {
   min-height: 72vh;
-  background: var(--ui-surface);
+  background: var(--content-document-surface);
   border: 1px solid var(--ui-border);
   box-shadow: var(--ui-shadow);
   padding: 56px 64px;
 }
 
 .text-doc-paper.readonly {
-  background: var(--ui-surface-solid);
+  background: var(--content-document-surface-readonly);
 }
 
 .text-doc-paper .ProseMirror {

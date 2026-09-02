@@ -4449,7 +4449,7 @@ g:hover > .edge-midpoint-conn {
 /* ===== Nodes ===== */
 .canvas-node {
   position: absolute;
-  background: var(--ui-surface);
+  background: var(--content-canvas-node-surface);
   border: 1.5px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
@@ -4763,7 +4763,7 @@ g:hover > .edge-midpoint-conn {
   margin-bottom: 4px;
 }
 .node-content .callout-body {
-  color: var(--ui-text-secondary);
+  color: var(--content-canvas-callout-text);
   font-size: 13px;
 }
 .node-content .callout-body p { margin: 0; }

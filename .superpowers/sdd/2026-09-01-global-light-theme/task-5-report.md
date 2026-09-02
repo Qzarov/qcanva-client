@@ -108,3 +108,61 @@ Result: clean before staging and commit.
 ## Concerns
 
 No automated-test or build concerns. The final cross-route manual theme matrix is owned by Task 6; it should confirm the intentionally fixed authored-content palettes remain identical in both themes.
+
+## Fix Round 1
+
+Base reviewed commit: `0ba63cb` (`style(theme): migrate canvas and document chrome`)
+
+Implementation commit: `style(theme): restore authored content boundaries` (repository HEAD)
+
+### Root cause and fixes
+
+The original migration correctly themed outer application shells but changed four authored-content boundaries that retain fixed content colors:
+
+- Added named, non-theme `--content-*` tokens for the existing text-document paper, readonly paper, default canvas-node surface, and rendered callout-body text values.
+- Restored `.text-doc-paper` and `.text-doc-paper.readonly` to their fixed dark content surfaces, preserving readable existing TipTap text, image-border, and link colors in both application themes.
+- Restored the default `.canvas-node` surface to its fixed authored-node value without changing any node model/default value or explicit node palette.
+- Restored `.node-content .callout-body` to its fixed rendered-markdown color.
+- Changed `.canvas-plugin-row .plugin-toggle.on` from `--ui-brand` to the high-contrast `--ui-text` role on its existing semantic active surface; toggle geometry is unchanged.
+
+No source-string regression test was added: CSS variable resolution is not an honest observable behavior in the current jsdom suites, and the rejected boundary test remains excluded. Existing canvas/document/plugin behavior tests protect the actual user workflows; the targeted source audit verifies the boundary classification.
+
+### Verification
+
+```bash
+npm run test:unit -- src/components/CanvasLoader.addMenu.test.ts src/components/CanvasLoader.board-preview.test.ts src/components/CanvasLoader.document.test.ts src/components/CanvasLoader.touch.test.ts
+```
+
+Result: 4 files, 27 tests passed.
+
+```bash
+npm run test:unit -- src/views/TextDocumentView.test.ts src/views/TextDocumentView.integration.test.ts src/views/PluginsView.test.ts
+```
+
+Result: 3 files, 17 tests passed.
+
+```bash
+npm run test:unit
+```
+
+Result: 44 files, 287 tests passed.
+
+```bash
+npm run build
+```
+
+Result: `vue-tsc -b && vite build` succeeded.
+
+```bash
+git diff --check
+rg -n -- "content-document-surface|content-canvas-node-surface|content-canvas-callout-text|canvas-plugin-row \\.plugin-toggle\\.on" src/style.css src/components/CanvasLoader.vue
+rg -n -- "node\\.style\\.fill\\s*=\\s*effectiveTheme|documentHtml\\s*=\\s*applyTheme|data-theme" src/components/CanvasLoader.vue src/views/HtmlDocumentView.vue src/views/TextDocumentView.vue
+```
+
+Result: patch is whitespace-clean; all four fixed content/contrast rules are present; no forbidden theme propagation matched.
+
+### Self-review
+
+- Outer `.text-doc-page`, topbar, toolbar, panels, controls, canvas selection chrome, and plugin surfaces remain semantic and theme-aware.
+- Only the fixed authored-content palette was restored; no serialized/exported HTML, iframe-authored HTML, TipTap content values, node model values, drawing values, or explicit node palette was changed.
+- The deferred encoded-chevron Minor was not touched.
