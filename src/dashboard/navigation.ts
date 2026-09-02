@@ -14,6 +14,7 @@ export interface DashboardFolderNavItem {
   role: 'owner' | 'read' | 'edit';
   technical: boolean;
   expanded: boolean;
+  hasChildren: boolean;
   draggable: boolean;
   dropActive: boolean;
   reorderTarget: boolean;

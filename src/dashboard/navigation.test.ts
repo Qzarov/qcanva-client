@@ -56,6 +56,7 @@ describe('dashboard navigation', () => {
       role: 'owner',
       technical: true,
       expanded: true,
+      hasChildren: false,
       draggable: false,
       dropActive: false,
       reorderTarget: false,

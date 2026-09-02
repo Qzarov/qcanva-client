@@ -14,6 +14,7 @@ const folders: DashboardFolderNavItem[] = [
     role: 'owner',
     technical: true,
     expanded: true,
+    hasChildren: false,
     draggable: false,
     dropActive: false,
     reorderTarget: false,
@@ -26,6 +27,7 @@ const folders: DashboardFolderNavItem[] = [
     role: 'owner',
     technical: false,
     expanded: true,
+    hasChildren: true,
     draggable: true,
     dropActive: false,
     reorderTarget: false,
@@ -38,6 +40,7 @@ const folders: DashboardFolderNavItem[] = [
     role: 'edit',
     technical: false,
     expanded: false,
+    hasChildren: false,
     draggable: false,
     dropActive: false,
     reorderTarget: false,
@@ -112,6 +115,32 @@ describe('DashboardSidebar', () => {
     expect(toggle.attributes('aria-expanded')).toBe('true');
     await toggle.trigger('click');
     expect(wrapper.emitted('toggle-folder')?.[0]).toEqual(['project']);
+  });
+
+  it('keeps a collapsed parent expandable when its children are not visible', async () => {
+    const wrapper = mountSidebar({
+      folders: [
+        {
+          id: 'collapsed-parent',
+          name: 'Collapsed parent',
+          parentId: null,
+          depth: 0,
+          role: 'owner',
+          technical: false,
+          expanded: false,
+          draggable: true,
+          dropActive: false,
+          reorderTarget: false,
+          hasChildren: true,
+        },
+      ],
+    });
+
+    const toggle = wrapper.get('[data-folder-toggle="collapsed-parent"]');
+    expect(toggle.attributes('aria-expanded')).toBe('false');
+
+    await toggle.trigger('click');
+    expect(wrapper.emitted('toggle-folder')?.[0]).toEqual(['collapsed-parent']);
   });
 
   it('forwards native drag events together with the folder id', async () => {

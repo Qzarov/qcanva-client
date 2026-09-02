@@ -71,7 +71,7 @@
             :style="folderIndent(folder.depth)"
           >
             <button
-              v-if="parentFolderIds.has(folder.id)"
+              v-if="folder.hasChildren"
               type="button"
               class="btn-ghost dashboard-sidebar-folder-toggle"
               :aria-label="folder.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
@@ -177,12 +177,6 @@ const topLevelItems = computed<Array<{
   { kind: 'interactive', label: t('interactiveTemplate'), icon: '▦' },
   { kind: 'public', label: t('public'), icon: '◎' },
 ]);
-
-const parentFolderIds = computed(() => new Set(
-  props.folders
-    .map((folder) => folder.parentId)
-    .filter((parentId): parentId is string => Boolean(parentId)),
-));
 
 const widthToggleLabel = computed(() => (
   props.widthState === 'collapsed' ? t('expandSidebar') : t('collapseSidebar')
