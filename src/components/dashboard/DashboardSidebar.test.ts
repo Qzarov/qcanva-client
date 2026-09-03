@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardFolderNavItem } from '../../dashboard/navigation';
 import DashboardSidebar from './DashboardSidebar.vue';
+
+vi.mock('vue-router', () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
+
+vi.mock('../../api/client', () => ({
+  clearToken: vi.fn(),
+  getCurrentUser: vi.fn(() => ({ id: 'user-1', email: 'admin@example.com', name: 'Admin' })),
+}));
 
 const folders: DashboardFolderNavItem[] = [
   {
@@ -61,6 +70,25 @@ function mountSidebar(props: Record<string, unknown> = {}, attachTo?: Element) {
       stubs: {
         LanguageToggle: true,
         AccountMenu: true,
+      },
+    },
+  });
+}
+
+function mountSidebarWithAccountMenu(props: Record<string, unknown> = {}, attachTo?: Element) {
+  return mount(DashboardSidebar, {
+    attachTo,
+    props: {
+      activeSection: { kind: 'home' },
+      widthState: 'expanded',
+      mobileOpen: true,
+      folders,
+      ...props,
+    },
+    global: {
+      stubs: {
+        LanguageToggle: true,
+        RouterLink: { template: '<a><slot /></a>' },
       },
     },
   });
@@ -209,5 +237,24 @@ describe('DashboardSidebar', () => {
 
     expect(document.activeElement).toBe(widthToggle);
     expect(document.activeElement).not.toBe(close);
+  });
+
+  it('loops focus around real visible account-menu controls and ignores hidden or roving-tabindex controls', async () => {
+    const wrapper = mountSidebarWithAccountMenu({}, document.body);
+    const close = wrapper.get('[data-sidebar-close]').element as HTMLButtonElement;
+    const widthToggle = wrapper.get('[data-sidebar-width-toggle]').element as HTMLButtonElement;
+
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    await wrapper.vm.$nextTick();
+    widthToggle.hidden = true;
+    const signOut = wrapper.get('[data-account-menu-sign-out]').element as HTMLButtonElement;
+
+    signOut.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+
+    close.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(signOut);
   });
 });

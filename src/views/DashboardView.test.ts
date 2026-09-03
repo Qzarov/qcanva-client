@@ -8,6 +8,7 @@ import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceF
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
+const SIDEBAR_DESKTOP_QUERY = '(min-width: 721px)';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
@@ -90,6 +91,44 @@ function mountDashboard(options: MountingOptions<any> = {}) {
       },
     },
   } as any);
+}
+
+function stubSidebarDesktopMedia(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const media = {
+    get matches() {
+      return matches;
+    },
+    media: SIDEBAR_DESKTOP_QUERY,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') listeners.add(listener as (event: MediaQueryListEvent) => void);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') listeners.delete(listener as (event: MediaQueryListEvent) => void);
+    }),
+    addListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
+    removeListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+    dispatch(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches: nextMatches, media: SIDEBAR_DESKTOP_QUERY } as MediaQueryListEvent));
+      window.dispatchEvent(new Event('resize'));
+    },
+  } as unknown as MediaQueryList & { dispatch(nextMatches: boolean): void };
+
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => {
+    if (query === SIDEBAR_DESKTOP_QUERY) return media;
+    return {
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    };
+  }));
+
+  return media;
 }
 
 function withDefaultFolders() {
@@ -373,6 +412,30 @@ describe('dashboard sidebar navigation', () => {
 
     expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('collapsed');
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    wrapper.unmount();
+  });
+
+  it('closes the mobile drawer through the cleanup path when the viewport becomes desktop', async () => {
+    const media = stubSidebarDesktopMedia(false);
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    media.dispatch(true);
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
+    expect(document.body.style.overflow).toBe('clip');
+    expect(wrapper.find('[data-sidebar-backdrop]').exists()).toBe(false);
+    expect(wrapper.get('.dashboard-sidebar').attributes('aria-modal')).toBeUndefined();
+    expect(document.activeElement).toBe(opener);
     wrapper.unmount();
   });
 

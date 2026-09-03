@@ -180,6 +180,18 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
+const isVisibleFocusable = (element: HTMLElement, boundary: HTMLElement) => {
+  if (element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
+  let current: HTMLElement | null = element;
+  while (current && current !== boundary) {
+    if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
+    const style = window.getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden') return false;
+    current = current.parentElement;
+  }
+  return true;
+};
+
 const topLevelItems = computed<Array<{
   kind: DashboardTopLevelSection;
   label: string;
@@ -208,7 +220,7 @@ const trapMobileFocus = (event: KeyboardEvent) => {
   const sidebar = sidebarRef.value;
   if (!sidebar) return;
   const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector))
-    .filter((element) => element.getAttribute('aria-hidden') !== 'true');
+    .filter((element) => isVisibleFocusable(element, sidebar));
   if (!focusable.length) {
     event.preventDefault();
     return;

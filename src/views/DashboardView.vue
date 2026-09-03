@@ -1034,6 +1034,8 @@ export default defineComponent({
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
     let previousBodyOverflow: string | null = null;
+    const SIDEBAR_DESKTOP_QUERY = '(min-width: 721px)';
+    let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -3014,10 +3016,50 @@ export default defineComponent({
       mobileSidebarOpen.value = false;
     };
 
+    const focusWithoutScroll = (element: HTMLElement) => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    };
+
     const restoreBodyOverflow = () => {
       if (typeof document === 'undefined' || previousBodyOverflow === null) return;
       document.body.style.overflow = previousBodyOverflow;
       previousBodyOverflow = null;
+    };
+
+    const getSidebarDesktopMedia = () => {
+      try {
+        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const closeMobileSidebarOnDesktop = () => {
+      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
+    };
+
+    const addSidebarDesktopListener = (media: MediaQueryList) => {
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof media.addListener === 'function') {
+        media.addListener(closeMobileSidebarOnDesktop);
+      }
+    };
+
+    const removeSidebarDesktopListener = () => {
+      if (!sidebarDesktopMedia) return;
+      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
+        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
+        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
+      }
+      sidebarDesktopMedia = null;
     };
 
     watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
@@ -3032,7 +3074,8 @@ export default defineComponent({
         document.body.style.overflow = 'hidden';
         await nextTick();
         if (!cancelled && mobileSidebarOpen.value) {
-          document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]')?.focus();
+          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
+          if (closeButton) focusWithoutScroll(closeButton);
         }
         return;
       }
@@ -3040,7 +3083,7 @@ export default defineComponent({
       restoreBodyOverflow();
       await nextTick();
       if (!cancelled && !mobileSidebarOpen.value && mobileSidebarOpener.value?.isConnected) {
-        mobileSidebarOpener.value.focus();
+        focusWithoutScroll(mobileSidebarOpener.value);
       }
     });
 
@@ -3133,10 +3176,16 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
+      sidebarDesktopMedia = getSidebarDesktopMedia();
+      if (sidebarDesktopMedia) {
+        addSidebarDesktopListener(sidebarDesktopMedia);
+        closeMobileSidebarOnDesktop();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
     onBeforeUnmount(() => {
+      removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
       restoreBodyOverflow();
     });
