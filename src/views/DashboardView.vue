@@ -1246,7 +1246,7 @@ export default defineComponent({
       ...template,
       type: 'interactive-template',
       folderId: template.folderId || null,
-      tags: [],
+      tags: normalizeTags(template.tags),
       pinned: false,
     });
 
@@ -1314,11 +1314,17 @@ export default defineComponent({
         ...(folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item: any) => `interactive-template:${item.id}`),
       ]),
     ));
-    const visibleInteractiveTemplateItems = computed(() =>
-      interactiveTemplateItems.value.filter(
+    const interactiveTemplateRecords = computed<InteractiveTemplateRecord[]>(() =>
+      interactiveTemplateItems.value.map(normalizeInteractiveTemplate),
+    );
+    const unfiledInteractiveTemplateItems = computed(() =>
+      interactiveTemplateRecords.value.filter(
         (item) => !placedResourceKeys.value.has(`interactive-template:${item.id}`),
       ),
     );
+    const visibleInteractiveTemplateItems = computed(() => sortFolderItems(
+      unfiledInteractiveTemplateItems.value.filter((item) => matchesFolderItem(item, t('interactiveTemplate'))),
+    ) as InteractiveTemplateRecord[]);
 
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
@@ -1360,6 +1366,9 @@ export default defineComponent({
       for (const document of publicTextDocuments.value) {
         addTags(document.tags, 'text-document');
       }
+      for (const template of interactiveTemplateRecords.value) {
+        addTags(template.tags, 'interactive-template');
+      }
       for (const folder of allResourceFolders.value) {
         for (const canvas of folder.items?.canvases || []) {
           addTags(normalizeTags(canvas.tags), 'canvas');
@@ -1369,6 +1378,9 @@ export default defineComponent({
         }
         for (const document of folder.items?.textDocuments || []) {
           addTags(normalizeTags(document.tags), 'text-document');
+        }
+        for (const template of folder.items?.interactiveTemplates || []) {
+          addTags(normalizeTags(template.tags), 'interactive-template');
         }
       }
       return Array.from(names).sort();
@@ -1486,7 +1498,7 @@ export default defineComponent({
         for (const node of nodes.slice().sort(bySortOrder)) {
           const children = childrenOf.get(node.id) || [];
           if (!hidden) {
-            ordered.push({ ...node, depth, hasChildren: children.length > 0 });
+            ordered.push({ ...node, depth, hasChildren: Boolean(node.hasChildren || children.length) });
           }
           walk(children, depth + 1, hidden || !isTreeExpanded(node.id));
         }
@@ -1495,23 +1507,53 @@ export default defineComponent({
       return ordered;
     };
 
-    const folderSummaries = computed<FolderSummary[]>(() => {
-      const folders = allResourceFolders.value
-      .map((folder) => {
+    const allFolderSummaries = computed<FolderSummary[]>(() => {
+      const parentIds = new Set(
+        allResourceFolders.value
+          .map((folder) => folder.parentId ?? null)
+          .filter((parentId): parentId is string => Boolean(parentId)),
+      );
+      return allResourceFolders.value.map((folder) => {
         const canvases = (folder.items?.canvases || folder.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
         const docs = (folder.items?.textDocuments || folder.textDocuments || []).map((item) => normalizeTextDocument({ ...item, folderId: folder.id }));
         const templates = (folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item) => normalizeInteractiveTemplate({ ...item, folderId: folder.id }));
-        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates].filter((item) => matchesFolderItem(item, folder.name)));
         return {
           ...folder,
-          items,
+          items: sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates]),
           canvasCount: canvases.length,
           htmlDocumentCount: htmlDocs.length,
           textDocumentCount: docs.length,
           interactiveTemplateCount: templates.length,
+          hasChildren: parentIds.has(folder.id),
         };
-      })
+      });
+    });
+
+    const legacyInboxSourceItems = computed<FolderItem[]>(() => [
+      ...unfiledCanvases.value,
+      ...unfiledHtmlDocuments.value,
+      ...unfiledTextDocuments.value,
+    ]);
+
+    const buildLegacyInboxFolder = (items: FolderItem[]): FolderSummary => ({
+      id: 'legacy-resource-inbox',
+      name: 'Inbox',
+      role: 'owner',
+      sortOrder: Number.MAX_SAFE_INTEGER,
+      canvasCount: unfiledCanvases.value.length,
+      htmlDocumentCount: unfiledHtmlDocuments.value.length,
+      textDocumentCount: unfiledTextDocuments.value.length,
+      interactiveTemplateCount: 0,
+      items,
+    });
+
+    const folderSummaries = computed<FolderSummary[]>(() => {
+      const folders = allFolderSummaries.value
+      .map((folder) => ({
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      }))
       .filter((folder) => {
         const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
@@ -1547,26 +1589,26 @@ export default defineComponent({
         }
       }
 
-      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
+      const fallbackSourceItems = legacyInboxSourceItems.value;
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
       if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
-        folders.push({
-          id: 'legacy-resource-inbox',
-          name: 'Inbox',
-          role: 'owner',
-          sortOrder: Number.MAX_SAFE_INTEGER,
-          canvasCount: unfiledCanvases.value.length,
-          htmlDocumentCount: unfiledHtmlDocuments.value.length,
-          textDocumentCount: unfiledTextDocuments.value.length,
-          interactiveTemplateCount: 0,
-          items: fallbackItems,
-        });
+        folders.push(buildLegacyInboxFolder(fallbackItems));
       }
       return buildFolderTree(folders);
     });
-    const activeFolder = computed(() =>
-      folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
-    );
+    const activeFolder = computed(() => {
+      const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
+      if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
+        return buildLegacyInboxFolder(
+          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox'))),
+        );
+      }
+      if (!folder) return null;
+      return {
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      };
+    });
     const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
       id: folder.id,
       name: folder.name,
@@ -1582,7 +1624,7 @@ export default defineComponent({
     })));
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
-      ...folderSummaries.value.flatMap((folder) => folder.items),
+      ...allFolderSummaries.value.flatMap((folder) => folder.items),
       ...own.value,
       ...shared.value,
       ...sharedHtmlDocuments.value,
@@ -1593,7 +1635,7 @@ export default defineComponent({
       ...unfiledCanvases.value,
       ...unfiledHtmlDocuments.value,
       ...unfiledTextDocuments.value,
-      ...visibleInteractiveTemplateItems.value.map(normalizeInteractiveTemplate),
+      ...unfiledInteractiveTemplateItems.value,
     ]);
     const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
       ...allDashboardResources.value,
@@ -2899,22 +2941,33 @@ export default defineComponent({
      * nested folder is hidden until its ancestors are expanded.
      */
     const restoreSelectedFolder = () => {
-      const isVisible = (id: string) =>
-        Boolean(id) && folderSummaries.value.some((folder) => folder.id === id);
-      if (isVisible(selectedFolderId.value)) return;
+      const isKnown = (id: string) =>
+        Boolean(id) && (
+          allResourceFolders.value.some((folder) => folder.id === id)
+          || (id === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length > 0)
+        );
+      const syncActiveFolderSection = () => {
+        if (activeSection.value.kind !== 'folder') return;
+        activeSection.value = selectedFolderId.value
+          ? { kind: 'folder', folderId: selectedFolderId.value }
+          : { kind: 'home' };
+      };
+      if (isKnown(selectedFolderId.value)) {
+        syncActiveFolderSection();
+        return;
+      }
 
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
       const remembered = readLastFolderId();
       if (remembered && known.has(remembered)) {
         expandAncestorsOf(remembered);
-        // Expanding changes the tree, so re-check that the folder actually shows.
-        if (isVisible(remembered)) {
-          selectedFolderId.value = remembered;
-          return;
-        }
+        selectedFolderId.value = remembered;
+        syncActiveFolderSection();
+        return;
       }
-      const fallback = folderSummaries.value[0]?.id || '';
+      const fallback = allFolderSummaries.value[0]?.id || (legacyInboxSourceItems.value.length ? 'legacy-resource-inbox' : '');
       selectedFolderId.value = fallback;
+      syncActiveFolderSection();
       // A stale pointer is cleared so it cannot keep losing the race with the
       // fallback on every load.
       if (remembered && !known.has(remembered)) writeLastFolderId('');

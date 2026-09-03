@@ -131,6 +131,66 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
   });
 
+  it('keeps a nested folder open when its parent is collapsed in the sidebar', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-c', name: 'Archive', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectFolder('folder-c');
+    await nextTick();
+    vm.toggleTreeExpanded('folder-b');
+    await nextTick();
+
+    expect(wrapper.find('[data-dashboard-folder="folder-c"]').exists()).toBe(false);
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
+    expect(vm.selectedFolderId).toBe('folder-c');
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+  });
+
+  it('keeps a searched-out active folder mounted with filtered contents', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectFolder('folder-b');
+    vm.searchQuery = 'missing title';
+    await nextTick();
+
+    expect(wrapper.find('[data-dashboard-folder="folder-b"]').exists()).toBe(false);
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+    expect(vm.selectedFolderId).toBe('folder-b');
+    expect(vm.activeFolder.items).toEqual([]);
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+  });
+
+  it('reconciles the active folder destination after the selected folder is deleted', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-b');
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-c', name: 'Archive', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+
+    await vm.load({ showLoading: false });
+    await nextTick();
+
+    expect(vm.selectedFolderId).toBe('folder-c');
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+  });
+
   it('does not render the old in-content folder navigation', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
@@ -158,6 +218,53 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-section="interactive-templates"]').exists()).toBe(true);
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(false);
     expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
+  });
+
+  it('filters interactive templates by search and resource type', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [
+        { id: 'template-alpha', title: 'Alpha board', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'template-beta', title: 'Beta roadmap', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-02T00:00:00.000Z' },
+      ],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectDashboardSection({ kind: 'interactive' });
+    vm.searchQuery = 'beta';
+    await nextTick();
+
+    expect(wrapper.find('[data-template-resource="template-alpha"]').exists()).toBe(false);
+    expect(wrapper.find('[data-template-resource="template-beta"]').exists()).toBe(true);
+
+    vm.contentFilter = 'canvas';
+    await nextTick();
+
+    expect(wrapper.find('[data-template-resource="template-beta"]').exists()).toBe(false);
+  });
+
+  it('filters and sorts interactive templates by the shared toolbar state', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [
+        { id: 'template-alpha', title: 'Alpha board', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z', tags: [{ name: 'mvp', color: '#50d1b2' }] } as any,
+        { id: 'template-beta', title: 'Beta roadmap', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-02T00:00:00.000Z', tags: [{ name: 'mvp', color: '#50d1b2' }] } as any,
+        { id: 'template-gamma', title: 'Gamma chores', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-03T00:00:00.000Z', tags: [{ name: 'ops', color: '#94a3b8' }] } as any,
+      ],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectDashboardSection({ kind: 'interactive' });
+    vm.selectedTag = 'mvp';
+    vm.sortMode = 'title-desc';
+    await nextTick();
+
+    expect(wrapper.findAll('[data-template-resource]').map((card: any) => card.attributes('data-template-resource'))).toEqual([
+      'template-beta',
+      'template-alpha',
+    ]);
   });
 
   it('maps a collapsed parent as expandable even while its children are hidden', async () => {
