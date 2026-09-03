@@ -49,3 +49,37 @@ describe('light semantic text contrast', () => {
     expect(contrast(token(':root', 'content-preview-muted'), '#234636')).toBeGreaterThanOrEqual(4.5);
   });
 });
+
+describe('code block syntax colours stay readable and theme-independent', () => {
+  // The document paper (--content-document-surface) never follows the
+  // app's light/dark toggle - it is only ever defined once, under plain
+  // :root. Syntax colours sit on that same fixed paper, so they must be
+  // fixed too: this both checks contrast on the one background they will
+  // ever render against, and guards that nobody accidentally adds a
+  // data-theme or prefers-color-scheme override for them later (which
+  // would make them invisible in whichever mode wasn't tested by eye).
+  it.each([
+    'content-code-comment',
+    'content-code-keyword',
+    'content-code-string',
+    'content-code-number',
+    'content-code-function',
+    'content-code-punctuation',
+  ])('%s is at least WCAG AA on the fixed document paper', (name) => {
+    expect(contrast(token(':root', name), token(':root', 'content-document-surface'))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('defines each syntax colour exactly once, under plain :root', () => {
+    for (const name of [
+      'content-code-comment',
+      'content-code-keyword',
+      'content-code-string',
+      'content-code-number',
+      'content-code-function',
+      'content-code-punctuation',
+    ]) {
+      const occurrences = css.match(new RegExp(`--${name}:\\s*#[0-9a-fA-F]{6}`, 'g')) ?? [];
+      expect(occurrences.length).toBe(1);
+    }
+  });
+});

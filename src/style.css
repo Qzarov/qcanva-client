@@ -82,6 +82,17 @@
   /* Authored document and canvas-node content keeps its fixed palette. */
   --content-document-surface: #191b20;
   --content-document-surface-readonly: #17191d;
+  /* Code block syntax colours: the document paper never follows the app's
+     light/dark toggle (see the note above), so these are fixed too - each
+     figure is its contrast ratio against the fixed #191b20 paper. */
+  --content-code-surface: rgba(255, 255, 255, 0.04);
+  --content-code-border: rgba(255, 255, 255, 0.08);
+  --content-code-comment: #8b949e; /* 5.60:1 */
+  --content-code-keyword: #ff7b72; /* 6.83:1 */
+  --content-code-string: #a5d6ff; /* 11.21:1 */
+  --content-code-number: #f2cc60; /* 11.14:1 */
+  --content-code-function: #d2a8ff; /* 8.85:1 */
+  --content-code-punctuation: #c9d1d9; /* 11.16:1 */
   --content-canvas-node-surface: #262626;
   --content-canvas-node-border: rgba(255, 255, 255, 0.1);
   --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
@@ -5009,6 +5020,59 @@ body {
 
 .text-doc-paper .ProseMirror-focused {
   outline: none;
+}
+
+/* CodeBlockLowlight. The document paper keeps its fixed dark palette across
+   both app themes (see the --content-document-* note near the token
+   definitions), so these colours are fixed too rather than drawn from the
+   light/dark --ui-* tokens - a token that flips to a dark colour in light
+   mode would go invisible against a paper that never lightens. */
+.text-doc-paper .ProseMirror pre {
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-code-border);
+  border-radius: var(--radius-sm);
+  background: var(--content-code-surface);
+  overflow-x: auto;
+}
+
+.text-doc-paper .ProseMirror pre code {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+
+.text-doc-paper .ProseMirror pre .hljs-comment,
+.text-doc-paper .ProseMirror pre .hljs-quote {
+  color: var(--content-code-comment);
+  font-style: italic;
+}
+
+.text-doc-paper .ProseMirror pre .hljs-keyword,
+.text-doc-paper .ProseMirror pre .hljs-selector-tag {
+  color: var(--content-code-keyword);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-string,
+.text-doc-paper .ProseMirror pre .hljs-regexp {
+  color: var(--content-code-string);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-number,
+.text-doc-paper .ProseMirror pre .hljs-literal {
+  color: var(--content-code-number);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-title {
+  color: var(--content-code-function);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-punctuation {
+  color: var(--content-code-punctuation);
 }
 
 .text-doc-history-preview {

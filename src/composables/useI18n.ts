@@ -77,6 +77,7 @@ export const messages = {
     documentUpdated: 'Документ обновлён', refreshingSaved: 'Обновляем сохранённую версию…',
     failedLoadDocuments: 'Не удалось загрузить документы', failedCreateDocument: 'Не удалось создать документ',
     failedUploadImage: 'Не удалось загрузить изображение', noImageUrlFromServer: 'Сервер не вернул ссылку на изображение',
+    codeBlock: 'Код',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -128,6 +129,7 @@ export const messages = {
     documentUpdated: 'Document updated', refreshingSaved: 'Refreshing the saved version…',
     failedLoadDocuments: 'Failed to load documents', failedCreateDocument: 'Failed to create document',
     failedUploadImage: 'Failed to upload image', noImageUrlFromServer: 'Server did not return an image link',
+    codeBlock: 'Code',
   },
 } as const;
 

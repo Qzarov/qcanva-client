@@ -164,6 +164,7 @@
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">List</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">Tasks</button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">{{ t('codeBlock') }}</button>
         <button class="btn-ghost btn-sm" :disabled="uploadingImage" :title="t('addPhoto')" @click="openImagePicker">
           {{ uploadingImage ? t('loading') : t('photo') }}
         </button>
@@ -199,6 +200,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { EditorContent, useEditor } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { lowlight } from '../text-documents/code-highlighting';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
 import { isRenderableHref } from '../documents/link-policy';
@@ -349,7 +352,11 @@ export default defineComponent({
     const editor = useEditor({
       editable: true,
       extensions: [
-        StarterKit.configure({ history: false }),
+        // codeBlock: false disables StarterKit's own code block node so
+        // CodeBlockLowlight (added below) is the only node registered for
+        // "codeBlock" - having both would register the name twice.
+        StarterKit.configure({ history: false, codeBlock: false }),
+        CodeBlockLowlight.configure({ lowlight }),
         Underline,
         // A collaborator's Yjs update reaches this editor without passing the
         // backend's renderer, so the href filter has to live here too.
