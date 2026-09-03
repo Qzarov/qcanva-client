@@ -3,6 +3,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 
@@ -146,6 +147,9 @@ beforeEach(() => {
   canvasFixture.folderId = null;
   canvasFixture.role = 'owner';
   textDocumentCreate.mockResolvedValue({ id: 'text-doc-new', title: 'Untitled document' });
+  // This suite asserts on the Russian button copy below, so pin the locale
+  // rather than depend on whatever the environment's default happens to be.
+  useI18n().setLocale('ru');
 });
 
 async function mountAndOpenPicker() {

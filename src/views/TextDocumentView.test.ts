@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TextDocumentView from "./TextDocumentView.vue";
+import { useI18n } from "../composables/useI18n";
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -125,7 +126,16 @@ describe("TextDocumentView", () => {
       await flushPromises();
 
       const back = wrapper.find("header .btn-ghost");
+      // The label follows the locale now; it used to be hardcoded Russian for
+      // every user, which is exactly what this assertion was pinning.
+      const { t, setLocale } = useI18n();
+      expect(back.text()).toBe(t("back"));
+      setLocale("ru");
+      await flushPromises();
       expect(back.text()).toBe("Назад");
+      setLocale("en");
+      await flushPromises();
+      expect(back.text()).toBe("Back");
       expect(back.attributes("href")).toBeUndefined();
     });
 
@@ -135,7 +145,7 @@ describe("TextDocumentView", () => {
       await flushPromises();
 
       const back = wrapper.find("header .btn-ghost");
-      expect(back.text()).toBe("Назад к канвасу");
+      expect(back.text()).toBe(useI18n().t("backToCanvas"));
       expect(back.attributes("to")).toBe("/canvas/canvas-77");
     });
   });
@@ -268,6 +278,9 @@ describe("TextDocumentView", () => {
     });
 
     it("offers a photo button in the toolbar for editors", async () => {
+      // The button copy below is the Russian wording, so pin the locale
+      // rather than depend on whatever the environment's default happens to be.
+      useI18n().setLocale("ru");
       const wrapper = mount(TextDocumentView);
       await flushPromises();
       attachEditor();

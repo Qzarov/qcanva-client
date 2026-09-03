@@ -21,7 +21,12 @@ const initialLocale = (): UiLocale => {
 };
 
 const locale = ref<UiLocale>(initialLocale());
-const messages = {
+/**
+ * Exported so a test can assert the two maps stay parallel and that no value
+ * sits in the wrong language — the `t` signature only enforces that keys
+ * match, which is a compile-time check on shape, not on content.
+ */
+export const messages = {
   ru: {
     language: 'Язык', english: 'English', russian: 'Русский',
     login: 'Войти', register: 'Регистрация', signOut: 'Выйти', settings: 'Настройки', plugins: 'Плагины',
@@ -32,6 +37,7 @@ const messages = {
     recents: 'Недавние', groups: 'Группы', home: 'Главная', folders: 'Папки', sharedWithMe: 'Доступные мне', public: 'Публичные',
     refresh: 'Обновить', share: 'Доступ', rename: 'Переименовать', delete: 'Удалить',
     loading: 'Загрузка…', updatingList: 'Обновляем список…', dashboard: 'Дашборд',
+    back: 'Назад', backToCanvas: 'Назад к канвасу',
     publicResources: 'Публичные материалы доступны без регистрации.', interactiveTemplate: 'Интерактивный шаблон',
     accessRequests: 'Запросы доступа', approve: 'Одобрить', decline: 'Отклонить', owner: 'Владелец', pinned: 'Закреплено',
     duplicate: 'Дублировать', moveToGroup: 'Переместить в группу', editTags: 'Изменить теги', pin: 'Закрепить', unpin: 'Открепить', transferOwnership: 'Передать владельца',
@@ -48,6 +54,30 @@ const messages = {
     collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
     collapseSidebar: 'Свернуть боковую панель', expandSidebar: 'Развернуть боковую панель', openNavigation: 'Открыть навигацию', closeNavigation: 'Закрыть навигацию',
     theme: 'Тема', themeSystem: 'Системная', themeLight: 'Светлая', themeDark: 'Тёмная',
+    chat: 'Чат', history: 'История', access: 'Доступ', keyboardShortcuts: 'Горячие клавиши', shortcuts: 'Быстрые клавиши',
+    addTextBlock: 'Добавить текстовый блок', addImageBtn: 'Добавить изображение', resetView: 'Сбросить вид', exportCanvas: 'Экспорт .canvas',
+    canvasPlugins: 'Плагины канваса', noPluginsForCanvas: 'Для этого канваса пока нет доступных плагинов.',
+    pluginEnabled: 'включён', pluginDisabled: 'выключен', disablePlugin: 'Выключить плагин', enablePlugin: 'Включить плагин', pluginOn: 'Вкл', pluginOff: 'Выкл',
+    addCharacterCard: 'Добавить карточку персонажа', importFromTemplates: 'Импортировать из шаблонов', loadingTemplates: 'Загружаем шаблоны…', noTemplatesInDashboard: 'В дашборде пока нет шаблонов.',
+    background: 'Фон', text: 'Текст', border: 'Рамка', layers: 'Слои', nodeActions: 'Действия',
+    solid: 'Сплошная', gradient: 'Градиент', transparent: 'Прозрачная', withBackground: 'С фоном', round: 'Круглая', rectangular: 'Прямоугольная',
+    color: 'Цвет', firstLine: 'Первая строка', firstLineShort: '1-я строка', bodyText: 'Основной текст', style: 'Стиль', width: 'Толщина',
+    layerUp: 'Слой выше', layerDown: 'Слой ниже', bringToFront: 'На передний план', sendToBack: 'На задний план',
+    selectedObjects: 'Выбрано объектов', imageName: 'Название изображения', undo: 'Назад', redo: 'Вперед',
+    unlockPosition: 'Разблокировать позицию', lockPosition: 'Заблокировать позицию', show: 'Показать', hide: 'Скрыть',
+    alignment: 'Выравнивание', backgroundColor: 'Цвет фона', borderColor: 'Цвет рамки', textColor: 'Цвет текста',
+    drawingTools: 'Инструменты рисования', toolSelect: 'Выбор', toolPen: 'Перо', toolHighlighter: 'Маркер', toolRect: 'Прямоугольник',
+    toolEllipse: 'Эллипс', toolLine: 'Линия', toolArrow: 'Стрелка', toolEraser: 'Ластик',
+    dice: 'Кубики', diceCount: 'Кол-во', diceModifier: 'Мод.', rollDice: 'Бросить',
+    insertDocument: 'Вставить документ', textDocsFilter: 'Текстовые', searchDocuments: 'Поиск документов...',
+    newTextDocHint: 'Создать новый текстовый документ и добавить его на канвас', creating: 'Создаём...', newDocumentBtn: '+ Новый документ', documentsNotFound: 'Документы не найдены',
+    tapNodeToAttach: 'Коснитесь ноды, чтобы прикрепить её к сообщению', addPhoto: 'Добавить фотографию', photo: 'Фото',
+    failedLoadTemplates: 'Не удалось загрузить шаблоны', boardAddedToCanvas: 'Доска добавлена на канвас', cardAddedToCanvas: 'Карточка добавлена на канвас',
+    failedUpdatePlugin: 'Не удалось обновить плагин', failedRefreshCached: 'Не удалось обновить. Показана сохранённая версия.',
+    documentUpdated: 'Документ обновлён', refreshingSaved: 'Обновляем сохранённую версию…',
+    failedLoadDocuments: 'Не удалось загрузить документы', failedCreateDocument: 'Не удалось создать документ',
+    failedUploadImage: 'Не удалось загрузить изображение', noImageUrlFromServer: 'Сервер не вернул ссылку на изображение',
+    codeBlock: 'Код',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -59,6 +89,7 @@ const messages = {
     recents: 'Recent', groups: 'Groups', home: 'Home', folders: 'Folders', sharedWithMe: 'Shared with me', public: 'Public',
     refresh: 'Refresh', share: 'Share', rename: 'Rename', delete: 'Delete',
     loading: 'Loading…', updatingList: 'Updating list…', dashboard: 'Dashboard',
+    back: 'Back', backToCanvas: 'Back to canvas',
     publicResources: 'Public resources available without registration.', interactiveTemplate: 'Interactive template',
     accessRequests: 'Access requests', approve: 'Approve', decline: 'Decline', owner: 'Owner', pinned: 'Pinned',
     duplicate: 'Duplicate', moveToGroup: 'Move to group', editTags: 'Edit tags', pin: 'Pin', unpin: 'Unpin', transferOwnership: 'Transfer ownership',
@@ -75,6 +106,30 @@ const messages = {
     collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
     collapseSidebar: 'Collapse sidebar', expandSidebar: 'Expand sidebar', openNavigation: 'Open navigation', closeNavigation: 'Close navigation',
     theme: 'Theme', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark',
+    chat: 'Chat', history: 'History', access: 'Access', keyboardShortcuts: 'Keyboard Shortcuts', shortcuts: 'Shortcuts',
+    addTextBlock: 'Add text block', addImageBtn: 'Add image', resetView: 'Reset view', exportCanvas: 'Export .canvas',
+    canvasPlugins: 'Canvas plugins', noPluginsForCanvas: 'No plugins available for this canvas yet.',
+    pluginEnabled: 'enabled', pluginDisabled: 'disabled', disablePlugin: 'Disable plugin', enablePlugin: 'Enable plugin', pluginOn: 'On', pluginOff: 'Off',
+    addCharacterCard: 'Add character card', importFromTemplates: 'Import from templates', loadingTemplates: 'Loading templates…', noTemplatesInDashboard: 'No templates in the dashboard yet.',
+    background: 'Background', text: 'Text', border: 'Border', layers: 'Layers', nodeActions: 'Actions',
+    solid: 'Solid', gradient: 'Gradient', transparent: 'Transparent', withBackground: 'With background', round: 'Round', rectangular: 'Rectangular',
+    color: 'Color', firstLine: 'First line', firstLineShort: 'Line 1', bodyText: 'Body text', style: 'Style', width: 'Width',
+    layerUp: 'Bring forward', layerDown: 'Send backward', bringToFront: 'Bring to front', sendToBack: 'Send to back',
+    selectedObjects: 'Selected objects', imageName: 'Image name', undo: 'Back', redo: 'Forward',
+    unlockPosition: 'Unlock position', lockPosition: 'Lock position', show: 'Show', hide: 'Hide',
+    alignment: 'Alignment', backgroundColor: 'Background color', borderColor: 'Border color', textColor: 'Text color',
+    drawingTools: 'Drawing tools', toolSelect: 'Select', toolPen: 'Pen', toolHighlighter: 'Highlighter', toolRect: 'Rectangle',
+    toolEllipse: 'Ellipse', toolLine: 'Line', toolArrow: 'Arrow', toolEraser: 'Eraser',
+    dice: 'Dice', diceCount: 'Count', diceModifier: 'Mod.', rollDice: 'Roll',
+    insertDocument: 'Insert document', textDocsFilter: 'Text', searchDocuments: 'Search documents...',
+    newTextDocHint: 'Create a new text document and add it to the canvas', creating: 'Creating...', newDocumentBtn: '+ New document', documentsNotFound: 'No documents found',
+    tapNodeToAttach: 'Tap a node to attach it to the message', addPhoto: 'Add photo', photo: 'Photo',
+    failedLoadTemplates: 'Failed to load templates', boardAddedToCanvas: 'Board added to canvas', cardAddedToCanvas: 'Card added to canvas',
+    failedUpdatePlugin: 'Failed to update plugin', failedRefreshCached: 'Failed to refresh. Showing the saved version.',
+    documentUpdated: 'Document updated', refreshingSaved: 'Refreshing the saved version…',
+    failedLoadDocuments: 'Failed to load documents', failedCreateDocument: 'Failed to create document',
+    failedUploadImage: 'Failed to upload image', noImageUrlFromServer: 'Server did not return an image link',
+    codeBlock: 'Code',
   },
 } as const;
 

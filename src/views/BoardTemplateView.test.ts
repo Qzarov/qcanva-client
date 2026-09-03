@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { interactiveTemplates } from '../api/client';
+import { useI18n } from '../composables/useI18n';
 import BoardTemplateView from './BoardTemplateView.vue';
 
 const connect = vi.fn();
@@ -23,13 +24,18 @@ const routeState = vi.hoisted(() => ({
   query: {} as Record<string, unknown>,
 }));
 
-vi.mock('vue-router', async () => {
-  const vue = await vi.importActual<typeof import('vue')>('vue');
+vi.mock('vue-router', () => {
   return {
-    useRoute: () => {
-      routeState.params = vue.reactive({ id: 'template-1' });
-      return { params: routeState.params, query: routeState.query };
-    },
+    // Stable WITHIN a test, fresh BETWEEN tests — the way the real `useRoute`
+    // behaves. This used to build a new reactive `params` on every call, so it
+    // only worked while something happened to call `useRoute()` exactly once:
+    // a second caller replaced the object the component was already watching,
+    // and a later `routeState.params.id = ...` mutated an object nobody was
+    // subscribed to. Sharing one object forever is the opposite trap, because
+    // these tests never unmount: components from earlier tests keep watching
+    // it and answer a route change by consuming this test's queued mock
+    // values. `beforeEach` therefore hands out a fresh object per test.
+    useRoute: () => ({ params: routeState.params, query: routeState.query }),
   };
 });
 
@@ -69,6 +75,7 @@ describe('BoardTemplateView', () => {
     socketState.pendingCount.value = 0;
     socketState.syncStatus.value = 'idle';
     routeState.query = {};
+    routeState.params = reactive({ id: 'template-1' });
     vi.mocked(interactiveTemplates.permissions).mockResolvedValue([]);
   });
 
@@ -94,7 +101,16 @@ describe('BoardTemplateView', () => {
 
     const back = wrapper.getComponent({ name: 'RouterLink' });
     expect(back.props('to')).toBe('/canvas/canvas-77');
-    expect(back.text()).toBe('← Назад');
+    // The label follows the chosen locale. It used to be a hardcoded Russian
+    // string for every user, which is what these assertions were pinning.
+    const { t, setLocale } = useI18n();
+    expect(back.text()).toBe(`← ${t('backToCanvas')}`);
+    setLocale('ru');
+    await flushPromises();
+    expect(back.text()).toBe('← Назад к канвасу');
+    setLocale('en');
+    await flushPromises();
+    expect(back.text()).toBe('← Back to canvas');
   });
 
   it('returns to the dashboard from the Back button without a canvas origin', async () => {
@@ -118,7 +134,9 @@ describe('BoardTemplateView', () => {
 
     const back = wrapper.getComponent({ name: 'RouterLink' });
     expect(back.props('to')).toEqual({ name: 'dashboard', query: { folder: 'folder-4' } });
-    expect(back.text()).toBe('← Назад');
+    // Locale-following is proved in the test above; asserting through `t`
+    // here keeps this case from re-pinning one language.
+    expect(back.text()).toBe(`← ${useI18n().t('back')}`);
   });
 
   it('loads and connects the collaborative editor for a board template', async () => {
