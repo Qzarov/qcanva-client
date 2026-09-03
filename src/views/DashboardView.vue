@@ -886,7 +886,7 @@
 import { FileCode2, FilePlus2, FileText, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
@@ -898,6 +898,7 @@ import {
   type DashboardSection,
   type SidebarWidthState,
 } from '../dashboard/navigation';
+import { DASHBOARD_FOLDER_QUERY } from '../composables/useResourceBackTarget';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -995,6 +996,7 @@ const genTagId = () => Math.random().toString(36).slice(2, 10);
 export default defineComponent({
   components: { DashboardSidebar, LanguageToggle },
   setup() {
+    const route = useRoute();
     const router = useRouter();
     const { t, locale } = useI18n();
     const admin = isAdmin();
@@ -2960,6 +2962,15 @@ export default defineComponent({
           ? { kind: 'folder', folderId: selectedFolderId.value }
           : { kind: 'home' };
       };
+      const requestedFolder = route.query?.[DASHBOARD_FOLDER_QUERY];
+      const requestedFolderId = typeof requestedFolder === 'string' ? requestedFolder : '';
+      if (isKnown(requestedFolderId)) {
+        selectedFolderId.value = requestedFolderId;
+        activeSection.value = { kind: 'folder', folderId: requestedFolderId };
+        expandAncestorsOf(requestedFolderId);
+        writeLastFolderId(requestedFolderId);
+        return;
+      }
       if (isKnown(selectedFolderId.value)) {
         syncActiveFolderSection();
         return;

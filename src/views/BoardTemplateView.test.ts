@@ -99,7 +99,7 @@ describe('BoardTemplateView', () => {
 
   it('returns to the dashboard from the Back button without a canvas origin', async () => {
     vi.mocked(interactiveTemplates.get).mockResolvedValue({
-      id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', folderId: 'folder-4', data: {}, createdAt: '', updatedAt: '',
     });
     requestSnapshot.mockResolvedValue(null);
 
@@ -117,7 +117,7 @@ describe('BoardTemplateView', () => {
     await flushPromises();
 
     const back = wrapper.getComponent({ name: 'RouterLink' });
-    expect(back.props('to')).toEqual({ name: 'dashboard' });
+    expect(back.props('to')).toEqual({ name: 'dashboard', query: { folder: 'folder-4' } });
     expect(back.text()).toBe('← Назад');
   });
 

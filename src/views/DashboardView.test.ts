@@ -9,10 +9,11 @@ import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
+const dashboardRoute = { query: {} as Record<string, unknown> };
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
-  useRoute: () => ({ query: {} }),
+  useRoute: () => dashboardRoute,
 }));
 
 vi.mock('../api/client', () => ({
@@ -145,6 +146,7 @@ function withDefaultFolders() {
 describe('dashboard sidebar navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    dashboardRoute.query = {};
     localStorage.clear();
     withDefaultFolders();
     vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
@@ -181,6 +183,15 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+  });
+
+  it('opens the folder requested by a resource back link', async () => {
+    dashboardRoute.query = { folder: 'folder-b' };
+    const wrapper = mountDashboard();
+    await flushPromises();
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');

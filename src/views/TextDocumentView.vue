@@ -221,7 +221,8 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const { backTarget } = useResourceBackTarget();
+    const folderId = ref<string | null>(null);
+    const { backTarget } = useResourceBackTarget(folderId);
     const id = route.params.id as string;
     const resolvedId = ref(id);
     const { show: showToast } = useToast();
@@ -412,6 +413,7 @@ export default defineComponent({
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title || 'Untitled document';
+        folderId.value = res.document.folderId || null;
         savedTitle.value = title.value;
         role.value = res.role;
         revision.value = res.document.revision ?? 0;
@@ -648,6 +650,7 @@ export default defineComponent({
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title || 'Untitled document';
+        folderId.value = res.document.folderId || null;
         savedTitle.value = title.value;
         role.value = res.role;
         revision.value = res.document.revision ?? 0;

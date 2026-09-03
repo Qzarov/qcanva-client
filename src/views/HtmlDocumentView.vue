@@ -286,7 +286,8 @@ export default defineComponent({
   setup() {
     const route = useRoute();
     const router = useRouter();
-    const { backTarget } = useResourceBackTarget();
+    const folderId = ref<string | null>(null);
+    const { backTarget } = useResourceBackTarget(folderId);
     // The URL param may be a UUID id or a human-readable slug. `resolvedId`
     // holds the real document id after load (used for the WS room + mutations).
     const id = route.params.id as string;
@@ -378,6 +379,7 @@ export default defineComponent({
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;
+        folderId.value = res.document.folderId || null;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
         revision.value = res.document.revision ?? 0;
@@ -812,6 +814,7 @@ export default defineComponent({
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;
+        folderId.value = res.document.folderId || null;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
         revision.value = res.document.revision ?? 0;

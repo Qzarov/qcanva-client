@@ -49,13 +49,13 @@
           </div>
         </div>
 
-        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">← Dashboard</router-link>
+        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
       </div>
     </div>
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
-        <router-link :to="{ name: 'dashboard' }" class="topbar-back">
+        <router-link :to="backTarget.to" class="topbar-back">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </router-link>
         <input
@@ -915,7 +915,7 @@ import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
-import { CANVAS_ORIGIN_QUERY } from '../composables/useResourceBackTarget';
+import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
 import CanvasLoader from '../components/CanvasLoader.vue';
 
 interface CanvasChangePayload {
@@ -1879,6 +1879,7 @@ export default defineComponent({
 
     /** Folder the canvas itself lives in, so a document created here joins it. */
     const canvasFolderId = ref<string | null>(null);
+    const { backTarget } = useResourceBackTarget(canvasFolderId);
 
     const creatingDocument = ref(false);
 
@@ -2002,7 +2003,7 @@ export default defineComponent({
     };
 
     return {
-      route, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
+      route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
       loading, error, accessDenied, cacheStatus, requestingAccess, accessRequestSent, requestedRole,
       resourcePassword, checkingResourcePassword,

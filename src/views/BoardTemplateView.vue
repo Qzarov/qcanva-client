@@ -64,9 +64,9 @@ import InteractiveTemplateView from './InteractiveTemplateView.vue';
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
 const route = useRoute();
-const backTarget = computed(() => resolveBackTarget(route.query?.[CANVAS_ORIGIN_QUERY]));
 const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
+const backTarget = computed(() => resolveBackTarget(route.query?.[CANVAS_ORIGIN_QUERY], template.value?.folderId));
 const templateType = ref<InteractiveTemplate['templateType'] | null>(null);
 const loading = ref(true);
 const loadError = ref('');
