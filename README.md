@@ -54,6 +54,23 @@ npm run dev
 npm run build
 ```
 
+## Production deploy
+
+На сервере фронтенд-копия находится в `/var/www/canvas.qzarov.pro/front/repo`.
+Запускайте из неё:
+
+```bash
+bash scripts/deploy-production.sh
+```
+
+Скрипт обновляет `dev`, запускает тесты и сборку, затем атомарно переключает
+путь nginx `/var/www/canvas.qzarov.pro/front/dist` на новый release. Хранятся
+только активная и одна предыдущая сборки. Для отката:
+
+```bash
+bash scripts/deploy-production.sh rollback
+```
+
 ## Android
 
 Android-приложение собрано на Capacitor и использует тот же Vue-код, что и веб-версия. Для синхронизации веб-ресурсов с нативным проектом:
