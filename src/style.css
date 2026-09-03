@@ -312,7 +312,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  overflow: hidden;
+  /* The account popover belongs to the rail but may extend over the central pane. */
+  overflow: visible;
   padding: 16px 12px 12px;
   border-right: 1px solid var(--ui-border);
   background: var(--ui-surface-solid);
@@ -337,10 +338,13 @@ body {
   border: 1px solid color-mix(in srgb, var(--ui-brand) 48%, var(--ui-border));
   border-radius: 11px;
   background: var(--ui-brand-soft);
-  color: var(--ui-accent-strong);
-  font-size: 16px;
-  font-weight: 800;
-  line-height: 1;
+  overflow: hidden;
+}
+.dashboard-sidebar-brand img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .dashboard-sidebar-header > .dashboard-sidebar-label {
   min-width: 0;
@@ -426,8 +430,12 @@ body {
   flex: 0 0 auto;
   border-radius: 8px;
   color: currentColor;
-  font-size: 16px;
   line-height: 1;
+}
+.dashboard-sidebar-icon > svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.9;
 }
 .dashboard-sidebar-label,
 .dashboard-sidebar-folder-name {
@@ -481,11 +489,11 @@ body {
   gap: 2px;
   padding-inline-start: var(--sidebar-folder-offset);
 }
-.dashboard-sidebar-folder-toggle span {
+.dashboard-sidebar-folder-toggle .lucide {
   display: block;
   transition: transform var(--transition-fast);
 }
-.dashboard-sidebar-folder-toggle span.collapsed {
+.dashboard-sidebar-folder-toggle .lucide.collapsed {
   transform: rotate(-90deg);
 }
 .dashboard-sidebar-folder-toggle-spacer {
@@ -521,6 +529,10 @@ body {
 .dashboard-sidebar-footer .account-menu-trigger {
   width: 100%;
   min-width: 0;
+}
+.dashboard-sidebar-footer .account-menu {
+  position: relative;
+  z-index: 3;
 }
 .dashboard-sidebar .dashboard-sidebar-width-toggle {
   width: 100%;
@@ -673,6 +685,7 @@ body {
 }
 .dashboard-brand { display: flex; align-items: center; gap: 10px; }
 .dashboard-brand > img { width: 34px; height: 34px; border-radius: 10px; object-fit: cover; }
+.dashboard-auth-header { display: none; }
 .app-main {
   min-height: 0;
   overflow-y: auto;
@@ -777,8 +790,8 @@ body {
   height: 18px;
   border-radius: 5px;
   background: var(--ui-surface-subtle);
-  font-size: 12px;
   line-height: 1;
+  stroke-width: 1.9;
 }
 .btn-primary .menu-icon {
   background: color-mix(in srgb, var(--ui-brand-on) 14%, transparent);
@@ -2354,6 +2367,14 @@ body {
 }
 
 @media (max-width: 768px) {
+
+  .dashboard-auth-header {
+    display: block;
+    padding: 10px 14px;
+  }
+  .dashboard-auth-header .app-header-inner {
+    justify-content: flex-start;
+  }
 
   .dashboard-app-shell,
   .dashboard-app-shell.sidebar-collapsed {

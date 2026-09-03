@@ -31,17 +31,9 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-    <header class="app-header">
+    <header v-if="!isLoggedIn" class="app-header">
       <div class="app-header-inner">
         <div class="dashboard-brand">
-          <button
-            v-if="isLoggedIn"
-            type="button"
-            class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
-            :aria-label="t('openNavigation')"
-            data-mobile-sidebar-open
-            @click.stop="openMobileSidebar"
-          >☰</button>
           <img src="/qcanva-logo.png" alt="QCanva" />
           <div>
             <h1>QCanva</h1>
@@ -55,6 +47,17 @@
             <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
         </div>
+      </div>
+    </header>
+    <header v-else class="app-header dashboard-auth-header">
+      <div class="app-header-inner">
+        <button
+          type="button"
+          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
+          :aria-label="t('openNavigation')"
+          data-mobile-sidebar-open
+          @click.stop="openMobileSidebar"
+        ><Menu :size="20" aria-hidden="true" /></button>
       </div>
     </header>
 
@@ -74,15 +77,15 @@
     >
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
-          <span class="menu-icon">#</span>
+          <Tags class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('manageTags') }}</span>
         </button>
         <button class="btn-ghost" @click.stop="importFile()">
-          <span class="menu-icon">⇧</span>
+          <Upload class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('import') }}</span>
         </button>
         <router-link v-if="admin" to="/admin" class="btn-ghost">
-          <span class="menu-icon">◎</span>
+          <ShieldCheck class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('admin') }}</span>
         </router-link>
       </div>
@@ -91,28 +94,28 @@
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
             <button class="btn-primary" @click.stop="toggleNewMenu">
-              <span class="menu-icon">+</span>
+              <Plus class="menu-icon" :size="17" aria-hidden="true" />
               <span>{{ t('new') }}</span>
             </button>
             <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
               <button class="card-menu-item" @click="createCanvas">
-                <span class="menu-icon">▦</span>
+                <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('newCanvas') }}</span>
               </button>
               <button class="card-menu-item" @click="createHtmlDocument">
-                <span class="menu-icon">▤</span>
+                <FileCode2 class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('htmlDocument') }}</span>
               </button>
               <button class="card-menu-item" @click="createTextDocument">
-                <span class="menu-icon">¶</span>
+                <FileText class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('document') }}</span>
               </button>
               <button class="card-menu-item" @click="openInteractiveTemplatePicker">
-                <span class="menu-icon">⚄</span>
+                <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('interactiveTemplate') }}</span>
               </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
-                <span class="menu-icon">□</span>
+                <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('group') }}</span>
               </button>
             </div>
@@ -880,6 +883,7 @@
 </template>
 
 <script lang="ts">
+import { FileCode2, FilePlus2, FileText, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';

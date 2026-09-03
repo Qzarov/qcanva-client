@@ -47,13 +47,13 @@
       </div>
       <nav class="account-menu-links" :aria-label="userLabel">
         <router-link to="/plugins" class="account-menu-item" @click="close(false)">
-          <span aria-hidden="true">◇</span>{{ t('plugins') }}
+          <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
         </router-link>
         <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
-          <span aria-hidden="true">⚙</span>{{ t('settings') }}
+          <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
         </router-link>
         <button type="button" class="account-menu-item account-menu-sign-out" data-account-menu-sign-out @click="signOut">
-          <span aria-hidden="true">↪</span>{{ t('signOut') }}
+          <LogOut :size="17" aria-hidden="true" />{{ t('signOut') }}
         </button>
       </nav>
     </div>
@@ -61,6 +61,7 @@
 </template>
 
 <script setup lang="ts">
+import { LogOut, Puzzle, Settings } from '@lucide/vue';
 import { computed, nextTick, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';

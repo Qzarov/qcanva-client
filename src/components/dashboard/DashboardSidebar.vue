@@ -18,7 +18,9 @@
     @keydown.tab="trapMobileFocus"
   >
     <header class="dashboard-sidebar-header">
-      <span class="dashboard-sidebar-brand" aria-hidden="true">Q</span>
+      <span class="dashboard-sidebar-brand">
+        <img src="/qcanva-logo.png" alt="QCanva" />
+      </span>
       <span class="dashboard-sidebar-label">QCanva</span>
       <LanguageToggle />
       <button
@@ -29,7 +31,7 @@
         data-sidebar-close
         @click="emit('close-mobile')"
       >
-        <span aria-hidden="true">×</span>
+        <X :size="18" aria-hidden="true" />
       </button>
     </header>
 
@@ -47,7 +49,7 @@
           :data-dashboard-section="item.kind"
           @click="emit('select', { kind: item.kind })"
         >
-          <span class="dashboard-sidebar-icon" aria-hidden="true">{{ item.icon }}</span>
+          <span class="dashboard-sidebar-icon" aria-hidden="true"><component :is="item.icon" :size="18" /></span>
           <span class="dashboard-sidebar-label">{{ item.label }}</span>
         </button>
       </nav>
@@ -63,7 +65,7 @@
             data-sidebar-create-folder
             @click="emit('create-folder')"
           >
-            <span aria-hidden="true">+</span>
+            <Plus :size="17" aria-hidden="true" />
           </button>
         </div>
 
@@ -83,7 +85,7 @@
               :data-folder-toggle="folder.id"
               @click.stop="emit('toggle-folder', folder.id)"
             >
-              <span :class="{ collapsed: !folder.expanded }" aria-hidden="true">▾</span>
+              <ChevronDown :class="{ collapsed: !folder.expanded }" :size="16" aria-hidden="true" />
             </button>
             <span v-else class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
 
@@ -109,7 +111,10 @@
               @dragleave="emit('folder-drag-leave', $event, folder.id)"
               @drop.prevent="emit('folder-drop', $event, folder.id)"
             >
-              <span class="dashboard-sidebar-icon" aria-hidden="true">{{ folder.technical ? '⚙' : '◇' }}</span>
+              <span class="dashboard-sidebar-icon" aria-hidden="true">
+                <FolderCog v-if="folder.technical" :size="18" />
+                <Folder v-else :size="18" />
+              </span>
               <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.name }}</span>
             </button>
           </div>
@@ -127,7 +132,8 @@
         data-sidebar-width-toggle
         @click="emit('toggle-width')"
       >
-        <span aria-hidden="true">{{ widthState === 'collapsed' ? '›' : '‹' }}</span>
+        <PanelLeftOpen v-if="widthState === 'collapsed'" :size="18" aria-hidden="true" />
+        <PanelLeftClose v-else :size="18" aria-hidden="true" />
         <span class="dashboard-sidebar-label">{{ widthToggleLabel }}</span>
       </button>
     </footer>
@@ -135,7 +141,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, type CSSProperties } from 'vue';
+import { ChevronDown, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import { computed, ref, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
@@ -195,12 +202,12 @@ const isVisibleFocusable = (element: HTMLElement, boundary: HTMLElement) => {
 const topLevelItems = computed<Array<{
   kind: DashboardTopLevelSection;
   label: string;
-  icon: string;
+  icon: Component;
 }>>(() => [
-  { kind: 'home', label: t('home'), icon: '⌂' },
-  { kind: 'shared', label: t('sharedWithMe'), icon: '↗' },
-  { kind: 'interactive', label: t('interactiveTemplate'), icon: '▦' },
-  { kind: 'public', label: t('public'), icon: '◎' },
+  { kind: 'home', label: t('home'), icon: House },
+  { kind: 'shared', label: t('sharedWithMe'), icon: Users },
+  { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
+  { kind: 'public', label: t('public'), icon: Globe2 },
 ]);
 
 const widthToggleLabel = computed(() => (

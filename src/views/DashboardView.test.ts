@@ -155,6 +155,14 @@ describe('dashboard sidebar navigation', () => {
     document.body.innerHTML = '';
   });
 
+  it('keeps the authenticated QCanva brand in the sidebar instead of duplicating it in the dashboard header', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.find('.app-header .dashboard-brand').exists()).toBe(false);
+    expect(wrapper.get('.dashboard-sidebar .dashboard-sidebar-brand img').attributes('alt')).toBe('QCanva');
+  });
+
   it('starts on Home and shows one central section at a time', async () => {
     const wrapper = mountDashboard();
     await flushPromises();

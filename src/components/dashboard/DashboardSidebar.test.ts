@@ -106,6 +106,9 @@ describe('DashboardSidebar', () => {
   it('renders the four top-level destinations and the complete folder tree', () => {
     const wrapper = mountSidebar();
 
+    expect(wrapper.get('.dashboard-sidebar-brand img').attributes('src')).toBe('/qcanva-logo.png');
+    expect(wrapper.find('[data-dashboard-section="home"] svg.lucide-house').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-section="shared"] svg.lucide-users').exists()).toBe(true);
     expect(wrapper.findAll('[data-dashboard-section]')).toHaveLength(4);
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-section="home"]').text()).toContain('Home');
