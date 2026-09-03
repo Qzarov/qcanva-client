@@ -21,7 +21,12 @@ const initialLocale = (): UiLocale => {
 };
 
 const locale = ref<UiLocale>(initialLocale());
-const messages = {
+/**
+ * Exported so a test can assert the two maps stay parallel and that no value
+ * sits in the wrong language — the `t` signature only enforces that keys
+ * match, which is a compile-time check on shape, not on content.
+ */
+export const messages = {
   ru: {
     language: 'Язык', english: 'English', russian: 'Русский',
     login: 'Войти', register: 'Регистрация', signOut: 'Выйти', settings: 'Настройки', plugins: 'Плагины',
