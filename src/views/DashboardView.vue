@@ -1032,6 +1032,8 @@ export default defineComponent({
     };
     const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
     const mobileSidebarOpen = ref(false);
+    const mobileSidebarOpener = ref<HTMLElement | null>(null);
+    let previousBodyOverflow: string | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -2998,13 +3000,49 @@ export default defineComponent({
       writeSidebarWidthState(storage(), sidebarWidthState.value);
     };
 
-    const openMobileSidebar = () => {
+    const openMobileSidebar = (event?: Event) => {
+      const eventTarget = event?.currentTarget;
+      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
+        ? eventTarget
+        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
       mobileSidebarOpen.value = true;
     };
 
     const closeMobileSidebar = () => {
       mobileSidebarOpen.value = false;
     };
+
+    const restoreBodyOverflow = () => {
+      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = null;
+    };
+
+    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
+      if (typeof document === 'undefined') return;
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+
+      if (open) {
+        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        await nextTick();
+        if (!cancelled && mobileSidebarOpen.value) {
+          document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]')?.focus();
+        }
+        return;
+      }
+
+      restoreBodyOverflow();
+      await nextTick();
+      if (!cancelled && !mobileSidebarOpen.value && mobileSidebarOpener.value?.isConnected) {
+        mobileSidebarOpener.value.focus();
+      }
+    });
 
     const onAppClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -3098,7 +3136,10 @@ export default defineComponent({
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
-    onBeforeUnmount(() => window.removeEventListener('resize', refreshOverflowIndicators));
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', refreshOverflowIndicators);
+      restoreBodyOverflow();
+    });
 
     return {
       admin,

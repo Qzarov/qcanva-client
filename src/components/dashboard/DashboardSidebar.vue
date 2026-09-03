@@ -8,10 +8,14 @@
   ></div>
 
   <aside
+    ref="sidebarRef"
     class="dashboard-sidebar"
     :class="{ collapsed: widthState === 'collapsed', 'mobile-open': mobileOpen }"
     :aria-label="t('dashboard')"
+    :role="mobileOpen ? 'dialog' : undefined"
+    :aria-modal="mobileOpen ? 'true' : undefined"
     @keydown.esc.stop="emit('close-mobile')"
+    @keydown.tab="trapMobileFocus"
   >
     <header class="dashboard-sidebar-header">
       <span class="dashboard-sidebar-brand" aria-hidden="true">Q</span>
@@ -131,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, type CSSProperties } from 'vue';
+import { computed, ref, type CSSProperties } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
@@ -166,6 +170,15 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const foldersHeadingId = 'dashboard-sidebar-folders-heading';
+const sidebarRef = ref<HTMLElement | null>(null);
+const focusableSelector = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
 
 const topLevelItems = computed<Array<{
   kind: DashboardTopLevelSection;
@@ -189,4 +202,26 @@ const isActive = (section: DashboardSection) => (
 const folderIndent = (depth: number): CSSProperties => ({
   '--folder-depth': Math.max(0, depth),
 } as CSSProperties);
+
+const trapMobileFocus = (event: KeyboardEvent) => {
+  if (!props.mobileOpen) return;
+  const sidebar = sidebarRef.value;
+  if (!sidebar) return;
+  const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector))
+    .filter((element) => element.getAttribute('aria-hidden') !== 'true');
+  if (!focusable.length) {
+    event.preventDefault();
+    return;
+  }
+  const first = focusable[0]!;
+  const last = focusable[focusable.length - 1]!;
+  const active = document.activeElement;
+  if (event.shiftKey && (active === first || !sidebar.contains(active))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || !sidebar.contains(active))) {
+    event.preventDefault();
+    first.focus();
+  }
+};
 </script>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardFolderNavItem } from '../../dashboard/navigation';
 import DashboardSidebar from './DashboardSidebar.vue';
@@ -47,8 +47,9 @@ const folders: DashboardFolderNavItem[] = [
   },
 ];
 
-function mountSidebar(props: Record<string, unknown> = {}) {
+function mountSidebar(props: Record<string, unknown> = {}, attachTo?: Element) {
   return mount(DashboardSidebar, {
+    attachTo,
     props: {
       activeSection: { kind: 'home' },
       widthState: 'expanded',
@@ -68,6 +69,10 @@ function mountSidebar(props: Record<string, unknown> = {}) {
 describe('DashboardSidebar', () => {
   beforeEach(() => {
     useI18n().setLocale('en');
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
   });
 
   it('renders the four top-level destinations and the complete folder tree', () => {
@@ -169,7 +174,7 @@ describe('DashboardSidebar', () => {
   });
 
   it('requests width changes and closes mobile navigation from every component-owned exit', async () => {
-    const wrapper = mountSidebar({ mobileOpen: true });
+    const wrapper = mountSidebar({ mobileOpen: true }, document.body);
 
     await wrapper.get('[data-sidebar-width-toggle]').trigger('click');
     expect(wrapper.emitted('toggle-width')).toHaveLength(1);
@@ -178,5 +183,31 @@ describe('DashboardSidebar', () => {
     await wrapper.get('[data-sidebar-close]').trigger('click');
     await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Escape' });
     expect(wrapper.emitted('close-mobile')).toHaveLength(3);
+  });
+
+  it('loops focus within the open mobile drawer in both directions', async () => {
+    const wrapper = mountSidebar({ mobileOpen: true }, document.body);
+    const close = wrapper.get('[data-sidebar-close]').element as HTMLButtonElement;
+    const widthToggle = wrapper.get('[data-sidebar-width-toggle]').element as HTMLButtonElement;
+
+    widthToggle.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(close);
+
+    close.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(widthToggle);
+  });
+
+  it('does not trap Tab while the sidebar is in its desktop presentation', async () => {
+    const wrapper = mountSidebar({ mobileOpen: false }, document.body);
+    const close = wrapper.get('[data-sidebar-close]').element as HTMLButtonElement;
+    const widthToggle = wrapper.get('[data-sidebar-width-toggle]').element as HTMLButtonElement;
+
+    widthToggle.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab' });
+
+    expect(document.activeElement).toBe(widthToggle);
+    expect(document.activeElement).not.toBe(close);
   });
 });

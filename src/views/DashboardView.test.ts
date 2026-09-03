@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 
 import { nextTick } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount, flushPromises, type MountingOptions } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { useI18n } from '../composables/useI18n';
@@ -79,14 +79,17 @@ vi.mock('../api/client', () => ({
   },
 }));
 
-function mountDashboard() {
+function mountDashboard(options: MountingOptions<any> = {}) {
   return mount(DashboardView, {
+    ...options,
     global: {
+      ...options.global,
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
+        ...options.global?.stubs,
       },
     },
-  });
+  } as any);
 }
 
 function withDefaultFolders() {
@@ -106,6 +109,11 @@ describe('dashboard sidebar navigation', () => {
     localStorage.clear();
     withDefaultFolders();
     vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
+  });
+
+  afterEach(() => {
+    document.body.style.overflow = '';
+    document.body.innerHTML = '';
   });
 
   it('starts on Home and shows one central section at a time', async () => {
@@ -290,6 +298,82 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
     await wrapper.get('[data-sidebar-width-toggle]').trigger('click');
     expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('expanded');
+  });
+
+  it('opens the drawer with focus inside and closes it from the explicit close button', async () => {
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-close]').element);
+
+    await wrapper.get('[data-sidebar-close]').trigger('click');
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('clip');
+    expect(document.activeElement).toBe(opener);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['backdrop', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('[data-sidebar-backdrop]').trigger('click');
+    }],
+    ['Escape', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Escape' });
+    }],
+    ['destination selection', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+    }],
+  ])('restores scroll and opener focus after closing from %s', async (_label, closeDrawer) => {
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    await closeDrawer(wrapper);
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('');
+    expect(document.activeElement).toBe(opener);
+    wrapper.unmount();
+  });
+
+  it('restores body scroll if the dashboard unmounts with the drawer open', async () => {
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    wrapper.unmount();
+
+    expect(document.body.style.overflow).toBe('clip');
+  });
+
+  it('keeps the remembered desktop width while opening and selecting in the mobile drawer', async () => {
+    localStorage.setItem('qcanva:dashboard-sidebar:v1', 'collapsed');
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await nextTick();
+
+    expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('collapsed');
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    wrapper.unmount();
   });
 
   it('forwards folder drag events to the existing reorder behavior', async () => {
