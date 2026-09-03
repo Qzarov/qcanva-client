@@ -93,6 +93,25 @@
   --content-code-number: #f2cc60; /* 11.14:1 */
   --content-code-function: #d2a8ff; /* 8.85:1 */
   --content-code-punctuation: #c9d1d9; /* 11.16:1 */
+  /* Callout variants inside an authored document. Fixed, like the code block
+     colours above and for the same reason: .text-doc-paper never follows the
+     app's light/dark toggle, so a token that flips to a dark ink in light mode
+     would go invisible on a paper that stays #191b20. The themed contexts that
+     DO follow the toggle (the history preview) draw the --ui-* variant tokens
+     instead - see .text-doc-history-preview aside further down. Each contrast
+     figure is the accent against the fixed #191b20 paper. */
+  --content-callout-info-accent: #53dfdd; /* 8.94:1 */
+  --content-callout-info-surface: rgba(83, 223, 221, 0.1);
+  --content-callout-info-border: rgba(83, 223, 221, 0.4);
+  --content-callout-warning-accent: #e0de71; /* 11.12:1 */
+  --content-callout-warning-surface: rgba(224, 222, 113, 0.1);
+  --content-callout-warning-border: rgba(224, 222, 113, 0.4);
+  --content-callout-success-accent: #6fdc8c; /* 9.51:1 */
+  --content-callout-success-surface: rgba(111, 220, 140, 0.1);
+  --content-callout-success-border: rgba(111, 220, 140, 0.4);
+  --content-callout-danger-accent: #ff8a8f; /* 7.55:1 */
+  --content-callout-danger-surface: rgba(255, 138, 143, 0.1);
+  --content-callout-danger-border: rgba(255, 138, 143, 0.4);
   --content-canvas-node-surface: #262626;
   --content-canvas-node-border: rgba(255, 255, 255, 0.1);
   --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
@@ -5075,12 +5094,160 @@ body {
   color: var(--content-code-punctuation);
 }
 
+/* The callout block.
+   Two contexts, deliberately different token sets:
+   1. .text-doc-paper - the editing surface, whose background is fixed dark in
+      both app themes (see --content-document-surface), so it uses the fixed
+      --content-callout-* tokens.
+   2. .text-doc-history-preview and any other themed surface rendering the
+      stored html - these DO follow the theme selector, so they draw the
+      semantic --ui-<variant>-* tokens, which are already defined for light and
+      for dark and therefore need no colour written twice here. */
+.text-doc-paper .ProseMirror aside {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-callout-info-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--content-callout-info-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='warning'] {
+  border-color: var(--content-callout-warning-border);
+  background: var(--content-callout-warning-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='success'] {
+  border-color: var(--content-callout-success-border);
+  background: var(--content-callout-success-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='danger'] {
+  border-color: var(--content-callout-danger-border);
+  background: var(--content-callout-danger-surface);
+}
+
+/* The icon is node-view chrome, never document content: it must not take the
+   caret, and it must not be draggable out of the block. */
+.text-doc-callout-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.72em;
+  user-select: none;
+  color: var(--content-callout-info-accent);
+}
+
+aside[data-variant='warning'] > .text-doc-callout-icon {
+  color: var(--content-callout-warning-accent);
+}
+
+aside[data-variant='success'] > .text-doc-callout-icon {
+  color: var(--content-callout-success-accent);
+}
+
+aside[data-variant='danger'] > .text-doc-callout-icon {
+  color: var(--content-callout-danger-accent);
+}
+
+.text-doc-callout-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.text-doc-callout-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.text-doc-callout-body > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Toolbar affordance. Inserting a callout is one button; the four variant
+   buttons appear only while the caret is inside one. A slash menu is separate
+   work. */
+.text-doc-callout-variant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-doc-callout-variant-icon {
+  display: inline-flex;
+}
+
+.text-doc-callout-variant-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text-doc-callout-variant-btn[data-variant='info'] .text-doc-callout-variant-icon {
+  color: var(--ui-info-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='warning'] .text-doc-callout-variant-icon {
+  color: var(--ui-warning-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='success'] .text-doc-callout-variant-icon {
+  color: var(--ui-success-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='danger'] .text-doc-callout-variant-icon {
+  color: var(--ui-danger-foreground);
+}
+
 .text-doc-history-preview {
   height: 100%;
   overflow: auto;
   padding: 28px;
   background: var(--ui-surface);
   color: var(--ui-text);
+}
+
+/* This surface DOES follow the theme selector, so the callout draws the
+   semantic --ui-<variant>-* tokens, which carry a light and a dark value
+   already. No icon here: the stored html carries only data-variant, by design
+   (an inline svg per callout would bloat every stored document), so the
+   accent border is what tells the variants apart in a read-only preview. */
+.text-doc-history-preview aside {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-info);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--ui-info-soft);
+}
+
+.text-doc-history-preview aside[data-variant='warning'] {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-soft);
+}
+
+.text-doc-history-preview aside[data-variant='success'] {
+  border-color: var(--ui-success);
+  background: var(--ui-success-soft);
+}
+
+.text-doc-history-preview aside[data-variant='danger'] {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+}
+
+.text-doc-history-preview aside > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-history-preview aside > :last-child {
+  margin-bottom: 0;
 }
 
 .text-doc-page .btn-ghost { color: var(--ui-text-secondary); }

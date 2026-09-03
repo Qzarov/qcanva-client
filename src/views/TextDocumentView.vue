@@ -168,6 +168,21 @@
         <button class="btn-ghost btn-sm" :disabled="uploadingImage" :title="t('addPhoto')" @click="openImagePicker">
           {{ uploadingImage ? t('loading') : t('photo') }}
         </button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('callout') }" :title="t('callout')" @click="editor?.chain().focus().toggleCallout().run()">{{ t('callout') }}</button>
+        <template v-if="editor?.isActive('callout')">
+          <button
+            v-for="variant in calloutVariants"
+            :key="variant.name"
+            class="btn-ghost btn-sm text-doc-callout-variant-btn"
+            :class="{ active: editor?.isActive('callout', { variant: variant.name }) }"
+            :data-variant="variant.name"
+            :title="variant.label"
+            @click="editor?.chain().focus().setCalloutVariant(variant.name).run()"
+          >
+            <span class="text-doc-callout-variant-icon" v-html="variant.icon"></span>
+            <span class="text-doc-callout-variant-label">{{ variant.label }}</span>
+          </button>
+        </template>
       </div>
       <input
         ref="imageInput"
@@ -208,6 +223,8 @@ import { isRenderableHref } from '../documents/link-policy';
 import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
+import { Callout, calloutIconSvg } from '../text-documents/callout';
+import { CALLOUT_VARIANTS } from '../documents/document-nodes';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
@@ -232,6 +249,21 @@ export default defineComponent({
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t } = useI18n();
+
+    /**
+     * The four callout variants for the toolbar: names come from the shared
+     * node inventory (so this list cannot claim a variant the backend would
+     * bound away) and the labels from i18n. The icon is the same inline
+     * Lucide-style svg the node view draws, so the button shows the glyph the
+     * block will get.
+     */
+    const calloutVariants = computed(() =>
+      CALLOUT_VARIANTS.map((name) => ({
+        name,
+        label: t(`callout${name.charAt(0).toUpperCase()}${name.slice(1)}` as 'calloutInfo'),
+        icon: calloutIconSvg(name),
+      })),
+    );
 
     const ydoc = new Y.Doc();
     const awarenessStates = new Map<number, Record<string, unknown>>();
@@ -369,6 +401,7 @@ export default defineComponent({
         TaskItem.configure({ nested: true }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
+        Callout,
         Collaboration.configure({ document: ydoc }),
         CollaborationCursor.configure({
           provider: awarenessProvider,
@@ -690,6 +723,7 @@ export default defineComponent({
 
     return {
       t,
+      calloutVariants,
       backTarget,
       imageInput,
       uploadingImage,

@@ -78,6 +78,8 @@ export const messages = {
     failedLoadDocuments: 'Не удалось загрузить документы', failedCreateDocument: 'Не удалось создать документ',
     failedUploadImage: 'Не удалось загрузить изображение', noImageUrlFromServer: 'Сервер не вернул ссылку на изображение',
     codeBlock: 'Код',
+    callout: 'Выноска', calloutInfo: 'Информация', calloutWarning: 'Предупреждение',
+    calloutSuccess: 'Успех', calloutDanger: 'Опасность',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -130,6 +132,8 @@ export const messages = {
     failedLoadDocuments: 'Failed to load documents', failedCreateDocument: 'Failed to create document',
     failedUploadImage: 'Failed to upload image', noImageUrlFromServer: 'Server did not return an image link',
     codeBlock: 'Code',
+    callout: 'Callout', calloutInfo: 'Info', calloutWarning: 'Warning',
+    calloutSuccess: 'Success', calloutDanger: 'Danger',
   },
 } as const;
 
