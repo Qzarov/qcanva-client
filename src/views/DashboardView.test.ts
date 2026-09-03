@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { nextTick } from 'vue';
-import { mount, flushPromises } from '@vue/test-utils';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mount, flushPromises, type MountingOptions } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
+const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
@@ -70,6 +71,7 @@ vi.mock('../api/client', () => ({
     move: vi.fn().mockResolvedValue({ id: 'canvas-1', folderId: 'folder-b' }),
     permissions: vi.fn().mockResolvedValue([{ id: 'perm-1', userId: 'user-2', role: 'read', user: { email: 'reader@example.com' } }]),
     rename: vi.fn(),
+    reorder: vi.fn().mockResolvedValue({ updated: 3 }),
     revoke: vi.fn().mockResolvedValue({ revoked: true }),
     share: vi.fn().mockResolvedValue({ id: 'perm-2' }),
   },
@@ -78,19 +80,428 @@ vi.mock('../api/client', () => ({
   },
 }));
 
-function mountDashboard() {
+function mountDashboard(options: MountingOptions<any> = {}) {
   return mount(DashboardView, {
+    ...options,
     global: {
+      ...options.global,
       stubs: {
         RouterLink: { template: '<a><slot /></a>' },
+        ...options.global?.stubs,
       },
     },
-  });
+  } as any);
 }
+
+function stubSidebarDesktopMedia(initialMatches = false) {
+  let matches = initialMatches;
+  const listeners = new Set<(event: MediaQueryListEvent) => void>();
+  const media = {
+    get matches() {
+      return matches;
+    },
+    media: SIDEBAR_DESKTOP_QUERY,
+    addEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') listeners.add(listener as (event: MediaQueryListEvent) => void);
+    }),
+    removeEventListener: vi.fn((type: string, listener: EventListener) => {
+      if (type === 'change') listeners.delete(listener as (event: MediaQueryListEvent) => void);
+    }),
+    addListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.add(listener)),
+    removeListener: vi.fn((listener: (event: MediaQueryListEvent) => void) => listeners.delete(listener)),
+    dispatch(nextMatches: boolean) {
+      matches = nextMatches;
+      listeners.forEach((listener) => listener({ matches: nextMatches, media: SIDEBAR_DESKTOP_QUERY } as MediaQueryListEvent));
+      window.dispatchEvent(new Event('resize'));
+    },
+  } as unknown as MediaQueryList & { dispatch(nextMatches: boolean): void };
+
+  vi.stubGlobal('matchMedia', vi.fn((query: string) => {
+    if (query === SIDEBAR_DESKTOP_QUERY) return media;
+    return {
+      matches: false,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+    };
+  }));
+
+  return media;
+}
+
+function withDefaultFolders() {
+  vi.mocked(resourceFolders.list).mockResolvedValue({
+    own: [
+      { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [{ id: 'canvas-1', title: 'Canvas 1', folderId: 'folder-a' }], htmlDocuments: [] },
+      { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [{ id: 'doc-1', title: 'Doc 1', folderId: 'folder-b' }] },
+      { id: 'folder-c', name: 'Archive', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+    ],
+    shared: [],
+  } as never);
+}
+
+describe('dashboard sidebar navigation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    withDefaultFolders();
+    vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
+  });
+
+  afterEach(() => {
+    document.body.style.overflow = '';
+    document.body.innerHTML = '';
+  });
+
+  it('starts on Home and shows one central section at a time', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('[data-dashboard-view="home"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
+
+    await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+
+    expect(wrapper.get('[data-dashboard-view="shared"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="home"]').exists()).toBe(false);
+  });
+
+  it('opens a selected folder in the central pane', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+  });
+
+  it('keeps a nested folder open when its parent is collapsed in the sidebar', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-c', name: 'Archive', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectFolder('folder-c');
+    await nextTick();
+    vm.toggleTreeExpanded('folder-b');
+    await nextTick();
+
+    expect(wrapper.find('[data-dashboard-folder="folder-c"]').exists()).toBe(false);
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
+    expect(vm.selectedFolderId).toBe('folder-c');
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+  });
+
+  it('keeps a searched-out active folder mounted with filtered contents', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectFolder('folder-b');
+    vm.searchQuery = 'missing title';
+    await nextTick();
+
+    expect(wrapper.find('[data-dashboard-folder="folder-b"]').exists()).toBe(false);
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+    expect(vm.selectedFolderId).toBe('folder-b');
+    expect(vm.activeFolder.items).toEqual([]);
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+  });
+
+  it('reconciles the active folder destination after the selected folder is deleted', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-b');
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-c', name: 'Archive', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+
+    await vm.load({ showLoading: false });
+    await nextTick();
+
+    expect(vm.selectedFolderId).toBe('folder-c');
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-c' });
+    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
+  });
+
+  it('does not render the old in-content folder navigation', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.find('.dashboard-folder-nav').exists()).toBe(false);
+  });
+
+  it('keeps shared, interactive, and public resources in separate destinations', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{
+        id: 'template-1',
+        title: 'MVP board',
+        templateType: 'trello-board',
+        data: {},
+        role: 'owner',
+        createdAt: '',
+        updatedAt: '',
+      }],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+
+    expect(wrapper.find('[data-section="interactive-templates"]').exists()).toBe(true);
+    expect(wrapper.find('[data-section="shared"]').exists()).toBe(false);
+    expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
+  });
+
+  it('filters interactive templates by search and resource type', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [
+        { id: 'template-alpha', title: 'Alpha board', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'template-beta', title: 'Beta roadmap', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-02T00:00:00.000Z' },
+      ],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectDashboardSection({ kind: 'interactive' });
+    vm.searchQuery = 'beta';
+    await nextTick();
+
+    expect(wrapper.find('[data-template-resource="template-alpha"]').exists()).toBe(false);
+    expect(wrapper.find('[data-template-resource="template-beta"]').exists()).toBe(true);
+
+    vm.contentFilter = 'canvas';
+    await nextTick();
+
+    expect(wrapper.find('[data-template-resource="template-beta"]').exists()).toBe(false);
+  });
+
+  it('filters and sorts interactive templates by the shared toolbar state', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [
+        { id: 'template-alpha', title: 'Alpha board', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-01T00:00:00.000Z', tags: [{ name: 'mvp', color: '#50d1b2' }] } as any,
+        { id: 'template-beta', title: 'Beta roadmap', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-02T00:00:00.000Z', tags: [{ name: 'mvp', color: '#50d1b2' }] } as any,
+        { id: 'template-gamma', title: 'Gamma chores', templateType: 'trello-board', data: {}, role: 'owner', createdAt: '', updatedAt: '2026-01-03T00:00:00.000Z', tags: [{ name: 'ops', color: '#94a3b8' }] } as any,
+      ],
+    });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectDashboardSection({ kind: 'interactive' });
+    vm.selectedTag = 'mvp';
+    vm.sortMode = 'title-desc';
+    await nextTick();
+
+    expect(wrapper.findAll('[data-template-resource]').map((card: any) => card.attributes('data-template-resource'))).toEqual([
+      'template-beta',
+      'template-alpha',
+    ]);
+  });
+
+  it('maps a collapsed parent as expandable even while its children are hidden', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'parent', name: 'Parent', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'child', name: 'Child', role: 'owner', parentId: 'parent', canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.find('[data-dashboard-folder="child"]').exists()).toBe(false);
+    expect(wrapper.find('[data-folder-toggle="parent"]').exists()).toBe(true);
+  });
+
+  it('restores and persists the desktop sidebar width', async () => {
+    localStorage.setItem('qcanva:dashboard-sidebar:v1', 'collapsed');
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    await wrapper.get('[data-sidebar-width-toggle]').trigger('click');
+    expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('expanded');
+  });
+
+  it('opens the drawer with focus inside and closes it from the explicit close button', async () => {
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('hidden');
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-close]').element);
+
+    await wrapper.get('[data-sidebar-close]').trigger('click');
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('clip');
+    expect(document.activeElement).toBe(opener);
+    wrapper.unmount();
+  });
+
+  it.each([
+    ['backdrop', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('[data-sidebar-backdrop]').trigger('click');
+    }],
+    ['Escape', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Escape' });
+    }],
+    ['destination selection', async (wrapper: ReturnType<typeof mountDashboard>) => {
+      await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+    }],
+  ])('restores scroll and opener focus after closing from %s', async (_label, closeDrawer) => {
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    await closeDrawer(wrapper);
+    await nextTick();
+
+    expect(document.body.style.overflow).toBe('');
+    expect(document.activeElement).toBe(opener);
+    wrapper.unmount();
+  });
+
+  it('restores body scroll if the dashboard unmounts with the drawer open', async () => {
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    wrapper.unmount();
+
+    expect(document.body.style.overflow).toBe('clip');
+  });
+
+  it('keeps the remembered desktop width while opening and selecting in the mobile drawer', async () => {
+    localStorage.setItem('qcanva:dashboard-sidebar:v1', 'collapsed');
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await nextTick();
+
+    expect(localStorage.getItem('qcanva:dashboard-sidebar:v1')).toBe('collapsed');
+    expect(wrapper.get('.dashboard-sidebar').classes()).toContain('collapsed');
+    wrapper.unmount();
+  });
+
+  it('closes the mobile drawer through the cleanup path when the viewport becomes desktop', async () => {
+    const media = stubSidebarDesktopMedia(false);
+    document.body.style.overflow = 'clip';
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+    expect(document.body.style.overflow).toBe('hidden');
+
+    media.dispatch(true);
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
+    expect(document.body.style.overflow).toBe('clip');
+    expect(wrapper.find('[data-sidebar-backdrop]').exists()).toBe(false);
+    expect(wrapper.get('.dashboard-sidebar').attributes('aria-modal')).toBeUndefined();
+    expect(document.activeElement).toBe(opener);
+    wrapper.unmount();
+  });
+
+  it('moves focus to a visible desktop control when the mobile opener is hidden during breakpoint cleanup', async () => {
+    const media = stubSidebarDesktopMedia(false);
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-dashboard-section="home"]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+
+    opener.style.display = 'none';
+    media.dispatch(true);
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
+    expect(document.activeElement).toBe(desktopFallback);
+    expect(getComputedStyle(document.activeElement as HTMLElement).display).not.toBe('none');
+    wrapper.unmount();
+  });
+
+  it('forwards folder drag events to the existing reorder behavior', async () => {
+    const reorder = vi.mocked(resourceFolders.reorder);
+    const transfer = {
+      types: [] as string[],
+      effectAllowed: '',
+      setData(type: string) {
+        this.types.push(type);
+      },
+      getData: () => '',
+    };
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-folder="folder-c"]').trigger('dragstart', { dataTransfer: transfer });
+    await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('drop', { dataTransfer: transfer });
+    await flushPromises();
+
+    expect(reorder).toHaveBeenCalledWith(['folder-a', 'folder-c', 'folder-b']);
+  });
+});
 
 describe('DashboardView groups', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    withDefaultFolders();
+  });
+
+  it('keeps the account and legacy control popovers mutually exclusive', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('.dashboard-new-menu > button').trigger('click');
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
+
+    await wrapper.get('.dashboard-new-menu > button').trigger('click');
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+    expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
   });
 
   it('creates a group without creating or opening a canvas', async () => {
@@ -144,6 +555,8 @@ describe('DashboardView groups', () => {
     });
     const wrapper = mountDashboard();
     await flushPromises();
+    (wrapper.vm as any).selectDashboardSection({ kind: 'interactive' });
+    await nextTick();
 
     await wrapper.find('[data-menu-trigger="interactive-template:board-shared"]').trigger('click');
 
@@ -166,6 +579,8 @@ describe('DashboardView groups', () => {
     });
     const wrapper = mountDashboard();
     await flushPromises();
+    (wrapper.vm as any).selectDashboardSection({ kind: 'interactive' });
+    await nextTick();
 
     await wrapper.find('[data-menu-trigger="interactive-template:board-owned"]').trigger('click');
 
@@ -201,6 +616,8 @@ describe('DashboardView groups', () => {
     });
     const wrapper = mountDashboard();
     await flushPromises();
+    (wrapper.vm as any).selectDashboardSection({ kind: 'public' });
+    await nextTick();
 
     await wrapper.find('[data-menu-trigger="public:canvas:canvas-public"]').trigger('click');
     await wrapper.find('[data-card-menu="public:canvas:canvas-public"] [data-action="move-to-folder"]').trigger('click');
@@ -249,6 +666,8 @@ describe('DashboardView groups', () => {
     });
     const wrapper = mountDashboard();
     await flushPromises();
+    (wrapper.vm as any).selectFolder('folder-board');
+    await nextTick();
 
     expect(wrapper.find('[data-folder-resource="interactive-template:board-filed"]').exists()).toBe(true);
     expect(wrapper.find('[data-template-resource="board-filed"]').exists()).toBe(false);
@@ -394,11 +813,15 @@ describe('DashboardView groups', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    // The workspace shows one selected group at a time. Verify icons stay on
-    // the cards as the user moves between groups.
+    // Each destination shows one collection at a time. Verify icons stay on
+    // the cards as the user moves between destinations and groups.
+    (wrapper.vm as any).selectDashboardSection({ kind: 'public' });
+    await wrapper.vm.$nextTick();
     expect(wrapper.find('[data-resource-icon="canvas"]').exists()).toBe(true);
     (wrapper.vm as any).selectFolder('folder-b');
     await wrapper.vm.$nextTick();
+    expect((wrapper.vm as any).activeFolder?.id).toBe('folder-b');
+    expect((wrapper.vm as any).activeFolder?.items.map((item: any) => item.type)).toContain('html-document');
     expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
     (wrapper.vm as any).selectFolder('legacy-resource-inbox');
     await wrapper.vm.$nextTick();
@@ -526,6 +949,8 @@ describe('DashboardView groups', () => {
     const vm = wrapper.vm as any;
     expect(vm.folderSummaries.some((folder: any) => folder.id === 'legacy-resource-inbox')).toBe(false);
     expect(vm.sharedFiltered.map((item: any) => item.id).sort()).toEqual(['shared-html', 'shared-text']);
+    vm.selectDashboardSection({ kind: 'shared' });
+    await nextTick();
     expect(wrapper.find('[data-resource-icon="html-document"]').exists()).toBe(true);
     expect(wrapper.find('[data-resource-icon="text-document"]').exists()).toBe(true);
   });
@@ -610,6 +1035,28 @@ describe('DashboardView groups', () => {
       vm.toggleTreeExpanded('folder-b');
       await nextTick();
       expect(ids()).not.toContain('folder-c');
+    });
+
+    it('expands a collapsed sidebar folder while a resource is dragged over it', async () => {
+      withNestedFolders();
+      const wrapper = mountDashboard();
+      await flushPromises();
+      const vm = wrapper.vm as any;
+
+      expect(vm.expandedTreeIds).not.toContain('folder-b');
+      vm.startCanvasDrag(
+        {
+          dataTransfer: { setData: vi.fn(), effectAllowed: '', types: [] },
+        } as unknown as DragEvent,
+        { id: 'canvas-1', folderId: 'folder-a' },
+      );
+      vm.onSidebarFolderDragOver(
+        { dataTransfer: { types: [] } } as unknown as DragEvent,
+        'folder-b',
+      );
+
+      expect(vm.dragTargetFolder).toBe('folder-b');
+      expect(vm.expandedTreeIds).toContain('folder-b');
     });
 
     it('orders an opened subtree as parent then child, tagged with depth', async () => {

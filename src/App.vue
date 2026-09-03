@@ -17,5 +17,7 @@ export default defineComponent({
   width: 100vw;
   height: 100vh;
   overflow: hidden;
+  background: var(--ui-page);
+  color: var(--ui-text);
 }
 </style>

@@ -2,8 +2,20 @@ import { computed, ref } from 'vue';
 
 export type UiLocale = 'ru' | 'en';
 const STORAGE_KEY = 'qcanva:locale';
+const getStorage = (): Storage | undefined => {
+  try {
+    return typeof localStorage === 'undefined' ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+};
 const initialLocale = (): UiLocale => {
-  const stored = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
+  let stored: string | null = null;
+  try {
+    stored = getStorage()?.getItem(STORAGE_KEY) ?? null;
+  } catch {
+    // Storage is optional in private and embedded browsing contexts.
+  }
   if (stored === 'ru' || stored === 'en') return stored;
   return typeof navigator !== 'undefined' && navigator.language.toLowerCase().startsWith('ru') ? 'ru' : 'en';
 };
@@ -17,7 +29,7 @@ const messages = {
     newCanvas: 'Новый канвас', htmlDocument: 'HTML-документ', document: 'Документ', group: 'Группа',
     search: 'Поиск по названию, группе или тегу', newest: 'Сначала новые', oldest: 'Сначала старые',
     titleAsc: 'Название А–Я', titleDesc: 'Название Я–А', all: 'Все', canvas: 'Канвас', docs: 'Документы',
-    recents: 'Недавние', groups: 'Группы', sharedWithMe: 'Доступные мне', public: 'Публичные',
+    recents: 'Недавние', groups: 'Группы', home: 'Главная', folders: 'Папки', sharedWithMe: 'Доступные мне', public: 'Публичные',
     refresh: 'Обновить', share: 'Доступ', rename: 'Переименовать', delete: 'Удалить',
     loading: 'Загрузка…', updatingList: 'Обновляем список…', dashboard: 'Дашборд',
     publicResources: 'Публичные материалы доступны без регистрации.', interactiveTemplate: 'Интерактивный шаблон',
@@ -34,6 +46,8 @@ const messages = {
     renameGroupNote: 'Все ресурсы этой группы останутся в ней под новым названием.',
     add: 'Добавить', addTextNode: 'Текстовый блок', addGroupNode: 'Группа', addImage: 'Изображение', addCanvasEmbed: 'Канвас', addDocumentEmbed: 'Документ',
     collapseSubfolders: 'Свернуть вложенные папки', expandSubfolders: 'Развернуть вложенные папки',
+    collapseSidebar: 'Свернуть боковую панель', expandSidebar: 'Развернуть боковую панель', openNavigation: 'Открыть навигацию', closeNavigation: 'Закрыть навигацию',
+    theme: 'Тема', themeSystem: 'Системная', themeLight: 'Светлая', themeDark: 'Тёмная',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -42,7 +56,7 @@ const messages = {
     newCanvas: 'New canvas', htmlDocument: 'HTML document', document: 'Document', group: 'Group',
     search: 'Search by title, group or tag', newest: 'Newest first', oldest: 'Oldest first',
     titleAsc: 'Title A–Z', titleDesc: 'Title Z–A', all: 'All', canvas: 'Canvas', docs: 'Docs',
-    recents: 'Recent', groups: 'Groups', sharedWithMe: 'Shared with me', public: 'Public',
+    recents: 'Recent', groups: 'Groups', home: 'Home', folders: 'Folders', sharedWithMe: 'Shared with me', public: 'Public',
     refresh: 'Refresh', share: 'Share', rename: 'Rename', delete: 'Delete',
     loading: 'Loading…', updatingList: 'Updating list…', dashboard: 'Dashboard',
     publicResources: 'Public resources available without registration.', interactiveTemplate: 'Interactive template',
@@ -59,13 +73,19 @@ const messages = {
     renameGroupNote: 'Every resource in this group stays in it under the new name.',
     add: 'Add', addTextNode: 'Text block', addGroupNode: 'Group', addImage: 'Image', addCanvasEmbed: 'Canvas', addDocumentEmbed: 'Document',
     collapseSubfolders: 'Collapse subfolders', expandSubfolders: 'Expand subfolders',
+    collapseSidebar: 'Collapse sidebar', expandSidebar: 'Expand sidebar', openNavigation: 'Open navigation', closeNavigation: 'Close navigation',
+    theme: 'Theme', themeSystem: 'System', themeLight: 'Light', themeDark: 'Dark',
   },
 } as const;
 
 export function useI18n() {
   const setLocale = (value: UiLocale) => {
     locale.value = value;
-    localStorage.setItem(STORAGE_KEY, value);
+    try {
+      getStorage()?.setItem(STORAGE_KEY, value);
+    } catch {
+      // Keep the in-memory and document locale even when persistence is denied.
+    }
     document.documentElement.lang = value;
   };
   const toggleLocale = () => setLocale(locale.value === 'ru' ? 'en' : 'ru');

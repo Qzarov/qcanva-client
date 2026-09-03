@@ -50,11 +50,11 @@ export default defineComponent({
   gap: 10px;
   padding: 12px 16px;
   border-radius: 8px;
-  background: rgba(30, 30, 30, 0.95);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow);
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.87);
+  color: var(--ui-text);
   backdrop-filter: blur(12px);
 }
 .toast-success {
@@ -79,7 +79,7 @@ export default defineComponent({
   height: 22px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--ui-text-secondary);
   font-size: 16px;
   cursor: pointer;
   border-radius: 4px;
@@ -89,8 +89,8 @@ export default defineComponent({
   padding: 0;
 }
 .toast-close:hover {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--ui-text);
+  background: var(--ui-surface-subtle);
 }
 /* Transition animations */
 .toast-enter-active {

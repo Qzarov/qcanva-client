@@ -55,6 +55,10 @@ vi.mock('../composables/useBoardSocket', () => ({
   }),
 }));
 
+vi.mock('../components/AccountMenu.vue', () => ({
+  default: { name: 'AccountMenu', template: '<div />' },
+}));
+
 describe('BoardTemplateView', () => {
   beforeEach(() => {
     vi.clearAllMocks();

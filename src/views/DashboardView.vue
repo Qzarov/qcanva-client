@@ -1,8 +1,47 @@
 <template>
-  <div class="app-layout" @click="closeCardMenu">
+  <div
+    class="app-layout"
+    @click.capture="onAppClickCapture"
+    @keydown.capture="onAppKeydownCapture"
+    @click="closeCardMenu"
+  >
+    <div
+      class="dashboard-app-shell"
+      :class="{
+        'sidebar-collapsed': isLoggedIn && sidebarWidthState === 'collapsed',
+        'dashboard-app-shell-public': !isLoggedIn,
+      }"
+    >
+      <DashboardSidebar
+        v-if="isLoggedIn"
+        :active-section="activeSection"
+        :width-state="sidebarWidthState"
+        :mobile-open="mobileSidebarOpen"
+        :folders="sidebarFolders"
+        @select="selectDashboardSection"
+        @toggle-width="toggleSidebarWidth"
+        @close-mobile="closeMobileSidebar"
+        @create-folder="openCreateGroupModal"
+        @toggle-folder="toggleTreeExpanded"
+        @folder-drag-start="onSidebarFolderDragStart"
+        @folder-drag-end="onFolderDragEnd"
+        @folder-drag-enter="onSidebarFolderDragEnter"
+        @folder-drag-over="onSidebarFolderDragOver"
+        @folder-drag-leave="onSidebarFolderDragLeave"
+        @folder-drop="onSidebarFolderDrop"
+      />
+      <div class="dashboard-central-shell">
     <header class="app-header">
       <div class="app-header-inner">
         <div class="dashboard-brand">
+          <button
+            v-if="isLoggedIn"
+            type="button"
+            class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
+            :aria-label="t('openNavigation')"
+            data-mobile-sidebar-open
+            @click.stop="openMobileSidebar"
+          >☰</button>
           <img src="/qcanva-logo.png" alt="QCanva" />
           <div>
             <h1>QCanva</h1>
@@ -10,37 +49,8 @@
           </div>
         </div>
         <div class="header-user-slot">
-          <LanguageToggle />
-          <template v-if="isLoggedIn">
-          <div class="user-menu">
-            <button class="current-user-badge" :title="currentUserLabel" @click.stop="toggleUserMenu">
-              <span class="current-user-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21a8 8 0 0 0-16 0" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </span>
-              <span>{{ currentUserLabel }}</span>
-            </button>
-            <div v-if="openControlMenu === 'user'" class="mobile-action-popover user-popover" @click.stop>
-              <router-link to="/plugins" class="card-menu-item">
-                <span class="menu-icon">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
-                </span>
-                <span>{{ t('plugins') }}</span>
-              </router-link>
-              <router-link to="/html-settings" class="card-menu-item">
-                <span class="menu-icon">⚙</span>
-                <span>{{ t('settings') }}</span>
-              </router-link>
-              <button class="card-menu-item" @click="logout">
-                <span class="menu-icon">↪</span>
-                <span>{{ t('signOut') }}</span>
-              </button>
-            </div>
-          </div>
-          </template>
-          <template v-else>
+          <template v-if="!isLoggedIn">
+            <LanguageToggle />
             <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
             <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
@@ -57,7 +67,11 @@
       @touchcancel="resetDashboardPull"
     >
     <div class="dashboard-shell">
-    <section v-if="isLoggedIn" class="resource-control-panel">
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'home'"
+      class="resource-control-panel"
+      data-dashboard-view="home"
+    >
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
           <span class="menu-icon">#</span>
@@ -133,7 +147,7 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section v-if="recentResources.length" class="dash-section dashboard-recents">
+    <section v-if="activeSection.kind === 'home' && recentResources.length" class="dash-section dashboard-recents">
       <div class="dash-section-head">
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
@@ -170,7 +184,7 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
+      <div v-if="isLoggedIn && activeSection.kind === 'home' && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
           <h2>{{ t('accessRequests') }}</h2>
           <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
@@ -191,62 +205,11 @@
         </div>
       </div>
 
-      <div v-if="isLoggedIn && folderSummaries.length" class="dashboard-workspace">
-        <aside class="dashboard-folder-nav" aria-label="Groups">
-          <div class="dashboard-folder-nav-head">
-            <h2>{{ t('groups') }}</h2>
-            <div class="folder-nav-head-actions">
-              <button
-                class="btn-ghost btn-sm folder-create-button"
-                type="button"
-                title="Создать новую группу"
-                aria-label="Создать новую группу"
-                @click.stop="openCreateGroupModal"
-                :disabled="isBusy"
-              >+</button>
-              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-            </div>
-          </div>
-          <div class="folder-manager-list">
-            <button
-              v-for="folder in folderSummaries"
-              :key="folder.id"
-              class="folder-nav-item"
-              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
-              :data-folder-id="folder.id"
-              :style="{ paddingLeft: 9 + (folder.depth || 0) * 14 + 'px' }"
-              :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
-              @click.stop="selectFolder(folder.id)"
-              @dragstart.stop="onFolderDragStart($event, folder)"
-              @dragend="onFolderDragEnd"
-              @dragenter.prevent="onFolderDragEnter($event, folder)"
-              @dragover.prevent="onFolderDragOverEvent($event, folder)"
-              @dragleave="onFolderDragLeave(folder)"
-              @drop.prevent="onFolderDrop($event, folder)"
-            >
-              <span
-                v-if="folder.hasChildren"
-                class="folder-nav-twisty"
-                :class="{ collapsed: !isTreeExpanded(folder.id) }"
-                role="button"
-                :aria-label="isTreeExpanded(folder.id) ? t('collapseSubfolders') : t('expandSubfolders')"
-                @click.stop="toggleTreeExpanded(folder.id)"
-              >▾</span>
-              <span v-else class="folder-nav-twisty-spacer"></span>
-              <span class="folder-nav-name">{{ folder.name }}</span>
-              <span class="folder-nav-meta">
-                <span
-                  v-if="isTechnicalFolder(folder)"
-                  class="folder-technical-icon"
-                  title="System folder for resources that have not been assigned to a group"
-                  aria-label="System folder"
-                >⚙</span>
-                <span class="folder-nav-count">{{ folder.items.length }}</span>
-              </span>
-            </button>
-          </div>
-        </aside>
-        <section v-if="activeFolder" class="dashboard-folder-content">
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
+        class="dashboard-folder-content"
+        data-dashboard-view="folder"
+      >
           <div
             :key="activeFolder.id"
             class="folder-manager-row"
@@ -442,9 +405,13 @@
               </div>
           </div>
         </section>
-      </div>
 
-      <section v-if="isLoggedIn && visibleInteractiveTemplateItems.length" class="dash-section" data-section="interactive-templates">
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'interactive'"
+        class="dash-section"
+        data-dashboard-view="interactive"
+        data-section="interactive-templates"
+      >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
           <article v-for="item in visibleInteractiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
@@ -457,9 +424,15 @@
             </div>
           </article>
         </div>
+        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">No interactive templates yet.</div>
       </section>
 
-      <div v-if="sharedFiltered.length" class="dash-section">
+      <div
+        v-if="isLoggedIn && activeSection.kind === 'shared'"
+        class="dash-section"
+        data-dashboard-view="shared"
+        data-section="shared"
+      >
         <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
           <template v-for="item in sharedFiltered" :key="'shared-' + item.type + '-' + item.id">
@@ -534,9 +507,15 @@
           </article>
           </template>
         </div>
+        <div v-if="!sharedFiltered.length" class="dash-empty">No shared resources yet.</div>
       </div>
 
-      <div v-if="publicFiltered.length" class="dash-section">
+      <div
+        v-if="activeSection.kind === 'public'"
+        class="dash-section"
+        data-dashboard-view="public"
+        data-section="public"
+      >
         <h2>{{ t('public') }}</h2>
         <div class="dash-grid">
           <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
@@ -616,17 +595,17 @@
           </article>
           </template>
         </div>
+        <div v-if="!publicFiltered.length" class="dash-empty">No public resources yet.</div>
       </div>
 
-      <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
+      <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
         No resources yet. Create your first one!
-      </div>
-      <div v-else-if="!isLoggedIn && !publicFiltered.length" class="dash-empty">
-        No public resources yet.
       </div>
     </template>
     </div>
     </main>
+      </div>
+    </div>
 
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
@@ -904,10 +883,17 @@
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
-import { usePlugins } from '../composables/usePlugins';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
+import {
+  readSidebarWidthState,
+  writeSidebarWidthState,
+  type DashboardFolderNavItem,
+  type DashboardSection,
+  type SidebarWidthState,
+} from '../dashboard/navigation';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1003,11 +989,10 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { LanguageToggle },
+  components: { DashboardSidebar, LanguageToggle },
   setup() {
     const router = useRouter();
     const { t, locale } = useI18n();
-    const { reset: resetPlugins } = usePlugins();
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -1037,6 +1022,20 @@ export default defineComponent({
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
+    const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'home' : 'public' });
+    const storage = () => {
+      try {
+        return typeof window === 'undefined' ? null : window.localStorage;
+      } catch {
+        return null;
+      }
+    };
+    const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
+    const mobileSidebarOpen = ref(false);
+    const mobileSidebarOpener = ref<HTMLElement | null>(null);
+    let previousBodyOverflow: string | null = null;
+    const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
+    let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -1064,7 +1063,6 @@ export default defineComponent({
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
       !item.ownerId || item.ownerId === currentUser.value?.id;
-    const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const lastFolderKey = () => `qcanva:dashboard:folder:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
@@ -1252,7 +1250,7 @@ export default defineComponent({
       ...template,
       type: 'interactive-template',
       folderId: template.folderId || null,
-      tags: [],
+      tags: normalizeTags(template.tags),
       pinned: false,
     });
 
@@ -1320,11 +1318,17 @@ export default defineComponent({
         ...(folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item: any) => `interactive-template:${item.id}`),
       ]),
     ));
-    const visibleInteractiveTemplateItems = computed(() =>
-      interactiveTemplateItems.value.filter(
+    const interactiveTemplateRecords = computed<InteractiveTemplateRecord[]>(() =>
+      interactiveTemplateItems.value.map(normalizeInteractiveTemplate),
+    );
+    const unfiledInteractiveTemplateItems = computed(() =>
+      interactiveTemplateRecords.value.filter(
         (item) => !placedResourceKeys.value.has(`interactive-template:${item.id}`),
       ),
     );
+    const visibleInteractiveTemplateItems = computed(() => sortFolderItems(
+      unfiledInteractiveTemplateItems.value.filter((item) => matchesFolderItem(item, t('interactiveTemplate'))),
+    ) as InteractiveTemplateRecord[]);
 
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
@@ -1366,6 +1370,9 @@ export default defineComponent({
       for (const document of publicTextDocuments.value) {
         addTags(document.tags, 'text-document');
       }
+      for (const template of interactiveTemplateRecords.value) {
+        addTags(template.tags, 'interactive-template');
+      }
       for (const folder of allResourceFolders.value) {
         for (const canvas of folder.items?.canvases || []) {
           addTags(normalizeTags(canvas.tags), 'canvas');
@@ -1375,6 +1382,9 @@ export default defineComponent({
         }
         for (const document of folder.items?.textDocuments || []) {
           addTags(normalizeTags(document.tags), 'text-document');
+        }
+        for (const template of folder.items?.interactiveTemplates || []) {
+          addTags(normalizeTags(template.tags), 'interactive-template');
         }
       }
       return Array.from(names).sort();
@@ -1492,7 +1502,7 @@ export default defineComponent({
         for (const node of nodes.slice().sort(bySortOrder)) {
           const children = childrenOf.get(node.id) || [];
           if (!hidden) {
-            ordered.push({ ...node, depth, hasChildren: children.length > 0 });
+            ordered.push({ ...node, depth, hasChildren: Boolean(node.hasChildren || children.length) });
           }
           walk(children, depth + 1, hidden || !isTreeExpanded(node.id));
         }
@@ -1501,26 +1511,58 @@ export default defineComponent({
       return ordered;
     };
 
-    const folderSummaries = computed<FolderSummary[]>(() => {
-      const folders = allResourceFolders.value
-      .map((folder) => {
+    const allFolderSummaries = computed<FolderSummary[]>(() => {
+      const parentIds = new Set(
+        allResourceFolders.value
+          .map((folder) => folder.parentId ?? null)
+          .filter((parentId): parentId is string => Boolean(parentId)),
+      );
+      return allResourceFolders.value.map((folder) => {
         const canvases = (folder.items?.canvases || folder.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
         const docs = (folder.items?.textDocuments || folder.textDocuments || []).map((item) => normalizeTextDocument({ ...item, folderId: folder.id }));
         const templates = (folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item) => normalizeInteractiveTemplate({ ...item, folderId: folder.id }));
-        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates].filter((item) => matchesFolderItem(item, folder.name)));
         return {
           ...folder,
-          items,
+          items: sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates]),
           canvasCount: canvases.length,
           htmlDocumentCount: htmlDocs.length,
           textDocumentCount: docs.length,
           interactiveTemplateCount: templates.length,
+          hasChildren: parentIds.has(folder.id),
         };
-      })
+      });
+    });
+
+    const legacyInboxSourceItems = computed<FolderItem[]>(() => [
+      ...unfiledCanvases.value,
+      ...unfiledHtmlDocuments.value,
+      ...unfiledTextDocuments.value,
+    ]);
+
+    const buildLegacyInboxFolder = (items: FolderItem[]): FolderSummary => ({
+      id: 'legacy-resource-inbox',
+      name: 'Inbox',
+      role: 'owner',
+      sortOrder: Number.MAX_SAFE_INTEGER,
+      canvasCount: unfiledCanvases.value.length,
+      htmlDocumentCount: unfiledHtmlDocuments.value.length,
+      textDocumentCount: unfiledTextDocuments.value.length,
+      interactiveTemplateCount: 0,
+      items,
+    });
+
+    const folderSummaries = computed<FolderSummary[]>(() => {
+      const folders = allFolderSummaries.value
+      .map((folder) => ({
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      }))
       .filter((folder) => {
         const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
-        return folder.items.length || (!hasActiveFilter && folder.role === 'owner' && !isTechnicalFolder(folder as FolderSummary));
+        const isDefaultFolder = folder.name.toLowerCase() === 'default';
+        return folder.items.length
+          || (!hasActiveFilter && folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -1551,29 +1593,42 @@ export default defineComponent({
         }
       }
 
-      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
+      const fallbackSourceItems = legacyInboxSourceItems.value;
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
       if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
-        folders.push({
-          id: 'legacy-resource-inbox',
-          name: 'Inbox',
-          role: 'owner',
-          sortOrder: Number.MAX_SAFE_INTEGER,
-          canvasCount: unfiledCanvases.value.length,
-          htmlDocumentCount: unfiledHtmlDocuments.value.length,
-          textDocumentCount: unfiledTextDocuments.value.length,
-          interactiveTemplateCount: 0,
-          items: fallbackItems,
-        });
+        folders.push(buildLegacyInboxFolder(fallbackItems));
       }
       return buildFolderTree(folders);
     });
-    const activeFolder = computed(() =>
-      folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
-    );
+    const activeFolder = computed(() => {
+      const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
+      if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
+        return buildLegacyInboxFolder(
+          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox'))),
+        );
+      }
+      if (!folder) return null;
+      return {
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      };
+    });
+    const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: folder.parentId || null,
+      depth: folder.depth || 0,
+      role: folder.role,
+      technical: isTechnicalFolder(folder),
+      expanded: isTreeExpanded(folder.id),
+      hasChildren: Boolean(folder.hasChildren),
+      draggable: canReorderFolder(folder),
+      dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
+      reorderTarget: folderDragOverId.value === folder.id,
+    })));
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
-      ...folderSummaries.value.flatMap((folder) => folder.items),
+      ...allFolderSummaries.value.flatMap((folder) => folder.items),
       ...own.value,
       ...shared.value,
       ...sharedHtmlDocuments.value,
@@ -1584,7 +1639,7 @@ export default defineComponent({
       ...unfiledCanvases.value,
       ...unfiledHtmlDocuments.value,
       ...unfiledTextDocuments.value,
-      ...visibleInteractiveTemplateItems.value.map(normalizeInteractiveTemplate),
+      ...unfiledInteractiveTemplateItems.value,
     ]);
     const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
       ...allDashboardResources.value,
@@ -2098,10 +2153,8 @@ export default defineComponent({
     const onFolderDragOver = (folder: FolderSummary) => {
       if (!canDropToFolder(folder)) return;
       dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had collapsed it.
-      if (collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder.hasChildren) expandTree(folder.id);
     };
 
     const onFolderDragLeave = (folder: FolderSummary) => {
@@ -2181,6 +2234,34 @@ export default defineComponent({
         return;
       }
       await dropResourceToFolder(folder);
+    };
+
+    const resolveSidebarFolder = (folderId: string) =>
+      folderSummaries.value.find((folder) => folder.id === folderId) || null;
+
+    const onSidebarFolderDragStart = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragStart(event, folder);
+    };
+
+    const onSidebarFolderDragEnter = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragEnter(event, folder);
+    };
+
+    const onSidebarFolderDragOver = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragOverEvent(event, folder);
+    };
+
+    const onSidebarFolderDragLeave = (_event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragLeave(folder);
+    };
+
+    const onSidebarFolderDrop = async (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) await onFolderDrop(event, folder);
     };
 
     const dropResourceToFolder = async (folder: FolderSummary) => {
@@ -2266,16 +2347,14 @@ export default defineComponent({
       }
       event?.preventDefault();
       const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-folder-id]') : null)
+        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
         .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.folderId || '';
+      const folderId = target?.dataset.dashboardFolder || '';
       const folder = findDropFolder(folderId);
       state.targetFolderId = folder?.id || '';
       dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had collapsed it.
-      if (folder && collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder?.hasChildren) expandTree(folder.id);
     };
 
     function onResourceMouseMove(event: MouseEvent) {
@@ -2670,7 +2749,13 @@ export default defineComponent({
       if (openMenuCanvasId.value) closeCardMenu();
     };
 
+    const closeSidebarAccountMenu = () => {
+      const root = dashboardMain.value?.closest('.app-layout');
+      root?.querySelector<HTMLElement>('[data-account-menu-backdrop]')?.click();
+    };
+
     const toggleCardMenu = (canvasId: string, event?: Event) => {
+      closeSidebarAccountMenu();
       openControlMenu.value = '';
       const closing = openMenuCanvasId.value === canvasId;
       openMenuCanvasId.value = closing ? '' : canvasId;
@@ -2684,25 +2769,22 @@ export default defineComponent({
     };
 
     const toggleNewMenu = () => {
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
       openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
     const toggleFolderMenu = (folderId: string) => {
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
       const key = `folder:${folderId}`;
       openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
-    const toggleUserMenu = () => {
+    const closeControlMenusForAccount = () => {
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'user' ? '' : 'user';
-    };
-
-    const logout = () => {
-      resetPlugins();
-      clearToken();
-      router.push('/login');
+      openControlMenu.value = '';
+      cardMenuStyle.value = null;
     };
 
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
@@ -2863,28 +2945,40 @@ export default defineComponent({
      * nested folder is hidden until its ancestors are expanded.
      */
     const restoreSelectedFolder = () => {
-      const isVisible = (id: string) =>
-        Boolean(id) && folderSummaries.value.some((folder) => folder.id === id);
-      if (isVisible(selectedFolderId.value)) return;
+      const isKnown = (id: string) =>
+        Boolean(id) && (
+          allResourceFolders.value.some((folder) => folder.id === id)
+          || (id === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length > 0)
+        );
+      const syncActiveFolderSection = () => {
+        if (activeSection.value.kind !== 'folder') return;
+        activeSection.value = selectedFolderId.value
+          ? { kind: 'folder', folderId: selectedFolderId.value }
+          : { kind: 'home' };
+      };
+      if (isKnown(selectedFolderId.value)) {
+        syncActiveFolderSection();
+        return;
+      }
 
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
       const remembered = readLastFolderId();
       if (remembered && known.has(remembered)) {
         expandAncestorsOf(remembered);
-        // Expanding changes the tree, so re-check that the folder actually shows.
-        if (isVisible(remembered)) {
-          selectedFolderId.value = remembered;
-          return;
-        }
+        selectedFolderId.value = remembered;
+        syncActiveFolderSection();
+        return;
       }
-      const fallback = folderSummaries.value[0]?.id || '';
+      const fallback = allFolderSummaries.value[0]?.id || (legacyInboxSourceItems.value.length ? 'legacy-resource-inbox' : '');
       selectedFolderId.value = fallback;
+      syncActiveFolderSection();
       // A stale pointer is cleared so it cannot keep losing the race with the
       // fallback on every load.
       if (remembered && !known.has(remembered)) writeLastFolderId('');
     };
 
     const selectFolder = (folderId: string) => {
+      activeSection.value = { kind: 'folder', folderId };
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
       writeLastFolderId(folderId);
@@ -2892,7 +2986,142 @@ export default defineComponent({
     };
 
     const isTechnicalFolder = (folder: FolderSummary) =>
-      folder.id === 'legacy-resource-inbox' || folder.name === 'Unsorted';
+      folder.id === 'legacy-resource-inbox'
+      || folder.name === 'Unsorted'
+      || folder.name.toLowerCase() === 'default';
+
+    const selectDashboardSection = (section: DashboardSection) => {
+      activeSection.value = section;
+      if (section.kind === 'folder') selectFolder(section.folderId);
+      else closeCardMenu();
+      mobileSidebarOpen.value = false;
+    };
+
+    const toggleSidebarWidth = () => {
+      sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
+      writeSidebarWidthState(storage(), sidebarWidthState.value);
+    };
+
+    const openMobileSidebar = (event?: Event) => {
+      const eventTarget = event?.currentTarget;
+      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
+        ? eventTarget
+        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      mobileSidebarOpen.value = true;
+    };
+
+    const closeMobileSidebar = () => {
+      mobileSidebarOpen.value = false;
+    };
+
+    const focusWithoutScroll = (element: HTMLElement) => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    };
+
+    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
+      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
+      let current: HTMLElement | null = element;
+      while (current) {
+        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        current = current.parentElement;
+      }
+      return true;
+    };
+
+    const restoreSidebarCloseFocus = () => {
+      const opener = mobileSidebarOpener.value;
+      if (isVisibleFocusTarget(opener)) {
+        focusWithoutScroll(opener);
+        return;
+      }
+      const fallback = [
+        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
+        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
+      ].find(isVisibleFocusTarget) ?? null;
+      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
+    };
+
+    const restoreBodyOverflow = () => {
+      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = null;
+    };
+
+    const getSidebarDesktopMedia = () => {
+      try {
+        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const closeMobileSidebarOnDesktop = () => {
+      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
+    };
+
+    const addSidebarDesktopListener = (media: MediaQueryList) => {
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof media.addListener === 'function') {
+        media.addListener(closeMobileSidebarOnDesktop);
+      }
+    };
+
+    const removeSidebarDesktopListener = () => {
+      if (!sidebarDesktopMedia) return;
+      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
+        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
+        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
+      }
+      sidebarDesktopMedia = null;
+    };
+
+    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
+      if (typeof document === 'undefined') return;
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+
+      if (open) {
+        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        await nextTick();
+        if (!cancelled && mobileSidebarOpen.value) {
+          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
+          if (closeButton) focusWithoutScroll(closeButton);
+        }
+        return;
+      }
+
+      restoreBodyOverflow();
+      await nextTick();
+      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
+    });
+
+    const onAppClickCapture = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-account-menu-trigger]')) closeControlMenusForAccount();
+    };
+
+    const onAppKeydownCapture = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key === 'ArrowDown' && target?.closest('[data-account-menu-trigger]')) {
+        closeControlMenusForAccount();
+      }
+    };
 
     const formatDate = (d: string) => new Date(d).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -2971,10 +3200,19 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
+      sidebarDesktopMedia = getSidebarDesktopMedia();
+      if (sidebarDesktopMedia) {
+        addSidebarDesktopListener(sidebarDesktopMedia);
+        closeMobileSidebarOnDesktop();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
-    onBeforeUnmount(() => window.removeEventListener('resize', refreshOverflowIndicators));
+    onBeforeUnmount(() => {
+      removeSidebarDesktopListener();
+      window.removeEventListener('resize', refreshOverflowIndicators);
+      restoreBodyOverflow();
+    });
 
     return {
       admin,
@@ -3021,6 +3259,17 @@ export default defineComponent({
       actionLabel,
       openMenuCanvasId,
       openControlMenu,
+      closeControlMenusForAccount,
+      activeSection,
+      sidebarWidthState,
+      mobileSidebarOpen,
+      sidebarFolders,
+      selectDashboardSection,
+      toggleSidebarWidth,
+      openMobileSidebar,
+      closeMobileSidebar,
+      onAppClickCapture,
+      onAppKeydownCapture,
       draggingResourceId,
       draggingResourceType,
       dragTargetFolder,
@@ -3028,7 +3277,6 @@ export default defineComponent({
       folderDragOverId,
       tagColors,
       tagSuggestions,
-      currentUserLabel,
       isOwnedResource,
       folderModal,
       renameFolderModal,
@@ -3088,6 +3336,11 @@ export default defineComponent({
       onFolderDragEnter,
       onFolderDragOverEvent,
       onFolderDrop,
+      onSidebarFolderDragStart,
+      onSidebarFolderDragEnter,
+      onSidebarFolderDragOver,
+      onSidebarFolderDragLeave,
+      onSidebarFolderDrop,
       dropResourceToFolder,
       canDropToFolder,
       openRenameFolderModal,
@@ -3125,7 +3378,6 @@ export default defineComponent({
       closeCardMenu,
       toggleNewMenu,
       toggleFolderMenu,
-      toggleUserMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
@@ -3133,7 +3385,6 @@ export default defineComponent({
       duplicateTextDocument,
       deleteCanvas,
       togglePinned,
-      logout,
       formatDate,
       renamingId,
       renameInput,

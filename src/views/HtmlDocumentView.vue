@@ -94,7 +94,7 @@
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
-      <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
+      <AccountMenu v-if="currentUser" />
       <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
     </header>
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
@@ -269,6 +269,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
+import AccountMenu from '../components/AccountMenu.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -281,7 +282,7 @@ import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 
 export default defineComponent({
-  components: { HtmlVisualEditor },
+  components: { AccountMenu, HtmlVisualEditor },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -340,7 +341,6 @@ export default defineComponent({
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
-    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
     const publicUrl = computed(() => {
       const publicId = slug.value || resolvedId.value;
       return `${window.location.origin}/html/${encodeURIComponent(publicId)}`;
@@ -835,7 +835,7 @@ export default defineComponent({
     });
     return {
       backTarget,
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, cacheStatus, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,

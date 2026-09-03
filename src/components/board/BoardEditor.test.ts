@@ -296,6 +296,35 @@ describe('BoardEditor', () => {
 });
 
 describe('BoardCardDialog', () => {
+  it('keeps authored card labels fixed across application themes', async () => {
+    const editor = mount(BoardEditor, { props: editableBoardProps, attachTo: document.body });
+    const cardLabel = editor.get('.board-card__label').element as HTMLElement;
+    const dialog = mount(BoardCardDialog, {
+      props: { card: board.cards[0]!, labels: board.labels, participants },
+      attachTo: document.body,
+    });
+    const dialogLabel = dialog.get('.board-label-picker label span').element as HTMLElement;
+
+    const capture = () => ({
+      cardSurface: cardLabel.style.getPropertyValue('--label-content-surface'),
+      cardText: cardLabel.style.getPropertyValue('--label-content-text'),
+      dialogSurface: dialogLabel.style.getPropertyValue('--label-content-surface'),
+      dialogText: dialogLabel.style.getPropertyValue('--label-content-text'),
+    });
+    document.documentElement.dataset.theme = 'dark';
+    const dark = capture();
+    document.documentElement.dataset.theme = 'light';
+    const light = capture();
+
+    expect(light).toEqual(dark);
+    expect(light).toEqual({
+      cardSurface: 'var(--content-board-label-card-surface)',
+      cardText: 'var(--content-board-label-text)',
+      dialogSurface: 'var(--content-board-label-dialog-surface)',
+      dialogText: 'var(--content-board-label-dialog-text)',
+    });
+  });
+
   it('emits card fields and separate checklist operations', async () => {
     const wrapper = mount(BoardCardDialog, {
       props: {

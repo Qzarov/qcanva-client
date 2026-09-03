@@ -7,6 +7,7 @@
       </div>
       <div class="dash-actions">
         <router-link :to="{ name: 'dashboard', query: { type: 'html' } }" class="btn-ghost">Back</router-link>
+        <AccountMenu />
       </div>
     </header>
     <section class="settings-panel">
@@ -38,8 +39,10 @@
 <script lang="ts">
 import { defineComponent, onMounted, ref } from 'vue';
 import { auth, getAccessToken, htmlDocuments, setToken } from '../api/client';
+import AccountMenu from '../components/AccountMenu.vue';
 
 export default defineComponent({
+  components: { AccountMenu },
   setup() {
     const model = ref('');
     const openRouterKey = ref('');
