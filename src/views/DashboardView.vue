@@ -1,8 +1,47 @@
 <template>
-  <div class="app-layout" @click="closeCardMenu">
+  <div
+    class="app-layout"
+    @click.capture="onAppClickCapture"
+    @keydown.capture="onAppKeydownCapture"
+    @click="closeCardMenu"
+  >
+    <div
+      class="dashboard-app-shell"
+      :class="{
+        'sidebar-collapsed': isLoggedIn && sidebarWidthState === 'collapsed',
+        'dashboard-app-shell-public': !isLoggedIn,
+      }"
+    >
+      <DashboardSidebar
+        v-if="isLoggedIn"
+        :active-section="activeSection"
+        :width-state="sidebarWidthState"
+        :mobile-open="mobileSidebarOpen"
+        :folders="sidebarFolders"
+        @select="selectDashboardSection"
+        @toggle-width="toggleSidebarWidth"
+        @close-mobile="closeMobileSidebar"
+        @create-folder="openCreateGroupModal"
+        @toggle-folder="toggleTreeExpanded"
+        @folder-drag-start="onSidebarFolderDragStart"
+        @folder-drag-end="onFolderDragEnd"
+        @folder-drag-enter="onSidebarFolderDragEnter"
+        @folder-drag-over="onSidebarFolderDragOver"
+        @folder-drag-leave="onSidebarFolderDragLeave"
+        @folder-drop="onSidebarFolderDrop"
+      />
+      <div class="dashboard-central-shell">
     <header class="app-header">
       <div class="app-header-inner">
         <div class="dashboard-brand">
+          <button
+            v-if="isLoggedIn"
+            type="button"
+            class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
+            :aria-label="t('openNavigation')"
+            data-mobile-sidebar-open
+            @click.stop="openMobileSidebar"
+          >☰</button>
           <img src="/qcanva-logo.png" alt="QCanva" />
           <div>
             <h1>QCanva</h1>
@@ -10,11 +49,8 @@
           </div>
         </div>
         <div class="header-user-slot">
-          <LanguageToggle />
-          <template v-if="isLoggedIn">
-            <AccountMenu ref="accountMenu" @opened="closeControlMenusForAccount" />
-          </template>
-          <template v-else>
+          <template v-if="!isLoggedIn">
+            <LanguageToggle />
             <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
             <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
@@ -31,7 +67,11 @@
       @touchcancel="resetDashboardPull"
     >
     <div class="dashboard-shell">
-    <section v-if="isLoggedIn" class="resource-control-panel">
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'home'"
+      class="resource-control-panel"
+      data-dashboard-view="home"
+    >
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
           <span class="menu-icon">#</span>
@@ -107,7 +147,7 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section v-if="recentResources.length" class="dash-section dashboard-recents">
+    <section v-if="activeSection.kind === 'home' && recentResources.length" class="dash-section dashboard-recents">
       <div class="dash-section-head">
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
@@ -144,7 +184,7 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
+      <div v-if="isLoggedIn && activeSection.kind === 'home' && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
           <h2>{{ t('accessRequests') }}</h2>
           <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
@@ -165,62 +205,11 @@
         </div>
       </div>
 
-      <div v-if="isLoggedIn && folderSummaries.length" class="dashboard-workspace">
-        <aside class="dashboard-folder-nav" aria-label="Groups">
-          <div class="dashboard-folder-nav-head">
-            <h2>{{ t('groups') }}</h2>
-            <div class="folder-nav-head-actions">
-              <button
-                class="btn-ghost btn-sm folder-create-button"
-                type="button"
-                title="Создать новую группу"
-                aria-label="Создать новую группу"
-                @click.stop="openCreateGroupModal"
-                :disabled="isBusy"
-              >+</button>
-              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-            </div>
-          </div>
-          <div class="folder-manager-list">
-            <button
-              v-for="folder in folderSummaries"
-              :key="folder.id"
-              class="folder-nav-item"
-              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
-              :data-folder-id="folder.id"
-              :style="{ paddingLeft: 9 + (folder.depth || 0) * 14 + 'px' }"
-              :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
-              @click.stop="selectFolder(folder.id)"
-              @dragstart.stop="onFolderDragStart($event, folder)"
-              @dragend="onFolderDragEnd"
-              @dragenter.prevent="onFolderDragEnter($event, folder)"
-              @dragover.prevent="onFolderDragOverEvent($event, folder)"
-              @dragleave="onFolderDragLeave(folder)"
-              @drop.prevent="onFolderDrop($event, folder)"
-            >
-              <span
-                v-if="folder.hasChildren"
-                class="folder-nav-twisty"
-                :class="{ collapsed: !isTreeExpanded(folder.id) }"
-                role="button"
-                :aria-label="isTreeExpanded(folder.id) ? t('collapseSubfolders') : t('expandSubfolders')"
-                @click.stop="toggleTreeExpanded(folder.id)"
-              >▾</span>
-              <span v-else class="folder-nav-twisty-spacer"></span>
-              <span class="folder-nav-name">{{ folder.name }}</span>
-              <span class="folder-nav-meta">
-                <span
-                  v-if="isTechnicalFolder(folder)"
-                  class="folder-technical-icon"
-                  title="System folder for resources that have not been assigned to a group"
-                  aria-label="System folder"
-                >⚙</span>
-                <span class="folder-nav-count">{{ folder.items.length }}</span>
-              </span>
-            </button>
-          </div>
-        </aside>
-        <section v-if="activeFolder" class="dashboard-folder-content">
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
+        class="dashboard-folder-content"
+        data-dashboard-view="folder"
+      >
           <div
             :key="activeFolder.id"
             class="folder-manager-row"
@@ -416,9 +405,13 @@
               </div>
           </div>
         </section>
-      </div>
 
-      <section v-if="isLoggedIn && visibleInteractiveTemplateItems.length" class="dash-section" data-section="interactive-templates">
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'interactive'"
+        class="dash-section"
+        data-dashboard-view="interactive"
+        data-section="interactive-templates"
+      >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
           <article v-for="item in visibleInteractiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
@@ -431,9 +424,15 @@
             </div>
           </article>
         </div>
+        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">No interactive templates yet.</div>
       </section>
 
-      <div v-if="sharedFiltered.length" class="dash-section">
+      <div
+        v-if="isLoggedIn && activeSection.kind === 'shared'"
+        class="dash-section"
+        data-dashboard-view="shared"
+        data-section="shared"
+      >
         <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
           <template v-for="item in sharedFiltered" :key="'shared-' + item.type + '-' + item.id">
@@ -508,9 +507,15 @@
           </article>
           </template>
         </div>
+        <div v-if="!sharedFiltered.length" class="dash-empty">No shared resources yet.</div>
       </div>
 
-      <div v-if="publicFiltered.length" class="dash-section">
+      <div
+        v-if="activeSection.kind === 'public'"
+        class="dash-section"
+        data-dashboard-view="public"
+        data-section="public"
+      >
         <h2>{{ t('public') }}</h2>
         <div class="dash-grid">
           <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
@@ -590,17 +595,17 @@
           </article>
           </template>
         </div>
+        <div v-if="!publicFiltered.length" class="dash-empty">No public resources yet.</div>
       </div>
 
-      <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
+      <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
         No resources yet. Create your first one!
-      </div>
-      <div v-else-if="!isLoggedIn && !publicFiltered.length" class="dash-empty">
-        No public resources yet.
       </div>
     </template>
     </div>
     </main>
+      </div>
+    </div>
 
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
@@ -880,8 +885,15 @@ import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
-import AccountMenu from '../components/AccountMenu.vue';
+import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
+import {
+  readSidebarWidthState,
+  writeSidebarWidthState,
+  type DashboardFolderNavItem,
+  type DashboardSection,
+  type SidebarWidthState,
+} from '../dashboard/navigation';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -977,7 +989,7 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { AccountMenu, LanguageToggle },
+  components: { DashboardSidebar, LanguageToggle },
   setup() {
     const router = useRouter();
     const { t, locale } = useI18n();
@@ -1010,7 +1022,16 @@ export default defineComponent({
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
-    const accountMenu = ref<InstanceType<typeof AccountMenu> | null>(null);
+    const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'home' : 'public' });
+    const storage = () => {
+      try {
+        return typeof window === 'undefined' ? null : window.localStorage;
+      } catch {
+        return null;
+      }
+    };
+    const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
+    const mobileSidebarOpen = ref(false);
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -1493,7 +1514,9 @@ export default defineComponent({
       })
       .filter((folder) => {
         const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
-        return folder.items.length || (!hasActiveFilter && folder.role === 'owner' && !isTechnicalFolder(folder as FolderSummary));
+        const isDefaultFolder = folder.name.toLowerCase() === 'default';
+        return folder.items.length
+          || (!hasActiveFilter && folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -1544,6 +1567,19 @@ export default defineComponent({
     const activeFolder = computed(() =>
       folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
     );
+    const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: folder.parentId || null,
+      depth: folder.depth || 0,
+      role: folder.role,
+      technical: isTechnicalFolder(folder),
+      expanded: isTreeExpanded(folder.id),
+      hasChildren: Boolean(folder.hasChildren),
+      draggable: canReorderFolder(folder),
+      dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
+      reorderTarget: folderDragOverId.value === folder.id,
+    })));
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
       ...folderSummaries.value.flatMap((folder) => folder.items),
@@ -2071,10 +2107,8 @@ export default defineComponent({
     const onFolderDragOver = (folder: FolderSummary) => {
       if (!canDropToFolder(folder)) return;
       dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had collapsed it.
-      if (collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder.hasChildren) expandTree(folder.id);
     };
 
     const onFolderDragLeave = (folder: FolderSummary) => {
@@ -2154,6 +2188,34 @@ export default defineComponent({
         return;
       }
       await dropResourceToFolder(folder);
+    };
+
+    const resolveSidebarFolder = (folderId: string) =>
+      folderSummaries.value.find((folder) => folder.id === folderId) || null;
+
+    const onSidebarFolderDragStart = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragStart(event, folder);
+    };
+
+    const onSidebarFolderDragEnter = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragEnter(event, folder);
+    };
+
+    const onSidebarFolderDragOver = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragOverEvent(event, folder);
+    };
+
+    const onSidebarFolderDragLeave = (_event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragLeave(folder);
+    };
+
+    const onSidebarFolderDrop = async (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) await onFolderDrop(event, folder);
     };
 
     const dropResourceToFolder = async (folder: FolderSummary) => {
@@ -2239,16 +2301,14 @@ export default defineComponent({
       }
       event?.preventDefault();
       const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-folder-id]') : null)
+        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
         .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.folderId || '';
+      const folderId = target?.dataset.dashboardFolder || '';
       const folder = findDropFolder(folderId);
       state.targetFolderId = folder?.id || '';
       dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had collapsed it.
-      if (folder && collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder?.hasChildren) expandTree(folder.id);
     };
 
     function onResourceMouseMove(event: MouseEvent) {
@@ -2643,8 +2703,13 @@ export default defineComponent({
       if (openMenuCanvasId.value) closeCardMenu();
     };
 
+    const closeSidebarAccountMenu = () => {
+      const root = dashboardMain.value?.closest('.app-layout');
+      root?.querySelector<HTMLElement>('[data-account-menu-backdrop]')?.click();
+    };
+
     const toggleCardMenu = (canvasId: string, event?: Event) => {
-      accountMenu.value?.close(false);
+      closeSidebarAccountMenu();
       openControlMenu.value = '';
       const closing = openMenuCanvasId.value === canvasId;
       openMenuCanvasId.value = closing ? '' : canvasId;
@@ -2658,13 +2723,13 @@ export default defineComponent({
     };
 
     const toggleNewMenu = () => {
-      accountMenu.value?.close(false);
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
       openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
     };
 
     const toggleFolderMenu = (folderId: string) => {
-      accountMenu.value?.close(false);
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
       const key = `folder:${folderId}`;
       openControlMenu.value = openControlMenu.value === key ? '' : key;
@@ -2856,6 +2921,7 @@ export default defineComponent({
     };
 
     const selectFolder = (folderId: string) => {
+      activeSection.value = { kind: 'folder', folderId };
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
       writeLastFolderId(folderId);
@@ -2863,7 +2929,41 @@ export default defineComponent({
     };
 
     const isTechnicalFolder = (folder: FolderSummary) =>
-      folder.id === 'legacy-resource-inbox' || folder.name === 'Unsorted';
+      folder.id === 'legacy-resource-inbox'
+      || folder.name === 'Unsorted'
+      || folder.name.toLowerCase() === 'default';
+
+    const selectDashboardSection = (section: DashboardSection) => {
+      activeSection.value = section;
+      if (section.kind === 'folder') selectFolder(section.folderId);
+      else closeCardMenu();
+      mobileSidebarOpen.value = false;
+    };
+
+    const toggleSidebarWidth = () => {
+      sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
+      writeSidebarWidthState(storage(), sidebarWidthState.value);
+    };
+
+    const openMobileSidebar = () => {
+      mobileSidebarOpen.value = true;
+    };
+
+    const closeMobileSidebar = () => {
+      mobileSidebarOpen.value = false;
+    };
+
+    const onAppClickCapture = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-account-menu-trigger]')) closeControlMenusForAccount();
+    };
+
+    const onAppKeydownCapture = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key === 'ArrowDown' && target?.closest('[data-account-menu-trigger]')) {
+        closeControlMenusForAccount();
+      }
+    };
 
     const formatDate = (d: string) => new Date(d).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
@@ -2992,8 +3092,17 @@ export default defineComponent({
       actionLabel,
       openMenuCanvasId,
       openControlMenu,
-      accountMenu,
       closeControlMenusForAccount,
+      activeSection,
+      sidebarWidthState,
+      mobileSidebarOpen,
+      sidebarFolders,
+      selectDashboardSection,
+      toggleSidebarWidth,
+      openMobileSidebar,
+      closeMobileSidebar,
+      onAppClickCapture,
+      onAppKeydownCapture,
       draggingResourceId,
       draggingResourceType,
       dragTargetFolder,
@@ -3060,6 +3169,11 @@ export default defineComponent({
       onFolderDragEnter,
       onFolderDragOverEvent,
       onFolderDrop,
+      onSidebarFolderDragStart,
+      onSidebarFolderDragEnter,
+      onSidebarFolderDragOver,
+      onSidebarFolderDragLeave,
+      onSidebarFolderDrop,
       dropResourceToFolder,
       canDropToFolder,
       openRenameFolderModal,
