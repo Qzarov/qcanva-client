@@ -439,6 +439,28 @@ describe('dashboard sidebar navigation', () => {
     wrapper.unmount();
   });
 
+  it('moves focus to a visible desktop control when the mobile opener is hidden during breakpoint cleanup', async () => {
+    const media = stubSidebarDesktopMedia(false);
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-dashboard-section="home"]').element as HTMLButtonElement;
+
+    opener.focus();
+    await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
+    await nextTick();
+
+    opener.style.display = 'none';
+    media.dispatch(true);
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.vm as any).mobileSidebarOpen).toBe(false);
+    expect(document.activeElement).toBe(desktopFallback);
+    expect(getComputedStyle(document.activeElement as HTMLElement).display).not.toBe('none');
+    wrapper.unmount();
+  });
+
   it('forwards folder drag events to the existing reorder behavior', async () => {
     const reorder = vi.mocked(resourceFolders.reorder);
     const transfer = {

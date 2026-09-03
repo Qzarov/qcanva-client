@@ -3024,6 +3024,32 @@ export default defineComponent({
       }
     };
 
+    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
+      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
+      let current: HTMLElement | null = element;
+      while (current) {
+        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        current = current.parentElement;
+      }
+      return true;
+    };
+
+    const restoreSidebarCloseFocus = () => {
+      const opener = mobileSidebarOpener.value;
+      if (isVisibleFocusTarget(opener)) {
+        focusWithoutScroll(opener);
+        return;
+      }
+      const fallback = [
+        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
+        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
+      ].find(isVisibleFocusTarget) ?? null;
+      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
+    };
+
     const restoreBodyOverflow = () => {
       if (typeof document === 'undefined' || previousBodyOverflow === null) return;
       document.body.style.overflow = previousBodyOverflow;
@@ -3082,9 +3108,7 @@ export default defineComponent({
 
       restoreBodyOverflow();
       await nextTick();
-      if (!cancelled && !mobileSidebarOpen.value && mobileSidebarOpener.value?.isConnected) {
-        focusWithoutScroll(mobileSidebarOpener.value);
-      }
+      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
     });
 
     const onAppClickCapture = (event: MouseEvent) => {

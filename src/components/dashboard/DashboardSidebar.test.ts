@@ -257,4 +257,26 @@ describe('DashboardSidebar', () => {
     await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab', shiftKey: true });
     expect(document.activeElement).toBe(signOut);
   });
+
+  it('does not treat roving tabindex -1 theme options as the end of the mobile focus loop', async () => {
+    const wrapper = mountSidebarWithAccountMenu({}, document.body);
+    const close = wrapper.get('[data-sidebar-close]').element as HTMLButtonElement;
+    const widthToggle = wrapper.get('[data-sidebar-width-toggle]').element as HTMLButtonElement;
+
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    await wrapper.vm.$nextTick();
+    widthToggle.hidden = true;
+    wrapper.findAll('.account-menu-links .account-menu-item').forEach((item) => {
+      (item.element as HTMLElement).hidden = true;
+    });
+    const activeThemeChoice = wrapper.get('[data-theme-choice="system"]').element as HTMLButtonElement;
+
+    expect(wrapper.get('[data-theme-choice="light"]').attributes('tabindex')).toBe('-1');
+    expect(wrapper.get('[data-theme-choice="dark"]').attributes('tabindex')).toBe('-1');
+
+    activeThemeChoice.focus();
+    await wrapper.get('.dashboard-sidebar').trigger('keydown', { key: 'Tab' });
+
+    expect(document.activeElement).toBe(close);
+  });
 });
