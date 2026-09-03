@@ -126,7 +126,16 @@ describe("TextDocumentView", () => {
       await flushPromises();
 
       const back = wrapper.find("header .btn-ghost");
+      // The label follows the locale now; it used to be hardcoded Russian for
+      // every user, which is exactly what this assertion was pinning.
+      const { t, setLocale } = useI18n();
+      expect(back.text()).toBe(t("back"));
+      setLocale("ru");
+      await flushPromises();
       expect(back.text()).toBe("Назад");
+      setLocale("en");
+      await flushPromises();
+      expect(back.text()).toBe("Back");
       expect(back.attributes("href")).toBeUndefined();
     });
 
@@ -136,7 +145,7 @@ describe("TextDocumentView", () => {
       await flushPromises();
 
       const back = wrapper.find("header .btn-ghost");
-      expect(back.text()).toBe("Назад к канвасу");
+      expect(back.text()).toBe(useI18n().t("backToCanvas"));
       expect(back.attributes("to")).toBe("/canvas/canvas-77");
     });
   });

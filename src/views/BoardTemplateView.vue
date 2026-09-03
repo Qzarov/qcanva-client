@@ -3,7 +3,7 @@
 
   <div v-else class="board-template-page">
     <header class="board-template-header">
-      <router-link :to="backTarget.to" class="board-template-back">← Назад</router-link>
+      <router-link :to="backTarget.to" class="board-template-back">← {{ backTarget.label }}</router-link>
       <div v-if="template" class="board-template-title">
         <input
           v-if="role === 'owner'"
@@ -58,13 +58,13 @@ import BoardEditor from '../components/board/BoardEditor.vue';
 import BoardShareDialog from '../components/board/BoardShareDialog.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import { useBoardSocket } from '../composables/useBoardSocket';
-import { CANVAS_ORIGIN_QUERY, resolveBackTarget } from '../composables/useResourceBackTarget';
+import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
 const route = useRoute();
-const backTarget = computed(() => resolveBackTarget(route.query?.[CANVAS_ORIGIN_QUERY]));
+const { backTarget } = useResourceBackTarget();
 const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
 const templateType = ref<InteractiveTemplate['templateType'] | null>(null);

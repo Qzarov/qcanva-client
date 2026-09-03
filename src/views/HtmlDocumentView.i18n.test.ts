@@ -24,18 +24,6 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push, replace }),
 }));
 
-// useResourceBackTarget.ts hardcodes its "Назад" label in Russian regardless
-// of locale — a real bug, but in a shared composable, not in
-// HtmlDocumentView.vue itself, so out of scope here (see the report).
-vi.mock('../composables/useResourceBackTarget', async () => {
-  const vue = await vi.importActual<typeof import('vue')>('vue');
-  return {
-    CANVAS_ORIGIN_QUERY: 'fromCanvas',
-    useResourceBackTarget: () => ({
-      backTarget: vue.computed(() => ({ to: { name: 'dashboard' }, label: 'Back' })),
-    }),
-  };
-});
 
 vi.mock('../components/html/HtmlVisualEditor.vue', () => ({
   default: defineComponent({ name: 'HtmlVisualEditorStub', setup: () => () => null }),

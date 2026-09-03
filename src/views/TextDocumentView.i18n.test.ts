@@ -7,9 +7,10 @@
 // panel, history panel, and mode/toolbar buttons beyond the photo button
 // were intentionally left hardcoded in English as documented out-of-scope
 // work, so they are excluded from the Russian-locale check below. The
-// Cyrillic sweep also stubs useResourceBackTarget, whose "Назад" label is a
-// separate, pre-existing hardcode bug in a shared composable outside the
-// three views this task covers (see the report).
+// useResourceBackTarget is deliberately NOT stubbed. It used to hardcode its
+// "Назад" label regardless of locale and had to be stubbed out of this sweep,
+// which left the back button unchecked. It now returns a translation key, so
+// the real composable runs here and its label is swept like everything else.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -100,20 +101,6 @@ vi.mock('../composables/useTextDocumentSocket', () => ({
 
 vi.mock('../composables/useToast', () => ({ useToast: () => ({ show: vi.fn() }) }));
 
-// useResourceBackTarget.ts hardcodes its "Назад" / "Назад к канвасу" label in
-// Russian regardless of locale — a real bug, but in a shared composable, not
-// in TextDocumentView.vue itself, so it is out of scope for this change (see
-// the report). Stub it so this view's own sweep below isn't polluted by a
-// pre-existing issue in a file this task does not touch.
-vi.mock('../composables/useResourceBackTarget', async () => {
-  const vue = await vi.importActual<typeof import('vue')>('vue');
-  return {
-    CANVAS_ORIGIN_QUERY: 'fromCanvas',
-    useResourceBackTarget: () => ({
-      backTarget: vue.computed(() => ({ to: { name: 'dashboard' }, label: 'Back' })),
-    }),
-  };
-});
 
 import TextDocumentView from './TextDocumentView.vue';
 
