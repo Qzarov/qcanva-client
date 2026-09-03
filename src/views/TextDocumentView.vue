@@ -201,6 +201,7 @@ import { EditorContent, useEditor } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
+import { isRenderableHref } from '../documents/link-policy';
 import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
@@ -348,7 +349,12 @@ export default defineComponent({
       extensions: [
         StarterKit.configure({ history: false }),
         Underline,
-        Link.configure({ openOnClick: false }),
+        // A collaborator's Yjs update reaches this editor without passing the
+        // backend's renderer, so the href filter has to live here too.
+        Link.configure({
+          openOnClick: false,
+          isAllowedUri: (href, ctx) => isRenderableHref(href, ctx.defaultValidate),
+        }),
         TaskList,
         TaskItem.configure({ nested: true }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
