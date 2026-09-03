@@ -138,6 +138,12 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-sidebar-width-toggle]').attributes('aria-label')).toBe('Expand sidebar');
   });
 
+  it('uses the full account control when a collapsed desktop rail opens as a mobile drawer', () => {
+    const wrapper = mountSidebarWithAccountMenu({ widthState: 'collapsed', mobileOpen: true });
+
+    expect(wrapper.get('[data-account-menu-trigger]').text()).toContain('Admin');
+  });
+
   it('emits folder creation and expansion requests without owning folder state', async () => {
     const wrapper = mountSidebar();
 

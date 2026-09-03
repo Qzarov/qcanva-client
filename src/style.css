@@ -267,6 +267,316 @@ body {
   overflow: hidden;
   background: var(--ui-page);
 }
+
+/* The dashboard is a contained application frame: the rail stays put while
+   the central pane owns the page scroll. The explicit shell class keeps the
+   collapse contract predictable in browsers without relying on :has(). */
+.dashboard-app-shell {
+  --dashboard-sidebar-width: 248px;
+  display: grid;
+  grid-template-columns: var(--dashboard-sidebar-width) minmax(0, 1fr);
+  width: 100%;
+  min-width: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--ui-page);
+}
+.dashboard-app-shell.sidebar-collapsed {
+  --dashboard-sidebar-width: 72px;
+}
+.dashboard-app-shell-public {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dashboard-central-shell {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+.dashboard-central-shell .app-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.dashboard-sidebar {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  min-height: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  padding: 16px 12px 12px;
+  border-right: 1px solid var(--ui-border);
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+}
+.dashboard-sidebar-backdrop {
+  display: none;
+}
+.dashboard-sidebar-header {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dashboard-sidebar-brand {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--ui-brand) 48%, var(--ui-border));
+  border-radius: 11px;
+  background: var(--ui-brand-soft);
+  color: var(--ui-accent-strong);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1;
+}
+.dashboard-sidebar-header > .dashboard-sidebar-label {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-text);
+  font-size: 16px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-sidebar-header .language-toggle {
+  width: auto;
+  min-width: 40px;
+  min-height: 34px;
+  margin-left: auto;
+  padding-inline: 8px;
+  justify-content: center;
+}
+.dashboard-sidebar .dashboard-sidebar-close,
+.dashboard-central-shell .dashboard-mobile-sidebar-open {
+  display: none;
+}
+.dashboard-sidebar-scroll {
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.dashboard-sidebar-navigation,
+.dashboard-sidebar-folder-list {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.dashboard-sidebar .dashboard-sidebar-item,
+.dashboard-sidebar .dashboard-sidebar-folder {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--ui-text-secondary);
+  text-align: left;
+}
+.dashboard-sidebar .dashboard-sidebar-item:hover,
+.dashboard-sidebar .dashboard-sidebar-folder:hover {
+  border-color: var(--ui-border);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+.dashboard-sidebar .dashboard-sidebar-item.active,
+.dashboard-sidebar .dashboard-sidebar-folder.active {
+  border-color: color-mix(in srgb, var(--ui-focus) 42%, var(--ui-border));
+  background: var(--ui-brand-soft);
+  color: var(--ui-accent-strong);
+  box-shadow: inset 3px 0 0 var(--ui-focus);
+}
+.dashboard-sidebar-item:focus-visible,
+.dashboard-sidebar-folder:focus-visible,
+.dashboard-sidebar-folder-toggle:focus-visible,
+.dashboard-sidebar-create-folder:focus-visible,
+.dashboard-sidebar-width-toggle:focus-visible,
+.dashboard-sidebar-close:focus-visible,
+.dashboard-mobile-sidebar-open:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.dashboard-sidebar-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  color: currentColor;
+  font-size: 16px;
+  line-height: 1;
+}
+.dashboard-sidebar-label,
+.dashboard-sidebar-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  text-overflow: ellipsis;
+  transform: translateX(0);
+  white-space: nowrap;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+.dashboard-sidebar-folders {
+  min-width: 0;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+.dashboard-sidebar-section-heading {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 6px 8px;
+}
+.dashboard-sidebar-section-heading h2 {
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.dashboard-sidebar .dashboard-sidebar-create-folder,
+.dashboard-sidebar .dashboard-sidebar-folder-toggle {
+  width: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border-color: transparent;
+  font-size: 17px;
+  line-height: 1;
+}
+.dashboard-sidebar-folder-row {
+  --sidebar-folder-offset: calc(max(0, var(--folder-depth, 0)) * 14px);
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px;
+  padding-inline-start: var(--sidebar-folder-offset);
+}
+.dashboard-sidebar-folder-toggle span {
+  display: block;
+  transition: transform var(--transition-fast);
+}
+.dashboard-sidebar-folder-toggle span.collapsed {
+  transform: rotate(-90deg);
+}
+.dashboard-sidebar-folder-toggle-spacer {
+  width: 30px;
+  height: 1px;
+}
+.dashboard-sidebar-folder {
+  min-height: 38px;
+}
+.dashboard-sidebar .dashboard-sidebar-folder[draggable='true'] {
+  cursor: grab;
+}
+.dashboard-sidebar .dashboard-sidebar-folder[draggable='true']:active {
+  cursor: grabbing;
+}
+.dashboard-sidebar .dashboard-sidebar-folder.drop-active {
+  border-color: var(--ui-focus);
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
+}
+.dashboard-sidebar .dashboard-sidebar-folder.reorder-target {
+  border-color: var(--ui-focus);
+  box-shadow: inset 0 3px 0 var(--ui-focus);
+}
+.dashboard-sidebar-footer {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ui-border);
+}
+.dashboard-sidebar-footer .account-menu,
+.dashboard-sidebar-footer .account-menu-trigger {
+  width: 100%;
+  min-width: 0;
+}
+.dashboard-sidebar .dashboard-sidebar-width-toggle {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  justify-content: flex-start;
+  border-color: transparent;
+}
+
+.dashboard-sidebar.collapsed {
+  padding-inline: 8px;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-header {
+  flex-direction: column;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-header .language-toggle {
+  width: 38px;
+  min-width: 38px;
+  margin-left: 0;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  clip-path: inset(50%);
+  transform: translateX(-4px);
+  white-space: nowrap;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-item,
+.dashboard-sidebar.collapsed .dashboard-sidebar-folder,
+.dashboard-sidebar.collapsed .dashboard-sidebar-width-toggle {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  padding-inline: 4px;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-section-heading {
+  justify-content: center;
+  padding-inline: 0;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-folder-row {
+  display: block;
+  padding-inline-start: 0;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle,
+.dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle-spacer {
+  display: none;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-footer {
+  justify-items: center;
+}
+.dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu,
+.dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu-trigger {
+  width: 38px;
+}
 .app-sidebar {
   grid-row: 1 / -1;
   background: var(--ui-surface-solid);
@@ -2041,6 +2351,142 @@ body {
     grid-template-rows: auto 1fr;
   }
 
+}
+
+@media (max-width: 768px) {
+
+  .dashboard-app-shell,
+  .dashboard-app-shell.sidebar-collapsed {
+    --dashboard-sidebar-width: 0px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-sidebar,
+  .dashboard-sidebar.collapsed {
+    position: fixed;
+    z-index: 280;
+    inset: 0 auto 0 0;
+    width: min(88vw, 320px);
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    visibility: hidden;
+    box-shadow: var(--ui-shadow);
+    transform: translateX(-102%);
+    transition: transform var(--transition-std), visibility 0s linear .3s;
+  }
+
+  .dashboard-sidebar.mobile-open,
+  .dashboard-sidebar.collapsed.mobile-open {
+    visibility: visible;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
+
+  .dashboard-sidebar-backdrop {
+    position: fixed;
+    z-index: 270;
+    inset: 0;
+    display: block;
+    background: var(--ui-overlay);
+  }
+
+  .dashboard-central-shell .dashboard-mobile-sidebar-open,
+  .dashboard-sidebar .dashboard-sidebar-close {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .dashboard-sidebar-close {
+    margin-left: 0;
+    font-size: 22px;
+  }
+
+  .dashboard-sidebar-width-toggle {
+    display: none;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-header {
+    flex-direction: row;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-header .language-toggle {
+    width: auto;
+    min-width: 40px;
+    margin-left: auto;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-item,
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder {
+    grid-template-columns: 30px minmax(0, 1fr);
+    justify-items: stretch;
+    padding-inline: 8px;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-section-heading {
+    justify-content: space-between;
+    padding-inline: 6px;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-row {
+    display: grid;
+    padding-inline-start: var(--sidebar-folder-offset);
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle {
+    display: inline-grid;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle-spacer {
+    display: block;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer {
+    justify-items: stretch;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu,
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu-trigger {
+    width: 100%;
+  }
+
+  /* The sidebar account menu opens upward so it stays inside a short phone
+     viewport even though the trigger lives in the drawer footer. */
+  .dashboard-sidebar.dashboard-sidebar .dashboard-sidebar-footer .account-menu--sidebar .account-menu-popover {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 8px);
+    left: 0;
+  }
+
+  .dashboard-sidebar .dashboard-sidebar-create-folder,
+  .dashboard-sidebar .dashboard-sidebar-folder-toggle,
+  .dashboard-sidebar .dashboard-sidebar-header .language-toggle {
+    width: 40px;
+    min-width: 40px;
+    flex: 0 0 40px;
+  }
+
+}
+
+@media (max-width: 720px) {
+
   .app-header {
     padding: 10px 12px;
   }
@@ -2591,6 +3037,16 @@ body {
     width: 30px;
     padding: 0;
     font-size: 15px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-sidebar,
+  .dashboard-sidebar.collapsed,
+  .dashboard-sidebar-label,
+  .dashboard-sidebar-folder-name,
+  .dashboard-sidebar-folder-toggle span {
+    transition: none;
   }
 }
 .canvas-card.dragging {

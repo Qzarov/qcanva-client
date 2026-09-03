@@ -8,7 +8,7 @@ import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceF
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
-const SIDEBAR_DESKTOP_QUERY = '(min-width: 721px)';
+const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),

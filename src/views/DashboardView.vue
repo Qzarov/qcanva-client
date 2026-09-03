@@ -1034,7 +1034,7 @@ export default defineComponent({
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
     let previousBodyOverflow: string | null = null;
-    const SIDEBAR_DESKTOP_QUERY = '(min-width: 721px)';
+    const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
     let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so

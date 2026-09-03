@@ -43,7 +43,7 @@
           :class="{ active: isActive({ kind: item.kind }) }"
           :aria-current="isActive({ kind: item.kind }) ? 'page' : undefined"
           :aria-label="item.label"
-          :title="widthState === 'collapsed' ? item.label : undefined"
+          :title="compactPresentation ? item.label : undefined"
           :data-dashboard-section="item.kind"
           @click="emit('select', { kind: item.kind })"
         >
@@ -100,7 +100,7 @@
               :draggable="folder.draggable"
               :aria-current="isActive({ kind: 'folder', folderId: folder.id }) ? 'page' : undefined"
               :aria-label="folder.name"
-              :title="widthState === 'collapsed' ? folder.name : undefined"
+              :title="compactPresentation ? folder.name : undefined"
               @click="emit('select', { kind: 'folder', folderId: folder.id })"
               @dragstart.stop="emit('folder-drag-start', $event, folder.id)"
               @dragend="emit('folder-drag-end', $event, folder.id)"
@@ -118,7 +118,7 @@
     </div>
 
     <footer class="dashboard-sidebar-footer">
-      <AccountMenu placement="sidebar" :compact="widthState === 'collapsed'" />
+      <AccountMenu placement="sidebar" :compact="compactPresentation" />
       <button
         type="button"
         class="btn-ghost btn-sm dashboard-sidebar-width-toggle"
@@ -205,6 +205,9 @@ const topLevelItems = computed<Array<{
 
 const widthToggleLabel = computed(() => (
   props.widthState === 'collapsed' ? t('expandSidebar') : t('collapseSidebar')
+));
+const compactPresentation = computed(() => (
+  props.widthState === 'collapsed' && !props.mobileOpen
 ));
 
 const isActive = (section: DashboardSection) => (
