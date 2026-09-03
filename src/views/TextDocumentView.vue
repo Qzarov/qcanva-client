@@ -47,13 +47,13 @@
         <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
         <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
         <div class="text-doc-topbar-actions">
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">Access</button>
-          <button class="btn-ghost btn-sm" @click="toggleHistory">History</button>
+          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">{{ t('access') }}</button>
+          <button class="btn-ghost btn-sm" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
           <AccountMenu v-if="currentUser" />
-          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">Войти</router-link>
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
         </div>
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
@@ -164,8 +164,8 @@
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">List</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">Tasks</button>
-        <button class="btn-ghost btn-sm" :disabled="uploadingImage" title="Добавить фотографию" @click="openImagePicker">
-          {{ uploadingImage ? 'Загрузка…' : 'Фото' }}
+        <button class="btn-ghost btn-sm" :disabled="uploadingImage" :title="t('addPhoto')" @click="openImagePicker">
+          {{ uploadingImage ? t('loading') : t('photo') }}
         </button>
       </div>
       <input
@@ -214,6 +214,7 @@ import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
+import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 
 export default defineComponent({
@@ -226,6 +227,7 @@ export default defineComponent({
     const resolvedId = ref(id);
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
+    const { t } = useI18n();
 
     const ydoc = new Y.Doc();
     const awarenessStates = new Map<number, Record<string, unknown>>();
@@ -304,11 +306,11 @@ export default defineComponent({
         for (const file of files) {
           // Upload first: a local blob URL would be meaningless to collaborators.
           const { url } = await uploadImage(file);
-          if (!url) throw new Error('Сервер не вернул ссылку на изображение');
+          if (!url) throw new Error(t('noImageUrlFromServer'));
           editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run();
         }
       } catch (err: any) {
-        showToast(err?.message || 'Не удалось загрузить изображение', 'error');
+        showToast(err?.message || t('failedUploadImage'), 'error');
       } finally {
         uploadingImage.value = false;
       }
@@ -458,14 +460,14 @@ export default defineComponent({
           return;
         }
         if (hydratedFromCache.value) {
-          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          cacheStatus.value = { kind: 'error', text: t('failedRefreshCached') };
           return;
         }
         throw e;
       } finally {
         loading.value = false;
         if (cacheStatus.value?.kind === 'refreshing') {
-          cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+          cacheStatus.value = { kind: 'success', text: t('documentUpdated') };
           cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
         }
       }
@@ -665,7 +667,7 @@ export default defineComponent({
         }
         hydratedFromCache.value = true;
         loading.value = false;
-        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: t('refreshingSaved') };
       }
       void load();
     });
@@ -677,6 +679,7 @@ export default defineComponent({
     });
 
     return {
+      t,
       backTarget,
       imageInput,
       uploadingImage,

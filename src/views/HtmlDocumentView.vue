@@ -45,7 +45,7 @@
       <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
-      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">Access</button>
+      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">{{ t('access') }}</button>
       <div class="html-mode-tabs">
         <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
         <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
@@ -57,7 +57,7 @@
           <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">Export PDF</button>
         </div>
       </div>
-      <button class="btn-ghost html-desktop-action" @click="toggleHistory">History</button>
+      <button class="btn-ghost html-desktop-action" @click="toggleHistory">{{ t('history') }}</button>
       <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
         <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
           {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
@@ -82,10 +82,10 @@
         <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
           <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">Preview</button>
           <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">Source</button>
-          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">Access</button>
+          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">{{ t('access') }}</button>
           <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">Export HTML</button>
           <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">Export PDF</button>
-          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">History</button>
+          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">{{ t('history') }}</button>
           <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
             {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
           </button>
@@ -95,7 +95,7 @@
         {{ saving ? 'Saving...' : 'Save' }}
       </button>
       <AccountMenu v-if="currentUser" />
-      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
+      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
     </header>
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
@@ -280,6 +280,7 @@ import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
+import { useI18n } from '../composables/useI18n';
 
 export default defineComponent({
   components: { AccountMenu, HtmlVisualEditor },
@@ -296,6 +297,7 @@ export default defineComponent({
     const savingSlug = ref(false);
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
+    const { t } = useI18n();
     const title = ref('');
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
@@ -431,14 +433,14 @@ export default defineComponent({
           return;
         }
         if (hydratedFromCache.value) {
-          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          cacheStatus.value = { kind: 'error', text: t('failedRefreshCached') };
           return;
         }
         throw e;
       } finally {
         loading.value = false;
         if (cacheStatus.value?.kind === 'refreshing') {
-          cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+          cacheStatus.value = { kind: 'success', text: t('documentUpdated') };
           cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
         }
       }
@@ -824,7 +826,7 @@ export default defineComponent({
         role.value = res.role;
         hydratedFromCache.value = true;
         loading.value = false;
-        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: t('refreshingSaved') };
       }
       void load();
       window.addEventListener('keydown', onEditorKeydown);
@@ -834,6 +836,7 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
+      t,
       backTarget,
       title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,

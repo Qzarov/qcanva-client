@@ -4,6 +4,7 @@ import { flushPromises, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TextDocumentView from "./TextDocumentView.vue";
+import { useI18n } from "../composables/useI18n";
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -268,6 +269,9 @@ describe("TextDocumentView", () => {
     });
 
     it("offers a photo button in the toolbar for editors", async () => {
+      // The button copy below is the Russian wording, so pin the locale
+      // rather than depend on whatever the environment's default happens to be.
+      useI18n().setLocale("ru");
       const wrapper = mount(TextDocumentView);
       await flushPromises();
       attachEditor();
