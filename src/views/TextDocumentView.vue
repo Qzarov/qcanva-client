@@ -205,6 +205,98 @@
           <EditorContent v-if="editor" :editor="editor" />
         </article>
       </main>
+
+      <!-- The selection bubble. Chrome in the app's themed --ui-* palette,
+           like the toolbar; nothing here reaches the Yjs document. -->
+      <BubbleMenu
+        v-if="editor && canEditContent"
+        class="text-doc-bubble-menu"
+        :editor="editor"
+        :should-show="bubbleShouldShow"
+        :tippy-options="{ duration: 100 }"
+      >
+        <template v-if="!linkEditorOpen">
+          <button
+            v-for="button in bubbleMarkButtons"
+            :key="button.mark"
+            class="text-doc-bubble-btn"
+            :class="{ active: editor.isActive(button.mark) }"
+            :data-bubble-mark="button.mark"
+            :title="button.label"
+            :aria-label="button.label"
+            type="button"
+            @click="applyBubbleMark(button.mark)"
+          >
+            <span class="text-doc-bubble-icon" v-html="button.icon"></span>
+          </button>
+          <button
+            class="text-doc-bubble-btn"
+            :class="{ active: editor.isActive('link') }"
+            data-bubble-action="link"
+            :title="t('linkAdd')"
+            :aria-label="t('linkAdd')"
+            type="button"
+            @click="openLinkEditor"
+          >
+            <span class="text-doc-bubble-icon" v-html="linkIcon"></span>
+          </button>
+          <button
+            v-if="editor.isActive('link')"
+            class="text-doc-bubble-btn"
+            data-bubble-action="unlink"
+            :title="t('linkRemove')"
+            :aria-label="t('linkRemove')"
+            type="button"
+            @click="removeLink"
+          >
+            <span class="text-doc-bubble-icon" v-html="unlinkIcon"></span>
+          </button>
+        </template>
+        <form v-else class="text-doc-bubble-link-form" @submit.prevent="applyLink">
+          <input
+            v-model="linkInput"
+            class="text-doc-bubble-link-input"
+            data-bubble-link-input
+            :placeholder="t('linkUrl')"
+            :aria-label="t('linkUrl')"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            @keydown.esc.prevent="closeLinkEditor"
+          />
+          <button class="text-doc-bubble-btn text-doc-bubble-btn-text" data-bubble-action="apply-link" type="submit">
+            {{ t('linkApply') }}
+          </button>
+        </form>
+      </BubbleMenu>
+
+      <!-- The slash menu. Chrome, not document content: it lives in the app's
+           themed --ui-* palette (like the toolbar), never in the fixed paper
+           palette, and nothing here reaches the Yjs document. -->
+      <div
+        v-if="slashOpen"
+        class="text-doc-slash-menu"
+        :style="slashMenuStyle"
+        role="listbox"
+        :aria-label="t('slashMenu')"
+      >
+        <button
+          v-for="(item, index) in slashItems"
+          :key="item.id"
+          class="text-doc-slash-item"
+          :class="{ active: index === slashIndex }"
+          :data-slash-item="item.id"
+          role="option"
+          :aria-selected="index === slashIndex"
+          type="button"
+          @mousedown.prevent="selectSlashItem(index)"
+          @mouseenter="slashIndex = index"
+        >
+          <span class="text-doc-slash-icon" v-html="item.icon"></span>
+          <span class="text-doc-slash-label">{{ t(item.labelKey) }}</span>
+        </button>
+        <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
+      </div>
     </template>
   </div>
 </template>
@@ -213,7 +305,7 @@
 import { computed, defineComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
-import { EditorContent, useEditor } from '@tiptap/vue-3';
+import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from '../text-documents/code-highlighting';
@@ -224,6 +316,23 @@ import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
 import { Callout, calloutIconSvg } from '../text-documents/callout';
+import {
+  SLASH_MENU_ITEMS,
+  SlashMenu,
+  type SlashMenuController,
+  type SlashMenuItem,
+  type SlashMenuRender,
+} from '../text-documents/slash-menu';
+import {
+  BUBBLE_MARK_BUTTONS,
+  LINK_ICON,
+  UNLINK_ICON,
+  resolveLinkHref,
+  shouldShowBubbleMenu,
+} from '../text-documents/bubble-menu';
+import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
+import DragHandle from '@tiptap/extension-drag-handle';
+import NodeRange from '@tiptap/extension-node-range';
 import { CALLOUT_VARIANTS } from '../documents/document-nodes';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
@@ -238,7 +347,7 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 
 export default defineComponent({
-  components: { AccountMenu, EditorContent },
+  components: { AccountMenu, BubbleMenu, EditorContent },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -248,7 +357,7 @@ export default defineComponent({
     const resolvedId = ref(id);
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
-    const { t } = useI18n();
+    const { t, locale } = useI18n();
 
     /**
      * The four callout variants for the toolbar: names come from the shared
@@ -382,6 +491,181 @@ export default defineComponent({
       void insertImages(files);
     };
 
+    /**
+     * DRAG HANDLE.
+     *
+     * @tiptap/extension-drag-handle renders one element and tippy parks it
+     * beside whichever block the pointer is over. It reads the EXISTING
+     * y-prosemirror sync plugin (from `Collaboration.configure({ document:
+     * ydoc })` below) through `ySyncPluginKey` to keep a RELATIVE position
+     * across a collaborator's change; it neither creates nor needs a second
+     * Y.Doc, and none is created here.
+     *
+     * NodeRange is its hard requirement, not an extra: the drag handler builds
+     * a NodeRangeSelection over the hovered block, so without that extension
+     * registered a drag has nothing to pick up.
+     */
+    let dragHandleElement: HTMLElement | null = null;
+    const paintDragHandleLabel = () => {
+      if (!dragHandleElement) return;
+      dragHandleElement.setAttribute('aria-label', t('dragBlock'));
+      dragHandleElement.setAttribute('title', t('dragBlock'));
+    };
+    const renderDragHandle = () => {
+      const element = document.createElement('div');
+      element.className = 'text-doc-drag-handle';
+      element.setAttribute('role', 'button');
+      // Inline Lucide-style svg (lucide "grip-vertical"), never an emoji.
+      element.innerHTML = lucideIcon(EDITOR_GLYPHS.gripVertical);
+      dragHandleElement = element;
+      paintDragHandleLabel();
+
+      return element;
+    };
+    // The element is built once, when the editor is created, so its label has
+    // to be repainted rather than re-rendered when the language changes.
+    watch(locale, paintDragHandleLabel);
+
+    /**
+     * BUBBLE MENU state.
+     *
+     * The popup is @tiptap/vue-3's BubbleMenu component; `shouldShow` and the
+     * href policy live in text-documents/bubble-menu.ts so they can be
+     * asserted without a popup. The link editor is deliberately the smallest
+     * thing that can take a url: one input, inside the bubble.
+     */
+    const linkEditorOpen = ref(false);
+    const linkInput = ref('');
+    const bubbleMarkButtons = computed(() =>
+      BUBBLE_MARK_BUTTONS.map((button) => ({ ...button, label: t(button.labelKey) })),
+    );
+    const bubbleShouldShow = ({ state, from, to }: { state: any; from: number; to: number }) =>
+      shouldShowBubbleMenu(state, from, to);
+
+    const applyBubbleMark = (mark: string) => {
+      editor.value?.chain().focus().toggleMark(mark).run();
+    };
+
+    const openLinkEditor = () => {
+      linkInput.value = editor.value?.getAttributes('link').href || '';
+      linkEditorOpen.value = true;
+    };
+
+    const closeLinkEditor = () => {
+      linkEditorOpen.value = false;
+      linkInput.value = '';
+    };
+
+    const removeLink = () => {
+      editor.value?.chain().focus().extendMarkRange('link').unsetLink().run();
+      closeLinkEditor();
+    };
+
+    const applyLink = () => {
+      if (!linkInput.value.trim()) {
+        // An emptied field reads as "take the link off", which is what the
+        // separate unlink button does - not as "link to nothing".
+        removeLink();
+        return;
+      }
+      const href = resolveLinkHref(linkInput.value);
+      if (!href) {
+        // Refused by documents/link-policy.ts. Saying so beats silently
+        // dropping the click, because the input looks perfectly fine.
+        showToast(t('linkRejected'), 'error');
+        return;
+      }
+      editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run();
+      closeLinkEditor();
+    };
+
+    /**
+     * SLASH MENU state.
+     *
+     * The extension owns the trigger, the guards and the filtering; this owns
+     * the popup - which items are showing, which one is highlighted, and where
+     * on screen it sits. `slashCommand` is the suggestion plugin's own command
+     * callback, kept so a click or Enter goes through the plugin's path (which
+     * knows the range to replace) rather than reimplementing it.
+     */
+    const slashOpen = ref(false);
+    const slashItems = ref<SlashMenuItem[]>([]);
+    const slashIndex = ref(0);
+    const slashRect = ref<{ top: number; left: number } | null>(null);
+    let slashCommand: ((item: SlashMenuItem) => void) | null = null;
+    // Escape dismisses the popup while the caret stays inside the typed
+    // `/query`, so the suggestion plugin is still "active". Without this flag
+    // the very next keystroke would pop it straight back open.
+    let slashDismissed = false;
+
+    const slashLabel = (item: SlashMenuItem) => t(item.labelKey);
+    const slashMenuStyle = computed(() =>
+      slashRect.value
+        ? { top: `${slashRect.value.top}px`, left: `${slashRect.value.left}px` }
+        : undefined,
+    );
+
+    const applySlashRender = (render: SlashMenuRender) => {
+      slashItems.value = render.items;
+      slashIndex.value = 0;
+      slashCommand = render.command;
+      // A DOMRect is not reactive and jsdom reports zeroes; only the two
+      // numbers the popup needs are copied out.
+      slashRect.value = render.rect
+        ? { top: render.rect.bottom + 6, left: render.rect.left }
+        : null;
+      slashOpen.value = !slashDismissed;
+    };
+
+    const closeSlashMenu = () => {
+      slashOpen.value = false;
+      slashItems.value = [];
+      slashIndex.value = 0;
+      slashCommand = null;
+    };
+
+    const selectSlashItem = (index: number) => {
+      const item = slashItems.value[index];
+      if (!item || !slashCommand) return;
+      slashCommand(item);
+    };
+
+    const slashController: SlashMenuController = {
+      onOpen: (render) => {
+        slashDismissed = false;
+        applySlashRender(render);
+      },
+      onUpdate: (render) => applySlashRender(render),
+      onClose: () => {
+        slashDismissed = false;
+        closeSlashMenu();
+      },
+      onKeyDown: (event) => {
+        if (!slashOpen.value) return false;
+        const total = slashItems.value.length;
+        if (event.key === 'Escape') {
+          slashDismissed = true;
+          closeSlashMenu();
+          return true;
+        }
+        if (event.key === 'ArrowDown') {
+          if (total) slashIndex.value = (slashIndex.value + 1) % total;
+          return true;
+        }
+        if (event.key === 'ArrowUp') {
+          if (total) slashIndex.value = (slashIndex.value - 1 + total) % total;
+          return true;
+        }
+        if (event.key === 'Enter') {
+          // Nothing to insert is still a consumed Enter: the query is showing
+          // "no matching blocks", and a newline there would be a surprise.
+          selectSlashItem(slashIndex.value);
+          return true;
+        }
+        return false;
+      },
+    };
+
     const editor = useEditor({
       editable: true,
       extensions: [
@@ -402,6 +686,18 @@ export default defineComponent({
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
         Callout,
+        SlashMenu.configure({
+          controller: slashController,
+          label: slashLabel,
+          // The image item cannot insert a node on its own: the file
+          // has to be uploaded first, so it reuses the toolbar's picker.
+          requestImage: () => openImagePicker(),
+        }),
+        NodeRange,
+        DragHandle.configure({
+          render: renderDragHandle,
+          tippyOptions: { offset: [0, 8] },
+        }),
         Collaboration.configure({ document: ydoc }),
         CollaborationCursor.configure({
           provider: awarenessProvider,
@@ -724,6 +1020,23 @@ export default defineComponent({
     return {
       t,
       calloutVariants,
+      slashOpen,
+      slashItems,
+      slashIndex,
+      slashMenuStyle,
+      selectSlashItem,
+      SLASH_MENU_ITEMS,
+      linkEditorOpen,
+      linkInput,
+      bubbleMarkButtons,
+      bubbleShouldShow,
+      applyBubbleMark,
+      openLinkEditor,
+      closeLinkEditor,
+      applyLink,
+      removeLink,
+      linkIcon: LINK_ICON,
+      unlinkIcon: UNLINK_ICON,
       backTarget,
       imageInput,
       uploadingImage,

@@ -1,4 +1,4 @@
-import { Node, mergeAttributes, type CommandProps } from '@tiptap/core';
+import { Node, escapeForRegEx, mergeAttributes, wrappingInputRule, type CommandProps } from '@tiptap/core';
 import { CALLOUT_VARIANTS, clampCalloutVariant, nodeSpec } from '../documents/document-nodes';
 
 /**
@@ -55,6 +55,38 @@ export function calloutIconSvg(variant: unknown): string {
   );
 }
 
+/**
+ * The markdown-ish trigger: `:::` at the start of a block, optionally naming a
+ * variant, then a space. `::: ` gives the neutral callout; `:::warning ` gives
+ * a warning one.
+ *
+ * WHY `:::` and not something else:
+ *
+ *  - It is the container-directive fence that Docusaurus, VitePress and
+ *    MkDocs-material all use for exactly this block (`:::info`, `:::warning`),
+ *    so it is the syntax a user who writes docs elsewhere already has in their
+ *    fingers.
+ *  - It is the only common admonition syntax that carries the VARIANT in the
+ *    same token, so one rule covers all four - and the alternation below is
+ *    built from CALLOUT_VARIANTS, so a variant added to the shared inventory
+ *    gets its trigger for free instead of needing a fifth rule.
+ *  - GitHub's `> [!NOTE]` was rejected because it can never fire: StarterKit's
+ *    blockquote rule is live and consumes `> ` first, turning the block into a
+ *    blockquote before this rule could ever see the text.
+ *  - MkDocs' `!!! ` was rejected because it is plausible prose ("Wow!!! "). A
+ *    trigger that can fire while someone is just typing is worse than one that
+ *    cannot, and `:::` never begins an English or a Russian sentence.
+ *  - It collides with none of the rules already live in this editor: `# `,
+ *    `- `, `1. `, `> `, the triple backtick and `---`.
+ *
+ * An UNDECLARED variant deliberately does not match (`:::purple ` stays text)
+ * rather than matching and being bounded to "info": silently turning a typo
+ * into a neutral callout hides the typo.
+ */
+export const CALLOUT_INPUT_RULE = new RegExp(
+  `^:::(${CALLOUT_VARIANTS.map(escapeForRegEx).join('|')})?\\s$`,
+);
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     callout: {
@@ -97,6 +129,22 @@ export const Callout = Node.create({
   renderHTML({ HTMLAttributes }) {
     // No icon markup: see the file comment. 0 is the content hole.
     return [TAG, mergeAttributes(HTMLAttributes), 0];
+  },
+
+  /**
+   * One rule, consistent with the ones StarterKit already ships for heading,
+   * list, blockquote, code block and horizontal rule - and, like all of them,
+   * prosemirror-inputrules refuses to run it inside a node whose spec says
+   * `code`, so `::: ` typed in a code block stays literal text.
+   */
+  addInputRules() {
+    return [
+      wrappingInputRule({
+        find: CALLOUT_INPUT_RULE,
+        type: this.type,
+        getAttributes: (match) => ({ variant: clampCalloutVariant(match[1]) }),
+      }),
+    ];
   },
 
   addCommands() {

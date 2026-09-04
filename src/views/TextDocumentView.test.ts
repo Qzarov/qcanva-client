@@ -33,6 +33,12 @@ vi.mock("@tiptap/vue-3", async () => {
       props: ["editor"],
       template: '<div class="mock-editor" />',
     },
+    // The bubble menu is chrome around the real editor; these suites mock
+    // @tiptap/vue-3 wholesale, so it is stubbed to a plain wrapper.
+    BubbleMenu: {
+      props: ["editor", "shouldShow", "tippyOptions", "pluginKey", "updateDelay"],
+      template: '<div class="mock-bubble-menu"><slot /></div>',
+    },
     useEditor: (options: any) => {
       tiptapMock.useEditorOptions = options;
       return tiptapMock.editorRef;

@@ -9,6 +9,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
 import { CALLOUT_VARIANTS, nodeSpec } from '../documents/document-nodes';
+import { CALLOUT_INPUT_RULE } from '../text-documents/callout';
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -76,6 +77,22 @@ async function mountEditableDoc() {
   await flushPromises();
   await wrapper.vm.$nextTick();
   return wrapper;
+}
+
+/**
+ * Types `text` through the same path a keystroke takes: ProseMirror offers each
+ * character to `handleTextInput` first (which is where the input rules plugin
+ * lives) and only inserts it itself when nothing handled it. `insertContent`
+ * would bypass the rules entirely and prove nothing.
+ */
+function typeText(editor: any, text: string) {
+  for (const character of text) {
+    const { from, to } = editor.state.selection;
+    const handled = editor.view.someProp('handleTextInput', (fn: any) =>
+      fn(editor.view, from, to, character),
+    );
+    if (!handled) editor.view.dispatch(editor.state.tr.insertText(character, from, to));
+  }
 }
 
 function findCallout(node: any): any {
@@ -233,6 +250,121 @@ describe('TextDocumentView callout', () => {
     // Collaboration.configure({ document: ydoc }) routes every transaction
     // through Y.Doc, and the view forwards it to the socket layer. A node view
     // fighting the CRDT would either throw or never reach sendUpdate.
+    expect(sendUpdate).toHaveBeenCalled();
+
+    wrapper.unmount();
+  });
+
+  it('turns "::: " at the start of a block into a neutral callout', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    typeText(editor, '::: ');
+
+    const callout = findCallout(editor.getJSON());
+    expect(callout).toBeTruthy();
+    expect(callout.attrs.variant).toBe('info');
+    // The trigger characters are consumed, not left in the block.
+    expect(editor.getText()).not.toContain(':::');
+
+    wrapper.unmount();
+  });
+
+  it.each(CALLOUT_VARIANTS)('names the variant in the same token: ":::%s "', async (variant) => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    typeText(editor, `:::${variant} `);
+
+    expect(findCallout(editor.getJSON()).attrs.variant).toBe(variant);
+    expect(editor.getHTML()).toContain(`<aside data-variant="${variant}">`);
+
+    wrapper.unmount();
+  });
+
+  it('builds its variant alternation from the shared inventory, not a literal', () => {
+    // A variant added to documents/document-nodes.ts gets a trigger for free.
+    for (const variant of CALLOUT_VARIANTS) {
+      expect(CALLOUT_INPUT_RULE.test(`:::${variant} `)).toBe(true);
+    }
+    expect(CALLOUT_INPUT_RULE.test('::: ')).toBe(true);
+  });
+
+  it('leaves an UNDECLARED variant as text rather than bounding it to info', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    typeText(editor, ':::purple ');
+
+    // Silently turning a typo into a neutral callout would hide the typo.
+    expect(findCallout(editor.getJSON())).toBeNull();
+    expect(editor.getText()).toContain(':::purple');
+
+    wrapper.unmount();
+  });
+
+  it('does not fire mid-paragraph: the rule is anchored to the block start', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    typeText(editor, 'see ::: here');
+
+    expect(findCallout(editor.getJSON())).toBeNull();
+    expect(editor.getText()).toBe('see ::: here');
+
+    wrapper.unmount();
+  });
+
+  it('does not fire inside a code block, where ":::" is ordinary text', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<pre><code></code></pre>');
+    editor.commands.focus('end');
+    expect(editor.isActive('codeBlock')).toBe(true);
+
+    typeText(editor, '::: ');
+
+    expect(findCallout(editor.getJSON())).toBeNull();
+    expect(editor.isActive('codeBlock')).toBe(true);
+    expect(editor.getText()).toContain(':::');
+
+    wrapper.unmount();
+  });
+
+  it('keeps the paragraph as the callout body, and its text', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    typeText(editor, ':::danger careful now');
+
+    const callout = findCallout(editor.getJSON());
+    expect(callout.attrs.variant).toBe('danger');
+    expect(callout.content?.[0]?.type).toBe('paragraph');
+    expect(editor.getText().trim()).toBe('careful now');
+
+    wrapper.unmount();
+  });
+
+  it('sends the wrap to collaborators as a Yjs update', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    sendUpdate.mockClear();
+    typeText(editor, ':::success ');
+
+    expect(findCallout(editor.getJSON()).attrs.variant).toBe('success');
     expect(sendUpdate).toHaveBeenCalled();
 
     wrapper.unmount();
