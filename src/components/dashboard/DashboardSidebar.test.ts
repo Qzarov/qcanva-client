@@ -104,7 +104,7 @@ describe('DashboardSidebar', () => {
   });
 
   it('renders Home as a collapsed disclosure before the remaining top-level destinations', async () => {
-    const wrapper = mountSidebar();
+    const wrapper = mountSidebar({ activeSection: { kind: 'recent' } });
 
     expect(wrapper.get('.dashboard-sidebar-brand img').attributes('src')).toBe('/qcanva-logo.png');
     expect(wrapper.find('[data-home-disclosure] svg.lucide-house').exists()).toBe(true);
@@ -122,8 +122,18 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
     expect(wrapper.get('[data-home-children]').isVisible()).toBe(true);
     expect(wrapper.get('[data-dashboard-section="recent"]').text()).toContain('Recent');
+    expect(wrapper.get('[data-dashboard-section="recent"]').attributes('aria-current')).toBe('page');
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-folder="default"]').text()).toContain('default');
+  });
+
+  it('selects Recent without opening Home automatically', async () => {
+    const wrapper = mountSidebar({ activeSection: { kind: 'shared' } });
+
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+    await wrapper.get('[data-dashboard-section="recent"]').trigger('click');
+
+    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'recent' }]);
   });
 
   it('emits typed destination selection and exposes the active destination', async () => {

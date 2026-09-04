@@ -62,12 +62,12 @@
           <button
             type="button"
             class="btn-ghost dashboard-sidebar-item dashboard-sidebar-recent"
-            :class="{ active: activeSection.kind === 'home' }"
-            :aria-current="activeSection.kind === 'home' ? 'page' : undefined"
+            :class="{ active: activeSection.kind === 'recent' }"
+            :aria-current="activeSection.kind === 'recent' ? 'page' : undefined"
             :aria-label="t('recents')"
             :title="compactPresentation ? t('recents') : undefined"
             data-dashboard-section="recent"
-            @click="emit('select', { kind: 'home' })"
+            @click="emit('select', { kind: 'recent' })"
           >
             <span class="dashboard-sidebar-icon" aria-hidden="true"><Clock3 :size="18" /></span>
             <span class="dashboard-sidebar-label">{{ t('recents') }}</span>
@@ -256,7 +256,9 @@ const compactPresentation = computed(() => (
   props.widthState === 'collapsed' && !props.mobileOpen
 ));
 const homeGroupActive = computed(() => (
-  props.activeSection.kind === 'home' || props.activeSection.kind === 'folder'
+  props.activeSection.kind === 'home'
+  || props.activeSection.kind === 'recent'
+  || props.activeSection.kind === 'folder'
 ));
 
 watch(() => props.activeSection, (section) => {

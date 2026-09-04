@@ -165,17 +165,53 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('.dashboard-sidebar .dashboard-sidebar-brand img').attributes('alt')).toBe('QCanva');
   });
 
-  it('starts on Home and shows one central section at a time', async () => {
+  it('starts on Recent while Home stays collapsed and shows one central section at a time', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    expect(wrapper.get('[data-dashboard-view="home"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
     expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
 
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
 
     expect(wrapper.get('[data-dashboard-view="shared"]').isVisible()).toBe(true);
-    expect(wrapper.find('[data-dashboard-view="home"]').exists()).toBe(false);
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+  });
+
+  it('renders Recent as a grid by default and remembers the list view', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{ id: 'template-1', title: 'MVP board', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '' }],
+    });
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'template-1', resourceType: 'interactive-template', updatedAt: '2026-09-04T08:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-grid');
+    expect(wrapper.get('[data-recent-view="grid"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('.dashboard-recent-card').text()).toContain('MVP board');
+
+    await wrapper.get('[data-recent-view="list"]').trigger('click');
+
+    expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-list');
+    expect(wrapper.get('[data-recent-view="list"]').attributes('aria-pressed')).toBe('true');
+    expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('list');
+
+    await wrapper.get('.dashboard-recent-card').trigger('click');
+    expect(push).toHaveBeenCalledWith({ name: 'interactive-template', params: { id: 'template-1' } });
+  });
+
+  it('restores the remembered Recent layout', async () => {
+    localStorage.setItem('qcanva:dashboard-recents-view:v1', 'list');
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('[data-recent-view="list"]').attributes('aria-pressed')).toBe('true');
+    expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
   it('opens a selected folder in the central pane', async () => {

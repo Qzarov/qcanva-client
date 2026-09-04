@@ -71,9 +71,8 @@
     >
     <div class="dashboard-shell">
     <section
-      v-if="isLoggedIn && activeSection.kind === 'home'"
+      v-if="isLoggedIn && activeSection.kind === 'recent'"
       class="resource-control-panel"
-      data-dashboard-view="home"
     >
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
@@ -150,24 +149,48 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section v-if="activeSection.kind === 'home' && recentResources.length" class="dash-section dashboard-recents">
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'recent'"
+      class="dash-section dashboard-recents"
+      data-dashboard-view="recent"
+    >
       <div class="dash-section-head">
         <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
-          <button class="dashboard-recents-nav-button" type="button" aria-label="Предыдущий элемент" title="Предыдущий элемент" @click="scrollRecentResources(-1)">‹</button>
-          <button class="dashboard-recents-nav-button" type="button" aria-label="Следующий элемент" title="Следующий элемент" @click="scrollRecentResources(1)">›</button>
+        <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('recentResources')">
+          <button
+            type="button"
+            :class="{ active: recentViewMode === 'grid' }"
+            :aria-label="t('gridView')"
+            :title="t('gridView')"
+            :aria-pressed="recentViewMode === 'grid'"
+            data-recent-view="grid"
+            @click="setRecentViewMode('grid')"
+          ><LayoutGridIcon :size="17" aria-hidden="true" /></button>
+          <button
+            type="button"
+            :class="{ active: recentViewMode === 'list' }"
+            :aria-label="t('listView')"
+            :title="t('listView')"
+            :aria-pressed="recentViewMode === 'list'"
+            data-recent-view="list"
+            @click="setRecentViewMode('list')"
+          ><ListIcon :size="17" aria-hidden="true" /></button>
         </div>
       </div>
-      <div class="dashboard-recents-strip-wrap">
-        <div ref="recentResourcesStrip" class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
-          <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-            <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
-            <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
-            <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
-          </button>
-        </div>
-        <span v-if="hasRecentOverflow" class="dashboard-recents-swipe-hint" aria-hidden="true">›</span>
+      <div
+        v-if="recentResources.length"
+        class="dashboard-recents-layout"
+        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
+        :aria-label="t('recentResources')"
+        data-recent-layout
+      >
+        <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
+          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
+          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
+        </button>
       </div>
+      <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
     </section>
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
@@ -187,7 +210,7 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && activeSection.kind === 'home' && incomingRequests.length" class="dash-section access-requests-section">
+      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
           <h2>{{ t('accessRequests') }}</h2>
           <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
@@ -883,7 +906,7 @@
 </template>
 
 <script lang="ts">
-import { FileCode2, FilePlus2, FileText, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
+import { FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRoute, useRouter } from 'vue-router';
@@ -898,6 +921,7 @@ import {
   type DashboardSection,
   type SidebarWidthState,
 } from '../dashboard/navigation';
+import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { DASHBOARD_FOLDER_QUERY } from '../composables/useResourceBackTarget';
 
 type CanvasTag = { id: string; name: string; color: string };
@@ -994,7 +1018,22 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { DashboardSidebar, LanguageToggle },
+  components: {
+    DashboardSidebar,
+    LanguageToggle,
+    FileCode2,
+    FilePlus2,
+    FileText,
+    FolderPlus,
+    LayoutGridIcon,
+    LayoutTemplate,
+    ListIcon,
+    Menu,
+    Plus,
+    ShieldCheck,
+    Tags,
+    Upload,
+  },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1028,7 +1067,7 @@ export default defineComponent({
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
-    const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'home' : 'public' });
+    const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'recent' : 'public' });
     const storage = () => {
       try {
         return typeof window === 'undefined' ? null : window.localStorage;
@@ -1037,6 +1076,11 @@ export default defineComponent({
       }
     };
     const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
+    const recentViewMode = ref<RecentViewMode>(readRecentViewMode(storage()));
+    const setRecentViewMode = (mode: RecentViewMode) => {
+      recentViewMode.value = mode;
+      writeRecentViewMode(storage(), mode);
+    };
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
     let previousBodyOverflow: string | null = null;
@@ -1091,11 +1135,9 @@ export default defineComponent({
       }
     };
     const recentResourceHistory = ref<RecentResource[]>([]);
-    const recentResourcesStrip = ref<HTMLElement | null>(null);
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
-    const hasRecentOverflow = ref(false);
     const canScrollFolderUp = ref(false);
     const canScrollFolderDown = ref(false);
     const loadRecentResources = async () => {
@@ -1855,18 +1897,11 @@ export default defineComponent({
       else if (item.type === 'text-document') openTextDocument(item.routeId);
       else openInteractiveTemplate(item.routeId);
     };
-    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : type === 'text-document' ? 'Документ' : 'Шаблон';
+    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('document') : t('interactiveTemplate');
     const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
-    const scrollRecentResources = (direction: -1 | 1) => {
-      const strip = recentResourcesStrip.value;
-      if (!strip) return;
-      const card = strip.querySelector<HTMLElement>('.dashboard-recent-card');
-      const gap = Number.parseFloat(getComputedStyle(strip).gap) || 10;
-      strip.scrollBy({ left: direction * ((card?.offsetWidth || 168) + gap), behavior: 'smooth' });
-    };
     const scrollActiveFolder = (direction: -1 | 1) => {
       activeFolderBody.value?.scrollBy({ top: direction * 250, behavior: 'smooth' });
     };
@@ -1886,12 +1921,10 @@ export default defineComponent({
       void nextTick(() => {
         const tagsList = tagFilterList.value;
         hasTagOverflow.value = Boolean(tagsList && tagsList.scrollWidth > tagsList.clientWidth + 2);
-        const recentsStrip = recentResourcesStrip.value;
-        hasRecentOverflow.value = Boolean(recentsStrip && recentsStrip.scrollWidth > recentsStrip.clientWidth + 2);
         updateFolderScrollControls();
       });
     };
-    watch([allTagNames, recentResources, activeFolder], refreshOverflowIndicators, { flush: 'post' });
+    watch([allTagNames, activeFolder], refreshOverflowIndicators, { flush: 'post' });
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -2960,7 +2993,7 @@ export default defineComponent({
         if (activeSection.value.kind !== 'folder') return;
         activeSection.value = selectedFolderId.value
           ? { kind: 'folder', folderId: selectedFolderId.value }
-          : { kind: 'home' };
+          : { kind: 'recent' };
       };
       const requestedFolder = route.query?.[DASHBOARD_FOLDER_QUERY];
       const requestedFolderId = typeof requestedFolder === 'string' ? requestedFolder : '';
@@ -3237,19 +3270,18 @@ export default defineComponent({
       loading,
       isRefreshing,
       recentResources,
+      recentViewMode,
+      setRecentViewMode,
       openRecentResource,
       rememberRecentResource,
       recentResourceTypeLabel,
       recentResourceIconClass,
       formatRecentOpenedAt,
-      recentResourcesStrip,
-      scrollRecentResources,
       tagFilterList,
       activeFolderBody,
       scrollActiveFolder,
       updateFolderScrollControls,
       hasTagOverflow,
-      hasRecentOverflow,
       canScrollFolderUp,
       canScrollFolderDown,
       dashboardMain,

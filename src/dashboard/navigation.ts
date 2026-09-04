@@ -2,6 +2,7 @@ export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'publ
 
 export type DashboardSection =
   | { kind: DashboardTopLevelSection }
+  | { kind: 'recent' }
   | { kind: 'folder'; folderId: string };
 
 export type SidebarWidthState = 'expanded' | 'collapsed';
