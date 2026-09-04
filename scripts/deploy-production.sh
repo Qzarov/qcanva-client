@@ -69,6 +69,12 @@ deploy() {
   git diff --quiet || fail 'repository has unstaged changes'
   git diff --cached --quiet || fail 'repository has staged changes'
   git pull --ff-only origin dev
+  # The document node inventory is duplicated in canvas-server-back, and each
+  # repository's tests only pin its own copy — so both suites pass while the
+  # two drift. This is the only point where both are checked out together.
+  # Runs before npm ci so a mismatch fails in a second, not after a build.
+  bash "$REPO_DIR/scripts/check-schema-contract.sh" ||
+    fail 'schema contract disagrees with the backend (ALLOW_SCHEMA_DRIFT=1 to override)'
   npm ci
   npm run test:unit
   npm run build

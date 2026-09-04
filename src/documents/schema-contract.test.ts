@@ -17,4 +17,19 @@ describe('schema contract', () => {
     expect(lines).toContain('paragraph|block|p|||\\n');
     expect(lines).toContain('bold=strong');
   });
+
+  it('carries a declared attribute\'s closed value set as its own record', () => {
+    // Without this section the two repositories could disagree about which
+    // callout variants exist while every test in both stayed green AND the
+    // deploy-time byte comparison of the two EXPECTED_SCHEMA literals passed:
+    // the node record names the attribute, never its values.
+    expect(canonicalSchema().split('\n')).toContain(
+      'callout.variant?info,warning,success,danger',
+    );
+  });
+
+  it('lists one record per node, per mark and per declared value set', () => {
+    // 15 DOCUMENT_NODES entries + 6 MARK_TAGS entries + 1 attrValues entry.
+    expect(canonicalSchema().split('\n')).toHaveLength(22);
+  });
 });

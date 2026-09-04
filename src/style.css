@@ -93,6 +93,25 @@
   --content-code-number: #f2cc60; /* 11.14:1 */
   --content-code-function: #d2a8ff; /* 8.85:1 */
   --content-code-punctuation: #c9d1d9; /* 11.16:1 */
+  /* Callout variants inside an authored document. Fixed, like the code block
+     colours above and for the same reason: .text-doc-paper never follows the
+     app's light/dark toggle, so a token that flips to a dark ink in light mode
+     would go invisible on a paper that stays #191b20. The themed contexts that
+     DO follow the toggle (the history preview) draw the --ui-* variant tokens
+     instead - see .text-doc-history-preview aside further down. Each contrast
+     figure is the accent against the fixed #191b20 paper. */
+  --content-callout-info-accent: #53dfdd; /* 8.94:1 */
+  --content-callout-info-surface: rgba(83, 223, 221, 0.1);
+  --content-callout-info-border: rgba(83, 223, 221, 0.4);
+  --content-callout-warning-accent: #e0de71; /* 11.12:1 */
+  --content-callout-warning-surface: rgba(224, 222, 113, 0.1);
+  --content-callout-warning-border: rgba(224, 222, 113, 0.4);
+  --content-callout-success-accent: #6fdc8c; /* 9.51:1 */
+  --content-callout-success-surface: rgba(111, 220, 140, 0.1);
+  --content-callout-success-border: rgba(111, 220, 140, 0.4);
+  --content-callout-danger-accent: #ff8a8f; /* 7.55:1 */
+  --content-callout-danger-surface: rgba(255, 138, 143, 0.1);
+  --content-callout-danger-border: rgba(255, 138, 143, 0.4);
   --content-canvas-node-surface: #262626;
   --content-canvas-node-border: rgba(255, 255, 255, 0.1);
   --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
@@ -5100,12 +5119,335 @@ body {
   color: var(--content-code-punctuation);
 }
 
+/* The callout block.
+   Two contexts, deliberately different token sets:
+   1. .text-doc-paper - the editing surface, whose background is fixed dark in
+      both app themes (see --content-document-surface), so it uses the fixed
+      --content-callout-* tokens.
+   2. .text-doc-history-preview and any other themed surface rendering the
+      stored html - these DO follow the theme selector, so they draw the
+      semantic --ui-<variant>-* tokens, which are already defined for light and
+      for dark and therefore need no colour written twice here. */
+.text-doc-paper .ProseMirror aside {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-callout-info-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--content-callout-info-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='warning'] {
+  border-color: var(--content-callout-warning-border);
+  background: var(--content-callout-warning-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='success'] {
+  border-color: var(--content-callout-success-border);
+  background: var(--content-callout-success-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='danger'] {
+  border-color: var(--content-callout-danger-border);
+  background: var(--content-callout-danger-surface);
+}
+
+/* The icon is node-view chrome, never document content: it must not take the
+   caret, and it must not be draggable out of the block. */
+.text-doc-callout-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.72em;
+  user-select: none;
+  color: var(--content-callout-info-accent);
+}
+
+aside[data-variant='warning'] > .text-doc-callout-icon {
+  color: var(--content-callout-warning-accent);
+}
+
+aside[data-variant='success'] > .text-doc-callout-icon {
+  color: var(--content-callout-success-accent);
+}
+
+aside[data-variant='danger'] > .text-doc-callout-icon {
+  color: var(--content-callout-danger-accent);
+}
+
+.text-doc-callout-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.text-doc-callout-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.text-doc-callout-body > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Toolbar affordance. Inserting a callout is one button; the four variant
+   buttons appear only while the caret is inside one. A slash menu is separate
+   work. */
+.text-doc-callout-variant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-doc-callout-variant-icon {
+  display: inline-flex;
+}
+
+.text-doc-callout-variant-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text-doc-callout-variant-btn[data-variant='info'] .text-doc-callout-variant-icon {
+  color: var(--ui-info-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='warning'] .text-doc-callout-variant-icon {
+  color: var(--ui-warning-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='success'] .text-doc-callout-variant-icon {
+  color: var(--ui-success-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='danger'] .text-doc-callout-variant-icon {
+  color: var(--ui-danger-foreground);
+}
+
+/* ===== Editor input affordances: slash menu, bubble menu, drag handle =====
+   These are CHROME, not authored content. The document paper deliberately
+   keeps a fixed palette (see --content-document-surface above), but a popup
+   that floats over the app belongs to the app: it draws the semantic --ui-*
+   tokens, which already carry a light and a dark value, exactly like
+   .text-doc-toolbar does. Nothing here is written twice per theme. */
+.text-doc-slash-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-slash-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-doc-slash-item.active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
+.text-doc-slash-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-slash-item.active .text-doc-slash-icon {
+  color: var(--ui-accent-strong);
+}
+
+.text-doc-slash-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-slash-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-doc-slash-empty {
+  padding: 9px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+.text-doc-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  border-radius: 5px;
+  color: var(--ui-text-muted);
+  cursor: grab;
+}
+
+.text-doc-drag-handle:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-drag-handle:active {
+  cursor: grabbing;
+}
+
+.text-doc-drag-handle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text-doc-bubble-menu {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-doc-bubble-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-bubble-btn.active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
+.text-doc-bubble-icon {
+  display: inline-flex;
+}
+
+.text-doc-bubble-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.text-doc-bubble-link-form {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.text-doc-bubble-link-input {
+  width: 220px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
+}
+
+.text-doc-bubble-link-input::placeholder {
+  color: var(--ui-text-muted);
+}
+
+.text-doc-bubble-link-input:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}
+
+.text-doc-bubble-btn-text {
+  color: var(--ui-accent-strong);
+}
+
+/* The typed `/query` while the menu is open, so it is visible that the
+   characters are a query and not prose yet. */
+.text-doc-paper .ProseMirror .qcanva-slash-query {
+  border-radius: 4px;
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
 .text-doc-history-preview {
   height: 100%;
   overflow: auto;
   padding: 28px;
   background: var(--ui-surface);
   color: var(--ui-text);
+}
+
+/* This surface DOES follow the theme selector, so the callout draws the
+   semantic --ui-<variant>-* tokens, which carry a light and a dark value
+   already. No icon here: the stored html carries only data-variant, by design
+   (an inline svg per callout would bloat every stored document), so the
+   accent border is what tells the variants apart in a read-only preview. */
+.text-doc-history-preview aside {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-info);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--ui-info-soft);
+}
+
+.text-doc-history-preview aside[data-variant='warning'] {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-soft);
+}
+
+.text-doc-history-preview aside[data-variant='success'] {
+  border-color: var(--ui-success);
+  background: var(--ui-success-soft);
+}
+
+.text-doc-history-preview aside[data-variant='danger'] {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+}
+
+.text-doc-history-preview aside > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-history-preview aside > :last-child {
+  margin-bottom: 0;
 }
 
 .text-doc-page .btn-ghost { color: var(--ui-text-secondary); }

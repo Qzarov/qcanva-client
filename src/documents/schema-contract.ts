@@ -11,7 +11,15 @@ function escapeField(value: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/\n/g, "\\n")
     .replace(/\t/g, "\\t")
-    .replace(/\|/g, "\\|");
+    .replace(/\|/g, "\\|")
+    // `,` `.` and `?` became delimiters when the attribute-value section was
+    // added (`node.attr?a,b,c`). No current name or value contains them, so
+    // escaping them changes nothing today — which is the point: the format
+    // stays unambiguous if one ever does, instead of the string quietly
+    // reparsing into different records on the two sides.
+    .replace(/,/g, "\\,")
+    .replace(/\./g, "\\.")
+    .replace(/\?/g, "\\?");
 }
 
 /**
@@ -22,21 +30,37 @@ function escapeField(value: string): string {
  */
 export function canonicalSchema(): string {
   const nodes = DOCUMENT_NODES.map((spec) =>
+    // Each field is escaped where it is produced, rather than by position
+    // afterwards: the attrs field carries its own `,` separators, so escaping
+    // it as a whole would escape the very characters holding it together.
+    // `void` and the empty string are constants and need no escaping.
     [
-      spec.name,
-      spec.group,
-      spec.tag ?? "",
+      escapeField(spec.name),
+      escapeField(spec.group),
+      escapeField(spec.tag ?? ""),
       spec.selfClosing ? "void" : "",
-      (spec.attrs ?? []).join(","),
-      spec.textSeparator ?? "",
-    ]
-      .map(escapeField)
-      .join("|"),
+      (spec.attrs ?? []).map(escapeField).join(","),
+      escapeField(spec.textSeparator ?? ""),
+    ].join("|"),
   ).sort();
   const marks = Object.entries(MARK_TAGS)
     .map(([name, tag]) => `${escapeField(name)}=${escapeField(tag)}`)
     .sort();
-  return [...nodes, ...marks].join("\n");
+  // A third section: the closed value sets a declared attribute may take.
+  // Serialized here rather than left to each repository's renderer, because
+  // the two must agree on which values exist - this editor offering a variant
+  // the backend bounds away is exactly the silent drift the byte comparison of
+  // this string is for. `?` separates the attribute path from its values, so
+  // it can never be confused with a node record (`|`) or a mark (`=`).
+  const attrValues = DOCUMENT_NODES.flatMap((spec) =>
+    Object.entries(spec.attrValues ?? {}).map(
+      ([attr, values]) =>
+        `${escapeField(spec.name)}.${escapeField(attr)}?${values
+          .map(escapeField)
+          .join(",")}`,
+    ),
+  ).sort();
+  return [...nodes, ...marks, ...attrValues].join("\n");
 }
 
 /**
@@ -44,4 +68,4 @@ export function canonicalSchema(): string {
  * paste the identical value into canvas-server-front.
  */
 export const EXPECTED_SCHEMA =
-  "blockquote|block|blockquote|||\nbulletList|block|ul|||\ncodeBlock|block|pre||language|\\n\ndoc|block||||\nhardBreak|inline|br|void||\nheading|block|h||level|\\n\nhorizontalRule|block|hr|void||\nimage|block|img|void|src,alt,title|\\n\nlistItem|block|li|||\\n\norderedList|block|ol||start|\nparagraph|block|p|||\\n\ntaskItem|block|li||checked|\\n\ntaskList|block|ul|||\ntext|inline||||\nbold=strong\ncode=code\nitalic=em\nlink=a\nstrike=s\nunderline=u";
+  "blockquote|block|blockquote|||\nbulletList|block|ul|||\ncallout|block|aside||variant|\\n\ncodeBlock|block|pre||language|\\n\ndoc|block||||\nhardBreak|inline|br|void||\nheading|block|h||level|\\n\nhorizontalRule|block|hr|void||\nimage|block|img|void|src,alt,title|\\n\nlistItem|block|li|||\\n\norderedList|block|ol||start|\nparagraph|block|p|||\\n\ntaskItem|block|li||checked|\\n\ntaskList|block|ul|||\ntext|inline||||\nbold=strong\ncode=code\nitalic=em\nlink=a\nstrike=s\nunderline=u\ncallout.variant?info,warning,success,danger";
