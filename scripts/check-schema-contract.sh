@@ -15,24 +15,10 @@ set -euo pipefail
 
 FRONT_CONTRACT="${FRONT_CONTRACT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/documents/schema-contract.ts}"
 BACK_CONTRACT="${BACK_CONTRACT:-/var/www/canvas.qzarov.pro/back/src/text-documents/schema/schema-contract.ts}"
+EXTRACTOR="$(dirname "${BASH_SOURCE[0]}")/extract-schema-literal.py"
 
 extract() {
-  # The literal is a single double-quoted string assigned to EXPECTED_SCHEMA,
-  # possibly on the following line. Printing it verbatim keeps the comparison
-  # byte-exact, including the escape sequences the format relies on.
-  python3 - "$1" <<'PY'
-import io, re, sys
-source = io.open(sys.argv[1], encoding="utf-8").read()
-match = re.search(
-    r'EXPECTED_SCHEMA\s*(?::\s*string\s*)?=\s*\n?\s*("(?:[^"\\]|\\.)*")',
-    source,
-    re.S,
-)
-if not match:
-    sys.stderr.write("no EXPECTED_SCHEMA literal in %s\n" % sys.argv[1])
-    raise SystemExit(2)
-sys.stdout.write(match.group(1))
-PY
+  python3 "$EXTRACTOR" "$1"
 }
 
 if [[ ! -f "$FRONT_CONTRACT" ]]; then

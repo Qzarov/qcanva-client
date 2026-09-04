@@ -11,7 +11,15 @@ function escapeField(value: string): string {
     .replace(/\\/g, "\\\\")
     .replace(/\n/g, "\\n")
     .replace(/\t/g, "\\t")
-    .replace(/\|/g, "\\|");
+    .replace(/\|/g, "\\|")
+    // `,` `.` and `?` became delimiters when the attribute-value section was
+    // added (`node.attr?a,b,c`). No current name or value contains them, so
+    // escaping them changes nothing today — which is the point: the format
+    // stays unambiguous if one ever does, instead of the string quietly
+    // reparsing into different records on the two sides.
+    .replace(/,/g, "\\,")
+    .replace(/\./g, "\\.")
+    .replace(/\?/g, "\\?");
 }
 
 /**
@@ -22,16 +30,18 @@ function escapeField(value: string): string {
  */
 export function canonicalSchema(): string {
   const nodes = DOCUMENT_NODES.map((spec) =>
+    // Each field is escaped where it is produced, rather than by position
+    // afterwards: the attrs field carries its own `,` separators, so escaping
+    // it as a whole would escape the very characters holding it together.
+    // `void` and the empty string are constants and need no escaping.
     [
-      spec.name,
-      spec.group,
-      spec.tag ?? "",
+      escapeField(spec.name),
+      escapeField(spec.group),
+      escapeField(spec.tag ?? ""),
       spec.selfClosing ? "void" : "",
-      (spec.attrs ?? []).join(","),
-      spec.textSeparator ?? "",
-    ]
-      .map(escapeField)
-      .join("|"),
+      (spec.attrs ?? []).map(escapeField).join(","),
+      escapeField(spec.textSeparator ?? ""),
+    ].join("|"),
   ).sort();
   const marks = Object.entries(MARK_TAGS)
     .map(([name, tag]) => `${escapeField(name)}=${escapeField(tag)}`)

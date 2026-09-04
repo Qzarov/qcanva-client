@@ -14,7 +14,7 @@ printf 'legacy build' > "$FRONT_ROOT/dist/index.html"
 # The deploy now gates on the node inventory matching canvas-server-back, so
 # the fake repo needs the check script and a contract for it to compare.
 mkdir -p "$REPO_DIR/scripts" "$REPO_DIR/src/documents"
-cp "$REPO_ROOT/scripts/check-schema-contract.sh" "$REPO_DIR/scripts/"
+cp "$REPO_ROOT/scripts/check-schema-contract.sh" "$REPO_ROOT/scripts/extract-schema-literal.py" "$REPO_DIR/scripts/"
 write_contract() {
   printf 'export const EXPECTED_SCHEMA =\n  "%s";\n' "$2" > "$1"
 }
