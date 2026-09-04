@@ -182,6 +182,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
 
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
@@ -344,6 +345,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     expect(wrapper.find('[data-dashboard-folder="child"]').exists()).toBe(false);
     expect(wrapper.find('[data-folder-toggle="parent"]').exists()).toBe(true);
   });
@@ -463,7 +465,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
     const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
-    const desktopFallback = wrapper.get('[data-dashboard-section="home"]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-home-disclosure]').element as HTMLButtonElement;
 
     opener.focus();
     await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
@@ -493,6 +495,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="folder-c"]').trigger('dragstart', { dataTransfer: transfer });
     await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('drop', { dataTransfer: transfer });
     await flushPromises();

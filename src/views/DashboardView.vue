@@ -3059,6 +3059,7 @@ export default defineComponent({
       }
       const fallback = [
         document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
         document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
         document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
       ].find(isVisibleFocusTarget) ?? null;

@@ -103,18 +103,26 @@ describe('DashboardSidebar', () => {
     document.body.innerHTML = '';
   });
 
-  it('renders the four top-level destinations and the complete folder tree', () => {
+  it('renders Home as a collapsed disclosure before the remaining top-level destinations', async () => {
     const wrapper = mountSidebar();
 
     expect(wrapper.get('.dashboard-sidebar-brand img').attributes('src')).toBe('/qcanva-logo.png');
-    expect(wrapper.find('[data-dashboard-section="home"] svg.lucide-house').exists()).toBe(true);
+    expect(wrapper.find('[data-home-disclosure] svg.lucide-house').exists()).toBe(true);
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[data-home-children]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(0);
     expect(wrapper.find('[data-dashboard-section="shared"] svg.lucide-users').exists()).toBe(true);
-    expect(wrapper.findAll('[data-dashboard-section]')).toHaveLength(4);
-    expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
-    expect(wrapper.get('[data-dashboard-section="home"]').text()).toContain('Home');
+    expect(wrapper.get('[data-home-disclosure]').text()).toContain('Home');
     expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('Shared with me');
     expect(wrapper.get('[data-dashboard-section="interactive"]').text()).toContain('Interactive template');
     expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('Public');
+
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('[data-home-children]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-dashboard-section="recent"]').text()).toContain('Recent');
+    expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-folder="default"]').text()).toContain('default');
   });
 
@@ -122,21 +130,30 @@ describe('DashboardSidebar', () => {
     const wrapper = mountSidebar({ activeSection: { kind: 'shared' } });
 
     expect(wrapper.get('[data-dashboard-section="shared"]').attributes('aria-current')).toBe('page');
-    expect(wrapper.get('[data-dashboard-section="home"]').attributes('aria-current')).toBeUndefined();
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-current')).toBeUndefined();
 
     await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
     expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'interactive' }]);
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-dashboard-folder="project"]').trigger('click');
     expect(wrapper.emitted('select')?.[1]).toEqual([{ kind: 'folder', folderId: 'project' }]);
   });
 
-  it('keeps controls keyboard reachable and named in collapsed mode', () => {
+  it('reveals Home children when the dashboard opens on an active folder', () => {
+    const wrapper = mountSidebar({ activeSection: { kind: 'folder', folderId: 'project' } });
+
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('[data-dashboard-folder="project"]').attributes('aria-current')).toBe('page');
+  });
+
+  it('keeps controls keyboard reachable and named in collapsed mode', async () => {
     const wrapper = mountSidebar({ widthState: 'collapsed' });
 
     const publicButton = wrapper.get('[data-dashboard-section="public"]');
     expect(publicButton.element.tagName).toBe('BUTTON');
     expect(publicButton.attributes('aria-label')).toBe('Public');
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     expect(wrapper.get('[data-dashboard-folder="project"]').attributes('aria-label')).toBe('Project');
     expect(wrapper.get('[data-sidebar-width-toggle]').attributes('aria-label')).toBe('Expand sidebar');
   });
@@ -150,6 +167,7 @@ describe('DashboardSidebar', () => {
   it('emits folder creation and expansion requests without owning folder state', async () => {
     const wrapper = mountSidebar();
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     await wrapper.get('[data-sidebar-create-folder]').trigger('click');
     expect(wrapper.emitted('create-folder')).toHaveLength(1);
 
@@ -178,6 +196,7 @@ describe('DashboardSidebar', () => {
       ],
     });
 
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     const toggle = wrapper.get('[data-folder-toggle="collapsed-parent"]');
     expect(toggle.attributes('aria-expanded')).toBe('false');
 
@@ -187,6 +206,7 @@ describe('DashboardSidebar', () => {
 
   it('forwards native drag events together with the folder id', async () => {
     const wrapper = mountSidebar();
+    await wrapper.get('[data-home-disclosure]').trigger('click');
     const project = wrapper.get('[data-dashboard-folder="project"]');
 
     await project.trigger('dragstart');

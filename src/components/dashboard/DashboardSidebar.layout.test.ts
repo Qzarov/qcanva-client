@@ -12,13 +12,14 @@ const LayoutHarness = defineComponent({
   components: { DashboardSidebar },
   props: {
     collapsed: { type: Boolean, default: false },
+    mobileOpen: { type: Boolean, default: false },
   },
   template: `
     <div class="dashboard-app-shell" :class="{ 'sidebar-collapsed': collapsed }">
       <DashboardSidebar
         :active-section="{ kind: 'home' }"
         :width-state="collapsed ? 'collapsed' : 'expanded'"
-        :mobile-open="false"
+        :mobile-open="mobileOpen"
         :folders="[]"
       />
       <div class="dashboard-central-shell">
@@ -31,10 +32,10 @@ const LayoutHarness = defineComponent({
   `,
 });
 
-function mountLayout(collapsed = false) {
+function mountLayout(collapsed = false, mobileOpen = false) {
   return mount(LayoutHarness, {
     attachTo: document.body,
-    props: { collapsed },
+    props: { collapsed, mobileOpen },
     global: {
       stubs: {
         LanguageToggle: true,
@@ -68,7 +69,7 @@ describe('dashboard sidebar layout contract', () => {
     expect(shellStyle.gridTemplateColumns).toContain('var(--dashboard-sidebar-width)');
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-scroll').element).overflowY).toBe('auto');
     expect(getComputedStyle(wrapper.get('.dashboard-central-shell .app-main').element).overflowY).toBe('auto');
-    expect(getComputedStyle(wrapper.get('[data-dashboard-section="home"]').element).display).toBe('grid');
+    expect(getComputedStyle(wrapper.get('[data-home-disclosure]').element).display).toBe('grid');
     expect(getComputedStyle(wrapper.get('.dashboard-mobile-sidebar-open').element).display).toBe('none');
     expect(getComputedStyle(wrapper.get('.dashboard-sidebar-close').element).display).toBe('none');
   });
@@ -78,5 +79,13 @@ describe('dashboard sidebar layout contract', () => {
 
     expect(wrapper.get('.dashboard-app-shell').classes()).toContain('sidebar-collapsed');
     expect(getComputedStyle(wrapper.get('.dashboard-app-shell').element).getPropertyValue('--dashboard-sidebar-width')).toBe('72px');
+  });
+
+  it('shows expanded Home children when a collapsed desktop rail opens as a mobile drawer', async () => {
+    const wrapper = mountLayout(true, true);
+
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+
+    expect(getComputedStyle(wrapper.get('[data-home-children]').element).display).not.toBe('none');
   });
 });

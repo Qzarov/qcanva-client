@@ -38,6 +38,110 @@
     <div class="dashboard-sidebar-scroll">
       <nav class="dashboard-sidebar-navigation" :aria-label="t('dashboard')">
         <button
+          type="button"
+          class="btn-ghost dashboard-sidebar-item dashboard-sidebar-home-disclosure"
+          :class="{ active: homeGroupActive }"
+          :aria-expanded="homeExpanded"
+          :aria-controls="homeChildrenId"
+          :aria-label="t('home')"
+          :title="compactPresentation ? t('home') : undefined"
+          data-home-disclosure
+          @click="homeExpanded = !homeExpanded"
+        >
+          <span class="dashboard-sidebar-icon" aria-hidden="true"><House :size="18" /></span>
+          <span class="dashboard-sidebar-label">{{ t('home') }}</span>
+          <ChevronDown
+            class="dashboard-sidebar-home-chevron"
+            :class="{ collapsed: !homeExpanded }"
+            :size="16"
+            aria-hidden="true"
+          />
+        </button>
+
+        <div v-if="homeExpanded" :id="homeChildrenId" class="dashboard-sidebar-home-children" data-home-children>
+          <button
+            type="button"
+            class="btn-ghost dashboard-sidebar-item dashboard-sidebar-recent"
+            :class="{ active: activeSection.kind === 'home' }"
+            :aria-current="activeSection.kind === 'home' ? 'page' : undefined"
+            :aria-label="t('recents')"
+            :title="compactPresentation ? t('recents') : undefined"
+            data-dashboard-section="recent"
+            @click="emit('select', { kind: 'home' })"
+          >
+            <span class="dashboard-sidebar-icon" aria-hidden="true"><Clock3 :size="18" /></span>
+            <span class="dashboard-sidebar-label">{{ t('recents') }}</span>
+          </button>
+
+          <section class="dashboard-sidebar-folders" :aria-labelledby="foldersHeadingId">
+            <div class="dashboard-sidebar-section-heading">
+              <h2 :id="foldersHeadingId" class="dashboard-sidebar-label">{{ t('folders') }}</h2>
+              <button
+                type="button"
+                class="btn-ghost btn-sm dashboard-sidebar-create-folder"
+                :aria-label="t('createFolder')"
+                :title="t('createFolder')"
+                data-sidebar-create-folder
+                @click="emit('create-folder')"
+              >
+                <Plus :size="17" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div class="dashboard-sidebar-folder-list">
+              <div
+                v-for="folder in folders"
+                :key="folder.id"
+                class="dashboard-sidebar-folder-row"
+                :style="folderIndent(folder.depth)"
+              >
+                <button
+                  v-if="folder.hasChildren"
+                  type="button"
+                  class="btn-ghost dashboard-sidebar-folder-toggle"
+                  :aria-label="folder.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
+                  :aria-expanded="folder.expanded"
+                  :data-folder-toggle="folder.id"
+                  @click.stop="emit('toggle-folder', folder.id)"
+                >
+                  <ChevronDown :class="{ collapsed: !folder.expanded }" :size="16" aria-hidden="true" />
+                </button>
+                <span v-else class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
+
+                <button
+                  type="button"
+                  class="btn-ghost dashboard-sidebar-folder"
+                  :class="{
+                    active: isActive({ kind: 'folder', folderId: folder.id }),
+                    'drop-active': folder.dropActive,
+                    'reorder-target': folder.reorderTarget,
+                  }"
+                  :style="folderIndent(folder.depth)"
+                  :data-dashboard-folder="folder.id"
+                  :draggable="folder.draggable"
+                  :aria-current="isActive({ kind: 'folder', folderId: folder.id }) ? 'page' : undefined"
+                  :aria-label="folder.name"
+                  :title="compactPresentation ? folder.name : undefined"
+                  @click="emit('select', { kind: 'folder', folderId: folder.id })"
+                  @dragstart.stop="emit('folder-drag-start', $event, folder.id)"
+                  @dragend="emit('folder-drag-end', $event, folder.id)"
+                  @dragenter.prevent="emit('folder-drag-enter', $event, folder.id)"
+                  @dragover.prevent="emit('folder-drag-over', $event, folder.id)"
+                  @dragleave="emit('folder-drag-leave', $event, folder.id)"
+                  @drop.prevent="emit('folder-drop', $event, folder.id)"
+                >
+                  <span class="dashboard-sidebar-icon" aria-hidden="true">
+                    <FolderCog v-if="folder.technical" :size="18" />
+                    <Folder v-else :size="18" />
+                  </span>
+                  <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.name }}</span>
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <button
           v-for="item in topLevelItems"
           :key="item.kind"
           type="button"
@@ -54,72 +158,6 @@
         </button>
       </nav>
 
-      <section class="dashboard-sidebar-folders" :aria-labelledby="foldersHeadingId">
-        <div class="dashboard-sidebar-section-heading">
-          <h2 :id="foldersHeadingId" class="dashboard-sidebar-label">{{ t('folders') }}</h2>
-          <button
-            type="button"
-            class="btn-ghost btn-sm dashboard-sidebar-create-folder"
-            :aria-label="t('createFolder')"
-            :title="t('createFolder')"
-            data-sidebar-create-folder
-            @click="emit('create-folder')"
-          >
-            <Plus :size="17" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div class="dashboard-sidebar-folder-list">
-          <div
-            v-for="folder in folders"
-            :key="folder.id"
-            class="dashboard-sidebar-folder-row"
-            :style="folderIndent(folder.depth)"
-          >
-            <button
-              v-if="folder.hasChildren"
-              type="button"
-              class="btn-ghost dashboard-sidebar-folder-toggle"
-              :aria-label="folder.expanded ? t('collapseSubfolders') : t('expandSubfolders')"
-              :aria-expanded="folder.expanded"
-              :data-folder-toggle="folder.id"
-              @click.stop="emit('toggle-folder', folder.id)"
-            >
-              <ChevronDown :class="{ collapsed: !folder.expanded }" :size="16" aria-hidden="true" />
-            </button>
-            <span v-else class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
-
-            <button
-              type="button"
-              class="btn-ghost dashboard-sidebar-folder"
-              :class="{
-                active: isActive({ kind: 'folder', folderId: folder.id }),
-                'drop-active': folder.dropActive,
-                'reorder-target': folder.reorderTarget,
-              }"
-              :style="folderIndent(folder.depth)"
-              :data-dashboard-folder="folder.id"
-              :draggable="folder.draggable"
-              :aria-current="isActive({ kind: 'folder', folderId: folder.id }) ? 'page' : undefined"
-              :aria-label="folder.name"
-              :title="compactPresentation ? folder.name : undefined"
-              @click="emit('select', { kind: 'folder', folderId: folder.id })"
-              @dragstart.stop="emit('folder-drag-start', $event, folder.id)"
-              @dragend="emit('folder-drag-end', $event, folder.id)"
-              @dragenter.prevent="emit('folder-drag-enter', $event, folder.id)"
-              @dragover.prevent="emit('folder-drag-over', $event, folder.id)"
-              @dragleave="emit('folder-drag-leave', $event, folder.id)"
-              @drop.prevent="emit('folder-drop', $event, folder.id)"
-            >
-              <span class="dashboard-sidebar-icon" aria-hidden="true">
-                <FolderCog v-if="folder.technical" :size="18" />
-                <Folder v-else :size="18" />
-              </span>
-              <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.name }}</span>
-            </button>
-          </div>
-        </div>
-      </section>
     </div>
 
     <footer class="dashboard-sidebar-footer">
@@ -141,8 +179,8 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
-import { computed, ref, type CSSProperties, type Component } from 'vue';
+import { ChevronDown, Clock3, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
@@ -177,7 +215,9 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const foldersHeadingId = 'dashboard-sidebar-folders-heading';
+const homeChildrenId = 'dashboard-sidebar-home-children';
 const sidebarRef = ref<HTMLElement | null>(null);
+const homeExpanded = ref(props.activeSection.kind === 'folder');
 const focusableSelector = [
   'a[href]',
   'button:not([disabled])',
@@ -204,7 +244,6 @@ const topLevelItems = computed<Array<{
   label: string;
   icon: Component;
 }>>(() => [
-  { kind: 'home', label: t('home'), icon: House },
   { kind: 'shared', label: t('sharedWithMe'), icon: Users },
   { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
   { kind: 'public', label: t('public'), icon: Globe2 },
@@ -216,6 +255,13 @@ const widthToggleLabel = computed(() => (
 const compactPresentation = computed(() => (
   props.widthState === 'collapsed' && !props.mobileOpen
 ));
+const homeGroupActive = computed(() => (
+  props.activeSection.kind === 'home' || props.activeSection.kind === 'folder'
+));
+
+watch(() => props.activeSection, (section) => {
+  if (section.kind === 'folder') homeExpanded.value = true;
+});
 
 const isActive = (section: DashboardSection) => (
   isDashboardSectionActive(props.activeSection, section)
