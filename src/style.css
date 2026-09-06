@@ -5246,6 +5246,155 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-danger-foreground);
 }
 
+/* Collapsible headings and the table of contents.
+   The chevron and the ToC node view are DECORATIONS/node-view chrome drawn
+   INSIDE .text-doc-paper .ProseMirror, on the paper's own DOM - unlike the
+   slash/bubble/drag-handle popups below, they are not a floating tippy
+   portal, so they follow the paper's rule instead: it never follows the
+   app's light/dark toggle (see --content-document-surface above), so these
+   draw the fixed --content-* tokens, exactly like the callout and code block
+   above them. The backend renders the SAME table of contents into the
+   stored html, and .text-doc-history-preview (which DOES follow the theme)
+   styles that copy further down with the semantic --ui-* tokens instead. */
+.text-doc-paper .ProseMirror h1,
+.text-doc-paper .ProseMirror h2,
+.text-doc-paper .ProseMirror h3,
+.text-doc-paper .ProseMirror h4,
+.text-doc-paper .ProseMirror h5,
+.text-doc-paper .ProseMirror h6 {
+  position: relative;
+}
+
+.text-doc-heading-toggle {
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--content-preview-muted);
+  cursor: pointer;
+}
+
+.text-doc-heading-toggle:hover:not(:disabled) {
+  background: var(--content-code-surface);
+  color: var(--content-preview-text);
+}
+
+.text-doc-heading-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.text-doc-heading-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The blocks a collapsed heading hides. Never applied in a read-only editor
+   (see collapsible-heading.ts) and never touches html or plainText: this is
+   the only place anything is actually hidden, and it hides DOM, not content. */
+.text-doc-paper .ProseMirror .text-doc-collapsed-block {
+  display: none;
+}
+
+.text-doc-paper .ProseMirror .text-doc-toc {
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-code-border);
+  border-radius: var(--radius-sm);
+  background: var(--content-code-surface);
+}
+
+.text-doc-toc-title {
+  margin-bottom: 8px;
+  color: var(--content-preview-text);
+  font-weight: 600;
+}
+
+.text-doc-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.text-doc-toc-item[data-level='2'] { padding-left: 16px; }
+.text-doc-toc-item[data-level='3'] { padding-left: 32px; }
+.text-doc-toc-item[data-level='4'] { padding-left: 48px; }
+.text-doc-toc-item[data-level='5'] { padding-left: 64px; }
+.text-doc-toc-item[data-level='6'] { padding-left: 80px; }
+
+.text-doc-toc-link {
+  display: block;
+  width: 100%;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--content-preview-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-doc-toc-link:hover {
+  background: var(--content-code-surface);
+  color: var(--content-preview-text);
+}
+
+.text-doc-toc-empty {
+  padding: 2px 6px;
+  color: var(--content-preview-muted);
+  font-style: italic;
+}
+
+/* The stored projection's table of contents, wherever it is rendered outside
+   the live editor - currently .text-doc-history-preview, which DOES follow
+   the app's theme, so it draws the semantic --ui-* tokens rather than the
+   fixed --content-* ones above (same split as .text-doc-history-preview
+   aside further down). */
+.text-doc-history-preview nav[data-toc] {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-history-preview nav[data-toc] ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.text-doc-history-preview nav[data-toc] li[data-level='2'] { padding-left: 16px; }
+.text-doc-history-preview nav[data-toc] li[data-level='3'] { padding-left: 32px; }
+.text-doc-history-preview nav[data-toc] li[data-level='4'] { padding-left: 48px; }
+.text-doc-history-preview nav[data-toc] li[data-level='5'] { padding-left: 64px; }
+.text-doc-history-preview nav[data-toc] li[data-level='6'] { padding-left: 80px; }
+
+.text-doc-history-preview nav[data-toc] a {
+  color: var(--ui-text-secondary);
+  text-decoration: none;
+}
+
+.text-doc-history-preview nav[data-toc] a:hover {
+  color: var(--ui-accent-strong);
+  text-decoration: underline;
+}
+
 /* ===== Editor input affordances: slash menu, bubble menu, drag handle =====
    These are CHROME, not authored content. The document paper deliberately
    keeps a fixed palette (see --content-document-surface above), but a popup

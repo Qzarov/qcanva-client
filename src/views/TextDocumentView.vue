@@ -316,6 +316,8 @@ import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
 import { Callout, calloutIconSvg } from '../text-documents/callout';
+import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
+import { TableOfContents, type TableOfContentsLabels } from '../text-documents/table-of-contents';
 import {
   SLASH_MENU_ITEMS,
   SlashMenu,
@@ -527,6 +529,27 @@ export default defineComponent({
     watch(locale, paintDragHandleLabel);
 
     /**
+     * COLLAPSIBLE HEADINGS and TABLE OF CONTENTS labels.
+     *
+     * Both extensions read `this.options.labels` live (see the `labels()`
+     * closures in collapsible-heading.ts and table-of-contents.ts), so handing
+     * each extension the SAME object this code keeps mutating is enough to
+     * keep every chevron and the ToC node view in the current language - no
+     * different from `paintDragHandleLabel` repainting the one drag handle
+     * element in place.
+     */
+    const headingCollapseLabels: HeadingCollapseLabels = { collapse: '', expand: '' };
+    const tableOfContentsLabels: TableOfContentsLabels = { title: '', empty: '' };
+    const paintI18nLabels = () => {
+      headingCollapseLabels.collapse = t('collapseHeading');
+      headingCollapseLabels.expand = t('expandHeading');
+      tableOfContentsLabels.title = t('tableOfContents');
+      tableOfContentsLabels.empty = t('tableOfContentsEmpty');
+    };
+    paintI18nLabels();
+    watch(locale, paintI18nLabels);
+
+    /**
      * BUBBLE MENU state.
      *
      * The popup is @tiptap/vue-3's BubbleMenu component; `shouldShow` and the
@@ -686,6 +709,11 @@ export default defineComponent({
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
         Callout,
+        // Adds `collapsed` to StarterKit's own heading node (see the file
+        // comment in collapsible-heading.ts for why this is a global
+        // attribute and not a second heading node).
+        CollapsibleHeading.configure({ labels: headingCollapseLabels }),
+        TableOfContents.configure({ labels: tableOfContentsLabels }),
         SlashMenu.configure({
           controller: slashController,
           label: slashLabel,

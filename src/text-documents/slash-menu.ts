@@ -150,6 +150,27 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     },
   },
   {
+    id: 'tableOfContents',
+    labelKey: 'slashTableOfContents',
+    keywords: ['toc', 'contents', 'outline', 'table', 'soderzhanie', 'oglavlenie'],
+    icon: lucideIcon(EDITOR_GLYPHS.listTree),
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertTableOfContents().run();
+    },
+  },
+  {
+    id: 'collapseHeading',
+    labelKey: 'slashCollapseHeading',
+    keywords: ['collapse', 'fold', 'toggle', 'heading', 'svernut', 'zagolovok'],
+    icon: lucideIcon(EDITOR_GLYPHS.chevronRight),
+    run: ({ editor, range }) => {
+      // Eat the typed `/query` first, then fold the heading the caret is now
+      // in. The item is a no-op outside a heading, which `toggleHeadingCollapse`
+      // reports by returning false rather than by throwing.
+      editor.chain().focus().deleteRange(range).toggleHeadingCollapse().run();
+    },
+  },
+  {
     id: 'horizontalRule',
     labelKey: 'slashDivider',
     keywords: ['divider', 'rule', 'hr', 'separator', 'razdelitel'],

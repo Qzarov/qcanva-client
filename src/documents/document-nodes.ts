@@ -11,7 +11,15 @@ export type NodeSpec = {
   group: "block" | "inline";
   /** HTML tag this node renders as. Absent means it renders no tag of its own. */
   tag?: string;
-  /** Void element: rendered without a closing tag. */
+  /**
+   * The node carries no authored children.
+   *
+   * For most such nodes that also means a void element rendered without a
+   * closing tag (`<hr>`, `<img>`, `<br>`). `tableOfContents` is the exception
+   * that makes the distinction worth stating: it holds nothing an author
+   * wrote, yet its html has a closing tag because the backend's renderer
+   * fills it with content DERIVED from the document's headings.
+   */
   selfClosing?: boolean;
   /** Attributes carried through to HTML, in this order. */
   attrs?: string[];
@@ -44,7 +52,15 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     name: "heading",
     group: "block",
     tag: "h",
-    attrs: ["level"],
+    // `collapsed` is DOCUMENT state, shared through Yjs rather than kept per
+    // viewer, so a collapsed section survives a reload and every collaborator
+    // sees the same shape. It is a VIEW hint and nothing more: the backend's
+    // renderers emit `data-collapsed="true"` and still render every block
+    // underneath, because html and plainText are what search and the canvas
+    // previews read - dropping a collapsed section from them would silently
+    // hide content rather than fold it. This editor hides those blocks in its
+    // own DOM only.
+    attrs: ["level", "collapsed"],
     textSeparator: "\n",
   },
   { name: "bulletList", group: "block", tag: "ul" },
@@ -82,6 +98,23 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     attrs: ["language"],
     textSeparator: "\n",
   },
+  {
+    name: "tableOfContents",
+    group: "block",
+    // `nav` is the honest element for a list of in-document links, and it is
+    // the only tag this node adds to the sanctioned set.
+    tag: "nav",
+    // Self-closing in the sense the field means here: an author writes
+    // nothing inside it. The BACKEND's renderer fills the `nav` with a list
+    // built from the document's real headings, because the stored html is
+    // what canvas previews and MCP clients see - a table of contents that
+    // arrives empty there is worse than none at all. This editor draws its
+    // own list in a node view, which never reaches the Yjs document.
+    selfClosing: true,
+    // No textSeparator, and no text: the heading text is already in the
+    // document, so repeating it here would put every heading into the search
+    // index twice.
+  },
   { name: "horizontalRule", group: "block", tag: "hr", selfClosing: true },
   {
     name: "image",
@@ -111,6 +144,23 @@ const BY_NAME = new Map(DOCUMENT_NODES.map((spec) => [spec.name, spec]));
 
 export function nodeSpec(name: string): NodeSpec | undefined {
   return BY_NAME.get(name);
+}
+
+/**
+ * Bound a heading's collapsed flag to a real boolean.
+ *
+ * The twin of canvas-server-back's `clampCollapsed` in
+ * src/text-documents/projection/render-html.ts, and it must agree with it:
+ * anything that is not the boolean `true` - the string "true" included - is
+ * `false`.
+ *
+ * The bound has to run here too for the same reason `clampCalloutVariant` and
+ * documents/link-policy.ts do: a collaborator's Yjs update reaches this editor
+ * without passing the backend's renderer, so an arbitrary value in this
+ * attribute would otherwise decide whether this editor folds a section.
+ */
+export function clampCollapsed(value: unknown): boolean {
+  return value === true;
 }
 
 /**

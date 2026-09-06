@@ -29,7 +29,7 @@ describe('schema contract', () => {
   });
 
   it('lists one record per node, per mark and per declared value set', () => {
-    // 15 DOCUMENT_NODES entries + 6 MARK_TAGS entries + 1 attrValues entry.
-    expect(canonicalSchema().split('\n')).toHaveLength(22);
+    // 16 DOCUMENT_NODES entries + 6 MARK_TAGS entries + 1 attrValues entry.
+    expect(canonicalSchema().split('\n')).toHaveLength(23);
   });
 });

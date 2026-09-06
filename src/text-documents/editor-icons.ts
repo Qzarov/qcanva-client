@@ -71,6 +71,13 @@ export const EDITOR_GLYPHS = {
   /** lucide "unlink" */
   unlink:
     '<path d="m18.84 12.25 1.72-1.71h-.02a5.004 5.004 0 0 0-.12-7.07 5.006 5.006 0 0 0-6.95 0l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5.004 5.004 0 0 0 .12 7.07 5.006 5.006 0 0 0 6.95 0l1.71-1.71"/><line x1="8" x2="8" y1="2" y2="5"/><line x1="2" x2="5" y1="8" y2="8"/><line x1="16" x2="16" y1="19" y2="22"/><line x1="19" x2="22" y1="16" y2="16"/>',
+  /** lucide "chevron-down" - a heading that is expanded */
+  chevronDown: '<path d="m6 9 6 6 6-6"/>',
+  /** lucide "chevron-right" - a heading that is collapsed */
+  chevronRight: '<path d="m9 18 6-6-6-6"/>',
+  /** lucide "list-tree" - the table of contents */
+  listTree:
+    '<path d="M21 12h-8"/><path d="M21 6H8"/><path d="M21 18h-8"/><path d="M3 6v4c0 1.1.9 2 2 2h3"/><path d="M3 10v6c0 1.1.9 2 2 2h3"/>',
   /** lucide "grip-vertical" */
   gripVertical:
     '<circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/>',
