@@ -5017,6 +5017,94 @@ body {
   color: var(--ui-info-foreground);
 }
 
+/* ===== Capacity notice =====
+   Chrome, like .text-doc-toolbar: it draws the semantic --ui-* tokens, which
+   already carry a light and a dark value, so nothing here is written twice
+   per theme and the paper's fixed palette is untouched. The two states reuse
+   the warning and danger token families rather than inventing colours. */
+.text-doc-capacity {
+  position: sticky;
+  top: 100px;
+  z-index: 24;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 18px 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.text-doc-capacity-warn {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-soft);
+  color: var(--ui-warning-foreground);
+}
+
+.text-doc-capacity-full {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger-foreground);
+}
+
+.text-doc-capacity-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.text-doc-capacity-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-capacity-text {
+  flex: 1 1 260px;
+}
+
+.text-doc-capacity-count {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.text-doc-capacity-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-solid);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-doc-capacity-btn:hover:not(:disabled) {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-capacity-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.text-doc-capacity-btn-icon {
+  display: inline-flex;
+}
+
+.text-doc-capacity-btn-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
 .text-doc-editor-shell {
   max-width: 920px;
   margin: 0 auto;

@@ -184,6 +184,38 @@
           </button>
         </template>
       </div>
+
+      <!-- CAPACITY. Chrome in the app's themed --ui-* palette like the
+           toolbar, never the fixed paper palette; nothing here reaches the
+           Yjs document. It appears at the warning threshold and stays up
+           while the document is at or over the ceiling - including for a
+           document that arrived over it, where the honest thing to offer is
+           both a new page and the fact that deleting blocks works. -->
+      <div
+        v-if="canEditContent && capacityNotice"
+        class="text-doc-capacity"
+        :class="`text-doc-capacity-${capacityNotice.level}`"
+        data-capacity-notice
+        role="status"
+        :aria-live="capacityNotice.level === 'full' ? 'assertive' : 'polite'"
+      >
+        <span class="text-doc-capacity-icon" v-html="capacityIcon" aria-hidden="true"></span>
+        <span class="text-doc-capacity-text">{{ capacityNotice.text }}</span>
+        <span class="text-doc-capacity-count" data-capacity-count :title="t('capacityBlocksTitle')">
+          {{ blockCount }} / {{ capacityLimit }}
+        </span>
+        <button
+          class="text-doc-capacity-btn"
+          type="button"
+          data-capacity-continue
+          :disabled="continuingPage"
+          @click="continueInNewPage"
+        >
+          <span class="text-doc-capacity-btn-icon" v-html="continuePageIcon" aria-hidden="true"></span>
+          <span>{{ continuingPage ? t('capacityContinuing') : t('capacityContinue') }}</span>
+        </button>
+      </div>
+
       <input
         ref="imageInput"
         type="file"
@@ -336,6 +368,11 @@ import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
 import DragHandle from '@tiptap/extension-drag-handle';
 import NodeRange from '@tiptap/extension-node-range';
 import { CALLOUT_VARIANTS } from '../documents/document-nodes';
+import {
+  MAX_TOP_LEVEL_BLOCKS,
+  capacityLevel,
+} from '../documents/document-capacity';
+import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
@@ -689,6 +726,43 @@ export default defineComponent({
       },
     };
 
+    /**
+     * CAPACITY.
+     *
+     * The ceiling is enforced HERE and nowhere else. A text document is a Yjs
+     * CRDT: an update the server has received was already applied by the
+     * client that sent it, so a server-side refusal cannot take the block
+     * back - it only leaves that client with a document nobody else has. The
+     * guard filters the transaction before the editor applies it, which is
+     * the last moment at which "no" is still free.
+     *
+     * `blockCount` follows the document rather than the keyboard, so it is
+     * right after a collaborator's edit and after the initial state loads.
+     * The limit and the threshold both come from the shared contract; the
+     * threshold is never written down here.
+     */
+    const capacityLimit = MAX_TOP_LEVEL_BLOCKS;
+    const blockCount = ref(0);
+    const continuingPage = ref(false);
+    const refreshBlockCount = () => {
+      blockCount.value = editor.value?.state?.doc?.childCount ?? blockCount.value;
+    };
+    const capacityNotice = computed(() => {
+      const level = capacityLevel(blockCount.value, capacityLimit);
+      if (level === 'ok') return null;
+      return { level, text: level === 'full' ? t('capacityFull') : t('capacityNearlyFull') };
+    });
+    // A refused keystroke can repeat as fast as a held Enter key; the banner
+    // is the standing explanation and the toast only has to be noticed once.
+    let lastCapacityToastAt = 0;
+    const onCapacityBlocked = () => {
+      refreshBlockCount();
+      const now = Date.now();
+      if (now - lastCapacityToastAt < 2000) return;
+      lastCapacityToastAt = now;
+      showToast(t('capacityBlocked'), 'error');
+    };
+
     const editor = useEditor({
       editable: true,
       extensions: [
@@ -726,6 +800,10 @@ export default defineComponent({
           render: renderDragHandle,
           tippyOptions: { offset: [0, 8] },
         }),
+        // Refuses a transaction that would add a top-level block past the
+        // ceiling, and NOTHING else - never a Yjs transaction, never an edit
+        // or a deletion. See capacity-guard.ts.
+        CapacityGuard.configure({ limit: capacityLimit, onBlocked: onCapacityBlocked }),
         Collaboration.configure({ document: ydoc }),
         CollaborationCursor.configure({
           provider: awarenessProvider,
@@ -735,6 +813,10 @@ export default defineComponent({
           },
         }),
       ],
+      onCreate: () => refreshBlockCount(),
+      // Fires for a remote collaborator's change as well as this user's, so
+      // the count is the document's, not this keyboard's.
+      onUpdate: () => refreshBlockCount(),
       onSelectionUpdate: ({ editor }) => {
         if (!canEditContent.value) return;
         const selection = editor.state.selection;
@@ -800,6 +882,7 @@ export default defineComponent({
           router.replace({ name: 'text-document', params: { id: preferred }, query: route.query }).catch(() => {});
         }
         editor.value?.setEditable(canEditContent.value);
+        refreshBlockCount();
         if (res.role === 'owner') await loadPermissions();
         if (!socketInitialized) {
           socketInitialized = true;
@@ -1008,6 +1091,92 @@ export default defineComponent({
       editor.value?.chain().focus('end').run();
     }
 
+    /** Escapes text that is about to be interpolated into imported html. */
+    function escapeHtmlText(value: string) {
+      return value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    /**
+     * Writes the "continues in ..." link as the last block of THIS document.
+     *
+     * This is the one transaction allowed past the ceiling, and it has to be:
+     * the document is full precisely when the user needs it, and a document
+     * that cannot record where it continues leaves the two pages permanently
+     * unconnected - a worse outcome than one block over the line.
+     */
+    function insertContinuationLink(href: string, text: string) {
+      const instance = editor.value;
+      if (!instance) return;
+      instance
+        .chain()
+        .command(({ tr }: any) => {
+          tr.setMeta(CAPACITY_OVERRIDE_META, true);
+          return true;
+        })
+        .insertContentAt(instance.state.doc.content.size, {
+          type: 'paragraph',
+          content: [{ type: 'text', marks: [{ type: 'link', attrs: { href } }], text }],
+        })
+        .run();
+      refreshBlockCount();
+    }
+
+    /**
+     * CONTINUE ON A NEW PAGE - user-initiated, always.
+     *
+     * Automatic splitting was rejected: choosing a seam in a document two
+     * people are typing in is a guess, and moving blocks in a CRDT while a
+     * collaborator edits them is how content goes missing. So this creates an
+     * EMPTY page, links the two together in both directions, and moves
+     * nothing at all.
+     */
+    async function continueInNewPage() {
+      if (!canEditContent.value || continuingPage.value) return;
+      continuingPage.value = true;
+      try {
+        const currentTitle = title.value || t('untitledDocument');
+        const newTitle = `${currentTitle} (${t('capacityContinuedSuffix')})`;
+        let created: any;
+        try {
+          // Same folder as this document, per the flow's own definition.
+          created = await textDocuments.create({ title: newTitle, folderId: folderId.value });
+        } catch (e: any) {
+          // A document can sit in a folder somebody else owns, and a new
+          // document cannot be filed there. Landing at the root and saying so
+          // beats refusing the only way out of a full document.
+          const filingRefused =
+            folderId.value && e instanceof ApiError && (e.status === 403 || e.status === 404);
+          if (!filingRefused) throw e;
+          created = await textDocuments.create({ title: newTitle });
+          showToast(t('capacityContinuedOutsideFolder'), 'error');
+        }
+        const target = created.slug || created.id;
+        const here = slug.value || resolvedId.value;
+        // The back link is the new page's ENTIRE content: nothing is moved.
+        await textDocuments.replaceContent(created.id, {
+          html:
+            `<p><a href="/docs/${encodeURIComponent(here)}">` +
+            `${escapeHtmlText(`${t('capacityContinuedFrom')} ${currentTitle}`)}</a></p>`,
+        });
+        insertContinuationLink(`/docs/${target}`, `${t('capacityContinuesIn')} ${newTitle}`);
+        showToast(t('capacityContinueCreated'), 'success');
+        // Safe to leave now: `insertContinuationLink` above dispatched
+        // synchronously, so the ydoc 'update' handler has already handed the
+        // link's Yjs update to the socket. Navigating (and the unmount that
+        // disconnects) happens after that, not before it.
+        await router.push({ name: 'text-document', params: { id: target } });
+      } catch (e: any) {
+        showToast(e?.message || t('capacityContinueFailed'), 'error');
+      } finally {
+        continuingPage.value = false;
+      }
+    }
+
     onMounted(() => {
       const cached = readNativeResourceCache<any>('text-document', id);
       if (cached?.value?.document) {
@@ -1032,6 +1201,7 @@ export default defineComponent({
           Y.applyUpdate(ydoc, base64ToUint8Array(state), 'remote');
           applyingInitialState = false;
         }
+        refreshBlockCount();
         hydratedFromCache.value = true;
         loading.value = false;
         if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: t('refreshingSaved') };
@@ -1065,6 +1235,13 @@ export default defineComponent({
       removeLink,
       linkIcon: LINK_ICON,
       unlinkIcon: UNLINK_ICON,
+      capacityIcon: lucideIcon(EDITOR_GLYPHS.triangleAlert),
+      continuePageIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
+      capacityLimit,
+      blockCount,
+      capacityNotice,
+      continuingPage,
+      continueInNewPage,
       backTarget,
       imageInput,
       uploadingImage,
