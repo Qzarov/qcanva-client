@@ -1,12 +1,9 @@
 <template>
-  <!-- Keyed on the PATH, so a navigation that stays on the same route but
-       changes the resource (/docs/a -> /docs/b, which "continue on a new
-       page" performs) remounts the view instead of reusing an instance still
-       holding the previous document's editor, Yjs document and socket.
-       Query-only changes - the dashboard's filters - keep the same path and
-       so keep the same instance. -->
+  <!-- Keyed on the PATH for the routes that need it, and only those: see
+       router/view-remount.ts for which, and for why keying every route made
+       slugged canvases and html documents remount right after opening. -->
   <router-view v-slot="{ Component, route }">
-    <component :is="Component" :key="route.path" />
+    <component :is="Component" :key="viewKeyFor(route)" />
   </router-view>
   <ToastContainer />
 </template>
@@ -14,9 +11,13 @@
 <script lang="ts">
 import { defineComponent } from 'vue';
 import ToastContainer from './components/ToastContainer.vue';
+import { viewKeyFor } from './router/view-remount';
 
 export default defineComponent({
   components: { ToastContainer },
+  setup() {
+    return { viewKeyFor };
+  },
 });
 </script>
 
