@@ -1982,11 +1982,6 @@ export default defineComponent({
       chromeResizeObserver?.disconnect();
     });
 
-    const drawToolLabel = (tool: string) => ({
-      select: t('toolSelect'), pen: t('toolPen'), highlighter: t('toolHighlighter'), rect: t('toolRect'),
-      ellipse: t('toolEllipse'), line: t('toolLine'), arrow: t('toolArrow'), eraser: t('toolEraser'),
-    } as Record<string, string>)[tool] || tool;
-
     const drawPanelOpen = ref(false);
     const drawColorPickerOpen = ref(false);
     const drawPaletteColorOpen = ref(false);
@@ -2034,7 +2029,6 @@ export default defineComponent({
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
-      drawToolLabel,
       drawPanelOpen,
       toggleDrawPanel,
       diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
