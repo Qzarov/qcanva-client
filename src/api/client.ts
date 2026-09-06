@@ -431,6 +431,15 @@ export type MentionSearchResult = { id: string; title: string };
  */
 export type MentionResolution = { id: string; title: string; accessible: boolean; deleted: boolean };
 
+/**
+ * One source document linking to the one whose backlinks were fetched, from
+ * `GET /text-documents/:id/backlinks`. No `deleted` field: a document that
+ * links to this one cannot itself be soft-deleted (see the endpoint's own
+ * doc comment), and no body/preview - resolution is title-only, exactly like
+ * `MentionResolution` above and for the same disclosure reasoning (§7.3).
+ */
+export type BacklinkItem = { id: string; title: string; accessible: boolean };
+
 export const textDocuments = {
   list: () => request<{ documents: any[] }>('/text-documents'),
   publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),
@@ -466,6 +475,16 @@ export const textDocuments = {
   /** Current title/accessible/deleted for every mention target in one document. */
   mentions: (id: string) =>
     request<{ items: MentionResolution[] }>(`/text-documents/${id}/mentions`, { skipAuthRedirect: true }),
+  /**
+   * Documents that mention this one. Ordered by source recency then id,
+   * capped at 100 server-side. Only ever called once `get()` has confirmed
+   * the caller can read the TARGET document (ruling: backlinks are not a
+   * side channel around the read check) - `skipAuthRedirect` matches
+   * `mentions` above for the same reason, not because this is reachable
+   * without access.
+   */
+  backlinks: (id: string) =>
+    request<{ items: BacklinkItem[] }>(`/text-documents/${id}/backlinks`, { skipAuthRedirect: true }),
 };
 
 export const accessRequests = {

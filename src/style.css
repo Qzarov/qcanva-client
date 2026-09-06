@@ -3345,6 +3345,90 @@ body {
   transition: color 0.15s;
 }
 .access-gate-back:hover { color: var(--ui-text-secondary); }
+
+/* AccessRequestDialog.vue - a MODAL for a different resource while the
+   reader stays put (ruling R3), unlike .access-gate above which replaces the
+   whole page when the page's OWN load is refused. Shares the gate's select/
+   button tokens (.access-gate-select, .access-gate-btn*) so the two surfaces
+   read as one visual language. */
+.access-request-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, black 45%, transparent);
+  padding: 24px;
+}
+.access-request-dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 380px;
+  background: var(--ui-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-xl);
+  padding: 36px 32px 28px;
+  box-shadow: var(--ui-shadow);
+}
+.access-request-dialog-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.access-request-dialog-close:hover { background: var(--ui-surface-subtle); }
+.access-request-dialog-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-brands) 25%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-accent-strong);
+  margin-bottom: 16px;
+}
+.access-request-dialog-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ui-text);
+  margin: 0 0 6px;
+  text-align: center;
+  word-break: break-word;
+}
+.access-request-dialog-sub {
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+  margin: 0 0 22px;
+  text-align: center;
+}
+.access-request-dialog-row {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.access-request-dialog-error {
+  margin: 14px 0 0;
+  font-size: 13px;
+  color: var(--ui-danger-foreground);
+  text-align: center;
+}
 .access-request-list {
   display: flex;
   flex-direction: column;
@@ -5612,6 +5696,91 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 .text-doc-mention-empty {
   padding: 9px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* The backlinks block (front task 10): chrome at the end of the document,
+   in .text-doc-editor-shell's max-width column - not inside .text-doc-paper,
+   since backlinks are not document content. Renders once loaded so an empty
+   list is never shown as a false flash before the fetch resolves. */
+.text-doc-backlinks {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ui-border);
+}
+.text-doc-backlinks-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlinks-icon {
+  display: inline-flex;
+}
+.text-doc-backlinks-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-backlinks-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.text-doc-backlinks-hint {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: var(--ui-text-muted);
+}
+.text-doc-backlinks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.text-doc-backlink-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.text-doc-backlink-item:hover {
+  background: var(--ui-surface-subtle);
+}
+.text-doc-backlink-item-inaccessible {
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlink-item-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlink-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-backlink-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-doc-backlinks-empty {
+  margin: 0;
+  padding: 8px 10px;
   color: var(--ui-text-muted);
   font-size: 13px;
 }

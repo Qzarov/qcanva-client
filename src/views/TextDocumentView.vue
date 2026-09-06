@@ -236,7 +236,65 @@
         >
           <EditorContent v-if="editor" :editor="editor" />
         </article>
+
+        <!--
+          BACKLINKS (front task 10). Chrome at the end of the document, not
+          document content - lives in .text-doc-editor-shell's column like
+          .text-doc-paper, but outside the paper itself, on the app's themed
+          --ui-* palette. Renders only once the fetch has resolved (never a
+          flash of "no backlinks" before it has), and shows nothing at all
+          when the target document simply is not read yet - see load().
+
+          Two deliberate choices, not left to guesswork:
+          - Zero backlinks: a persistent empty line under a persistent
+            heading, not a hidden block. Hiding the whole section would make
+            "never mentioned" and "mentioned a moment ago, not indexed yet"
+            (ruling R1) look identical - nothing at all - which is exactly
+            the "user reads it as a bug" case R1 warns about.
+          - The refresh-delay IS said in the UI: a small caption under the
+            heading, always shown (not only in the empty state, since R1's
+            lag applies to an addition on a document that already has other
+            backlinks too), rather than repeated per item or left unsaid.
+        -->
+        <section v-if="backlinksLoaded" class="text-doc-backlinks">
+          <div class="text-doc-backlinks-head">
+            <span class="text-doc-backlinks-icon" v-html="backlinksIcon" aria-hidden="true"></span>
+            <h3 class="text-doc-backlinks-title">{{ t('backlinksTitle') }}</h3>
+          </div>
+          <p class="text-doc-backlinks-hint">{{ t('backlinksDelayHint') }}</p>
+          <ul v-if="backlinks.length" class="text-doc-backlinks-list">
+            <li v-for="item in backlinks" :key="item.id">
+              <button
+                type="button"
+                class="text-doc-backlink-item"
+                :class="{ 'text-doc-backlink-item-inaccessible': !item.accessible }"
+                :data-backlink-id="item.id"
+                :data-backlink-state="item.accessible ? 'accessible' : 'inaccessible'"
+                @click="onBacklinkClick(item)"
+              >
+                <span class="text-doc-backlink-item-icon" v-html="mentionDocumentIcon" aria-hidden="true"></span>
+                <span class="text-doc-backlink-item-label">{{ item.title }}</span>
+              </button>
+            </li>
+          </ul>
+          <p v-else class="text-doc-backlinks-empty">{{ t('backlinksEmpty') }}</p>
+        </section>
       </main>
+
+      <!--
+        The access-request dialog (ruling R3): one component for both an
+        inaccessible mention click (mention-node.ts) and an inaccessible
+        backlink click (onBacklinkClick below) - both funnel into the same
+        `pendingMentionAccessRequest` seam. R4: title and role only, no
+        owner - see AccessRequestDialog.vue.
+      -->
+      <AccessRequestDialog
+        v-if="pendingMentionAccessRequest"
+        resource-type="text-document"
+        :resource-id="pendingMentionAccessRequest.id"
+        :title="pendingMentionAccessRequest.label"
+        @close="pendingMentionAccessRequest = null"
+      />
 
       <!-- The selection bubble. Chrome in the app's themed --ui-* palette,
            like the toolbar; nothing here reaches the Yjs document. -->
@@ -420,7 +478,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
-import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type MentionResolution } from '../api/client';
+import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -428,9 +486,10 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
+import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 
 export default defineComponent({
-  components: { AccountMenu, BubbleMenu, EditorContent },
+  components: { AccountMenu, AccessRequestDialog, BubbleMenu, EditorContent },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1023,13 +1082,48 @@ export default defineComponent({
     };
 
     /**
-     * The access-request seam (ruling R3): a later task wires this to a
-     * dialog. Recorded here, not silently dropped, so an inaccessible
-     * mention's click reaches something.
+     * The access-request seam (ruling R3), now wired to AccessRequestDialog.vue
+     * (front task 11) - shared by an inaccessible MENTION click
+     * (mention-node.ts's `onInaccessibleClick`) and an inaccessible BACKLINK
+     * click (`onBacklinkClick` below): same disclosure rule, same dialog,
+     * one seam.
      */
     const pendingMentionAccessRequest = ref<{ id: string; label: string } | null>(null);
     const handleMentionInaccessibleClick = (payload: { id: string; label: string }) => {
       pendingMentionAccessRequest.value = payload;
+    };
+
+    /**
+     * BACKLINKS (front task 10). `backlinksLoaded` gates the template so an
+     * empty array default is never rendered as "no backlinks" before the
+     * fetch has actually resolved - the same false-empty-flash concern
+     * `loadMentionResolutions` doesn't have to worry about (it repaints
+     * existing nodes rather than gating a v-if).
+     */
+    const backlinks = ref<BacklinkItem[]>([]);
+    const backlinksLoaded = ref(false);
+    const backlinksIcon = lucideIcon(EDITOR_GLYPHS.link);
+
+    async function loadBacklinks() {
+      try {
+        const result = await textDocuments.backlinks(resolvedId.value);
+        backlinks.value = result.items;
+      } catch {
+        // Same fallback as loadMentionResolutions: an empty list, not a
+        // crash and not a stale one left showing.
+        backlinks.value = [];
+      } finally {
+        backlinksLoaded.value = true;
+      }
+    }
+
+    /** Accessible source: navigate, same as an accessible mention. Inaccessible: same dialog seam as a mention (R3/R4). */
+    const onBacklinkClick = (item: BacklinkItem) => {
+      if (item.accessible) {
+        navigateToMention(item.id);
+        return;
+      }
+      handleMentionInaccessibleClick({ id: item.id, label: item.title });
     };
 
     const mentionNodeLabels = { inaccessible: '', deleted: '' };
@@ -1210,6 +1304,12 @@ export default defineComponent({
         refreshBlockCount();
         focusAfterMentionCreateIfPending(preferred);
         void loadMentionResolutions();
+        // Only reached once `textDocuments.get` above has succeeded - i.e.
+        // the caller can read THIS document. Backlinks are not a side
+        // channel around that check: moving this call earlier (or into the
+        // catch branch below) would fetch them for a document the reader
+        // was just refused.
+        void loadBacklinks();
         if (res.role === 'owner') await loadPermissions();
         if (!socketInitialized) {
           socketInitialized = true;
@@ -1558,6 +1658,10 @@ export default defineComponent({
       selectMentionItem,
       pendingMentionCreate,
       pendingMentionAccessRequest,
+      backlinks,
+      backlinksLoaded,
+      backlinksIcon,
+      onBacklinkClick,
       mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
       mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       linkEditorOpen,
