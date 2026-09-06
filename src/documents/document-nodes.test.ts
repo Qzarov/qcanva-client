@@ -38,6 +38,19 @@ describe('the shared node inventory: callout', () => {
   });
 });
 
+describe('the shared node inventory: mention', () => {
+  it('describes a mention as an inline atom carrying an id and a label', () => {
+    const spec = nodeSpec('mention');
+    expect(spec?.group).toBe('inline');
+    expect(spec?.tag).toBe('span');
+    expect(spec?.attrs).toEqual(['id', 'label']);
+    expect(spec?.selfClosing).toBe(true);
+    // Inline: unlike callout or image, it must not force a break in plain
+    // text around itself - it sits in the middle of a sentence.
+    expect(spec?.textSeparator).toBeUndefined();
+  });
+});
+
 describe('clampCalloutVariant', () => {
   it('keeps each declared variant', () => {
     for (const variant of CALLOUT_VARIANTS) {

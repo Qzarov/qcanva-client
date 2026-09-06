@@ -129,6 +129,22 @@ export const DOCUMENT_NODES: NodeSpec[] = [
   },
   { name: "hardBreak", group: "inline", tag: "br", selfClosing: true },
   { name: "text", group: "inline" },
+  {
+    name: "mention",
+    group: "inline",
+    tag: "span",
+    // An atom: `id` and `label` are its whole content, nothing authored
+    // underneath it. `id` is the target text-document's id; `label` is the
+    // target's title AT INSERT TIME, a fallback for when the live title
+    // cannot be resolved. `id` alone - never `label` - may ever be used to
+    // build a link, since label is user-supplied text a document owner can
+    // set to anything.
+    selfClosing: true,
+    attrs: ["id", "label"],
+    // No textSeparator: a mention sits inline in the middle of a sentence,
+    // the same as `text` and `hardBreak` above, so it must not force a break
+    // around itself the way callout or image (both block-level) do.
+  },
 ];
 
 export const MARK_TAGS: Record<string, string> = {
