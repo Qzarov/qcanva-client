@@ -60,69 +60,69 @@
 
       <section v-if="showShare && role === 'owner'" class="share-panel text-doc-share-panel">
         <div class="share-panel-header">
-          <h3>Access</h3>
+          <h3>{{ t('access') }}</h3>
           <button class="btn-ghost btn-sm" @click="showShare = false">x</button>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Link</div>
+          <div class="share-section-title">{{ t('shareLinkSection') }}</div>
           <div class="slug-row">
             <span class="slug-prefix">/docs/</span>
             <input v-model="slugInput" class="slug-input" placeholder="my-document" spellcheck="false" autocapitalize="off" autocomplete="off" @keydown.enter="saveSlug" />
-            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
           </div>
-          <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+          <div class="slug-hint">{{ t('slugHint') }}</div>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Who can view</div>
+          <div class="share-section-title">{{ t('whoCanView') }}</div>
           <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
-            <option value="private">Private - only invited people</option>
-            <option value="authenticated">Auth only - any logged-in user</option>
-            <option value="public">Public - anyone with the link</option>
+            <option value="private">{{ t('visibilityPrivateDash') }}</option>
+            <option value="authenticated">{{ t('visibilityAuthOnlyDash') }}</option>
+            <option value="public">{{ t('visibilityPublicDash') }}</option>
           </select>
           <label class="share-checkbox">
             <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-            <span>Allow public editing</span>
+            <span>{{ t('allowPublicEditing') }}</span>
           </label>
           <label class="share-checkbox">
             <input type="checkbox" v-model="listedInPublic" :disabled="visibility !== 'public'" @change="saveAccessSettings" />
-            <span>Show in Public</span>
+            <span>{{ t('showInPublic') }}</span>
           </label>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Invite people</div>
+          <div class="share-section-title">{{ t('invitePeople') }}</div>
           <div class="share-form">
-            <input v-model.trim="shareEmail" placeholder="Email" type="email" />
+            <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
             <select v-model="shareRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
+              <option value="read">{{ t('canView') }}</option>
+              <option value="edit">{{ t('canEdit') }}</option>
             </select>
-            <button @click="doShare">Invite</button>
+            <button @click="doShare">{{ t('inviteBtn') }}</button>
           </div>
           <div v-if="permissions.length" class="share-list">
             <div v-for="p in permissions" :key="p.id" class="share-item">
               <span>{{ p.user?.email || p.userId }}</span>
-              <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+              <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
               <button @click="doRevoke(p.userId)">x</button>
             </div>
           </div>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Password access</div>
+          <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
           <label class="share-checkbox">
             <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>Enable password access</span>
+            <span>{{ t('enablePasswordAccess') }}</span>
           </label>
           <div v-if="passwordAccessEnabled" class="share-form">
-            <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
+            <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
             <select v-model="passwordAccessRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
+              <option value="read">{{ t('canView') }}</option>
+              <option value="edit">{{ t('canEdit') }}</option>
             </select>
-            <button @click="savePasswordAccess">Save</button>
+            <button @click="savePasswordAccess">{{ t('save') }}</button>
           </div>
         </div>
       </section>
@@ -130,26 +130,26 @@
       <section v-if="showHistory" class="html-history-panel text-doc-history-panel">
         <div class="html-history-list">
           <div class="html-history-head">
-            <strong>History</strong>
+            <strong>{{ t('history') }}</strong>
             <button class="btn-ghost btn-sm" @click="showHistory = false">x</button>
           </div>
-          <div v-if="historyLoading" class="html-history-empty">Loading...</div>
+          <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
           <button v-for="entry in historyItems" :key="entry.id" class="html-history-item" :class="{ active: selectedHistory?.id === entry.id }" @click="openHistoryEntry(entry)">
-            <span>Revision {{ entry.revision }}</span>
+            <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
             <small>{{ new Date(entry.createdAt).toLocaleString() }}</small>
           </button>
-          <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">No history yet</div>
+          <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
         </div>
         <div class="html-history-preview">
-          <div v-if="!selectedHistory" class="html-history-empty">Select a revision</div>
+          <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
           <template v-else>
             <div class="html-history-preview-head">
               <div>
-                <strong>Revision {{ selectedHistory.revision }}</strong>
-                <small>{{ selectedHistory.plainText || 'Snapshot' }}</small>
+                <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
+                <small>{{ selectedHistory.plainText || t('snapshotLabel') }}</small>
               </div>
               <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-                {{ restoringHistory ? 'Restoring...' : 'Restore' }}
+                {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
               </button>
             </div>
             <div class="text-doc-history-preview" v-html="selectedHistory.html"></div>

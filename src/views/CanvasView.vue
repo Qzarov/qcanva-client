@@ -616,12 +616,12 @@
       <!-- Access panel -->
       <div v-if="showShare" class="share-panel">
         <div class="share-panel-header">
-          <h3>Access</h3>
+          <h3>{{ t('access') }}</h3>
           <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
         </div>
 
         <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">Link</div>
+          <div class="share-section-title">{{ t('shareLinkSection') }}</div>
           <div class="slug-row">
             <span class="slug-prefix">/canvas/</span>
             <input
@@ -633,21 +633,21 @@
               autocomplete="off"
               @keydown.enter="saveSlug"
             />
-            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
           </div>
-          <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+          <div class="slug-hint">{{ t('slugHint') }}</div>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Who can view</div>
+          <div class="share-section-title">{{ t('whoCanView') }}</div>
           <select class="share-visibility-select" :value="visibility" @change="setVisibility(($event.target as HTMLSelectElement).value as any)">
-            <option value="private">Private — only invited people</option>
-            <option value="authenticated">Auth only — any logged-in user</option>
-            <option value="public">Public — anyone with the link</option>
+            <option value="private">{{ t('visibilityPrivate') }}</option>
+            <option value="authenticated">{{ t('visibilityAuthOnly') }}</option>
+            <option value="public">{{ t('visibilityPublic') }}</option>
           </select>
           <label class="share-checkbox">
             <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
-            <span>Allow public editing</span>
+            <span>{{ t('allowPublicEditing') }}</span>
           </label>
           <label class="share-checkbox">
             <input
@@ -656,42 +656,42 @@
               :disabled="visibility !== 'public'"
               @change="togglePublicListing"
             />
-            <span>Show in Public</span>
+            <span>{{ t('showInPublic') }}</span>
           </label>
         </div>
 
         <div class="share-section">
-          <div class="share-section-title">Invite people</div>
+          <div class="share-section-title">{{ t('invitePeople') }}</div>
           <div class="share-form">
-            <input v-model="shareEmail" placeholder="Email" type="email" />
+            <input v-model="shareEmail" :placeholder="t('email')" type="email" />
             <select v-model="shareRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
+              <option value="read">{{ t('canView') }}</option>
+              <option value="edit">{{ t('canEdit') }}</option>
             </select>
-            <button @click="doShare">Invite</button>
+            <button @click="doShare">{{ t('inviteBtn') }}</button>
           </div>
           <div v-if="permissions.length" class="share-list">
             <div v-for="p in permissions" :key="p.id" class="share-item">
               <span>{{ p.user?.email || p.userId }}</span>
-              <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+              <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
               <button @click="doRevoke(p.userId)">×</button>
             </div>
           </div>
         </div>
 
         <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">Password access</div>
+          <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
           <label class="share-checkbox">
             <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>Enable password access</span>
+            <span>{{ t('enablePasswordAccess') }}</span>
           </label>
           <div v-if="passwordAccessEnabled" class="share-form">
-            <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
+            <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
             <select v-model="passwordAccessRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
+              <option value="read">{{ t('canView') }}</option>
+              <option value="edit">{{ t('canEdit') }}</option>
             </select>
-            <button @click="savePasswordAccess">Save</button>
+            <button @click="savePasswordAccess">{{ t('save') }}</button>
           </div>
         </div>
       </div>
@@ -699,21 +699,21 @@
       <!-- History panel -->
       <div v-if="showHistory" class="history-panel">
         <div class="history-panel-header">
-          <h3>History</h3>
+          <h3>{{ t('history') }}</h3>
           <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
         </div>
         <!-- History access control (owner/admin) -->
         <div v-if="canManageSettings || isAdmin()" class="history-access-control">
-          <label>Who can view history:</label>
+          <label>{{ t('whoCanViewHistory') }}</label>
           <select :value="historyAccess" @change="changeHistoryAccess(($event.target as HTMLSelectElement).value)">
-            <option value="owner">Owner only</option>
-            <option value="editors">Editors</option>
-            <option value="viewers">All viewers</option>
+            <option value="owner">{{ t('historyOwnerOnly') }}</option>
+            <option value="editors">{{ t('historyEditorsOption') }}</option>
+            <option value="viewers">{{ t('historyAllViewers') }}</option>
           </select>
         </div>
-        <div v-if="historyLoading && historyItems.length === 0" class="history-loading">Loading...</div>
+        <div v-if="historyLoading && historyItems.length === 0" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else-if="historyError" class="history-error">{{ historyError }}</div>
-        <div v-else-if="historyItems.length === 0" class="history-empty">No history yet</div>
+        <div v-else-if="historyItems.length === 0" class="history-empty">{{ t('noHistoryYet') }}</div>
         <div v-else class="history-split">
           <div class="history-list">
             <button
@@ -732,44 +732,44 @@
               <div class="history-item-date">{{ formatHistoryDate(item.createdAt) }}</div>
             </button>
             <button v-if="hasMoreHistory" class="btn-ghost btn-sm history-load-more" @click="loadMoreHistory" :disabled="historyLoading">
-              Load more
+              {{ t('loadMore') }}
             </button>
           </div>
           <div class="history-preview">
-            <div v-if="historySnapshotLoading" class="history-empty">Loading revision...</div>
+            <div v-if="historySnapshotLoading" class="history-empty">{{ t('loadingRevision') }}</div>
             <div v-else-if="historySnapshotError" class="history-error">{{ historySnapshotError }}</div>
-            <div v-else-if="!selectedHistoryItem" class="history-empty">Select a revision</div>
+            <div v-else-if="!selectedHistoryItem" class="history-empty">{{ t('selectARevision') }}</div>
             <template v-else>
               <div class="history-preview-head">
-                <strong>Revision {{ selectedHistoryItem.revision }}</strong>
+                <strong>{{ t('revisionLabel') }} {{ selectedHistoryItem.revision }}</strong>
                 <span>{{ formatHistoryDate(selectedHistoryItem.createdAt) }}</span>
               </div>
               <div class="history-preview-row">
-                <span>Operation</span>
+                <span>{{ t('operationLabel') }}</span>
                 <strong>{{ opLabel(selectedHistoryItem.type) }}</strong>
               </div>
               <div class="history-preview-row">
-                <span>Author</span>
-                <strong>{{ selectedHistoryItem.userName || 'Guest' }}</strong>
+                <span>{{ t('authorLabel') }}</span>
+                <strong>{{ selectedHistoryItem.userName || t('guestLabel') }}</strong>
               </div>
               <div class="history-preview-grid">
                 <div>
-                  <span>Nodes</span>
+                  <span>{{ t('nodesLabel') }}</span>
                   <strong>{{ selectedHistorySummary.nodes }}</strong>
                 </div>
                 <div>
-                  <span>Edges</span>
+                  <span>{{ t('edgesLabel') }}</span>
                   <strong>{{ selectedHistorySummary.edges }}</strong>
                 </div>
               </div>
-              <div class="history-preview-detail">{{ opDetail(selectedHistoryItem) || 'Full canvas snapshot' }}</div>
+              <div class="history-preview-detail">{{ opDetail(selectedHistoryItem) || t('fullCanvasSnapshot') }}</div>
               <button
                 v-if="role !== 'read'"
                 class="btn-primary btn-sm history-restore-btn"
                 :disabled="restoringHistory || !selectedHistorySnapshot"
                 @click="restoreSelectedHistorySnapshot"
               >
-                {{ restoringHistory ? 'Restoring...' : 'Restore revision' }}
+                {{ restoringHistory ? t('restoringEllipsis') : t('restoreRevision') }}
               </button>
             </template>
           </div>
@@ -800,7 +800,7 @@
         >
           {{ creatingDocument ? t('creating') : t('newDocumentBtn') }}
         </button>
-        <div v-if="docLoading" class="history-loading">Loading...</div>
+        <div v-if="docLoading" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else class="embed-canvas-list">
           <div
             v-for="d in filteredEmbedDocuments"
@@ -808,7 +808,7 @@
             class="embed-canvas-item"
             @click="doEmbedDocument(d.kind, d.id)"
           >
-            <span class="embed-canvas-title">{{ d.title || 'Untitled' }}</span>
+            <span class="embed-canvas-title">{{ d.title || t('untitled') }}</span>
             <span class="doc-kind-badge">{{ d.kind === 'text' ? 'DOC' : 'HTML' }}</span>
           </div>
           <div v-if="filteredEmbedDocuments.length === 0" class="history-empty">{{ t('documentsNotFound') }}</div>
@@ -818,15 +818,15 @@
       <!-- Embed canvas picker -->
       <div v-if="showEmbedPicker" class="embed-picker-panel">
         <div class="history-panel-header">
-          <h3>Embed Canvas</h3>
+          <h3>{{ t('embedCanvasTitle') }}</h3>
           <button class="btn-ghost btn-sm" @click="showEmbedPicker = false">×</button>
         </div>
         <input
           v-model.trim="embedSearch"
           class="embed-search-input"
-          placeholder="Search canvases..."
+          :placeholder="t('searchCanvasesPlaceholder')"
         />
-        <div v-if="embedLoading" class="history-loading">Loading...</div>
+        <div v-if="embedLoading" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else class="embed-canvas-list">
           <div
             v-for="c in filteredEmbedCanvases"
@@ -834,10 +834,10 @@
             class="embed-canvas-item"
             @click="doEmbed(c.id)"
           >
-            <span class="embed-canvas-title">{{ c.title || 'Untitled' }}</span>
+            <span class="embed-canvas-title">{{ c.title || t('untitled') }}</span>
             <span class="embed-canvas-owner">{{ c.ownerName || c.ownerEmail || '' }}</span>
           </div>
-          <div v-if="filteredEmbedCanvases.length === 0" class="history-empty">No canvases found</div>
+          <div v-if="filteredEmbedCanvases.length === 0" class="history-empty">{{ t('noCanvasesFound') }}</div>
         </div>
       </div>
 
@@ -857,24 +857,24 @@
       <div v-if="showShortcuts" class="shortcuts-backdrop" @click.self="showShortcuts = false">
         <div class="shortcuts-panel">
           <div class="shortcuts-header">
-            <h3>Keyboard Shortcuts</h3>
+            <h3>{{ t('keyboardShortcuts') }}</h3>
             <button class="btn-ghost btn-sm" @click="showShortcuts = false">&times;</button>
           </div>
           <div class="shortcuts-grid">
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Undo</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Redo</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>Copy selected</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>V</kbd><span>Paste</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>D</kbd><span>Duplicate</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>A</kbd><span>Select all</span></div>
-            <div class="shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>Delete selected</span></div>
-            <div class="shortcut-row"><kbd>Escape</kbd><span>Deselect all</span></div>
-            <div class="shortcut-row"><kbd>Double-click</kbd><span>Edit node text</span></div>
-            <div class="shortcut-row"><kbd>Shift</kbd>+Click<span>Multi-select</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+Scroll<span>Zoom in/out</span></div>
-            <div class="shortcut-row"><kbd>Middle mouse</kbd><span>Pan canvas</span></div>
-            <div class="shortcut-row"><kbd>Right-click</kbd><span>Context menu</span></div>
-            <div class="shortcut-row"><kbd>Drag from edge</kbd><span>Create connection</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>{{ t('scUndo') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>{{ t('scRedo') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>{{ t('scCopySelected') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>V</kbd><span>{{ t('scPaste') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>D</kbd><span>{{ t('scDuplicate') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>A</kbd><span>{{ t('scSelectAll') }}</span></div>
+            <div class="shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>{{ t('scDeleteSelected') }}</span></div>
+            <div class="shortcut-row"><kbd>Escape</kbd><span>{{ t('scDeselectAll') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdDoubleClick') }}</kbd><span>{{ t('scEditNodeText') }}</span></div>
+            <div class="shortcut-row"><kbd>Shift</kbd>+{{ t('kbdClick') }}<span>{{ t('scMultiSelect') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+{{ t('kbdScroll') }}<span>{{ t('scZoom') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdMiddleMouse') }}</kbd><span>{{ t('scPanCanvas') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdRightClick') }}</kbd><span>{{ t('scContextMenu') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdDragFromEdge') }}</kbd><span>{{ t('scCreateConnection') }}</span></div>
           </div>
         </div>
       </div>
@@ -1730,19 +1730,20 @@ export default defineComponent({
       }
     };
 
-    const opLabels: Record<string, string> = {
-      'nodes-move': 'Moved nodes',
-      'node-resize': 'Resized node',
-      'node-add': 'Added node',
-      'node-delete': 'Deleted nodes',
-      'node-update': 'Updated node',
-      'edge-add': 'Added edge',
-      'edge-delete': 'Deleted edge',
-      'edge-update': 'Updated edge',
-      'canvas-restore': 'Restored canvas',
+    const opLabel = (type: string) => {
+      const opLabels: Record<string, string> = {
+        'nodes-move': t('opNodesMove'),
+        'node-resize': t('opNodeResize'),
+        'node-add': t('opNodeAdd'),
+        'node-delete': t('opNodeDelete'),
+        'node-update': t('opNodeUpdate'),
+        'edge-add': t('opEdgeAdd'),
+        'edge-delete': t('opEdgeDelete'),
+        'edge-update': t('opEdgeUpdate'),
+        'canvas-restore': t('opCanvasRestore'),
+      };
+      return opLabels[type] || type;
     };
-
-    const opLabel = (type: string) => opLabels[type] || type;
 
     const opCategory = (type: string) => {
       if (type.includes('add')) return 'add';
@@ -1755,11 +1756,11 @@ export default defineComponent({
         const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload;
         switch (item.type) {
           case 'node-add': return payload.node?.text?.slice(0, 60) || payload.node?.type || '';
-          case 'node-delete': return `${payload.ids?.length || 1} node(s)`;
-          case 'nodes-move': return `${payload.moves?.length || 1} node(s)`;
+          case 'node-delete': return `${payload.ids?.length || 1} ${t('nodeUnit')}`;
+          case 'nodes-move': return `${payload.moves?.length || 1} ${t('nodeUnit')}`;
           case 'node-update': return Object.keys(payload.changes || {}).join(', ');
           case 'edge-add': return `${payload.edge?.fromNode?.slice(0, 8)} → ${payload.edge?.toNode?.slice(0, 8)}`;
-          case 'canvas-restore': return `from revision ${payload.restoredFromRevision}`;
+          case 'canvas-restore': return `${t('fromRevision')} ${payload.restoredFromRevision}`;
           default: return '';
         }
       } catch {

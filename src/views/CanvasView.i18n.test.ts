@@ -16,11 +16,16 @@
 //    English locale (English text is expected there).
 //  - The Russian-locale check below only looks for a curated list of the
 //    literal English strings this change removed; it is not a general
-//    "no Latin text" sweep, because large parts of this view (share panel,
-//    history panel, keyboard-shortcuts dialog, embed-canvas picker, mode
-//    labels, etc.) were intentionally left hardcoded in English as
-//    documented out-of-scope work, and a blanket Latin-alphabet sweep would
-//    permanently fail on that pre-existing, undisputed content.
+//    "no Latin text" sweep. The share panel, history panel,
+//    keyboard-shortcuts dialog and embed-canvas picker have since been
+//    converted and are now part of the swept/checked surface below. The
+//    topbar's realtime sync status chip (Saving/Synced/Offline/Conflict,
+//    rendered by `.topbar-sync`, a sibling of `.topbar-actions` and outside
+//    every selector below) remains hardcoded English on purpose: it is a
+//    small shared label driven by `syncStatus`/`htmlSyncStatus` and the
+//    `syncEvents.ts` reason strings, identically hardcoded across all three
+//    editor views, and converting it was never part of this task's named
+//    checklist.
 //  - Panels that only render once a canvas node is selected (the desktop
 //    node toolbar / mobile block-menu) are not exercised here because the
 //    CanvasLoader stub below never reports a selection; that surface was
@@ -164,23 +169,24 @@ async function mountWithOpenPanels() {
   vm.showDocPicker = true;
   vm.chatOpen = true;
   vm.pickingNodeForChat = true;
-  // Also open the deferred, still-English share/history panels: harmless for
-  // the Cyrillic sweep (they carry no Cyrillic either way) and it widens the
-  // surface that sweep actually covers.
+  // The share/history panels, keyboard-shortcuts dialog and embed-canvas
+  // picker are now converted, so open them too and let the sweep below
+  // actually exercise them.
   vm.showShare = true;
   vm.showHistory = true;
+  vm.showShortcuts = true;
+  vm.showEmbedPicker = true;
   await flushPromises();
   return wrapper;
 }
 
-/** The regions this task actually converted, excluding the deferred
- * share/history/shortcuts/embed-canvas panels that legitimately still carry
- * English text under the Russian locale. */
+/** The regions this task actually converted. The desktop node toolbar and
+ * mobile block-menu (see the top comment) are the remaining carve-out. */
 function convertedRegionsHtml(wrapper: ReturnType<typeof mount>) {
   const selectors = [
     '.topbar-actions', '.canvas-plugin-panel', '.draw-toolbar', '.dice-toolbar',
-    '.embed-picker-panel .doc-picker-tabs', '.embed-picker-panel .embed-search-input',
-    '.embed-picker-panel .doc-picker-new', '.chat-drawer-head', '.chat-pick-hint',
+    '.embed-picker-panel', '.chat-drawer-head', '.chat-pick-hint',
+    '.share-panel', '.history-panel', '.shortcuts-panel',
   ];
   return selectors
     .flatMap((sel) => wrapper.findAll(sel).map((el) => el.html()))
@@ -203,10 +209,9 @@ describe('CanvasView i18n hardcode guard', () => {
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
     // Scoped to the regions this task actually converted (see
-    // convertedRegionsHtml), not the whole page: the deferred share/history
-    // panels legitimately still carry English words like "Access" and
-    // "History" under the Russian locale, and a whole-page search would
-    // wrongly flag them as regressions.
+    // convertedRegionsHtml), not the whole page: the node toolbar / mobile
+    // block-menu (see the top comment) are the one remaining carve-out, and
+    // a whole-page search would wrongly flag that pre-existing surface.
     useI18n().setLocale('ru');
     const wrapper = await mountWithOpenPanels();
 
@@ -222,9 +227,32 @@ describe('CanvasView i18n hardcode guard', () => {
       'Dice', 'Count', 'Roll',
       'Insert document', 'Search documents', 'No documents found',
       'Tap a node to attach it to the message',
+      // Share panel
+      'Link', 'Save', 'Who can view', 'Private — only invited people',
+      'Auth only — any logged-in user', 'Public — anyone with the link',
+      'Allow public editing', 'Show in Public', 'Invite people', 'Invite',
+      'Can view', 'Can edit', 'Password access', 'Enable password access',
+      // History panel
+      'Who can view history:', 'Owner only', 'Editors', 'All viewers',
+      'Loading...', 'No history yet', 'Load more', 'Loading revision...',
+      'Select a revision', 'Revision', 'Operation', 'Author', 'Guest',
+      'Nodes', 'Edges', 'Full canvas snapshot', 'Restoring...', 'Restore revision',
+      'Moved nodes', 'Resized node', 'Added node', 'Deleted nodes', 'Updated node',
+      'Added edge', 'Deleted edge', 'Updated edge', 'Restored canvas',
+      // Embed-canvas picker
+      'Embed Canvas', 'No canvases found', 'Untitled',
+      // Keyboard-shortcuts dialog
+      'Undo', 'Redo', 'Copy selected', 'Paste', 'Duplicate', 'Select all',
+      'Delete selected', 'Deselect all', 'Edit node text', 'Multi-select',
+      'Zoom in/out', 'Pan canvas', 'Context menu', 'Create connection',
+      'Double-click', 'Middle mouse', 'Right-click', 'Drag from edge',
     ];
     for (const phrase of staleEnglish) {
       expect(html).not.toContain(`>${phrase}<`);
+    }
+    // Attribute-carried strings (placeholders), not caught by the >text< sweep.
+    for (const phrase of ['Search canvases...']) {
+      expect(html).not.toContain(`"${phrase}"`);
     }
   });
 });

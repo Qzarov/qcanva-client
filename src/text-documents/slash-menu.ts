@@ -14,8 +14,9 @@ import type { messages } from '../composables/useI18n';
  *  - the ITEM LIST, whose every entry inserts a node the SHARED inventory
  *    (documents/document-nodes.ts) declares, so an inserted block is one the
  *    backend projection can render rather than one it drops;
- *  - the TRIGGER GUARDS, which are the two behaviours a naive `/` menu gets
- *    wrong (see `slashMenuAllows` below).
+ *  - the TRIGGER GUARDS, which are the behaviours a naive `/` menu gets
+ *    wrong (see `slashMenuAllows` below): code, any other inline mark, and
+ *    mid-word.
  *
  * Both are exported as plain functions over `EditorState`, not buried in the
  * plugin, so they can be asserted directly instead of through a simulated
@@ -213,6 +214,34 @@ export function isInCodeContext(state: EditorState, pos: number): boolean {
 }
 
 /**
+ * GUARD 1B - a `/` inside ANY styled run (bold, italic, underline, strike,
+ * link, ...) is ordinary text too, not just code.
+ *
+ * Choosing a menu item calls a BLOCK-level command (`setNode`, `toggleList`,
+ * ...): it restructures the whole textblock the caret is in, regardless of
+ * where inside that block the `/` was typed. Typing it INSIDE the visible
+ * text of a link or a bold/italic run - after whitespace mid-phrase, not at
+ * the start of a fresh line - is a bigger, more surprising action than a
+ * user reaching for a slash command is asking for. That is exactly GUARD 1's
+ * reasoning for `code`; this guard generalizes it to every mark, so a link's
+ * text, a bold sentence or a mid-phrase italic run all get the same
+ * protection code already had. It is deliberately a separate guard rather
+ * than a rewrite of `isInCodeContext`: GUARD 1 stays name-accurate (it is
+ * still about code specifically, including the code BLOCK ancestor, which
+ * has no mark at all), and this one is skipped for free wherever GUARD 1
+ * already refused (code counts as a mark too).
+ *
+ * An empty, unstyled block is unaffected: `$pos.marks()` reads the marks
+ * resolvable from the surrounding CONTENT, not the editor's pending
+ * "stored marks" for the next keystroke, so a `/` at the start of a plain
+ * empty paragraph still opens the menu even if bold was just toggled on for
+ * whatever gets typed next.
+ */
+export function isInMarkedContext(state: EditorState, pos: number): boolean {
+  return state.doc.resolve(pos).marks().length > 0;
+}
+
+/**
  * GUARD 2 - a `/` in the middle of a word is not a menu.
  *
  * `and/or`, `km/h` and a pasted `foo/bar` must stay text. The rule is the one
@@ -236,9 +265,10 @@ export function isAtBlockStartOrAfterWhitespace(state: EditorState, pos: number)
   return /\s/.test(before);
 }
 
-/** Both guards. `range.from` is the position of the `/` itself. */
+/** All three guards. `range.from` is the position of the `/` itself. */
 export function slashMenuAllows(state: EditorState, range: { from: number }): boolean {
   if (isInCodeContext(state, range.from)) return false;
+  if (isInMarkedContext(state, range.from)) return false;
   if (!isAtBlockStartOrAfterWhitespace(state, range.from)) return false;
 
   return true;

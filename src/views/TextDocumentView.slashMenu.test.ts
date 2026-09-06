@@ -8,7 +8,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
-import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext } from '../text-documents/slash-menu';
+import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext, isInMarkedContext } from '../text-documents/slash-menu';
 import { CALLOUT_VARIANTS, DOCUMENT_NODES } from '../documents/document-nodes';
 import { messages } from '../composables/useI18n';
 
@@ -207,6 +207,96 @@ describe('slash menu trigger', () => {
     wrapper.unmount();
   });
 
+  // ---- GUARD 1B: a slash inside ANY mark (not just code) is not a menu -----
+
+  it('isInMarkedContext is true inside bold or link text and false in plain prose', async () => {
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p><strong>bold text</strong></p>');
+    let { state } = wrapper.vm.editor;
+    const boldAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
+    expect(isInMarkedContext(state, boldAt)).toBe(true);
+
+    wrapper.vm.editor.commands.setContent('<p><a href="https://example.com">link text</a></p>');
+    ({ state } = wrapper.vm.editor);
+    const linkAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
+    expect(isInMarkedContext(state, linkAt)).toBe(true);
+
+    wrapper.vm.editor.commands.setContent('<p>plain text</p>');
+    ({ state } = wrapper.vm.editor);
+    const plainAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
+    expect(isInMarkedContext(state, plainAt)).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('does NOT open on a slash typed inside bold text after whitespace', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p><strong>bold text</strong></p>');
+    // Position right after "bold " (whitespace satisfies GUARD 2), still
+    // inside the bold run.
+    editor.commands.focus(6);
+
+    await type(wrapper, '/');
+
+    expect(pluginState(wrapper).active).toBe(false);
+    expect(wrapper.vm.slashOpen).toBe(false);
+    expect(editor.getText()).toBe('bold /text');
+    expect(editor.isActive('bold')).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('does NOT open on a slash typed inside a link\'s visible text after whitespace', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p><a href="https://example.com">full guide</a></p>');
+    // Position right after "full " (whitespace satisfies GUARD 2), still
+    // inside the link's visible text.
+    editor.commands.focus(6);
+
+    await type(wrapper, '/');
+
+    expect(pluginState(wrapper).active).toBe(false);
+    expect(wrapper.vm.slashOpen).toBe(false);
+    expect(editor.getText()).toBe('full /guide');
+    expect(editor.isActive('link')).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('does NOT open on a slash typed inside italic text after whitespace', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p><em>italic text</em></p>');
+    editor.commands.focus(8);
+
+    await type(wrapper, '/');
+
+    expect(pluginState(wrapper).active).toBe(false);
+    expect(wrapper.vm.slashOpen).toBe(false);
+    expect(editor.getText()).toBe('italic /text');
+    expect(editor.isActive('italic')).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('still opens on a slash in ordinary unstyled text at the start of a block', async () => {
+    // The non-regression this guard must not break: this is the whole feature.
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.commands.focus('end');
+
+    await type(wrapper, '/');
+
+    expect(pluginState(wrapper).active).toBe(true);
+    expect(wrapper.vm.slashOpen).toBe(true);
+    expect(isInMarkedContext(editor.state, editor.state.selection.from)).toBe(false);
+
+    wrapper.unmount();
+  });
+
   // ---- GUARD 2: a slash mid-word is not a menu ------------------------------
 
   it('does NOT open mid-word, so "and/or" stays text', async () => {
@@ -238,6 +328,27 @@ describe('slash menu trigger', () => {
     expect(pluginState(wrapper).active).toBe(false);
     expect(wrapper.vm.slashOpen).toBe(false);
     expect(wrapper.vm.editor.getText()).toBe('90 km/h');
+
+    wrapper.unmount();
+  });
+
+  it('does NOT open on a second consecutive slash ("//"): pinning the free mid-word suppression', async () => {
+    // Not a dedicated guard - the SECOND `/` is immediately preceded by the
+    // first `/`, a non-whitespace character, so GUARD 2 (mid-word) refuses it
+    // on its own. This is real behaviour today but was untested, so a future
+    // refactor of GUARD 2 or of the suggestion config could silently lose it.
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+
+    await type(wrapper, '/');
+    expect(pluginState(wrapper).active).toBe(true);
+
+    await type(wrapper, '/');
+
+    expect(pluginState(wrapper).active).toBe(false);
+    expect(wrapper.vm.slashOpen).toBe(false);
+    expect(wrapper.vm.editor.getText()).toBe('//');
 
     wrapper.unmount();
   });

@@ -4,13 +4,15 @@
 // See CanvasView.i18n.test.ts for what this sweep does and does not cover;
 // the same reasoning applies here (full wrapper.html() sweep for Cyrillic
 // under English, curated stale-English check under Russian). The share
-// panel, history panel, and mode/toolbar buttons beyond the photo button
-// were intentionally left hardcoded in English as documented out-of-scope
-// work, so they are excluded from the Russian-locale check below. The
-// useResourceBackTarget is deliberately NOT stubbed. It used to hardcode its
-// "Назад" label regardless of locale and had to be stubbed out of this sweep,
-// which left the back button unchecked. It now returns a translation key, so
-// the real composable runs here and its label is swept like everything else.
+// panel and history panel are now converted and checked below too. The
+// mode/toolbar buttons beyond the photo button (B/I/U/H2/List/Tasks) remain
+// intentionally hardcoded, single-letter/abbreviation formatting controls,
+// not part of this task's named checklist, so they stay excluded from the
+// Russian-locale check. The useResourceBackTarget is deliberately NOT
+// stubbed. It used to hardcode its "Назад" label regardless of locale and
+// had to be stubbed out of this sweep, which left the back button unchecked.
+// It now returns a translation key, so the real composable runs here and its
+// label is swept like everything else.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -137,11 +139,11 @@ describe('TextDocumentView i18n hardcode guard', () => {
   });
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
-    // Scoped to the regions this task actually converted (topbar actions +
-    // toolbar), not a raw whole-page substring search: the share panel's
-    // "Access" header, for one, is deferred out-of-scope English content
-    // that legitimately still renders under the Russian locale, and a
-    // whole-page search for the word "Access" would wrongly flag it.
+    // Scoped to the regions this task actually converted (topbar actions,
+    // toolbar, share panel, history panel), not a raw whole-page substring
+    // search: the toolbar's B/I/U/H2/List/Tasks formatting buttons are the
+    // one remaining, deliberately out-of-scope carve-out (see the top
+    // comment), and a whole-page search would wrongly flag them.
     useI18n().setLocale('ru');
     const wrapper = await mountWithOpenPanels();
 
@@ -153,6 +155,24 @@ describe('TextDocumentView i18n hardcode guard', () => {
     for (const phrase of ['Add photo', 'Photo', 'Loading...']) {
       expect(toolbar).not.toContain(`>${phrase}<`);
       expect(toolbar).not.toContain(`"${phrase}"`);
+    }
+    const sharePanel = wrapper.find('.text-doc-share-panel').html();
+    const shareStaleEnglish = [
+      'Access', 'Link', 'Save', 'Who can view', 'Private - only invited people',
+      'Auth only - any logged-in user', 'Public - anyone with the link',
+      'Allow public editing', 'Show in Public', 'Invite people', 'Invite',
+      'Can view', 'Can edit', 'Password access', 'Enable password access',
+    ];
+    for (const phrase of shareStaleEnglish) {
+      expect(sharePanel).not.toContain(`>${phrase}<`);
+    }
+    const historyPanel = wrapper.find('.text-doc-history-panel').html();
+    const historyStaleEnglish = [
+      'History', 'Loading...', 'Revision', 'No history yet', 'Select a revision',
+      'Snapshot', 'Restoring...', 'Restore',
+    ];
+    for (const phrase of historyStaleEnglish) {
+      expect(historyPanel).not.toContain(`>${phrase}<`);
     }
   });
 });

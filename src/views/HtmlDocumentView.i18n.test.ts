@@ -3,11 +3,13 @@
 // Guard against hardcoded strings creeping back into HtmlDocumentView.vue.
 // See CanvasView.i18n.test.ts for what this sweep does and does not cover;
 // the same reasoning applies here. The share panel, history panel, mode
-// tabs (Preview/Source), export menu, and Save button were intentionally
-// left hardcoded in English as documented out-of-scope work, so the
-// Russian-locale check below is scoped to the header row this task
-// actually converted (Access/History next to the login link), not the
-// whole page.
+// tabs (Preview/Source), export menu, and Save button are now converted
+// and checked below too. The Sync status chip/popover
+// (`.html-sync-wrap`, driven by `htmlSyncStatus`/`syncEvents.ts`) remains
+// hardcoded English on purpose: it is shared, identically hardcoded,
+// across all three editor views and was never part of this task's named
+// checklist, so the Russian-locale check below stays scoped to the header
+// row, share panel and history panel rather than the whole page.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
@@ -100,15 +102,40 @@ describe('HtmlDocumentView i18n hardcode guard', () => {
   });
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
-    // Scoped to the header row this task converted, not the whole page:
-    // the deferred share/history panels legitimately still carry English
-    // words like "Access" and "History" under the Russian locale.
+    // Scoped to the header row, share panel and history panel this task
+    // converted, not the whole page: the Sync status chip/popover (see the
+    // top comment) is the one remaining, deliberately out-of-scope carve-out
+    // inside the header row.
     useI18n().setLocale('ru');
     const wrapper = await mountView();
 
     const header = wrapper.find('.html-editor-bar').html();
-    for (const phrase of ['Access', 'History', 'Login']) {
+    const headerStaleEnglish = [
+      'Access', 'History', 'Login', 'Preview', 'Source', 'Download',
+      'Export HTML', 'Export PDF', 'Saving...', 'Save', 'Document actions',
+    ];
+    for (const phrase of headerStaleEnglish) {
       expect(header).not.toContain(`>${phrase}<`);
+    }
+
+    const sharePanel = wrapper.find('.html-share-panel').html();
+    const shareStaleEnglish = [
+      'Access', 'Link', 'Save', 'Who can view', 'Private — only invited people',
+      'Auth only — any logged-in user', 'Public — anyone with the link',
+      'Allow public editing', 'Show in Public', 'Invite people', 'Invite',
+      'Can view', 'Can edit', 'Password access', 'Enable password access',
+    ];
+    for (const phrase of shareStaleEnglish) {
+      expect(sharePanel).not.toContain(`>${phrase}<`);
+    }
+
+    const historyPanel = wrapper.find('.html-history-panel').html();
+    const historyStaleEnglish = [
+      'History', 'Loading...', 'Revision', 'No history yet', 'Select a revision',
+      'Restoring...', 'Restore',
+    ];
+    for (const phrase of historyStaleEnglish) {
+      expect(historyPanel).not.toContain(`>${phrase}<`);
     }
   });
 });

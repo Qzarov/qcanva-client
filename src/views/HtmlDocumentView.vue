@@ -47,14 +47,14 @@
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
       <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">{{ t('access') }}</button>
       <div class="html-mode-tabs">
-        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
-        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
+        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">{{ t('previewTab') }}</button>
+        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">{{ t('sourceTab') }}</button>
       </div>
       <div class="html-export-wrap html-desktop-action">
-        <button class="btn-ghost" @click.stop="showExportMenu = !showExportMenu">Download</button>
+        <button class="btn-ghost" @click.stop="showExportMenu = !showExportMenu">{{ t('downloadBtn') }}</button>
         <div v-if="showExportMenu" class="mobile-action-popover html-export-menu" @click.stop>
-          <button class="card-menu-item" @click="downloadDocument(); showExportMenu = false">Export HTML</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">Export PDF</button>
+          <button class="card-menu-item" @click="downloadDocument(); showExportMenu = false">{{ t('exportHtml') }}</button>
+          <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">{{ t('exportPdf') }}</button>
         </div>
       </div>
       <button class="btn-ghost html-desktop-action" @click="toggleHistory">{{ t('history') }}</button>
@@ -78,13 +78,13 @@
         </div>
       </div>
       <div class="html-mobile-actions">
-        <button class="btn-ghost html-actions-trigger" aria-label="Document actions" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
+        <button class="btn-ghost html-actions-trigger" :aria-label="t('documentActionsAria')" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
         <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
-          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">Preview</button>
-          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">Source</button>
+          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">{{ t('previewTab') }}</button>
+          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">{{ t('sourceTab') }}</button>
           <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">{{ t('access') }}</button>
-          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">Export HTML</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">Export PDF</button>
+          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">{{ t('exportHtml') }}</button>
+          <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">{{ t('exportPdf') }}</button>
           <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">{{ t('history') }}</button>
           <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
             {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
@@ -92,7 +92,7 @@
         </div>
       </div>
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
-        {{ saving ? 'Saving...' : 'Save' }}
+        {{ saving ? t('savingEllipsis') : t('save') }}
       </button>
       <AccountMenu v-if="currentUser" />
       <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
@@ -100,12 +100,12 @@
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
       <div class="share-panel-header">
-        <h3>Access</h3>
+        <h3>{{ t('access') }}</h3>
         <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Link</div>
+        <div class="share-section-title">{{ t('shareLinkSection') }}</div>
         <div class="slug-row">
           <span class="slug-prefix">/html/</span>
           <input
@@ -117,29 +117,29 @@
             autocomplete="off"
             @keydown.enter="saveSlug"
           />
-          <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+          <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
         </div>
-        <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
+        <div class="slug-hint">{{ t('slugHint') }}</div>
         <template v-if="visibility === 'public'">
-          <div class="share-section-title">Public document link</div>
+          <div class="share-section-title">{{ t('publicDocumentLink') }}</div>
           <div class="slug-row">
-            <input :value="publicUrl" class="slug-input" readonly aria-label="Public document link" />
-            <button class="btn-ghost btn-sm" @click="copyPublicLink">Copy</button>
+            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('publicDocumentLink')" />
+            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
           </div>
-          <div class="slug-hint">Use this link for people, search engines, and AI assistants. It returns the document HTML directly.</div>
+          <div class="slug-hint">{{ t('publicLinkHint') }}</div>
         </template>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Who can view</div>
+        <div class="share-section-title">{{ t('whoCanView') }}</div>
         <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
-          <option value="private">Private — only invited people</option>
-          <option value="authenticated">Auth only — any logged-in user</option>
-          <option value="public">Public — anyone with the link</option>
+          <option value="private">{{ t('visibilityPrivate') }}</option>
+          <option value="authenticated">{{ t('visibilityAuthOnly') }}</option>
+          <option value="public">{{ t('visibilityPublic') }}</option>
         </select>
         <label class="share-checkbox">
           <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-          <span>Allow public editing</span>
+          <span>{{ t('allowPublicEditing') }}</span>
         </label>
         <label class="share-checkbox">
           <input
@@ -148,52 +148,52 @@
             :disabled="visibility !== 'public'"
             @change="saveAccessSettings"
           />
-          <span>Show in Public</span>
+          <span>{{ t('showInPublic') }}</span>
         </label>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Invite people</div>
+        <div class="share-section-title">{{ t('invitePeople') }}</div>
         <div class="share-form">
-          <input v-model.trim="shareEmail" placeholder="Email" type="email" />
+          <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
           <select v-model="shareRole">
-            <option value="read">Can view</option>
-            <option value="edit">Can edit</option>
+            <option value="read">{{ t('canView') }}</option>
+            <option value="edit">{{ t('canEdit') }}</option>
           </select>
-          <button @click="doShare">Invite</button>
+          <button @click="doShare">{{ t('inviteBtn') }}</button>
         </div>
         <div v-if="permissions.length" class="share-list">
           <div v-for="p in permissions" :key="p.id" class="share-item">
             <span>{{ p.user?.email || p.userId }}</span>
-            <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+            <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
             <button @click="doRevoke(p.userId)">×</button>
           </div>
         </div>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Password access</div>
+        <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
         <label class="share-checkbox">
           <input type="checkbox" v-model="passwordAccessEnabled" />
-          <span>Enable password access</span>
+          <span>{{ t('enablePasswordAccess') }}</span>
         </label>
         <div v-if="passwordAccessEnabled" class="share-form">
-          <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
+          <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
           <select v-model="passwordAccessRole">
-            <option value="read">Can view</option>
-            <option value="edit">Can edit</option>
+            <option value="read">{{ t('canView') }}</option>
+            <option value="edit">{{ t('canEdit') }}</option>
           </select>
-          <button @click="savePasswordAccess">Save</button>
+          <button @click="savePasswordAccess">{{ t('save') }}</button>
         </div>
       </div>
     </section>
     <section v-if="showHistory" class="html-history-panel">
       <div class="html-history-list">
         <div class="html-history-head">
-          <strong>History</strong>
+          <strong>{{ t('history') }}</strong>
           <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
         </div>
-        <div v-if="historyLoading" class="html-history-empty">Loading...</div>
+        <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
         <button
           v-for="entry in historyItems"
           :key="entry.id"
@@ -201,21 +201,21 @@
           :class="{ active: selectedHistory?.id === entry.id }"
           @click="openHistoryEntry(entry)"
         >
-          <span>Revision {{ entry.revision }}</span>
+          <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
           <small>{{ entry.type }} · {{ new Date(entry.createdAt).toLocaleString() }}</small>
         </button>
-        <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">No history yet</div>
+        <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
       </div>
       <div class="html-history-preview">
-        <div v-if="!selectedHistory" class="html-history-empty">Select a revision</div>
+        <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
         <template v-else>
           <div class="html-history-preview-head">
             <div>
-              <strong>Revision {{ selectedHistory.revision }}</strong>
+              <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
               <small>{{ selectedHistory.type }}</small>
             </div>
             <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-              {{ restoringHistory ? 'Restoring...' : 'Restore' }}
+              {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
             </button>
           </div>
           <iframe
