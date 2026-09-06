@@ -4,15 +4,18 @@
 // See CanvasView.i18n.test.ts for what this sweep does and does not cover;
 // the same reasoning applies here (full wrapper.html() sweep for Cyrillic
 // under English, curated stale-English check under Russian). The share
-// panel and history panel are now converted and checked below too. The
-// mode/toolbar buttons beyond the photo button (B/I/U/H2/List/Tasks) remain
-// intentionally hardcoded, single-letter/abbreviation formatting controls,
-// not part of this task's named checklist, so they stay excluded from the
-// Russian-locale check. The useResourceBackTarget is deliberately NOT
-// stubbed. It used to hardcode its "Назад" label regardless of locale and
-// had to be stubbed out of this sweep, which left the back button unchecked.
-// It now returns a translation key, so the real composable runs here and its
-// label is swept like everything else.
+// panel, history panel and sync-status chip are now converted and checked
+// below too - the sync chip needed no new selector, since `.text-doc-sync`
+// is already a descendant of `.text-doc-topbar-actions`, which this suite
+// already swept; it just wasn't in the phrase list. The toolbar's `B`/`I`/
+// `U`/`H2` glyphs stay untranslated on purpose (typographic convention, not
+// prose - translating a bold "B" would be worse), but now carry translated
+// `title` tooltips, and `List`/`Tasks` (ordinary English words, not
+// convention) are translated outright; all six are checked below. The
+// useResourceBackTarget is deliberately NOT stubbed. It used to hardcode its
+// "Назад" label regardless of locale and had to be stubbed out of this sweep,
+// which left the back button unchecked. It now returns a translation key, so
+// the real composable runs here and its label is swept like everything else.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -141,9 +144,7 @@ describe('TextDocumentView i18n hardcode guard', () => {
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
     // Scoped to the regions this task actually converted (topbar actions,
     // toolbar, share panel, history panel), not a raw whole-page substring
-    // search: the toolbar's B/I/U/H2/List/Tasks formatting buttons are the
-    // one remaining, deliberately out-of-scope carve-out (see the top
-    // comment), and a whole-page search would wrongly flag them.
+    // search.
     useI18n().setLocale('ru');
     const wrapper = await mountWithOpenPanels();
 
@@ -151,10 +152,25 @@ describe('TextDocumentView i18n hardcode guard', () => {
     for (const phrase of ['Access', 'History', 'Login']) {
       expect(topbarActions).not.toContain(`>${phrase}<`);
     }
+    // Sync-status chip (`.text-doc-sync`, a descendant of this element): NOT
+    // a `>word<` bounded check. Its text node is the label plus a trailing
+    // `· {pendingUpdatesCount}` in the SAME node (`useTextDocumentSocket`'s
+    // mock below is a plain `{ value: 0 }`, not a real ref, so
+    // `v-if="pendingUpdatesCount"` sees a truthy object and always renders
+    // that suffix) - a bounded check would never match and would silently
+    // never fail. A plain substring check is safe: none of these words'
+    // Russian translations contain the English word.
+    for (const word of ['Conflict', 'Saving', 'Synced', 'Offline']) {
+      expect(topbarActions).not.toContain(word);
+    }
     const toolbar = wrapper.find('.text-doc-toolbar').html();
-    for (const phrase of ['Add photo', 'Photo', 'Loading...']) {
+    for (const phrase of ['Add photo', 'Photo', 'Loading...', 'List', 'Tasks']) {
       expect(toolbar).not.toContain(`>${phrase}<`);
       expect(toolbar).not.toContain(`"${phrase}"`);
+    }
+    // The B/I/U/H2 glyphs stay untranslated, but their title tooltips must not.
+    for (const title of ['Bold', 'Italic', 'Underline', 'Heading 2', 'Bulleted list', 'To-do list']) {
+      expect(toolbar).not.toContain(`title="${title}"`);
     }
     const sharePanel = wrapper.find('.text-doc-share-panel').html();
     const shareStaleEnglish = [

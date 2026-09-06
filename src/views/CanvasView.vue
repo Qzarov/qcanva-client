@@ -92,10 +92,10 @@
             </button>
             <div v-if="showSyncEvents" class="sync-events-popover">
               <div class="sync-events-head">
-                <strong>Sync</strong>
+                <strong>{{ t('syncPopoverTitle') }}</strong>
                 <span>r{{ revision }}</span>
               </div>
-              <div v-if="syncEvents.length === 0" class="sync-event-empty">No local sync events yet</div>
+              <div v-if="syncEvents.length === 0" class="sync-event-empty">{{ t('noLocalSyncEventsYet') }}</div>
               <div v-for="event in syncEvents" :key="event.id" class="sync-event-row" :class="'sync-event-' + event.status">
                 <div>
                   <strong>{{ event.label }}</strong>
@@ -1062,11 +1062,11 @@ export default defineComponent({
     let chromeResizeObserver: ResizeObserver | null = null;
 
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
-      if (isResyncing.value) return { kind: 'resyncing', label: 'Resyncing' };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
-      if (wsConnected.value) return { kind: 'synced', label: 'Synced' };
-      return { kind: 'offline', label: 'Offline' };
+      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
+      if (isResyncing.value) return { kind: 'resyncing', label: t('syncResyncing') };
+      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
+      if (wsConnected.value) return { kind: 'synced', label: t('syncSynced') };
+      return { kind: 'offline', label: t('syncOffline') };
     });
 
     const syncBadgeTitle = computed(() => {

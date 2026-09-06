@@ -1,4 +1,5 @@
 import { computed, ref } from 'vue';
+import { useI18n, messages } from '../composables/useI18n';
 
 export type SyncRejectReason =
   | 'revision_mismatch'
@@ -19,16 +20,21 @@ export type SyncEvent = {
   timestamp: number;
 };
 
-const reasonLabels: Record<SyncRejectReason, string> = {
-  revision_mismatch: 'Parallel edit changed the revision',
-  target_missing: 'Target object no longer exists',
-  forbidden: 'You do not have permission to apply this change',
-  invalid_op: 'Canvas rejected the operation payload',
-  timeout: 'Realtime acknowledgement timed out',
+/** i18n keys, not literal text: `syncReasonLabel` resolves through `t()` below
+ * so this stays in sync with the current locale rather than freezing English
+ * at import time. This popover text is real user-facing prose (rendered
+ * directly in the CanvasView/HtmlDocumentView sync-events popover), not a
+ * debug string, so it goes through the same maps as everything else. */
+const reasonLabelKeys: Record<SyncRejectReason, keyof typeof messages.en> = {
+  revision_mismatch: 'syncReasonRevisionMismatch',
+  target_missing: 'syncReasonTargetMissing',
+  forbidden: 'syncReasonForbidden',
+  invalid_op: 'syncReasonInvalidOp',
+  timeout: 'syncReasonTimeout',
 };
 
 export function syncReasonLabel(reason?: SyncRejectReason) {
-  return reason ? reasonLabels[reason] : '';
+  return reason ? useI18n().t(reasonLabelKeys[reason]) : '';
 }
 
 export function createSyncEventStore(limit = 5) {

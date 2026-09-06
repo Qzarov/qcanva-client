@@ -64,10 +64,10 @@
         </button>
         <div v-if="showSyncEvents" class="html-sync-popover">
           <div class="html-sync-head">
-            <strong>Sync</strong>
+            <strong>{{ t('syncPopoverTitle') }}</strong>
             <span>r{{ revision }}</span>
           </div>
-          <div v-if="syncEvents.length === 0" class="html-sync-empty">No local sync events yet</div>
+          <div v-if="syncEvents.length === 0" class="html-sync-empty">{{ t('noLocalSyncEventsYet') }}</div>
           <div v-for="event in syncEvents" :key="event.id" class="html-sync-event" :class="'html-sync-event-' + event.status">
             <div>
               <strong>{{ event.label }}</strong>
@@ -350,11 +350,11 @@ export default defineComponent({
     });
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
     const htmlSyncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
-      if (isDirty.value) return { kind: 'dirty', label: 'Unsaved' };
-      if (htmlWsConnected.value) return { kind: 'synced', label: 'Synced' };
-      return { kind: 'offline', label: 'Offline' };
+      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
+      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
+      if (isDirty.value) return { kind: 'dirty', label: t('syncUnsaved') };
+      if (htmlWsConnected.value) return { kind: 'synced', label: t('syncSynced') };
+      return { kind: 'offline', label: t('syncOffline') };
     });
 
     const {

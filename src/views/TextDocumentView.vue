@@ -158,12 +158,12 @@
       </section>
 
       <div v-if="canEditContent" class="text-doc-toolbar">
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bold') }" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('italic') }" @click="editor?.chain().focus().toggleItalic().run()"><em>I</em></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('underline') }" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" @click="editor?.chain().focus().toggleBulletList().run()">List</button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" @click="editor?.chain().focus().toggleTaskList().run()">Tasks</button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bold') }" :title="t('markBold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('italic') }" :title="t('markItalic')" @click="editor?.chain().focus().toggleItalic().run()"><em>I</em></button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('underline') }" :title="t('markUnderline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" :title="t('slashHeading2')" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" :title="t('slashBulletList')" @click="editor?.chain().focus().toggleBulletList().run()">{{ t('toolbarListLabel') }}</button>
+        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" :title="t('slashTaskList')" @click="editor?.chain().focus().toggleTaskList().run()">{{ t('toolbarTasksLabel') }}</button>
         <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">{{ t('codeBlock') }}</button>
         <button class="btn-ghost btn-sm" :disabled="uploadingImage" :title="t('addPhoto')" @click="openImagePicker">
           {{ uploadingImage ? t('loading') : t('photo') }}
@@ -474,10 +474,10 @@ export default defineComponent({
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
-      if (pendingUpdatesCount.value > 0) return { kind: 'saving', label: 'Saving' };
-      if (connected.value) return { kind: 'synced', label: 'Synced' };
-      return { kind: 'offline', label: 'Offline' };
+      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
+      if (pendingUpdatesCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
+      if (connected.value) return { kind: 'synced', label: t('syncSynced') };
+      return { kind: 'offline', label: t('syncOffline') };
     });
 
     const imageInput = ref<HTMLInputElement | null>(null);

@@ -1,5 +1,18 @@
-import { describe, expect, it } from 'vitest';
+// @vitest-environment jsdom
+//
+// `syncReasonLabel` now calls `useI18n().setLocale`, which touches
+// `document.documentElement`; this file used to run under the default node
+// environment (no DOM), which is no longer enough.
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createSyncEventStore, syncReasonLabel } from './syncEvents';
+import { useI18n } from '../composables/useI18n';
+
+// `syncReasonLabel` now resolves through `t()`, so it depends on the current
+// locale - a module-level singleton shared with every other test file. Pin it
+// explicitly rather than relying on whatever locale a prior file left behind.
+beforeEach(() => {
+  useI18n().setLocale('en');
+});
 
 describe('syncEvents', () => {
   it('records pending and confirms the same event id', () => {
@@ -56,5 +69,29 @@ describe('syncEvents', () => {
       'Resync started',
     ]);
     expect(store.events.value.map((event) => event.status)).toEqual(['rejected', 'info', 'warning']);
+  });
+});
+
+describe('syncReasonLabel i18n', () => {
+  // This popover text is real user-facing prose (rendered directly in the
+  // CanvasView/HtmlDocumentView sync-events popover), not a debug string, so
+  // it must follow the current locale like everything else.
+  it('translates every reason under the Russian locale', () => {
+    useI18n().setLocale('ru');
+    expect(syncReasonLabel('revision_mismatch')).toBe('Другое изменение затронуло эту ревизию');
+    expect(syncReasonLabel('target_missing')).toBe('Объект больше не существует');
+    expect(syncReasonLabel('forbidden')).toBe('У вас нет прав применить это изменение');
+    expect(syncReasonLabel('invalid_op')).toBe('Канвас отклонил данные операции');
+    expect(syncReasonLabel('timeout')).toBe('Не дождались подтверждения в реальном времени');
+  });
+
+  it('returns the English text under the English locale', () => {
+    useI18n().setLocale('en');
+    expect(syncReasonLabel('revision_mismatch')).toBe('Parallel edit changed the revision');
+  });
+
+  it('returns an empty string for no reason, in either locale', () => {
+    useI18n().setLocale('ru');
+    expect(syncReasonLabel(undefined)).toBe('');
   });
 });

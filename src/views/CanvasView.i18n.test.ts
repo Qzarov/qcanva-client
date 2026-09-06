@@ -17,15 +17,13 @@
 //  - The Russian-locale check below only looks for a curated list of the
 //    literal English strings this change removed; it is not a general
 //    "no Latin text" sweep. The share panel, history panel,
-//    keyboard-shortcuts dialog and embed-canvas picker have since been
-//    converted and are now part of the swept/checked surface below. The
-//    topbar's realtime sync status chip (Saving/Synced/Offline/Conflict,
-//    rendered by `.topbar-sync`, a sibling of `.topbar-actions` and outside
-//    every selector below) remains hardcoded English on purpose: it is a
-//    small shared label driven by `syncStatus`/`htmlSyncStatus` and the
-//    `syncEvents.ts` reason strings, identically hardcoded across all three
-//    editor views, and converting it was never part of this task's named
-//    checklist.
+//    keyboard-shortcuts dialog, embed-canvas picker and (as of this pass) the
+//    realtime sync-status chip and its popover are now part of the
+//    swept/checked surface below. The sync chip lives in `.sync-menu-wrap`, a
+//    SIBLING of `.topbar-actions`, not a descendant of it - the previous pass
+//    left it out for exactly that reason (it wasn't inside anything already
+//    being checked), which is why it is its own selector below rather than
+//    folded into `.topbar-actions`.
 //  - Panels that only render once a canvas node is selected (the desktop
 //    node toolbar / mobile block-menu) are not exercised here because the
 //    CanvasLoader stub below never reports a selection; that surface was
@@ -176,6 +174,13 @@ async function mountWithOpenPanels() {
   vm.showHistory = true;
   vm.showShortcuts = true;
   vm.showEmbedPicker = true;
+  // The sync-status popover, so its "Sync" head and empty-state text render
+  // too, not just the always-visible chip label.
+  vm.showSyncEvents = true;
+  // Drive the chip into its "synced" state (the mocked socket defaults to
+  // disconnected, which would otherwise render "Offline" and leave "Synced"
+  // itself unexercised - see the mutation note in the Russian-locale test).
+  vm.wsConnected = true;
   await flushPromises();
   return wrapper;
 }
@@ -186,7 +191,7 @@ function convertedRegionsHtml(wrapper: ReturnType<typeof mount>) {
   const selectors = [
     '.topbar-actions', '.canvas-plugin-panel', '.draw-toolbar', '.dice-toolbar',
     '.embed-picker-panel', '.chat-drawer-head', '.chat-pick-hint',
-    '.share-panel', '.history-panel', '.shortcuts-panel',
+    '.share-panel', '.history-panel', '.shortcuts-panel', '.sync-menu-wrap',
   ];
   return selectors
     .flatMap((sel) => wrapper.findAll(sel).map((el) => el.html()))
@@ -253,6 +258,17 @@ describe('CanvasView i18n hardcode guard', () => {
     // Attribute-carried strings (placeholders), not caught by the >text< sweep.
     for (const phrase of ['Search canvases...']) {
       expect(html).not.toContain(`"${phrase}"`);
+    }
+    // Sync-status chip and popover: NOT a `>word<` bounded check. The chip's
+    // label sits next to a `<template v-if="pendingOpsCount">` sibling that
+    // compiles to an empty comment node when false, which leaves trailing
+    // whitespace between the label text and the button's closing tag (e.g.
+    // "Synced\n    </button>", not "Synced</button>") - a bounded check would
+    // never match and would silently never fail. A plain substring check is
+    // safe here: none of these words' Russian translations contain the
+    // English word.
+    for (const word of ['Conflict', 'Saving', 'Synced', 'Offline', 'Resyncing', 'Sync', 'No local sync events yet']) {
+      expect(html).not.toContain(word);
     }
   });
 });

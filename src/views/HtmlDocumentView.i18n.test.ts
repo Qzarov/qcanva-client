@@ -3,13 +3,12 @@
 // Guard against hardcoded strings creeping back into HtmlDocumentView.vue.
 // See CanvasView.i18n.test.ts for what this sweep does and does not cover;
 // the same reasoning applies here. The share panel, history panel, mode
-// tabs (Preview/Source), export menu, and Save button are now converted
-// and checked below too. The Sync status chip/popover
-// (`.html-sync-wrap`, driven by `htmlSyncStatus`/`syncEvents.ts`) remains
-// hardcoded English on purpose: it is shared, identically hardcoded,
-// across all three editor views and was never part of this task's named
-// checklist, so the Russian-locale check below stays scoped to the header
-// row, share panel and history panel rather than the whole page.
+// tabs (Preview/Source), export menu, Save button and (as of this pass) the
+// Sync status chip/popover (`.html-sync-wrap`, driven by
+// `htmlSyncStatus`/`syncEvents.ts`) are now converted and checked below too.
+// Unlike CanvasView's sync chip, this one sits INSIDE `.html-editor-bar`
+// (the header row already swept below), so it needed no new selector -
+// only the missing phrases below - to be caught.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent } from 'vue';
@@ -82,6 +81,9 @@ async function mountView() {
   const vm = wrapper.vm as any;
   vm.showShare = true;
   vm.showHistory = true;
+  // The sync-status popover, so its "Sync" head and empty-state text render
+  // too, not just the always-visible chip label.
+  vm.showSyncEvents = true;
   await flushPromises();
   return wrapper;
 }
@@ -103,9 +105,7 @@ describe('HtmlDocumentView i18n hardcode guard', () => {
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
     // Scoped to the header row, share panel and history panel this task
-    // converted, not the whole page: the Sync status chip/popover (see the
-    // top comment) is the one remaining, deliberately out-of-scope carve-out
-    // inside the header row.
+    // converted, not the whole page.
     useI18n().setLocale('ru');
     const wrapper = await mountView();
 
@@ -116,6 +116,17 @@ describe('HtmlDocumentView i18n hardcode guard', () => {
     ];
     for (const phrase of headerStaleEnglish) {
       expect(header).not.toContain(`>${phrase}<`);
+    }
+    // Sync-status chip and popover: NOT a `>word<` bounded check, because the
+    // chip's text node is "Synced" plus a trailing `· {pendingOpsCount}`
+    // interpolation in the same node (`useHtmlSocket`'s mock below is a plain
+    // `{ value: 0 }`, not a real ref, so `v-if="pendingOpsCount"` sees a
+    // truthy object and always renders that suffix) - a bounded `>Synced<`
+    // would never match and would silently never fail. A plain substring
+    // check is safe here: none of these words' Russian translations contain
+    // the English word.
+    for (const word of ['Conflict', 'Saving', 'Synced', 'Offline', 'Unsaved', 'Sync', 'No local sync events yet']) {
+      expect(header).not.toContain(word);
     }
 
     const sharePanel = wrapper.find('.html-share-panel').html();
