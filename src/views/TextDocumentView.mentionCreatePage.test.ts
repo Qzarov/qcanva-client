@@ -252,6 +252,11 @@ describe('focus after navigating from a mention-created page', () => {
     const wrapper = await mountEditableDoc();
 
     expect(wrapper.vm.editor.isFocused).toBe(true);
+    // The one-shot flag is stripped once consumed, so it cannot linger in a
+    // shared or bookmarked link.
+    expect(mocks.replace).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { id: 'brand-new-page' }, query: {} }),
+    );
     wrapper.unmount();
   });
 
@@ -262,6 +267,67 @@ describe('focus after navigating from a mention-created page', () => {
     const wrapper = await mountEditableDoc();
 
     expect(wrapper.vm.editor.isFocused).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe('a remote collaborator edits while the create request is in flight', () => {
+  // This is precisely the bug a single-user test cannot see: the document is
+  // collaborative (Collaboration/CollaborationCursor are configured on this
+  // same editor), so a co-editor's keystroke landing EARLIER in the document
+  // while `textDocuments.create` awaits the network shifts every position
+  // after it - no local keystroke required. Trusting the numbers captured
+  // before the `await` would delete whatever now sits at those stale
+  // offsets, not the "@query" text - a silent corruption of a collaborator's
+  // freshly-typed sentence. handleMentionCreatePage must map `context.range`
+  // through every transaction that lands while creation is in flight.
+  it('maps the range through the concurrent edit instead of deleting the wrong span', async () => {
+    let resolveCreate: ((value: { id: string; slug: string }) => void) | undefined;
+    mocks.create.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveCreate = resolve; }),
+    );
+    const wrapper = await mountEditableDoc();
+
+    wrapper.vm.editor.commands.setContent('<p>Team notes</p><p></p>');
+    wrapper.vm.editor.commands.focus('end');
+    await type(wrapper, '@brand new page');
+    const createIndex = wrapper.vm.mentionItems.length - 1;
+    expect(wrapper.vm.mentionItems[createIndex]).toEqual({ kind: 'create', query: 'brand new page' });
+
+    wrapper.vm.selectMentionItem(createIndex);
+    // Let the async handler reach its `await textDocuments.create(...)` -
+    // registering its transaction listener - without resolving creation yet.
+    await flushPromises();
+
+    // The remote collaborator: prepends text to the FIRST paragraph, well
+    // before the stored range, shifting every later position by its length.
+    wrapper.vm.editor.commands.insertContentAt(1, 'REMOTE-');
+    await flushPromises();
+
+    resolveCreate?.({ id: 'doc-9', slug: 'brand-new-page' });
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+    await flushPromises();
+
+    const json = wrapper.vm.editor.getJSON();
+    const paragraphText = (node: any) =>
+      (node?.content || []).filter((n: any) => n.type === 'text').map((n: any) => n.text).join('');
+
+    // The collaborator's edit survived completely unmodified: its own text
+    // is intact, and the original paragraph's text is intact right after it.
+    const firstParagraphText = paragraphText(json.content[0]);
+    expect(firstParagraphText).toContain('REMOTE-');
+    expect(firstParagraphText).toContain('Team notes');
+    expect(firstParagraphText.replace(/\s+/g, ' ')).toBe('REMOTE- Team notes');
+
+    // The mention landed where the query was, in the SECOND paragraph.
+    const mention = findNode(json, 'mention');
+    expect(mention).toBeTruthy();
+    expect(mention.attrs).toEqual({ id: 'doc-9', label: 'brand new page' });
+    const secondParagraphText = paragraphText(json.content[1]);
+    expect(secondParagraphText).not.toContain('@brand new page');
+    expect(secondParagraphText).not.toContain('@');
+
     wrapper.unmount();
   });
 });

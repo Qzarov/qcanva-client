@@ -372,7 +372,8 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
-import type { Editor, Range } from '@tiptap/core';
+import type { Editor, EditorEvents, Range } from '@tiptap/core';
+import { Mapping } from '@tiptap/pm/transform';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from '../text-documents/code-highlighting';
@@ -898,16 +899,50 @@ export default defineComponent({
       pendingMentionCreate.value = { query };
       if (!canEditContent.value) return;
       const newTitle = query.trim() || t('untitledDocument');
+
+      /**
+       * `context.range` is two plain numbers, valid only as of THIS instant.
+       * This is a COLLABORATIVE editor (Collaboration/CollaborationCursor are
+       * configured on this same `editor` below): a co-editor's keystroke
+       * landing ANYWHERE earlier in the document while `createMentionSiblingPage`
+       * awaits the network shifts every position after it - with no action
+       * required from the person who typed "@query" here. Trusting the raw
+       * numbers after the `await` would delete whatever now happens to sit at
+       * those offsets, not necessarily the query text at all: silently
+       * deleting a collaborator's freshly-typed sentence.
+       *
+       * Every transaction dispatched on this editor between now and the
+       * moment the range is actually used is folded into one running
+       * `Mapping` (ProseMirror's own tool for exactly this - see
+       * prosemirror-transform's `Mapping`/`Transform.mapping`), and the range
+       * is mapped through it right before use rather than trusted as
+       * captured. Re-deriving the range by searching for the query text
+       * instead was rejected: two identical strings in one paragraph would
+       * make that wrong in a different way.
+       */
+      const positionMapping = new Mapping();
+      const trackTransaction = ({ transaction }: EditorEvents['transaction']) => {
+        positionMapping.appendMapping(transaction.mapping);
+      };
+      context.editor.on('transaction', trackTransaction);
+      const stopTrackingPosition = () => context.editor.off('transaction', trackTransaction);
+
       try {
         const created = await createMentionSiblingPage(newTitle);
+        stopTrackingPosition();
+        const mappedRange: Range = {
+          from: positionMapping.map(context.range.from),
+          to: positionMapping.map(context.range.to),
+        };
         // Committed into THIS document before anything about navigation runs.
-        insertMentionAtRange(context.editor, context.range, { id: created.id, label: newTitle });
+        insertMentionAtRange(context.editor, mappedRange, { id: created.id, label: newTitle });
         const target = created.slug || created.id;
         // `mentionFocus` is read once by the freshly-mounted instance the path
         // change below produces (view-remount.ts keys the text-document view
-        // on `route.path`) - see the `mentionFocusRequested` read near `load()`.
+        // on `route.path`) - see `shouldFocusAfterMentionCreate` near `load()`.
         await router.push({ name: 'text-document', params: { id: target }, query: { mentionFocus: '1' } });
       } catch (e: any) {
+        stopTrackingPosition();
         // Nothing was deleted and nothing was inserted above: the typed
         // "@query" text is exactly what it was before this ran.
         showToast(e?.message || t('mentionCreatePageFailed'), 'error');
@@ -969,13 +1004,18 @@ export default defineComponent({
      */
     const shouldFocusAfterMentionCreate = route.query?.mentionFocus === '1';
     let mentionCreateFocusConsumed = false;
-    function focusAfterMentionCreateIfPending() {
+    /** `preferredId` is `load()`'s own canonical id (slug if it has one) - the same value its own canonicalising `router.replace` uses. */
+    function focusAfterMentionCreateIfPending(preferredId: string) {
       if (!shouldFocusAfterMentionCreate || mentionCreateFocusConsumed) return;
       if (!canEditContent.value) return;
       mentionCreateFocusConsumed = true;
       void nextTick(() => {
         editor.value?.chain().focus('end').run();
       });
+      // One-shot flag, consumed: stripped so it cannot linger in a URL that
+      // gets shared or bookmarked.
+      const { mentionFocus: _mentionFocus, ...restQuery } = route.query || {};
+      router.replace({ name: 'text-document', params: { id: preferredId }, query: restQuery }).catch(() => {});
     }
 
     const navigateToMention = (id: string) => {
@@ -1168,7 +1208,7 @@ export default defineComponent({
         }
         editor.value?.setEditable(canEditContent.value);
         refreshBlockCount();
-        focusAfterMentionCreateIfPending();
+        focusAfterMentionCreateIfPending(preferred);
         void loadMentionResolutions();
         if (res.role === 'owner') await loadPermissions();
         if (!socketInitialized) {
