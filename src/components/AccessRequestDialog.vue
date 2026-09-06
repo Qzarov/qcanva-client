@@ -30,7 +30,7 @@
       <p class="access-request-dialog-sub">{{ t('accessRequestDialogSub') }}</p>
 
       <div class="access-request-dialog-row">
-        <select v-model="requestedRole" class="access-gate-select" data-access-request-role :disabled="busy">
+        <select v-model="requestedRole" class="access-gate-select" data-access-request-role :disabled="status === 'submitting'">
           <option value="read">{{ t('canView') }}</option>
           <option value="edit">{{ t('canEdit') }}</option>
         </select>
@@ -53,7 +53,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { Lock } from '@lucide/vue';
-import { accessRequests, ApiError, type ResourceType } from '../api/client';
+import { accessRequests, type ResourceType } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 
 /**
@@ -75,14 +75,24 @@ const emit = defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
 
-type Status = 'idle' | 'submitting' | 'sent' | 'already-requested' | 'error';
+type Status = 'idle' | 'submitting' | 'sent' | 'error';
 
 const requestedRole = ref<'read' | 'edit'>('read');
 const status = ref<Status>('idle');
 const errorMessage = ref('');
 
-/** True while a request is in flight or has already landed - the guard against a double-fire click. */
-const busy = computed(() => status.value === 'submitting' || status.value === 'sent' || status.value === 'already-requested');
+/**
+ * True only while a request is actually in flight - the guard against a
+ * double-fire click for the SAME click. `sent` deliberately does NOT count
+ * as busy: `AccessRequestsService.create` on the backend does not reject a
+ * repeat request from the same user for the same resource - it finds the
+ * existing PENDING row and updates its `requestedRole`, returning success.
+ * So submitting again (e.g. after changing the role selector from "view" to
+ * "edit") is a legitimate second action, not a duplicate to be blocked -
+ * disabling the button forever after the first success would make that
+ * legitimate role change unreachable from this dialog.
+ */
+const busy = computed(() => status.value === 'submitting');
 
 const buttonLabel = computed(() => {
   switch (status.value) {
@@ -90,8 +100,6 @@ const buttonLabel = computed(() => {
       return t('accessRequestDialogSending');
     case 'sent':
       return t('accessRequestDialogSent');
-    case 'already-requested':
-      return t('accessRequestDialogAlready');
     default:
       return t('accessRequestDialogSend');
   }
@@ -106,14 +114,20 @@ async function submit() {
   // queued before Vue re-renders (e.g. a fast double mousedown) must not
   // reach `accessRequests.create` twice - checked again here, not just left
   // to the DOM's `disabled` attribute.
-  // Re-entrancy guard: `busy` already disables the button, but a click
-  // queued before Vue re-renders (e.g. a fast double mousedown) must not
-  // reach `accessRequests.create` twice - checked again here, not just left
-  // to the DOM's `disabled` attribute.
   if (busy.value) return;
   status.value = 'submitting';
   errorMessage.value = '';
   try {
+    // No conflict branch here on purpose: the backend never returns one for
+    // this call (verified against AccessRequestsService.create) - a repeat
+    // request for a resource the caller still has no access to just updates
+    // the pending row and comes back as an ordinary success, same as a first
+    // request. The one case that DOES throw - the resource's owner asking
+    // for access to their own resource (403 "Owner already has access") -
+    // cannot reach this dialog: it only opens from a mention/backlink
+    // resolution already marked `accessible: false`, which an owner's own
+    // resource is not. An unexpected failure of either kind still lands in
+    // the generic catch below rather than crashing.
     await accessRequests.create({
       resourceType: props.resourceType,
       resourceId: props.resourceId,
@@ -121,10 +135,6 @@ async function submit() {
     });
     status.value = 'sent';
   } catch (e: unknown) {
-    if (e instanceof ApiError && e.status === 409) {
-      status.value = 'already-requested';
-      return;
-    }
     status.value = 'error';
     errorMessage.value = (e instanceof Error && e.message) || t('accessRequestDialogFailed');
   }

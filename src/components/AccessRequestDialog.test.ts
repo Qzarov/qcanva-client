@@ -19,19 +19,8 @@ import AccessRequestDialog from './AccessRequestDialog.vue';
 
 const create = vi.fn();
 
-const { MockApiError } = vi.hoisted(() => ({
-  MockApiError: class MockApiError extends Error {
-    status: number;
-    constructor(status: number, message = 'API error') {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
-
 vi.mock('../api/client', () => ({
   accessRequests: { create: (...args: unknown[]) => create(...args) },
-  ApiError: MockApiError,
 }));
 
 function mountDialog(props: Partial<{ resourceType: string; resourceId: string; title: string }> = {}) {
@@ -80,7 +69,33 @@ describe('AccessRequestDialog', () => {
 
     expect(create).toHaveBeenCalledWith({ resourceType: 'text-document', resourceId: 'target-2', requestedRole: 'edit' });
     expect(wrapper.find('[data-access-request-submit]').text()).toBe('Request sent');
-    expect(wrapper.find('[data-access-request-submit]').attributes('disabled')).toBeDefined();
+    // NOT disabled after success: the backend updates an existing pending
+    // request's role rather than rejecting a repeat, so submitting again is
+    // a legitimate action (see the next test), not a duplicate to block.
+    expect(wrapper.find('[data-access-request-submit]').attributes('disabled')).toBeUndefined();
+  });
+
+  it('a repeat submit with a different role reaches the API again and still reports success', async () => {
+    // Pins the real backend behaviour (AccessRequestsService.create): a
+    // second request from the same user for the same resource does not
+    // conflict - it updates the existing pending row's role and returns an
+    // ordinary success. There is no distinct "already requested" state to
+    // show; a second, successful send is exactly what should happen.
+    create.mockResolvedValue({});
+    const wrapper = mountDialog({ resourceId: 'target-3' });
+
+    await wrapper.find('[data-access-request-submit]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-access-request-submit]').text()).toBe('Request sent');
+
+    await wrapper.find('[data-access-request-role]').setValue('edit');
+    await wrapper.find('[data-access-request-submit]').trigger('click');
+    await flushPromises();
+
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create).toHaveBeenNthCalledWith(2, { resourceType: 'text-document', resourceId: 'target-3', requestedRole: 'edit' });
+    expect(wrapper.find('[data-access-request-submit]').text()).toBe('Request sent');
+    expect(wrapper.find('.access-request-dialog-error').exists()).toBe(false);
   });
 
   it('disables the submit button the instant it is clicked, before the promise resolves', async () => {
@@ -122,17 +137,6 @@ describe('AccessRequestDialog', () => {
     expect(create).toHaveBeenCalledTimes(1);
     resolveCreate?.();
     await flushPromises();
-  });
-
-  it('shows an already-requested state distinct from success on a 409 conflict', async () => {
-    create.mockRejectedValue(new MockApiError(409, 'Conflict'));
-    const wrapper = mountDialog();
-
-    await wrapper.find('[data-access-request-submit]').trigger('click');
-    await flushPromises();
-
-    expect(wrapper.find('[data-access-request-submit]').text()).toBe('Already requested');
-    expect(wrapper.find('[data-access-request-submit]').attributes('disabled')).toBeDefined();
   });
 
   it('shows a failure state and allows retrying', async () => {
