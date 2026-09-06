@@ -82,6 +82,28 @@ when creating it. The dialog shows the title and the role choice.
 Cost if wrong: the requester does not know whom they are asking. Adding the
 owner's display name later is one field.
 
+### R5 — the disclosure extends to anonymous readers, decided 2026-09-06
+
+`GET :id/mentions` and `GET :id/backlinks` use `OptionalJwtGuard`, the same guard
+as reading a document. A public document is readable with no account, so both
+endpoints answer anonymous callers for it.
+
+The consequence, stated plainly because it is wider than what §7.3 argued:
+
+- A private document that mentions a public page appears in that public page's
+  backlinks. Its title is then visible to anyone on the internet who opens the
+  public page — not merely to registered users without access.
+- The spec noted that backlinks disclose a title more widely than mentions do,
+  and that the author of a private document reveals its name to the target's
+  readers. Where the target is public, "the target's readers" means everyone.
+
+Put to the customer on 2026-09-06 with three options — filter anonymous callers
+to accessible entries, require authentication on both endpoints, or accept it.
+**Accepted as is.** No code change.
+
+Revisit if public documents ever become common enough that a private page's
+title showing up on one is a surprise rather than a known trade.
+
 ## Task list
 
 ### Back
