@@ -428,8 +428,17 @@ export type MentionSearchResult = { id: string; title: string };
  * One resolved mention target, from `GET /text-documents/:id/mentions`. `title`
  * is present regardless of `accessible` (the whole point of the endpoint, per
  * §7.3 of the design spec); the body of an inaccessible target is never sent.
+ *
+ * `title` is `null` only when `deleted` is `true` (there is no current title
+ * to show - mirrors the server's own `TextDocumentMentionResolution` comment
+ * in canvas-server-back). Modeled as a discriminated union on `deleted`
+ * rather than a flat `title: string | null` so a consumer that has already
+ * checked `deleted` gets `title` narrowed to `string`, not just documentation
+ * of the invariant.
  */
-export type MentionResolution = { id: string; title: string; accessible: boolean; deleted: boolean };
+export type MentionResolution =
+  | { id: string; title: string; accessible: boolean; deleted: false }
+  | { id: string; title: null; accessible: boolean; deleted: true };
 
 /**
  * One source document linking to the one whose backlinks were fetched, from
