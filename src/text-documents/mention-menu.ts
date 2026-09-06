@@ -104,6 +104,28 @@ export type MentionMenuOptions = {
   onCreatePage: (query: string, context: { editor: Editor; range: Range }) => void;
 };
 
+/**
+ * Replaces the typed `range` (the `@query` text, including the `@`) with a
+ * `mention` node for `attrs.id`/`attrs.label`, followed by a trailing space so
+ * typing continues outside the atom node rather than inside it.
+ *
+ * Exported so both the picker's own default `insertMention` below AND the
+ * "create page" flow (TextDocumentView.vue's `handleMentionCreatePage`, front
+ * task 8) go through the exact same chain - a document just created from the
+ * picker must lose its typed query text exactly like a document picked from
+ * the list does, not through a second, hand-rolled implementation that could
+ * drift (e.g. forget the space, or delete before checking the insert worked).
+ */
+export function insertMentionAtRange(editor: Editor, range: Range, attrs: { id: string; label: string }) {
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .insertContent({ type: 'mention', attrs })
+    .insertContent(' ')
+    .run();
+}
+
 export const MentionMenu = Extension.create<MentionMenuOptions>({
   name: 'mentionMenu',
 
@@ -112,13 +134,7 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
       controller: null,
       search: async () => [],
       insertMention: (editor: Editor, range: Range, item: MentionMenuDocumentItem) => {
-        editor
-          .chain()
-          .focus()
-          .deleteRange(range)
-          .insertContent({ type: 'mention', attrs: { id: item.id, label: item.title } })
-          .insertContent(' ')
-          .run();
+        insertMentionAtRange(editor, range, { id: item.id, label: item.title });
       },
       onCreatePage: () => undefined,
     };

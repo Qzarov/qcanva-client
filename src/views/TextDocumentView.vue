@@ -368,10 +368,11 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
+import type { Editor, Range } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from '../text-documents/code-highlighting';
@@ -392,6 +393,7 @@ import {
   type SlashMenuRender,
 } from '../text-documents/slash-menu';
 import {
+  insertMentionAtRange,
   MentionMenu,
   type MentionMenuController,
   type MentionMenuItem,
@@ -858,14 +860,58 @@ export default defineComponent({
     };
 
     /**
-     * The create item's seam (front task 7). What it DOES - actually create a
-     * sibling page, insert the mention, navigate, and focus it - is front
-     * task 8. Until then, the row is real and selectable and this records
-     * what was typed, so nothing about choosing it is a dead click.
+     * CREATE PAGE FROM A MENTION (front task 8, spec §7.1).
+     *
+     * Order is load-bearing: the sibling page is created FIRST, the mention is
+     * committed into THIS document SECOND, and only then does navigation
+     * happen. Reversing steps one and two would leave a stray "@query" behind
+     * if creation failed; reversing two and three would land the user on the
+     * new page while this one still shows the raw typed text - the mention
+     * they just made would look like it never happened.
+     *
+     * `pendingMentionCreate` is kept as the pre-task-8 seam: still set
+     * immediately (still what TextDocumentView.mentionMenu.test.ts's "emits
+     * its intent" case asserts), it is not this flow's success signal.
      */
     const pendingMentionCreate = ref<{ query: string } | null>(null);
-    const handleMentionCreatePage = (query: string) => {
+
+    /**
+     * Same folder as the document being edited, with the same fallback
+     * `continueInNewPage` already uses above: a document can sit in a folder
+     * somebody else owns, and a brand new document cannot always be filed
+     * there. Landing at the root and saying so beats refusing the mention
+     * entirely.
+     */
+    async function createMentionSiblingPage(pageTitle: string) {
+      try {
+        return await textDocuments.create({ title: pageTitle, folderId: folderId.value });
+      } catch (e: any) {
+        const filingRefused =
+          folderId.value && e instanceof ApiError && (e.status === 403 || e.status === 404);
+        if (!filingRefused) throw e;
+        showToast(t('mentionCreatedOutsideFolder'), 'error');
+        return await textDocuments.create({ title: pageTitle });
+      }
+    }
+
+    const handleMentionCreatePage = async (query: string, context: { editor: Editor; range: Range }) => {
       pendingMentionCreate.value = { query };
+      if (!canEditContent.value) return;
+      const newTitle = query.trim() || t('untitledDocument');
+      try {
+        const created = await createMentionSiblingPage(newTitle);
+        // Committed into THIS document before anything about navigation runs.
+        insertMentionAtRange(context.editor, context.range, { id: created.id, label: newTitle });
+        const target = created.slug || created.id;
+        // `mentionFocus` is read once by the freshly-mounted instance the path
+        // change below produces (view-remount.ts keys the text-document view
+        // on `route.path`) - see the `mentionFocusRequested` read near `load()`.
+        await router.push({ name: 'text-document', params: { id: target }, query: { mentionFocus: '1' } });
+      } catch (e: any) {
+        // Nothing was deleted and nothing was inserted above: the typed
+        // "@query" text is exactly what it was before this ran.
+        showToast(e?.message || t('mentionCreatePageFailed'), 'error');
+      }
     };
 
     /**
@@ -902,6 +948,34 @@ export default defineComponent({
         const view = editor.value?.view;
         if (view) view.dispatch(view.state.tr);
       }
+    }
+
+    /**
+     * FOCUS AFTER NAVIGATING FROM A MENTION-CREATED PAGE (front task 8).
+     *
+     * There is no existing "focus after navigation" pattern in this app to
+     * reuse. Text documents remount on every path change - view-remount.ts
+     * keys this view on `route.path` specifically so the editor, the Y.Doc
+     * and the socket get rebuilt for the new document rather than reused -
+     * which makes this tractable: the new page is a brand new component
+     * instance, and this reads its OWN `route.query.mentionFocus` once, at
+     * setup time (never re-read later, so it cannot re-fire on a later
+     * `load()` such as the reload `handleReject` triggers after a conflict).
+     *
+     * The flag is consumed after `load()` has put the document's actual
+     * content into the editor, not before: focusing any earlier would move
+     * the caret into a still-empty editor moments before the Yjs snapshot
+     * lands.
+     */
+    const shouldFocusAfterMentionCreate = route.query?.mentionFocus === '1';
+    let mentionCreateFocusConsumed = false;
+    function focusAfterMentionCreateIfPending() {
+      if (!shouldFocusAfterMentionCreate || mentionCreateFocusConsumed) return;
+      if (!canEditContent.value) return;
+      mentionCreateFocusConsumed = true;
+      void nextTick(() => {
+        editor.value?.chain().focus('end').run();
+      });
     }
 
     const navigateToMention = (id: string) => {
@@ -1004,7 +1078,7 @@ export default defineComponent({
         MentionMenu.configure({
           controller: mentionController,
           search: searchMentionCandidates,
-          onCreatePage: (query) => handleMentionCreatePage(query),
+          onCreatePage: (query, context) => void handleMentionCreatePage(query, context),
         }),
         NodeRange,
         DragHandle.configure({
@@ -1094,6 +1168,7 @@ export default defineComponent({
         }
         editor.value?.setEditable(canEditContent.value);
         refreshBlockCount();
+        focusAfterMentionCreateIfPending();
         void loadMentionResolutions();
         if (res.role === 'owner') await loadPermissions();
         if (!socketInitialized) {
