@@ -67,6 +67,21 @@ Ruling: extract one dialog component and use it for mentions and backlinks. The
 three existing full-page gates are left alone in this plan — converting them is
 a separate, larger change with its own review surface.
 
+### R4 — the access-request dialog does not name the owner
+
+§7.3 describes that dialog as showing "название страницы, владелец, выбор роли".
+The mentions and backlinks endpoints deliberately return no owner identity, so
+the dialog opened from an inaccessible mention cannot show one.
+
+That restriction stands. The spec argues carefully for exposing TITLES and says
+nothing in defence of exposing a person: revealing who owns a document to
+someone with no access to it discloses a human being, not a label, and the
+request still reaches the right person because the server resolves the owner
+when creating it. The dialog shows the title and the role choice.
+
+Cost if wrong: the requester does not know whom they are asking. Adding the
+owner's display name later is one field.
+
 ## Task list
 
 ### Back
