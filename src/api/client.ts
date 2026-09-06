@@ -421,6 +421,16 @@ export const interactiveTemplates = {
   permissions: (id: string) => request<any[]>(`/interactive-templates/${id}/share`),
 };
 
+/** One document the `@`-mention picker can offer. Already access-filtered server-side. */
+export type MentionSearchResult = { id: string; title: string };
+
+/**
+ * One resolved mention target, from `GET /text-documents/:id/mentions`. `title`
+ * is present regardless of `accessible` (the whole point of the endpoint, per
+ * §7.3 of the design spec); the body of an inaccessible target is never sent.
+ */
+export type MentionResolution = { id: string; title: string; accessible: boolean; deleted: boolean };
+
 export const textDocuments = {
   list: () => request<{ documents: any[] }>('/text-documents'),
   publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),
@@ -450,6 +460,12 @@ export const textDocuments = {
   revoke: (id: string, userId: string) =>
     request<any>(`/text-documents/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/text-documents/${id}/permissions`),
+  /** Powers the `@`-mention picker. Server-side filtered to what the caller can read (R2). */
+  search: (query: string, limit = 20) =>
+    request<{ items: MentionSearchResult[] }>(`/text-documents/search?query=${encodeURIComponent(query)}&limit=${limit}`),
+  /** Current title/accessible/deleted for every mention target in one document. */
+  mentions: (id: string) =>
+    request<{ items: MentionResolution[] }>(`/text-documents/${id}/mentions`, { skipAuthRedirect: true }),
 };
 
 export const accessRequests = {

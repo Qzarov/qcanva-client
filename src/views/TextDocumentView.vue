@@ -329,6 +329,40 @@
         </button>
         <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
       </div>
+
+      <!-- The @-mention picker. Same chrome rule as the slash menu above:
+           lives in the app's themed --ui-* palette, nothing here reaches the
+           Yjs document until an item is chosen. -->
+      <div
+        v-if="mentionOpen"
+        class="text-doc-mention-menu"
+        :style="mentionMenuStyle"
+        role="listbox"
+        :aria-label="t('mentionMenu')"
+      >
+        <button
+          v-for="(item, index) in mentionItems"
+          :key="item.kind === 'document' ? item.id : 'create'"
+          class="text-doc-mention-item"
+          :class="{ active: index === mentionIndex }"
+          :data-mention-item="item.kind === 'document' ? item.id : 'create'"
+          role="option"
+          :aria-selected="index === mentionIndex"
+          type="button"
+          @mousedown.prevent="selectMentionItem(index)"
+          @mouseenter="mentionIndex = index"
+        >
+          <template v-if="item.kind === 'document'">
+            <span class="text-doc-mention-item-icon" v-html="mentionDocumentIcon"></span>
+            <span class="text-doc-mention-item-label">{{ item.title }}</span>
+          </template>
+          <template v-else>
+            <span class="text-doc-mention-item-icon" v-html="mentionCreateIcon"></span>
+            <span class="text-doc-mention-item-label">{{ t('mentionCreatePagePrefix') }} "{{ item.query }}"</span>
+          </template>
+        </button>
+        <div v-if="!mentionItems.length" class="text-doc-mention-empty">{{ t('mentionNoResults') }}</div>
+      </div>
     </template>
   </div>
 </template>
@@ -358,6 +392,13 @@ import {
   type SlashMenuRender,
 } from '../text-documents/slash-menu';
 import {
+  MentionMenu,
+  type MentionMenuController,
+  type MentionMenuItem,
+  type MentionMenuRender,
+} from '../text-documents/mention-menu';
+import { Mention } from '../text-documents/mention-node';
+import {
   BUBBLE_MARK_BUTTONS,
   LINK_ICON,
   UNLINK_ICON,
@@ -376,7 +417,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
-import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage } from '../api/client';
+import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type MentionResolution } from '../api/client';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -727,6 +768,165 @@ export default defineComponent({
     };
 
     /**
+     * MENTION MENU state, structurally the same as the slash menu above
+     * (own popup ref set, own `command` kept from the suggestion plugin's
+     * render props) but for `@`: the item list is an async search rather
+     * than a fixed table, and the LAST item is always "create page named
+     * ...", carrying the typed text.
+     */
+    const mentionOpen = ref(false);
+    const mentionItems = ref<MentionMenuItem[]>([]);
+    const mentionIndex = ref(0);
+    const mentionRect = ref<{ top: number; left: number } | null>(null);
+    let mentionCommand: ((item: MentionMenuItem) => void) | null = null;
+    let mentionDismissed = false;
+
+    const mentionMenuStyle = computed(() =>
+      mentionRect.value
+        ? { top: `${mentionRect.value.top}px`, left: `${mentionRect.value.left}px` }
+        : undefined,
+    );
+
+    const applyMentionRender = (render: MentionMenuRender) => {
+      mentionItems.value = render.items;
+      mentionIndex.value = 0;
+      mentionCommand = render.command;
+      mentionRect.value = render.rect
+        ? { top: render.rect.bottom + 6, left: render.rect.left }
+        : null;
+      mentionOpen.value = !mentionDismissed;
+    };
+
+    const closeMentionMenu = () => {
+      mentionOpen.value = false;
+      mentionItems.value = [];
+      mentionIndex.value = 0;
+      mentionCommand = null;
+    };
+
+    const selectMentionItem = (index: number) => {
+      const item = mentionItems.value[index];
+      if (!item || !mentionCommand) return;
+      mentionCommand(item);
+    };
+
+    const mentionController: MentionMenuController = {
+      onOpen: (render) => {
+        mentionDismissed = false;
+        applyMentionRender(render);
+      },
+      onUpdate: (render) => applyMentionRender(render),
+      onClose: () => {
+        mentionDismissed = false;
+        closeMentionMenu();
+      },
+      onKeyDown: (event) => {
+        if (!mentionOpen.value) return false;
+        const total = mentionItems.value.length;
+        if (event.key === 'Escape') {
+          mentionDismissed = true;
+          closeMentionMenu();
+          return true;
+        }
+        if (event.key === 'ArrowDown') {
+          if (total) mentionIndex.value = (mentionIndex.value + 1) % total;
+          return true;
+        }
+        if (event.key === 'ArrowUp') {
+          if (total) mentionIndex.value = (mentionIndex.value - 1 + total) % total;
+          return true;
+        }
+        if (event.key === 'Enter') {
+          selectMentionItem(mentionIndex.value);
+          return true;
+        }
+        return false;
+      },
+    };
+
+    /** Powers the picker's search. Server-side filtered to what this user can read (R2) - no client-side widening. */
+    const searchMentionCandidates = async (query: string) => {
+      if (!canEditContent.value) return [];
+      try {
+        const result = await textDocuments.search(query);
+        return result.items.map((item: any) => ({ id: item.id, title: item.title }));
+      } catch {
+        // A failed search still leaves the "Create page ..." row: see
+        // buildMentionMenuItems, which always appends it.
+        return [];
+      }
+    };
+
+    /**
+     * The create item's seam (front task 7). What it DOES - actually create a
+     * sibling page, insert the mention, navigate, and focus it - is front
+     * task 8. Until then, the row is real and selectable and this records
+     * what was typed, so nothing about choosing it is a dead click.
+     */
+    const pendingMentionCreate = ref<{ query: string } | null>(null);
+    const handleMentionCreatePage = (query: string) => {
+      pendingMentionCreate.value = { query };
+    };
+
+    /**
+     * TITLE RESOLUTION AND STALENESS (front task 9).
+     *
+     * `label` on a mention node is a snapshot from insert time; the CURRENT
+     * title is authoritative. This map is the live source `mention-node.ts`'s
+     * node view reads through `resolveMention` - mutated in place (like
+     * `headingCollapseLabels` above) rather than replaced, and repainting is
+     * forced afterwards by dispatching a no-op transaction, which is the hook
+     * ProseMirror gives every custom node view's `update()` on every
+     * transaction regardless of whether ITS node changed (see the comment on
+     * `addNodeView` in mention-node.ts).
+     */
+    const mentionResolutions = new Map<string, MentionResolution>();
+    const resolveMentionTitle = (id: string) => mentionResolutions.get(id);
+
+    async function loadMentionResolutions() {
+      try {
+        const result = await textDocuments.mentions(resolvedId.value);
+        mentionResolutions.clear();
+        for (const item of result.items) mentionResolutions.set(item.id, item);
+      } catch {
+        // Resolution not loaded: mention-node.ts falls back to each node's
+        // stored label rather than an empty mention or a spinner.
+        return;
+      } finally {
+        // Force every existing mention node view to repaint from the map
+        // just written, even though no document content changed.
+        // Guarded as one lookup, not `editor.value?.view.dispatch(...)`: the
+        // fetch can resolve after the view has been destroyed (component
+        // unmounted, `.view` gone but `editor.value` itself still set), and
+        // evaluating `.state.tr` on a destroyed view is its own crash.
+        const view = editor.value?.view;
+        if (view) view.dispatch(view.state.tr);
+      }
+    }
+
+    const navigateToMention = (id: string) => {
+      router.push({ name: 'text-document', params: { id } }).catch(() => {});
+    };
+
+    /**
+     * The access-request seam (ruling R3): a later task wires this to a
+     * dialog. Recorded here, not silently dropped, so an inaccessible
+     * mention's click reaches something.
+     */
+    const pendingMentionAccessRequest = ref<{ id: string; label: string } | null>(null);
+    const handleMentionInaccessibleClick = (payload: { id: string; label: string }) => {
+      pendingMentionAccessRequest.value = payload;
+    };
+
+    const mentionNodeLabels = { inaccessible: '', deleted: '' };
+    const paintMentionNodeLabels = () => {
+      mentionNodeLabels.inaccessible = t('mentionInaccessibleTooltip');
+      mentionNodeLabels.deleted = t('mentionDeletedTooltip');
+    };
+    paintMentionNodeLabels();
+    watch(locale, paintMentionNodeLabels);
+
+    /**
      * CAPACITY.
      *
      * The ceiling is enforced HERE and nowhere else. A text document is a Yjs
@@ -794,6 +994,17 @@ export default defineComponent({
           // The image item cannot insert a node on its own: the file
           // has to be uploaded first, so it reuses the toolbar's picker.
           requestImage: () => openImagePicker(),
+        }),
+        Mention.configure({
+          resolveMention: resolveMentionTitle,
+          onNavigate: navigateToMention,
+          onInaccessibleClick: handleMentionInaccessibleClick,
+          labels: mentionNodeLabels,
+        }),
+        MentionMenu.configure({
+          controller: mentionController,
+          search: searchMentionCandidates,
+          onCreatePage: (query) => handleMentionCreatePage(query),
         }),
         NodeRange,
         DragHandle.configure({
@@ -883,6 +1094,7 @@ export default defineComponent({
         }
         editor.value?.setEditable(canEditContent.value);
         refreshBlockCount();
+        void loadMentionResolutions();
         if (res.role === 'owner') await loadPermissions();
         if (!socketInitialized) {
           socketInitialized = true;
@@ -1224,6 +1436,15 @@ export default defineComponent({
       slashMenuStyle,
       selectSlashItem,
       SLASH_MENU_ITEMS,
+      mentionOpen,
+      mentionItems,
+      mentionIndex,
+      mentionMenuStyle,
+      selectMentionItem,
+      pendingMentionCreate,
+      pendingMentionAccessRequest,
+      mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
+      mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       linkEditorOpen,
       linkInput,
       bubbleMarkButtons,
