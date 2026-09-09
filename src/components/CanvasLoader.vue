@@ -643,23 +643,21 @@
         <rect
           v-for="node in viewerNodes"
           :key="'mm-' + node.id"
+          class="minimap-node"
+          :class="{ 'is-group': node.type === 'group' }"
           :x="node.x"
           :y="node.y"
           :width="node.width"
           :height="node.height"
-          :fill="node.type === 'group' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)'"
           rx="2"
         />
         <rect
+          class="minimap-viewport"
           :x="minimapData.vpX"
           :y="minimapData.vpY"
           :width="minimapData.vpW"
           :height="minimapData.vpH"
-          fill="rgba(124,138,255,0.08)"
-          stroke="rgba(124,138,255,0.6)"
-          stroke-width="3"
           rx="2"
-          style="cursor: grab"
         />
       </svg>
     </div>
@@ -4155,8 +4153,8 @@ export default defineComponent({
   cursor: grab;
 }
 .canvas-group.is-selected {
-  border-color: var(--content-canvas-selection);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--content-canvas-selection) 44%, transparent);
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-focus) 44%, transparent);
 }
 .canvas-group.is-dragging {
   cursor: grabbing;
@@ -4223,18 +4221,18 @@ export default defineComponent({
 .dnd-full-content { margin-top: 16px; border-top: 1px solid #354039; }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: #aab7ae; background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: #3f874f; color: #baf5c7; background: #1d3924; }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: #aab7ae; font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: #94a299; font-size: 12px; }
 .dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid #354039; border-radius: 6px; background: #1b211e; }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid #435248; border-radius: 5px; color: #c0edca; background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: #5bbc70; background: #1d3924; }
 /* Group colors */
-.group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
-.group-color-1 .group-label { color: #fb464c; }
-.group-color-2 { border-color: rgba(233,151,63,0.45); background: rgba(233,151,63,0.06); }
-.group-color-2 .group-label { color: #e9973f; }
-.group-color-3 { border-color: rgba(224,222,113,0.45); background: rgba(224,222,113,0.06); }
-.group-color-3 .group-label { color: #e0de71; }
-.group-color-4 { border-color: rgba(68,207,110,0.45); background: rgba(68,207,110,0.06); }
-.group-color-4 .group-label { color: #44cf6e; }
-.group-color-5 { border-color: rgba(83,223,221,0.45); background: rgba(83,223,221,0.06); }
-.group-color-5 .group-label { color: #53dfdd; }
-.group-color-6 { border-color: rgba(168,130,255,0.45); background: rgba(168,130,255,0.06); }
-.group-color-6 .group-label { color: #a882ff; }
+.group-color-1 { border-color: var(--content-canvas-group-1-border); background: var(--content-canvas-group-1-surface); }
+.group-color-1 .group-label { color: var(--content-canvas-group-1-label); }
+.group-color-2 { border-color: var(--content-canvas-group-2-border); background: var(--content-canvas-group-2-surface); }
+.group-color-2 .group-label { color: var(--content-canvas-group-2-label); }
+.group-color-3 { border-color: var(--content-canvas-group-3-border); background: var(--content-canvas-group-3-surface); }
+.group-color-3 .group-label { color: var(--content-canvas-group-3-label); }
+.group-color-4 { border-color: var(--content-canvas-group-4-border); background: var(--content-canvas-group-4-surface); }
+.group-color-4 .group-label { color: var(--content-canvas-group-4-label); }
+.group-color-5 { border-color: var(--content-canvas-group-5-border); background: var(--content-canvas-group-5-surface); }
+.group-color-5 .group-label { color: var(--content-canvas-group-5-label); }
+.group-color-6 { border-color: var(--content-canvas-group-6-border); background: var(--content-canvas-group-6-surface); }
+.group-color-6 .group-label { color: var(--content-canvas-group-6-label); }
 
 /* ===== Edges (SVG) ===== */
 .canvas-edges {
@@ -4448,8 +4446,9 @@ g:hover > .edge-midpoint-conn {
 .ctx-item-danger:hover { background: var(--ui-danger-soft); color: var(--ui-danger-foreground); }
 
 /* Arrowhead color */
-#arrowhead polygon {
-  fill: var(--content-canvas-edge);
+#arrowhead polygon,
+#arrowhead-start polygon {
+  fill: var(--content-canvas-edge-arrow);
 }
 
 /* ===== Nodes ===== */
@@ -4570,6 +4569,10 @@ g:hover > .edge-midpoint-conn {
   border-radius: 2px;
   z-index: 10;
   touch-action: none;
+}
+.canvas-group .resize-handle {
+  background: var(--ui-focus);
+  border-color: var(--ui-focus);
 }
 /* Corners */
 .resize-handle-br { width: 14px; height: 14px; bottom: -7px; right: -7px; cursor: nwse-resize; border-radius: 50%; }
@@ -4835,6 +4838,18 @@ g:hover > .edge-midpoint-conn {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+}
+.minimap-node {
+  fill: var(--ui-minimap-node);
+}
+.minimap-node.is-group {
+  fill: var(--ui-minimap-group);
+}
+.minimap-viewport {
+  fill: var(--ui-minimap-viewport-fill);
+  stroke: var(--ui-minimap-viewport-stroke);
+  stroke-width: 3;
+  cursor: grab;
 }
 
 /* ===== Controls ===== */

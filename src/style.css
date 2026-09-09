@@ -39,6 +39,38 @@
   --ui-danger-on: #071307;
   --ui-focus: #8cff8c;
   --ui-focus-on: #071307;
+
+  /* Canvas infrastructure (themed for contrast against --ui-canvas: #17181f) */
+  --content-canvas-group-surface: rgba(255, 255, 255, 0.03);
+  --content-canvas-group-border: rgba(255, 255, 255, 0.35); /* 3.23:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-group-label: rgba(255, 255, 255, 0.62);   /* 7.38:1 on #17181f (WCAG 1.4.3) */
+  --content-canvas-edge: rgba(255, 255, 255, 0.42);        /* 4.08:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-edge-arrow: rgba(255, 255, 255, 0.5);   /* 5.24:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-edge-label-surface: rgba(30, 30, 30, 0.85);
+  --content-canvas-edge-label-border: rgba(255, 255, 255, 0.12);
+  --content-canvas-edge-label-text: rgba(255, 255, 255, 0.75);
+  --content-canvas-group-1-border: rgba(251, 70, 76, 0.45);
+  --content-canvas-group-1-surface: rgba(251, 70, 76, 0.06);
+  --content-canvas-group-1-label: #fb464c;
+  --content-canvas-group-2-border: rgba(233, 151, 63, 0.45);
+  --content-canvas-group-2-surface: rgba(233, 151, 63, 0.06);
+  --content-canvas-group-2-label: #e9973f;
+  --content-canvas-group-3-border: rgba(224, 222, 113, 0.45);
+  --content-canvas-group-3-surface: rgba(224, 222, 113, 0.06);
+  --content-canvas-group-3-label: #e0de71;
+  --content-canvas-group-4-border: rgba(68, 207, 110, 0.45);
+  --content-canvas-group-4-surface: rgba(68, 207, 110, 0.06);
+  --content-canvas-group-4-label: #44cf6e;
+  --content-canvas-group-5-border: rgba(83, 223, 221, 0.45);
+  --content-canvas-group-5-surface: rgba(83, 223, 221, 0.06);
+  --content-canvas-group-5-label: #53dfdd;
+  --content-canvas-group-6-border: rgba(168, 130, 255, 0.45);
+  --content-canvas-group-6-surface: rgba(168, 130, 255, 0.06);
+  --content-canvas-group-6-label: #a882ff;
+  --ui-minimap-node: rgba(255, 255, 255, 0.45);            /* 4.47:1 on dark surface */
+  --ui-minimap-group: rgba(255, 255, 255, 0.12);
+  --ui-minimap-viewport-fill: rgba(124, 138, 255, 0.12);
+  --ui-minimap-viewport-stroke: #7c8aff;                   /* 5.79:1 on dark surface */
   color-scheme: dark;
 }
 
@@ -75,6 +107,38 @@
   --ui-danger-on: #ffffff;
   --ui-focus: #145b25;
   --ui-focus-on: #ffffff;
+
+  /* Canvas infrastructure (themed for contrast against --ui-canvas: #eef2ee) */
+  --content-canvas-group-surface: rgba(23, 32, 25, 0.03);
+  --content-canvas-group-border: rgba(23, 32, 25, 0.5);    /* 3.16:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-label: #465049;                   /* 7.42:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-edge: rgba(23, 32, 25, 0.6);            /* 4.25:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-edge-arrow: rgba(23, 32, 25, 0.7);      /* 5.81:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-edge-label-surface: #ffffff;
+  --content-canvas-edge-label-border: #dce3dd;
+  --content-canvas-edge-label-text: #172019;
+  --content-canvas-group-1-border: rgba(180, 30, 40, 0.72);  /* 3.74:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-1-surface: rgba(201, 52, 61, 0.08);
+  --content-canvas-group-1-label: #a82028;                   /* 6.40:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-2-border: rgba(155, 80, 0, 0.82);   /* 3.76:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-2-surface: rgba(184, 107, 18, 0.08);
+  --content-canvas-group-2-label: #8a4e00;                   /* 5.86:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-3-border: rgba(115, 105, 0, 0.88);  /* 3.94:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-3-surface: rgba(138, 133, 10, 0.08);
+  --content-canvas-group-3-label: #6b6600;                   /* 5.27:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-4-border: rgba(20, 110, 50, 0.8);   /* 3.79:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-4-surface: rgba(35, 134, 74, 0.08);
+  --content-canvas-group-4-label: #176334;                   /* 6.47:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-5-border: rgba(10, 105, 115, 0.8);  /* 3.82:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-5-surface: rgba(17, 125, 136, 0.08);
+  --content-canvas-group-5-label: #0b626b;                   /* 6.25:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-6-border: rgba(95, 60, 185, 0.75);  /* 3.85:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-6-surface: rgba(112, 78, 204, 0.08);
+  --content-canvas-group-6-label: #5028aa;                   /* 8.35:1 on #eef2ee (WCAG 1.4.3) */
+  --ui-minimap-node: rgba(23, 32, 25, 0.55);               /* 3.80:1 on #ffffff */
+  --ui-minimap-group: rgba(23, 32, 25, 0.18);
+  --ui-minimap-viewport-fill: rgba(75, 87, 201, 0.12);
+  --ui-minimap-viewport-stroke: #4b57c9;                  /* 5.99:1 on #ffffff */
   color-scheme: light;
 }
 
@@ -117,14 +181,8 @@
   --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
   --content-canvas-node-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
   --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
-  --content-canvas-group-surface: rgba(255, 255, 255, 0.03);
-  --content-canvas-group-border: rgba(255, 255, 255, 0.12);
-  --content-canvas-group-label: rgba(255, 255, 255, 0.5);
-  --content-canvas-edge: rgba(255, 255, 255, 0.25);
-  --content-canvas-edge-arrow: rgba(255, 255, 255, 0.35);
-  --content-canvas-edge-label-surface: rgba(30, 30, 30, 0.85);
-  --content-canvas-edge-label-border: rgba(255, 255, 255, 0.12);
-  --content-canvas-edge-label-text: rgba(255, 255, 255, 0.75);
+  --content-document-slash-query-bg: rgba(0, 255, 0, 0.14);
+  --content-document-slash-query-text: #f8fff8;
   --content-canvas-editor-surface: rgba(0, 0, 0, 0.2);
   --content-canvas-editor-text: rgba(255, 255, 255, 0.9);
   --content-canvas-image-title: rgba(255, 255, 255, 0.82);
@@ -5921,8 +5979,8 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
    characters are a query and not prose yet. */
 .text-doc-paper .ProseMirror .qcanva-slash-query {
   border-radius: 4px;
-  background: var(--ui-brand-soft);
-  color: var(--ui-brand-soft-on);
+  background: var(--content-document-slash-query-bg);
+  color: var(--content-document-slash-query-text);
 }
 
 .text-doc-history-preview {
