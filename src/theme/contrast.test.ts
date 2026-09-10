@@ -80,26 +80,18 @@ describe('light semantic text contrast', () => {
   });
 });
 
-describe('code block syntax colours stay readable and theme-independent', () => {
-  // The document paper (--content-document-surface) never follows the
-  // app's light/dark toggle - it is only ever defined once, under plain
-  // :root. Syntax colours sit on that same fixed paper, so they must be
-  // fixed too: this both checks contrast on the one background they will
-  // ever render against, and guards that nobody accidentally adds a
-  // data-theme or prefers-color-scheme override for them later (which
-  // would make them invisible in whichever mode wasn't tested by eye).
-  it.each([
-    'content-code-comment',
-    'content-code-keyword',
-    'content-code-string',
-    'content-code-number',
-    'content-code-function',
-    'content-code-punctuation',
-  ])('%s is at least WCAG AA on the fixed document paper', (name) => {
-    expect(contrast(token(':root', name), token(':root', 'content-document-surface'))).toBeGreaterThanOrEqual(4.5);
+describe('document content follows the application theme without losing contrast', () => {
+  const selectors = [":root, :root[data-theme='dark']", ":root[data-theme='light']"];
+
+  it.each(selectors)('%s keeps document text and links at WCAG AA', (selector) => {
+    const paper = token(selector, 'content-document-surface');
+    for (const foreground of ['content-document-text', 'content-document-text-muted', 'content-document-link']) {
+      expect(contrast(token(selector, foreground), paper)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 
-  it('defines each syntax colour and document fixed token exactly once, under plain :root', () => {
+  it.each(selectors)('%s keeps syntax colours at WCAG AA', (selector) => {
+    const paper = token(selector, 'content-document-surface');
     for (const name of [
       'content-code-comment',
       'content-code-keyword',
@@ -107,20 +99,38 @@ describe('code block syntax colours stay readable and theme-independent', () => 
       'content-code-number',
       'content-code-function',
       'content-code-punctuation',
-      'content-document-slash-query-bg',
-      'content-document-slash-query-text',
     ]) {
-      const occurrences = css.match(new RegExp(`--${name}:\\s*[^;]+;`, 'g')) ?? [];
-      expect(occurrences.length).toBe(1);
+      expect(contrast(token(selector, name), paper)).toBeGreaterThanOrEqual(4.5);
     }
   });
 
-  it('keeps fixed slash query text readable on document paper', () => {
-    const paper = token(':root', 'content-document-surface');
-    const queryBg = rawToken(':root', 'content-document-slash-query-bg');
-    const queryText = token(':root', 'content-document-slash-query-text');
-    const compositeBg = composite(queryBg, paper);
-    expect(contrast(queryText, compositeBg)).toBeGreaterThanOrEqual(4.5);
+  it.each(selectors)('%s keeps slash-query text readable', (selector) => {
+    const paper = token(selector, 'content-document-surface');
+    const queryBg = rawToken(selector, 'content-document-slash-query-bg');
+    const queryText = token(selector, 'content-document-slash-query-text');
+    expect(contrast(queryText, composite(queryBg, paper))).toBeGreaterThanOrEqual(4.5);
+  });
+});
+
+describe('light content surfaces', () => {
+  it('uses a light paper and a light default canvas node', () => {
+    expect(token(":root[data-theme='light']", 'content-document-surface')).toBe('#ffffff');
+    expect(token(":root[data-theme='light']", 'content-canvas-node-surface')).toBe('#ffffff');
+  });
+
+  it('keeps toast status text readable on an elevated light surface', () => {
+    const surface = token(":root[data-theme='light']", 'ui-surface-elevated');
+    for (const foreground of ['ui-success-foreground', 'ui-danger-foreground', 'ui-info-foreground']) {
+      expect(contrast(token(":root[data-theme='light']", foreground), surface)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  it('keeps interactive-card text readable on both themes', () => {
+    for (const selector of [":root, :root[data-theme='dark']", ":root[data-theme='light']"]) {
+      const surface = token(selector, 'content-interactive-surface');
+      expect(contrast(token(selector, 'content-interactive-text'), surface)).toBeGreaterThanOrEqual(4.5);
+      expect(contrast(token(selector, 'content-interactive-text-muted'), surface)).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
 

@@ -71,6 +71,74 @@
   --ui-minimap-group: rgba(255, 255, 255, 0.12);
   --ui-minimap-viewport-fill: rgba(124, 138, 255, 0.12);
   --ui-minimap-viewport-stroke: #7c8aff;                   /* 5.79:1 on dark surface */
+
+  /* Authored document content tokens (dark theme) */
+  --content-document-surface: #191b20;
+  --content-document-surface-readonly: #17191d;
+  --content-document-text: #f8fafc;                         /* 15.82:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-text-muted: #94a3b8;                   /* 6.32:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-border: rgba(255, 255, 255, 0.1);
+  --content-document-link: #7dd3fc;                         /* 9.38:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-slash-query-bg: rgba(0, 255, 0, 0.14);
+  --content-document-slash-query-text: #f8fff8;
+
+  /* Code block syntax tokens (dark theme) */
+  --content-code-surface: rgba(255, 255, 255, 0.04);
+  --content-code-border: rgba(255, 255, 255, 0.08);
+  --content-code-comment: #8b949e;                         /* 5.60:1 on #191b20 */
+  --content-code-keyword: #ff7b72;                         /* 6.83:1 on #191b20 */
+  --content-code-string: #a5d6ff;                          /* 11.21:1 on #191b20 */
+  --content-code-number: #f2cc60;                          /* 11.14:1 on #191b20 */
+  --content-code-function: #d2a8ff;                        /* 8.85:1 on #191b20 */
+  --content-code-punctuation: #c9d1d9;                     /* 11.16:1 on #191b20 */
+
+  /* Callout tokens inside document (dark theme) */
+  --content-callout-info-accent: #53dfdd;                  /* 8.94:1 on #191b20 */
+  --content-callout-info-surface: rgba(83, 223, 221, 0.1);
+  --content-callout-info-border: rgba(83, 223, 221, 0.4);
+  --content-callout-warning-accent: #e0de71;               /* 11.12:1 on #191b20 */
+  --content-callout-warning-surface: rgba(224, 222, 113, 0.1);
+  --content-callout-warning-border: rgba(224, 222, 113, 0.4);
+  --content-callout-success-accent: #6fdc8c;               /* 9.51:1 on #191b20 */
+  --content-callout-success-surface: rgba(111, 220, 140, 0.1);
+  --content-callout-success-border: rgba(111, 220, 140, 0.4);
+  --content-callout-danger-accent: #ff8a8f;                /* 7.55:1 on #191b20 */
+  --content-callout-danger-surface: rgba(255, 138, 143, 0.1);
+  --content-callout-danger-border: rgba(255, 138, 143, 0.4);
+
+  /* Canvas node content tokens (dark theme) */
+  --content-canvas-node-surface: #262626;
+  --content-canvas-node-border: rgba(255, 255, 255, 0.1);
+  --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
+  --content-canvas-node-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --content-canvas-node-text: rgba(255, 255, 255, 0.85);
+  --content-canvas-node-text-muted: rgba(255, 255, 255, 0.6);
+  --content-canvas-code-bg: rgba(255, 255, 255, 0.08);
+  --content-canvas-link: #7c8aff;
+  --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
+  --content-canvas-editor-surface: rgba(0, 0, 0, 0.2);
+  --content-canvas-editor-text: rgba(255, 255, 255, 0.9);
+  --content-canvas-image-title: rgba(255, 255, 255, 0.82);
+  --content-canvas-selection: #4dabf7;                     /* 6.11:1 against #262626 */
+  --content-canvas-node-text-1: #fb464c;
+  --content-canvas-node-text-2: #e9973f;
+  --content-canvas-node-text-3: #e0de71;
+  --content-canvas-node-text-4: #44cf6e;
+  --content-canvas-node-text-5: #53dfdd;
+  --content-canvas-node-text-6: #a882ff;
+
+  /* Interactive canvas cards (D&D and future structured templates) */
+  --content-interactive-surface: #171a19;
+  --content-interactive-surface-subtle: #1e2421;
+  --content-interactive-input: #222825;
+  --content-interactive-border: #354039;
+  --content-interactive-border-strong: #435248;
+  --content-interactive-text: #edf5ef;
+  --content-interactive-text-muted: #aab7ae;
+  --content-interactive-accent: #77ee9a;
+  --content-interactive-accent-strong: #baf5c7;
+  --content-interactive-accent-soft: #1d3924;
+  --content-interactive-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
   color-scheme: dark;
 }
 
@@ -139,53 +207,80 @@
   --ui-minimap-group: rgba(23, 32, 25, 0.18);
   --ui-minimap-viewport-fill: rgba(75, 87, 201, 0.12);
   --ui-minimap-viewport-stroke: #4b57c9;                  /* 5.99:1 on #ffffff */
+
+  /* Authored document content tokens (light theme) */
+  --content-document-surface: #ffffff;
+  --content-document-surface-readonly: #f8faf8;
+  --content-document-text: #172019;                         /* 16.71:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-text-muted: #536156;                   /* 6.54:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-border: rgba(23, 32, 25, 0.12);
+  --content-document-link: #0b626b;                         /* 7.06:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-slash-query-bg: rgba(32, 207, 69, 0.14);
+  --content-document-slash-query-text: #172019;             /* 14.86:1 on composite */
+
+  /* Code block syntax tokens (light theme - GitHub Light style) */
+  --content-code-surface: #f6f8fa;
+  --content-code-border: #d0d7de;
+  --content-code-comment: #57606a;                         /* 6.39:1 on #ffffff */
+  --content-code-keyword: #cf222e;                         /* 5.36:1 on #ffffff */
+  --content-code-string: #0a3069;                          /* 12.81:1 on #ffffff */
+  --content-code-number: #0550ae;                          /* 7.59:1 on #ffffff */
+  --content-code-function: #8250df;                        /* 5.05:1 on #ffffff */
+  --content-code-punctuation: #24292f;                     /* 14.65:1 on #ffffff */
+
+  /* Callout tokens inside document (light theme) */
+  --content-callout-info-accent: var(--ui-info-foreground);
+  --content-callout-info-surface: var(--ui-info-soft);
+  --content-callout-info-border: rgba(17, 125, 136, 0.4);
+  --content-callout-warning-accent: var(--ui-warning-foreground);
+  --content-callout-warning-surface: var(--ui-warning-soft);
+  --content-callout-warning-border: rgba(138, 111, 0, 0.4);
+  --content-callout-success-accent: var(--ui-success-foreground);
+  --content-callout-success-surface: var(--ui-success-soft);
+  --content-callout-success-border: rgba(35, 134, 74, 0.4);
+  --content-callout-danger-accent: var(--ui-danger-foreground);
+  --content-callout-danger-surface: var(--ui-danger-soft);
+  --content-callout-danger-border: rgba(201, 52, 61, 0.4);
+
+  /* Canvas node content tokens (light theme) */
+  --content-canvas-node-surface: #ffffff;
+  --content-canvas-node-border: rgba(23, 32, 25, 0.5);      /* 3.25:1 on #ffffff, 3.16:1 on #eef2ee */
+  --content-canvas-node-border-hover: rgba(23, 32, 25, 0.7);
+  --content-canvas-node-shadow: 0 2px 12px rgba(26, 48, 31, 0.08);
+  --content-canvas-node-text: #172019;                     /* 16.71:1 on #ffffff */
+  --content-canvas-node-text-muted: #536156;               /* 6.54:1 on #ffffff, 5.78:1 on #eef2ee */
+  --content-canvas-code-bg: rgba(23, 32, 25, 0.06);
+  --content-canvas-link: #0b626b;                         /* 7.06:1 on #ffffff */
+  --content-canvas-callout-text: #536156;
+  --content-canvas-editor-surface: rgba(23, 32, 25, 0.03);
+  --content-canvas-editor-text: #172019;
+  --content-canvas-image-title: #172019;
+  --content-canvas-selection: #145b25;                     /* 8.23:1 on #ffffff, 7.27:1 on #eef2ee */
+  --content-canvas-node-text-1: #a82028;                   /* 7.24:1 on #ffffff */
+  --content-canvas-node-text-2: #8a4e00;                   /* 6.62:1 on #ffffff */
+  --content-canvas-node-text-3: #6b6600;                   /* 5.96:1 on #ffffff */
+  --content-canvas-node-text-4: #176334;                   /* 7.32:1 on #ffffff */
+  --content-canvas-node-text-5: #0b626b;                   /* 7.06:1 on #ffffff */
+  --content-canvas-node-text-6: #5028aa;                   /* 9.44:1 on #ffffff */
+
+  /* Interactive canvas cards */
+  --content-interactive-surface: #ffffff;
+  --content-interactive-surface-subtle: #f4f6f3;
+  --content-interactive-input: #f8faf8;
+  --content-interactive-border: #dce3dd;
+  --content-interactive-border-strong: #667269;
+  --content-interactive-text: #172019;
+  --content-interactive-text-muted: #536156;
+  --content-interactive-accent: #176334;
+  --content-interactive-accent-strong: #145b25;
+  --content-interactive-accent-soft: #ddf7e2;
+  --content-interactive-shadow: 0 8px 25px rgba(26, 48, 31, 0.12);
   color-scheme: light;
 }
 
 :root {
-  /* Authored document and canvas-node content keeps its fixed palette. */
-  --content-document-surface: #191b20;
-  --content-document-surface-readonly: #17191d;
-  /* Code block syntax colours: the document paper never follows the app's
-     light/dark toggle (see the note above), so these are fixed too - each
-     figure is its contrast ratio against the fixed #191b20 paper. */
-  --content-code-surface: rgba(255, 255, 255, 0.04);
-  --content-code-border: rgba(255, 255, 255, 0.08);
-  --content-code-comment: #8b949e; /* 5.60:1 */
-  --content-code-keyword: #ff7b72; /* 6.83:1 */
-  --content-code-string: #a5d6ff; /* 11.21:1 */
-  --content-code-number: #f2cc60; /* 11.14:1 */
-  --content-code-function: #d2a8ff; /* 8.85:1 */
-  --content-code-punctuation: #c9d1d9; /* 11.16:1 */
-  /* Callout variants inside an authored document. Fixed, like the code block
-     colours above and for the same reason: .text-doc-paper never follows the
-     app's light/dark toggle, so a token that flips to a dark ink in light mode
-     would go invisible on a paper that stays #191b20. The themed contexts that
-     DO follow the toggle (the history preview) draw the --ui-* variant tokens
-     instead - see .text-doc-history-preview aside further down. Each contrast
-     figure is the accent against the fixed #191b20 paper. */
-  --content-callout-info-accent: #53dfdd; /* 8.94:1 */
-  --content-callout-info-surface: rgba(83, 223, 221, 0.1);
-  --content-callout-info-border: rgba(83, 223, 221, 0.4);
-  --content-callout-warning-accent: #e0de71; /* 11.12:1 */
-  --content-callout-warning-surface: rgba(224, 222, 113, 0.1);
-  --content-callout-warning-border: rgba(224, 222, 113, 0.4);
-  --content-callout-success-accent: #6fdc8c; /* 9.51:1 */
-  --content-callout-success-surface: rgba(111, 220, 140, 0.1);
-  --content-callout-success-border: rgba(111, 220, 140, 0.4);
-  --content-callout-danger-accent: #ff8a8f; /* 7.55:1 */
-  --content-callout-danger-surface: rgba(255, 138, 143, 0.1);
-  --content-callout-danger-border: rgba(255, 138, 143, 0.4);
-  --content-canvas-node-surface: #262626;
-  --content-canvas-node-border: rgba(255, 255, 255, 0.1);
-  --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
-  --content-canvas-node-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
-  --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
-  --content-document-slash-query-bg: rgba(0, 255, 0, 0.14);
-  --content-document-slash-query-text: #f8fff8;
-  --content-canvas-editor-surface: rgba(0, 0, 0, 0.2);
-  --content-canvas-editor-text: rgba(255, 255, 255, 0.9);
-  --content-canvas-image-title: rgba(255, 255, 255, 0.82);
+  /* Fixed dark preview tokens: board-label card and microcopy previews keep
+     a fixed dark palette across both themes (tested in contrast.test.ts). */
   --content-board-label-card-surface: #1a211e;
   --content-board-label-preview-surface: #172019;
   --content-board-label-dialog-surface: #1e2521;
@@ -193,8 +288,6 @@
   --content-board-label-dialog-text: #f2fff5;
   --content-preview-text: #f8fff8;
   --content-preview-muted: #b9c8ba;
-  /* #4dabf7 is 6.11:1 against the fixed #262626 node surface. */
-  --content-canvas-selection: #4dabf7;
 
   /* Brand */
   --color-brands: var(--ui-brand);
@@ -2756,7 +2849,7 @@ body {
 
   .dash-toolbar {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) 88px;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 6px;
     margin-bottom: 18px;
   }
@@ -2777,7 +2870,8 @@ body {
   }
 
   .dash-sort-select {
-    width: 88px;
+    grid-column: 1 / -1;
+    width: 100%;
     min-width: 0;
     min-height: 38px;
     padding: 6px;
@@ -5268,7 +5362,7 @@ body {
 .text-doc-paper .ProseMirror {
   min-height: 58vh;
   outline: none;
-  color: #f8fafc;
+  color: var(--content-document-text);
   font-size: 16px;
   line-height: 1.72;
   cursor: text;
@@ -5305,18 +5399,15 @@ body {
 }
 
 .text-doc-paper .ProseMirror a {
-  color: #7dd3fc;
+  color: var(--content-document-link);
 }
 
 .text-doc-paper .ProseMirror-focused {
   outline: none;
 }
 
-/* CodeBlockLowlight. The document paper keeps its fixed dark palette across
-   both app themes (see the --content-document-* note near the token
-   definitions), so these colours are fixed too rather than drawn from the
-   light/dark --ui-* tokens - a token that flips to a dark colour in light
-   mode would go invisible against a paper that never lightens. */
+/* CodeBlockLowlight. Syntax colours are themed via --content-code-* tokens
+   (calibrated for WCAG >= 4.5:1 on both light and dark document paper). */
 .text-doc-paper .ProseMirror pre {
   margin: 1em 0;
   padding: 14px 16px;
@@ -5478,14 +5569,8 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 /* Collapsible headings and the table of contents.
    The chevron and the ToC node view are DECORATIONS/node-view chrome drawn
-   INSIDE .text-doc-paper .ProseMirror, on the paper's own DOM - unlike the
-   slash/bubble/drag-handle popups below, they are not a floating tippy
-   portal, so they follow the paper's rule instead: it never follows the
-   app's light/dark toggle (see --content-document-surface above), so these
-   draw the fixed --content-* tokens, exactly like the callout and code block
-   above them. The backend renders the SAME table of contents into the
-   stored html, and .text-doc-history-preview (which DOES follow the theme)
-   styles that copy further down with the semantic --ui-* tokens instead. */
+   INSIDE .text-doc-paper .ProseMirror, on the paper's own DOM. They draw
+   the themed --content-document-text and --content-document-text-muted tokens. */
 .text-doc-paper .ProseMirror h1,
 .text-doc-paper .ProseMirror h2,
 .text-doc-paper .ProseMirror h3,
@@ -5509,13 +5594,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   border: none;
   border-radius: 5px;
   background: transparent;
-  color: var(--content-preview-muted);
+  color: var(--content-document-text-muted);
   cursor: pointer;
 }
 
 .text-doc-heading-toggle:hover:not(:disabled) {
   background: var(--content-code-surface);
-  color: var(--content-preview-text);
+  color: var(--content-document-text);
 }
 
 .text-doc-heading-toggle:disabled {
@@ -5545,7 +5630,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 .text-doc-toc-title {
   margin-bottom: 8px;
-  color: var(--content-preview-text);
+  color: var(--content-document-text);
   font-weight: 600;
 }
 
@@ -5571,19 +5656,19 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   border: none;
   border-radius: 4px;
   background: transparent;
-  color: var(--content-preview-muted);
+  color: var(--content-document-text-muted);
   text-align: left;
   cursor: pointer;
 }
 
 .text-doc-toc-link:hover {
   background: var(--content-code-surface);
-  color: var(--content-preview-text);
+  color: var(--content-document-text);
 }
 
 .text-doc-toc-empty {
   padding: 2px 6px;
-  color: var(--content-preview-muted);
+  color: var(--content-document-text-muted);
   font-style: italic;
 }
 
@@ -5852,18 +5937,16 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   padding: 0 2px;
 }
 
-/* Same fixed link colour .text-doc-paper .ProseMirror a uses above - the
-   paper never follows the app theme, so this is a literal colour too, not a
-   themed token. */
+/* Link colour for mentions in document paper follows themed --content-document-link */
 .text-doc-mention-accessible {
-  color: #7dd3fc;
+  color: var(--content-document-link);
   text-decoration: underline;
   text-decoration-style: dotted;
   cursor: pointer;
 }
 
 .text-doc-mention-inaccessible {
-  color: #7dd3fc;
+  color: var(--content-document-link);
   text-decoration: underline;
   text-decoration-style: dotted;
   opacity: 0.65;

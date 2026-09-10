@@ -58,17 +58,17 @@ export default defineComponent({
   backdrop-filter: blur(12px);
 }
 .toast-success {
-  border-left: 3px solid #44cf6e;
+  border-left: 3px solid var(--ui-success);
 }
 .toast-error {
-  border-left: 3px solid #fb464c;
+  border-left: 3px solid var(--ui-danger);
 }
 .toast-info {
-  border-left: 3px solid #7c8aff;
+  border-left: 3px solid var(--ui-info);
 }
-.toast-success .toast-message { color: #44cf6e; }
-.toast-error .toast-message { color: #fb464c; }
-.toast-info .toast-message { color: #7c8aff; }
+.toast-success .toast-message { color: var(--ui-success-foreground); }
+.toast-error .toast-message { color: var(--ui-danger-foreground); }
+.toast-info .toast-message { color: var(--ui-info-foreground); }
 .toast-message {
   flex: 1;
   line-height: 1.4;

@@ -3,6 +3,7 @@
 import { mount, flushPromises } from '@vue/test-utils';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import CanvasLoader from './CanvasLoader.vue';
+import { useTheme } from '../composables/useTheme';
 
 const htmlGet = vi.fn();
 const textGet = vi.fn();
@@ -21,6 +22,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  useTheme().setPreference('system');
   htmlGet.mockReset();
   textGet.mockReset();
   htmlGet.mockResolvedValue({
@@ -68,7 +70,8 @@ describe('CanvasLoader document nodes', () => {
     expect(frame.attributes('sandbox')).toBe('');
   });
 
-  it('wraps a text document fragment so the preview has readable typography', async () => {
+  it('wraps a text document fragment using the active light palette', async () => {
+    useTheme().setPreference('light');
     const wrapper = mountWith([docNode({ documentKind: 'text', documentId: 'txt-1' })]);
     await flushPromises();
     await flushPromises();
@@ -79,10 +82,21 @@ describe('CanvasLoader document nodes', () => {
     const srcdoc = frame.attributes('srcdoc') || '';
     expect(srcdoc).toContain('<!doctype html>');
     expect(srcdoc).toContain('<h2>Plan</h2>');
-    // The wrapper is ours, so it follows the dark editor palette.
-    expect(srcdoc).toContain('background:#191b20');
-    expect(srcdoc).toContain('color:#f8fafc');
+    expect(srcdoc).toContain('background:#ffffff');
+    expect(srcdoc).toContain('color:#172019');
     expect(frame.classes()).toContain('doc-frame-text');
+  });
+
+  it('updates an embedded text document when the application theme changes', async () => {
+    useTheme().setPreference('light');
+    const wrapper = mountWith([docNode({ documentKind: 'text', documentId: 'txt-1' })]);
+    await flushPromises();
+    await flushPromises();
+
+    expect(wrapper.find('.doc-frame').attributes('srcdoc')).toContain('background:#ffffff');
+    useTheme().setPreference('dark');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find('.doc-frame').attributes('srcdoc')).toContain('background:#191b20');
   });
 
   it('leaves an HTML document on the light frame, since it carries its own styling', async () => {

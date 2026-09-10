@@ -2,12 +2,14 @@
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 import ThemeMenu from './ThemeMenu.vue';
+import { useTheme } from '../composables/useTheme';
 
 describe('ThemeMenu', () => {
   beforeEach(() => {
     localStorage.clear();
     document.documentElement.removeAttribute('data-theme');
     document.body.innerHTML = '';
+    useTheme().setPreference('system');
   });
 
   it('opens from a labelled button and closes on Escape', async () => {
@@ -25,6 +27,17 @@ describe('ThemeMenu', () => {
     await wrapper.trigger('keydown', { key: 'Escape' });
     expect(wrapper.find('[data-theme-menu]').exists()).toBe(false);
     expect(document.activeElement).toBe(trigger.element);
+  });
+
+  it('shows a recognizable icon for the selected theme', async () => {
+    useTheme().setPreference('light');
+    const wrapper = mount(ThemeMenu);
+    expect(wrapper.get('[data-theme-menu-trigger]').text()).toBe('☀');
+    expect(wrapper.get('[data-theme-menu-trigger]').attributes('title')).toBe('Theme');
+
+    useTheme().setPreference('dark');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.get('[data-theme-menu-trigger]').text()).toBe('☾');
   });
 
   it('closes from its backdrop', async () => {

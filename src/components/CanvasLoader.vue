@@ -223,7 +223,7 @@
           class="node-editor"
           :style="{
             backgroundColor: 'var(--content-canvas-editor-surface)',
-            color: node.fontColor || 'var(--content-canvas-editor-text)',
+            color: resolveNodeFontColor(node.fontColor) || 'var(--content-canvas-editor-text)',
           }"
           :value="node.text"
           @input="onEditInput($event, node)"
@@ -239,7 +239,7 @@
           ref="editorRefs"
         ></textarea>
         <!-- View mode -->
-        <div v-else class="node-content" :style="{ color: node.fontColor || undefined }">
+        <div v-else class="node-content" :style="{ color: resolveNodeFontColor(node.fontColor) || undefined }">
           <div
             class="node-first-line"
             :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
@@ -440,7 +440,7 @@
           <iframe
             v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
             :class="['doc-frame', node.documentKind === 'text' ? 'doc-frame-text' : 'doc-frame-html']"
-            :srcdoc="documentData(node).srcdoc"
+            :srcdoc="documentSrcdoc(node)"
             sandbox=""
             loading="lazy"
             tabindex="-1"
@@ -688,8 +688,8 @@
             v-for="c in fontColors"
             :key="'ctx-font-' + c"
             class="ctx-color-btn"
-            :class="{ active: getContextNode()?.fontColor === c }"
-            :style="{ background: c }"
+            :class="{ active: isNodeFontColorActive(getContextNode()?.fontColor, c) }"
+            :style="{ background: getNodeFontColorSwatch(c) }"
             :title="'Text ' + c"
             @click="onCtxSetFontColor(c)"
           ></button>
@@ -792,6 +792,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
+import { useTheme } from "../composables/useTheme";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
@@ -849,9 +850,10 @@ interface CanvasEdge {
   hidden?: boolean;
 }
 
-type NodeUpdateChanges = Omit<Partial<CanvasNode>, 'color' | 'borderColor'> & {
+type NodeUpdateChanges = Omit<Partial<CanvasNode>, 'color' | 'borderColor' | 'fontColor'> & {
   color?: string | null;
   borderColor?: string | null;
+  fontColor?: string | null;
 };
 
 type CanvasOp =
@@ -916,6 +918,7 @@ export default defineComponent({
     // Only the new add menu is localised here; the rest of this component still
     // carries hardcoded labels from before i18n existed.
     const { t } = useI18n();
+    const { effectiveTheme } = useTheme();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
@@ -1223,19 +1226,31 @@ export default defineComponent({
       !stripHtmlToText(html) && !/<(img|svg|video|canvas|iframe|table|hr)\b/i.test(html);
 
     /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
-    const wrapDocumentFragment = (html: string) =>
+    const wrapDocumentFragment = (html: string, theme: 'light' | 'dark') => {
+      const palette = theme === 'light'
+        ? {
+            surface: '#ffffff', text: '#172019', muted: '#536156', link: '#0b626b',
+            border: 'rgba(23,32,25,0.16)', code: '#f6f8fa',
+          }
+        : {
+            surface: '#191b20', text: '#f8fafc', muted: 'rgba(248,250,252,0.7)', link: '#7dd3fc',
+            border: 'rgba(255,255,255,0.16)', code: 'rgba(255,255,255,0.06)',
+          };
+      return (
       '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      "html,body{margin:0;padding:12px 14px;background:#191b20;color:#f8fafc;" +
+      `html,body{margin:0;padding:12px 14px;background:${palette.surface};color:${palette.text};` +
       "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
       "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
       "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}" +
-      "blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid rgba(255,255,255,0.2);color:rgba(248,250,252,0.7)}" +
-      "a{color:#7dd3fc}" +
-      "img{max-width:100%;height:auto}hr{border:0;border-top:1px solid rgba(255,255,255,0.12);margin:1em 0}" +
-      "table{border-collapse:collapse;max-width:100%}td,th{border:1px solid rgba(255,255,255,0.16);padding:4px 6px}" +
-      "pre{background:rgba(255,255,255,0.06);padding:8px;border-radius:4px;overflow:auto}" +
+      `blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid ${palette.border};color:${palette.muted}}` +
+      `a{color:${palette.link}}` +
+      `img{max-width:100%;height:auto}hr{border:0;border-top:1px solid ${palette.border};margin:1em 0}` +
+      `table{border-collapse:collapse;max-width:100%}td,th{border:1px solid ${palette.border};padding:4px 6px}` +
+      `pre{background:${palette.code};padding:8px;border-radius:4px;overflow:auto}` +
       "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
-      "</style></head><body>" + html + "</body></html>";
+      "</style></head><body>" + html + "</body></html>"
+      );
+    };
 
     const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
       const key = documentCacheKey(kind, id);
@@ -1257,7 +1272,8 @@ export default defineComponent({
         embeddedDocumentCache[key] = {
           title,
           // HTML documents are stored as complete documents; text documents come back as a fragment.
-          srcdoc: kind === "html" ? html : wrapDocumentFragment(html),
+          // Keep text fragments raw so their iframe palette reacts to a live theme switch.
+          srcdoc: html,
           excerpt: stripHtmlToText(html).slice(0, 400),
           loading: false,
           error: false,
@@ -1284,6 +1300,13 @@ export default defineComponent({
         loadEmbeddedDocument(documentNodeKind(node), node.documentId);
       }
       return embeddedDocumentCache[key] || EMPTY_DOCUMENT_ENTRY;
+    };
+
+    const documentSrcdoc = (node: CanvasNode) => {
+      const entry = documentData(node);
+      return documentNodeKind(node) === 'html'
+        ? entry.srcdoc
+        : wrapDocumentFragment(entry.srcdoc, effectiveTheme.value);
     };
 
     /** Below this size an iframe is unreadable, so fall back to a plain-text excerpt. */
@@ -2366,7 +2389,48 @@ export default defineComponent({
       { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
 
-    const fontColors = ['#000000', '#ffffff', '#d7dce8', '#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff'];
+    const fontColors = ['1', '2', '3', '4', '5', '6'];
+
+    const HEX_TO_FONT_COLOR_KEY: Record<string, string> = {
+      '#fb464c': '1',
+      '#e9973f': '2',
+      '#e0de71': '3',
+      '#44cf6e': '4',
+      '#53dfdd': '5',
+      '#a882ff': '6',
+    };
+
+    const normalizeFontColorKey = (color: string | undefined): string | undefined => {
+      if (!color) return undefined;
+      if (['1', '2', '3', '4', '5', '6'].includes(color)) return color;
+      return HEX_TO_FONT_COLOR_KEY[color.toLowerCase()];
+    };
+
+    const resolveNodeFontColor = (color: string | undefined): string | undefined => {
+      if (!color) return undefined;
+      const key = normalizeFontColorKey(color);
+      if (key) {
+        return `var(--content-canvas-node-text-${key})`;
+      }
+      const lower = color.toLowerCase();
+      // Legacy dark-palette neutrals rewrite to default themed text
+      if (lower === '#ffffff' || lower === '#000000' || lower === '#d7dce8') {
+        return undefined;
+      }
+      return color;
+    };
+
+    const getNodeFontColorSwatch = (colorKey: string | undefined): string => {
+      if (!colorKey) return '';
+      const key = normalizeFontColorKey(colorKey);
+      if (key) return `var(--content-canvas-node-text-${key})`;
+      return colorKey;
+    };
+
+    const isNodeFontColorActive = (nodeColor: string | undefined, paletteKey: string): boolean => {
+      if (!nodeColor) return false;
+      return normalizeFontColorKey(nodeColor) === paletteKey;
+    };
 
     const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
       const node = nodes.value.find((n) => n.id === nodeId);
@@ -2435,7 +2499,9 @@ export default defineComponent({
       const node = nodes.value.find((n) => n.id === nodeId);
       if (!node) return;
       pushUndo();
-      updateNode(node, { fontColor });
+      node.fontColor = fontColor;
+      // Explicitly send null on reset so JSON doesn't drop undefined
+      emitOp({ type: 'node-update', id: nodeId, changes: { fontColor: fontColor ?? null } });
     };
 
     const isNodeTransparent = (nodeId: string | null | undefined): boolean => {
@@ -3983,6 +4049,7 @@ export default defineComponent({
       formatDndModifier,
       dndSavingThrow,
       rollTemplateAbility,
+      documentSrcdoc,
       contextMenu,
       contextMenuStyle,
       getContextNode,
@@ -4004,6 +4071,9 @@ export default defineComponent({
       setNodeBorderColor,
       getNodeFontColor,
       setNodeFontColor,
+      getNodeFontColorSwatch,
+      isNodeFontColorActive,
+      resolveNodeFontColor,
       isNodeTransparent,
       toggleNodeTransparent,
       getNodeShape,
@@ -4204,22 +4274,22 @@ export default defineComponent({
 .canvas-node.canvas-node-template {
   padding: 0;
   overflow: visible;
-  background: #171a19;
-  border: 1px solid #3b4940;
+  background: var(--content-interactive-surface);
+  border: 1px solid var(--content-interactive-border-strong);
   border-radius: 10px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
-  color: var(--dark-text-primary, #f0f6f1);
+  box-shadow: var(--content-interactive-shadow);
+  color: var(--content-interactive-text);
   user-select: none;
 }
-.dnd-sheet { position: relative; box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 42px 18px 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: none; }.dnd-sheet.is-interacting { border-color: color-mix(in srgb, var(--color-brands, #00ff00) 72%, #fff); user-select: text; }.dnd-sheet-content[inert] { opacity: .72; pointer-events: none; }
-.dnd-mode-toggle { position: absolute; z-index: 2; top: 10px; right: 12px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid #4a5b50; border-radius: 5px; color: #aab7ae; background: #111513; font-size: 14px; cursor: pointer; }.dnd-mode-toggle:hover, .dnd-mode-toggle:focus-visible { border-color: var(--color-brands, #00ff00); color: #d8ffe1; outline: none; }.dnd-mode-toggle.active { border-color: #4ea963; color: #d9ffe3; background: #1d3924; }
+.dnd-sheet { position: relative; box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 42px 18px 18px; background: var(--content-interactive-surface); color: var(--content-interactive-text); font-size: 14px; user-select: none; }.dnd-sheet.is-interacting { border-color: var(--content-interactive-accent); user-select: text; }.dnd-sheet-content[inert] { opacity: .72; pointer-events: none; }
+.dnd-mode-toggle { position: absolute; z-index: 2; top: 10px; right: 12px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-text-muted); background: var(--content-interactive-surface-subtle); font-size: 14px; cursor: pointer; }.dnd-mode-toggle:hover, .dnd-mode-toggle:focus-visible { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); outline: none; }.dnd-mode-toggle.active { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); }
 .dnd-sheet.is-compact { min-width: 0; min-height: 0; padding: 12px; }.dnd-sheet.is-compact .dnd-combat-row { margin: 10px 0; }.dnd-sheet.is-compact .dnd-card-abilities article > input, .dnd-sheet.is-compact .dnd-card-abilities label { display: none; }
-.dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: #222825; border: 1px solid #3b4940; border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--color-brands, #00ff00); box-shadow: 0 0 0 2px #00ff0030; }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
-.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 50%; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid #5c7665; border-radius: 50%; color: #d8f9df; background: #1d3924; font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
-.dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: #aab7ae; font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid #435248; border-radius: 5px; color: #bceac8; background: transparent; cursor: pointer; }.dnd-combat-row b { color: #77857c; }.dnd-temp input { width: 42px; }
-.dnd-card-abilities { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }.dnd-card-abilities article { display: grid; gap: 5px; min-width: 0; padding: 7px; border: 1px solid #354039; border-radius: 7px; background: #1e2421; }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: #2a362e; }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: #aab7ae; font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: #77ee9a; font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }
-.dnd-full-content { margin-top: 16px; border-top: 1px solid #354039; }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: #aab7ae; background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: #3f874f; color: #baf5c7; background: #1d3924; }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: #aab7ae; font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: #94a299; font-size: 12px; }
-.dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid #354039; border-radius: 6px; background: #1b211e; }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid #435248; border-radius: 5px; color: #c0edca; background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: #5bbc70; background: #1d3924; }
+.dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: var(--content-interactive-input); border: 1px solid var(--content-interactive-border); border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--content-interactive-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--content-interactive-accent) 22%, transparent); }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
+.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--content-interactive-border); }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid var(--content-interactive-border-strong); border-radius: 50%; background: var(--content-interactive-accent-soft); color: var(--content-interactive-accent); font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid var(--content-interactive-border-strong); border-radius: 50%; color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: var(--content-interactive-text-muted); }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid var(--content-interactive-border-strong); border-radius: 6px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }
+.dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }.dnd-combat-row b { color: var(--content-interactive-text-muted); }.dnd-temp input { width: 42px; }
+.dnd-card-abilities { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }.dnd-card-abilities article { display: grid; gap: 5px; min-width: 0; padding: 7px; border: 1px solid var(--content-interactive-border); border-radius: 7px; background: var(--content-interactive-surface-subtle); }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: var(--content-interactive-accent-soft); }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: var(--content-interactive-text-muted); font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: var(--content-interactive-accent); font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: var(--content-interactive-text-muted); font-size: 10px; white-space: nowrap; }
+.dnd-full-content { margin-top: 16px; border-top: 1px solid var(--content-interactive-border); }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--content-interactive-text-muted); background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: var(--content-interactive-text-muted); font-size: 12px; }
+.dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid var(--content-interactive-border); border-radius: 6px; background: var(--content-interactive-surface-subtle); }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: var(--content-interactive-text-muted); font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: var(--content-interactive-accent); background: var(--content-interactive-accent-soft); }
 /* Group colors */
 .group-color-1 { border-color: var(--content-canvas-group-1-border); background: var(--content-canvas-group-1-surface); }
 .group-color-1 .group-label { color: var(--content-canvas-group-1-label); }
@@ -4657,12 +4727,12 @@ g:hover > .edge-midpoint-conn {
 
 /* Node colors */
 /* Gradient fill (default) */
-.node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), #262626 60%); }
-.node-color-2 { border-color: rgba(233,151,63,0.6); background: linear-gradient(135deg, rgba(233,151,63,0.12), #262626 60%); }
-.node-color-3 { border-color: rgba(224,222,113,0.6); background: linear-gradient(135deg, rgba(224,222,113,0.12), #262626 60%); }
-.node-color-4 { border-color: rgba(68,207,110,0.6); background: linear-gradient(135deg, rgba(68,207,110,0.12), #262626 60%); }
-.node-color-5 { border-color: rgba(83,223,221,0.6); background: linear-gradient(135deg, rgba(83,223,221,0.12), #262626 60%); }
-.node-color-6 { border-color: rgba(168,130,255,0.6); background: linear-gradient(135deg, rgba(168,130,255,0.12), #262626 60%); }
+.node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-2 { border-color: rgba(233,151,63,0.6); background: linear-gradient(135deg, rgba(233,151,63,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-3 { border-color: rgba(224,222,113,0.6); background: linear-gradient(135deg, rgba(224,222,113,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-4 { border-color: rgba(68,207,110,0.6); background: linear-gradient(135deg, rgba(68,207,110,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-5 { border-color: rgba(83,223,221,0.6); background: linear-gradient(135deg, rgba(83,223,221,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-6 { border-color: rgba(168,130,255,0.6); background: linear-gradient(135deg, rgba(168,130,255,0.12), var(--content-canvas-node-surface) 60%); }
 /* Solid fill */
 .node-color-1-solid { border-color: rgba(251,70,76,0.8); background: rgba(251,70,76,0.25); }
 .node-color-2-solid { border-color: rgba(233,151,63,0.8); background: rgba(233,151,63,0.25); }
@@ -4674,7 +4744,7 @@ g:hover > .edge-midpoint-conn {
 /* ===== Node content (markdown) ===== */
 .node-content {
   padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--content-canvas-node-text);
   font-size: 14px;
   line-height: 1.6;
   overflow-y: auto;
@@ -4686,19 +4756,20 @@ g:hover > .edge-midpoint-conn {
   font-size: 22px;
   margin: 0 0 8px 0;
   font-weight: 700;
-  color: #fff;
+  color: inherit;
 }
 .node-content h2 {
   font-size: 18px;
   margin: 0 0 6px 0;
   font-weight: 600;
-  color: #fff;
+  color: inherit;
 }
 .node-content h3 {
   font-size: 15px;
   margin: 0 0 4px 0;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: inherit;
+  opacity: 0.9;
 }
 .node-content p {
   margin: 0 0 8px 0;
@@ -4724,25 +4795,27 @@ g:hover > .edge-midpoint-conn {
   margin-bottom: 2px;
 }
 .node-content strong {
-  color: #fff;
+  color: inherit;
   font-weight: 600;
 }
 .node-content a {
-  color: #7c8aff;
+  color: var(--content-canvas-link);
   text-decoration: none;
 }
 .node-content a:hover {
   text-decoration: underline;
 }
 .node-content code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--content-canvas-code-bg);
+  color: var(--content-canvas-node-text);
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 13px;
   font-family: "JetBrains Mono", "Fira Code", monospace;
 }
 .node-content pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--content-canvas-code-bg);
+  color: var(--content-canvas-node-text);
   border-radius: 6px;
   padding: 10px 12px;
   overflow-x: auto;
@@ -4751,17 +4824,18 @@ g:hover > .edge-midpoint-conn {
 .node-content pre code {
   background: none;
   padding: 0;
+  color: inherit;
 }
 .node-content blockquote {
-  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  border-left: 3px solid var(--content-canvas-node-border);
   margin: 8px 0;
   padding: 4px 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--content-canvas-node-text-muted);
 }
 /* Callouts */
 .node-content .callout {
   border-left: 3px solid;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--content-canvas-code-bg);
   border-radius: 4px;
   margin: 8px 0;
   padding: 8px 12px;
@@ -4784,17 +4858,17 @@ g:hover > .edge-midpoint-conn {
 }
 .node-content th,
 .node-content td {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--content-canvas-node-border);
   padding: 6px 10px;
   text-align: left;
 }
 .node-content th {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--content-canvas-code-bg);
   font-weight: 600;
 }
 .node-content hr {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid var(--content-canvas-node-border);
   margin: 12px 0;
 }
 
@@ -4812,7 +4886,7 @@ g:hover > .edge-midpoint-conn {
   white-space: nowrap;
 }
 .node-link-header a {
-  color: #7c8aff;
+  color: var(--content-canvas-link);
   text-decoration: none;
 }
 .node-link-header a:hover {
@@ -4899,7 +4973,7 @@ g:hover > .edge-midpoint-conn {
   height: 28px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   font-size: 16px;
   cursor: pointer;
   border-radius: 4px;

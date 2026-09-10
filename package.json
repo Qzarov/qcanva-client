@@ -8,6 +8,8 @@
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview",
     "test:unit": "vitest run",
+    "test:visual": "playwright test tests/theme.visual.spec.ts",
+    "test:visual:update": "playwright test tests/theme.visual.spec.ts --update-snapshots",
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:build:debug": "npm run android:sync && cd android && ./gradlew :app:assembleDebug",
@@ -43,6 +45,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.4.2",
+    "@playwright/test": "^1.59.1",
     "@types/node": "^24.6.0",
     "@vitejs/plugin-vue": "^6.0.1",
     "@vue/test-utils": "^2.4.10",

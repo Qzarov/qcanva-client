@@ -69,4 +69,26 @@ describe('CanvasLoader authored theme boundaries', () => {
       arrowFill: 'var(--content-canvas-edge-arrow)',
     });
   });
+
+  it('maps legacy persisted font colours to theme-safe semantic colours', async () => {
+    const wrapper = mount(CanvasLoader, {
+      props: {
+        initialData: {
+          nodes: [
+            { id: 'white', type: 'text', text: 'Legacy white', fontColor: '#ffffff', x: 0, y: 0, width: 140, height: 80 },
+            { id: 'black', type: 'text', text: 'Legacy black', fontColor: '#000000', x: 180, y: 0, width: 140, height: 80 },
+            { id: 'accent', type: 'text', text: 'Legacy accent', fontColor: '#44cf6e', x: 360, y: 0, width: 140, height: 80 },
+          ],
+          edges: [],
+        },
+        readonly: false,
+      },
+    });
+    await flushPromises();
+
+    expect((wrapper.get('[data-node-id="white"] .node-content').element as HTMLElement).style.color).toBe('');
+    expect((wrapper.get('[data-node-id="black"] .node-content').element as HTMLElement).style.color).toBe('');
+    expect((wrapper.get('[data-node-id="accent"] .node-content').element as HTMLElement).style.color)
+      .toBe('var(--content-canvas-node-text-4)');
+  });
 });

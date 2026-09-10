@@ -23,6 +23,13 @@ export default mergeConfig(
   viteConfig,
   defineConfig({
     test: {
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/.worktrees/**',
+        '**/.claude/worktrees/**',
+        '**/*.visual.spec.ts',
+      ],
       server: {
         deps: {
           inline: [

@@ -7,12 +7,13 @@
       aria-haspopup="dialog"
       :aria-expanded="open"
       :aria-label="t('theme')"
+      :title="t('theme')"
       :aria-controls="open ? popoverId : undefined"
       data-theme-menu-trigger
       @click.stop="toggleFromClick"
       @keydown.down.prevent.stop="openFromKeyboard"
     >
-      <span aria-hidden="true">◐</span>
+      <span aria-hidden="true">{{ triggerIcon }}</span>
     </button>
     <div
       v-if="open"
@@ -37,11 +38,14 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useI18n } from '../composables/useI18n';
+import { useTheme } from '../composables/useTheme';
 import ThemeSelector from './ThemeSelector.vue';
 
 const { t } = useI18n();
+const { effectiveTheme } = useTheme();
+const triggerIcon = computed(() => effectiveTheme.value === 'light' ? '☀' : '☾');
 const open = ref(false);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const popoverRef = ref<HTMLDivElement | null>(null);
