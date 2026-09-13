@@ -5385,6 +5385,41 @@ body {
   margin: 0.7em 0;
 }
 
+/* TaskList/TaskItem (@tiptap/extension-task-list, -task-item) render a plain
+   <li><label><input type=checkbox><span></span></label><div>content</div></li>
+   with no list markup of their own. Without this, the generic ul/ol rule
+   above still gives every task item a bullet, and the checkbox+content stay
+   block-stacked instead of sitting on one line. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  margin-right: 0.5rem;
+  margin-top: 0.3em;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  cursor: pointer;
+}
+/* Nested task lists sit inside the parent item's content div; drop the
+   generic ul/ol indent there too so nesting reads as depth, not double indent. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+  padding-left: 1.5rem;
+}
+
 .text-doc-paper .ProseMirror img {
   display: block;
   max-width: 100%;
