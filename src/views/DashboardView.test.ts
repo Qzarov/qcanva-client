@@ -214,7 +214,7 @@ describe('dashboard sidebar navigation', () => {
     expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
-  it('shows top-level folders as tiles below Recent, excluding technical folders', async () => {
+  it('shows every top-level folder as a tile below Recent, including Unsorted', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
@@ -222,8 +222,9 @@ describe('dashboard sidebar navigation', () => {
     const tileNames = wrapper.findAll('[data-recent-folder-tile]').map((tile) => tile.text());
     expect(tileNames.some((text) => text.includes('Target'))).toBe(true);
     expect(tileNames.some((text) => text.includes('Archive'))).toBe(true);
-    // "Unsorted" is the technical inbox folder and stays sidebar-only.
-    expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(false);
+    // "Unsorted" is where new documents land by default, so it must be
+    // reachable from the Recent page tiles too, not sidebar-only.
+    expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(true);
   });
 
   it('opens a folder from a tile on the Recent page', async () => {
