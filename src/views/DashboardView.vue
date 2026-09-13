@@ -2886,10 +2886,14 @@ export default defineComponent({
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
-    /** Top-level folders shown as tiles below Recent, mirroring the sidebar's tree. */
+    /**
+     * Top-level folders shown as tiles below Recent. Unlike the sidebar tree,
+     * this list is not filtered by isTechnicalFolder: "Unsorted" is where new
+     * documents land by default and must stay reachable from Recent, not
+     * sidebar-only.
+     */
     const recentFolderTiles = computed(() => allResourceFolders.value
       .filter((folder) => !(folder.parentId ?? null))
-      .filter((folder) => !isTechnicalFolder(folder))
       .map((folder) => ({
         id: folder.id,
         name: folder.name,
