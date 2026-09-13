@@ -288,7 +288,7 @@ export default defineComponent({
     const route = useRoute();
     const router = useRouter();
     const folderId = ref<string | null>(null);
-    const { backTarget } = useResourceBackTarget(folderId);
+    const { backTarget } = useResourceBackTarget();
     // The URL param may be a UUID id or a human-readable slug. `resolvedId`
     // holds the real document id after load (used for the WS room + mutations).
     const id = route.params.id as string;

@@ -1,4 +1,4 @@
-import { computed, toValue, type MaybeRefOrGetter } from 'vue';
+import { computed } from 'vue';
 import { useRoute, type RouteLocationRaw } from 'vue-router';
 import { useI18n } from './useI18n';
 
@@ -7,7 +7,6 @@ import { useI18n } from './useI18n';
  * document's "back" button returns to that canvas instead of the dashboard.
  */
 export const CANVAS_ORIGIN_QUERY = 'fromCanvas';
-export const DASHBOARD_FOLDER_QUERY = 'folder';
 
 /**
  * The resolver stays free of the translation layer and hands back a KEY, so it
@@ -22,37 +21,27 @@ const DASHBOARD_TARGET: ResourceBackTargetRoute = {
   labelKey: 'back',
 };
 
-function dashboardTarget(folderId: unknown): ResourceBackTargetRoute {
-  const folder = typeof folderId === 'string' ? folderId.trim() : '';
-  if (!folder || folder.includes('/') || folder.includes('\\')) return DASHBOARD_TARGET;
-  return {
-    to: { name: 'dashboard', query: { [DASHBOARD_FOLDER_QUERY]: folder } },
-    labelKey: 'back',
-  };
-}
-
 /**
- * Resolve where "back" should go. The value comes from the URL, so it is only
- * ever used as a single canvas id path segment — never as a raw destination.
+ * Resolve where "back" should go: to the canvas a document was opened from,
+ * or otherwise to the dashboard's Recent view — never to the document's own
+ * folder, which used to hijack "back" away from Recent regardless of where
+ * the user actually came from.
  */
-export function resolveBackTarget(fromCanvas: unknown, folderId?: unknown): ResourceBackTargetRoute {
+export function resolveBackTarget(fromCanvas: unknown): ResourceBackTargetRoute {
   const canvasId = typeof fromCanvas === 'string' ? fromCanvas.trim() : '';
   if (!canvasId || canvasId.includes('/') || canvasId.includes('\\')) {
-    return dashboardTarget(folderId);
+    return DASHBOARD_TARGET;
   }
   return { to: `/canvas/${encodeURIComponent(canvasId)}`, labelKey: 'backToCanvas' };
 }
 
-export function useResourceBackTarget(folderId?: MaybeRefOrGetter<unknown>) {
+export function useResourceBackTarget() {
   const route = useRoute();
   const { t } = useI18n();
   // route.query is always present with a real router, but stay defensive so a
   // partially-shaped route can never break rendering of the whole page.
   const backTarget = computed<ResourceBackTarget>(() => {
-    const target = resolveBackTarget(
-      route.query?.[CANVAS_ORIGIN_QUERY],
-      folderId === undefined ? undefined : toValue(folderId),
-    );
+    const target = resolveBackTarget(route.query?.[CANVAS_ORIGIN_QUERY]);
     return { to: target.to, label: t(target.labelKey) };
   });
   return { backTarget };

@@ -494,7 +494,7 @@ export default defineComponent({
     const route = useRoute();
     const router = useRouter();
     const folderId = ref<string | null>(null);
-    const { backTarget } = useResourceBackTarget(folderId);
+    const { backTarget } = useResourceBackTarget();
     const id = route.params.id as string;
     const resolvedId = ref(id);
     const { show: showToast } = useToast();

@@ -6435,6 +6435,24 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 }
 
 /* ===== Subfolder navigation inside a folder ===== */
+.folder-back-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.folder-back-button:hover {
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
+}
 .folder-up-button {
   flex: 0 0 auto;
   width: 26px;
