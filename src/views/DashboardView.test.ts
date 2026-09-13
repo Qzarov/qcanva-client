@@ -214,6 +214,27 @@ describe('dashboard sidebar navigation', () => {
     expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
+  it('shows top-level folders as tiles below Recent, excluding technical folders', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    const tileNames = wrapper.findAll('[data-recent-folder-tile]').map((tile) => tile.text());
+    expect(tileNames.some((text) => text.includes('Target'))).toBe(true);
+    expect(tileNames.some((text) => text.includes('Archive'))).toBe(true);
+    // "Unsorted" is the technical inbox folder and stays sidebar-only.
+    expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(false);
+  });
+
+  it('opens a folder from a tile on the Recent page', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+  });
+
   it('opens a selected folder in the central pane', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
@@ -225,13 +246,30 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
   });
 
-  it('opens the folder requested by a resource back link', async () => {
+  it('returns to Recent from a folder view via the Back button', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+    await wrapper.get('[data-dashboard-folder="folder-b"]').trigger('click');
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+
+    await wrapper.get('[data-folder-back-button]').trigger('click');
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+  });
+
+  it('ignores a legacy folder back-link query param and shows Recent instead', async () => {
+    // A document's "back" button used to send the user into its own folder
+    // via ?folder=<id> instead of Recent. That query param is no longer
+    // produced or honored, so a stale/bookmarked link with it must still
+    // land on Recent, not silently redirect into the folder.
     dashboardRoute.query = { folder: 'folder-b' };
     const wrapper = mountDashboard();
     await flushPromises();
 
-    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
-    expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(true);
   });
 
   it('keeps a nested folder open when its parent is collapsed in the sidebar', async () => {
@@ -1198,11 +1236,13 @@ describe('DashboardView groups', () => {
 
       const header = wrapper.find('.folder-manager-main');
       expect(header.exists()).toBe(true);
-      // The arrow and the title block are siblings, in that order, so the folder
-      // info reads as belonging to the arrow rather than drifting to the far edge.
+      // The Back button always leads, then the up arrow, then the title block,
+      // so the folder info reads as belonging to the arrow rather than drifting
+      // to the far edge.
       const children = Array.from(header.element.children).map((node) => node.className);
-      expect(children[0]).toContain('folder-up-button');
-      expect(children[1]).toContain('folder-manager-title');
+      expect(children[0]).toContain('folder-back-button');
+      expect(children[1]).toContain('folder-up-button');
+      expect(children[2]).toContain('folder-manager-title');
 
       const title = wrapper.find('.folder-manager-title');
       expect(title.find('.folder-manager-name').text()).toBe('Archive');

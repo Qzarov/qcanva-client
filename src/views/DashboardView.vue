@@ -191,6 +191,24 @@
         </button>
       </div>
       <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
+
+      <div v-if="recentFolderTiles.length" class="dash-section-head dashboard-recent-folders-head">
+        <h2>{{ t('folders') }}</h2>
+      </div>
+      <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
+        <button
+          v-for="folder in recentFolderTiles"
+          :key="'recent-folder-' + folder.id"
+          type="button"
+          class="subfolder-card"
+          :data-recent-folder-tile="folder.id"
+          @click="selectFolder(folder.id)"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true">▤</span>
+          <span class="subfolder-card-name">{{ folder.name }}</span>
+          <span class="subfolder-card-count">{{ folder.count || t('emptyFolder') }}</span>
+        </button>
+      </div>
     </section>
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
@@ -242,6 +260,14 @@
           >
               <div class="folder-manager-top">
               <div class="folder-manager-main">
+                <button
+                  type="button"
+                  class="folder-back-button"
+                  :title="t('back')"
+                  :aria-label="t('back')"
+                  data-folder-back-button
+                  @click.stop="selectDashboardSection({ kind: 'recent' })"
+                ><ArrowLeft :size="16" aria-hidden="true" /></button>
                 <button
                   v-if="activeFolder.parentId"
                   type="button"
@@ -906,10 +932,10 @@
 </template>
 
 <script lang="ts">
-import { FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
+import { ArrowLeft, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
@@ -922,7 +948,6 @@ import {
   type SidebarWidthState,
 } from '../dashboard/navigation';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
-import { DASHBOARD_FOLDER_QUERY } from '../composables/useResourceBackTarget';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1021,6 +1046,7 @@ export default defineComponent({
   components: {
     DashboardSidebar,
     LanguageToggle,
+    ArrowLeft,
     FileCode2,
     FilePlus2,
     FileText,
@@ -1035,7 +1061,6 @@ export default defineComponent({
     Upload,
   },
   setup() {
-    const route = useRoute();
     const router = useRouter();
     const { t, locale } = useI18n();
     const admin = isAdmin();
@@ -2861,6 +2886,20 @@ export default defineComponent({
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
+    /** Top-level folders shown as tiles below Recent, mirroring the sidebar's tree. */
+    const recentFolderTiles = computed(() => allResourceFolders.value
+      .filter((folder) => !(folder.parentId ?? null))
+      .filter((folder) => !isTechnicalFolder(folder))
+      .map((folder) => ({
+        id: folder.id,
+        name: folder.name,
+        count:
+          (folder.canvasCount || 0) +
+          (folder.htmlDocumentCount || 0) +
+          (folder.textDocumentCount || 0),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)));
+
     const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
       subfolderModal.value = {
@@ -2995,15 +3034,6 @@ export default defineComponent({
           ? { kind: 'folder', folderId: selectedFolderId.value }
           : { kind: 'recent' };
       };
-      const requestedFolder = route.query?.[DASHBOARD_FOLDER_QUERY];
-      const requestedFolderId = typeof requestedFolder === 'string' ? requestedFolder : '';
-      if (isKnown(requestedFolderId)) {
-        selectedFolderId.value = requestedFolderId;
-        activeSection.value = { kind: 'folder', folderId: requestedFolderId };
-        expandAncestorsOf(requestedFolderId);
-        writeLastFolderId(requestedFolderId);
-        return;
-      }
       if (isKnown(selectedFolderId.value)) {
         syncActiveFolderSection();
         return;
@@ -3033,7 +3063,7 @@ export default defineComponent({
       closeCardMenu();
     };
 
-    const isTechnicalFolder = (folder: FolderSummary) =>
+    const isTechnicalFolder = (folder: { id: string; name: string }) =>
       folder.id === 'legacy-resource-inbox'
       || folder.name === 'Unsorted'
       || folder.name.toLowerCase() === 'default';
@@ -3358,6 +3388,7 @@ export default defineComponent({
       isTreeExpanded,
       toggleTreeExpanded,
       activeSubfolders,
+      recentFolderTiles,
       restoreSelectedFolder,
       subfolderModal,
       openSubfolderModal,

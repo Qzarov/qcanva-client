@@ -1882,7 +1882,7 @@ export default defineComponent({
 
     /** Folder the canvas itself lives in, so a document created here joins it. */
     const canvasFolderId = ref<string | null>(null);
-    const { backTarget } = useResourceBackTarget(canvasFolderId);
+    const { backTarget } = useResourceBackTarget();
 
     const creatingDocument = ref(false);
 

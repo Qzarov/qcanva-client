@@ -66,7 +66,7 @@ type Participant = { userId: string; email?: string; name?: string; role: 'read'
 const route = useRoute();
 const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
-const { backTarget } = useResourceBackTarget(computed(() => template.value?.folderId));
+const { backTarget } = useResourceBackTarget();
 const templateType = ref<InteractiveTemplate['templateType'] | null>(null);
 const loading = ref(true);
 const loadError = ref('');

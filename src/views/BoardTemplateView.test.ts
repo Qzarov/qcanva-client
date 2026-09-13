@@ -113,7 +113,7 @@ describe('BoardTemplateView', () => {
     expect(back.text()).toBe('← Back to canvas');
   });
 
-  it('returns to the dashboard from the Back button without a canvas origin', async () => {
+  it('returns to the dashboard Recent view from the Back button, regardless of the template\'s own folder', async () => {
     vi.mocked(interactiveTemplates.get).mockResolvedValue({
       id: 'template-1', title: 'Команда', templateType: 'trello-board', folderId: 'folder-4', data: {}, createdAt: '', updatedAt: '',
     });
@@ -133,7 +133,7 @@ describe('BoardTemplateView', () => {
     await flushPromises();
 
     const back = wrapper.getComponent({ name: 'RouterLink' });
-    expect(back.props('to')).toEqual({ name: 'dashboard', query: { folder: 'folder-4' } });
+    expect(back.props('to')).toEqual({ name: 'dashboard' });
     // Locale-following is proved in the test above; asserting through `t`
     // here keeps this case from re-pinning one language.
     expect(back.text()).toBe(`← ${useI18n().t('back')}`);
