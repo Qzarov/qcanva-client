@@ -129,6 +129,15 @@ describe("TextDocumentView", () => {
     for (const key of Object.keys(routeQuery)) delete routeQuery[key];
   });
 
+  describe("browser tab title", () => {
+    it("shows the document's own title in the tab", async () => {
+      mount(TextDocumentView);
+      await flushPromises();
+
+      expect(document.title).toBe("Editable doc · QCanva");
+    });
+  });
+
   describe("back button", () => {
     it("returns to the dashboard when the document was not opened from a canvas", async () => {
       const wrapper = mount(TextDocumentView);

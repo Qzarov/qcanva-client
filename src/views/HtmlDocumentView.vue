@@ -239,6 +239,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } 
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessGate from '../components/AccessGate.vue';
@@ -272,6 +273,7 @@ export default defineComponent({
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t } = useI18n();
     const title = ref('');
+    useDocumentTitle(title);
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
     const revision = ref(0);
