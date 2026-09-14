@@ -876,6 +876,7 @@
 import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
 import ChatPanel from '../components/ChatPanel.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessGate from '../components/AccessGate.vue';
@@ -997,6 +998,7 @@ export default defineComponent({
     const accessRequestSent = ref(false);
     const checkingResourcePassword = ref(false);
     const title = ref('');
+    useDocumentTitle(title);
     const canvasData = ref<any>(null);
     const role = ref('');
     const isPublic = ref(false);

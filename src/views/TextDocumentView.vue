@@ -421,6 +421,7 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -467,6 +468,7 @@ export default defineComponent({
     } as any;
 
     const title = ref('');
+    useDocumentTitle(title);
     const savedTitle = ref('');
     const role = ref('read');
     const revision = ref(0);

@@ -143,6 +143,16 @@ function withDefaultFolders() {
   } as never);
 }
 
+describe('browser tab title', () => {
+  it('shows "Home" (localized) as the tab title', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(document.title).toBe(`${useI18n().t('home')} · QCanva`);
+    wrapper.unmount();
+  });
+});
+
 describe('dashboard sidebar navigation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
