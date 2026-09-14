@@ -13,7 +13,8 @@
     "android:sync": "npm run build && npx cap sync android",
     "android:open": "npx cap open android",
     "android:build:debug": "npm run android:sync && cd android && ./gradlew :app:assembleDebug",
-    "android:bundle:release": "npm run android:sync && cd android && ./gradlew :app:bundleRelease"
+    "android:bundle:release": "npm run android:sync && cd android && ./gradlew :app:bundleRelease",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
@@ -23,7 +24,7 @@
     "@tiptap/extension-code-block-lowlight": "2.27.2",
     "@tiptap/extension-collaboration": "^2.27.2",
     "@tiptap/extension-collaboration-cursor": "^2.26.2",
-    "@tiptap/extension-drag-handle": "^2.27.2",
+    "@tiptap/extension-drag-handle": "2.27.2",
     "@tiptap/extension-image": "^2.27.2",
     "@tiptap/extension-link": "^2.27.2",
     "@tiptap/extension-node-range": "^2.27.2",
@@ -51,6 +52,7 @@
     "@vue/test-utils": "^2.4.10",
     "@vue/tsconfig": "^0.8.1",
     "jsdom": "^29.1.1",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.3",
     "vite": "^7.1.7",
     "vitest": "^4.1.7",

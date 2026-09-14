@@ -1,0 +1,30 @@
+diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
+index be31c0d..b34445c 100644
+--- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
++++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
+@@ -378,6 +378,8 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 // TODO: Kills even on hot reload
+                 destroy() {
+                     popup === null || popup === void 0 ? void 0 : popup.destroy();
++                    // See index.js for why this reset is required.
++                    popup = null;
+                     if (element) {
+                         removeNode(wrapper);
+                     }
+diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
+index 2fdae1d..ddcc0bd 100644
+--- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
++++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
+@@ -370,6 +370,12 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 // TODO: Kills even on hot reload
+                 destroy() {
+                     popup === null || popup === void 0 ? void 0 : popup.destroy();
++                    // Without this, a later view() re-mount on the same plugin instance
++                    // sees a non-null `popup` still pointing at the just-destroyed tippy
++                    // instance, so `if (!popup)` in update() never creates a fresh one -
++                    // every setProps()/show() call after that silently no-ops on the dead
++                    // instance, and the drag handle freezes wherever it last rendered.
++                    popup = null;
+                     if (element) {
+                         removeNode(wrapper);
+                     }

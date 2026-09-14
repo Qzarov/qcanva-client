@@ -19,6 +19,11 @@
 //    base64 updates the view hands the socket, which proves the update stream
 //    is complete and self-consistent - NOT that two people dragging the same
 //    block concurrently end up with one copy of it.
+//  - THE HANDLE'S POSITION IN `document`. tippy takes ownership of the handle
+//    element at construction (`content: element`) and parks it inside its
+//    own popper, which is only attached to the DOM by a real `show()` - itself
+//    unreachable here per the point above. So the handle element is read via
+//    `wrapper.vm.getDragHandleElement()`, never via `document.querySelector`.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -170,9 +175,13 @@ describe('drag handle wiring', () => {
   it('renders one handle element with an inline Lucide-style icon, never an emoji', async () => {
     const wrapper = await mountEditableDoc();
 
-    const handles = document.querySelectorAll('.text-doc-drag-handle');
-    expect(handles).toHaveLength(1);
-    const handle = handles[0] as HTMLElement;
+    // tippy takes ownership of this element at construction and moves it
+    // into its own (unattached, until a real hover shows it) popper, so it
+    // is never reliably reachable via `document.querySelector` - read it
+    // straight from the component instead.
+    const handle = wrapper.vm.getDragHandleElement() as HTMLElement;
+    expect(handle).toBeTruthy();
+    expect(handle.className).toBe('text-doc-drag-handle');
     const svg = handle.querySelector('svg')!;
     expect(svg).toBeTruthy();
     expect(svg.getAttribute('width')).toBe('24');
@@ -185,7 +194,7 @@ describe('drag handle wiring', () => {
 
   it('labels the handle from i18n, in the active language', async () => {
     const wrapper = await mountEditableDoc();
-    const handle = document.querySelector('.text-doc-drag-handle') as HTMLElement;
+    const handle = wrapper.vm.getDragHandleElement() as HTMLElement;
 
     expect(handle.getAttribute('aria-label')).toBe(messages.en.dragBlock);
 
