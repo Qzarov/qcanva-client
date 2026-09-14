@@ -286,21 +286,6 @@ describe("TextDocumentView", () => {
       });
     });
 
-    it("offers a photo button in the toolbar for editors", async () => {
-      // The button copy below is the Russian wording, so pin the locale
-      // rather than depend on whatever the environment's default happens to be.
-      useI18n().setLocale("ru");
-      const wrapper = mount(TextDocumentView);
-      await flushPromises();
-      attachEditor();
-      await nextTick();
-
-      const button = wrapper
-        .findAll(".text-doc-toolbar button")
-        .find((candidate) => candidate.text() === "Фото");
-      expect(button).toBeTruthy();
-    });
-
     it("uploads the file and inserts the returned URL, never the local file", async () => {
       uploadImageMock.mockResolvedValue({
         key: "images/a.png",

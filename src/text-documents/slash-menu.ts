@@ -95,6 +95,24 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     },
   },
   {
+    id: 'heading4',
+    labelKey: 'slashHeading4',
+    keywords: ['h4', 'heading', 'zagolovok'],
+    icon: lucideIcon(EDITOR_GLYPHS.heading4),
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 4 }).run();
+    },
+  },
+  {
+    id: 'heading5',
+    labelKey: 'slashHeading5',
+    keywords: ['h5', 'heading', 'zagolovok'],
+    icon: lucideIcon(EDITOR_GLYPHS.heading5),
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).setNode('heading', { level: 5 }).run();
+    },
+  },
+  {
     id: 'bulletList',
     labelKey: 'slashBulletList',
     keywords: ['list', 'bullet', 'ul', 'spisok'],
