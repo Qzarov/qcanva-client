@@ -5393,7 +5393,10 @@ body {
 
 .text-doc-paper .ProseMirror h1,
 .text-doc-paper .ProseMirror h2,
-.text-doc-paper .ProseMirror h3 {
+.text-doc-paper .ProseMirror h3,
+.text-doc-paper .ProseMirror h4,
+.text-doc-paper .ProseMirror h5,
+.text-doc-paper .ProseMirror h6 {
   margin: 1.1em 0 0.45em;
   line-height: 1.2;
 }
@@ -5406,6 +5409,17 @@ body {
 .text-doc-paper .ProseMirror ol {
   padding-left: 1.5rem;
   margin: 0.7em 0;
+}
+
+/* Horizontal rule: had no styling at all. A browser's own UA default relies
+   on its own implicit margin for spacing, which the global `* { margin: 0 }`
+   reset here zeroes out, squashing it flush against its neighbors; its
+   default border color/style is also not guaranteed to read well against
+   this app's themed surfaces. */
+.text-doc-paper .ProseMirror hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid var(--content-document-border);
 }
 
 /* TaskList/TaskItem (@tiptap/extension-task-list, -task-item) render a plain
