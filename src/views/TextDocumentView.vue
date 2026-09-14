@@ -757,6 +757,23 @@ export default defineComponent({
     };
 
     /**
+     * The arrow keys move `slashIndex`/`mentionIndex` past the popup's own
+     * `max-height`/`overflow-y: auto` window without touching scroll at all,
+     * so the highlight can walk off the visible area while the popup itself
+     * stays put. `block: 'nearest'` only moves the popup (its own nearest
+     * scrollable ancestor), never the page.
+     */
+    const scrollHighlightedIntoView = async (selector: string) => {
+      await nextTick();
+      document.querySelector(selector)?.scrollIntoView({ block: 'nearest' });
+    };
+
+    watch(slashIndex, () => {
+      const item = slashItems.value[slashIndex.value];
+      if (item) void scrollHighlightedIntoView(`[data-slash-item="${item.id}"]`);
+    });
+
+    /**
      * MENTION MENU state, structurally the same as the slash menu above
      * (own popup ref set, own `command` kept from the suggestion plugin's
      * render props) but for `@`: the item list is an async search rather
@@ -832,6 +849,13 @@ export default defineComponent({
         return false;
       },
     };
+
+    watch(mentionIndex, () => {
+      const item = mentionItems.value[mentionIndex.value];
+      if (!item) return;
+      const value = item.kind === 'document' ? item.id : 'create';
+      void scrollHighlightedIntoView(`[data-mention-item="${value}"]`);
+    });
 
     /** Powers the picker's search. Server-side filtered to what this user can read (R2) - no client-side widening. */
     const searchMentionCandidates = async (query: string) => {

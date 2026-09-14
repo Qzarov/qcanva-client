@@ -402,6 +402,29 @@ describe('slash menu keyboard and filtering', () => {
     wrapper.unmount();
   });
 
+  it('scrolls the highlighted item into view as the arrow keys move past the visible window', async () => {
+    // jsdom does not implement real layout/scrolling (see src/test-setup.ts),
+    // so scrollIntoView is a no-op there - spy on it to prove the highlighted
+    // DOM node is asked to scroll, rather than asserting a scroll position.
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+    await type(wrapper, '/');
+    scrollIntoView.mockClear();
+
+    await press(wrapper, 'ArrowDown');
+    await wrapper.vm.$nextTick();
+
+    const activeItem = wrapper.vm.slashItems[wrapper.vm.slashIndex];
+    const activeEl = wrapper.find(`[data-slash-item="${activeItem.id}"]`).element;
+    expect(scrollIntoView.mock.instances).toContain(activeEl);
+
+    scrollIntoView.mockRestore();
+    wrapper.unmount();
+  });
+
   it('inserts the highlighted item on Enter and eats the typed query', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p></p>');

@@ -99,6 +99,13 @@ function pluginState(wrapper: any) {
   return MentionMenuPluginKey.getState(wrapper.vm.editor.state);
 }
 
+async function press(wrapper: any, key: string) {
+  const editor = wrapper.vm.editor;
+  editor.view.dom.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  await flushPromises();
+  await wrapper.vm.$nextTick();
+}
+
 const INVENTORY_NAMES = new Set(DOCUMENT_NODES.map((spec) => spec.name));
 
 function findNode(node: any, name: string): any {
@@ -136,6 +143,31 @@ describe('mention menu trigger', () => {
     expect(wrapper.vm.mentionItems.at(-1)).toEqual({ kind: 'create', query: 'road' });
     expect(search).toHaveBeenCalledWith('road');
 
+    wrapper.unmount();
+  });
+
+  it('scrolls the highlighted item into view as the arrow keys move it', async () => {
+    // jsdom does not implement real layout/scrolling (see src/test-setup.ts),
+    // so scrollIntoView is a no-op there - spy on it to prove the highlighted
+    // DOM node is asked to scroll, rather than asserting a scroll position.
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView');
+
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+    await type(wrapper, '@road');
+    await flushPromises();
+    scrollIntoView.mockClear();
+
+    await press(wrapper, 'ArrowDown');
+    await wrapper.vm.$nextTick();
+
+    const activeItem = wrapper.vm.mentionItems[wrapper.vm.mentionIndex];
+    const value = activeItem.kind === 'document' ? activeItem.id : 'create';
+    const activeEl = wrapper.find(`[data-mention-item="${value}"]`).element;
+    expect(scrollIntoView.mock.instances).toContain(activeEl);
+
+    scrollIntoView.mockRestore();
     wrapper.unmount();
   });
 
