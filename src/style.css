@@ -6511,23 +6511,6 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   background: var(--ui-brand-soft);
   color: var(--ui-text);
 }
-.folder-up-button {
-  flex: 0 0 auto;
-  width: 26px;
-  height: 26px;
-  margin-right: 8px;
-  border: 1px solid var(--dark-neutral-border);
-  border-radius: 6px;
-  background: var(--ui-surface-subtle);
-  color: var(--ui-text-secondary);
-  font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-}
-.folder-up-button:hover {
-  background: var(--ui-brand-soft);
-  color: var(--ui-text);
-}
 .subfolder-grid {
   margin-bottom: 10px;
 }

@@ -1237,20 +1237,18 @@ describe('DashboardView groups', () => {
 
       const header = wrapper.find('.folder-manager-main');
       expect(header.exists()).toBe(true);
-      // The Back button always leads, then the up arrow, then the title block,
-      // so the folder info reads as belonging to the arrow rather than drifting
-      // to the far edge.
+      // One arrow only, then the title block, so the folder info reads as
+      // belonging to the arrow rather than drifting to the far edge.
       const children = Array.from(header.element.children).map((node) => node.className);
       expect(children[0]).toContain('folder-back-button');
-      expect(children[1]).toContain('folder-up-button');
-      expect(children[2]).toContain('folder-manager-title');
+      expect(children[1]).toContain('folder-manager-title');
 
       const title = wrapper.find('.folder-manager-title');
       expect(title.find('.folder-manager-name').text()).toBe('Archive');
       expect(title.find('.folder-manager-count').exists()).toBe(true);
     });
 
-    it('offers a way back up only when the open folder has a parent', async () => {
+    it('has exactly one back arrow: to the parent folder when nested, to Recent at the root', async () => {
       withNestedFolders();
       const wrapper = mountDashboard();
       await flushPromises();
@@ -1258,14 +1256,15 @@ describe('DashboardView groups', () => {
 
       vm.selectFolder('folder-b');
       await nextTick();
-      expect(wrapper.find('.folder-up-button').exists()).toBe(false);
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
+      await wrapper.get('.folder-back-button').trigger('click');
+      await nextTick();
+      expect(vm.activeSection).toEqual({ kind: 'recent' });
 
       vm.selectFolder('folder-c');
       await nextTick();
-      const up = wrapper.find('.folder-up-button');
-      expect(up.exists()).toBe(true);
-
-      await up.trigger('click');
+      expect(wrapper.findAll('.folder-back-button')).toHaveLength(1);
+      await wrapper.get('.folder-back-button').trigger('click');
       await nextTick();
       expect(vm.selectedFolderId).toBe('folder-b');
     });
