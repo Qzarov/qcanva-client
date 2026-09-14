@@ -5,6 +5,7 @@ import { nextTick } from "vue";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import TextDocumentView from "./TextDocumentView.vue";
 import { useI18n } from "../composables/useI18n";
+import { accessRequests, ApiError, isAuthenticated, textDocuments } from "../api/client";
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -72,9 +73,11 @@ vi.mock("../api/client", () => ({
   accessRequests: { create: vi.fn() },
   ApiError: class ApiError extends Error {
     status: number;
-    constructor(status: number, message = "API error") {
+    body: any;
+    constructor(status: number, message = "API error", body: any = {}) {
       super(message);
       this.status = status;
+      this.body = body;
     }
   },
   auth: { resourcePasswordLogin: vi.fn() },
@@ -422,6 +425,62 @@ describe("TextDocumentView", () => {
       expect(chain.setImage).toHaveBeenNthCalledWith(2, {
         src: "/api/img/2.png",
         alt: "2.png",
+      });
+    });
+  });
+
+  describe("access gate", () => {
+    it("shows the password field when the backend reports password access is enabled", async () => {
+      vi.mocked(textDocuments.get).mockRejectedValueOnce(
+        new ApiError(403, "No access", { passwordAccessEnabled: true }),
+      );
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      expect(wrapper.find("[data-access-gate-password]").exists()).toBe(true);
+    });
+
+    it("hides the password field when the backend reports password access is disabled", async () => {
+      vi.mocked(textDocuments.get).mockRejectedValueOnce(
+        new ApiError(403, "No access", { passwordAccessEnabled: false }),
+      );
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      expect(wrapper.find("[data-access-gate-password]").exists()).toBe(false);
+    });
+
+    it("tells an unauthenticated visitor to log in first instead of sending the request", async () => {
+      vi.mocked(textDocuments.get).mockRejectedValueOnce(
+        new ApiError(403, "No access", { passwordAccessEnabled: false }),
+      );
+      vi.mocked(isAuthenticated).mockReturnValue(false);
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      await wrapper.get("[data-access-gate-request-button]").trigger("click");
+      await flushPromises();
+
+      expect(showToastMock).toHaveBeenCalledWith(useI18n().t("accessGateLoginRequired"), "error");
+      expect(accessRequests.create).not.toHaveBeenCalled();
+    });
+
+    it("sends the request when the visitor is authenticated", async () => {
+      vi.mocked(textDocuments.get).mockRejectedValueOnce(
+        new ApiError(403, "No access", { passwordAccessEnabled: false }),
+      );
+      vi.mocked(isAuthenticated).mockReturnValue(true);
+      vi.mocked(accessRequests.create).mockResolvedValueOnce({} as any);
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      await wrapper.get("[data-access-gate-request-button]").trigger("click");
+      await flushPromises();
+
+      expect(accessRequests.create).toHaveBeenCalledWith({
+        resourceType: "text-document",
+        resourceId: "doc-1",
+        requestedRole: "read",
       });
     });
   });
