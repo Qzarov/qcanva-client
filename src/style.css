@@ -5371,6 +5371,7 @@ body {
 }
 
 .text-doc-paper {
+  position: relative;
   min-height: 72vh;
   background: var(--content-document-surface);
   border: 1px solid var(--ui-border);
