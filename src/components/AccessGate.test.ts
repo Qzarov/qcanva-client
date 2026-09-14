@@ -18,14 +18,13 @@ function mountGate(props: Partial<InstanceType<typeof AccessGate>['$props']> = {
   return mount(AccessGate, {
     props: {
       resourceType: 'text-document',
-      backTarget: { to: { name: 'dashboard' }, label: 'Back' },
       checkingPassword: false,
       requestingAccess: false,
       accessRequestSent: false,
       ...props,
     },
     global: {
-      stubs: { RouterLink: { template: '<a><slot /></a>', props: ['to'] } },
+      stubs: { RouterLink: { name: 'RouterLink', template: '<a><slot /></a>', props: ['to'] } },
     },
   });
 }
@@ -91,5 +90,14 @@ describe('AccessGate', () => {
     const wrapper = mountGate();
     const tag = wrapper.get('[data-access-gate-request-button]').element.tagName;
     expect(tag).toBe('BUTTON');
+  });
+
+  it('links to the dashboard labeled "Home", not "Back" — the visitor never had this document open', () => {
+    const wrapper = mountGate();
+    expect(wrapper.get('.access-gate-back').text()).toBe('Home');
+    const homeLink = wrapper
+      .findAllComponents({ name: 'RouterLink' })
+      .find((link) => link.text() === 'Home');
+    expect(homeLink?.props('to')).toEqual({ name: 'dashboard' });
   });
 });

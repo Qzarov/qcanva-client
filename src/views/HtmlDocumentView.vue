@@ -5,7 +5,6 @@
       v-else-if="accessDenied"
       resource-type="html-document"
       :password-access-enabled="gatePasswordAccessEnabled"
-      :back-target="backTarget"
       :checking-password="checkingResourcePassword"
       :requesting-access="requestingAccess"
       :access-request-sent="accessRequestSent"
