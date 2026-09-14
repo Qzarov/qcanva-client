@@ -1653,6 +1653,11 @@ export default defineComponent({
       currentRevision,
       canEditContent,
       editor,
+      // Testing seam only: tippy takes ownership of this element and moves
+      // it in and out of an unattached popper, so `document.querySelector`
+      // cannot reliably find it - reading the closure directly is the only
+      // stable way to reach it.
+      getDragHandleElement: () => dragHandleElement,
       connected,
       pendingUpdatesCount,
       syncStatus,

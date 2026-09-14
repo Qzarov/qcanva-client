@@ -5402,6 +5402,18 @@ body {
   line-height: 1.2;
 }
 
+/* No font-size was ever set for headings here, so they fell back to the
+   browser's UA defaults relative to the 16px body above: h4 at 1em landed
+   exactly at body size and h5/h6 (0.83em/0.67em) landed BELOW it - the
+   deepest heading levels looked smaller than plain text instead of standing
+   out from it. */
+.text-doc-paper .ProseMirror h1 { font-size: 30px; }
+.text-doc-paper .ProseMirror h2 { font-size: 26px; }
+.text-doc-paper .ProseMirror h3 { font-size: 23px; }
+.text-doc-paper .ProseMirror h4 { font-size: 20px; }
+.text-doc-paper .ProseMirror h5 { font-size: 18px; }
+.text-doc-paper .ProseMirror h6 { font-size: 17px; }
+
 .text-doc-paper .ProseMirror p {
   margin: 0.7em 0;
 }
