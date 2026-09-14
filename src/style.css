@@ -3408,6 +3408,29 @@ body {
   margin: 0 0 28px;
   text-align: center;
 }
+.access-gate-auth {
+  width: 100%;
+  margin-bottom: 24px;
+}
+.access-gate-auth-status {
+  font-size: 14px;
+  color: var(--ui-text-secondary);
+  text-align: center;
+  margin: 0;
+}
+.access-gate-auth-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.access-gate-auth-actions .access-gate-btn {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  text-decoration: none;
+}
 .access-gate-section {
   width: 100%;
 }

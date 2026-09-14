@@ -61,19 +61,18 @@
         </div>
       </div>
 
-      <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
+      <router-link :to="{ name: 'dashboard' }" class="access-gate-back">{{ t('home') }}</router-link>
     </div>
   </div>
 </template>
 
 <script lang="ts">
 import { computed, defineComponent, ref, type PropType } from 'vue';
-import { useRoute, type RouteLocationRaw } from 'vue-router';
+import { useRoute } from 'vue-router';
 import { getCurrentUser, isAuthenticated } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 
 export type AccessGateResourceType = 'text-document' | 'html-document' | 'canvas';
-export type AccessGateBackTarget = { to: RouteLocationRaw; label: string };
 
 export default defineComponent({
   name: 'AccessGate',
@@ -87,7 +86,6 @@ export default defineComponent({
      * resource's password in hand.
      */
     passwordAccessEnabled: { type: Boolean as PropType<boolean | undefined>, default: undefined },
-    backTarget: { type: Object as PropType<AccessGateBackTarget>, required: true },
     checkingPassword: { type: Boolean, default: false },
     requestingAccess: { type: Boolean, default: false },
     accessRequestSent: { type: Boolean, default: false },
