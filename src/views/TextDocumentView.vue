@@ -128,37 +128,9 @@
         </div>
       </section>
 
-      <div v-if="canEditContent" class="text-doc-toolbar">
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bold') }" :title="t('markBold')" @click="editor?.chain().focus().toggleBold().run()"><strong>B</strong></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('italic') }" :title="t('markItalic')" @click="editor?.chain().focus().toggleItalic().run()"><em>I</em></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('underline') }" :title="t('markUnderline')" @click="editor?.chain().focus().toggleUnderline().run()"><u>U</u></button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('heading', { level: 2 }) }" :title="t('slashHeading2')" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('bulletList') }" :title="t('slashBulletList')" @click="editor?.chain().focus().toggleBulletList().run()">{{ t('toolbarListLabel') }}</button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('taskList') }" :title="t('slashTaskList')" @click="editor?.chain().focus().toggleTaskList().run()">{{ t('toolbarTasksLabel') }}</button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('codeBlock') }" @click="editor?.chain().focus().toggleCodeBlock().run()">{{ t('codeBlock') }}</button>
-        <button class="btn-ghost btn-sm" :disabled="uploadingImage" :title="t('addPhoto')" @click="openImagePicker">
-          {{ uploadingImage ? t('loading') : t('photo') }}
-        </button>
-        <button class="btn-ghost btn-sm" :class="{ active: editor?.isActive('callout') }" :title="t('callout')" @click="editor?.chain().focus().toggleCallout().run()">{{ t('callout') }}</button>
-        <template v-if="editor?.isActive('callout')">
-          <button
-            v-for="variant in calloutVariants"
-            :key="variant.name"
-            class="btn-ghost btn-sm text-doc-callout-variant-btn"
-            :class="{ active: editor?.isActive('callout', { variant: variant.name }) }"
-            :data-variant="variant.name"
-            :title="variant.label"
-            @click="editor?.chain().focus().setCalloutVariant(variant.name).run()"
-          >
-            <span class="text-doc-callout-variant-icon" v-html="variant.icon"></span>
-            <span class="text-doc-callout-variant-label">{{ variant.label }}</span>
-          </button>
-        </template>
-      </div>
-
-      <!-- CAPACITY. Chrome in the app's themed --ui-* palette like the
-           toolbar, never the fixed paper palette; nothing here reaches the
-           Yjs document. It appears at the warning threshold and stays up
+      <!-- CAPACITY. Chrome in the app's themed --ui-* palette, never the
+           fixed paper palette; nothing here reaches the Yjs document. It
+           appears at the warning threshold and stays up
            while the document is at or over the ceiling - including for a
            document that arrived over it, where the honest thing to offer is
            both a new page and the fact that deleting blocks works. -->
@@ -412,7 +384,7 @@ import { isRenderableHref } from '../documents/link-policy';
 import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
-import { Callout, calloutIconSvg } from '../text-documents/callout';
+import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels } from '../text-documents/table-of-contents';
 import {
@@ -440,7 +412,6 @@ import {
 import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
 import DragHandle from '@tiptap/extension-drag-handle';
 import NodeRange from '@tiptap/extension-node-range';
-import { CALLOUT_VARIANTS } from '../documents/document-nodes';
 import {
   MAX_TOP_LEVEL_BLOCKS,
   capacityLevel,
@@ -472,21 +443,6 @@ export default defineComponent({
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t, locale } = useI18n();
-
-    /**
-     * The four callout variants for the toolbar: names come from the shared
-     * node inventory (so this list cannot claim a variant the backend would
-     * bound away) and the labels from i18n. The icon is the same inline
-     * Lucide-style svg the node view draws, so the button shows the glyph the
-     * block will get.
-     */
-    const calloutVariants = computed(() =>
-      CALLOUT_VARIANTS.map((name) => ({
-        name,
-        label: t(`callout${name.charAt(0).toUpperCase()}${name.slice(1)}` as 'calloutInfo'),
-        icon: calloutIconSvg(name),
-      })),
-    );
 
     const ydoc = new Y.Doc();
     const awarenessStates = new Map<number, Record<string, unknown>>();
@@ -1616,7 +1572,6 @@ export default defineComponent({
 
     return {
       t,
-      calloutVariants,
       slashOpen,
       slashItems,
       slashIndex,

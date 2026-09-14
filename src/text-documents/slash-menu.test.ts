@@ -12,12 +12,14 @@ import { messages } from '../composables/useI18n';
 const label = (item: SlashMenuItem) => messages.en[item.labelKey];
 
 describe('slash menu item table', () => {
-  it('offers exactly the fourteen blocks the editor can insert', () => {
+  it('offers exactly the sixteen blocks the editor can insert', () => {
     expect(SLASH_MENU_ITEMS.map((item) => item.id)).toEqual([
       'paragraph',
       'heading1',
       'heading2',
       'heading3',
+      'heading4',
+      'heading5',
       'bulletList',
       'orderedList',
       'taskList',

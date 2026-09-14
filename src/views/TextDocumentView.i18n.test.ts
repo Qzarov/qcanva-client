@@ -143,8 +143,8 @@ describe('TextDocumentView i18n hardcode guard', () => {
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
     // Scoped to the regions this task actually converted (topbar actions,
-    // toolbar, share panel, history panel), not a raw whole-page substring
-    // search.
+    // share panel, history panel), not a raw whole-page substring search.
+    // The formatting toolbar this used to also check was removed entirely.
     useI18n().setLocale('ru');
     const wrapper = await mountWithOpenPanels();
 
@@ -162,15 +162,6 @@ describe('TextDocumentView i18n hardcode guard', () => {
     // Russian translations contain the English word.
     for (const word of ['Conflict', 'Saving', 'Synced', 'Offline']) {
       expect(topbarActions).not.toContain(word);
-    }
-    const toolbar = wrapper.find('.text-doc-toolbar').html();
-    for (const phrase of ['Add photo', 'Photo', 'Loading...', 'List', 'Tasks']) {
-      expect(toolbar).not.toContain(`>${phrase}<`);
-      expect(toolbar).not.toContain(`"${phrase}"`);
-    }
-    // The B/I/U/H2 glyphs stay untranslated, but their title tooltips must not.
-    for (const title of ['Bold', 'Italic', 'Underline', 'Heading 2', 'Bulleted list', 'To-do list']) {
-      expect(toolbar).not.toContain(`title="${title}"`);
     }
     const sharePanel = wrapper.find('.text-doc-share-panel').html();
     const shareStaleEnglish = [
