@@ -266,16 +266,8 @@
                   :title="t('back')"
                   :aria-label="t('back')"
                   data-folder-back-button
-                  @click.stop="selectDashboardSection({ kind: 'recent' })"
+                  @click.stop="activeFolder.parentId ? selectFolder(activeFolder.parentId) : selectDashboardSection({ kind: 'recent' })"
                 ><ArrowLeft :size="16" aria-hidden="true" /></button>
-                <button
-                  v-if="activeFolder.parentId"
-                  type="button"
-                  class="folder-up-button"
-                  :title="t('upOneLevel')"
-                  :aria-label="t('upOneLevel')"
-                  @click.stop="selectFolder(activeFolder.parentId)"
-                >←</button>
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
                   <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
