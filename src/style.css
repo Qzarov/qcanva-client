@@ -5464,6 +5464,20 @@ body {
   outline: none;
 }
 
+/* Blockquote (StarterKit's default node, no custom extension). The global
+   `* { margin: 0 }` reset zeroes the one thing a bare <blockquote> gets for
+   free in a browser, so without this rule it renders pixel-for-pixel like a
+   plain paragraph - no visual sign it is a quote at all. */
+.text-doc-paper .ProseMirror blockquote {
+  margin: 1em 0;
+  padding: 2px 16px;
+  border-left: 3px solid var(--content-document-border);
+  color: var(--content-document-text-muted);
+}
+.text-doc-paper .ProseMirror blockquote p {
+  margin: 0.3em 0;
+}
+
 /* CodeBlockLowlight. Syntax colours are themed via --content-code-* tokens
    (calibrated for WCAG >= 4.5:1 on both light and dark document paper). */
 .text-doc-paper .ProseMirror pre {
