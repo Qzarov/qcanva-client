@@ -13,45 +13,17 @@
         <router-link :to="{ name: 'dashboard' }" class="error-home-btn">Go to Dashboard</router-link>
       </div>
     </div>
-    <div v-else-if="accessDenied" class="access-gate">
-      <div class="access-gate-card">
-        <div class="access-gate-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <h2 class="access-gate-title">Private canvas</h2>
-        <p class="access-gate-sub">You need permission to view this document.</p>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Have a password?</div>
-          <form class="access-gate-form" @submit.prevent="loginWithCanvasPassword">
-            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
-            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
-              {{ checkingResourcePassword ? 'Checking…' : 'Open' }}
-            </button>
-          </form>
-        </div>
-
-        <div class="access-gate-divider"><span>or</span></div>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Request access from the owner</div>
-          <div class="access-gate-request-row">
-            <select v-model="requestedRole" class="access-gate-select">
-              <option value="read">View only</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestCanvasAccess">
-              {{ accessRequestSent ? '✓ Request sent' : 'Send request' }}
-            </button>
-          </div>
-        </div>
-
-        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
-      </div>
-    </div>
+    <AccessGate
+      v-else-if="accessDenied"
+      resource-type="canvas"
+      :password-access-enabled="gatePasswordAccessEnabled"
+      :back-target="backTarget"
+      :checking-password="checkingResourcePassword"
+      :requesting-access="requestingAccess"
+      :access-request-sent="accessRequestSent"
+      @submit-password="loginWithCanvasPassword"
+      @request-access="requestCanvasAccess"
+    />
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
@@ -907,6 +879,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
 import ChatPanel from '../components/ChatPanel.vue';
 import AccountMenu from '../components/AccountMenu.vue';
+import AccessGate from '../components/AccessGate.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
@@ -927,7 +900,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { AccountMenu, CanvasLoader, ChatPanel },
+  components: { AccountMenu, AccessGate, CanvasLoader, ChatPanel },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1020,10 +993,9 @@ export default defineComponent({
     const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
     const error = ref('');
     const accessDenied = ref(false);
+    const gatePasswordAccessEnabled = ref<boolean | undefined>(undefined);
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
-    const requestedRole = ref<'read' | 'edit'>('read');
-    const resourcePassword = ref('');
     const checkingResourcePassword = ref(false);
     const title = ref('');
     const canvasData = ref<any>(null);
@@ -1335,6 +1307,7 @@ export default defineComponent({
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 403 || e.status === 401)) {
           accessDenied.value = true;
+          gatePasswordAccessEnabled.value = (e as ApiError).body?.passwordAccessEnabled;
           loading.value = false;
           return;
         }
@@ -1353,9 +1326,9 @@ export default defineComponent({
       }
     };
 
-    const requestCanvasAccess = async () => {
+    const requestCanvasAccess = async (requestedRole: 'read' | 'edit') => {
       if (!isAuthenticated()) {
-        await router.push(`/login?redirect=/canvas/${canvasId}`);
+        showToast(t('accessGateLoginRequired'), 'error');
         return;
       }
       requestingAccess.value = true;
@@ -1363,30 +1336,30 @@ export default defineComponent({
         await accessRequests.create({
           resourceType: 'canvas',
           resourceId: canvasId,
-          requestedRole: requestedRole.value,
+          requestedRole,
         });
         accessRequestSent.value = true;
-        showToast('Access request sent', 'success');
+        showToast(t('accessGateRequestSentToast'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to request access', 'error');
+        showToast(e.message || t('accessGateRequestFailed'), 'error');
       } finally {
         requestingAccess.value = false;
       }
     };
 
-    const loginWithCanvasPassword = async () => {
+    const loginWithCanvasPassword = async (password: string) => {
       checkingResourcePassword.value = true;
       try {
         const res = await auth.resourcePasswordLogin({
           resourceType: 'canvas',
           resourceId: canvasId,
-          password: resourcePassword.value,
+          password,
         });
         setToken(res.token, res.user?.role, res.user?.accessMode || 'resource-password');
         accessDenied.value = false;
         await load();
       } catch (e: any) {
-        showToast(e.message || 'Invalid password', 'error');
+        showToast(e.message || t('accessGateInvalidPassword'), 'error');
       } finally {
         checkingResourcePassword.value = false;
       }
@@ -2004,8 +1977,8 @@ export default defineComponent({
       t,
       route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
-      loading, error, accessDenied, cacheStatus, requestingAccess, accessRequestSent, requestedRole,
-      resourcePassword, checkingResourcePassword,
+      loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
+      checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, toggleShare, shareEmail, shareRole, permissions,

@@ -1,45 +1,17 @@
 <template>
   <div class="html-editor-page">
     <div v-if="loading" class="canvas-loading">Loading document...</div>
-    <div v-else-if="accessDenied" class="access-gate">
-      <div class="access-gate-card">
-        <div class="access-gate-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <h2 class="access-gate-title">Private document</h2>
-        <p class="access-gate-sub">You need permission to view this document.</p>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Have a password?</div>
-          <form class="access-gate-form" @submit.prevent="loginWithHtmlPassword">
-            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
-            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
-              {{ checkingResourcePassword ? 'Checking…' : 'Open' }}
-            </button>
-          </form>
-        </div>
-
-        <div class="access-gate-divider"><span>or</span></div>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Request access from the owner</div>
-          <div class="access-gate-request-row">
-            <select v-model="requestedRole" class="access-gate-select">
-              <option value="read">View only</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestHtmlAccess">
-              {{ accessRequestSent ? '✓ Request sent' : 'Send request' }}
-            </button>
-          </div>
-        </div>
-
-        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
-      </div>
-    </div>
+    <AccessGate
+      v-else-if="accessDenied"
+      resource-type="html-document"
+      :password-access-enabled="gatePasswordAccessEnabled"
+      :back-target="backTarget"
+      :checking-password="checkingResourcePassword"
+      :requesting-access="requestingAccess"
+      :access-request-sent="accessRequestSent"
+      @submit-password="loginWithHtmlPassword"
+      @request-access="requestHtmlAccess"
+    />
     <template v-else>
     <header class="html-editor-bar">
       <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
@@ -270,6 +242,7 @@ import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import AccountMenu from '../components/AccountMenu.vue';
+import AccessGate from '../components/AccessGate.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -283,7 +256,7 @@ import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
 
 export default defineComponent({
-  components: { AccountMenu, HtmlVisualEditor },
+  components: { AccountMenu, HtmlVisualEditor, AccessGate },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -313,14 +286,13 @@ export default defineComponent({
     const hydratedFromCache = ref(false);
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     const accessDenied = ref(false);
-    const requestedRole = ref<'read' | 'edit'>('read');
+    const gatePasswordAccessEnabled = ref<boolean | undefined>(undefined);
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
     const shareRole = ref<'read' | 'edit'>('read');
     const permissions = ref<any[]>([]);
-    const resourcePassword = ref('');
     const checkingResourcePassword = ref(false);
     const passwordAccessEnabled = ref(false);
     const passwordAccessPassword = ref('');
@@ -428,6 +400,7 @@ export default defineComponent({
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           accessDenied.value = true;
+          gatePasswordAccessEnabled.value = (e as ApiError).body?.passwordAccessEnabled;
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
@@ -769,9 +742,9 @@ export default defineComponent({
       await loadPermissions();
     }
 
-    async function requestHtmlAccess() {
+    async function requestHtmlAccess(requestedRole: 'read' | 'edit') {
       if (!isAuthenticated()) {
-        await router.push(`/login?redirect=/edit/html/${id}`);
+        showToast(t('accessGateLoginRequired'), 'error');
         return;
       }
       requestingAccess.value = true;
@@ -779,30 +752,30 @@ export default defineComponent({
         await accessRequests.create({
           resourceType: 'html-document',
           resourceId: id,
-          requestedRole: requestedRole.value,
+          requestedRole,
         });
         accessRequestSent.value = true;
-        showToast('Access request sent', 'success');
+        showToast(t('accessGateRequestSentToast'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to request access', 'error');
+        showToast(e.message || t('accessGateRequestFailed'), 'error');
       } finally {
         requestingAccess.value = false;
       }
     }
 
-    async function loginWithHtmlPassword() {
+    async function loginWithHtmlPassword(password: string) {
       checkingResourcePassword.value = true;
       try {
         const res = await auth.resourcePasswordLogin({
           resourceType: 'html-document',
           resourceId: id,
-          password: resourcePassword.value,
+          password,
         });
         setToken(res.token, res.user?.role, res.user?.accessMode || 'resource-password');
         accessDenied.value = false;
         await load();
       } catch (e: any) {
-        showToast(e.message || 'Invalid password', 'error');
+        showToast(e.message || t('accessGateInvalidPassword'), 'error');
       } finally {
         checkingResourcePassword.value = false;
       }
@@ -841,11 +814,11 @@ export default defineComponent({
     return {
       t,
       backTarget,
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, cacheStatus, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
-      requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
-      shareRole, permissions, resourcePassword, checkingResourcePassword,
+      requestingAccess, accessRequestSent, showShare, shareEmail,
+      shareRole, permissions, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       showHistory, showHtmlActions, showExportMenu, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,

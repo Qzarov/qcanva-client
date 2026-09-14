@@ -1,45 +1,17 @@
 <template>
   <div class="text-doc-page">
     <div v-if="loading" class="canvas-loading">Loading document...</div>
-    <div v-else-if="accessDenied" class="access-gate">
-      <div class="access-gate-card">
-        <div class="access-gate-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2" />
-            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-          </svg>
-        </div>
-        <h2 class="access-gate-title">Private document</h2>
-        <p class="access-gate-sub">You need permission to view this document.</p>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Have a password?</div>
-          <form class="access-gate-form" @submit.prevent="loginWithDocumentPassword">
-            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
-            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
-              {{ checkingResourcePassword ? 'Checking...' : 'Open' }}
-            </button>
-          </form>
-        </div>
-
-        <div class="access-gate-divider"><span>or</span></div>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Request access from the owner</div>
-          <div class="access-gate-request-row">
-            <select v-model="requestedRole" class="access-gate-select">
-              <option value="read">View only</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestDocumentAccess">
-              {{ accessRequestSent ? 'Request sent' : 'Send request' }}
-            </button>
-          </div>
-        </div>
-
-        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
-      </div>
-    </div>
+    <AccessGate
+      v-else-if="accessDenied"
+      resource-type="text-document"
+      :password-access-enabled="gatePasswordAccessEnabled"
+      :back-target="backTarget"
+      :checking-password="checkingResourcePassword"
+      :requesting-access="requestingAccess"
+      :access-request-sent="accessRequestSent"
+      @submit-password="loginWithDocumentPassword"
+      @request-access="requestDocumentAccess"
+    />
 
     <template v-else>
       <header class="text-doc-topbar">
@@ -487,9 +459,10 @@ import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projec
 import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
+import AccessGate from '../components/AccessGate.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, BubbleMenu, EditorContent },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -547,10 +520,9 @@ export default defineComponent({
     const hydratedFromCache = ref(false);
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     const accessDenied = ref(false);
-    const requestedRole = ref<'read' | 'edit'>('read');
+    const gatePasswordAccessEnabled = ref<boolean | undefined>(undefined);
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
-    const resourcePassword = ref('');
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
     const slug = ref<string | null>(null);
@@ -1329,6 +1301,7 @@ export default defineComponent({
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           accessDenied.value = true;
+          gatePasswordAccessEnabled.value = (e as ApiError).body?.passwordAccessEnabled;
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
@@ -1431,35 +1404,35 @@ export default defineComponent({
       await load();
     }
 
-    async function loginWithDocumentPassword() {
+    async function loginWithDocumentPassword(password: string) {
       checkingResourcePassword.value = true;
       try {
         const result = await auth.resourcePasswordLogin({
           resourceType: 'text-document',
           resourceId: resolvedId.value,
-          password: resourcePassword.value,
+          password,
         });
         setToken(result.token, result.user?.role || 'user', result.user?.accessMode || 'resource-password', result.user);
         await load();
       } catch (e: any) {
-        showToast(e.message || 'Invalid password', 'error');
+        showToast(e.message || t('accessGateInvalidPassword'), 'error');
       } finally {
         checkingResourcePassword.value = false;
       }
     }
 
-    async function requestDocumentAccess() {
+    async function requestDocumentAccess(requestedRole: 'read' | 'edit') {
       if (!isAuthenticated()) {
-        await router.push({ name: 'login', query: { redirect: route.fullPath } });
+        showToast(t('accessGateLoginRequired'), 'error');
         return;
       }
       requestingAccess.value = true;
       try {
-        await accessRequests.create({ resourceType: 'text-document', resourceId: resolvedId.value, requestedRole: requestedRole.value });
+        await accessRequests.create({ resourceType: 'text-document', resourceId: resolvedId.value, requestedRole });
         accessRequestSent.value = true;
-        showToast('Access request sent', 'success');
+        showToast(t('accessGateRequestSentToast'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to request access', 'error');
+        showToast(e.message || t('accessGateRequestFailed'), 'error');
       } finally {
         requestingAccess.value = false;
       }
@@ -1691,6 +1664,7 @@ export default defineComponent({
       onEditorDrop,
       loading, cacheStatus,
       accessDenied,
+      gatePasswordAccessEnabled,
       title,
       route,
       currentUser,
@@ -1714,9 +1688,7 @@ export default defineComponent({
       passwordAccessEnabled,
       passwordAccessPassword,
       passwordAccessRole,
-      resourcePassword,
       checkingResourcePassword,
-      requestedRole,
       requestingAccess,
       accessRequestSent,
       showHistory,
