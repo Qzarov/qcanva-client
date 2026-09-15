@@ -5886,6 +5886,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   white-space: nowrap;
 }
 
+/* Mobile-only slash-command bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop popup instead. */
+.text-doc-slash-sheet-backdrop,
+.text-doc-slash-sheet {
+  display: none;
+}
+
 .text-doc-slash-empty {
   padding: 9px;
   color: var(--ui-text-muted);
@@ -6497,6 +6504,72 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-link-sheet-actions .btn-ghost,
   .text-doc-link-sheet-apply {
     min-height: 44px;
+  }
+
+  .text-doc-slash-menu {
+    display: none;
+  }
+
+  .text-doc-slash-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-slash-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 60vh;
+    z-index: 71;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-slash-sheet-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 0 4px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-slash-sheet-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ui-text-secondary);
+  }
+
+  .text-doc-slash-sheet-list {
+    overflow-y: auto;
+  }
+
+  .text-doc-slash-sheet-item {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+
+  .text-doc-slash-sheet-item .text-doc-slash-icon svg {
+    width: 20px;
+    height: 20px;
   }
 }
 

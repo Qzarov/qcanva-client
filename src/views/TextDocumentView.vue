@@ -395,6 +395,38 @@
         <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
       </div>
 
+      <!-- Mobile slash menu: a bottom sheet, since the desktop popup's rect-
+           based position (right under the caret) is meaningless once the
+           keyboard closing has moved everything around. Shares slashItems/
+           slashIndex/selectSlashItem with the desktop popup above. -->
+      <Teleport to="body">
+        <div v-if="slashOpen" class="text-doc-slash-sheet-backdrop" @click="cancelSlashMenu"></div>
+        <div v-if="slashOpen" class="text-doc-slash-sheet" role="listbox" :aria-label="t('slashMenu')">
+          <div class="text-doc-slash-sheet-title">
+            {{ t('slashMenu') }}
+            <button type="button" class="text-doc-slash-sheet-close" :aria-label="t('close')" @click="cancelSlashMenu">
+              <X :size="16" aria-hidden="true" />
+            </button>
+          </div>
+          <div class="text-doc-slash-sheet-list">
+            <button
+              v-for="(item, index) in slashItems"
+              :key="item.id"
+              class="text-doc-slash-item text-doc-slash-sheet-item"
+              :class="{ active: index === slashIndex }"
+              role="option"
+              :aria-selected="index === slashIndex"
+              type="button"
+              @click="selectSlashItem(index)"
+            >
+              <span class="text-doc-slash-icon" v-html="item.icon"></span>
+              <span class="text-doc-slash-label">{{ t(item.labelKey) }}</span>
+            </button>
+            <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
+          </div>
+        </div>
+      </Teleport>
+
       <!-- The @-mention picker. Same chrome rule as the slash menu above:
            lives in the app's themed --ui-* palette, nothing here reaches the
            Yjs document until an item is chosen. -->
@@ -495,10 +527,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { MoreVertical } from '@lucide/vue';
+import { MoreVertical, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, MoreVertical },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, MoreVertical, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -866,16 +898,37 @@ export default defineComponent({
       slashCommand = null;
     };
 
+    // Same as pressing Escape (backdrop tap / the sheet's own close button
+    // have no keyboard to send that through) - the caret stays inside the
+    // typed "/query", so slashDismissed stops the very next keystroke from
+    // reopening the menu the instant it closes.
+    const cancelSlashMenu = () => {
+      slashDismissed = true;
+      closeSlashMenu();
+    };
+
     const selectSlashItem = (index: number) => {
       const item = slashItems.value[index];
       if (!item || !slashCommand) return;
       slashCommand(item);
     };
 
+    const isMobileEditorLayout = () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 760px)').matches;
+
     const slashController: SlashMenuController = {
       onOpen: (render) => {
         slashDismissed = false;
         applySlashRender(render);
+        // On mobile the menu IS the primary UI once "/" is typed - the
+        // keyboard has nothing left to do (no further typing is expected;
+        // the user taps an item) and just covers the sheet, so it's closed
+        // here rather than left open underneath. Each item's own run()
+        // already calls .chain().focus() when applying a command, which
+        // reopens the keyboard exactly when the chosen block needs typing.
+        if (isMobileEditorLayout()) editor.value?.view.dom.blur();
       },
       onUpdate: (render) => applySlashRender(render),
       onClose: () => {
@@ -1753,6 +1806,7 @@ export default defineComponent({
       slashIndex,
       slashMenuStyle,
       selectSlashItem,
+      cancelSlashMenu,
       SLASH_MENU_ITEMS,
       mentionOpen,
       mentionItems,
