@@ -119,20 +119,43 @@
               </button>
             </div>
           </div>
-      <input v-model.trim="searchQuery" class="dash-search" :placeholder="t('search')" />
-      <select v-model="sortMode" class="dash-sort-select">
+      <input v-model.trim="searchQuery" class="dash-search" :placeholder="folderSearchPlaceholder" />
+      <select v-model="sortMode" class="dash-sort-select dash-sort-select-desktop">
         <option value="updated-desc">{{ t('newest') }}</option>
         <option value="updated-asc">{{ t('oldest') }}</option>
         <option value="title-asc">{{ t('titleAsc') }}</option>
         <option value="title-desc">{{ t('titleDesc') }}</option>
       </select>
+      <div class="control-menu dash-sort-menu-mobile">
+        <button type="button" class="btn-ghost dash-sort-button-mobile" @click.stop="toggleMobileSortMenu">
+          <ArrowUpDown :size="15" aria-hidden="true" /><span>{{ t('sortBy') }}</span>
+        </button>
+        <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+            <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+            <span>{{ t('newest') }}</span>
+          </button>
+          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+            <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+            <span>{{ t('oldest') }}</span>
+          </button>
+          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+            <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+            <span>{{ t('titleAsc') }}</span>
+          </button>
+          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+            <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+            <span>{{ t('titleDesc') }}</span>
+          </button>
+        </div>
+      </div>
       <div class="content-type-tabs">
         <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">{{ t('all') }}</button>
         <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
         <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
       </div>
-      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list">
+      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
         <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
         <button
           v-for="tag in allTagNames"
@@ -142,6 +165,44 @@
           @click.stop="selectedTag = tag"
         >#{{ tag }}</button>
         <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
+      </div>
+      <div v-if="allTagNames.length" class="tag-filter-list-mobile">
+        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
+        <button
+          v-for="tag in mobileVisibleTags"
+          :key="tag"
+          class="tag-filter"
+          :class="{ active: selectedTag === tag }"
+          @click.stop="selectedTag = tag"
+        >#{{ tag }}</button>
+        <div v-if="mobileTagOverflowCount > 0" class="control-menu tag-filter-more-menu">
+          <button
+            type="button"
+            class="tag-filter tag-filter-more"
+            :class="{ active: mobileOverflowTagActive }"
+            @click.stop="toggleMobileTagPicker"
+          >+{{ mobileTagOverflowCount }}</button>
+          <div v-if="openControlMenu === 'mobile-tags'" class="mobile-action-popover mobile-tag-picker-popover" @click.stop>
+            <div class="mobile-tag-picker-list">
+              <button class="tag-filter" :class="{ active: selectedTag === '' }" @click="selectMobileTag('')">{{ t('all') }}</button>
+              <button
+                v-for="tag in allTagNames"
+                :key="tag"
+                class="tag-filter"
+                :class="{ active: selectedTag === tag }"
+                @click="selectMobileTag(tag)"
+              >#{{ tag }}</button>
+            </div>
+          </div>
+        </div>
+        <button
+          v-if="selectedTag"
+          type="button"
+          class="tag-filter tag-filter-clear"
+          :title="t('clearTagFilter')"
+          :aria-label="t('clearTagFilter')"
+          @click.stop="selectedTag = ''"
+        ><X :size="13" aria-hidden="true" /></button>
       </div>
     </div>
 
@@ -303,10 +364,6 @@
                 </div>
               </div>
               </div>
-              <div v-if="canScrollFolderUp || canScrollFolderDown" class="folder-scroll-controls" aria-label="Прокрутка элементов группы">
-                <button v-if="canScrollFolderUp" type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
-                <button v-if="canScrollFolderDown" type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
-              </div>
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
                 <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
                   <button
@@ -340,12 +397,17 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span>{{ item.title || t('untitled') }}</div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
                     <div class="card-meta">
                       <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                       <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -374,11 +436,16 @@
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
                       @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -400,11 +467,16 @@
                     :data-folder-resource="`interactive-template:${item.id}`"
                     @click="openInteractiveTemplate(item.id)"
                   >
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span><span class="card-title-text">{{ item.title }}</span></div>
                     <div class="card-meta">
                       <span class="badge" :class="item.role === 'owner' ? 'badge-owner' : 'badge-shared'">{{ interactiveTemplateTypeLabel(item.templateType) }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ item.role === 'owner' ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
                       <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
@@ -424,11 +496,16 @@
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
                       @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -648,6 +725,14 @@
     </template>
     </div>
     </main>
+      <button
+        v-if="isLoggedIn"
+        type="button"
+        class="dashboard-fab"
+        :aria-label="t('new')"
+        :title="t('new')"
+        @click.stop="toggleNewMenu"
+      ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
 
@@ -924,7 +1009,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
@@ -941,6 +1026,7 @@ import {
   type SidebarWidthState,
 } from '../dashboard/navigation';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
+import { formatRelativeDate } from '../dashboard/relative-date';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1157,8 +1243,6 @@ export default defineComponent({
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
-    const canScrollFolderUp = ref(false);
-    const canScrollFolderDown = ref(false);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1456,6 +1540,13 @@ export default defineComponent({
       }
       return Array.from(names).sort();
     });
+
+    // Mobile shows a handful of tags inline plus a "+N" overflow instead of
+    // the desktop's horizontally-scrolling strip.
+    const MOBILE_VISIBLE_TAG_COUNT = 3;
+    const mobileVisibleTags = computed(() => allTagNames.value.slice(0, MOBILE_VISIBLE_TAG_COUNT));
+    const mobileTagOverflowCount = computed(() => Math.max(0, allTagNames.value.length - MOBILE_VISIBLE_TAG_COUNT));
+    const mobileOverflowTagActive = computed(() => selectedTag.value !== '' && !mobileVisibleTags.value.includes(selectedTag.value));
 
     watch(contentFilter, () => {
       if (selectedTag.value && !allTagNames.value.includes(selectedTag.value)) selectedTag.value = '';
@@ -1930,26 +2021,10 @@ export default defineComponent({
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
-    const scrollActiveFolder = (direction: -1 | 1) => {
-      activeFolderBody.value?.scrollBy({ top: direction * 250, behavior: 'smooth' });
-    };
-
-    const updateFolderScrollControls = () => {
-      const body = activeFolderBody.value;
-      if (!body) {
-        canScrollFolderUp.value = false;
-        canScrollFolderDown.value = false;
-        return;
-      }
-      canScrollFolderUp.value = body.scrollTop > 2;
-      canScrollFolderDown.value = body.scrollTop + body.clientHeight < body.scrollHeight - 2;
-    };
-
     const refreshOverflowIndicators = () => {
       void nextTick(() => {
         const tagsList = tagFilterList.value;
         hasTagOverflow.value = Boolean(tagsList && tagsList.scrollWidth > tagsList.clientWidth + 2);
-        updateFolderScrollControls();
       });
     };
     watch([allTagNames, activeFolder], refreshOverflowIndicators, { flush: 'post' });
@@ -2812,7 +2887,6 @@ export default defineComponent({
     };
 
     const onFolderBodyScroll = () => {
-      updateFolderScrollControls();
       if (openMenuCanvasId.value) closeCardMenu();
     };
 
@@ -2852,6 +2926,28 @@ export default defineComponent({
       openMenuCanvasId.value = '';
       openControlMenu.value = '';
       cardMenuStyle.value = null;
+    };
+
+    const toggleMobileSortMenu = () => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === 'mobile-sort' ? '' : 'mobile-sort';
+    };
+
+    const selectSortMode = (mode: typeof sortMode.value) => {
+      sortMode.value = mode;
+      openControlMenu.value = '';
+    };
+
+    const toggleMobileTagPicker = () => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === 'mobile-tags' ? '' : 'mobile-tags';
+    };
+
+    const selectMobileTag = (tag: string) => {
+      selectedTag.value = tag;
+      openControlMenu.value = '';
     };
 
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
@@ -3213,6 +3309,20 @@ export default defineComponent({
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
     });
 
+    // The compact mobile list row uses a relative timestamp ("12 min ago",
+    // "Yesterday · 18:42") instead of formatDate's always-absolute one.
+    const formatCardDateMobile = (d: string) => formatRelativeDate(d, locale.value);
+
+    const folderItemTypeLabel = (type: FolderItem['type']) =>
+      type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('docs') : t('interactiveTemplate');
+
+    const folderSearchPlaceholder = computed(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) {
+        return `${t('searchInFolder')} ${activeFolder.value.name}…`;
+      }
+      return t('search');
+    });
+
     const fileInput = ref<HTMLInputElement | null>(null);
     const importFolderId = ref<string | null>(null);
 
@@ -3316,11 +3426,7 @@ export default defineComponent({
       formatRecentOpenedAt,
       tagFilterList,
       activeFolderBody,
-      scrollActiveFolder,
-      updateFolderScrollControls,
       hasTagOverflow,
-      canScrollFolderUp,
-      canScrollFolderDown,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,
@@ -3332,6 +3438,16 @@ export default defineComponent({
       sharedFiltered,
       publicFiltered,
       allTagNames,
+      mobileVisibleTags,
+      mobileTagOverflowCount,
+      mobileOverflowTagActive,
+      toggleMobileTagPicker,
+      selectMobileTag,
+      toggleMobileSortMenu,
+      selectSortMode,
+      folderSearchPlaceholder,
+      folderItemTypeLabel,
+      formatCardDateMobile,
       folderOptions,
       folderNames,
       searchQuery,
