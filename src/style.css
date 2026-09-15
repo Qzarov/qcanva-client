@@ -6436,13 +6436,19 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     left: -18px;
   }
 
-  /* Same -28px-assumed-64px-padding problem as the chevron above, but for the
-     drag handle's own extra heading shift (see .text-doc-drag-handle--heading
-     in the base rules) - at 20px of padding there's no room to push it any
-     further left than the base (already-clamped, see the JS offset in
-     TextDocumentView.vue) position without clipping it. */
-  .text-doc-drag-handle--heading {
-    transform: none;
+  /* The handle is a `draggable=true` div reordering blocks via native HTML5
+     drag-and-drop, which never fires from touch input - a drag gesture on it
+     is inert on a touch device (verified: touchstart/touchmove/touchend on
+     the handle changes nothing). Mobile browsers still reveal it on a plain
+     tap though (they synthesize a mousemove), where it only gets in the way:
+     at mobile's ~20px paper padding there isn't room for it next to the
+     -18px heading-collapse chevron above without the two overlapping, so a
+     revealed handle on a heading swallows taps meant for the chevron. Since
+     it does nothing useful here anyway, hide it outright rather than try to
+     fit a non-functional control into a gutter that can't hold it and the
+     chevron both. */
+  .text-doc-drag-handle {
+    display: none;
   }
 
   .text-doc-share-panel,
