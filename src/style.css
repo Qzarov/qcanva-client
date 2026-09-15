@@ -5194,6 +5194,7 @@ body {
 .text-doc-page {
   min-height: 100vh;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   background: var(--ui-page);
   color: var(--ui-text);
@@ -5236,6 +5237,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Mobile-only "⋮" document menu (Access/History live here instead of as
+   permanent topbar buttons) - hidden by default, shown by the mobile media
+   query below. */
+.text-doc-menu-mobile {
+  display: none;
 }
 
 .text-doc-sync {
@@ -6242,20 +6250,176 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 @media (max-width: 760px) {
   .text-doc-topbar {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+
+  .text-doc-topbar > .btn-ghost:first-child {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .text-doc-title-input,
+  .text-doc-title-readonly {
+    padding: 6px 4px;
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Access/History move into the "⋮" popover below; the sync chip becomes
+     a small secondary line under the title instead of its own big pill. */
+  .text-doc-access-btn,
+  .text-doc-history-btn {
+    display: none;
   }
 
   .text-doc-topbar-actions {
-    grid-column: 1 / -1;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 8px;
+  }
+
+  .text-doc-sync {
+    order: 10;
+    flex-basis: 100%;
+    text-align: right;
+    border: none;
+    background: transparent;
+    padding: 0 2px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: none;
+  }
+
+  .account-menu-trigger.current-user-badge {
+    padding: 6px;
+  }
+
+  .text-doc-menu-mobile {
+    display: inline-block;
+    position: relative;
+  }
+
+  .text-doc-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .text-doc-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: transparent;
+  }
+
+  .text-doc-menu-popover {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    z-index: 56;
+    width: 180px;
+    padding: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-md);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+    backdrop-filter: blur(10px);
+  }
+
+  .text-doc-menu-item {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ui-text);
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+    min-height: 40px;
+  }
+
+  .text-doc-menu-item:hover {
+    background: var(--ui-surface-subtle);
+  }
+
+  /* The document should feel like it merges with the page background,
+     not like a framed sheet floating inside another frame. */
+  .text-doc-editor-shell {
+    padding: 20px 4px calc(40px + env(safe-area-inset-bottom));
   }
 
   .text-doc-paper {
-    padding: 28px 22px;
+    min-height: 0;
+    padding: 4px 16px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
   }
 
-  .text-doc-editor-shell {
-    padding: 18px 12px 56px;
+  .text-doc-paper.readonly {
+    background: transparent;
+  }
+
+  .text-doc-paper .ProseMirror {
+    min-height: 50vh;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+
+  .text-doc-paper .ProseMirror h1 { font-size: 30px; }
+  .text-doc-paper .ProseMirror h2 { font-size: 25px; }
+  .text-doc-paper .ProseMirror h3 { font-size: 21px; }
+
+  .text-doc-paper .ProseMirror h1,
+  .text-doc-paper .ProseMirror h2,
+  .text-doc-paper .ProseMirror h3,
+  .text-doc-paper .ProseMirror h4,
+  .text-doc-paper .ProseMirror h5,
+  .text-doc-paper .ProseMirror h6 {
+    margin: 0.9em 0 0.35em;
+  }
+
+  .text-doc-paper .ProseMirror p {
+    margin: 0.55em 0;
+  }
+
+  /* Checkbox stays visually compact but keeps a >=44px touch target via an
+     invisible padded hit-area on the wrapping label, rather than growing
+     the checkbox itself past what's comfortable to read next to. */
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -11px 0.15rem -11px -11px;
+    padding: 11px;
+  }
+
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+
+  /* The chevron's -28px reservation assumed the desktop 64px paper padding;
+     at the new 16px mobile padding that pushed it off the left edge of the
+     viewport entirely. */
+  .text-doc-heading-toggle {
+    left: -18px;
   }
 
   .text-doc-share-panel,

@@ -18,13 +18,35 @@
         <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
         <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
         <div class="text-doc-topbar-actions">
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">{{ t('access') }}</button>
-          <button class="btn-ghost btn-sm" @click="toggleHistory">{{ t('history') }}</button>
+          <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('access') }}</button>
+          <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
           <AccountMenu v-if="currentUser" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
+          <div class="control-menu text-doc-menu-mobile">
+            <button
+              type="button"
+              class="btn-ghost btn-sm text-doc-menu-trigger"
+              :aria-label="t('groupActions')"
+              :title="t('groupActions')"
+              @click.stop="toggleDocMenu"
+            ><MoreVertical :size="18" aria-hidden="true" /></button>
+            <!-- The topbar's own backdrop-filter makes it a containing block
+                 for position:fixed descendants AND its own stacking context,
+                 so both the backdrop and the popover are teleported to
+                 <body> together with a viewport-relative position computed
+                 from the trigger - otherwise the popover's z-index is only
+                 compared against the topbar's siblings, not the backdrop. -->
+            <Teleport to="body">
+              <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
+              <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
+                <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('access') }}</button>
+                <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
+              </div>
+            </Teleport>
+          </div>
         </div>
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
@@ -431,9 +453,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
+import { MoreVertical } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, MoreVertical },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -482,6 +505,32 @@ export default defineComponent({
     const accessRequestSent = ref(false);
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
+    // Mobile-only "⋮" popover that houses Access/History (both stay driven
+    // by the same showShare/toggleHistory state the desktop buttons use).
+    const docMenuOpen = ref(false);
+    const docMenuStyle = ref<Record<string, string> | null>(null);
+    const toggleDocMenu = (event?: Event) => {
+      if (docMenuOpen.value) {
+        docMenuOpen.value = false;
+        docMenuStyle.value = null;
+        return;
+      }
+      // Teleported to <body> below (the topbar's own backdrop-filter makes
+      // it a containing block for position:fixed, and a separate stacking
+      // context that would otherwise sit the popover's z-index UNDER the
+      // teleported backdrop's) - so both need a viewport-relative position
+      // computed from the trigger, same approach as the dashboard's
+      // computeCardMenuStyle.
+      const trigger = event?.currentTarget as HTMLElement | undefined;
+      const rect = trigger?.getBoundingClientRect();
+      docMenuStyle.value = rect
+        ? { position: 'fixed', top: `${Math.round(rect.bottom + 6)}px`, right: `${Math.round(window.innerWidth - rect.right)}px` }
+        : null;
+      docMenuOpen.value = true;
+    };
+    const closeDocMenu = () => { docMenuOpen.value = false; docMenuStyle.value = null; };
+    const openAccessFromDocMenu = () => { closeDocMenu(); showShare.value = !showShare.value; };
+    const openHistoryFromDocMenu = () => { closeDocMenu(); void toggleHistory(); };
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
@@ -1670,6 +1719,12 @@ export default defineComponent({
       pendingUpdatesCount,
       syncStatus,
       showShare,
+      docMenuOpen,
+      docMenuStyle,
+      toggleDocMenu,
+      closeDocMenu,
+      openAccessFromDocMenu,
+      openHistoryFromDocMenu,
       slugInput,
       savingSlug,
       visibility,
