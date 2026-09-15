@@ -6179,6 +6179,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-accent-strong);
 }
 
+/* Mobile-only link editor bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop in-bubble form instead. */
+.text-doc-link-sheet-backdrop,
+.text-doc-link-sheet {
+  display: none;
+}
+
 /* The typed `/query` while the menu is open, so it is visible that the
    characters are a query and not prose yet. */
 .text-doc-paper .ProseMirror .qcanva-slash-query {
@@ -6425,6 +6432,71 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-share-panel,
   .text-doc-history-panel {
     inset: 64px 10px 10px;
+  }
+
+  .text-doc-bubble-link-form-desktop {
+    display: none;
+  }
+
+  .text-doc-link-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-link-sheet {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 71;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-link-sheet-title {
+    margin-bottom: 10px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-link-sheet-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .text-doc-link-sheet-input {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    background: var(--ui-surface-subtle);
+    color: var(--ui-text);
+    font-size: 15px;
+  }
+
+  .text-doc-link-sheet-input:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 1px;
+  }
+
+  .text-doc-link-sheet-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .text-doc-link-sheet-actions .btn-ghost,
+  .text-doc-link-sheet-apply {
+    min-height: 44px;
   }
 }
 

@@ -307,7 +307,7 @@
             <span class="text-doc-bubble-icon" v-html="unlinkIcon"></span>
           </button>
         </template>
-        <form v-else class="text-doc-bubble-link-form" @submit.prevent="applyLink">
+        <form v-else class="text-doc-bubble-link-form text-doc-bubble-link-form-desktop" @submit.prevent="applyLink">
           <input
             v-model="linkInput"
             class="text-doc-bubble-link-input"
@@ -324,6 +324,48 @@
           </button>
         </form>
       </BubbleMenu>
+
+      <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
+           instead of the desktop's in-place bubble form. Anchoring here to
+           the visual viewport (rather than depending on the browser's own
+           "scroll the focused element into view" behavior once the input
+           below is focused and the keyboard opens) is what avoids the
+           scroll-jump: an element already pinned to the viewport bottom
+           never needs scroll-adjusting, wherever the original selection was. -->
+      <Teleport to="body">
+        <div v-if="linkEditorOpen" class="text-doc-link-sheet-backdrop" @click="closeLinkEditor"></div>
+        <div
+          v-if="linkEditorOpen"
+          class="text-doc-link-sheet"
+          :style="{ bottom: keyboardInset + 'px' }"
+          role="dialog"
+          :aria-label="t('linkAdd')"
+        >
+          <div class="text-doc-link-sheet-title">{{ t('linkAdd') }}</div>
+          <form class="text-doc-link-sheet-form" @submit.prevent="applyLink">
+            <input
+              v-model="linkInput"
+              class="text-doc-link-sheet-input"
+              :placeholder="t('linkUrl')"
+              :aria-label="t('linkUrl')"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autofocus
+              @keydown.esc.prevent="closeLinkEditor"
+            />
+            <div class="text-doc-link-sheet-actions">
+              <button
+                v-if="linkEditorHadLink"
+                type="button"
+                class="btn-ghost btn-sm"
+                @click="removeLink"
+              >{{ t('linkRemove') }}</button>
+              <button type="submit" class="btn-primary btn-sm text-doc-link-sheet-apply">{{ t('linkApply') }}</button>
+            </div>
+          </form>
+        </div>
+      </Teleport>
 
       <!-- The slash menu. Chrome, not document content: it lives in the app's
            themed --ui-* palette (like the toolbar), never in the fixed paper
@@ -395,8 +437,8 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
-import type { Editor, EditorEvents, Range } from '@tiptap/core';
-import { Mapping } from '@tiptap/pm/transform';
+import type { Editor, Range } from '@tiptap/core';
+import { trackRange } from '../text-documents/preserve-range';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from '../text-documents/code-highlighting';
@@ -687,17 +729,51 @@ export default defineComponent({
       editor.value?.chain().focus().toggleMark(mark).run();
     };
 
+    /**
+     * The mobile link editor is a bottom sheet, not the in-place bubble -
+     * opening it moves focus to a plain <input>, and on mobile that also
+     * closes/reopens the keyboard (a real layout event, not just a DOM
+     * focus change). Capturing the range up front and re-asserting it right
+     * before applying/removing means the mark lands on the text that was
+     * ACTUALLY selected when the user tapped the link button, regardless of
+     * what happened to focus or to the document (a collaborator's edit)
+     * while the sheet was open - see text-documents/preserve-range.ts.
+     */
+    let linkRangeTracker: ReturnType<typeof trackRange> | null = null;
+    // Captured at open time rather than read live from editor.isActive('link')
+    // in the template: moving focus to the sheet's <input> can leave the
+    // editor's selection collapsed/without marks by the time of the next
+    // render, which would wrongly hide the Remove button for an existing
+    // link - exactly the "don't trust selection after blur" risk this sheet
+    // exists to guard against elsewhere too.
+    const linkEditorHadLink = ref(false);
+
     const openLinkEditor = () => {
       linkInput.value = editor.value?.getAttributes('link').href || '';
+      linkEditorHadLink.value = editor.value?.isActive('link') ?? false;
+      if (editor.value) {
+        const { from, to } = editor.value.state.selection;
+        linkRangeTracker = trackRange(editor.value, { from, to });
+      }
       linkEditorOpen.value = true;
     };
 
     const closeLinkEditor = () => {
       linkEditorOpen.value = false;
       linkInput.value = '';
+      linkEditorHadLink.value = false;
+      linkRangeTracker?.stop();
+      linkRangeTracker = null;
+    };
+
+    const restoreLinkSelection = () => {
+      if (!editor.value || !linkRangeTracker) return;
+      const range = linkRangeTracker.resolve();
+      editor.value.chain().focus().setTextSelection(range).run();
     };
 
     const removeLink = () => {
+      restoreLinkSelection();
       editor.value?.chain().focus().extendMarkRange('link').unsetLink().run();
       closeLinkEditor();
     };
@@ -716,9 +792,34 @@ export default defineComponent({
         showToast(t('linkRejected'), 'error');
         return;
       }
+      restoreLinkSelection();
       editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run();
       closeLinkEditor();
     };
+
+    /**
+     * How far the on-screen keyboard currently pushes up from the bottom of
+     * the layout viewport (0 when it's closed or on a device with no
+     * `visualViewport`). The mobile link-editor and slash-command sheets are
+     * `position: fixed; bottom: 0` and add this as extra bottom offset, so
+     * they track the keyboard directly instead of depending on whatever
+     * scroll adjustment the browser makes on its own when an input inside
+     * them gets focused.
+     */
+    const keyboardInset = ref(0);
+    const updateKeyboardInset = () => {
+      const vv = window.visualViewport;
+      keyboardInset.value = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
+    };
+    onMounted(() => {
+      updateKeyboardInset();
+      window.visualViewport?.addEventListener('resize', updateKeyboardInset);
+      window.visualViewport?.addEventListener('scroll', updateKeyboardInset);
+    });
+    onBeforeUnmount(() => {
+      window.visualViewport?.removeEventListener('resize', updateKeyboardInset);
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardInset);
+    });
 
     /**
      * SLASH MENU state.
@@ -974,27 +1075,19 @@ export default defineComponent({
        *
        * Every transaction dispatched on this editor between now and the
        * moment the range is actually used is folded into one running
-       * `Mapping` (ProseMirror's own tool for exactly this - see
-       * prosemirror-transform's `Mapping`/`Transform.mapping`), and the range
-       * is mapped through it right before use rather than trusted as
+       * `Mapping` (see `trackRange` in text-documents/preserve-range.ts,
+       * shared with the mobile link-editor and slash-command flows), and the
+       * range is mapped through it right before use rather than trusted as
        * captured. Re-deriving the range by searching for the query text
        * instead was rejected: two identical strings in one paragraph would
        * make that wrong in a different way.
        */
-      const positionMapping = new Mapping();
-      const trackTransaction = ({ transaction }: EditorEvents['transaction']) => {
-        positionMapping.appendMapping(transaction.mapping);
-      };
-      context.editor.on('transaction', trackTransaction);
-      const stopTrackingPosition = () => context.editor.off('transaction', trackTransaction);
+      const rangeTracker = trackRange(context.editor, context.range);
 
       try {
         const created = await createMentionSiblingPage(newTitle);
-        stopTrackingPosition();
-        const mappedRange: Range = {
-          from: positionMapping.map(context.range.from),
-          to: positionMapping.map(context.range.to),
-        };
+        const mappedRange = rangeTracker.resolve();
+        rangeTracker.stop();
         // Committed into THIS document before anything about navigation runs.
         insertMentionAtRange(context.editor, mappedRange, { id: created.id, label: newTitle });
         const target = created.slug || created.id;
@@ -1003,7 +1096,7 @@ export default defineComponent({
         // on `route.path`) - see `shouldFocusAfterMentionCreate` near `load()`.
         await router.push({ name: 'text-document', params: { id: target }, query: { mentionFocus: '1' } });
       } catch (e: any) {
-        stopTrackingPosition();
+        rangeTracker.stop();
         // Nothing was deleted and nothing was inserted above: the typed
         // "@query" text is exactly what it was before this ran.
         showToast(e?.message || t('mentionCreatePageFailed'), 'error');
@@ -1675,7 +1768,9 @@ export default defineComponent({
       mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
       mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       linkEditorOpen,
+      linkEditorHadLink,
       linkInput,
+      keyboardInset,
       bubbleMarkButtons,
       bubbleShouldShow,
       applyBubbleMark,
