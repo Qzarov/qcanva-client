@@ -1,5 +1,5 @@
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-index be31c0d..b34445c 100644
+index be31c0d..adcbbee 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
 @@ -378,6 +378,8 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
@@ -11,8 +11,19 @@ index be31c0d..b34445c 100644
                      if (element) {
                          removeNode(wrapper);
                      }
+@@ -389,6 +391,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 keydown(view) {
+                     if (popup && popup.state.isVisible && view.hasFocus()) {
+                         popup.hide();
++                        // See index.js for why this reset is required.
++                        currentNode = null;
++                        currentNodePos = -1;
++                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
+                         return false;
+                     }
+                     return false;
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-index 2fdae1d..ddcc0bd 100644
+index 2fdae1d..69274ec 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
 @@ -370,6 +370,12 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
@@ -28,3 +39,18 @@ index 2fdae1d..ddcc0bd 100644
                      if (element) {
                          removeNode(wrapper);
                      }
+@@ -381,6 +387,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 keydown(view) {
+                     if (popup && popup.state.isVisible && view.hasFocus()) {
+                         popup.hide();
++                        // Mirror mouseleave/hideDragHandle: without resetting
++                        // these, mousemove's `outerNode !== currentNode` guard
++                        // never fires again for the same still-hovered block,
++                        // so the handle stays hidden until the mouse reaches a
++                        // genuinely different node.
++                        currentNode = null;
++                        currentNodePos = -1;
++                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
+                         return false;
+                     }
+                     return false;
