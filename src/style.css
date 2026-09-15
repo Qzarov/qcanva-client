@@ -2849,13 +2849,13 @@ body {
 
   .dash-toolbar {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr);
-    gap: 6px;
-    margin-bottom: 18px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 5px;
+    margin-bottom: 12px;
   }
 
   .dashboard-new-menu .btn-primary {
-    min-height: 38px;
+    min-height: 32px;
     padding: 5px 8px;
     gap: 4px;
     font-size: 12px;
@@ -2864,17 +2864,17 @@ body {
   .dash-search {
     width: 100%;
     min-width: 0;
-    min-height: 38px;
-    padding: 7px 9px;
-    font-size: 14px;
+    min-height: 32px;
+    padding: 5px 9px;
+    font-size: 13px;
   }
 
   .dash-sort-select {
-    grid-column: 1 / -1;
-    width: 100%;
+    grid-column: 3;
+    width: auto;
     min-width: 0;
-    min-height: 38px;
-    padding: 6px;
+    min-height: 32px;
+    padding: 4px 6px;
     font-size: 12px;
     flex-basis: auto;
   }
@@ -2885,21 +2885,28 @@ body {
     width: 100%;
   }
 
+  .content-type-tabs {
+    padding: 2px;
+  }
+
   .content-type-tabs button {
     flex: 1;
+    min-width: 0;
+    padding: 5px 6px;
+    font-size: 11px;
   }
 
   .tag-filter-list {
     position: relative;
     flex-wrap: nowrap;
     overflow-x: auto;
-    gap: 6px;
-    padding: 1px 28px 5px 1px;
+    gap: 5px;
+    padding: 1px 28px 3px 1px;
     scrollbar-width: none;
     -webkit-overflow-scrolling: touch;
   }
   .tag-filter-list::-webkit-scrollbar { display: none; }
-  .tag-filter { flex: 0 0 auto; padding: 5px 10px; }
+  .tag-filter { flex: 0 0 auto; padding: 4px 9px; font-size: 11px; }
   .tag-filter-scroll-hint {
     display: grid;
     position: sticky;

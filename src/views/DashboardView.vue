@@ -1834,6 +1834,11 @@ export default defineComponent({
       const target = event.target as HTMLElement | null;
       if (target?.closest('.dashboard-modal-backdrop, input, textarea, select, [contenteditable="true"]')) return;
       if ((dashboardMain.value?.scrollTop || 0) > 0) return;
+      // An open folder scrolls its own nested body (.folder-manager-body),
+      // separate from dashboardMain - without this check, scrolling up
+      // inside a folder that isn't at ITS OWN top reads as "page at top"
+      // and wrongly starts a pull-to-refresh instead.
+      if ((activeFolderBody.value?.scrollTop || 0) > 0) return;
       const point = event.touches[0];
       if (!point) return;
       dashboardPullStartY = point.clientY;
@@ -1849,6 +1854,10 @@ export default defineComponent({
         return;
       }
       if ((dashboardMain.value?.scrollTop || 0) > 0) {
+        resetDashboardPull();
+        return;
+      }
+      if ((activeFolderBody.value?.scrollTop || 0) > 0) {
         resetDashboardPull();
         return;
       }
