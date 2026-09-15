@@ -208,6 +208,26 @@ describe('drag handle wiring', () => {
     wrapper.unmount();
   });
 
+  it('marks the handle as over a heading so CSS can dodge the collapse chevron', async () => {
+    const wrapper = await mountEditableDoc();
+    const handle = wrapper.vm.getDragHandleElement() as HTMLElement;
+    const dragHandleExt = wrapper.vm.editor.extensionManager.extensions.find(
+      (ext: any) => ext.name === 'dragHandle',
+    );
+
+    dragHandleExt.options.onNodeChange({ editor: wrapper.vm.editor, node: { type: { name: 'heading' } }, pos: 0 });
+    expect(handle.classList.contains('text-doc-drag-handle--heading')).toBe(true);
+
+    dragHandleExt.options.onNodeChange({ editor: wrapper.vm.editor, node: { type: { name: 'paragraph' } }, pos: 0 });
+    expect(handle.classList.contains('text-doc-drag-handle--heading')).toBe(false);
+
+    dragHandleExt.options.onNodeChange({ editor: wrapper.vm.editor, node: { type: { name: 'heading' } }, pos: 0 });
+    dragHandleExt.options.onNodeChange({ editor: wrapper.vm.editor, node: null, pos: -1 });
+    expect(handle.classList.contains('text-doc-drag-handle--heading')).toBe(false);
+
+    wrapper.unmount();
+  });
+
   it('registers the handle and its NodeRange requirement exactly once each', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const wrapper = await mountEditableDoc();

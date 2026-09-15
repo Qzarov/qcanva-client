@@ -1171,6 +1171,14 @@ export default defineComponent({
         DragHandle.configure({
           render: renderDragHandle,
           tippyOptions: { offset: [0, 8] },
+          // The 8px offset above is tuned for an ordinary block. A heading
+          // reserves its own -28px slot for the collapse chevron
+          // (.text-doc-heading-toggle in style.css), which the handle would
+          // otherwise land right on top of, so nudge it further left there.
+          onNodeChange: ({ node }) => {
+            if (!dragHandleElement) return;
+            dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
+          },
         }),
         // Refuses a transaction that would add a top-level block past the
         // ceiling, and NOTHING else - never a Yjs transaction, never an edit

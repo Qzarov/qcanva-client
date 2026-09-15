@@ -6083,6 +6083,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   height: 16px;
 }
 
+/* Headings reserve their own -28px slot for the collapse chevron
+   (.text-doc-heading-toggle above), which sits in the exact spot the
+   handle's normal 8px offset would otherwise land it on. */
+.text-doc-drag-handle--heading {
+  transform: translateX(-28px);
+}
+
 .text-doc-bubble-menu {
   display: flex;
   gap: 2px;
