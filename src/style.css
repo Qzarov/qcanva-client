@@ -6436,6 +6436,15 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     left: -18px;
   }
 
+  /* Same -28px-assumed-64px-padding problem as the chevron above, but for the
+     drag handle's own extra heading shift (see .text-doc-drag-handle--heading
+     in the base rules) - at 20px of padding there's no room to push it any
+     further left than the base (already-clamped, see the JS offset in
+     TextDocumentView.vue) position without clipping it. */
+  .text-doc-drag-handle--heading {
+    transform: none;
+  }
+
   .text-doc-share-panel,
   .text-doc-history-panel {
     inset: 64px 10px 10px;

@@ -1365,11 +1365,24 @@ export default defineComponent({
         NodeRange,
         DragHandle.configure({
           render: renderDragHandle,
-          tippyOptions: { offset: [0, 8] },
-          // The 8px offset above is tuned for an ordinary block. A heading
-          // reserves its own -28px slot for the collapse chevron
-          // (.text-doc-heading-toggle in style.css), which the handle would
-          // otherwise land right on top of, so nudge it further left there.
+          // The extension positions the handle 8px to the left of the block,
+          // which needs ~30px of clearance (its own 22px + the 8px gap). That
+          // fit inside desktop's 64px paper padding, but mobile browsers also
+          // reveal the handle on a plain tap (they synthesize a mousemove),
+          // and mobile's ~20px padding (.text-doc-paper) has no room for it -
+          // it renders clipped off the left edge of the viewport. Popper's own
+          // preventOverflow modifier can't be coaxed into clamping this: its
+          // boundary is the plugin's own zero-width absolutely-positioned
+          // wrapper, not the visual viewport, so it always reports zero
+          // overflow regardless of options. Pull the offset in instead, so
+          // the handle's own known width is what's budgeted against the
+          // known padding - deterministic, and desktop is untouched.
+          tippyOptions: { offset: isMobileEditorLayout() ? [0, -6] : [0, 8] },
+          // The 8px (desktop) / -6px (mobile) offset above is tuned for an
+          // ordinary block. A heading reserves its own slot further left for
+          // the collapse chevron (.text-doc-heading-toggle in style.css),
+          // which the handle would otherwise land right on top of, so nudge
+          // it further left there - see .text-doc-drag-handle--heading.
           onNodeChange: ({ node }) => {
             if (!dragHandleElement) return;
             dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
