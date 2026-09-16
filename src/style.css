@@ -5380,6 +5380,7 @@ body {
 .text-doc-page {
   min-height: 100vh;
   height: 100vh;
+  height: 100dvh;
   overflow-y: auto;
   background: var(--ui-page);
   color: var(--ui-text);
@@ -5422,6 +5423,13 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* Mobile-only "⋮" document menu (Access/History live here instead of as
+   permanent topbar buttons) - hidden by default, shown by the mobile media
+   query below. */
+.text-doc-menu-mobile {
+  display: none;
 }
 
 .text-doc-sync {
@@ -6064,6 +6072,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   white-space: nowrap;
 }
 
+/* Mobile-only slash-command bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop popup instead. */
+.text-doc-slash-sheet-backdrop,
+.text-doc-slash-sheet {
+  display: none;
+}
+
 .text-doc-slash-empty {
   padding: 9px;
   color: var(--ui-text-muted);
@@ -6357,6 +6372,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-accent-strong);
 }
 
+/* Mobile-only link editor bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop in-bubble form instead. */
+.text-doc-link-sheet-backdrop,
+.text-doc-link-sheet {
+  display: none;
+}
+
 /* The typed `/query` while the menu is open, so it is visible that the
    characters are a query and not prose yet. */
 .text-doc-paper .ProseMirror .qcanva-slash-query {
@@ -6428,25 +6450,327 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 @media (max-width: 760px) {
   .text-doc-topbar {
-    grid-template-columns: auto 1fr;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-height: 0;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+
+  .text-doc-topbar > .btn-ghost:first-child {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .text-doc-title-input,
+  .text-doc-title-readonly {
+    padding: 6px 4px;
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Access/History move into the "⋮" popover below; the sync chip becomes
+     a small secondary line under the title instead of its own big pill. */
+  .text-doc-access-btn,
+  .text-doc-history-btn {
+    display: none;
   }
 
   .text-doc-topbar-actions {
-    grid-column: 1 / -1;
     flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 4px 8px;
+  }
+
+  .text-doc-sync {
+    order: 10;
+    flex-basis: 100%;
+    text-align: right;
+    border: none;
+    background: transparent;
+    padding: 0 2px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: none;
+  }
+
+  .account-menu-trigger.current-user-badge {
+    padding: 6px;
+  }
+
+  .text-doc-menu-mobile {
+    display: inline-block;
+    position: relative;
+  }
+
+  .text-doc-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .text-doc-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: transparent;
+  }
+
+  .text-doc-menu-popover {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    z-index: 56;
+    width: 180px;
+    padding: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-md);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+    backdrop-filter: blur(10px);
+  }
+
+  .text-doc-menu-item {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ui-text);
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+    min-height: 40px;
+  }
+
+  .text-doc-menu-item:hover {
+    background: var(--ui-surface-subtle);
+  }
+
+  /* The document should feel like it merges with the page background,
+     not like a framed sheet floating inside another frame. */
+  .text-doc-editor-shell {
+    padding: 20px 4px calc(40px + env(safe-area-inset-bottom));
   }
 
   .text-doc-paper {
-    padding: 28px 22px;
+    min-height: 0;
+    padding: 4px 16px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
   }
 
-  .text-doc-editor-shell {
-    padding: 18px 12px 56px;
+  .text-doc-paper.readonly {
+    background: transparent;
+  }
+
+  .text-doc-paper .ProseMirror {
+    min-height: 50vh;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+
+  .text-doc-paper .ProseMirror h1 { font-size: 30px; }
+  .text-doc-paper .ProseMirror h2 { font-size: 25px; }
+  .text-doc-paper .ProseMirror h3 { font-size: 21px; }
+
+  .text-doc-paper .ProseMirror h1,
+  .text-doc-paper .ProseMirror h2,
+  .text-doc-paper .ProseMirror h3,
+  .text-doc-paper .ProseMirror h4,
+  .text-doc-paper .ProseMirror h5,
+  .text-doc-paper .ProseMirror h6 {
+    margin: 0.9em 0 0.35em;
+  }
+
+  .text-doc-paper .ProseMirror p {
+    margin: 0.55em 0;
+  }
+
+  /* Checkbox stays visually compact but keeps a >=44px touch target via an
+     invisible padded hit-area on the wrapping label, rather than growing
+     the checkbox itself past what's comfortable to read next to. */
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -11px 0.15rem -11px -11px;
+    padding: 11px;
+  }
+
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+
+  /* The chevron's -28px reservation assumed the desktop 64px paper padding;
+     at the new 16px mobile padding that pushed it off the left edge of the
+     viewport entirely. */
+  .text-doc-heading-toggle {
+    left: -18px;
+  }
+
+  /* The handle is a `draggable=true` div reordering blocks via native HTML5
+     drag-and-drop, which never fires from touch input - a drag gesture on it
+     is inert on a touch device (verified: touchstart/touchmove/touchend on
+     the handle changes nothing). Mobile browsers still reveal it on a plain
+     tap though (they synthesize a mousemove), where it only gets in the way:
+     at mobile's ~20px paper padding there isn't room for it next to the
+     -18px heading-collapse chevron above without the two overlapping, so a
+     revealed handle on a heading swallows taps meant for the chevron. Since
+     it does nothing useful here anyway, hide it outright rather than try to
+     fit a non-functional control into a gutter that can't hold it and the
+     chevron both. */
+  .text-doc-drag-handle {
+    display: none;
   }
 
   .text-doc-share-panel,
   .text-doc-history-panel {
     inset: 64px 10px 10px;
+  }
+
+  .text-doc-bubble-link-form-desktop {
+    display: none;
+  }
+
+  .text-doc-link-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-link-sheet {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 71;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-link-sheet-title {
+    margin-bottom: 10px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-link-sheet-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .text-doc-link-sheet-input {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    background: var(--ui-surface-subtle);
+    color: var(--ui-text);
+    font-size: 15px;
+  }
+
+  .text-doc-link-sheet-input:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 1px;
+  }
+
+  .text-doc-link-sheet-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .text-doc-link-sheet-actions .btn-ghost,
+  .text-doc-link-sheet-apply {
+    min-height: 44px;
+  }
+
+  .text-doc-slash-menu {
+    display: none;
+  }
+
+  .text-doc-slash-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-slash-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 60vh;
+    z-index: 71;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-slash-sheet-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 0 4px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-slash-sheet-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ui-text-secondary);
+  }
+
+  .text-doc-slash-sheet-list {
+    overflow-y: auto;
+  }
+
+  .text-doc-slash-sheet-item {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+
+  .text-doc-slash-sheet-item .text-doc-slash-icon svg {
+    width: 20px;
+    height: 20px;
   }
 }
 

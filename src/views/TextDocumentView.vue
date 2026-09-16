@@ -18,13 +18,35 @@
         <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
         <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
         <div class="text-doc-topbar-actions">
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showShare = !showShare">{{ t('access') }}</button>
-          <button class="btn-ghost btn-sm" @click="toggleHistory">{{ t('history') }}</button>
+          <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('access') }}</button>
+          <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
           </button>
           <AccountMenu v-if="currentUser" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
+          <div class="control-menu text-doc-menu-mobile">
+            <button
+              type="button"
+              class="btn-ghost btn-sm text-doc-menu-trigger"
+              :aria-label="t('groupActions')"
+              :title="t('groupActions')"
+              @click.stop="toggleDocMenu"
+            ><MoreVertical :size="18" aria-hidden="true" /></button>
+            <!-- The topbar's own backdrop-filter makes it a containing block
+                 for position:fixed descendants AND its own stacking context,
+                 so both the backdrop and the popover are teleported to
+                 <body> together with a viewport-relative position computed
+                 from the trigger - otherwise the popover's z-index is only
+                 compared against the topbar's siblings, not the backdrop. -->
+            <Teleport to="body">
+              <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
+              <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
+                <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('access') }}</button>
+                <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
+              </div>
+            </Teleport>
+          </div>
         </div>
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
@@ -285,7 +307,7 @@
             <span class="text-doc-bubble-icon" v-html="unlinkIcon"></span>
           </button>
         </template>
-        <form v-else class="text-doc-bubble-link-form" @submit.prevent="applyLink">
+        <form v-else class="text-doc-bubble-link-form text-doc-bubble-link-form-desktop" @submit.prevent="applyLink">
           <input
             v-model="linkInput"
             class="text-doc-bubble-link-input"
@@ -302,6 +324,48 @@
           </button>
         </form>
       </BubbleMenu>
+
+      <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
+           instead of the desktop's in-place bubble form. Anchoring here to
+           the visual viewport (rather than depending on the browser's own
+           "scroll the focused element into view" behavior once the input
+           below is focused and the keyboard opens) is what avoids the
+           scroll-jump: an element already pinned to the viewport bottom
+           never needs scroll-adjusting, wherever the original selection was. -->
+      <Teleport to="body">
+        <div v-if="linkEditorOpen" class="text-doc-link-sheet-backdrop" @click="closeLinkEditor"></div>
+        <div
+          v-if="linkEditorOpen"
+          class="text-doc-link-sheet"
+          :style="{ bottom: keyboardInset + 'px' }"
+          role="dialog"
+          :aria-label="t('linkAdd')"
+        >
+          <div class="text-doc-link-sheet-title">{{ t('linkAdd') }}</div>
+          <form class="text-doc-link-sheet-form" @submit.prevent="applyLink">
+            <input
+              v-model="linkInput"
+              class="text-doc-link-sheet-input"
+              :placeholder="t('linkUrl')"
+              :aria-label="t('linkUrl')"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autofocus
+              @keydown.esc.prevent="closeLinkEditor"
+            />
+            <div class="text-doc-link-sheet-actions">
+              <button
+                v-if="linkEditorHadLink"
+                type="button"
+                class="btn-ghost btn-sm"
+                @click="removeLink"
+              >{{ t('linkRemove') }}</button>
+              <button type="submit" class="btn-primary btn-sm text-doc-link-sheet-apply">{{ t('linkApply') }}</button>
+            </div>
+          </form>
+        </div>
+      </Teleport>
 
       <!-- The slash menu. Chrome, not document content: it lives in the app's
            themed --ui-* palette (like the toolbar), never in the fixed paper
@@ -330,6 +394,38 @@
         </button>
         <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
       </div>
+
+      <!-- Mobile slash menu: a bottom sheet, since the desktop popup's rect-
+           based position (right under the caret) is meaningless once the
+           keyboard closing has moved everything around. Shares slashItems/
+           slashIndex/selectSlashItem with the desktop popup above. -->
+      <Teleport to="body">
+        <div v-if="slashOpen" class="text-doc-slash-sheet-backdrop" @click="cancelSlashMenu"></div>
+        <div v-if="slashOpen" class="text-doc-slash-sheet" role="listbox" :aria-label="t('slashMenu')">
+          <div class="text-doc-slash-sheet-title">
+            {{ t('slashMenu') }}
+            <button type="button" class="text-doc-slash-sheet-close" :aria-label="t('close')" @click="cancelSlashMenu">
+              <X :size="16" aria-hidden="true" />
+            </button>
+          </div>
+          <div class="text-doc-slash-sheet-list">
+            <button
+              v-for="(item, index) in slashItems"
+              :key="item.id"
+              class="text-doc-slash-item text-doc-slash-sheet-item"
+              :class="{ active: index === slashIndex }"
+              role="option"
+              :aria-selected="index === slashIndex"
+              type="button"
+              @click="selectSlashItem(index)"
+            >
+              <span class="text-doc-slash-icon" v-html="item.icon"></span>
+              <span class="text-doc-slash-label">{{ t(item.labelKey) }}</span>
+            </button>
+            <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- The @-mention picker. Same chrome rule as the slash menu above:
            lives in the app's themed --ui-* palette, nothing here reaches the
@@ -373,8 +469,8 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
-import type { Editor, EditorEvents, Range } from '@tiptap/core';
-import { Mapping } from '@tiptap/pm/transform';
+import type { Editor, Range } from '@tiptap/core';
+import { trackRange } from '../text-documents/preserve-range';
 import StarterKit from '@tiptap/starter-kit';
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import { lowlight } from '../text-documents/code-highlighting';
@@ -431,9 +527,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
+import { MoreVertical, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, MoreVertical, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -482,6 +579,32 @@ export default defineComponent({
     const accessRequestSent = ref(false);
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
+    // Mobile-only "⋮" popover that houses Access/History (both stay driven
+    // by the same showShare/toggleHistory state the desktop buttons use).
+    const docMenuOpen = ref(false);
+    const docMenuStyle = ref<Record<string, string> | null>(null);
+    const toggleDocMenu = (event?: Event) => {
+      if (docMenuOpen.value) {
+        docMenuOpen.value = false;
+        docMenuStyle.value = null;
+        return;
+      }
+      // Teleported to <body> below (the topbar's own backdrop-filter makes
+      // it a containing block for position:fixed, and a separate stacking
+      // context that would otherwise sit the popover's z-index UNDER the
+      // teleported backdrop's) - so both need a viewport-relative position
+      // computed from the trigger, same approach as the dashboard's
+      // computeCardMenuStyle.
+      const trigger = event?.currentTarget as HTMLElement | undefined;
+      const rect = trigger?.getBoundingClientRect();
+      docMenuStyle.value = rect
+        ? { position: 'fixed', top: `${Math.round(rect.bottom + 6)}px`, right: `${Math.round(window.innerWidth - rect.right)}px` }
+        : null;
+      docMenuOpen.value = true;
+    };
+    const closeDocMenu = () => { docMenuOpen.value = false; docMenuStyle.value = null; };
+    const openAccessFromDocMenu = () => { closeDocMenu(); showShare.value = !showShare.value; };
+    const openHistoryFromDocMenu = () => { closeDocMenu(); void toggleHistory(); };
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
@@ -638,17 +761,51 @@ export default defineComponent({
       editor.value?.chain().focus().toggleMark(mark).run();
     };
 
+    /**
+     * The mobile link editor is a bottom sheet, not the in-place bubble -
+     * opening it moves focus to a plain <input>, and on mobile that also
+     * closes/reopens the keyboard (a real layout event, not just a DOM
+     * focus change). Capturing the range up front and re-asserting it right
+     * before applying/removing means the mark lands on the text that was
+     * ACTUALLY selected when the user tapped the link button, regardless of
+     * what happened to focus or to the document (a collaborator's edit)
+     * while the sheet was open - see text-documents/preserve-range.ts.
+     */
+    let linkRangeTracker: ReturnType<typeof trackRange> | null = null;
+    // Captured at open time rather than read live from editor.isActive('link')
+    // in the template: moving focus to the sheet's <input> can leave the
+    // editor's selection collapsed/without marks by the time of the next
+    // render, which would wrongly hide the Remove button for an existing
+    // link - exactly the "don't trust selection after blur" risk this sheet
+    // exists to guard against elsewhere too.
+    const linkEditorHadLink = ref(false);
+
     const openLinkEditor = () => {
       linkInput.value = editor.value?.getAttributes('link').href || '';
+      linkEditorHadLink.value = editor.value?.isActive('link') ?? false;
+      if (editor.value) {
+        const { from, to } = editor.value.state.selection;
+        linkRangeTracker = trackRange(editor.value, { from, to });
+      }
       linkEditorOpen.value = true;
     };
 
     const closeLinkEditor = () => {
       linkEditorOpen.value = false;
       linkInput.value = '';
+      linkEditorHadLink.value = false;
+      linkRangeTracker?.stop();
+      linkRangeTracker = null;
+    };
+
+    const restoreLinkSelection = () => {
+      if (!editor.value || !linkRangeTracker) return;
+      const range = linkRangeTracker.resolve();
+      editor.value.chain().focus().setTextSelection(range).run();
     };
 
     const removeLink = () => {
+      restoreLinkSelection();
       editor.value?.chain().focus().extendMarkRange('link').unsetLink().run();
       closeLinkEditor();
     };
@@ -667,9 +824,34 @@ export default defineComponent({
         showToast(t('linkRejected'), 'error');
         return;
       }
+      restoreLinkSelection();
       editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run();
       closeLinkEditor();
     };
+
+    /**
+     * How far the on-screen keyboard currently pushes up from the bottom of
+     * the layout viewport (0 when it's closed or on a device with no
+     * `visualViewport`). The mobile link-editor and slash-command sheets are
+     * `position: fixed; bottom: 0` and add this as extra bottom offset, so
+     * they track the keyboard directly instead of depending on whatever
+     * scroll adjustment the browser makes on its own when an input inside
+     * them gets focused.
+     */
+    const keyboardInset = ref(0);
+    const updateKeyboardInset = () => {
+      const vv = window.visualViewport;
+      keyboardInset.value = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
+    };
+    onMounted(() => {
+      updateKeyboardInset();
+      window.visualViewport?.addEventListener('resize', updateKeyboardInset);
+      window.visualViewport?.addEventListener('scroll', updateKeyboardInset);
+    });
+    onBeforeUnmount(() => {
+      window.visualViewport?.removeEventListener('resize', updateKeyboardInset);
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardInset);
+    });
 
     /**
      * SLASH MENU state.
@@ -716,16 +898,37 @@ export default defineComponent({
       slashCommand = null;
     };
 
+    // Same as pressing Escape (backdrop tap / the sheet's own close button
+    // have no keyboard to send that through) - the caret stays inside the
+    // typed "/query", so slashDismissed stops the very next keystroke from
+    // reopening the menu the instant it closes.
+    const cancelSlashMenu = () => {
+      slashDismissed = true;
+      closeSlashMenu();
+    };
+
     const selectSlashItem = (index: number) => {
       const item = slashItems.value[index];
       if (!item || !slashCommand) return;
       slashCommand(item);
     };
 
+    const isMobileEditorLayout = () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(max-width: 760px)').matches;
+
     const slashController: SlashMenuController = {
       onOpen: (render) => {
         slashDismissed = false;
         applySlashRender(render);
+        // On mobile the menu IS the primary UI once "/" is typed - the
+        // keyboard has nothing left to do (no further typing is expected;
+        // the user taps an item) and just covers the sheet, so it's closed
+        // here rather than left open underneath. Each item's own run()
+        // already calls .chain().focus() when applying a command, which
+        // reopens the keyboard exactly when the chosen block needs typing.
+        if (isMobileEditorLayout()) editor.value?.view.dom.blur();
       },
       onUpdate: (render) => applySlashRender(render),
       onClose: () => {
@@ -925,27 +1128,19 @@ export default defineComponent({
        *
        * Every transaction dispatched on this editor between now and the
        * moment the range is actually used is folded into one running
-       * `Mapping` (ProseMirror's own tool for exactly this - see
-       * prosemirror-transform's `Mapping`/`Transform.mapping`), and the range
-       * is mapped through it right before use rather than trusted as
+       * `Mapping` (see `trackRange` in text-documents/preserve-range.ts,
+       * shared with the mobile link-editor and slash-command flows), and the
+       * range is mapped through it right before use rather than trusted as
        * captured. Re-deriving the range by searching for the query text
        * instead was rejected: two identical strings in one paragraph would
        * make that wrong in a different way.
        */
-      const positionMapping = new Mapping();
-      const trackTransaction = ({ transaction }: EditorEvents['transaction']) => {
-        positionMapping.appendMapping(transaction.mapping);
-      };
-      context.editor.on('transaction', trackTransaction);
-      const stopTrackingPosition = () => context.editor.off('transaction', trackTransaction);
+      const rangeTracker = trackRange(context.editor, context.range);
 
       try {
         const created = await createMentionSiblingPage(newTitle);
-        stopTrackingPosition();
-        const mappedRange: Range = {
-          from: positionMapping.map(context.range.from),
-          to: positionMapping.map(context.range.to),
-        };
+        const mappedRange = rangeTracker.resolve();
+        rangeTracker.stop();
         // Committed into THIS document before anything about navigation runs.
         insertMentionAtRange(context.editor, mappedRange, { id: created.id, label: newTitle });
         const target = created.slug || created.id;
@@ -954,7 +1149,7 @@ export default defineComponent({
         // on `route.path`) - see `shouldFocusAfterMentionCreate` near `load()`.
         await router.push({ name: 'text-document', params: { id: target }, query: { mentionFocus: '1' } });
       } catch (e: any) {
-        stopTrackingPosition();
+        rangeTracker.stop();
         // Nothing was deleted and nothing was inserted above: the typed
         // "@query" text is exactly what it was before this ran.
         showToast(e?.message || t('mentionCreatePageFailed'), 'error');
@@ -1611,6 +1806,7 @@ export default defineComponent({
       slashIndex,
       slashMenuStyle,
       selectSlashItem,
+      cancelSlashMenu,
       SLASH_MENU_ITEMS,
       mentionOpen,
       mentionItems,
@@ -1626,7 +1822,9 @@ export default defineComponent({
       mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
       mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       linkEditorOpen,
+      linkEditorHadLink,
       linkInput,
+      keyboardInset,
       bubbleMarkButtons,
       bubbleShouldShow,
       applyBubbleMark,
@@ -1670,6 +1868,12 @@ export default defineComponent({
       pendingUpdatesCount,
       syncStatus,
       showShare,
+      docMenuOpen,
+      docMenuStyle,
+      toggleDocMenu,
+      closeDocMenu,
+      openAccessFromDocMenu,
+      openHistoryFromDocMenu,
       slugInput,
       savingSlug,
       visibility,
