@@ -409,7 +409,7 @@ describe('dashboard sidebar navigation', () => {
     const vm = wrapper.vm as any;
 
     vm.selectDashboardSection({ kind: 'interactive' });
-    vm.selectedTag = 'mvp';
+    vm.selectedTags = ['mvp'];
     vm.sortMode = 'title-desc';
     await nextTick();
 
@@ -1704,5 +1704,435 @@ describe('DashboardView groups', () => {
 
       expect(resourceFolders.move).toHaveBeenCalledWith('child', 'canvas', 'canvas-1');
     });
+  });
+});
+
+function tagFixture(name: string) {
+  return { name, color: '#7c8aff' };
+}
+
+describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    dashboardRoute.query = {};
+    localStorage.clear();
+    withDefaultFolders();
+    vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [] });
+  });
+
+  afterEach(() => {
+    document.body.style.overflow = '';
+    document.body.innerHTML = '';
+  });
+
+  it('filters Recent by content type', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [{ id: 'r-canvas-1', title: 'Canvas Item' }],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      documents: [{ id: 'r-doc-1', title: 'HTML Item', ownerId: 'user-1' }],
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'r-canvas-1', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-doc-1', resourceType: 'html-document', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    const titles = () => wrapper.findAll('.dashboard-recent-title').map((el) => el.text());
+
+    expect(titles()).toEqual(['Canvas Item', 'HTML Item']);
+
+    vm.contentFilter = 'canvas';
+    await nextTick();
+
+    expect(titles()).toEqual(['Canvas Item']);
+  });
+
+  it('filters Recent by search query', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'r-canvas-2', title: 'Roadmap Draft' },
+        { id: 'r-canvas-3', title: 'Budget Sheet' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'r-canvas-2', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-canvas-3', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.searchQuery = 'roadmap';
+    await nextTick();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Roadmap Draft']);
+  });
+
+  it('filters Recent by a single selected tag', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'r-canvas-4', title: 'Tagged Item', tags: [tagFixture('architecture')] },
+        { id: 'r-canvas-5', title: 'Untagged Item', tags: [] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'r-canvas-4', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-canvas-5', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectedTags = ['architecture'];
+    await nextTick();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Tagged Item']);
+  });
+
+  it('applies AND semantics across multiple selected tags in Recent', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'r-canvas-both', title: 'Both Tags', tags: [tagFixture('architecture'), tagFixture('dev')] },
+        { id: 'r-canvas-one', title: 'One Tag', tags: [tagFixture('architecture')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'r-canvas-both', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-canvas-one', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.selectedTags = ['architecture', 'dev'];
+    await nextTick();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Both Tags']);
+  });
+
+  it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 's-canvas-1', title: 'Mango' },
+        { id: 's-canvas-2', title: 'Zebra' },
+        { id: 's-canvas-3', title: 'Apple' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 's-canvas-1', resourceType: 'canvas', updatedAt: '2026-01-03T00:00:00.000Z' },
+      { resourceId: 's-canvas-2', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 's-canvas-3', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    const titles = () => wrapper.findAll('.dashboard-recent-title').map((el) => el.text());
+
+    expect(titles()).toEqual(['Mango', 'Zebra', 'Apple']);
+
+    vm.sortMode = 'updated-asc';
+    await nextTick();
+    expect(titles()).toEqual(['Apple', 'Zebra', 'Mango']);
+
+    vm.sortMode = 'title-asc';
+    await nextTick();
+    expect(titles()).toEqual(['Apple', 'Mango', 'Zebra']);
+
+    vm.sortMode = 'title-desc';
+    await nextTick();
+    expect(titles()).toEqual(['Zebra', 'Mango', 'Apple']);
+  });
+
+  it('combines type, tag, and search filters on Recent', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'c-canvas-match', title: 'Roadmap Draft', tags: [tagFixture('planning')] },
+        { id: 'c-canvas-wrong-tag', title: 'Roadmap Extra', tags: [tagFixture('other')] },
+        { id: 'c-canvas-wrong-search', title: 'Budget Sheet', tags: [tagFixture('planning')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      documents: [{ id: 'c-doc-match', title: 'Roadmap HTML', tags: [tagFixture('planning')], ownerId: 'user-1' }],
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'c-canvas-match', resourceType: 'canvas', updatedAt: '2026-01-03T00:00:00.000Z' },
+      { resourceId: 'c-canvas-wrong-tag', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'c-canvas-wrong-search', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { resourceId: 'c-doc-match', resourceType: 'html-document', updatedAt: '2026-01-04T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.contentFilter = 'canvas';
+    vm.selectedTags = ['planning'];
+    vm.searchQuery = 'roadmap';
+    await nextTick();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Roadmap Draft']);
+  });
+
+  it('distinguishes "no recent items at all" from "filters matched nothing"', async () => {
+    vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const { t } = useI18n();
+
+    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentResources'));
+
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [{ id: 'z-canvas-1', title: 'Only Canvas' }],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'z-canvas-1', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper2 = mountDashboard();
+    await flushPromises();
+    const vm2 = wrapper2.vm as any;
+    vm2.contentFilter = 'html-document';
+    await nextTick();
+
+    expect(wrapper2.get('.dashboard-recents-empty').text()).toBe(t('noRecentMatches'));
+  });
+
+  it('collapses Recent to 4 items with a Show all/Show less toggle', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: Array.from({ length: 5 }, (_, i) => ({ id: `col-canvas-${i}`, title: `Item ${i}` })),
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce(
+      Array.from({ length: 5 }, (_, i) => ({
+        resourceId: `col-canvas-${i}`,
+        resourceType: 'canvas',
+        updatedAt: `2026-01-0${i + 1}T00:00:00.000Z`,
+      })) as never,
+    );
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const { t } = useI18n();
+
+    expect(wrapper.findAll('.dashboard-recent-card')).toHaveLength(4);
+    expect(wrapper.get('.dashboard-recent-show-all').text()).toContain(t('showAll'));
+    expect(wrapper.get('.dashboard-recent-show-all').text()).toContain('5');
+
+    await wrapper.get('.dashboard-recent-show-all').trigger('click');
+
+    expect(wrapper.findAll('.dashboard-recent-card')).toHaveLength(5);
+    expect(wrapper.get('.dashboard-recent-show-all').text()).toBe(t('showLess'));
+  });
+
+  it('multi-select tag sheet: draft toggles stage until Apply, Reset only clears the draft', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 't-canvas-1', title: 'Alpha Item', tags: [tagFixture('alpha')] },
+        { id: 't-canvas-2', title: 'Beta Item', tags: [tagFixture('beta')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.openTagSheet();
+    await nextTick();
+    expect(wrapper.find('.dashboard-tag-sheet').exists()).toBe(true);
+
+    const alphaOption = wrapper.findAll('.dashboard-tag-sheet-item').find((el) => el.text().includes('alpha'));
+    await alphaOption!.trigger('click');
+    await nextTick();
+
+    // Staged in the draft only - not committed to selectedTags yet.
+    expect(vm.selectedTags).toEqual([]);
+    expect(wrapper.get('.dashboard-tag-sheet-actions .btn-primary').text()).toContain('1');
+
+    await wrapper.get('.dashboard-tag-sheet-actions .btn-primary').trigger('click');
+    await nextTick();
+
+    expect(vm.selectedTags).toEqual(['alpha']);
+    expect(wrapper.find('.dashboard-tag-sheet').exists()).toBe(false);
+
+    // Reopening seeds the draft from the applied selection; Reset clears
+    // only the draft (sheet stays open, filter still applied) until Apply.
+    vm.openTagSheet();
+    await nextTick();
+    expect(wrapper.get('.dashboard-tag-sheet-actions .btn-primary').text()).toContain('1');
+
+    await wrapper.get('.dashboard-tag-sheet-actions .btn-ghost').trigger('click');
+    await nextTick();
+
+    expect(vm.selectedTags).toEqual(['alpha']);
+    expect(wrapper.find('.dashboard-tag-sheet').exists()).toBe(true);
+    expect(wrapper.get('.dashboard-tag-sheet-actions .btn-primary').text()).toContain('0');
+
+    await wrapper.get('.dashboard-tag-sheet-actions .btn-primary').trigger('click');
+    await nextTick();
+
+    expect(vm.selectedTags).toEqual([]);
+  });
+
+  it('folder tile counters reflect the active tag filter, including zero-match styling', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-cnt', name: 'Counted', role: 'owner', parentId: null,
+          canvases: [
+            { id: 'cnt-canvas-1', title: 'Counted One', folderId: 'folder-cnt', tags: [tagFixture('architecture')] },
+            { id: 'cnt-canvas-2', title: 'Counted Two', folderId: 'folder-cnt', tags: [tagFixture('dev')] },
+          ],
+          htmlDocuments: [],
+        },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'cnt-canvas-1', title: 'Counted One', folderId: 'folder-cnt', folder: 'Counted', tags: [tagFixture('architecture')] },
+        { id: 'cnt-canvas-2', title: 'Counted Two', folderId: 'folder-cnt', folder: 'Counted', tags: [tagFixture('dev')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    expect(wrapper.get('[data-recent-folder-tile="folder-cnt"] .subfolder-card-count').text()).toBe('2');
+
+    vm.selectedTags = ['architecture'];
+    await nextTick();
+
+    expect(wrapper.get('[data-recent-folder-tile="folder-cnt"] .subfolder-card-count').text()).toBe('1');
+    expect(wrapper.get('[data-recent-folder-tile="folder-cnt"]').classes()).not.toContain('subfolder-card-zero-match');
+
+    vm.selectedTags = ['nonexistent'];
+    await nextTick();
+
+    expect(wrapper.get('[data-recent-folder-tile="folder-cnt"] .subfolder-card-count').text()).toBe('0');
+    expect(wrapper.get('[data-recent-folder-tile="folder-cnt"]').classes()).toContain('subfolder-card-zero-match');
+  });
+
+  it('regression guard: folder tag counters stay correct via client-side enrichment even when /resource-folders omits tags on nested canvases, and independently of Recent history', async () => {
+    // Nested shape WITHOUT tags - the exact pre-fix /resource-folders
+    // response shape (and what a future backend regression could reproduce).
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-g', name: 'Guarded', role: 'owner', parentId: null,
+          canvases: [
+            { id: 'g-canvas-1', title: 'Guarded One', folderId: 'folder-g' },
+            { id: 'g-canvas-2', title: 'Guarded Two', folderId: 'folder-g' },
+          ],
+          htmlDocuments: [],
+        },
+      ],
+      shared: [],
+    } as never);
+    // The complete tag data lives only in the full canvas list (own/shared),
+    // exactly as production's /canvas endpoint returns it regardless of
+    // folder membership - this is what dashboardItemsByKey resolves against.
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'g-canvas-1', title: 'Guarded One', folderId: 'folder-g', folder: 'Guarded', tags: [tagFixture('architecture')] },
+        { id: 'g-canvas-2', title: 'Guarded Two', folderId: 'folder-g', folder: 'Guarded', tags: [tagFixture('dev')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    // Neither canvas has ever been opened - folder counters must not depend
+    // on Recent history for their tag data.
+    vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    expect(wrapper.get('[data-recent-folder-tile="folder-g"] .subfolder-card-count').text()).toBe('2');
+
+    vm.selectedTags = ['architecture'];
+    await nextTick();
+
+    expect(wrapper.get('[data-recent-folder-tile="folder-g"] .subfolder-card-count').text()).toBe('1');
+    expect(wrapper.get('[data-recent-folder-tile="folder-g"]').classes()).not.toContain('subfolder-card-zero-match');
+  });
+
+  it('surfaces a tag that exists only on a foldered resource in the Tag Filter, and filters Recent/folder counters by it', async () => {
+    // Uses an HTML document, not a canvas: own/shared canvases are already
+    // folder-inclusive (own.value covers every owned canvas regardless of
+    // folder), so a canvas fixture wouldn't actually exercise the bug this
+    // guards - unfiledHtmlDocuments/sharedHtmlDocuments, by contrast,
+    // explicitly filter OUT anything in a folder, which is exactly the gap
+    // that hid this document's tag from allTagNames.
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-niche', name: 'TagOnly', role: 'owner', parentId: null,
+          canvases: [],
+          htmlDocuments: [
+            { id: 'niche-doc-1', title: 'Folder Only Item', folderId: 'folder-niche', tags: [tagFixture('nicheTag')] },
+          ],
+        },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      documents: [
+        // Inside a folder, owned by the current user; its tag ("nicheTag")
+        // appears nowhere else - not on any unfiled/shared resource, and
+        // it's never been opened (see recentResources.list below), so it
+        // has no other route into allTagNames or into Recent.
+        { id: 'niche-doc-1', title: 'Folder Only Item', ownerId: 'user-1', folderId: 'folder-niche', tags: [tagFixture('nicheTag')] },
+        // Unfiled and in Recent, but with a different tag - lets us prove
+        // the tag filter actually discriminates rather than matching everything.
+        { id: 'other-doc-1', title: 'Other Item', ownerId: 'user-1', tags: [tagFixture('commonTag')] },
+      ],
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'other-doc-1', resourceType: 'html-document', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    // The tag exists (allTagNames), and is rendered as a selectable chip -
+    // this is the bug: it used to be silently dropped.
+    expect(vm.allTagNames).toContain('nicheTag');
+    expect(wrapper.findAll('.tag-filter-list-desktop .tag-filter').some((el) => el.text() === '#nicheTag')).toBe(true);
+
+    // Baseline: Recent shows the one item that's actually in its history.
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Other Item']);
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"] .subfolder-card-count').text()).toBe('1');
+
+    vm.selectedTags = ['nicheTag'];
+    await nextTick();
+
+    // Folder counter reacts: the one canvas in the folder does carry the tag.
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"] .subfolder-card-count').text()).toBe('1');
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"]').classes()).not.toContain('subfolder-card-zero-match');
+
+    // Recent reacts too: its only history entry doesn't carry this tag, so
+    // it correctly drops to the "no matches" state rather than showing
+    // everything or crashing on an unknown tag.
+    const { t } = useI18n();
+    expect(wrapper.find('.dashboard-recent-title').exists()).toBe(false);
+    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentMatches'));
   });
 });

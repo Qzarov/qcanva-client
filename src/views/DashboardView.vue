@@ -31,7 +31,7 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-    <header v-if="!isLoggedIn" class="app-header">
+    <header v-if="!isLoggedIn" class="app-header app-header-public">
       <div class="app-header-inner">
         <div class="dashboard-brand">
           <img src="/qcanva-logo.png" alt="QCanva" />
@@ -47,6 +47,11 @@
             <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
         </div>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
       </div>
     </header>
     <header v-else class="app-header dashboard-auth-header">
@@ -58,6 +63,11 @@
           data-mobile-sidebar-open
           @click.stop="openMobileSidebar"
         ><Menu :size="20" aria-hidden="true" /></button>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
       </div>
     </header>
 
@@ -119,16 +129,19 @@
               </button>
             </div>
           </div>
-      <input v-model.trim="searchQuery" class="dash-search" :placeholder="folderSearchPlaceholder" />
+      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
       <select v-model="sortMode" class="dash-sort-select dash-sort-select-desktop">
         <option value="updated-desc">{{ t('newest') }}</option>
         <option value="updated-asc">{{ t('oldest') }}</option>
         <option value="title-asc">{{ t('titleAsc') }}</option>
         <option value="title-desc">{{ t('titleDesc') }}</option>
       </select>
-      <div class="control-menu dash-sort-menu-mobile">
-        <button type="button" class="btn-ghost dash-sort-button-mobile" @click.stop="toggleMobileSortMenu">
-          <ArrowUpDown :size="15" aria-hidden="true" /><span>{{ t('sortBy') }}</span>
+      <!-- Recent has its own sort trigger inline in its section header;
+           this covers every other view (folders/public), which only share
+           the toolbar. -->
+      <div v-if="activeSection.kind !== 'recent'" class="control-menu dash-sort-menu-mobile">
+        <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+          <ArrowUpDown :size="15" aria-hidden="true" />
         </button>
         <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
           <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
@@ -156,52 +169,40 @@
         <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
       </div>
       <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
-        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
+        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
         <button
           v-for="tag in allTagNames"
           :key="tag"
           class="tag-filter"
-          :class="{ active: selectedTag === tag }"
-          @click.stop="selectedTag = tag"
+          :class="{ active: isTagSelected(tag) }"
+          @click.stop="toggleSelectedTag(tag)"
         >#{{ tag }}</button>
         <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
+      <!-- Mobile: selected tags get display priority (see tagBarVisibleSelected),
+           everything else collapses into a single "+N" that opens the full
+           multi-select bottom sheet - never the whole tag list inline. -->
       <div v-if="allTagNames.length" class="tag-filter-list-mobile">
-        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
+        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
         <button
-          v-for="tag in mobileVisibleTags"
+          v-for="tag in tagBarVisibleSelected"
           :key="tag"
-          class="tag-filter"
-          :class="{ active: selectedTag === tag }"
-          @click.stop="selectedTag = tag"
+          class="tag-filter active"
+          @click.stop="toggleSelectedTag(tag)"
         >#{{ tag }}</button>
-        <div v-if="mobileTagOverflowCount > 0" class="control-menu tag-filter-more-menu">
-          <button
-            type="button"
-            class="tag-filter tag-filter-more"
-            :class="{ active: mobileOverflowTagActive }"
-            @click.stop="toggleMobileTagPicker"
-          >+{{ mobileTagOverflowCount }}</button>
-          <div v-if="openControlMenu === 'mobile-tags'" class="mobile-action-popover mobile-tag-picker-popover" @click.stop>
-            <div class="mobile-tag-picker-list">
-              <button class="tag-filter" :class="{ active: selectedTag === '' }" @click="selectMobileTag('')">{{ t('all') }}</button>
-              <button
-                v-for="tag in allTagNames"
-                :key="tag"
-                class="tag-filter"
-                :class="{ active: selectedTag === tag }"
-                @click="selectMobileTag(tag)"
-              >#{{ tag }}</button>
-            </div>
-          </div>
-        </div>
         <button
-          v-if="selectedTag"
+          v-if="tagBarOverflowLabel"
+          type="button"
+          class="tag-filter tag-filter-more"
+          @click.stop="openTagSheet"
+        >{{ tagBarOverflowLabel }}</button>
+        <button
+          v-if="selectedTags.length"
           type="button"
           class="tag-filter tag-filter-clear"
           :title="t('clearTagFilter')"
           :aria-label="t('clearTagFilter')"
-          @click.stop="selectedTag = ''"
+          @click.stop="clearSelectedTags"
         ><X :size="13" aria-hidden="true" /></button>
       </div>
     </div>
@@ -215,43 +216,80 @@
       class="dash-section dashboard-recents"
       data-dashboard-view="recent"
     >
-      <div class="dash-section-head">
+      <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('recentResources')">
-          <button
-            type="button"
-            :class="{ active: recentViewMode === 'grid' }"
-            :aria-label="t('gridView')"
-            :title="t('gridView')"
-            :aria-pressed="recentViewMode === 'grid'"
-            data-recent-view="grid"
-            @click="setRecentViewMode('grid')"
-          ><LayoutGridIcon :size="17" aria-hidden="true" /></button>
-          <button
-            type="button"
-            :class="{ active: recentViewMode === 'list' }"
-            :aria-label="t('listView')"
-            :title="t('listView')"
-            :aria-pressed="recentViewMode === 'list'"
-            data-recent-view="list"
-            @click="setRecentViewMode('list')"
-          ><ListIcon :size="17" aria-hidden="true" /></button>
+        <div class="dashboard-recent-head-controls">
+          <div class="control-menu dash-sort-menu-mobile">
+            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+              <ArrowUpDown :size="15" aria-hidden="true" />
+            </button>
+            <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('newest') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('oldest') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('titleAsc') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('titleDesc') }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('recentResources')">
+            <button
+              type="button"
+              :class="{ active: recentViewMode === 'grid' }"
+              :aria-label="t('gridView')"
+              :title="t('gridView')"
+              :aria-pressed="recentViewMode === 'grid'"
+              data-recent-view="grid"
+              @click="setRecentViewMode('grid')"
+            ><LayoutGridIcon :size="17" aria-hidden="true" /></button>
+            <button
+              type="button"
+              :class="{ active: recentViewMode === 'list' }"
+              :aria-label="t('listView')"
+              :title="t('listView')"
+              :aria-pressed="recentViewMode === 'list'"
+              data-recent-view="list"
+              @click="setRecentViewMode('list')"
+            ><ListIcon :size="17" aria-hidden="true" /></button>
+          </div>
         </div>
       </div>
       <div
-        v-if="recentResources.length"
+        v-if="visibleRecent.length"
         class="dashboard-recents-layout"
         :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
         :aria-label="t('recentResources')"
         data-recent-layout
       >
-        <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
           <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
           <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
           <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
+          <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
         </button>
       </div>
+      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">{{ t('noRecentMatches') }}</div>
       <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
+      <button
+        v-if="recentShowAllAvailable"
+        type="button"
+        class="dashboard-recent-show-all"
+        @click="toggleRecentExpanded"
+      >
+        <span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span>
+        <ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" />
+        <ChevronUp v-else :size="15" aria-hidden="true" />
+      </button>
 
       <div v-if="recentFolderTiles.length" class="dash-section-head dashboard-recent-folders-head">
         <h2>{{ t('folders') }}</h2>
@@ -262,12 +300,13 @@
           :key="'recent-folder-' + folder.id"
           type="button"
           class="subfolder-card"
+          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
           :data-recent-folder-tile="folder.id"
           @click="selectFolder(folder.id)"
         >
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
-          <span class="subfolder-card-count">{{ folder.count || t('emptyFolder') }}</span>
+          <span class="subfolder-card-count">{{ folder.displayCount }}</span>
         </button>
       </div>
     </section>
@@ -736,6 +775,42 @@
       </div>
     </div>
 
+    <!-- Mobile tag multi-select: replaces the old popover-that-quietly-
+         appears-at-the-bottom with a proper sheet - visible backdrop, stays
+         open across multiple taps, and only ever commits to selectedTags on
+         Apply (see openTagSheet/applyTagSheet). -->
+    <div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
+      <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
+        <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
+        <div class="dashboard-modal-head">
+          <div>
+            <h3>{{ t('filterByTags') }}</h3>
+            <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
+          </div>
+          <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
+            <X :size="16" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-tag-sheet-list">
+          <button
+            v-for="tag in allTagNames"
+            :key="tag"
+            type="button"
+            class="dashboard-tag-sheet-item"
+            :class="{ active: tagSheetDraft.includes(tag) }"
+            @click="toggleDraftTag(tag)"
+          >
+            <span>#{{ tag }}</span>
+            <Check v-if="tagSheetDraft.includes(tag)" :size="14" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
+          <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
+          <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
+        </div>
+      </div>
+    </div>
+
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
@@ -1009,7 +1084,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
@@ -1112,7 +1187,10 @@ type DashboardCacheState = {
 
 type DashboardCache = { savedAt: number; state: DashboardCacheState };
 type RecentResourceType = FolderItem['type'];
-type RecentResource = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
+/** The raw open-history store: just enough to look the item up again later. */
+type RecentHistoryEntry = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
+/** recentResources' joined shape - the history entry plus what filtering needs. */
+type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string };
 type RecentResourceItem = FolderItem;
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
@@ -1126,6 +1204,11 @@ export default defineComponent({
     DashboardSidebar,
     LanguageToggle,
     ArrowLeft,
+    ArrowUpDown,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    X,
     FileCode2,
     FilePlus2,
     FileText,
@@ -1157,6 +1240,16 @@ export default defineComponent({
     const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
+    /**
+     * The full, unfiltered list each is filtered down FROM (see load()) -
+     * unlike canvases, a foldered HTML/text document has no other source
+     * with real tags: /resource-folders' nested items carry no tags for
+     * html documents at all, so dashboardItemsByKey needs this to enrich
+     * them for tag filtering. Not used for anything else - the filtered
+     * unfiled/shared refs above remain what's actually rendered.
+     */
+    const allHtmlDocumentsRaw = ref<HtmlDocumentRecord[]>([]);
+    const allTextDocumentsRaw = ref<TextDocumentRecord[]>([]);
     const interactiveTemplateItems = ref<InteractiveTemplate[]>([]);
     const templatePickerOpen = ref(false);
     const sharedResourceTags = ref<ResourceTag[]>([]);
@@ -1167,7 +1260,13 @@ export default defineComponent({
     const isNativeDashboard = Capacitor.isNativePlatform();
     let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
-    const selectedTag = ref('');
+    /**
+     * Multi-select, AND semantics: an item must carry every tag in this list
+     * to match (see matchesFolderItem). One shared array backs the desktop
+     * tag bar, the mobile compact bar and the tag bottom sheet - there is no
+     * separate per-surface selection state.
+     */
+    const selectedTags = ref<string[]>([]);
     const contentFilter = ref<'all' | FolderItem['type']>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
@@ -1239,7 +1338,7 @@ export default defineComponent({
         // Ignore: remembering the folder is a convenience, not a requirement.
       }
     };
-    const recentResourceHistory = ref<RecentResource[]>([]);
+    const recentResourceHistory = ref<RecentHistoryEntry[]>([]);
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
@@ -1425,28 +1524,35 @@ export default defineComponent({
       };
     };
 
+    /** AND semantics: an item must carry every selected tag, not just one of them. */
+    const matchesSelectedTags = (tags: CanvasTag[]) =>
+      selectedTags.value.length === 0 || selectedTags.value.every((selected) => tags.some((tag) => tag.name === selected));
+
     const matchesCanvas = (c: CanvasRecord) => {
       if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || c.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(c.tags);
     };
 
-    const matchesFolderItem = (item: FolderItem, folderName: string) => {
+    /**
+     * Reused for both a folder's own contents and Recent (see
+     * filteredRecentResources/recentFolderTiles below) - the `type`/`title`/
+     * `tags` shape is all either needs, so the parameter is intentionally
+     * narrower than the full FolderItem union.
+     */
+    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) => {
       if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(item.tags);
     };
 
     const matchesPublicItem = (item: FolderItem) => {
       if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(item.tags);
     };
 
     const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
@@ -1492,64 +1598,58 @@ export default defineComponent({
         .filter(matchesPublicItem),
     ));
 
+    /**
+     * Every resource the user can see and filter, folder-nested or not, goes
+     * through dashboardItemsByKey (see below) - it's already the complete,
+     * tag-enriched set built for Recent/folder counters, so it's the right
+     * single source here too instead of re-deriving from six separate lists.
+     * The previous version of this computed looped `allResourceFolders`
+     * directly, reading `folder.items?.canvases` - but the raw
+     * ownResourceFolders/sharedResourceFolders refs are the flat API shape
+     * (`folder.canvases`, not `folder.items.canvases`), so that branch always
+     * read `undefined` and silently contributed nothing: a tag used only on
+     * a resource inside a folder never appeared in the Tag Filter UI at all.
+     */
     const allTagNames = computed(() => {
       const names = new Set<string>();
-      const addTags = (tags: CanvasTag[], type: FolderItem['type']) => {
-        if (contentFilter.value !== 'all' && contentFilter.value !== type) return;
-        for (const tag of tags) names.add(tag.name);
-      };
-      for (const list of [own.value, shared.value, publicCanvases.value]) {
-        for (const canvas of list) {
-          addTags(canvas.tags, 'canvas');
-        }
-      }
-      for (const document of unfiledHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of sharedHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of publicHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of unfiledTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of sharedTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of publicTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const template of interactiveTemplateRecords.value) {
-        addTags(template.tags, 'interactive-template');
-      }
-      for (const folder of allResourceFolders.value) {
-        for (const canvas of folder.items?.canvases || []) {
-          addTags(normalizeTags(canvas.tags), 'canvas');
-        }
-        for (const document of folder.items?.htmlDocuments || []) {
-          addTags(normalizeTags(document.tags), 'html-document');
-        }
-        for (const document of folder.items?.textDocuments || []) {
-          addTags(normalizeTags(document.tags), 'text-document');
-        }
-        for (const template of folder.items?.interactiveTemplates || []) {
-          addTags(normalizeTags(template.tags), 'interactive-template');
-        }
+      for (const item of dashboardItemsByKey.value.values()) {
+        if (contentFilter.value !== 'all' && contentFilter.value !== item.type) continue;
+        for (const tag of item.tags || []) names.add(tag.name);
       }
       return Array.from(names).sort();
     });
 
-    // Mobile shows a handful of tags inline plus a "+N" overflow instead of
-    // the desktop's horizontally-scrolling strip.
-    const MOBILE_VISIBLE_TAG_COUNT = 3;
-    const mobileVisibleTags = computed(() => allTagNames.value.slice(0, MOBILE_VISIBLE_TAG_COUNT));
-    const mobileTagOverflowCount = computed(() => Math.max(0, allTagNames.value.length - MOBILE_VISIBLE_TAG_COUNT));
-    const mobileOverflowTagActive = computed(() => selectedTag.value !== '' && !mobileVisibleTags.value.includes(selectedTag.value));
+    const isTagSelected = (tag: string) => selectedTags.value.includes(tag);
+    const toggleSelectedTag = (tag: string) => {
+      selectedTags.value = isTagSelected(tag) ? selectedTags.value.filter((t) => t !== tag) : [...selectedTags.value, tag];
+    };
+    const clearSelectedTags = () => {
+      selectedTags.value = [];
+    };
+
+    // Mobile shows selected tags first (they're what the user cares about
+    // seeing), then a "+N" for the rest - never the full tag list inline.
+    // A "+N" MUST show either "how many more tags exist" (nothing selected
+    // is hidden) or "how many more SELECTED tags are hidden" - mixing the two
+    // in one count would be misleading, so whichever applies wins outright.
+    const TAG_BAR_VISIBLE_COUNT = 3;
+    const selectedTagsInOrder = computed(() => allTagNames.value.filter((name) => selectedTags.value.includes(name)));
+    const tagBarVisibleSelected = computed(() => {
+      const selected = selectedTagsInOrder.value;
+      // Leave room for the longer "+N selected" label when there isn't
+      // enough space for every selected tag at the normal visible count.
+      return selected.length > TAG_BAR_VISIBLE_COUNT ? selected.slice(0, TAG_BAR_VISIBLE_COUNT - 1) : selected;
+    });
+    const tagBarOverflowLabel = computed(() => {
+      const selected = selectedTagsInOrder.value;
+      const remainingSelected = selected.length - tagBarVisibleSelected.value.length;
+      if (remainingSelected > 0) return `+${remainingSelected} ${t('selected')}`;
+      const remainingUnselected = allTagNames.value.length - selected.length;
+      return remainingUnselected > 0 ? `+${remainingUnselected}` : '';
+    });
 
     watch(contentFilter, () => {
-      if (selectedTag.value && !allTagNames.value.includes(selectedTag.value)) selectedTag.value = '';
+      selectedTags.value = selectedTags.value.filter((tag) => allTagNames.value.includes(tag));
     });
 
     const tagSuggestions = computed(() => {
@@ -1717,7 +1817,7 @@ export default defineComponent({
         items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
       }))
       .filter((folder) => {
-        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
+        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTags.value.length);
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
         return folder.items.length
           || (!hasActiveFilter && folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
@@ -1802,13 +1902,74 @@ export default defineComponent({
     const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
       ...allDashboardResources.value,
     ]);
+    /**
+     * allDashboardResources includes each folder's own items AND the same
+     * canvases/documents again from own/shared/unfiled/public. /resource-
+     * folders now returns tags on its nested canvases/htmlDocuments too (a
+     * backend fix - it used to omit them, matching only its textDocuments),
+     * but this enrichment stays regardless: it's what keeps the client
+     * correct against an OLDER backend still running that gap (compatibility
+     * during a rolling/independent frontend-backend deploy is exactly the
+     * case where the two are out of sync), and it's free - own/shared/
+     * allHtmlDocumentsRaw/allTextDocumentsRaw are already loaded for other
+     * reasons. Building the lookup keeps whichever copy came LAST for a
+     * given id, so listing the tag-complete sources after
+     * allRecentResourceItems means anything resolved through this map has
+     * its real tags, wherever it came from - own/shared cover every canvas
+     * regardless of folder, allHtmlDocumentsRaw/allTextDocumentsRaw do the
+     * same for HTML/text documents.
+     */
+    const dashboardItemsByKey = computed(() => new Map(
+      [...allRecentResourceItems.value, ...allHtmlDocumentsRaw.value, ...allTextDocumentsRaw.value]
+        .map((item) => [`${item.type}:${item.id}`, item] as const),
+    ));
     const recentResources = computed<RecentResource[]>(() => {
-      const available = new Map(allRecentResourceItems.value.map((item) => [`${item.type}:${item.id}`, item]));
       return [...recentResourceHistory.value].sort((a, b) => b.openedAt - a.openedAt).flatMap((recent) => {
-        const item = available.get(`${recent.type}:${recent.id}`);
-        return item ? [{ ...recent, title: item.title || recent.title, routeId: ('slug' in item && item.slug) || item.id }] : [];
+        const item = dashboardItemsByKey.value.get(`${recent.type}:${recent.id}`);
+        if (!item) return [];
+        return [{
+          ...recent,
+          title: item.title || recent.title,
+          routeId: ('slug' in item && item.slug) || item.id,
+          tags: item.tags || [],
+          folder: ('folder' in item && item.folder) || '',
+        }];
       });
     });
+
+    /**
+     * Recent, same as a folder's own contents, run through contentFilter +
+     * selectedTags + searchQuery via matchesFolderItem - previously Recent
+     * ignored all three entirely, which was the whole "filters don't affect
+     * Recent" bug: there was no filtering step here at all, not a broken one.
+     */
+    const filteredRecentResources = computed(() =>
+      recentResources.value.filter((item) => matchesFolderItem(item, item.folder)),
+    );
+
+    /**
+     * sortMode is shared with folders/public via sortFolderItems, but Recent
+     * items have no `updatedAt`/`pinned` - "when opened" is Recent's own
+     * notion of recency, so updated-desc/-asc sort by openedAt instead.
+     */
+    const sortedRecentResources = computed(() => [...filteredRecentResources.value].sort((a, b) => {
+      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
+        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+        return sortMode.value === 'title-asc' ? result : -result;
+      }
+      return sortMode.value === 'updated-asc' ? a.openedAt - b.openedAt : b.openedAt - a.openedAt;
+    }));
+
+    const RECENT_COLLAPSED_LIMIT = 4;
+    const recentExpanded = ref(false);
+    const recentTotal = computed(() => sortedRecentResources.value.length);
+    const visibleRecent = computed(() =>
+      recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, RECENT_COLLAPSED_LIMIT),
+    );
+    const recentShowAllAvailable = computed(() => recentTotal.value > RECENT_COLLAPSED_LIMIT);
+    const toggleRecentExpanded = () => {
+      recentExpanded.value = !recentExpanded.value;
+    };
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
       feedback.value = { type, message };
@@ -1856,25 +2017,23 @@ export default defineComponent({
             ),
           );
           const legacyState = await htmlDocuments.list();
-          unfiledHtmlDocuments.value = (legacyState.documents || [])
-            .filter((document: any) => document.ownerId === currentUser.value?.id)
-            .filter((document: any) => !folderDocumentIds.has(document.id))
-            .map((document: any) => normalizeHtmlDocument(document));
-          sharedHtmlDocuments.value = (legacyState.documents || [])
-            .filter((document: any) => document.ownerId !== currentUser.value?.id)
-            .filter((document: any) => document.visibility !== 'public')
-            .filter((document: any) => !folderDocumentIds.has(document.id))
-            .map((document: any) => normalizeHtmlDocument(document));
+          allHtmlDocumentsRaw.value = (legacyState.documents || []).map((document: any) => normalizeHtmlDocument(document));
+          unfiledHtmlDocuments.value = allHtmlDocumentsRaw.value
+            .filter((document) => document.ownerId === currentUser.value?.id)
+            .filter((document) => !folderDocumentIds.has(document.id));
+          sharedHtmlDocuments.value = allHtmlDocumentsRaw.value
+            .filter((document) => document.ownerId !== currentUser.value?.id)
+            .filter((document) => document.visibility !== 'public')
+            .filter((document) => !folderDocumentIds.has(document.id));
           const textState = await textDocuments.list();
-          unfiledTextDocuments.value = (textState.documents || [])
-            .filter((document: any) => document.ownerId === currentUser.value?.id)
-            .filter((document: any) => !folderTextDocumentIds.has(document.id))
-            .map((document: any) => normalizeTextDocument(document));
-          sharedTextDocuments.value = (textState.documents || [])
-            .filter((document: any) => document.ownerId !== currentUser.value?.id)
-            .filter((document: any) => document.visibility !== 'public')
-            .filter((document: any) => !folderTextDocumentIds.has(document.id))
-            .map((document: any) => normalizeTextDocument(document));
+          allTextDocumentsRaw.value = (textState.documents || []).map((document: any) => normalizeTextDocument(document));
+          unfiledTextDocuments.value = allTextDocumentsRaw.value
+            .filter((document) => document.ownerId === currentUser.value?.id)
+            .filter((document) => !folderTextDocumentIds.has(document.id));
+          sharedTextDocuments.value = allTextDocumentsRaw.value
+            .filter((document) => document.ownerId !== currentUser.value?.id)
+            .filter((document) => document.visibility !== 'public')
+            .filter((document) => !folderTextDocumentIds.has(document.id));
           const templateState = await interactiveTemplates.list();
           const templates = [...(templateState.templates || []), ...(templateState.own || []), ...(templateState.shared || [])];
           interactiveTemplateItems.value = [...new Map(templates.map((item) => [item.id, item])).values()];
@@ -1967,7 +2126,7 @@ export default defineComponent({
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
-      const recent: RecentResource = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
+      const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
       void recentResourcesApi.markOpened(type, item.id).catch(() => {
         // Opening a resource must remain available if saving its recent entry fails.
@@ -2939,15 +3098,39 @@ export default defineComponent({
       openControlMenu.value = '';
     };
 
-    const toggleMobileTagPicker = () => {
+    /**
+     * The sheet edits its own draft copy of selectedTags, committed only on
+     * Apply - closing via the backdrop/X or reopening later must not leak an
+     * in-progress, un-applied selection into the rest of the dashboard.
+     */
+    const tagSheetOpen = ref(false);
+    const tagSheetDraft = ref<string[]>([]);
+
+    const openTagSheet = () => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'mobile-tags' ? '' : 'mobile-tags';
+      openControlMenu.value = '';
+      tagSheetDraft.value = [...selectedTags.value];
+      tagSheetOpen.value = true;
     };
 
-    const selectMobileTag = (tag: string) => {
-      selectedTag.value = tag;
-      openControlMenu.value = '';
+    const closeTagSheet = () => {
+      tagSheetOpen.value = false;
+    };
+
+    const toggleDraftTag = (tag: string) => {
+      tagSheetDraft.value = tagSheetDraft.value.includes(tag)
+        ? tagSheetDraft.value.filter((t) => t !== tag)
+        : [...tagSheetDraft.value, tag];
+    };
+
+    const resetTagSheetDraft = () => {
+      tagSheetDraft.value = [];
+    };
+
+    const applyTagSheet = () => {
+      selectedTags.value = [...tagSheetDraft.value];
+      tagSheetOpen.value = false;
     };
 
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
@@ -2985,22 +3168,44 @@ export default defineComponent({
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
+    /** True once any of search/type/tags actually narrows the result set. */
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentFilter.value !== 'all'));
+
     /**
      * Top-level folders shown as tiles below Recent. Unlike the sidebar tree,
      * this list is not filtered by isTechnicalFolder: "Unsorted" is where new
      * documents land by default and must stay reachable from Recent, not
-     * sidebar-only.
+     * sidebar-only. Sourced from allFolderSummaries (not allResourceFolders):
+     * that's the copy with each folder's items already flattened into one
+     * normalized FolderItem[] with real .type/.tags, which matchingCount below
+     * needs - allResourceFolders only carries server-side aggregate counts.
+     *
+     * matchingCount resolves each item through dashboardItemsByKey rather
+     * than matching folder.items directly: the /resource-folders response's
+     * nested canvases/htmlDocuments carry no tags at all (unlike its
+     * textDocuments), so a tag filter would silently zero out every canvas
+     * and HTML doc in every folder without this - see dashboardItemsByKey.
      */
-    const recentFolderTiles = computed(() => allResourceFolders.value
+    const recentFolderTiles = computed(() => allFolderSummaries.value
       .filter((folder) => !(folder.parentId ?? null))
-      .map((folder) => ({
-        id: folder.id,
-        name: folder.name,
-        count:
-          (folder.canvasCount || 0) +
-          (folder.htmlDocumentCount || 0) +
-          (folder.textDocumentCount || 0),
-      }))
+      .map((folder) => {
+        const totalCount = folder.items.length;
+        const matchingCount = folder.items.filter((item) => {
+          const enriched = dashboardItemsByKey.value.get(`${item.type}:${item.id}`) || item;
+          return matchesFolderItem(enriched, folder.name);
+        }).length;
+        const count = hasActiveFilter.value ? matchingCount : totalCount;
+        return {
+          id: folder.id,
+          name: folder.name,
+          count,
+          // A folder that's genuinely empty reads as "Empty"; one that's
+          // empty only because of the active filter shows a literal "0" -
+          // "Empty" would wrongly suggest nothing was ever put in it.
+          displayCount: count === 0 ? (hasActiveFilter.value ? '0' : t('emptyFolder')) : String(count),
+          zeroMatch: hasActiveFilter.value && matchingCount === 0,
+        };
+      })
       .sort((a, b) => a.name.localeCompare(b.name)));
 
     const openSubfolderModal = (folder: FolderSummary) => {
@@ -3417,6 +3622,11 @@ export default defineComponent({
       loading,
       isRefreshing,
       recentResources,
+      visibleRecent,
+      recentTotal,
+      recentShowAllAvailable,
+      recentExpanded,
+      toggleRecentExpanded,
       recentViewMode,
       setRecentViewMode,
       openRecentResource,
@@ -3438,11 +3648,18 @@ export default defineComponent({
       sharedFiltered,
       publicFiltered,
       allTagNames,
-      mobileVisibleTags,
-      mobileTagOverflowCount,
-      mobileOverflowTagActive,
-      toggleMobileTagPicker,
-      selectMobileTag,
+      isTagSelected,
+      toggleSelectedTag,
+      clearSelectedTags,
+      tagBarVisibleSelected,
+      tagBarOverflowLabel,
+      tagSheetOpen,
+      tagSheetDraft,
+      openTagSheet,
+      closeTagSheet,
+      toggleDraftTag,
+      resetTagSheetDraft,
+      applyTagSheet,
       toggleMobileSortMenu,
       selectSortMode,
       folderSearchPlaceholder,
@@ -3451,7 +3668,7 @@ export default defineComponent({
       folderOptions,
       folderNames,
       searchQuery,
-      selectedTag,
+      selectedTags,
       contentFilter,
       sortMode,
       feedback,
