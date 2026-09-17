@@ -5516,13 +5516,16 @@ body {
   color: var(--ui-text);
 }
 
+/* Two children only now that the title has moved into the page body
+   (.text-doc-title-page-input below) - back button on the left, actions on
+   the right, nothing to reserve a middle column for. */
 .text-doc-topbar {
   position: sticky;
   top: 0;
   z-index: 30;
-  display: grid;
-  grid-template-columns: auto minmax(180px, 1fr) auto;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   min-height: 56px;
   padding: 10px 18px;
@@ -5531,28 +5534,58 @@ body {
   backdrop-filter: blur(10px);
 }
 
-.text-doc-title-input,
-.text-doc-title-readonly {
-  min-width: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 8px 10px;
-  background: transparent;
-  color: var(--ui-text);
-  font-size: 16px;
-  font-weight: 650;
-  outline: none;
-}
-
-.text-doc-title-input:focus {
-  border-color: color-mix(in srgb, var(--ui-info) 65%, transparent);
-  background: var(--ui-surface-subtle);
+.text-doc-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .text-doc-topbar-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* THE PAGE TITLE (front task: title placement). Lives inside .text-doc-paper,
+   above EditorContent - visually the document's own first line, not header
+   chrome. Bigger than the body's own H1 (see collapsible-heading.ts's
+   heading styles) so it reads as the ONE title, matching the mockup's
+   "Яр вишлист 2026" sitting above ordinary content. No border/box until
+   focus, so it never looks like a form field dropped onto the page. */
+.text-doc-title-page-input,
+.text-doc-title-page-readonly {
+  display: block;
+  width: 100%;
+  margin: 0 0 20px;
+  padding: 4px 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 34px;
+  font-weight: 750;
+  line-height: 1.25;
+  outline: none;
+}
+
+.text-doc-title-page-readonly {
+  font-weight: 750;
+}
+
+.text-doc-title-page-input:focus {
+  border-color: color-mix(in srgb, var(--ui-info) 55%, transparent);
+  background: var(--ui-surface-subtle);
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.text-doc-title-page-input::placeholder {
+  color: var(--ui-text-muted);
+  font-weight: 750;
 }
 
 /* Mobile-only "⋮" document menu (Access/History live here instead of as
@@ -5562,6 +5595,13 @@ body {
   display: none;
 }
 
+/* Fixed width, not min-width: the label's own length changes
+   (Saving/Synced/Offline/"Sync failed", each translated, optionally with a
+   " · N" pending suffix) must never resize this flex item, or every
+   transition reflows AccountMenu/the doc-menu trigger sitting to its right -
+   the root cause of the reported layout jump. Sized to fit the longest
+   realistic label ("Синхронизировано") without ellipsis; anything longer
+   truncates rather than growing the box. */
 .text-doc-sync {
   border: 1px solid var(--ui-border);
   border-radius: 999px;
@@ -5570,6 +5610,12 @@ body {
   color: var(--ui-text-secondary);
   font-size: 12px;
   font-weight: 650;
+  width: 138px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  flex-shrink: 0;
 }
 
 .text-doc-sync-synced { color: var(--ui-success-foreground); }
@@ -5577,11 +5623,79 @@ body {
 .text-doc-sync-conflict { color: var(--ui-danger-foreground); }
 .text-doc-sync-offline { color: var(--ui-text-secondary); }
 
+/* Invisible hit-target by default (same convention as
+   .account-menu-backdrop) - closes the sheet on outside click/tap at every
+   breakpoint (front task 6); the mobile media query below adds the visible
+   dim, matching .text-doc-link-sheet-backdrop's own desktop/mobile split. */
+.text-doc-share-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
 .text-doc-share-panel {
   position: fixed;
   top: 68px;
   right: 16px;
-  z-index: 50;
+  z-index: 91;
+  overflow-y: auto;
+}
+
+.text-doc-share-grabber {
+  display: none;
+}
+
+.text-doc-share-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.text-doc-share-close:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.share-section-divider {
+  margin: 14px 0;
+  border-top: 1px solid var(--dark-neutral-border);
+}
+
+.share-link-row {
+  padding: 7px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  margin-bottom: 8px;
+}
+.share-link-url {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ui-text);
+}
+.share-copy-link-btn {
+  width: 100%;
+}
+
+.slug-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ui-danger-foreground);
+}
+
+.share-save-slug-btn {
+  margin-top: 8px;
+  width: 100%;
 }
 
 .text-doc-history-panel {
@@ -5834,6 +5948,81 @@ body {
 }
 .text-doc-paper .ProseMirror blockquote p {
   margin: 0.3em 0;
+}
+
+/*
+  TABLE (front task 13-19). `.tableWrapper` is the official extension's own
+  wrapping element (see @tiptap/extension-table's TableView) - overflow-x:auto
+  goes there, not on the table itself, so the TABLE scrolls horizontally
+  within its own box and the document page never gets horizontal overflow
+  (front task 16/20). Document-palette tokens throughout, since this is
+  content, not chrome - same rule blockquote/codeBlock above already follow.
+*/
+.text-doc-paper .ProseMirror .tableWrapper {
+  margin: 1em 0;
+  overflow-x: auto;
+}
+.text-doc-paper .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+.text-doc-paper .ProseMirror td,
+.text-doc-paper .ProseMirror th {
+  min-width: 100px;
+  padding: 6px 10px;
+  border: 1px solid var(--content-document-border);
+  vertical-align: top;
+}
+.text-doc-paper .ProseMirror th {
+  background: var(--content-document-surface-readonly);
+  font-weight: 650;
+  text-align: left;
+}
+.text-doc-paper .ProseMirror td > p,
+.text-doc-paper .ProseMirror th > p {
+  margin: 0;
+}
+/* The extension's own cell-selection highlight (a decoration, not a class on
+   the cell) - kept visible against both themes' document palette. */
+.text-doc-paper .ProseMirror .selectedCell::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--ui-info) 20%, transparent);
+  content: '';
+  pointer-events: none;
+}
+.text-doc-paper .ProseMirror td,
+.text-doc-paper .ProseMirror th {
+  position: relative;
+}
+
+.text-doc-table-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+.text-doc-table-btn {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.text-doc-table-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+.text-doc-table-btn-danger {
+  color: var(--ui-danger-foreground);
 }
 
 /* CodeBlockLowlight. Syntax colours are themed via --content-code-* tokens
@@ -6280,6 +6469,66 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   font-size: 13px;
 }
 
+/* LINK TAP/CLICK ACTIONS popover (front task 4/5) - same invisible
+   hit-target backdrop as the Share sheet, one implementation for both
+   desktop and mobile (see the comment on editorProps.handleClick). */
+.text-doc-link-action-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.text-doc-link-action-menu {
+  position: fixed;
+  z-index: 61;
+  width: 250px;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-link-action-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-link-action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-doc-link-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.text-doc-link-action-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-link-action-open {
+  margin-left: auto;
+  color: var(--ui-info);
+}
+
 /* The backlinks block (front task 10): chrome at the end of the document,
    in .text-doc-editor-shell's max-width column - not inside .text-doc-paper,
    since backlinks are not document content. Renders once loaded so an empty
@@ -6289,11 +6538,23 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   padding-top: 24px;
   border-top: 1px solid var(--ui-border);
 }
+/* A full-width tappable row, not a decorative heading: the whole section is
+   collapsed by default (see backlinksExpanded), so the row IS the control
+   that reveals it. min-height keeps the ~44px touch target regardless of
+   the compact 13px label. */
 .text-doc-backlinks-head {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
   color: var(--ui-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
 }
 .text-doc-backlinks-icon {
   display: inline-flex;
@@ -6308,6 +6569,19 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin: 0;
+}
+.text-doc-backlinks-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlinks-chevron {
+  flex-shrink: 0;
+  color: var(--ui-text-muted);
+}
+.text-doc-backlinks-panel {
+  padding-top: 2px;
 }
 .text-doc-backlinks-hint {
   margin: 6px 0 14px;
@@ -6580,31 +6854,30 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
 @media (max-width: 760px) {
   .text-doc-topbar {
-    grid-template-columns: auto minmax(0, 1fr) auto;
     min-height: 0;
     gap: 8px;
     padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
   }
 
-  .text-doc-topbar > .btn-ghost:first-child {
-    padding: 6px 10px;
-    font-size: 13px;
+  /* THE PAGE TITLE, mobile size - smaller than desktop's 34px but still
+     bigger than any body heading. */
+  .text-doc-title-page-input,
+  .text-doc-title-page-readonly {
+    font-size: 24px;
+    margin-bottom: 14px;
   }
 
-  .text-doc-title-input,
-  .text-doc-title-readonly {
-    padding: 6px 4px;
-    font-size: 15px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  /* Access/History move into the "⋮" popover below; the sync chip becomes
-     a small secondary line under the title instead of its own big pill. */
-  .text-doc-access-btn,
+  /* History moves into the "⋮" popover below; Share stays a visible primary
+     action per the compact mobile header (back / Share / user / kebab). The
+     sync chip becomes a small secondary line under the row instead of its
+     own big pill. */
   .text-doc-history-btn {
     display: none;
+  }
+
+  .text-doc-access-btn {
+    min-height: 44px;
+    padding: 0 12px;
   }
 
   .text-doc-topbar-actions {
@@ -6616,6 +6889,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-sync {
     order: 10;
     flex-basis: 100%;
+    width: auto;
     text-align: right;
     border: none;
     background: transparent;
@@ -6678,7 +6952,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     text-align: left;
     font-size: 14px;
     cursor: pointer;
-    min-height: 40px;
+    min-height: 44px;
   }
 
   .text-doc-menu-item:hover {
@@ -6767,9 +7041,97 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     display: none;
   }
 
-  .text-doc-share-panel,
   .text-doc-history-panel {
     inset: 64px 10px 10px;
+  }
+
+  /*
+    SHARE BOTTOM SHEET (front task 7/8). Same markup as desktop's floating
+    panel, repositioned/restyled into a proper mobile sheet: pinned to the
+    bottom, rounded top corners, a grabber, safe-area padding, internal
+    scroll with the page behind it non-scrolling (position:fixed already
+    achieves that - nothing under a fixed, full-height sheet is reachable).
+    Sections stack vertically and every control goes full width (front task
+    8's explicit "no tight single row" requirement) via the scoped overrides
+    below, rather than changing the shared .share-form/.share-visibility-select
+    rules that CanvasView/HtmlDocumentView's own Access panels also use.
+  */
+  .text-doc-share-backdrop {
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-share-panel {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: min(85dvh, 720px);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 10px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .text-doc-share-grabber {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 999px;
+    background: var(--ui-border);
+  }
+
+  .text-doc-share-panel .share-visibility-select,
+  .text-doc-share-panel .slug-input,
+  .text-doc-share-panel .share-form,
+  .text-doc-share-panel .share-form input,
+  .text-doc-share-panel .share-form select,
+  .text-doc-share-panel .share-form button,
+  .text-doc-share-panel .share-copy-link-btn,
+  .text-doc-share-panel .share-save-slug-btn,
+  .text-doc-share-panel .slug-row {
+    width: 100%;
+  }
+
+  .text-doc-share-panel .share-form {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .text-doc-share-panel .share-form input,
+  .text-doc-share-panel .share-form select,
+  .text-doc-share-panel .share-form button,
+  .text-doc-share-panel .share-visibility-select,
+  .text-doc-share-panel .slug-input,
+  .text-doc-share-panel .share-checkbox,
+  .text-doc-share-panel .share-copy-link-btn,
+  .text-doc-share-panel .share-save-slug-btn {
+    min-height: 44px;
+  }
+
+  .text-doc-share-panel .slug-row {
+    align-items: stretch;
+  }
+
+  .text-doc-link-action-btn {
+    min-height: 44px;
+  }
+
+  .text-doc-table-btn {
+    min-height: 40px;
+    padding: 6px 10px;
+  }
+
+  .text-doc-paper .ProseMirror td,
+  .text-doc-paper .ProseMirror th {
+    min-width: 88px;
+    padding: 6px 8px;
+  }
+
+  /* Collapsed by default (backlinksExpanded), so the section no longer needs
+     the desktop's generous 40px/24px breathing room just to hold one row. */
+  .text-doc-backlinks {
+    margin-top: 16px;
+    padding-top: 4px;
   }
 
   .text-doc-bubble-link-form-desktop {

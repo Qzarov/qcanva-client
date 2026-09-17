@@ -13,12 +13,18 @@
     />
 
     <template v-else>
+      <!--
+        Title used to live here as an input/span; it's now the page's own
+        first element (see .text-doc-title-block inside .text-doc-paper
+        below) so the header holds only chrome, never document content -
+        matching Notion's own split between "page title" and "app bar".
+      -->
       <header class="text-doc-topbar">
-        <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
-        <input v-if="canEditContent" v-model="title" class="text-doc-title-input" @blur="saveTitle" @keydown.enter.prevent="saveTitle" />
-        <span v-else class="text-doc-title-readonly">{{ title || 'Untitled document' }}</span>
+        <router-link :to="backTarget.to" class="btn-ghost text-doc-back-btn" :aria-label="backTarget.label" :title="backTarget.label">
+          <ArrowLeft :size="18" aria-hidden="true" />
+        </router-link>
         <div class="text-doc-topbar-actions">
-          <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('access') }}</button>
+          <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
             {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
@@ -42,8 +48,9 @@
             <Teleport to="body">
               <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
               <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
-                <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('access') }}</button>
+                <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('share') }}</button>
                 <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
+                <button type="button" class="text-doc-menu-item" @click="copyDocumentLinkFromDocMenu">{{ t('copyLink') }}</button>
               </div>
             </Teleport>
           </div>
@@ -51,104 +58,154 @@
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
-      <section v-if="showShare && role === 'owner'" class="share-panel text-doc-share-panel">
-        <div class="share-panel-header">
-          <h3>{{ t('access') }}</h3>
-          <button class="btn-ghost btn-sm" @click="showShare = false">x</button>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">{{ t('shareLinkSection') }}</div>
-          <div class="slug-row">
-            <span class="slug-prefix">/docs/</span>
-            <input v-model="slugInput" class="slug-input" placeholder="my-document" spellcheck="false" autocapitalize="off" autocomplete="off" @keydown.enter="saveSlug" />
-            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
+      <!--
+        SHARE SHEET (front task 7/8/9). One markup for both breakpoints - the
+        mobile media query turns this into a bottom sheet (vertical sections,
+        full-width controls, safe-area, backdrop) while desktop keeps a
+        floating panel; both now share the same outside-tap/Escape-to-close
+        backdrop primitive already used by AccountMenu.vue and the dashboard's
+        tag sheet, per the "use the existing primitive" rule (front task 6).
+      -->
+      <Teleport to="body">
+        <div v-if="showShare && role === 'owner'" class="text-doc-share-backdrop" @click="closeShare"></div>
+        <section
+          v-if="showShare && role === 'owner'"
+          class="share-panel text-doc-share-panel"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('shareDocumentTitle')"
+          @keydown.esc.stop="closeShare"
+          @click.stop
+        >
+          <div class="text-doc-share-grabber" aria-hidden="true"></div>
+          <div class="share-panel-header">
+            <h3>{{ t('shareDocumentTitle') }}</h3>
+            <button type="button" class="text-doc-share-close" :aria-label="t('close')" @click="closeShare"><X :size="16" aria-hidden="true" /></button>
           </div>
-          <div class="slug-hint">{{ t('slugHint') }}</div>
-        </div>
 
-        <div class="share-section">
-          <div class="share-section-title">{{ t('whoCanView') }}</div>
-          <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
-            <option value="private">{{ t('visibilityPrivateDash') }}</option>
-            <option value="authenticated">{{ t('visibilityAuthOnlyDash') }}</option>
-            <option value="public">{{ t('visibilityPublicDash') }}</option>
-          </select>
-          <label class="share-checkbox">
-            <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-            <span>{{ t('allowPublicEditing') }}</span>
-          </label>
-          <label class="share-checkbox">
-            <input type="checkbox" v-model="listedInPublic" :disabled="visibility !== 'public'" @change="saveAccessSettings" />
-            <span>{{ t('showInPublic') }}</span>
-          </label>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">{{ t('invitePeople') }}</div>
-          <div class="share-form">
-            <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
-            <select v-model="shareRole">
-              <option value="read">{{ t('canView') }}</option>
-              <option value="edit">{{ t('canEdit') }}</option>
-            </select>
-            <button @click="doShare">{{ t('inviteBtn') }}</button>
-          </div>
-          <div v-if="permissions.length" class="share-list">
-            <div v-for="p in permissions" :key="p.id" class="share-item">
-              <span>{{ p.user?.email || p.userId }}</span>
-              <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
-              <button @click="doRevoke(p.userId)">x</button>
+          <div class="share-panel-body">
+            <div class="share-section">
+              <div class="share-section-title">{{ t('generalAccessSection') }}</div>
+              <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
+                <option value="private">{{ t('visibilityPrivateDash') }}</option>
+                <option value="authenticated">{{ t('visibilityAuthOnlyDash') }}</option>
+                <option value="public">{{ t('visibilityPublicDash') }}</option>
+              </select>
+              <label class="share-checkbox">
+                <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
+                <span>{{ t('allowPublicEditing') }}</span>
+              </label>
+              <label class="share-checkbox">
+                <input type="checkbox" v-model="listedInPublic" :disabled="visibility !== 'public'" @change="saveAccessSettings" />
+                <span>{{ t('showInPublic') }}</span>
+              </label>
             </div>
-          </div>
-        </div>
 
-        <div class="share-section">
-          <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
-          <label class="share-checkbox">
-            <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>{{ t('enablePasswordAccess') }}</span>
-          </label>
-          <div v-if="passwordAccessEnabled" class="share-form">
-            <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
-            <select v-model="passwordAccessRole">
-              <option value="read">{{ t('canView') }}</option>
-              <option value="edit">{{ t('canEdit') }}</option>
-            </select>
-            <button @click="savePasswordAccess">{{ t('save') }}</button>
-          </div>
-        </div>
-      </section>
+            <div class="share-section-divider" aria-hidden="true"></div>
 
-      <section v-if="showHistory" class="html-history-panel text-doc-history-panel">
-        <div class="html-history-list">
-          <div class="html-history-head">
-            <strong>{{ t('history') }}</strong>
-            <button class="btn-ghost btn-sm" @click="showHistory = false">x</button>
-          </div>
-          <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
-          <button v-for="entry in historyItems" :key="entry.id" class="html-history-item" :class="{ active: selectedHistory?.id === entry.id }" @click="openHistoryEntry(entry)">
-            <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
-            <small>{{ new Date(entry.createdAt).toLocaleString() }}</small>
-          </button>
-          <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
-        </div>
-        <div class="html-history-preview">
-          <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
-          <template v-else>
-            <div class="html-history-preview-head">
-              <div>
-                <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
-                <small>{{ selectedHistory.plainText || t('snapshotLabel') }}</small>
+            <div class="share-section">
+              <div class="share-section-title">{{ t('shareLinkSection') }}</div>
+              <div class="share-link-row">
+                <span class="share-link-url" :title="documentUrl">{{ documentUrl }}</span>
               </div>
-              <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-                {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
-              </button>
+              <button type="button" class="btn-ghost share-copy-link-btn" @click="copyDocumentLink">{{ t('copyLink') }}</button>
             </div>
-            <div class="text-doc-history-preview" v-html="selectedHistory.html"></div>
-          </template>
-        </div>
-      </section>
+
+            <div class="share-section">
+              <div class="share-section-title">{{ t('customLinkSection') }}</div>
+              <div class="slug-row">
+                <span class="slug-prefix">/docs/</span>
+                <input
+                  v-model="slugInput"
+                  class="slug-input"
+                  placeholder="my-document"
+                  spellcheck="false"
+                  autocapitalize="off"
+                  autocomplete="off"
+                  @keydown.enter.prevent="saveSlug"
+                />
+              </div>
+              <div v-if="slugError || slugFormatError" class="slug-error" role="alert">{{ slugError || slugFormatError }}</div>
+              <div v-else class="slug-hint">{{ t('slugHint') }}</div>
+              <button type="button" class="btn-primary share-save-slug-btn" :disabled="savingSlug || !!slugFormatError" @click="saveSlug">{{ t('save') }}</button>
+            </div>
+
+            <div class="share-section-divider" aria-hidden="true"></div>
+
+            <div class="share-section">
+              <div class="share-section-title">{{ t('invitePeople') }}</div>
+              <div class="share-form">
+                <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
+                <select v-model="shareRole">
+                  <option value="read">{{ t('canView') }}</option>
+                  <option value="edit">{{ t('canEdit') }}</option>
+                </select>
+                <button type="button" class="btn-primary share-invite-btn" @click="doShare">{{ t('inviteBtn') }}</button>
+              </div>
+              <div v-if="permissions.length" class="share-list">
+                <div v-for="p in permissions" :key="p.id" class="share-item">
+                  <span>{{ p.user?.email || p.userId }}</span>
+                  <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
+                  <button type="button" :aria-label="t('delete')" @click="doRevoke(p.userId)">x</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="share-section-divider" aria-hidden="true"></div>
+
+            <div class="share-section">
+              <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
+              <label class="share-checkbox">
+                <input type="checkbox" v-model="passwordAccessEnabled" />
+                <span>{{ t('enablePasswordAccess') }}</span>
+              </label>
+              <div v-if="passwordAccessEnabled" class="share-form">
+                <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
+                <select v-model="passwordAccessRole">
+                  <option value="read">{{ t('canView') }}</option>
+                  <option value="edit">{{ t('canEdit') }}</option>
+                </select>
+                <button type="button" class="btn-primary" @click="savePasswordAccess">{{ t('save') }}</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </Teleport>
+
+      <!-- History (front task 6): same missing-outside-close gap the Share
+           panel had, fixed the same way (backdrop + window Escape listener). -->
+      <Teleport to="body">
+        <div v-if="showHistory" class="text-doc-share-backdrop" @click="closeHistory"></div>
+        <section v-if="showHistory" class="html-history-panel text-doc-history-panel" role="dialog" aria-modal="true" :aria-label="t('history')" @click.stop>
+          <div class="html-history-list">
+            <div class="html-history-head">
+              <strong>{{ t('history') }}</strong>
+              <button class="btn-ghost btn-sm" @click="closeHistory">x</button>
+            </div>
+            <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
+            <button v-for="entry in historyItems" :key="entry.id" class="html-history-item" :class="{ active: selectedHistory?.id === entry.id }" @click="openHistoryEntry(entry)">
+              <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
+              <small>{{ new Date(entry.createdAt).toLocaleString() }}</small>
+            </button>
+            <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
+          </div>
+          <div class="html-history-preview">
+            <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
+            <template v-else>
+              <div class="html-history-preview-head">
+                <div>
+                  <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
+                  <small>{{ selectedHistory.plainText || t('snapshotLabel') }}</small>
+                </div>
+                <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
+                  {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
+                </button>
+              </div>
+              <div class="text-doc-history-preview" v-html="selectedHistory.html"></div>
+            </template>
+          </div>
+        </section>
+      </Teleport>
 
       <!-- CAPACITY. Chrome in the app's themed --ui-* palette, never the
            fixed paper palette; nothing here reaches the Yjs document. It
@@ -199,6 +256,28 @@
           @drop="onEditorDrop"
           @dragover.prevent
         >
+          <!--
+            TITLE AS THE PAGE'S FIRST ELEMENT (front task: title placement).
+            Deliberately NOT a ProseMirror node: `title` stays a plain document
+            field (see load()/saveTitle()), exactly as it already was in the
+            header, so Dashboard/Recent/search - all of which read the
+            document's `title` column, never editor content - keep working
+            unchanged, and it never enters the Yjs doc (no CRDT conflict
+            handling needed for it). @click.stop keeps a tap here from also
+            reaching the paper's own focusEditor($event) handler, which would
+            otherwise immediately steal focus back into the editor.
+          -->
+          <input
+            v-if="canEditContent"
+            v-model="title"
+            class="text-doc-title-page-input"
+            :placeholder="t('untitled')"
+            :aria-label="t('documentTitle')"
+            @blur="saveTitle"
+            @keydown.enter.prevent="focusEditorStart"
+            @click.stop
+          />
+          <h1 v-else class="text-doc-title-page-readonly" @click.stop>{{ title || t('untitledDocument') }}</h1>
           <EditorContent v-if="editor" :editor="editor" />
         </article>
 
@@ -222,27 +301,38 @@
             backlinks too), rather than repeated per item or left unsaid.
         -->
         <section v-if="backlinksLoaded" class="text-doc-backlinks">
-          <div class="text-doc-backlinks-head">
+          <button
+            type="button"
+            class="text-doc-backlinks-head"
+            :aria-expanded="backlinksExpanded"
+            aria-controls="text-doc-backlinks-panel"
+            @click="toggleBacklinksExpanded"
+          >
             <span class="text-doc-backlinks-icon" v-html="backlinksIcon" aria-hidden="true"></span>
-            <h3 class="text-doc-backlinks-title">{{ t('backlinksTitle') }}</h3>
+            <span class="text-doc-backlinks-title">{{ t('backlinksTitle') }}</span>
+            <span class="text-doc-backlinks-count" data-backlinks-count>{{ backlinks.length }}</span>
+            <ChevronDown v-if="backlinksExpanded" class="text-doc-backlinks-chevron" :size="16" aria-hidden="true" />
+            <ChevronRight v-else class="text-doc-backlinks-chevron" :size="16" aria-hidden="true" />
+          </button>
+          <div v-if="backlinksExpanded" id="text-doc-backlinks-panel" class="text-doc-backlinks-panel">
+            <p class="text-doc-backlinks-hint">{{ t('backlinksDelayHint') }}</p>
+            <ul v-if="backlinks.length" class="text-doc-backlinks-list">
+              <li v-for="item in backlinks" :key="item.id">
+                <button
+                  type="button"
+                  class="text-doc-backlink-item"
+                  :class="{ 'text-doc-backlink-item-inaccessible': !item.accessible }"
+                  :data-backlink-id="item.id"
+                  :data-backlink-state="item.accessible ? 'accessible' : 'inaccessible'"
+                  @click="onBacklinkClick(item)"
+                >
+                  <span class="text-doc-backlink-item-icon" v-html="mentionDocumentIcon" aria-hidden="true"></span>
+                  <span class="text-doc-backlink-item-label">{{ item.title }}</span>
+                </button>
+              </li>
+            </ul>
+            <p v-else class="text-doc-backlinks-empty">{{ t('backlinksEmpty') }}</p>
           </div>
-          <p class="text-doc-backlinks-hint">{{ t('backlinksDelayHint') }}</p>
-          <ul v-if="backlinks.length" class="text-doc-backlinks-list">
-            <li v-for="item in backlinks" :key="item.id">
-              <button
-                type="button"
-                class="text-doc-backlink-item"
-                :class="{ 'text-doc-backlink-item-inaccessible': !item.accessible }"
-                :data-backlink-id="item.id"
-                :data-backlink-state="item.accessible ? 'accessible' : 'inaccessible'"
-                @click="onBacklinkClick(item)"
-              >
-                <span class="text-doc-backlink-item-icon" v-html="mentionDocumentIcon" aria-hidden="true"></span>
-                <span class="text-doc-backlink-item-label">{{ item.title }}</span>
-              </button>
-            </li>
-          </ul>
-          <p v-else class="text-doc-backlinks-empty">{{ t('backlinksEmpty') }}</p>
         </section>
       </main>
 
@@ -323,6 +413,29 @@
             {{ t('linkApply') }}
           </button>
         </form>
+      </BubbleMenu>
+
+      <!--
+        TABLE CONTROLS (front task 15). A second BubbleMenu instance, tiptap's
+        own officially-supported pattern for a context-sensitive toolbar - no
+        new positioning code, and it works the same on desktop and mobile
+        (shown whenever the cursor is anywhere inside a table, not tied to a
+        text selection like the formatting bubble above). Every button is a
+        direct call into the table extension's own commands; nothing here
+        touches the schema or the selection model itself.
+      -->
+      <BubbleMenu
+        v-if="editor && canEditContent"
+        class="text-doc-table-menu"
+        :editor="editor"
+        :should-show="tableMenuShouldShow"
+        :tippy-options="{ duration: 100, placement: 'top' }"
+      >
+        <button type="button" class="text-doc-table-btn" :aria-label="t('tableAddRow')" @click="tableAddRow">{{ t('tableAddRow') }}</button>
+        <button type="button" class="text-doc-table-btn" :aria-label="t('tableAddColumn')" @click="tableAddColumn">{{ t('tableAddColumn') }}</button>
+        <button type="button" class="text-doc-table-btn" :aria-label="t('tableDeleteRow')" @click="tableDeleteRow">{{ t('tableDeleteRow') }}</button>
+        <button type="button" class="text-doc-table-btn" :aria-label="t('tableDeleteColumn')" @click="tableDeleteColumn">{{ t('tableDeleteColumn') }}</button>
+        <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :aria-label="t('tableDelete')" @click="tableDeleteTable">{{ t('tableDelete') }}</button>
       </BubbleMenu>
 
       <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
@@ -460,6 +573,32 @@
         </button>
         <div v-if="!mentionItems.length" class="text-doc-mention-empty">{{ t('mentionNoResults') }}</div>
       </div>
+
+      <!--
+        LINK TAP/CLICK ACTIONS (front task 4/5). One popover for both
+        platforms - see editorProps.handleClick above for why. The backdrop
+        is the same invisible-hit-target-plus-Escape-listener primitive as
+        the Share sheet (front task 6): a plain click anywhere outside the
+        popover closes it, Escape closes it from anywhere on the page.
+      -->
+      <div v-if="linkActionOpen" class="text-doc-link-action-backdrop" @click="closeLinkActionMenu"></div>
+      <div
+        v-if="linkActionOpen"
+        class="text-doc-link-action-menu"
+        :style="linkActionMenuStyle"
+        role="menu"
+        :aria-label="t('linkAdd')"
+        @click.stop
+      >
+        <div class="text-doc-link-action-url">{{ linkActionHref }}</div>
+        <div class="text-doc-link-action-buttons">
+          <button type="button" class="text-doc-link-action-btn" @click="copyLinkActionHref">{{ t('linkCopy') }}</button>
+          <button type="button" class="text-doc-link-action-btn" @click="editLinkAction">{{ t('linkEdit') }}</button>
+          <button type="button" class="text-doc-link-action-btn text-doc-link-action-open" @click="openLinkActionHref">
+            <ExternalLink :size="13" aria-hidden="true" />{{ t('linkOpen') }}
+          </button>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -508,6 +647,10 @@ import {
 import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
 import DragHandle from '@tiptap/extension-drag-handle';
 import NodeRange from '@tiptap/extension-node-range';
+import Table from '@tiptap/extension-table';
+import TableRow from '@tiptap/extension-table-row';
+import TableHeader from '@tiptap/extension-table-header';
+import TableCell from '@tiptap/extension-table-cell';
 import {
   MAX_TOP_LEVEL_BLOCKS,
   capacityLevel,
@@ -527,10 +670,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { MoreVertical, X } from '@lucide/vue';
+import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, MoreVertical, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, MoreVertical, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, ChevronDown, ChevronRight, ExternalLink, MoreVertical, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -579,6 +722,23 @@ export default defineComponent({
     const accessRequestSent = ref(false);
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
+    const closeShare = () => { showShare.value = false; };
+    /**
+     * ESCAPE (front task 6/23). The sheet is Teleport'd to <body>, so it and
+     * its trigger button no longer share a DOM subtree - a template
+     * `@keydown.esc` on the sheet only fires for a keypress while focus is
+     * actually INSIDE it, which nothing here moves focus into. A window-level
+     * listener, scoped to exactly while the sheet is open, is what closing on
+     * Escape from anywhere on the page actually requires.
+     */
+    const onShareEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeShare();
+    };
+    watch(showShare, (open) => {
+      if (open) window.addEventListener('keydown', onShareEscape);
+      else window.removeEventListener('keydown', onShareEscape);
+    });
+    onBeforeUnmount(() => window.removeEventListener('keydown', onShareEscape));
     // Mobile-only "⋮" popover that houses Access/History (both stay driven
     // by the same showShare/toggleHistory state the desktop buttons use).
     const docMenuOpen = ref(false);
@@ -603,11 +763,62 @@ export default defineComponent({
       docMenuOpen.value = true;
     };
     const closeDocMenu = () => { docMenuOpen.value = false; docMenuStyle.value = null; };
+    const onDocMenuEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeDocMenu();
+    };
+    watch(docMenuOpen, (open) => {
+      if (open) window.addEventListener('keydown', onDocMenuEscape);
+      else window.removeEventListener('keydown', onDocMenuEscape);
+    });
+    onBeforeUnmount(() => window.removeEventListener('keydown', onDocMenuEscape));
     const openAccessFromDocMenu = () => { closeDocMenu(); showShare.value = !showShare.value; };
     const openHistoryFromDocMenu = () => { closeDocMenu(); void toggleHistory(); };
+
+    /**
+     * COPY LINK (front task 8/11). The custom slug if one is set, the
+     * canonical id otherwise - the same precedence `load()` already uses to
+     * canonicalise the URL bar (`slug.value || res.document.id`), so this is
+     * never out of step with what the address bar itself shows. Available to
+     * anyone who can read the document (not owner-gated like Share), both
+     * from the doc-menu ("Copy link" item, task 11) and from the Share sheet
+     * itself (task 8).
+     */
+    const documentUrl = computed(() =>
+      `${window.location.origin}/docs/${encodeURIComponent(slug.value || resolvedId.value)}`,
+    );
+    async function copyDocumentLink() {
+      try {
+        await navigator.clipboard.writeText(documentUrl.value);
+        showToast(t('copied'), 'success');
+      } catch {
+        showToast(t('copyLinkFailed'), 'error');
+      }
+    }
+    const copyDocumentLinkFromDocMenu = () => { closeDocMenu(); void copyDocumentLink(); };
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
+    /**
+     * CUSTOM SLUG VALIDATION (front task 10). Mirrors the backend's
+     * normalizeSlug format rules (common/slug.util.ts, back repo) for
+     * INSTANT feedback while typing - format only, not the reserved-word
+     * list or the uniqueness check, both of which only the server can
+     * answer. `slugError` is the server's own answer (conflict, reserved,
+     * or a format rejection it caught that this pre-check didn't), shown in
+     * preference to the live format hint since it's authoritative; cleared
+     * on every edit so a stale server error doesn't linger over new input.
+     */
+    const SLUG_CLIENT_FORMAT_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
+    const slugError = ref('');
+    const slugFormatError = computed(() => {
+      const value = slugInput.value.trim().toLowerCase();
+      if (!value) return '';
+      if (value.length < 2 || value.length > 64) return t('slugInvalidFormat');
+      if (value.includes('--')) return t('slugInvalidFormat');
+      if (!SLUG_CLIENT_FORMAT_RE.test(value)) return t('slugInvalidFormat');
+      return '';
+    });
+    watch(slugInput, () => { slugError.value = ''; });
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const listedInPublic = ref(true);
@@ -628,9 +839,33 @@ export default defineComponent({
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
+
+    /**
+     * SYNC STATUS DELAY (front task: sync jumping).
+     *
+     * Root cause of the layout jump was CSS (.text-doc-sync sizes to its own
+     * text, so every label-length change reflows its flex siblings) - fixed
+     * in style.css with a reserved min-width. This delay is a separate,
+     * deliberately requested UX change: a normal autosave resolves in well
+     * under a second, and flashing "Saving..." for that instant reads as
+     * noisier than useful. `pendingSaveDelayed` only flips true if
+     * pendingUpdatesCount is STILL > 0 after SAVE_INDICATOR_DELAY_MS, so a
+     * fast round-trip never shows anything but a calm "Synced"; a slow one
+     * still shows "Saving..." for as long as it actually takes. This does
+     * NOT touch when a save happens or how conflicts/offline are detected -
+     * only when the "Saving..." label is allowed to render.
+     */
+    const SAVE_INDICATOR_DELAY_MS = 400;
+    const pendingSaveDelayed = ref(false);
+    // The watch driving pendingSaveDelayed is set up further down, right
+    // after `pendingUpdatesCount` itself exists (from useTextDocumentSocket)
+    // - unlike a computed's lazy getter, watch() evaluates its source
+    // immediately on creation, so it cannot reference a not-yet-declared
+    // const the way syncStatus below safely can.
+
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
-      if (pendingUpdatesCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
+      if (syncIssue.value) return { kind: 'conflict', label: t('syncFailed') };
+      if (pendingSaveDelayed.value) return { kind: 'saving', label: t('syncSaving') };
       if (connected.value) return { kind: 'synced', label: t('syncSynced') };
       return { kind: 'offline', label: t('syncOffline') };
     });
@@ -762,6 +997,19 @@ export default defineComponent({
     };
 
     /**
+     * TABLE CONTROLS (front task 15). `isActive('table')` is true anywhere
+     * the cursor sits inside a table - not gated on a text selection the way
+     * shouldShowBubbleMenu is - so the toolbar tracks the cursor moving
+     * between cells rather than needing a drag-select first.
+     */
+    const tableMenuShouldShow = ({ editor: bubbleEditor }: { editor: Editor }) => bubbleEditor.isActive('table');
+    const tableAddRow = () => { editor.value?.chain().focus().addRowAfter().run(); };
+    const tableAddColumn = () => { editor.value?.chain().focus().addColumnAfter().run(); };
+    const tableDeleteRow = () => { editor.value?.chain().focus().deleteRow().run(); };
+    const tableDeleteColumn = () => { editor.value?.chain().focus().deleteColumn().run(); };
+    const tableDeleteTable = () => { editor.value?.chain().focus().deleteTable().run(); };
+
+    /**
      * The mobile link editor is a bottom sheet, not the in-place bubble -
      * opening it moves focus to a plain <input>, and on mobile that also
      * closes/reopens the keyboard (a real layout event, not just a DOM
@@ -828,6 +1076,101 @@ export default defineComponent({
       editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run();
       closeLinkEditor();
     };
+
+    /**
+     * LINK TAP/CLICK ACTIONS (front task 4/5). `Link.configure({ openOnClick:
+     * false })` above means nothing already opens a link or offers to on a
+     * plain click/tap - there was no interaction at all beyond placing the
+     * caret. This is deliberately ONE mechanism for both desktop and mobile
+     * (rather than a hover-only desktop affordance) since it needs no new
+     * per-link DOM injection (marks don't get NodeViews the way nodes do) and
+     * gives desktop the requested explicit Open action for free. Detected via
+     * `editorProps.handleClick` below, which hands the raw DOM event - the
+     * href is read straight off the rendered `<a>` (Link's own renderHTML
+     * output) rather than resolved through ProseMirror mark lookup, since
+     * that's exactly what's under the pointer.
+     */
+    const linkActionOpen = ref(false);
+    const linkActionHref = ref('');
+    const linkActionRect = ref<{ top: number; left: number } | null>(null);
+    const linkActionMenuStyle = computed(() =>
+      linkActionRect.value ? { top: `${linkActionRect.value.top}px`, left: `${linkActionRect.value.left}px` } : undefined,
+    );
+    const closeLinkActionMenu = () => {
+      linkActionOpen.value = false;
+      linkActionHref.value = '';
+      linkActionRect.value = null;
+    };
+    const onLinkActionEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeLinkActionMenu();
+    };
+    watch(linkActionOpen, (open) => {
+      if (open) window.addEventListener('keydown', onLinkActionEscape);
+      else window.removeEventListener('keydown', onLinkActionEscape);
+    });
+    onBeforeUnmount(() => window.removeEventListener('keydown', onLinkActionEscape));
+
+    async function copyLinkActionHref() {
+      try {
+        await navigator.clipboard.writeText(linkActionHref.value);
+        showToast(t('copied'), 'success');
+      } catch {
+        showToast(t('copyLinkFailed'), 'error');
+      }
+      closeLinkActionMenu();
+    }
+    function openLinkActionHref() {
+      window.open(linkActionHref.value, '_blank', 'noopener,noreferrer');
+      closeLinkActionMenu();
+    }
+    /**
+     * Hands off to the SAME edit flow the bubble menu's link button uses.
+     * Unlike applyLink/removeLink (which extend a collapsed selection to the
+     * whole mark when APPLYING), this has to extend it FIRST: on desktop the
+     * edit form only renders inside <BubbleMenu>, whose shouldShowBubbleMenu
+     * requires a non-empty text selection - a click leaves the cursor
+     * collapsed, so without this the desktop form would never appear at all
+     * (the mobile sheet doesn't share that gate, but extending here keeps
+     * both platforms consistent and gives openLinkEditor the correct full
+     * range to capture via trackRange).
+     */
+    function editLinkAction() {
+      closeLinkActionMenu();
+      editor.value?.chain().focus().extendMarkRange('link').run();
+      openLinkEditor();
+    }
+
+    /**
+     * Named and exposed (like openLinkEditor/applyLink/removeLink already
+     * are) so it can be called directly in a test: jsdom does not reliably
+     * deliver a real click through ProseMirror's own DOM event pipeline the
+     * way a browser does - the same class of limitation
+     * TextDocumentView.linkEditor.test.ts already documents for the tippy-
+     * based bubble menu. Registered below as editorProps.handleClick.
+     */
+    function handleEditorLinkClick(event: MouseEvent): boolean {
+      if (!canEditContent.value) return false;
+      const anchor = (event.target as HTMLElement | null)?.closest?.('a');
+      if (!anchor) {
+        closeLinkActionMenu();
+        return false;
+      }
+      const href = anchor.getAttribute('href') || '';
+      if (!href) return false;
+      const rect = anchor.getBoundingClientRect();
+      const ESTIMATED_MENU_HEIGHT = 96;
+      const opensAbove = rect.bottom + 6 + ESTIMATED_MENU_HEIGHT > window.innerHeight;
+      linkActionHref.value = href;
+      linkActionRect.value = {
+        top: opensAbove ? Math.max(8, rect.top - 6 - ESTIMATED_MENU_HEIGHT) : rect.bottom + 6,
+        left: Math.min(Math.max(8, rect.left), window.innerWidth - 258),
+      };
+      linkActionOpen.value = true;
+      // Not `true`: this only shows the popover, it never suppresses
+      // ProseMirror's own click handling, so the caret still lands exactly
+      // where a plain click on that text would put it.
+      return false;
+    }
 
     /**
      * How far the on-screen keyboard currently pushes up from the bottom of
@@ -1209,6 +1552,25 @@ export default defineComponent({
      * the caret into a still-empty editor moments before the Yjs snapshot
      * lands.
      */
+    /**
+     * REOPEN SHARE AFTER THE SLUG-SAVE REMOUNT (front task 9). Same one-shot
+     * query-param technique as shouldFocusAfterMentionCreate right below,
+     * for the same underlying reason: this view remounts on every path
+     * change, so any in-memory UI state (like the Share sheet being open)
+     * set before a canonicalising router.replace is gone on the other side
+     * of it unless something explicitly restores it.
+     */
+    const shouldReopenShareAfterRemount = route.query?.openShare === '1';
+    let reopenShareConsumed = false;
+    function reopenShareIfPending(preferredId: string) {
+      if (!shouldReopenShareAfterRemount || reopenShareConsumed) return;
+      if (role.value !== 'owner') return;
+      reopenShareConsumed = true;
+      showShare.value = true;
+      const { openShare: _openShare, ...restQuery } = route.query || {};
+      router.replace({ name: 'text-document', params: { id: preferredId }, query: restQuery }).catch(() => {});
+    }
+
     const shouldFocusAfterMentionCreate = route.query?.mentionFocus === '1';
     let mentionCreateFocusConsumed = false;
     /** `preferredId` is `load()`'s own canonical id (slug if it has one) - the same value its own canonicalising `router.replace` uses. */
@@ -1251,6 +1613,15 @@ export default defineComponent({
     const backlinks = ref<BacklinkItem[]>([]);
     const backlinksLoaded = ref(false);
     const backlinksIcon = lucideIcon(EDITOR_GLYPHS.link);
+    // Collapsed by default: an empty (or even a non-empty) backlinks section
+    // was previously always expanded, taking a fixed chunk of vertical space
+    // below every document regardless of whether the reader cares. The count
+    // is always visible in the collapsed row, so there's still no
+    // "never mentioned" vs. "mentioned, not indexed yet" ambiguity (ruling R1).
+    const backlinksExpanded = ref(false);
+    const toggleBacklinksExpanded = () => {
+      backlinksExpanded.value = !backlinksExpanded.value;
+    };
 
     async function loadBacklinks() {
       try {
@@ -1375,6 +1746,35 @@ export default defineComponent({
             dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
           },
         }),
+        /**
+         * TABLE (front task 13-19). The official extension family, not a
+         * custom engine: schema, cell selection, keyboard navigation
+         * (Tab/Shift+Tab), commands (addRowAfter, deleteColumn, etc.) and
+         * serialization all come from it. `resizable: false` keeps column
+         * resizing out of v1 as asked; the extension's own TableView still
+         * wraps the rendered <table> in a `.tableWrapper` div (see
+         * style.css), which is what gets `overflow-x: auto` - the table
+         * scrolls within itself, the page never does.
+         *
+         * ARCHITECTURAL NOTE (front task 26): this only touches the
+         * editor's own ProseMirror schema and the Yjs document it syncs -
+         * collaboration itself is schema-agnostic, so no realtime-protocol
+         * change is needed. What IS incomplete: the backend keeps its own
+         * separate hand-written HTML/plainText renderer (canvas-server-back
+         * text-documents/schema/document-nodes.ts, duplicated in this repo
+         * at src/documents/document-nodes.ts) for search snippets, the
+         * public HTML page, PDF export, and link previews - it doesn't know
+         * about table/tableRow/tableCell/tableHeader yet. Its own fallback
+         * for an unrecognised node renders `<div>` and keeps the children
+         * (confirmed by reading render-html.ts), so a table in one of those
+         * contexts shows its text, un-gridded, rather than breaking or
+         * disappearing. Left as a follow-up: out of this task's frontend
+         * scope, and not a blocker for the live collaborative editor.
+         */
+        Table.configure({ resizable: false }),
+        TableRow,
+        TableHeader,
+        TableCell,
         // Refuses a transaction that would add a top-level block past the
         // ceiling, and NOTHING else - never a Yjs transaction, never an edit
         // or a deletion. See capacity-guard.ts.
@@ -1397,6 +1797,9 @@ export default defineComponent({
         const selection = editor.state.selection;
         sendAwareness({ anchor: selection.anchor, head: selection.head });
       },
+      editorProps: {
+        handleClick: (_view, _pos, event) => handleEditorLinkClick(event),
+      },
     });
 
     const {
@@ -1413,6 +1816,24 @@ export default defineComponent({
       setRevision,
       clearPendingUpdates,
     } = useTextDocumentSocket(resolvedId);
+
+    let saveIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
+    watch(() => pendingUpdatesCount.value > 0, (isPending) => {
+      if (saveIndicatorTimer) {
+        clearTimeout(saveIndicatorTimer);
+        saveIndicatorTimer = null;
+      }
+      if (!isPending) {
+        pendingSaveDelayed.value = false;
+        return;
+      }
+      saveIndicatorTimer = setTimeout(() => {
+        if (pendingUpdatesCount.value > 0) pendingSaveDelayed.value = true;
+      }, SAVE_INDICATOR_DELAY_MS);
+    });
+    onBeforeUnmount(() => {
+      if (saveIndicatorTimer) clearTimeout(saveIndicatorTimer);
+    });
 
     function syncEditorEditable() {
       if (loading.value) return;
@@ -1459,6 +1880,7 @@ export default defineComponent({
         editor.value?.setEditable(canEditContent.value);
         refreshBlockCount();
         focusAfterMentionCreateIfPending(preferred);
+        reopenShareIfPending(preferred);
         void loadMentionResolutions();
         // Only reached once `textDocuments.get` above has succeeded - i.e.
         // the caller can read THIS document. Backlinks are not a side
@@ -1548,16 +1970,34 @@ export default defineComponent({
     }
 
     async function saveSlug() {
-      if (role.value !== 'owner') return;
+      if (role.value !== 'owner' || slugFormatError.value) return;
+      slugError.value = '';
       savingSlug.value = true;
       try {
         const updated = await textDocuments.update(resolvedId.value, { slug: slugInput.value.trim() || null });
         slug.value = updated.slug || null;
         slugInput.value = slug.value || '';
-        await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: route.query });
-        showToast('Link saved', 'success');
+        /**
+         * ROOT CAUSE (front task 9, "custom link doesn't save"): the slug DID
+         * persist correctly (verified: PUT saves it, GET-by-id and
+         * GET-by-slug both resolve it, it survives a reload, conflicts and
+         * invalid input already surfaced clear errors) - what was actually
+         * broken is that changing the URL below remounts this ENTIRE view
+         * (view-remount.ts keys text-document on route.path, so the editor/
+         * Y.Doc/socket rebuild correctly for the canonicalised URL), which
+         * resets `showShare` to its default `false`. The Share sheet the
+         * user was just typing in vanished right after a successful Save,
+         * reading as "it didn't work" even though the data was fine.
+         * `openShare=1` is the same one-shot-query-param technique already
+         * used for `mentionFocus` above: consumed once by
+         * reopenShareIfPending() after the fresh mount's load() resolves,
+         * then stripped so it never lingers in a shareable URL.
+         */
+        await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: { ...route.query, openShare: '1' } });
+        showToast(t('linkSaved'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to save link', 'error');
+        slugError.value = e.message || t('linkSaveFailed');
+        showToast(e.message || t('linkSaveFailed'), 'error');
       } finally {
         savingSlug.value = false;
       }
@@ -1638,6 +2078,15 @@ export default defineComponent({
       showHistory.value = !showHistory.value;
       if (showHistory.value && !historyItems.value.length) await loadHistory();
     }
+    const closeHistory = () => { showHistory.value = false; };
+    const onHistoryEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeHistory();
+    };
+    watch(showHistory, (open) => {
+      if (open) window.addEventListener('keydown', onHistoryEscape);
+      else window.removeEventListener('keydown', onHistoryEscape);
+    });
+    onBeforeUnmount(() => window.removeEventListener('keydown', onHistoryEscape));
 
     async function openHistoryEntry(entry: any) {
       try {
@@ -1673,6 +2122,12 @@ export default defineComponent({
       const target = event?.target;
       if (target instanceof Element && target.closest('.ProseMirror')) return;
       editor.value?.chain().focus('end').run();
+    }
+
+    /** Enter from the title field: continues into the body, not below existing content. */
+    function focusEditorStart() {
+      if (!canEditContent.value) return;
+      editor.value?.chain().focus('start').run();
     }
 
     /** Escapes text that is about to be interpolated into imported html. */
@@ -1818,6 +2273,8 @@ export default defineComponent({
       backlinks,
       backlinksLoaded,
       backlinksIcon,
+      backlinksExpanded,
+      toggleBacklinksExpanded,
       onBacklinkClick,
       mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
       mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
@@ -1828,12 +2285,26 @@ export default defineComponent({
       bubbleMarkButtons,
       bubbleShouldShow,
       applyBubbleMark,
+      tableMenuShouldShow,
+      tableAddRow,
+      tableAddColumn,
+      tableDeleteRow,
+      tableDeleteColumn,
+      tableDeleteTable,
       openLinkEditor,
       closeLinkEditor,
       applyLink,
       removeLink,
       linkIcon: LINK_ICON,
       unlinkIcon: UNLINK_ICON,
+      linkActionOpen,
+      linkActionHref,
+      linkActionMenuStyle,
+      closeLinkActionMenu,
+      copyLinkActionHref,
+      openLinkActionHref,
+      editLinkAction,
+      handleEditorLinkClick,
       capacityIcon: lucideIcon(EDITOR_GLYPHS.triangleAlert),
       continuePageIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       capacityLimit,
@@ -1868,13 +2339,19 @@ export default defineComponent({
       pendingUpdatesCount,
       syncStatus,
       showShare,
+      closeShare,
       docMenuOpen,
       docMenuStyle,
       toggleDocMenu,
       closeDocMenu,
       openAccessFromDocMenu,
       openHistoryFromDocMenu,
+      documentUrl,
+      copyDocumentLink,
+      copyDocumentLinkFromDocMenu,
       slugInput,
+      slugError,
+      slugFormatError,
       savingSlug,
       visibility,
       allowPublicEdit,
@@ -1889,6 +2366,7 @@ export default defineComponent({
       requestingAccess,
       accessRequestSent,
       showHistory,
+      closeHistory,
       historyLoading,
       historyItems,
       selectedHistory,
@@ -1905,6 +2383,7 @@ export default defineComponent({
       openHistoryEntry,
       restoreSelectedHistory,
       focusEditor,
+      focusEditorStart,
     };
   },
 });

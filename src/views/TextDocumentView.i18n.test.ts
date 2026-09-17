@@ -116,7 +116,12 @@ vi.mock('../composables/useToast', () => ({ useToast: () => ({ show: vi.fn() }) 
 import TextDocumentView from './TextDocumentView.vue';
 
 async function mountWithOpenPanels() {
-  const wrapper = mount(TextDocumentView);
+  // attachTo: the Share and History panels are now Teleport'd to <body>
+  // (front task 6, so their outside-click backdrop covers the whole
+  // viewport regardless of where the trigger button lives in the DOM) -
+  // Vue Test Utils only discovers teleported content through wrapper.find()/
+  // wrapper.html() when the wrapper is attached to a real DOM node.
+  const wrapper = mount(TextDocumentView, { attachTo: document.body });
   await flushPromises();
   const vm = wrapper.vm as any;
   vm.showShare = true;
@@ -136,9 +141,14 @@ describe('TextDocumentView i18n hardcode guard', () => {
     useI18n().setLocale('en');
     const wrapper = await mountWithOpenPanels();
 
-    const html = wrapper.html();
+    // Share/History are Teleport'd to <body> (front task 6) and so fall
+    // outside wrapper.html()'s own subtree - document.body.innerHTML covers
+    // both the mounted tree and anything Teleport moved out of it.
+    const html = document.body.innerHTML;
     const offenders = html.match(new RegExp(CYRILLIC.source, 'g')) || [];
     expect(offenders).toEqual([]);
+
+    wrapper.unmount();
   });
 
   it('does not leave the previously-hardcoded English strings behind under the Russian locale', async () => {
@@ -163,7 +173,12 @@ describe('TextDocumentView i18n hardcode guard', () => {
     for (const word of ['Conflict', 'Saving', 'Synced', 'Offline']) {
       expect(topbarActions).not.toContain(word);
     }
-    const sharePanel = wrapper.find('.text-doc-share-panel').html();
+    // Share and History are Teleport'd to <body> (front task 6), which puts
+    // their content outside wrapper's own DOM subtree - wrapper.find() only
+    // sees the mounted component's own render tree, even attached, so this
+    // reads the real DOM node Teleport actually moved them into.
+    const sharePanel = document.querySelector('.text-doc-share-panel')?.outerHTML ?? '';
+    expect(sharePanel).not.toBe('');
     const shareStaleEnglish = [
       'Access', 'Link', 'Save', 'Who can view', 'Private - only invited people',
       'Auth only - any logged-in user', 'Public - anyone with the link',
@@ -173,7 +188,8 @@ describe('TextDocumentView i18n hardcode guard', () => {
     for (const phrase of shareStaleEnglish) {
       expect(sharePanel).not.toContain(`>${phrase}<`);
     }
-    const historyPanel = wrapper.find('.text-doc-history-panel').html();
+    const historyPanel = document.querySelector('.text-doc-history-panel')?.outerHTML ?? '';
+    expect(historyPanel).not.toBe('');
     const historyStaleEnglish = [
       'History', 'Loading...', 'Revision', 'No history yet', 'Select a revision',
       'Snapshot', 'Restoring...', 'Restore',
@@ -181,5 +197,7 @@ describe('TextDocumentView i18n hardcode guard', () => {
     for (const phrase of historyStaleEnglish) {
       expect(historyPanel).not.toContain(`>${phrase}<`);
     }
+
+    wrapper.unmount();
   });
 });
