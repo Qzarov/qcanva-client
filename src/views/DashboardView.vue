@@ -1598,51 +1598,23 @@ export default defineComponent({
         .filter(matchesPublicItem),
     ));
 
+    /**
+     * Every resource the user can see and filter, folder-nested or not, goes
+     * through dashboardItemsByKey (see below) - it's already the complete,
+     * tag-enriched set built for Recent/folder counters, so it's the right
+     * single source here too instead of re-deriving from six separate lists.
+     * The previous version of this computed looped `allResourceFolders`
+     * directly, reading `folder.items?.canvases` - but the raw
+     * ownResourceFolders/sharedResourceFolders refs are the flat API shape
+     * (`folder.canvases`, not `folder.items.canvases`), so that branch always
+     * read `undefined` and silently contributed nothing: a tag used only on
+     * a resource inside a folder never appeared in the Tag Filter UI at all.
+     */
     const allTagNames = computed(() => {
       const names = new Set<string>();
-      const addTags = (tags: CanvasTag[], type: FolderItem['type']) => {
-        if (contentFilter.value !== 'all' && contentFilter.value !== type) return;
-        for (const tag of tags) names.add(tag.name);
-      };
-      for (const list of [own.value, shared.value, publicCanvases.value]) {
-        for (const canvas of list) {
-          addTags(canvas.tags, 'canvas');
-        }
-      }
-      for (const document of unfiledHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of sharedHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of publicHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of unfiledTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of sharedTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of publicTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const template of interactiveTemplateRecords.value) {
-        addTags(template.tags, 'interactive-template');
-      }
-      for (const folder of allResourceFolders.value) {
-        for (const canvas of folder.items?.canvases || []) {
-          addTags(normalizeTags(canvas.tags), 'canvas');
-        }
-        for (const document of folder.items?.htmlDocuments || []) {
-          addTags(normalizeTags(document.tags), 'html-document');
-        }
-        for (const document of folder.items?.textDocuments || []) {
-          addTags(normalizeTags(document.tags), 'text-document');
-        }
-        for (const template of folder.items?.interactiveTemplates || []) {
-          addTags(normalizeTags(template.tags), 'interactive-template');
-        }
+      for (const item of dashboardItemsByKey.value.values()) {
+        if (contentFilter.value !== 'all' && contentFilter.value !== item.type) continue;
+        for (const tag of item.tags || []) names.add(tag.name);
       }
       return Array.from(names).sort();
     });
@@ -1932,16 +1904,20 @@ export default defineComponent({
     ]);
     /**
      * allDashboardResources includes each folder's own items AND the same
-     * canvases/documents again from own/shared/unfiled/public - and only the
-     * latter carry real tags: the /resource-folders response's nested
-     * canvases/htmlDocuments (unlike its textDocuments) don't include tags at
-     * all, so a folder's own copy of a canvas or HTML document is tag-less.
-     * allHtmlDocumentsRaw/allTextDocumentsRaw close the one gap that leaves -
-     * a foldered HTML/text document has no OTHER complete source (canvases
-     * do: own/shared cover every canvas regardless of folder). Building the
-     * lookup keeps whichever copy came LAST for a given id, so listing the
-     * tag-complete sources after allRecentResourceItems means anything
-     * resolved through this map has its real tags, wherever it came from.
+     * canvases/documents again from own/shared/unfiled/public. /resource-
+     * folders now returns tags on its nested canvases/htmlDocuments too (a
+     * backend fix - it used to omit them, matching only its textDocuments),
+     * but this enrichment stays regardless: it's what keeps the client
+     * correct against an OLDER backend still running that gap (compatibility
+     * during a rolling/independent frontend-backend deploy is exactly the
+     * case where the two are out of sync), and it's free - own/shared/
+     * allHtmlDocumentsRaw/allTextDocumentsRaw are already loaded for other
+     * reasons. Building the lookup keeps whichever copy came LAST for a
+     * given id, so listing the tag-complete sources after
+     * allRecentResourceItems means anything resolved through this map has
+     * its real tags, wherever it came from - own/shared cover every canvas
+     * regardless of folder, allHtmlDocumentsRaw/allTextDocumentsRaw do the
+     * same for HTML/text documents.
      */
     const dashboardItemsByKey = computed(() => new Map(
       [...allRecentResourceItems.value, ...allHtmlDocumentsRaw.value, ...allTextDocumentsRaw.value]

@@ -2072,4 +2072,67 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.get('[data-recent-folder-tile="folder-g"] .subfolder-card-count').text()).toBe('1');
     expect(wrapper.get('[data-recent-folder-tile="folder-g"]').classes()).not.toContain('subfolder-card-zero-match');
   });
+
+  it('surfaces a tag that exists only on a foldered resource in the Tag Filter, and filters Recent/folder counters by it', async () => {
+    // Uses an HTML document, not a canvas: own/shared canvases are already
+    // folder-inclusive (own.value covers every owned canvas regardless of
+    // folder), so a canvas fixture wouldn't actually exercise the bug this
+    // guards - unfiledHtmlDocuments/sharedHtmlDocuments, by contrast,
+    // explicitly filter OUT anything in a folder, which is exactly the gap
+    // that hid this document's tag from allTagNames.
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        {
+          id: 'folder-niche', name: 'TagOnly', role: 'owner', parentId: null,
+          canvases: [],
+          htmlDocuments: [
+            { id: 'niche-doc-1', title: 'Folder Only Item', folderId: 'folder-niche', tags: [tagFixture('nicheTag')] },
+          ],
+        },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      documents: [
+        // Inside a folder, owned by the current user; its tag ("nicheTag")
+        // appears nowhere else - not on any unfiled/shared resource, and
+        // it's never been opened (see recentResources.list below), so it
+        // has no other route into allTagNames or into Recent.
+        { id: 'niche-doc-1', title: 'Folder Only Item', ownerId: 'user-1', folderId: 'folder-niche', tags: [tagFixture('nicheTag')] },
+        // Unfiled and in Recent, but with a different tag - lets us prove
+        // the tag filter actually discriminates rather than matching everything.
+        { id: 'other-doc-1', title: 'Other Item', ownerId: 'user-1', tags: [tagFixture('commonTag')] },
+      ],
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'other-doc-1', resourceType: 'html-document', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    // The tag exists (allTagNames), and is rendered as a selectable chip -
+    // this is the bug: it used to be silently dropped.
+    expect(vm.allTagNames).toContain('nicheTag');
+    expect(wrapper.findAll('.tag-filter-list-desktop .tag-filter').some((el) => el.text() === '#nicheTag')).toBe(true);
+
+    // Baseline: Recent shows the one item that's actually in its history.
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Other Item']);
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"] .subfolder-card-count').text()).toBe('1');
+
+    vm.selectedTags = ['nicheTag'];
+    await nextTick();
+
+    // Folder counter reacts: the one canvas in the folder does carry the tag.
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"] .subfolder-card-count').text()).toBe('1');
+    expect(wrapper.get('[data-recent-folder-tile="folder-niche"]').classes()).not.toContain('subfolder-card-zero-match');
+
+    // Recent reacts too: its only history entry doesn't carry this tag, so
+    // it correctly drops to the "no matches" state rather than showing
+    // everything or crashing on an unknown tag.
+    const { t } = useI18n();
+    expect(wrapper.find('.dashboard-recent-title').exists()).toBe(false);
+    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentMatches'));
+  });
 });
