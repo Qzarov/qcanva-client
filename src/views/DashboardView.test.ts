@@ -409,7 +409,7 @@ describe('dashboard sidebar navigation', () => {
     const vm = wrapper.vm as any;
 
     vm.selectDashboardSection({ kind: 'interactive' });
-    vm.selectedTag = 'mvp';
+    vm.selectedTags = ['mvp'];
     vm.sortMode = 'title-desc';
     await nextTick();
 

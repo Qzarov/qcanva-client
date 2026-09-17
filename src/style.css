@@ -1288,7 +1288,9 @@ body {
 .tag-filter-list-mobile,
 .dashboard-fab,
 .card-meta-mobile,
-.card-date-mobile {
+.card-date-mobile,
+.dash-search-header-mobile,
+.dashboard-recent-meta-mobile {
   display: none;
 }
 .folder-section {
@@ -1961,6 +1963,70 @@ body {
   color: var(--ui-text-secondary);
   font-size: 12px;
 }
+/* The tag filter sheet is always a bottom sheet, not a centered dialog -
+   only ever opened from the mobile compact tag bar's "+N" button, so this
+   isn't gated behind a media query the way the rest of the mobile layout
+   is. */
+.dashboard-tag-sheet-backdrop {
+  align-items: flex-end;
+  padding: 0;
+}
+.dashboard-tag-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(70dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 10px 18px calc(16px + env(safe-area-inset-bottom));
+}
+.dashboard-tag-sheet-grabber {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin-bottom: 10px;
+  border-radius: 2px;
+  background: var(--ui-border);
+}
+.dashboard-tag-sheet-subtitle {
+  margin: 2px 0 0;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.dashboard-tag-sheet-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.dashboard-tag-sheet-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.dashboard-tag-sheet-item.active {
+  border-color: color-mix(in srgb, var(--color-brands) 55%, transparent);
+  color: var(--color-brands-light);
+  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+}
+.dashboard-tag-sheet-actions {
+  flex: 0 0 auto;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.dashboard-tag-sheet-actions .btn-primary,
+.dashboard-tag-sheet-actions .btn-ghost {
+  min-height: 44px;
+}
 .folder-chip-list {
   display: flex;
   flex-wrap: wrap;
@@ -2610,10 +2676,34 @@ body {
 
   .dashboard-auth-header {
     display: block;
-    padding: 10px 14px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-top));
   }
   .dashboard-auth-header .app-header-inner {
     justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+  }
+  .dash-search-header-mobile {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .dash-search-toolbar-desktop {
+    display: none;
+  }
+  /* Anonymous/public header keeps its desktop row (brand + auth buttons) and
+     wraps the mobile search onto its own full-width row below, since it has
+     no hamburger to share a row with. */
+  .app-header-public .app-header-inner {
+    flex-wrap: wrap;
+  }
+  .app-header-public .dash-search-header-mobile {
+    order: 3;
+    flex-basis: 100%;
   }
 
   .dashboard-app-shell,
@@ -2892,10 +2982,11 @@ body {
   .dash-sort-button-mobile {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    min-height: 36px;
-    padding: 6px 12px;
-    font-size: 13px;
+    justify-content: center;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
   }
 
   .content-type-tabs {
@@ -2927,11 +3018,6 @@ body {
     font-size: 12px;
     white-space: nowrap;
   }
-  .tag-filter-more.active {
-    border-color: color-mix(in srgb, var(--color-brands) 55%, transparent);
-    color: var(--color-brands-light);
-    background: color-mix(in srgb, var(--color-brands) 10%, transparent);
-  }
   .tag-filter-clear {
     display: inline-flex;
     align-items: center;
@@ -2941,13 +3027,6 @@ body {
     padding: 0;
     margin-left: auto;
     flex: 0 0 auto;
-  }
-  .mobile-tag-picker-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    max-height: 50vh;
-    overflow-y: auto;
   }
 
   .home-tabs {
@@ -3210,6 +3289,22 @@ body {
     flex-direction: column;
   }
 
+  /* Recent's own header stays a single row (Recent | sort | grid/list),
+     overriding the generic column-stack above - it's exactly what section
+     16 of the mobile redesign calls for, not a stacked section head. */
+  .dashboard-recent-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .dashboard-recent-head-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+
   .folder-manager-top {
     align-items: center;
     gap: 8px;
@@ -3259,26 +3354,61 @@ body {
   }
 
   .dashboard-recents { margin-top: 22px; }
+  /* A fixed 2 columns, not auto-fill: the collapsed grid must read as a
+     literal 2x2 for exactly 4 cards regardless of viewport width - auto-fill
+     would drop to a single column below ~330px (2 x 150px minmax doesn't
+     fit a 320px screen's content width once page padding is subtracted). */
   .dashboard-recents-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
   .dashboard-recent-card {
-    min-height: 86px;
+    min-height: 70px;
     padding: 9px;
     grid-template-columns: 17px minmax(0, 1fr);
-    gap: 5px 6px;
+    grid-template-rows: auto auto;
+    gap: 3px 6px;
   }
   .dashboard-recent-title { font-size: 12px; -webkit-line-clamp: 2; }
-  .dashboard-recent-meta { font-size: 10px; }
+  .dashboard-recent-meta { display: none; }
+  .dashboard-recent-meta-mobile {
+    display: block;
+    grid-column: 2;
+    color: var(--ui-text-secondary);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .dashboard-recents-list .dashboard-recent-card {
-    min-height: 58px;
+    min-height: 48px;
     grid-template-columns: 18px minmax(0, 1fr);
     grid-template-rows: auto auto;
   }
-  .dashboard-recents-list .dashboard-recent-meta {
+  .dashboard-recents-list .dashboard-recent-meta-mobile {
     grid-column: 2;
     white-space: normal;
+  }
+
+  .dashboard-recent-show-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    min-height: 40px;
+    margin-top: 10px;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    color: var(--color-brands-light);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .subfolder-card-zero-match {
+    opacity: 0.55;
   }
 
   .dashboard .dash-grid {
