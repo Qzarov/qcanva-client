@@ -9,11 +9,11 @@
 // document. Uses the real TipTap editor, same as the other *.test.ts siblings.
 //
 // The table BubbleMenu is a real tippy/popper instance, like the one
-// TextDocumentView.linkEditor.test.ts documents: jsdom has no
-// getClientRects(), so popper's async post-update positioning loop can throw
-// an unhandled rejection AFTER a test has already passed. Pre-existing,
-// out-of-scope, and harmless - it never affects an assertion, only shows up
-// in the console.
+// TextDocumentView.linkEditor.test.ts documents. It used to throw an
+// unhandled rejection here (jsdom's Range had no getClientRects()) that
+// failed `vitest run`'s own exit code although every test still passed -
+// see the getClientRects polyfill in test-setup.ts, which fixes it for
+// every test file, not just this one.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
