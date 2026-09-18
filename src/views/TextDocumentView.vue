@@ -1799,6 +1799,12 @@ export default defineComponent({
      * right before every place that reads or acts on it, so it self-heals
      * regardless of how many times the library's own machinery breaks it
      * in between.
+     *
+     * Safe to delete once @tiptap/extension-collaboration/y-prosemirror
+     * actually fix upstream issues #114/#102 for this app's real
+     * multi-cycle EditorView lifecycle (not just the single cycle their
+     * current "quick fix" covers) and the dependency is bumped past that
+     * fix.
      */
     function ensureRedoTracked(current: Editor | undefined): void {
       // current?.state guards the same gap canUndo/canRedo do: several

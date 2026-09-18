@@ -284,4 +284,189 @@ describe('Undo/Redo header buttons', () => {
 
     wrapper.unmount();
   });
+
+  it('survives 10x Undo / 10x Redo (well past the actual history depth) across two full cycles', async () => {
+    // "10x" deliberately overshoots the real number of undoable steps
+    // (4 edits per cycle) - the point is that calling undo/redo past the
+    // end of history is a safe no-op (canUndo/canRedo false, content
+    // unchanged), not that there are 10 real steps. Two full cycles back
+    // to back prove the mechanism isn't a one-shot fix that degrades on
+    // reuse - exactly the ensureRedoTracked self-healing claim this
+    // workaround makes.
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+
+    async function makeFourEditsAndRoundTrip(label: string) {
+      editor.commands.setContent('<p></p>');
+      await settleUndoStep();
+      editor.chain().focus('end').insertContent(`${label}-one `).run();
+      await settleUndoStep();
+      editor.chain().focus('end').insertContent(`${label}-two `).run();
+      await settleUndoStep();
+      editor.chain().focus('end').insertContent(`${label}-three `).run();
+      await settleUndoStep();
+      editor.chain().focus('end').insertContent(`${label}-four`).run();
+      await flushPromises();
+
+      const fullText = editor.getText();
+      expect(fullText).toContain(`${label}-one`);
+      expect(fullText).toContain(`${label}-four`);
+
+      for (let i = 0; i < 10; i++) {
+        wrapper.vm.undoEdit();
+        await flushPromises();
+      }
+      expect(wrapper.vm.canUndo).toBe(false);
+      expect(editor.getText().trim()).toBe('');
+
+      for (let i = 0; i < 10; i++) {
+        wrapper.vm.redoEdit();
+        await flushPromises();
+      }
+      expect(wrapper.vm.canRedo).toBe(false);
+      // Exactly once each - overshooting redo must never re-apply a step
+      // twice or duplicate content.
+      const finalText = editor.getText();
+      expect(finalText.split(`${label}-one`).length - 1).toBe(1);
+      expect(finalText.split(`${label}-four`).length - 1).toBe(1);
+    }
+
+    await makeFourEditsAndRoundTrip('cycle1');
+    await makeFourEditsAndRoundTrip('cycle2');
+
+    wrapper.unmount();
+  }, 20000);
+
+  it('clears the redo branch once a new edit follows a partial undo', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.chain().focus('end').insertContent('first ').run();
+    await settleUndoStep();
+    editor.chain().focus('end').insertContent('second').run();
+    await flushPromises();
+
+    wrapper.vm.undoEdit();
+    await flushPromises();
+    expect(editor.getText()).toContain('first');
+    expect(editor.getText()).not.toContain('second');
+    expect(wrapper.vm.canRedo).toBe(true);
+
+    // A genuinely new edit here, not a redo - standard undo/redo semantics
+    // say this must discard the "second" branch permanently.
+    editor.chain().focus('end').insertContent('branched').run();
+    await flushPromises();
+
+    expect(wrapper.vm.canRedo).toBe(false);
+    wrapper.vm.redoEdit();
+    await flushPromises();
+    expect(editor.getText()).not.toContain('second');
+    expect(editor.getText()).toContain('branched');
+
+    wrapper.unmount();
+  });
+
+  it('undoes/redoes a sequence of Table structural operations in order (add row, add column, delete row)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+    await settleUndoStep();
+    editor.commands.setTextSelection(3);
+
+    const rows0 = countNodes(editor.getJSON(), 'tableRow');
+    const cols0 = editor.getJSON().content.find((n: any) => n.type === 'table').content[0].content.length;
+
+    wrapper.vm.tableAddRow();
+    await settleUndoStep();
+    wrapper.vm.tableAddColumn();
+    await settleUndoStep();
+    wrapper.vm.tableDeleteRow();
+    await flushPromises();
+
+    const tableAfterOps = editor.getJSON().content.find((n: any) => n.type === 'table');
+    expect(countNodes(editor.getJSON(), 'tableRow')).toBe(rows0); // +1 row, -1 row
+    expect(tableAfterOps.content[0].content.length).toBe(cols0 + 1);
+
+    // Undo all three structural ops, in reverse order, one at a time.
+    wrapper.vm.undoEdit(); // undoes deleteRow
+    await flushPromises();
+    expect(countNodes(editor.getJSON(), 'tableRow')).toBe(rows0 + 1);
+
+    wrapper.vm.undoEdit(); // undoes addColumn
+    await flushPromises();
+    const tableAfterUndo2 = editor.getJSON().content.find((n: any) => n.type === 'table');
+    expect(tableAfterUndo2.content[0].content.length).toBe(cols0);
+
+    wrapper.vm.undoEdit(); // undoes addRow - back to the original row count
+    await flushPromises();
+    expect(countNodes(editor.getJSON(), 'tableRow')).toBe(rows0);
+
+    // Redo all three back, in original order.
+    wrapper.vm.redoEdit();
+    wrapper.vm.redoEdit();
+    wrapper.vm.redoEdit();
+    await flushPromises();
+    const tableFinal = editor.getJSON().content.find((n: any) => n.type === 'table');
+    expect(countNodes(editor.getJSON(), 'tableRow')).toBe(rows0);
+    expect(tableFinal.content[0].content.length).toBe(cols0 + 1);
+
+    wrapper.unmount();
+  }, 15000);
+
+  it('never undoes/redoes a remote collaborator\'s edit - only local changes are affected', async () => {
+    // The actual empirical proof the workaround is collaboration-safe:
+    // ensureRedoTracked only re-adds the UndoManager ITSELF to its own
+    // trackedOrigins (its self-origin, used for the manager's own undo/redo
+    // bookkeeping) - it never touches the separate check that already
+    // excludes 'remote'-origin transactions (Y.applyUpdate(ydoc, update,
+    // 'remote'), the exact call this component's own onRemoteUpdate
+    // handler uses) from being captured at all. Proven here against the
+    // real UndoManager and a real second Y.Doc simulating another
+    // collaborator, not just by reading the library's source.
+    const { ySyncPluginKey } = await import('y-prosemirror');
+    const Y = await import('yjs');
+
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.chain().focus('end').insertContent('local-edit').run();
+    await flushPromises();
+    expect(editor.getText()).toContain('local-edit');
+
+    const ydoc = ySyncPluginKey.getState(editor.state).doc as InstanceType<typeof Y.Doc>;
+
+    // A second, independent Y.Doc simulating another collaborator's client,
+    // synced to the current state, then given its own edit.
+    const remoteDoc = new Y.Doc();
+    Y.applyUpdate(remoteDoc, Y.encodeStateAsUpdate(ydoc));
+    const remoteFragment = remoteDoc.getXmlFragment('default');
+    const remoteParagraph = new Y.XmlElement('paragraph');
+    remoteParagraph.insert(0, [new Y.XmlText('remote-edit')]);
+    remoteFragment.insert(remoteFragment.length, [remoteParagraph]);
+
+    // Applied with the exact same origin tag the app's own onRemoteUpdate
+    // handler uses for a real incoming collaborator update.
+    const remoteUpdate = Y.encodeStateAsUpdate(remoteDoc, Y.encodeStateVector(ydoc));
+    Y.applyUpdate(ydoc, remoteUpdate, 'remote');
+    await flushPromises();
+
+    expect(editor.getText()).toContain('local-edit');
+    expect(editor.getText()).toContain('remote-edit');
+
+    // Local undo must remove ONLY the local edit.
+    wrapper.vm.undoEdit();
+    await flushPromises();
+    expect(editor.getText()).not.toContain('local-edit');
+    expect(editor.getText()).toContain('remote-edit');
+
+    // Local redo must restore ONLY the local edit, remote edit untouched
+    // throughout.
+    wrapper.vm.redoEdit();
+    await flushPromises();
+    expect(editor.getText()).toContain('local-edit');
+    expect(editor.getText()).toContain('remote-edit');
+
+    wrapper.unmount();
+  });
 });
