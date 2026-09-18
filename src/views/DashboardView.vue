@@ -179,15 +179,18 @@
         >#{{ tag }}</button>
         <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
-      <!-- Mobile: selected tags get display priority (see tagBarVisibleSelected),
-           everything else collapses into a single "+N" that opens the full
-           multi-select bottom sheet - never the whole tag list inline. -->
+      <!-- Mobile: every tag shows as its own chip, same as desktop (scrolls
+           horizontally instead of desktop's wrap) - selected or not, so a
+           tag the user hasn't picked yet is still visible and one tap away.
+           "+N selected" still shortcuts to the full multi-select sheet once
+           more tags are selected than comfortably fit before scrolling. -->
       <div v-if="allTagNames.length" class="tag-filter-list-mobile">
         <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
         <button
-          v-for="tag in tagBarVisibleSelected"
+          v-for="tag in allTagNames"
           :key="tag"
-          class="tag-filter active"
+          class="tag-filter"
+          :class="{ active: isTagSelected(tag) }"
           @click.stop="toggleSelectedTag(tag)"
         >#{{ tag }}</button>
         <button
@@ -1524,9 +1527,9 @@ export default defineComponent({
       };
     };
 
-    /** AND semantics: an item must carry every selected tag, not just one of them. */
+    /** OR semantics: an item matches if it carries any one of the selected tags. */
     const matchesSelectedTags = (tags: CanvasTag[]) =>
-      selectedTags.value.length === 0 || selectedTags.value.every((selected) => tags.some((tag) => tag.name === selected));
+      selectedTags.value.length === 0 || selectedTags.value.some((selected) => tags.some((tag) => tag.name === selected));
 
     const matchesCanvas = (c: CanvasRecord) => {
       if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
@@ -1627,25 +1630,15 @@ export default defineComponent({
       selectedTags.value = [];
     };
 
-    // Mobile shows selected tags first (they're what the user cares about
-    // seeing), then a "+N" for the rest - never the full tag list inline.
-    // A "+N" MUST show either "how many more tags exist" (nothing selected
-    // is hidden) or "how many more SELECTED tags are hidden" - mixing the two
-    // in one count would be misleading, so whichever applies wins outright.
+    // Every tag renders inline now (see the mobile tag-filter-list template),
+    // so there's nothing left "hidden" to count once a handful of tags are
+    // selected - except that scrolling to find and deselect one of many
+    // selected tags is still a chore, so "+N selected" stays as a shortcut
+    // straight into the full multi-select sheet.
     const TAG_BAR_VISIBLE_COUNT = 3;
-    const selectedTagsInOrder = computed(() => allTagNames.value.filter((name) => selectedTags.value.includes(name)));
-    const tagBarVisibleSelected = computed(() => {
-      const selected = selectedTagsInOrder.value;
-      // Leave room for the longer "+N selected" label when there isn't
-      // enough space for every selected tag at the normal visible count.
-      return selected.length > TAG_BAR_VISIBLE_COUNT ? selected.slice(0, TAG_BAR_VISIBLE_COUNT - 1) : selected;
-    });
     const tagBarOverflowLabel = computed(() => {
-      const selected = selectedTagsInOrder.value;
-      const remainingSelected = selected.length - tagBarVisibleSelected.value.length;
-      if (remainingSelected > 0) return `+${remainingSelected} ${t('selected')}`;
-      const remainingUnselected = allTagNames.value.length - selected.length;
-      return remainingUnselected > 0 ? `+${remainingUnselected}` : '';
+      const remainingSelected = selectedTags.value.length - TAG_BAR_VISIBLE_COUNT;
+      return remainingSelected > 0 ? `+${remainingSelected} ${t('selected')}` : '';
     });
 
     watch(contentFilter, () => {
@@ -3651,7 +3644,6 @@ export default defineComponent({
       isTagSelected,
       toggleSelectedTag,
       clearSelectedTags,
-      tagBarVisibleSelected,
       tagBarOverflowLabel,
       tagSheetOpen,
       tagSheetDraft,
