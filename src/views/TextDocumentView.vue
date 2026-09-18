@@ -429,13 +429,13 @@
         class="text-doc-table-menu"
         :editor="editor"
         :should-show="tableMenuShouldShow"
-        :tippy-options="{ duration: 100, placement: 'top' }"
+        :tippy-options="{ duration: 100, placement: 'top', getReferenceClientRect: tableMenuGetReferenceClientRect }"
       >
-        <button type="button" class="text-doc-table-btn" :aria-label="t('tableAddRow')" @click="tableAddRow">{{ t('tableAddRow') }}</button>
-        <button type="button" class="text-doc-table-btn" :aria-label="t('tableAddColumn')" @click="tableAddColumn">{{ t('tableAddColumn') }}</button>
-        <button type="button" class="text-doc-table-btn" :aria-label="t('tableDeleteRow')" @click="tableDeleteRow">{{ t('tableDeleteRow') }}</button>
-        <button type="button" class="text-doc-table-btn" :aria-label="t('tableDeleteColumn')" @click="tableDeleteColumn">{{ t('tableDeleteColumn') }}</button>
-        <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :aria-label="t('tableDelete')" @click="tableDeleteTable">{{ t('tableDelete') }}</button>
+        <button type="button" class="text-doc-table-btn" :title="t('tableAddRow')" :aria-label="t('tableAddRow')" @click="tableAddRow"><Rows3 :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn" :title="t('tableAddColumn')" :aria-label="t('tableAddColumn')" @click="tableAddColumn"><Columns3 :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteRow')" :aria-label="t('tableDeleteRow')" @click="tableDeleteRow"><Rows3 :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteColumn')" :aria-label="t('tableDeleteColumn')" @click="tableDeleteColumn"><Columns3 :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDelete')" :aria-label="t('tableDelete')" @click="tableDeleteTable"><Trash2 :size="15" aria-hidden="true" /></button>
       </BubbleMenu>
 
       <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
@@ -671,10 +671,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowLeft, ChevronDown, ChevronRight, ExternalLink, MoreVertical, X } from '@lucide/vue';
+import { ArrowLeft, ChevronDown, ChevronRight, Columns3, ExternalLink, MoreVertical, Rows3, Trash2, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, ChevronDown, ChevronRight, ExternalLink, MoreVertical, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, ChevronDown, ChevronRight, Columns3, ExternalLink, MoreVertical, Rows3, Trash2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1004,6 +1004,34 @@ export default defineComponent({
      * between cells rather than needing a drag-select first.
      */
     const tableMenuShouldShow = ({ editor: bubbleEditor }: { editor: Editor }) => bubbleEditor.isActive('table');
+
+    /**
+     * TABLE MENU POSITION (front task: anchor to the table, not the cell).
+     * The bubble-menu extension's own default reference rect is the current
+     * selection's (posToDOMRect) - fine for the text-formatting bubble above,
+     * wrong here: it put this menu wherever the cursor happened to be inside
+     * the table, drifting cell to cell, instead of staying anchored to the
+     * table as a whole. Passed as tippy-options.getReferenceClientRect,
+     * which @tiptap/extension-bubble-menu's own plugin reads and uses
+     * INSTEAD of its default whenever it's provided (see updateHandler in
+     * its source) - not a new positioning system, just overriding which
+     * rect the existing one measures.
+     */
+    const tableMenuGetReferenceClientRect = (): DOMRect => {
+      const view = editor.value?.view;
+      const empty = () => new DOMRect(0, 0, 0, 0);
+      if (!view) return empty();
+      const { $from } = view.state.selection;
+      for (let depth = $from.depth; depth >= 0; depth--) {
+        if ($from.node(depth).type.name !== 'table') continue;
+        const dom = view.nodeDOM($from.before(depth));
+        // renderWrapper:true (see the Table.configure comment below) means
+        // this is the .tableWrapper div, not the bare <table> - exactly the
+        // "whole table block" bounding box wanted here.
+        if (dom instanceof HTMLElement) return dom.getBoundingClientRect();
+      }
+      return empty();
+    };
     const tableAddRow = () => { editor.value?.chain().focus().addRowAfter().run(); };
     const tableAddColumn = () => { editor.value?.chain().focus().addColumnAfter().run(); };
     const tableDeleteRow = () => { editor.value?.chain().focus().deleteRow().run(); };
@@ -1160,10 +1188,13 @@ export default defineComponent({
       if (!href) return false;
       const rect = anchor.getBoundingClientRect();
       const ESTIMATED_MENU_HEIGHT = 96;
-      const opensAbove = rect.bottom + 6 + ESTIMATED_MENU_HEIGHT > window.innerHeight;
+      // Opens ABOVE the link by default (front task: it used to sit right on
+      // top of the link text, which the popover's own background then hid) -
+      // falls back to below only when there isn't enough room above.
+      const opensBelow = rect.top - 6 - ESTIMATED_MENU_HEIGHT < 8;
       linkActionHref.value = href;
       linkActionRect.value = {
-        top: opensAbove ? Math.max(8, rect.top - 6 - ESTIMATED_MENU_HEIGHT) : rect.bottom + 6,
+        top: opensBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - ESTIMATED_MENU_HEIGHT),
         left: Math.min(Math.max(8, rect.left), window.innerWidth - 258),
       };
       linkActionOpen.value = true;
@@ -2297,6 +2328,7 @@ export default defineComponent({
       bubbleShouldShow,
       applyBubbleMark,
       tableMenuShouldShow,
+      tableMenuGetReferenceClientRect,
       tableAddRow,
       tableAddColumn,
       tableDeleteRow,

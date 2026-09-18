@@ -111,6 +111,49 @@ describe('link tap/click actions popover', () => {
     wrapper.unmount();
   });
 
+  it('opens ABOVE the link by default, not over its own text', async () => {
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p>see <a href="https://example.com/guide">the guide</a> here</p>');
+    await wrapper.vm.$nextTick();
+
+    const anchor = wrapper.element.querySelector('.text-doc-paper .ProseMirror a') as HTMLAnchorElement;
+    anchor.getBoundingClientRect = () => ({
+      top: 400, bottom: 420, left: 100, right: 200, width: 100, height: 20, x: 100, y: 400,
+      toJSON() { return this; },
+    });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'target', { value: anchor });
+    wrapper.vm.handleEditorLinkClick(event);
+    await flushPromises();
+
+    // The popover's own top must sit above the link's top edge (with room
+    // to spare for its own height), not below it or overlapping it.
+    expect(wrapper.vm.linkActionMenuStyle.top.replace('px', '')).toMatch(/^\d+$/);
+    expect(parseFloat(wrapper.vm.linkActionMenuStyle.top)).toBeLessThan(400);
+
+    wrapper.unmount();
+  });
+
+  it('falls back to opening BELOW when there is no room above (near the top of the viewport)', async () => {
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p>see <a href="https://example.com/guide">the guide</a> here</p>');
+    await wrapper.vm.$nextTick();
+
+    const anchor = wrapper.element.querySelector('.text-doc-paper .ProseMirror a') as HTMLAnchorElement;
+    anchor.getBoundingClientRect = () => ({
+      top: 10, bottom: 30, left: 100, right: 200, width: 100, height: 20, x: 100, y: 10,
+      toJSON() { return this; },
+    });
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'target', { value: anchor });
+    wrapper.vm.handleEditorLinkClick(event);
+    await flushPromises();
+
+    expect(parseFloat(wrapper.vm.linkActionMenuStyle.top)).toBeGreaterThanOrEqual(30);
+
+    wrapper.unmount();
+  });
+
   it('does not open for a click that lands on plain text', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p>plain text, no links here</p>');

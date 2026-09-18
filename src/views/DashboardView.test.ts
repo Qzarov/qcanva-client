@@ -1797,17 +1797,19 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Tagged Item']);
   });
 
-  it('applies AND semantics across multiple selected tags in Recent', async () => {
+  it('applies OR semantics across multiple selected tags in Recent', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [
         { id: 'r-canvas-both', title: 'Both Tags', tags: [tagFixture('architecture'), tagFixture('dev')] },
         { id: 'r-canvas-one', title: 'One Tag', tags: [tagFixture('architecture')] },
+        { id: 'r-canvas-neither', title: 'Neither Tag', tags: [tagFixture('other')] },
       ],
       shared: [], public: [], welcome: null,
     } as never);
     vi.mocked(recentResources.list).mockResolvedValueOnce([
-      { resourceId: 'r-canvas-both', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
-      { resourceId: 'r-canvas-one', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { resourceId: 'r-canvas-both', resourceType: 'canvas', updatedAt: '2026-01-03T00:00:00.000Z' },
+      { resourceId: 'r-canvas-one', resourceType: 'canvas', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-canvas-neither', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
     ] as never);
 
     const wrapper = mountDashboard();
@@ -1817,7 +1819,32 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     vm.selectedTags = ['architecture', 'dev'];
     await nextTick();
 
-    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Both Tags']);
+    // Matches on ANY selected tag, not all of them - "One Tag" (architecture
+    // only) shows up alongside "Both Tags"; "Neither Tag" still doesn't.
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Both Tags', 'One Tag']);
+  });
+
+  it('shows every tag as its own chip on mobile too, selected or not', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'r-canvas-a', title: 'A', tags: [tagFixture('architecture')] },
+        { id: 'r-canvas-b', title: 'B', tags: [tagFixture('dev')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    // Nothing selected yet - both tags must still appear as chips in the
+    // mobile row, not just an "all" chip (front task: mobile used to
+    // collapse every unselected tag into a single "+N", showing none of
+    // them individually until that sheet was opened).
+    expect(vm.selectedTags).toEqual([]);
+    const mobileChipText = wrapper.findAll('.tag-filter-list-mobile .tag-filter').map((el) => el.text());
+    expect(mobileChipText).toContain('#architecture');
+    expect(mobileChipText).toContain('#dev');
   });
 
   it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {

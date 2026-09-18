@@ -3005,12 +3005,22 @@ body {
     display: none;
   }
 
+  /* Every tag is now a chip in this row (see the template), so with more
+     than a handful the row is wider than the screen - it scrolls
+     horizontally instead of clipping (the old overflow:hidden silently hid
+     whatever didn't fit, which was fine when only 1-2 "+N" chips could
+     overflow but would have hidden entire tags outright now). */
   .tag-filter-list-mobile {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
-    overflow: hidden;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .tag-filter-list-mobile::-webkit-scrollbar {
+    display: none;
   }
   .tag-filter-list-mobile .tag-filter {
     flex: 0 0 auto;
@@ -6012,14 +6022,20 @@ body {
   background: var(--ui-surface-elevated);
   box-shadow: var(--shadow-dropdown);
 }
+/* Icon-only (front task: was five text labels, now a compact strip of
+   icons) - width/height match so every button is a plain square regardless
+   of icon shape. */
 .text-doc-table-btn {
-  padding: 6px 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--ui-text);
-  font-size: 12px;
-  white-space: nowrap;
   cursor: pointer;
 }
 .text-doc-table-btn:hover {
@@ -6871,30 +6887,24 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     margin-bottom: 14px;
   }
 
-  /* History moves into the "⋮" popover below; Share stays a visible primary
-     action per the compact mobile header (back / Share / user / kebab). The
-     sync chip becomes a small secondary line under the row instead of its
-     own big pill. */
-  .text-doc-history-btn {
+  /* Both Share and History move into the "⋮" popover on mobile now (compact
+     header: back / sync / user / kebab) - neither needs its own permanent
+     button once the popover holds both, matching the sync chip's own move
+     from a standalone pill down to a small inline label in the same row. */
+  .text-doc-history-btn,
+  .text-doc-access-btn {
     display: none;
   }
 
-  .text-doc-access-btn {
-    min-height: 44px;
-    padding: 0 12px;
-  }
-
   .text-doc-topbar-actions {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
-    gap: 4px 8px;
+    gap: 8px;
   }
 
   .text-doc-sync {
-    order: 10;
-    flex-basis: 100%;
     width: auto;
-    text-align: right;
+    max-width: 40vw;
     border: none;
     background: transparent;
     padding: 0 2px;
@@ -7120,19 +7130,13 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     min-height: 44px;
   }
 
+  /* Icon-only buttons at a proper touch-target size; five of them at 36px
+     plus gaps/padding comfortably fit even a 320px screen, so (unlike the
+     old five-text-label version) this menu no longer needs to wrap or clamp
+     its own width. */
   .text-doc-table-btn {
-    min-height: 40px;
-    padding: 6px 10px;
-  }
-
-  /* Five text-label buttons in one row don't fit a 320-430px viewport.
-     Tippy's own flip/preventOverflow modifiers reposition the popup as a
-     whole but never reflow what's inside it, so without this the menu's own
-     box would run past the screen edge - wrapping keeps every button on
-     screen and tappable instead. */
-  .text-doc-table-menu {
-    flex-wrap: wrap;
-    max-width: calc(100vw - 32px);
+    width: 36px;
+    height: 36px;
   }
 
   .text-doc-paper .ProseMirror td,
