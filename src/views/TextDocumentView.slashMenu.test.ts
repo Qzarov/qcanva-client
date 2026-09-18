@@ -140,6 +140,26 @@ describe('slash menu trigger', () => {
     wrapper.unmount();
   });
 
+  it('gives the mobile bottom-sheet item the same data-slash-item handle as the desktop popup', async () => {
+    // wrapper.find only ever sees the desktop popup - the sheet is
+    // Teleport'd to <body>, outside the component's own render tree (see
+    // TextDocumentView.share.test.ts's file comment on the same Teleport
+    // limitation) - so this reads the real DOM instead. A live mobile
+    // Playwright check (front task 34/40) found the sheet's own button was
+    // missing this attribute entirely, a gap none of the other slash tests
+    // here could have caught since they all go through `wrapper.find`.
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+
+    await type(wrapper, '/');
+
+    const sheetButton = document.querySelector('.text-doc-slash-sheet-item[data-slash-item="table"]');
+    expect(sheetButton).toBeTruthy();
+
+    wrapper.unmount();
+  });
+
   it('opens on a slash after whitespace mid-paragraph', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p></p>');
@@ -497,7 +517,7 @@ describe('every slash menu item inserts a node the shared inventory declares', (
   // documents/document-nodes.ts (byte-pinned to canvas-server-back's copy by
   // schema-contract). A node name outside it is a node the projection drops,
   // so this is the front-side check that the menu cannot insert one.
-  it.each(SLASH_MENU_ITEMS.filter((item) => item.id !== 'image').map((item) => [item.id, item]))(
+  it.each(SLASH_MENU_ITEMS.filter((item) => item.id !== 'image' && item.id !== 'table').map((item) => [item.id, item]))(
     '%s',
     async (_id, item: any) => {
       const wrapper = await mountEditableDoc();
@@ -514,6 +534,45 @@ describe('every slash menu item inserts a node the shared inventory declares', (
       wrapper.unmount();
     },
   );
+
+  /**
+   * A KNOWING, DOCUMENTED exception to this describe block's own invariant
+   * (front task 26 - architectural risk, flagged rather than silently
+   * inconsistent). table/tableRow/tableHeader/tableCell are not yet in
+   * documents/document-nodes.ts (nor its backend twin), so the backend's
+   * separate HTML/plainText renderer doesn't recognise them yet - it falls
+   * back to <div>, keeping the cell text but losing the grid structure, in
+   * the public HTML page / PDF export / search snippets / link previews.
+   * The live collaborative editor itself is unaffected: Yjs sync is
+   * schema-agnostic. See the Table extension's registration comment in
+   * TextDocumentView.vue for the full reasoning. This test exists so a
+   * FUTURE schema-contract update (adding table support to
+   * document-nodes.ts) has something to flip from "excluded" back into the
+   * generic loop above, rather than the gap going unnoticed.
+   */
+  it('table: inserts the table extension family - a documented exception to the inventory check above', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>seed</p>');
+    editor.commands.focus('end');
+
+    const table = SLASH_MENU_ITEMS.find((item) => item.id === 'table')!;
+    table.run({
+      editor,
+      range: { from: editor.state.selection.from, to: editor.state.selection.from },
+      requestImage: () => undefined,
+    });
+    await flushPromises();
+
+    const names = nodeNames(editor.getJSON());
+    expect(names.has('table')).toBe(true);
+    expect(names.has('tableRow')).toBe(true);
+    expect(names.has('tableHeader')).toBe(true);
+    expect(names.has('tableCell')).toBe(true);
+    expect(findNode(editor.getJSON(), 'table')).toBeTruthy();
+
+    wrapper.unmount();
+  });
 
   it('inserts a callout whose variant is one the inventory declares', async () => {
     const wrapper = await mountEditableDoc();

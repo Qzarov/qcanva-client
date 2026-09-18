@@ -107,6 +107,8 @@ describe('TextDocumentView backlinks block', () => {
     const wrapper = await mountDoc();
 
     expect(backlinks).toHaveBeenCalledWith('doc-1');
+    // Collapsed by default (front task 12) - the list only renders expanded.
+    await wrapper.get('.text-doc-backlinks-head').trigger('click');
     const items = wrapper.findAll('[data-backlink-id]');
     expect(items).toHaveLength(2);
 
@@ -132,6 +134,7 @@ describe('TextDocumentView backlinks block', () => {
     });
 
     const wrapper = await mountDoc();
+    await wrapper.get('.text-doc-backlinks-head').trigger('click');
 
     await wrapper.get('[data-backlink-id="src-1"]').trigger('click');
     expect(push).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'src-1' } }));
@@ -150,6 +153,7 @@ describe('TextDocumentView backlinks block', () => {
     });
 
     const wrapper = await mountDoc();
+    await wrapper.get('.text-doc-backlinks-head').trigger('click');
     await wrapper.get('[data-backlink-id="src-2"]').trigger('click');
     await wrapper.vm.$nextTick();
 
@@ -162,16 +166,25 @@ describe('TextDocumentView backlinks block', () => {
     wrapper.unmount();
   });
 
-  it('shows a persistent empty state, not a hidden block, when there are no backlinks', async () => {
+  it('shows a persistent empty state, not a hidden block, when there are no backlinks (front task 12: compact collapsed row, not several lines of empty-state text)', async () => {
     get.mockResolvedValue(okDocument());
     backlinks.mockResolvedValue({ items: [] });
 
     const wrapper = await mountDoc();
 
+    // The compact row itself (icon/title/count/chevron) is always visible,
+    // collapsed - this is the "persistent, not hidden" part now. The old
+    // always-shown hint+empty-state text is (correctly) gone until expanded:
+    // that pair of extra lines for a zero-backlinks document is exactly the
+    // "too much vertical space" front task 12 asks to fix.
     expect(wrapper.find('.text-doc-backlinks').exists()).toBe(true);
     expect(wrapper.find('.text-doc-backlinks-title').exists()).toBe(true);
-    expect(wrapper.find('.text-doc-backlinks-empty').exists()).toBe(true);
+    expect(wrapper.get('.text-doc-backlinks-count').text()).toBe('0');
+    expect(wrapper.find('.text-doc-backlinks-panel').exists()).toBe(false);
     expect(wrapper.findAll('[data-backlink-id]')).toHaveLength(0);
+
+    await wrapper.get('.text-doc-backlinks-head').trigger('click');
+    expect(wrapper.find('.text-doc-backlinks-empty').exists()).toBe(true);
 
     wrapper.unmount();
   });
@@ -181,6 +194,7 @@ describe('TextDocumentView backlinks block', () => {
     backlinks.mockResolvedValue({ items: [] });
 
     const wrapper = await mountDoc();
+    await wrapper.get('.text-doc-backlinks-head').trigger('click');
     expect(wrapper.find('.text-doc-backlinks-hint').exists()).toBe(true);
     expect(wrapper.find('.text-doc-backlinks-hint').text().length).toBeGreaterThan(0);
 
@@ -196,6 +210,47 @@ describe('TextDocumentView backlinks block', () => {
     expect(backlinks).not.toHaveBeenCalled();
     expect(wrapper.find('.access-gate').exists()).toBe(true);
     expect(wrapper.find('.text-doc-backlinks').exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('shows the live count in the collapsed row when there ARE backlinks (front task 12)', async () => {
+    get.mockResolvedValue(okDocument());
+    backlinks.mockResolvedValue({
+      items: [
+        { id: 'src-1', title: 'Weekly notes', accessible: true },
+        { id: 'src-2', title: 'Private roadmap', accessible: false },
+        { id: 'src-3', title: 'Another doc', accessible: true },
+      ],
+    });
+
+    const wrapper = await mountDoc();
+
+    expect(wrapper.get('.text-doc-backlinks-count').text()).toBe('3');
+    expect(wrapper.find('.text-doc-backlinks-panel').exists()).toBe(false);
+    expect(wrapper.get('.text-doc-backlinks-head').attributes('aria-expanded')).toBe('false');
+
+    wrapper.unmount();
+  });
+
+  it('expands on tap and collapses again on a second tap (front task 12)', async () => {
+    get.mockResolvedValue(okDocument());
+    backlinks.mockResolvedValue({
+      items: [{ id: 'src-1', title: 'Weekly notes', accessible: true }],
+    });
+
+    const wrapper = await mountDoc();
+    const head = wrapper.get('.text-doc-backlinks-head');
+
+    expect(wrapper.find('[data-backlink-id="src-1"]').exists()).toBe(false);
+
+    await head.trigger('click');
+    expect(head.attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('[data-backlink-id="src-1"]').text()).toBe('Weekly notes');
+
+    await head.trigger('click');
+    expect(head.attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('[data-backlink-id="src-1"]').exists()).toBe(false);
 
     wrapper.unmount();
   });

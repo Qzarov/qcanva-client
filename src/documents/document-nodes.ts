@@ -98,6 +98,20 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     attrs: ["language"],
     textSeparator: "\n",
   },
+  // TABLE. Four node types, one per @tiptap/extension-table-* package, mapped
+  // straight onto their semantic HTML tags. No textSeparator on any of the
+  // four: render-text.ts special-cases "table" (like it already does
+  // tableOfContents) to join cells with " | " and rows with a newline,
+  // rather than relying on the generic per-node separator mechanism these
+  // fields would otherwise drive. No attrs declared for the same reason
+  // colspan/rowspan/colwidth aren't listed on any node here: the renderer
+  // does not read or emit them (v1 has no merged cells or column resizing -
+  // see the Table extension's own registration comment in
+  // TextDocumentView.vue for the full v1 scope).
+  { name: "table", group: "block", tag: "table" },
+  { name: "tableRow", group: "block", tag: "tr" },
+  { name: "tableHeader", group: "block", tag: "th" },
+  { name: "tableCell", group: "block", tag: "td" },
   {
     name: "tableOfContents",
     group: "block",

@@ -145,15 +145,17 @@ describe("TextDocumentView", () => {
 
       const back = wrapper.find("header .btn-ghost");
       // The label follows the locale now; it used to be hardcoded Russian for
-      // every user, which is exactly what this assertion was pinning.
+      // every user, which is exactly what this assertion was pinning. It's
+      // now an icon-only button (front task 1), so the locale-driven label
+      // lives in aria-label/title, not the button's visible text.
       const { t, setLocale } = useI18n();
-      expect(back.text()).toBe(t("back"));
+      expect(back.attributes("aria-label")).toBe(t("back"));
       setLocale("ru");
       await flushPromises();
-      expect(back.text()).toBe("Назад");
+      expect(back.attributes("aria-label")).toBe("Назад");
       setLocale("en");
       await flushPromises();
-      expect(back.text()).toBe("Back");
+      expect(back.attributes("aria-label")).toBe("Back");
       expect(back.attributes("href")).toBeUndefined();
     });
 
@@ -163,7 +165,7 @@ describe("TextDocumentView", () => {
       await flushPromises();
 
       const back = wrapper.find("header .btn-ghost");
-      expect(back.text()).toBe(useI18n().t("backToCanvas"));
+      expect(back.attributes("aria-label")).toBe(useI18n().t("backToCanvas"));
       expect(back.attributes("to")).toBe("/canvas/canvas-77");
     });
   });

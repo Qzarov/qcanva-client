@@ -199,6 +199,25 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     },
   },
   {
+    id: 'table',
+    labelKey: 'slashTable',
+    keywords: ['table', 'grid', 'rows', 'columns', 'spreadsheet', 'tablica', 'таблица'],
+    icon: lucideIcon(EDITOR_GLYPHS.table),
+    /**
+     * A KNOWING exception to this file's own stated rule above ("every entry
+     * inserts a node the SHARED inventory declares"): table/tableRow/
+     * tableCell/tableHeader are not yet in documents/document-nodes.ts (nor
+     * its backend twin), so the backend's separate HTML/plainText renderer
+     * doesn't recognise them - see the long comment on the Table extension's
+     * registration in TextDocumentView.vue for what that does and doesn't
+     * break. Flagged in the front task's final report rather than silently
+     * left inconsistent with the comment above.
+     */
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    },
+  },
+  {
     id: 'image',
     labelKey: 'slashImage',
     keywords: ['image', 'picture', 'photo', 'kartinka', 'foto'],
