@@ -255,6 +255,64 @@ describe('custom slug (front task 9/10)', () => {
   });
 });
 
+describe('Password protected access (front task: merged into General Access)', () => {
+  it('has no standalone Password Access section - the checkbox lives in General Access', async () => {
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    const sectionTitles = Array.from(document.querySelectorAll('.share-section-title')).map((el) => el.textContent);
+    expect(sectionTitles.some((title) => /password/i.test(title || ''))).toBe(false);
+
+    const generalSection = document.querySelector('.share-panel-body .share-section');
+    const checkboxLabels = Array.from(generalSection!.querySelectorAll('label.share-checkbox')).map((el) => el.textContent);
+    expect(checkboxLabels.some((label) => /password/i.test(label || ''))).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('shows the password field directly under the checkbox once checked, hides it otherwise', async () => {
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    expect(document.querySelector('.share-password-form')).toBeNull();
+
+    wrapper.vm.passwordAccessEnabled = true;
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('.share-password-form')).toBeTruthy();
+
+    wrapper.vm.passwordAccessEnabled = false;
+    await wrapper.vm.$nextTick();
+    expect(document.querySelector('.share-password-form')).toBeNull();
+
+    wrapper.unmount();
+  });
+
+  it('saves the password settings via the existing backend call, unchanged', async () => {
+    // vi.clearAllMocks() (beforeEach) resets call history but not a mock
+    // implementation set via mockRejectedValue/mockResolvedValue - an
+    // earlier test in this file leaves mocks.update rejecting, so this
+    // needs its own explicit resolved value rather than relying on the
+    // shared mock's default.
+    mocks.update.mockResolvedValue({});
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    wrapper.vm.passwordAccessEnabled = true;
+    await wrapper.vm.$nextTick();
+    wrapper.vm.passwordAccessPassword = 'secret123';
+    wrapper.vm.passwordAccessRole = 'edit';
+    await wrapper.vm.savePasswordAccess();
+
+    expect(mocks.update).toHaveBeenCalledWith('doc-1', {
+      passwordAccessEnabled: true,
+      passwordAccessPassword: 'secret123',
+      passwordAccessRole: 'edit',
+    });
+
+    wrapper.unmount();
+  });
+});
+
 describe('Copy link (front task 8/11)', () => {
   it('copies the default id-based URL when no custom slug is set', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -280,6 +338,39 @@ describe('Copy link (front task 8/11)', () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/docs/my-doc'));
     expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('/docs/doc-1'));
 
+    wrapper.unmount();
+  });
+
+  it('has no standalone Copy Link button - the URL row itself is the control', async () => {
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    expect(document.querySelector('.share-copy-link-btn')).toBeNull();
+    const row = document.querySelector('.share-link-row');
+    expect(row).toBeTruthy();
+    expect(row?.tagName).toBe('BUTTON');
+
+    wrapper.unmount();
+  });
+
+  it('clicking the URL row copies the link and shows transient "Copied" feedback', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    vi.useFakeTimers();
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    document.querySelector<HTMLElement>('.share-link-row')!.click();
+    await flushPromises();
+
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/docs/doc-1'));
+    expect(document.querySelector('.share-link-copied')).toBeTruthy();
+
+    vi.advanceTimersByTime(1500);
+    await flushPromises();
+    expect(document.querySelector('.share-link-copied')).toBeNull();
+
+    vi.useRealTimers();
     wrapper.unmount();
   });
 

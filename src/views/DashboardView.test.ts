@@ -1840,11 +1840,68 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     // Nothing selected yet - both tags must still appear as chips in the
     // mobile row, not just an "all" chip (front task: mobile used to
     // collapse every unselected tag into a single "+N", showing none of
-    // them individually until that sheet was opened).
+    // them individually until that sheet was opened). jsdom measures every
+    // chip's width as 0 (no real layout engine), which is exactly the
+    // "haven't measured yet" case computeVisibleTagFitCount treats as
+    // "show everything" rather than flashing an empty row - a real,
+    // deliberate fallback, not a jsdom workaround (see tag-fit.ts).
     expect(vm.selectedTags).toEqual([]);
-    const mobileChipText = wrapper.findAll('.tag-filter-list-mobile .tag-filter').map((el) => el.text());
+    const mobileChipText = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter').map((el) => el.text());
     expect(mobileChipText).toContain('#architecture');
     expect(mobileChipText).toContain('#dev');
+  });
+
+  it('shows only as many tags as fit in one line plus a +N, once real widths are known', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'r-canvas-a', title: 'A', tags: [tagFixture('alpha')] },
+        { id: 'r-canvas-b', title: 'B', tags: [tagFixture('bravo')] },
+        { id: 'r-canvas-c', title: 'C', tags: [tagFixture('charlie')] },
+        { id: 'r-canvas-d', title: 'D', tags: [tagFixture('delta')] },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    // Simulate a real, narrow layout: every chip measures 60px, the visible
+    // row is 220px wide - room for the "All" chip (60) plus about two tag
+    // chips (60 each) before the "+N" badge (60) is needed, matching
+    // computeVisibleTagFitCount's own already-unit-tested arithmetic.
+    const visibleRow = wrapper.find('.tag-filter-list-mobile:not(.tag-filter-measure)');
+    Object.defineProperty(visibleRow.element, 'clientWidth', { value: 220, configurable: true });
+    for (const el of wrapper.findAll('.tag-filter-measure .tag-filter')) {
+      el.element.getBoundingClientRect = () => ({ width: 60, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() { return this; } });
+    }
+    (wrapper.vm as any).recomputeMobileTagFit();
+    await flushPromises();
+
+    const visibleChips = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter');
+    const visibleTagChips = visibleChips.filter((el) => el.text().startsWith('#'));
+    const overflowBadge = visibleChips.find((el) => el.text().startsWith('+'));
+    expect(visibleTagChips.length).toBeLessThan(4);
+    expect(overflowBadge).toBeTruthy();
+    expect(overflowBadge?.text()).toBe(`+${4 - visibleTagChips.length}`);
+  });
+
+  it('renders the type filters as exactly four equal-width buttons in one row', async () => {
+    // The actual viewport-fit behavior (flex:1;min-width:0;width:100%, see
+    // style.css) is CSS-only and unverifiable in jsdom (no real layout
+    // engine) - confirmed live instead, at 320/360/390/430px, with zero
+    // page-level horizontal overflow at every width. What's checked here,
+    // reliably, is the structural shape those CSS rules depend on: exactly
+    // four buttons, direct children of .content-type-tabs, one per
+    // contentFilter value - a regression guard against a future change
+    // silently adding/removing a tab (breaking the "four EQUAL columns"
+    // assumption) or nesting them a level deeper (breaking the CSS
+    // selector's ` > button` reach, if it depends on that).
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const tabs = wrapper.findAll('.content-type-tabs > button');
+    expect(tabs).toHaveLength(4);
+    expect(tabs.map((el) => el.text())).toEqual(['All', 'Canvas', 'HTML', 'Docs']);
   });
 
   it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {

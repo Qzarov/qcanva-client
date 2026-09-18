@@ -24,6 +24,24 @@
           <ArrowLeft :size="18" aria-hidden="true" />
         </router-link>
         <div class="text-doc-topbar-actions">
+          <button
+            v-if="canEditContent"
+            type="button"
+            class="btn-ghost text-doc-undo-btn"
+            :disabled="!canUndo"
+            :title="t('undo')"
+            :aria-label="t('undo')"
+            @click="undoEdit"
+          ><Undo2 :size="17" aria-hidden="true" /></button>
+          <button
+            v-if="canEditContent"
+            type="button"
+            class="btn-ghost text-doc-redo-btn"
+            :disabled="!canRedo"
+            :title="t('redo')"
+            :aria-label="t('redo')"
+            @click="redoEdit"
+          ><Redo2 :size="17" aria-hidden="true" /></button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
@@ -99,16 +117,38 @@
                 <input type="checkbox" v-model="listedInPublic" :disabled="visibility !== 'public'" @change="saveAccessSettings" />
                 <span>{{ t('showInPublic') }}</span>
               </label>
+              <label class="share-checkbox">
+                <input type="checkbox" v-model="passwordAccessEnabled" />
+                <span>{{ t('enablePasswordAccess') }}</span>
+              </label>
+              <div v-if="passwordAccessEnabled" class="share-form share-password-form">
+                <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
+                <select v-model="passwordAccessRole">
+                  <option value="read">{{ t('canView') }}</option>
+                  <option value="edit">{{ t('canEdit') }}</option>
+                </select>
+                <button type="button" class="btn-primary" @click="savePasswordAccess">{{ t('save') }}</button>
+              </div>
             </div>
 
             <div class="share-section-divider" aria-hidden="true"></div>
 
             <div class="share-section">
               <div class="share-section-title">{{ t('shareLinkSection') }}</div>
-              <div class="share-link-row">
+              <button
+                type="button"
+                class="share-link-row"
+                :class="{ 'share-link-row-copied': linkRowCopied }"
+                :aria-label="t('copyLink')"
+                @click="copyDocumentLinkFromRow"
+              >
+                <Link2 :size="15" class="share-link-icon" aria-hidden="true" />
                 <span class="share-link-url" :title="documentUrl">{{ documentUrl }}</span>
-              </div>
-              <button type="button" class="btn-ghost share-copy-link-btn" @click="copyDocumentLink">{{ t('copyLink') }}</button>
+                <span v-if="linkRowCopied" class="share-link-copied">
+                  <Check :size="15" aria-hidden="true" /> {{ t('copied') }}
+                </span>
+                <Copy v-else :size="15" class="share-link-copy-icon" aria-hidden="true" />
+              </button>
             </div>
 
             <div class="share-section">
@@ -148,24 +188,6 @@
                   <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
                   <button type="button" :aria-label="t('delete')" @click="doRevoke(p.userId)">x</button>
                 </div>
-              </div>
-            </div>
-
-            <div class="share-section-divider" aria-hidden="true"></div>
-
-            <div class="share-section">
-              <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
-              <label class="share-checkbox">
-                <input type="checkbox" v-model="passwordAccessEnabled" />
-                <span>{{ t('enablePasswordAccess') }}</span>
-              </label>
-              <div v-if="passwordAccessEnabled" class="share-form">
-                <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
-                <select v-model="passwordAccessRole">
-                  <option value="read">{{ t('canView') }}</option>
-                  <option value="edit">{{ t('canEdit') }}</option>
-                </select>
-                <button type="button" class="btn-primary" @click="savePasswordAccess">{{ t('save') }}</button>
               </div>
             </div>
           </div>
@@ -659,6 +681,7 @@ import {
 import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import { yUndoPluginKey } from 'y-prosemirror';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
@@ -672,10 +695,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowLeft, ChevronDown, ChevronRight, Columns3, ExternalLink, MoreVertical, Rows3, Trash2, X } from '@lucide/vue';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, ChevronDown, ChevronRight, Columns3, ExternalLink, MoreVertical, Rows3, Trash2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -803,6 +826,23 @@ export default defineComponent({
       }
     }
     const copyDocumentLinkFromDocMenu = () => { closeDocMenu(); void copyDocumentLink(); };
+
+    /**
+     * COPY LINK ROW (front task: the whole row is the control now, no
+     * separate button). `linkRowCopied` drives the row's own inline
+     * "Copied" state - the existing toast (inside copyDocumentLink) still
+     * fires too, since that's the only feedback the doc-menu's "Copy link"
+     * item has (it has no row of its own to show an inline state in).
+     */
+    const linkRowCopied = ref(false);
+    let linkRowCopiedTimer: ReturnType<typeof setTimeout> | null = null;
+    async function copyDocumentLinkFromRow() {
+      await copyDocumentLink();
+      linkRowCopied.value = true;
+      if (linkRowCopiedTimer) clearTimeout(linkRowCopiedTimer);
+      linkRowCopiedTimer = setTimeout(() => { linkRowCopied.value = false; }, 1500);
+    }
+    onBeforeUnmount(() => { if (linkRowCopiedTimer) clearTimeout(linkRowCopiedTimer); });
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
@@ -1729,6 +1769,65 @@ export default defineComponent({
       showToast(t('capacityBlocked'), 'error');
     };
 
+    /**
+     * REDO WORKAROUND (front task: header buttons - found while testing
+     * Redo specifically, since Undo alone never exposed the bug). Confirmed
+     * live, not just in jsdom: after any undo, canRedo() reads false
+     * forever - not a selection/table-specific bug, every content type hits
+     * it the same way.
+     *
+     * Root cause, traced into @tiptap/extension-collaboration and yjs
+     * themselves (both third-party, nothing here caused it): that
+     * extension ships its own "quick fix... thanks to @hamflx" (see its
+     * source, citing yjs/y-prosemirror issues #114/#102) for a ProseMirror
+     * EditorView being constructed/destroyed more than once for what's
+     * logically a single mount. y-prosemirror's own yUndoPlugin view calls
+     * `undoManager.destroy()` on teardown, which does
+     * `trackedOrigins.delete(this)` - removing the UndoManager from its
+     * OWN trackedOrigins set, which Yjs's constructor had added it to.
+     * Redo only records anything when the undo's own resulting transaction
+     * passes that trackedOrigins check, so this delete breaks redo outright.
+     *
+     * The extension's own `restore()` closure is supposed to undo this, but
+     * doesn't reliably here - confirmed live that self-tracking can still
+     * be missing well after mount (measured true right at onCreate, false
+     * again by the time of the first edit), meaning more than one
+     * destroy/rebuild cycle happens across this app's actual load
+     * sequence, not just the single cycle the library's own fix accounts
+     * for. Fixing it once at mount isn't enough - ensureRedoTracked() re-
+     * asserts the one broken invariant (self stays in trackedOrigins)
+     * right before every place that reads or acts on it, so it self-heals
+     * regardless of how many times the library's own machinery breaks it
+     * in between.
+     *
+     * Safe to delete once @tiptap/extension-collaboration/y-prosemirror
+     * actually fix upstream issues #114/#102 for this app's real
+     * multi-cycle EditorView lifecycle (not just the single cycle their
+     * current "quick fix" covers) and the dependency is bumped past that
+     * fix.
+     */
+    function ensureRedoTracked(current: Editor | undefined): void {
+      // current?.state guards the same gap canUndo/canRedo do: several
+      // TextDocumentView.test.ts fixtures mock the editor object down to
+      // only a handful of methods, with no real ProseMirror `state` at all.
+      const undoManager = current?.state && yUndoPluginKey.getState(current.state)?.undoManager;
+      if (undoManager && !undoManager.trackedOrigins.has(undoManager)) {
+        undoManager.trackedOrigins.add(undoManager);
+      }
+    }
+
+    /**
+     * UNDO/REDO (front task: header buttons). `editor.can().undo()` reads
+     * the Collaboration extension's own y-prosemirror UndoManager (StarterKit's
+     * own History is disabled below - `history: false` - specifically so
+     * this collaborative one is the only one, the same one already backing
+     * the table-undo test in TextDocumentView.table.test.ts). That
+     * dry-run flag lives inside Yjs's UndoManager state, not a Vue ref, so
+     * nothing re-evaluates canUndo/canRedo on its own - editorTransactionTick
+     * is bumped on every transaction (onUpdate below) purely to give these
+     * two computeds a reactive dependency to re-run on.
+     */
+    const editorTransactionTick = ref(0);
     const editor = useEditor({
       editable: true,
       extensions: [
@@ -1837,10 +1936,13 @@ export default defineComponent({
           },
         }),
       ],
-      onCreate: () => refreshBlockCount(),
+      onCreate: ({ editor: createdEditor }) => {
+        refreshBlockCount();
+        ensureRedoTracked(createdEditor);
+      },
       // Fires for a remote collaborator's change as well as this user's, so
       // the count is the document's, not this keyboard's.
-      onUpdate: () => refreshBlockCount(),
+      onUpdate: () => { refreshBlockCount(); editorTransactionTick.value++; },
       onSelectionUpdate: ({ editor }) => {
         if (!canEditContent.value) return;
         const selection = editor.state.selection;
@@ -1850,6 +1952,25 @@ export default defineComponent({
         handleClick: (_view, _pos, event) => handleEditorLinkClick(event),
       },
     });
+
+    // Both use ?.can?.(), not just ?.value?. - the Collaboration extension
+    // (real production editors) always has .can(), but the several
+    // TextDocumentView.test.ts fixtures mock the editor object down to only
+    // the handful of methods each of THEIR OWN tests exercises, and don't
+    // include .can() at all.
+    const canUndo = computed(() => { void editorTransactionTick.value; return !!editor.value?.can?.().undo(); });
+    const canRedo = computed(() => {
+      void editorTransactionTick.value;
+      ensureRedoTracked(editor.value);
+      return !!editor.value?.can?.().redo();
+    });
+    // .chain().focus() first, same as every other toolbar command in this
+    // file (tableAddRow etc.) - keeps focus (and with it, the mobile
+    // keyboard/no layout jump) on the editor rather than the button just
+    // clicked, and undo/redo apply against the editor's own selection
+    // either way since ProseMirror's selection isn't tied to DOM focus.
+    const undoEdit = () => { editor.value?.chain().focus().undo().run(); };
+    const redoEdit = () => { ensureRedoTracked(editor.value); editor.value?.chain().focus().redo().run(); };
 
     const {
       connected,
@@ -2336,6 +2457,10 @@ export default defineComponent({
       applyBubbleMark,
       tableMenuShouldShow,
       tableMenuGetReferenceClientRect,
+      canUndo,
+      canRedo,
+      undoEdit,
+      redoEdit,
       tableAddRow,
       tableAddColumn,
       tableDeleteRow,
@@ -2399,6 +2524,8 @@ export default defineComponent({
       documentUrl,
       copyDocumentLink,
       copyDocumentLinkFromDocMenu,
+      linkRowCopied,
+      copyDocumentLinkFromRow,
       slugInput,
       slugError,
       slugFormatError,

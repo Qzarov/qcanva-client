@@ -1448,6 +1448,19 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* front task: overflow/text-overflow above land on .card-title, the FLEX
+   CONTAINER (class="card-title card-title-with-icon") - both properties are
+   non-inherited, so they did nothing for the actual title text, which
+   lives in this nested span. A flex item's default min-width:auto also
+   won't let it shrink below its own content's width, so without this the
+   title could hard-clip at the card's edge with no "…" rather than
+   ellipsize gracefully. */
+.dashboard .card-title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dashboard .resource-title-icon { width: 16px; height: 16px; }
 .dashboard .card-meta { gap: 6px; font-size: 11px; }
 .dashboard .card-tags { gap: 5px; margin-top: 8px; }
@@ -1763,10 +1776,19 @@ body {
   height: 16px;
   font-size: 12px;
 }
+/* front task: the one Dashboard element with no overflow containment of its
+   own - a folder can be named anything, including one long unbreakable
+   token (a URL, say), and its ancestors (.folder-manager-list/-row) are
+   explicitly overflow:visible, so nothing local stops it from running past
+   the row's edge; only the app-wide #app{overflow-x:hidden} safety net
+   caught it before, matching that rule's own "must never make the app
+   wider than a phone" comment. overflow-wrap lets it break mid-word once
+   .folder-manager-title's own flex-wrap runs out of whole-word room. */
 .folder-manager-name {
   color: var(--ui-text);
   font-size: 13px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .folder-manager-count {
   color: var(--ui-text-secondary);
@@ -2960,7 +2982,20 @@ body {
     display: none;
   }
 
-  .dash-search {
+  /* front task: real source of the mobile Dashboard header overflow. This
+     rule and .dash-search-header-mobile's own rule above (max-width:768px)
+     both target the SAME input - it always carries both classes together
+     (see the template) - with equal specificity, so whichever comes later
+     in the file wins regardless of intent. This one used to win with
+     `flex:0 0 auto; width:100%`, which is the input's own flex-basis
+     resolving to 100% of a row it must still share with the 40px hamburger
+     button, a deterministic ~50px overflow on every load, at every mobile
+     width. :not() excludes the header row's own input so its own
+     `flex:1 1 auto; width:auto` (shrink to share the row) is the one that
+     actually applies; the toolbar-desktop variant this rule is really for
+     is hidden at this width anyway (.dash-search-toolbar-desktop below), so
+     nothing here is actually IN that clause for. */
+  .dash-search:not(.dash-search-header-mobile) {
     flex: 0 0 auto;
     width: 100%;
     min-width: 0;
@@ -3005,28 +3040,46 @@ body {
     display: none;
   }
 
-  /* Every tag is now a chip in this row (see the template), so with more
-     than a handful the row is wider than the screen - it scrolls
-     horizontally instead of clipping (the old overflow:hidden silently hid
-     whatever didn't fit, which was fine when only 1-2 "+N" chips could
-     overflow but would have hidden entire tags outright now). */
+  /* front task: strictly one line, no horizontal scroll - only as many tag
+     chips as recomputeMobileTagFit (DashboardView.vue) measures actually
+     fit render at all, so overflow-x:hidden here is just a rounding-error
+     safety net, never the thing doing the real truncation. */
   .tag-filter-list-mobile {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
     gap: 6px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .tag-filter-list-mobile::-webkit-scrollbar {
-    display: none;
+    overflow-x: hidden;
+    /* Without this, the row sizes to its OWN current content instead of
+     * its parent's available width - a circular dependency where showing
+     * fewer chips shrinks the row, which then measures less room and
+     * computes an even smaller fit, converging on "nothing but the +N
+     * badge visible" regardless of how much space is actually free
+     * (measured live: 84px reported instead of the 400px+ actually
+     * available). width:100% breaks the cycle by making the row's own
+     * width purely the parent's, independent of what's inside it.
+     * (.tag-filter-measure below overrides this back to max-content,
+     * which is what IT needs to measure each chip's natural width.) */
+    width: 100%;
   }
   .tag-filter-list-mobile .tag-filter {
     flex: 0 0 auto;
     padding: 5px 10px;
     font-size: 12px;
     white-space: nowrap;
+  }
+  /* The hidden measurement twin (see the template's own comment): laid out
+     for real widths, never visible or reachable. absolute+top:-9999px
+     takes it out of normal flow (can't push other content or grow page
+     height) while still giving it real layout to measure - display:none
+     would report zero width for everything instead. */
+  .tag-filter-measure {
+    position: absolute;
+    top: -9999px;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    width: max-content;
   }
   .tag-filter-clear {
     display: inline-flex;
@@ -3563,12 +3616,17 @@ body {
     font-size: 14px;
   }
   /* Clamped on its own span, not the icon+title flex row itself - that row
-     must stay display:flex or the icon's flex:0 0 auto sizing collapses. */
+     must stay display:flex or the icon's flex:0 0 auto sizing collapses.
+     white-space:normal overrides the single-line nowrap the base
+     .dashboard .card-title-text rule sets (same specificity, this one wins
+     purely on being later - explicit here so it doesn't look accidental):
+     line-clamp needs the text free to actually wrap across its 2 lines. */
   .dashboard-folder-content .card-title-text {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+    white-space: normal;
   }
   .dashboard-folder-content .card-title-input {
     font-size: 14px;
@@ -5560,6 +5618,20 @@ body {
   gap: 8px;
 }
 
+/* UNDO/REDO (front task). Icon-only, sized like .text-doc-back-btn - a
+   real 44px touch target, not just a visually-44px box with a smaller
+   hit area. */
+.text-doc-undo-btn,
+.text-doc-redo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
 /* THE PAGE TITLE (front task: title placement). Lives inside .text-doc-paper,
    above EditorContent - visually the document's own first line, not header
    chrome. Bigger than the body's own H1 (see collapsible-heading.ts's
@@ -5677,15 +5749,38 @@ body {
   border-top: 1px solid var(--dark-neutral-border);
 }
 
+/* THE LINK ROW (front task: the whole row is the control, no separate
+   Copy button beside it). A real <button>, not a div+click handler, so
+   focus/keyboard activation and screen readers get it for free. */
 .share-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: 6px;
   background: var(--ui-surface-subtle);
-  margin-bottom: 8px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.share-link-row:hover {
+  border-color: var(--dark-text-muted);
+  background: var(--ui-surface-elevated);
+}
+.share-link-row:active {
+  background: color-mix(in srgb, var(--ui-text) 8%, var(--ui-surface-subtle));
+  transform: scale(0.99);
+}
+.share-link-icon {
+  flex-shrink: 0;
+  color: var(--ui-text-secondary);
 }
 .share-link-url {
-  display: block;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5693,8 +5788,21 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   color: var(--ui-text);
 }
-.share-copy-link-btn {
-  width: 100%;
+.share-link-copy-icon {
+  flex-shrink: 0;
+  color: var(--ui-text-secondary);
+}
+.share-link-copied {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--ui-success-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.share-password-form {
+  margin-top: 8px;
 }
 
 .slug-error {
@@ -6888,23 +6996,28 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   }
 
   /* Both Share and History move into the "⋮" popover on mobile now (compact
-     header: back / sync / user / kebab) - neither needs its own permanent
-     button once the popover holds both, matching the sync chip's own move
-     from a standalone pill down to a small inline label in the same row. */
+     header: back / undo / redo / sync / user / kebab) - neither needs its
+     own permanent button once the popover holds both, matching the sync
+     chip's own move from a standalone pill down to a small inline label in
+     the same row. */
   .text-doc-history-btn,
   .text-doc-access-btn {
     display: none;
   }
 
+  /* Undo/redo add two more 44px touch targets to a row that already didn't
+     have room to spare - a tighter gap (not smaller buttons: touch target
+     stays 44px, see .text-doc-undo-btn/.text-doc-redo-btn) is the "more
+     compact spacing on very narrow screens" the front task allows. */
   .text-doc-topbar-actions {
     flex-wrap: nowrap;
     justify-content: flex-end;
-    gap: 8px;
+    gap: 2px;
   }
 
   .text-doc-sync {
     width: auto;
-    max-width: 40vw;
+    max-width: 22vw;
     border: none;
     background: transparent;
     padding: 0 2px;
@@ -7100,7 +7213,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-share-panel .share-form input,
   .text-doc-share-panel .share-form select,
   .text-doc-share-panel .share-form button,
-  .text-doc-share-panel .share-copy-link-btn,
+  .text-doc-share-panel .share-link-row,
   .text-doc-share-panel .share-save-slug-btn,
   .text-doc-share-panel .slug-row {
     width: 100%;
@@ -7117,13 +7230,19 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-share-panel .share-visibility-select,
   .text-doc-share-panel .slug-input,
   .text-doc-share-panel .share-checkbox,
-  .text-doc-share-panel .share-copy-link-btn,
+  .text-doc-share-panel .share-link-row,
   .text-doc-share-panel .share-save-slug-btn {
     min-height: 44px;
   }
 
+  /* front task: "/docs/" was visually oversized/misaligned on mobile - this
+     `stretch` made the prefix span match the input's 44px touch-target
+     height, and unlike the input it has no vertical centering of its own,
+     so its text sat at the top of that tall box instead of level with the
+     input's own text. `center` (the desktop default) fixes it without
+     needing a second rule on .slug-prefix itself. */
   .text-doc-share-panel .slug-row {
-    align-items: stretch;
+    align-items: center;
   }
 
   .text-doc-link-action-btn {

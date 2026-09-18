@@ -179,26 +179,27 @@
         >#{{ tag }}</button>
         <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
-      <!-- Mobile: every tag shows as its own chip, same as desktop (scrolls
-           horizontally instead of desktop's wrap) - selected or not, so a
-           tag the user hasn't picked yet is still visible and one tap away.
-           "+N selected" still shortcuts to the full multi-select sheet once
-           more tags are selected than comfortably fit before scrolling. -->
-      <div v-if="allTagNames.length" class="tag-filter-list-mobile">
+      <!-- Mobile: shows as many tags as actually fit in one line (selected
+           tags first), plus a "+N" for the rest - never a horizontal
+           scroll, never a hardcoded chip count. See src/dashboard/tag-fit.ts
+           for the actual fit math; recomputeMobileTagFit measures real
+           pixel widths off the hidden row below and feeds them in, re-run
+           on resize and whenever the tag list/selection changes. -->
+      <div v-if="allTagNames.length" ref="tagFilterMobileEl" class="tag-filter-list-mobile">
         <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
         <button
-          v-for="tag in allTagNames"
+          v-for="tag in visibleMobileTags"
           :key="tag"
           class="tag-filter"
           :class="{ active: isTagSelected(tag) }"
           @click.stop="toggleSelectedTag(tag)"
         >#{{ tag }}</button>
         <button
-          v-if="tagBarOverflowLabel"
+          v-if="mobileTagOverflowCount > 0"
           type="button"
           class="tag-filter tag-filter-more"
           @click.stop="openTagSheet"
-        >{{ tagBarOverflowLabel }}</button>
+        >+{{ mobileTagOverflowCount }}</button>
         <button
           v-if="selectedTags.length"
           type="button"
@@ -207,6 +208,19 @@
           :aria-label="t('clearTagFilter')"
           @click.stop="clearSelectedTags"
         ><X :size="13" aria-hidden="true" /></button>
+      </div>
+      <!-- Measurement-only twin of the row above: renders every possible
+           chip (off-screen, never interactive) purely so recomputeMobileTagFit
+           can read real widths for chips the visible row above isn't
+           currently rendering - the classic "shadow measurement row"
+           pattern this kind of single-line-plus-overflow layout needs,
+           since you can't measure a chip's width without laying it out
+           somewhere first. -->
+      <div v-if="allTagNames.length" ref="tagMeasureEl" class="tag-filter-list-mobile tag-filter-measure" aria-hidden="true">
+        <button ref="tagMeasureAllEl" class="tag-filter">{{ t('all') }}</button>
+        <button v-for="tag in tagsInPriorityOrder" :key="`measure-${tag}`" class="tag-filter">#{{ tag }}</button>
+        <button ref="tagMeasureMoreEl" class="tag-filter tag-filter-more">+{{ tagsInPriorityOrder.length }}</button>
+        <button ref="tagMeasureClearEl" class="tag-filter tag-filter-clear"><X :size="13" aria-hidden="true" /></button>
       </div>
     </div>
 
@@ -1105,6 +1119,7 @@ import {
 } from '../dashboard/navigation';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { formatRelativeDate } from '../dashboard/relative-date';
+import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1345,6 +1360,16 @@ export default defineComponent({
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
+    // MOBILE TAG FIT (front task). Refs into the visible row and its hidden
+    // measurement twin - see the template's own comment on why a hidden row
+    // exists at all - plus how many of tagsInPriorityOrder actually fit,
+    // computed by recomputeMobileTagFit below.
+    const tagFilterMobileEl = ref<HTMLElement | null>(null);
+    const tagMeasureEl = ref<HTMLElement | null>(null);
+    const tagMeasureAllEl = ref<HTMLElement | null>(null);
+    const tagMeasureMoreEl = ref<HTMLElement | null>(null);
+    const tagMeasureClearEl = ref<HTMLElement | null>(null);
+    const mobileVisibleTagCount = ref(0);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1630,16 +1655,50 @@ export default defineComponent({
       selectedTags.value = [];
     };
 
-    // Every tag renders inline now (see the mobile tag-filter-list template),
-    // so there's nothing left "hidden" to count once a handful of tags are
-    // selected - except that scrolling to find and deselect one of many
-    // selected tags is still a chore, so "+N selected" stays as a shortcut
-    // straight into the full multi-select sheet.
-    const TAG_BAR_VISIBLE_COUNT = 3;
-    const tagBarOverflowLabel = computed(() => {
-      const remainingSelected = selectedTags.value.length - TAG_BAR_VISIBLE_COUNT;
-      return remainingSelected > 0 ? `+${remainingSelected} ${t('selected')}` : '';
+    // MOBILE TAG FIT (front task). Selected tags first (they're what the
+    // user is actively filtering by, so they stay visible even once the
+    // full list no longer fits), then everything else in the same order
+    // allTagNames already sorts them in.
+    const tagsInPriorityOrder = computed(() => {
+      const selected = allTagNames.value.filter((tag) => isTagSelected(tag));
+      const unselected = allTagNames.value.filter((tag) => !isTagSelected(tag));
+      return [...selected, ...unselected];
     });
+    const visibleMobileTags = computed(() => tagsInPriorityOrder.value.slice(0, mobileVisibleTagCount.value));
+    const mobileTagOverflowCount = computed(() => tagsInPriorityOrder.value.length - visibleMobileTags.value.length);
+
+    /**
+     * Measures the hidden twin row's real chip widths and feeds them into
+     * computeVisibleTagFitCount (see src/dashboard/tag-fit.ts for the pure
+     * "how many fit" math this wraps). Re-run from the same resize
+     * listener/data watcher the desktop tag row's own overflow arrow
+     * already uses (refreshOverflowIndicators below), not a second
+     * parallel mechanism.
+     */
+    function recomputeMobileTagFit() {
+      const container = tagFilterMobileEl.value;
+      const measure = tagMeasureEl.value;
+      if (!container || !measure) {
+        mobileVisibleTagCount.value = tagsInPriorityOrder.value.length;
+        return;
+      }
+      const chipEls = Array.from(measure.querySelectorAll<HTMLElement>(':scope > .tag-filter'));
+      // Children, in DOM order: [All, ...one per tag, +N, clear]. Only the
+      // per-tag slice in the middle has a variable count.
+      const chipWidths = chipEls.slice(1, 1 + tagsInPriorityOrder.value.length).map((el) => el.getBoundingClientRect().width);
+      const allChipWidth = tagMeasureAllEl.value?.getBoundingClientRect().width ?? 0;
+      const clearChipWidth = selectedTags.value.length ? (tagMeasureClearEl.value?.getBoundingClientRect().width ?? 0) : 0;
+      const moreChipWidth = tagMeasureMoreEl.value?.getBoundingClientRect().width ?? 0;
+      const gap = parseFloat(getComputedStyle(container).columnGap || '0') || 0;
+      const reserved = allChipWidth + (clearChipWidth ? clearChipWidth + gap : 0);
+      mobileVisibleTagCount.value = computeVisibleTagFitCount(
+        container.clientWidth,
+        reserved,
+        chipWidths,
+        gap,
+        moreChipWidth + gap,
+      );
+    }
 
     watch(contentFilter, () => {
       selectedTags.value = selectedTags.value.filter((tag) => allTagNames.value.includes(tag));
@@ -2177,9 +2236,10 @@ export default defineComponent({
       void nextTick(() => {
         const tagsList = tagFilterList.value;
         hasTagOverflow.value = Boolean(tagsList && tagsList.scrollWidth > tagsList.clientWidth + 2);
+        recomputeMobileTagFit();
       });
     };
-    watch([allTagNames, activeFolder], refreshOverflowIndicators, { flush: 'post' });
+    watch([allTagNames, activeFolder, selectedTags], refreshOverflowIndicators, { flush: 'post' });
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -3644,7 +3704,15 @@ export default defineComponent({
       isTagSelected,
       toggleSelectedTag,
       clearSelectedTags,
-      tagBarOverflowLabel,
+      tagFilterMobileEl,
+      tagMeasureEl,
+      tagMeasureAllEl,
+      tagMeasureMoreEl,
+      tagMeasureClearEl,
+      tagsInPriorityOrder,
+      visibleMobileTags,
+      mobileTagOverflowCount,
+      recomputeMobileTagFit,
       tagSheetOpen,
       tagSheetDraft,
       openTagSheet,
