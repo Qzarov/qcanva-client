@@ -165,6 +165,11 @@ describe('Share sheet', () => {
     expect(mocks.replace).toHaveBeenCalledWith(
       expect.objectContaining({ params: { id: 'doc-1' }, query: {} }),
     );
+    // The final URL must be exactly `/docs/doc-1`, no leftover `openShare`
+    // AND no extra history entry - `replace` never `push`, at every step of
+    // the cleanup, or the user's back button would land on a URL that
+    // reopens the sheet all over again.
+    expect(mocks.push).not.toHaveBeenCalled();
 
     wrapper.unmount();
   });
@@ -192,6 +197,10 @@ describe('custom slug (front task 9/10)', () => {
     );
     expect(mocks.showToast).toHaveBeenCalledWith('Link saved', 'success');
     expect(wrapper.vm.slugInput).toBe('my-doc');
+    // Canonicalising to the new slug must never add a history entry either -
+    // only the fresh mount's own openShare cleanup (asserted above) and this
+    // save both use `replace`.
+    expect(mocks.push).not.toHaveBeenCalled();
 
     wrapper.unmount();
   });
@@ -270,6 +279,29 @@ describe('Copy link (front task 8/11)', () => {
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/docs/my-doc'));
     expect(writeText).not.toHaveBeenCalledWith(expect.stringContaining('/docs/doc-1'));
+
+    wrapper.unmount();
+  });
+
+  it('never copies a service/navigation query param, even while one is live on the current route', async () => {
+    // documentUrl is built from origin + slug-or-id alone (see the component)
+    // and never reads route.query, but this pins that down as behaviour: a
+    // user who opens Share via the one-shot openShare=1 URL and hits Copy
+    // Link before it's stripped must still get the bare canonical URL.
+    routeState.query = { openShare: '1', mentionFocus: '1', editorFocus: '1' };
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const wrapper = await mountEditableDoc();
+
+    await wrapper.vm.copyDocumentLink();
+
+    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/docs/doc-1');
+    expect(writeText.mock.calls).toHaveLength(1);
+    const copied = writeText.mock.calls[0]![0] as string;
+    expect(copied).not.toContain('openShare');
+    expect(copied).not.toContain('mentionFocus');
+    expect(copied).not.toContain('editorFocus');
+    expect(copied).not.toContain('?');
 
     wrapper.unmount();
   });

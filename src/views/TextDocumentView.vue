@@ -527,6 +527,7 @@
               :key="item.id"
               class="text-doc-slash-item text-doc-slash-sheet-item"
               :class="{ active: index === slashIndex }"
+              :data-slash-item="item.id"
               role="option"
               :aria-selected="index === slashIndex"
               type="button"
@@ -1751,10 +1752,20 @@ export default defineComponent({
          * custom engine: schema, cell selection, keyboard navigation
          * (Tab/Shift+Tab), commands (addRowAfter, deleteColumn, etc.) and
          * serialization all come from it. `resizable: false` keeps column
-         * resizing out of v1 as asked; the extension's own TableView still
-         * wraps the rendered <table> in a `.tableWrapper` div (see
-         * style.css), which is what gets `overflow-x: auto` - the table
-         * scrolls within itself, the page never does.
+         * resizing out of v1 as asked.
+         *
+         * `renderWrapper: true` (front task 33/40, fixed after a live
+         * Playwright check caught it): the extension's `.tableWrapper` div -
+         * where style.css puts `overflow-x: auto` so the table scrolls
+         * within itself instead of the page - is NOT the resizable
+         * NodeView's doing. It comes from this schema-level option alone,
+         * which defaults to false; `resizable` only controls a separate
+         * drag-handle plugin. Confirmed live: without this flag no
+         * `.tableWrapper` element exists in the DOM at all, `overflow-x:
+         * auto` on a bare `<table>` is a no-op in Chromium, and a wide
+         * table's excess width bled straight into `#app`'s global
+         * `overflow-x: hidden` and was silently clipped rather than
+         * scrollable.
          *
          * ARCHITECTURAL NOTE (front task 26): this only touches the
          * editor's own ProseMirror schema and the Yjs document it syncs -
@@ -1771,7 +1782,7 @@ export default defineComponent({
          * disappearing. Left as a follow-up: out of this task's frontend
          * scope, and not a blocker for the live collaborative editor.
          */
-        Table.configure({ resizable: false }),
+        Table.configure({ resizable: false, renderWrapper: true }),
         TableRow,
         TableHeader,
         TableCell,

@@ -5951,12 +5951,16 @@ body {
 }
 
 /*
-  TABLE (front task 13-19). `.tableWrapper` is the official extension's own
-  wrapping element (see @tiptap/extension-table's TableView) - overflow-x:auto
-  goes there, not on the table itself, so the TABLE scrolls horizontally
-  within its own box and the document page never gets horizontal overflow
-  (front task 16/20). Document-palette tokens throughout, since this is
-  content, not chrome - same rule blockquote/codeBlock above already follow.
+  TABLE (front task 13-19). `.tableWrapper` is the extension's own wrapping
+  element, emitted only because Table.configure sets `renderWrapper: true`
+  (see the long comment on that call in TextDocumentView.vue for why the
+  wrapper needs that flag explicitly - it is NOT tied to `resizable`, a
+  wrong assumption a live Playwright check caught at front task 33/40) -
+  overflow-x:auto goes there, not on the table itself, so the TABLE scrolls
+  horizontally within its own box and the document page never gets
+  horizontal overflow (front task 16/20). Document-palette tokens
+  throughout, since this is content, not chrome - same rule
+  blockquote/codeBlock above already follow.
 */
 .text-doc-paper .ProseMirror .tableWrapper {
   margin: 1em 0;
@@ -7119,6 +7123,16 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-table-btn {
     min-height: 40px;
     padding: 6px 10px;
+  }
+
+  /* Five text-label buttons in one row don't fit a 320-430px viewport.
+     Tippy's own flip/preventOverflow modifiers reposition the popup as a
+     whole but never reflow what's inside it, so without this the menu's own
+     box would run past the screen edge - wrapping keeps every button on
+     screen and tappable instead. */
+  .text-doc-table-menu {
+    flex-wrap: wrap;
+    max-width: calc(100vw - 32px);
   }
 
   .text-doc-paper .ProseMirror td,

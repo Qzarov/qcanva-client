@@ -140,6 +140,26 @@ describe('slash menu trigger', () => {
     wrapper.unmount();
   });
 
+  it('gives the mobile bottom-sheet item the same data-slash-item handle as the desktop popup', async () => {
+    // wrapper.find only ever sees the desktop popup - the sheet is
+    // Teleport'd to <body>, outside the component's own render tree (see
+    // TextDocumentView.share.test.ts's file comment on the same Teleport
+    // limitation) - so this reads the real DOM instead. A live mobile
+    // Playwright check (front task 34/40) found the sheet's own button was
+    // missing this attribute entirely, a gap none of the other slash tests
+    // here could have caught since they all go through `wrapper.find`.
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+
+    await type(wrapper, '/');
+
+    const sheetButton = document.querySelector('.text-doc-slash-sheet-item[data-slash-item="table"]');
+    expect(sheetButton).toBeTruthy();
+
+    wrapper.unmount();
+  });
+
   it('opens on a slash after whitespace mid-paragraph', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p></p>');

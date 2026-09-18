@@ -7,6 +7,13 @@
 // lifecycle: editing, the table-controls commands, undo/redo, serialization
 // round-trip, and backwards compatibility with a pre-existing table-less
 // document. Uses the real TipTap editor, same as the other *.test.ts siblings.
+//
+// The table BubbleMenu is a real tippy/popper instance, like the one
+// TextDocumentView.linkEditor.test.ts documents: jsdom has no
+// getClientRects(), so popper's async post-update positioning loop can throw
+// an unhandled rejection AFTER a test has already passed. Pre-existing,
+// out-of-scope, and harmless - it never affects an assertion, only shows up
+// in the console.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
