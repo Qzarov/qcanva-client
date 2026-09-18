@@ -661,6 +661,7 @@ import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
+import { getPublicOrigin } from '../api/public-origin';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
@@ -783,9 +784,15 @@ export default defineComponent({
      * anyone who can read the document (not owner-gated like Share), both
      * from the doc-menu ("Copy link" item, task 11) and from the Share sheet
      * itself (task 8).
+     *
+     * getPublicOrigin(), not window.location.origin directly: inside the
+     * packaged Android app this would otherwise be Capacitor's own internal
+     * WebView origin (localhost) rather than the real public site - see
+     * that function's own comment for the full story (front task: "Share
+     * link shows localhost", reported from the mobile app).
      */
     const documentUrl = computed(() =>
-      `${window.location.origin}/docs/${encodeURIComponent(slug.value || resolvedId.value)}`,
+      `${getPublicOrigin()}/docs/${encodeURIComponent(slug.value || resolvedId.value)}`,
     );
     async function copyDocumentLink() {
       try {

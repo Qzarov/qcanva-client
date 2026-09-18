@@ -239,6 +239,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } 
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
+import { getPublicOrigin } from '../api/public-origin';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -317,9 +318,12 @@ export default defineComponent({
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
+    // getPublicOrigin(), not window.location.origin: see its own comment -
+    // inside the packaged Android app that would be Capacitor's internal
+    // WebView origin (localhost), not the real public site.
     const publicUrl = computed(() => {
       const publicId = slug.value || resolvedId.value;
-      return `${window.location.origin}/html/${encodeURIComponent(publicId)}`;
+      return `${getPublicOrigin()}/html/${encodeURIComponent(publicId)}`;
     });
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
     const htmlSyncStatus = computed(() => {

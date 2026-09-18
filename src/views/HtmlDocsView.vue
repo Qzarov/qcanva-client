@@ -214,6 +214,7 @@
 import { computed, defineComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, htmlDocuments, isAdmin, isPasswordAccess, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag } from '../api/client';
+import { getPublicOrigin } from '../api/public-origin';
 
 type HtmlTag = ResourceTag & { id: string };
 type HtmlDocumentRecord = {
@@ -501,8 +502,11 @@ export default defineComponent({
       }
     }
 
+    // getPublicOrigin(), not window.location.origin: see its own comment -
+    // inside the packaged Android app that would be Capacitor's internal
+    // WebView origin (localhost), not the real public site.
     async function copyLink(doc: any) {
-      const url = `${window.location.origin}/html/${doc.id}`;
+      const url = `${getPublicOrigin()}/html/${doc.id}`;
       await navigator.clipboard?.writeText(url);
       flash('success', 'Link copied');
     }
