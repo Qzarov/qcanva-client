@@ -228,8 +228,19 @@ function headingAt(doc: ProseMirrorNode, pos: number): TopLevelBlock | null {
  * where a reader visibly resumes once it is collapsed, which is exactly
  * where pressing Enter on a collapsed heading needs to land - see the
  * `Enter` shortcut below.
+ *
+ * A SECOND caller as of the drag-handle patch (`getDragHandleRanges` in
+ * `patches/@tiptap+extension-drag-handle+*.patch`): dragging a heading by
+ * its handle takes the whole SECTION it owns, and "how far does this
+ * heading's ownership reach" is exactly the same "next same-or-higher-level
+ * heading" boundary a fold already uses - collapsed or not. That patch
+ * cannot import this file (a patch-package vendor file cannot reach into
+ * app source), so it carries its OWN copy of this same rule; this export
+ * exists so the app side - `TextDocumentView.dragHandle.test.ts`'s section-
+ * drag tests included - has one real implementation to check the vendor
+ * copy against, rather than two independently-typed guesses.
  */
-function foldEnd(doc: ProseMirrorNode, heading: TopLevelBlock): number {
+export function foldEnd(doc: ProseMirrorNode, heading: TopLevelBlock): number {
   const blocks = topLevelBlocks(doc);
   const index = blocks.findIndex((block) => block.from === heading.from);
   const level = clampHeadingLevel(heading.node.attrs.level);

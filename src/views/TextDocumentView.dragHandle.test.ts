@@ -31,6 +31,7 @@ import * as Y from 'yjs';
 import { getSelectionRanges, NodeRangeSelection } from '@tiptap/extension-node-range';
 import TextDocumentView from './TextDocumentView.vue';
 import { base64ToUint8Array } from '../text-documents/projection';
+import { foldEnd, headingBlocks } from '../text-documents/collapsible-heading';
 import { messages } from '../composables/useI18n';
 import { useI18n } from '../composables/useI18n';
 
@@ -152,6 +153,68 @@ function blockTexts(doc: any): string[] {
   const texts: string[] = [];
   doc.forEach((node: any) => texts.push(node.textContent));
   return texts;
+}
+
+/**
+ * The transaction a completed drag of a HEADING (by its handle) now
+ * produces: the whole SECTION it owns (`collapsible-heading.ts`'s
+ * `foldEnd` - the same "next same-or-higher-level heading" boundary a fold
+ * already uses, independent of whether the heading is actually collapsed),
+ * not just the heading itself, taken out and reinserted at the document's
+ * end. Built through the SAME `getSelectionRanges`/`NodeRangeSelection`
+ * primitives `dragBlockToEnd` uses (and the vendor patch's own
+ * `getDragHandleRanges` calls at runtime) - only the END position handed
+ * to `getSelectionRanges` differs (the section's end, not `from + 1`) - so
+ * a test failure here means the app's own `foldEnd` and the vendor patch's
+ * duplicated copy of the same rule (`headingSectionEnd` in
+ * patches/@tiptap+extension-drag-handle+*.patch) disagree.
+ */
+function dragHeadingSectionToEnd(editor: any, headingIndex: number) {
+  const { doc } = editor.state;
+  const heading = headingBlocks(doc)[headingIndex]!;
+  const sectionEnd = foldEnd(doc, heading);
+  const ranges = getSelectionRanges(doc.resolve(heading.from), doc.resolve(sectionEnd), 0);
+  const from = ranges[0]!.$from.pos;
+  const to = ranges[ranges.length - 1]!.$to.pos;
+  const selection = NodeRangeSelection.create(doc, from, to);
+  const slice = selection.content();
+
+  const tr = editor.state.tr;
+  tr.setSelection(selection);
+  tr.deleteSelection();
+  tr.insert(tr.doc.content.size, slice.content);
+  editor.view.dispatch(tr);
+}
+
+/**
+ * The general form: drops the dragged heading SECTION at an arbitrary
+ * position instead of always the document's end, mirroring
+ * `prosemirror-view`'s own real `handleDrop` sequence exactly - compute the
+ * drop position against the PRE-delete doc, delete the source selection,
+ * THEN map that position through the delete step before inserting - rather
+ * than this file's own simplified "insert at doc.content.size" shortcut.
+ * This fidelity is what makes the self-drop test meaningful: a drop
+ * position that was inside the just-deleted range maps, through that same
+ * `tr.mapping`, to wherever the deletion collapsed it to - never a stale,
+ * now-invalid position - which is the actual mechanism (not an assumption)
+ * behind "dropping into your own dragged section can't corrupt anything".
+ */
+function dragHeadingSectionTo(editor: any, headingIndex: number, dropPosBeforeDrag: number) {
+  const { doc } = editor.state;
+  const heading = headingBlocks(doc)[headingIndex]!;
+  const sectionEnd = foldEnd(doc, heading);
+  const ranges = getSelectionRanges(doc.resolve(heading.from), doc.resolve(sectionEnd), 0);
+  const from = ranges[0]!.$from.pos;
+  const to = ranges[ranges.length - 1]!.$to.pos;
+  const selection = NodeRangeSelection.create(doc, from, to);
+  const slice = selection.content();
+
+  const tr = editor.state.tr;
+  tr.setSelection(selection);
+  tr.deleteSelection();
+  const insertPos = tr.mapping.map(dropPosBeforeDrag);
+  tr.insert(insertPos, slice.content);
+  editor.view.dispatch(tr);
 }
 
 /**
@@ -498,6 +561,217 @@ describe('reordering a block under the CRDT', () => {
     expect(String(reversed.getXmlFragment('default'))).toBe(
       String(forward.getXmlFragment('default')),
     );
+
+    wrapper.unmount();
+  });
+});
+
+describe('dragging a HEADING moves its whole section, not just itself', () => {
+  it('H1 followed by plain paragraphs: the whole section moves as one unit', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>a</p><p>b</p><h1>Next</h1>');
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 0); // Chapter
+    await flushPromises();
+
+    expect(blockTexts(editor.state.doc)).toEqual(['Next', 'Chapter', 'a', 'b']);
+
+    wrapper.unmount();
+  });
+
+  it('H1 > H2 > H3: dragging the H1 pulls the whole nested tree along', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent(
+      '<h1>Chapter</h1><p>a</p><h2>Details</h2><p>b</p><h3>More</h3><p>c</p><h1>Next</h1>',
+    );
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 0); // Chapter (H1)
+    await flushPromises();
+
+    expect(blockTexts(editor.state.doc)).toEqual(['Next', 'Chapter', 'a', 'Details', 'b', 'More', 'c']);
+
+    wrapper.unmount();
+  });
+
+  it('dragging an H2 pulls its H3 along, but leaves a SIBLING H2 (and what follows it) behind', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent(
+      '<h1>Chapter</h1><h2>Details</h2><p>x</p><h3>More</h3><h2>Other</h2><p>y</p><h1>Next</h1>',
+    );
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 1); // Details (H2) - headingBlocks index, not top-level index
+    await flushPromises();
+
+    expect(blockTexts(editor.state.doc)).toEqual(['Chapter', 'Other', 'y', 'Next', 'Details', 'x', 'More']);
+
+    wrapper.unmount();
+  });
+
+  it('skipped levels (H1 straight to H3, no H2 in between) do not break the section boundary', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h3>Sub</h3><p>x</p><h1>Next</h1>');
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 0); // Chapter
+    await flushPromises();
+
+    expect(blockTexts(editor.state.doc)).toEqual(['Next', 'Chapter', 'Sub', 'x']);
+
+    wrapper.unmount();
+  });
+
+  it('a COLLAPSED heading still drags its hidden content along, unaffected by its own fold state', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>hidden</p><h1>Next</h1>');
+    await flushPromises();
+
+    const chapterPos = headingBlocks(editor.state.doc)[0]!.from;
+    editor.commands.toggleHeadingCollapse(chapterPos);
+    await flushPromises();
+    expect(editor.state.doc.nodeAt(chapterPos).attrs.collapsed).toBe(true);
+
+    dragHeadingSectionToEnd(editor, 0);
+    await flushPromises();
+
+    expect(blockTexts(editor.state.doc)).toEqual(['Next', 'Chapter', 'hidden']);
+    // The collapsed attribute itself rode along unchanged - the SECTION
+    // moved, its own fold state did not silently reset.
+    const movedChapter = headingBlocks(editor.state.doc).find((b: any) => b.node.textContent === 'Chapter')!;
+    expect(movedChapter.node.attrs.collapsed).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('a Table Block inside the section moves with it, structurally intact', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent(
+      '<h1>Chapter</h1><table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table><h1>Next</h1>',
+    );
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 0);
+    await flushPromises();
+
+    const doc = editor.state.doc;
+    expect(doc.childCount).toBe(3);
+    expect(doc.child(0).type.name).toBe('heading'); // Next
+    expect(doc.child(1).type.name).toBe('heading'); // Chapter
+    expect(doc.child(2).type.name).toBe('table');
+    expect(doc.child(2).childCount).toBe(2);
+    doc.child(2).forEach((row: any) => expect(row.childCount).toBe(2));
+    expect(editor.getText()).toContain('a1');
+    expect(editor.getText()).toContain('b2');
+
+    wrapper.unmount();
+  });
+
+  it('dragging a plain paragraph next to headings still moves only itself (no regression from the heading-section change)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>a</p><h1>Next</h1>');
+    await flushPromises();
+
+    dragBlockToEnd(editor, 1); // 'a' - a top-level block index, not a heading index
+
+    await flushPromises();
+    expect(blockTexts(editor.state.doc)).toEqual(['Chapter', 'Next', 'a']);
+
+    wrapper.unmount();
+  });
+
+  it('dropping INSIDE the section being dragged cannot duplicate or lose content - it safely resolves through the same position-mapping ProseMirror always uses for a move', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>a</p><p>b</p><h1>Next</h1>');
+    await flushPromises();
+
+    // A position squarely inside the section about to be dragged (right
+    // before "b", itself part of Chapter's section) - what a drop directly
+    // onto content the pointer is currently lifting would resolve to.
+    const selfDropPos = posBeforeBlock(editor.state.doc, 2);
+    const heading = headingBlocks(editor.state.doc)[0]!;
+    const sectionEnd = foldEnd(editor.state.doc, heading);
+    expect(selfDropPos).toBeGreaterThanOrEqual(heading.from);
+    expect(selfDropPos).toBeLessThan(sectionEnd);
+
+    dragHeadingSectionTo(editor, 0, selfDropPos);
+    await flushPromises();
+
+    const texts = blockTexts(editor.state.doc);
+    // No duplication, no loss: exactly the original four blocks, each once.
+    expect(texts).toHaveLength(4);
+    expect(new Set(texts).size).toBe(4);
+    expect(texts.sort()).toEqual(['Chapter', 'Next', 'a', 'b'].sort());
+
+    wrapper.unmount();
+  });
+
+  it('Undo restores the WHOLE section in one step; Redo moves it again in one step', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>a</p><p>b</p><h1>Next</h1>');
+    // Past the UndoManager's capture window, so the drag becomes its own
+    // undo step rather than merging with the initial content-set - same
+    // reasoning TextDocumentView.table.test.ts's own undo test documents.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    const before = blockTexts(editor.state.doc);
+    dragHeadingSectionToEnd(editor, 0);
+    await flushPromises();
+    const after = blockTexts(editor.state.doc);
+    expect(after).not.toEqual(before);
+    expect(after).toEqual(['Next', 'Chapter', 'a', 'b']);
+
+    expect(editor.can().undo()).toBe(true);
+    editor.commands.undo();
+    await flushPromises();
+    expect(blockTexts(editor.state.doc)).toEqual(before); // the WHOLE section came back, not part of it
+
+    expect(editor.can().redo()).toBe(true);
+    editor.commands.redo();
+    await flushPromises();
+    expect(blockTexts(editor.state.doc)).toEqual(after); // moved again, whole and intact
+
+    wrapper.unmount();
+  });
+
+  it('two Yjs clients: the update stream for a section move is order-insensitive and loses/duplicates nothing', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><p>a</p><p>b</p><h1>Next</h1>');
+    await flushPromises();
+
+    dragHeadingSectionToEnd(editor, 0);
+    await flushPromises();
+
+    // Same document, built fresh from ONLY the emitted updates - proves the
+    // update stream a second client would receive reconstructs the exact
+    // same result (this file's header explains why this stands in for a
+    // second live client rather than one).
+    const replica = replicaFromSentUpdates();
+    const replicaTexts = replica
+      .getXmlFragment('default')
+      .toArray()
+      .map((node: any) => String(node).replace(/<[^>]*>/g, ''));
+    expect(replicaTexts).toEqual(['Next', 'Chapter', 'a', 'b']);
+
+    // Order-insensitivity, same check the single-block test above makes.
+    const forward = new Y.Doc();
+    const reversed = new Y.Doc();
+    const payloads = sendUpdate.mock.calls.map((call) => base64ToUint8Array(call[0] as string));
+    expect(payloads.length).toBeGreaterThan(1);
+    for (const update of payloads) Y.applyUpdate(forward, update);
+    for (const update of [...payloads].reverse()) Y.applyUpdate(reversed, update);
+    expect(String(reversed.getXmlFragment('default'))).toBe(String(forward.getXmlFragment('default')));
 
     wrapper.unmount();
   });
