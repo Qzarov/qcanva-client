@@ -1,8 +1,8 @@
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-index be31c0d..7088911 100644
+index be31c0d..2ed9b3e 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-@@ -218,6 +218,13 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -218,6 +218,20 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
      let currentNode = null;
      let currentNodePos = -1;
      let currentNodeRelPos;
@@ -11,12 +11,19 @@ index be31c0d..7088911 100644
 +    // 350ms (this constant's original value) still felt too eager in
 +    // practice; 800ms is the "comfortable, not sluggish" middle of the
 +    // 700-900ms range asked for after living with the shorter one.
++    // TODO: neither DragHandleOptions (drag-handle.ts) nor
++    // DragHandlePluginProps (drag-handle-plugin.ts) expose a hide-delay
++    // config, and tippyOptions.delay is a no-op here since the popup is
++    // created with trigger: 'manual' (tippy's own delay only applies to
++    // trigger-driven show/hide). Re-check on every @tiptap/extension-drag-handle
++    // upgrade whether a public option has been added upstream that could
++    // replace this patch.
 +    let hideTimeoutId = null;
 +    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
      element.addEventListener('dragstart', e => {
          // Push this to the end of the event cue
          // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
-@@ -378,6 +385,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -378,6 +392,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
@@ -31,7 +38,7 @@ index be31c0d..7088911 100644
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -388,7 +403,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -388,7 +410,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
              handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
@@ -48,7 +55,7 @@ index be31c0d..7088911 100644
                          return false;
                      }
                      return false;
-@@ -398,16 +422,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -398,16 +429,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                      if (locked) {
                          return false;
                      }
@@ -85,10 +92,10 @@ index be31c0d..7088911 100644
                      if (!element || !popup || locked) {
                          return false;
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-index 2fdae1d..0011c34 100644
+index 2fdae1d..ae87338 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-@@ -210,6 +210,13 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -210,6 +210,20 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
      let currentNode = null;
      let currentNodePos = -1;
      let currentNodeRelPos;
@@ -97,12 +104,19 @@ index 2fdae1d..0011c34 100644
 +    // 350ms (this constant's original value) still felt too eager in
 +    // practice; 800ms is the "comfortable, not sluggish" middle of the
 +    // 700-900ms range asked for after living with the shorter one.
++    // TODO: neither DragHandleOptions (drag-handle.ts) nor
++    // DragHandlePluginProps (drag-handle-plugin.ts) expose a hide-delay
++    // config, and tippyOptions.delay is a no-op here since the popup is
++    // created with trigger: 'manual' (tippy's own delay only applies to
++    // trigger-driven show/hide). Re-check on every @tiptap/extension-drag-handle
++    // upgrade whether a public option has been added upstream that could
++    // replace this patch.
 +    let hideTimeoutId = null;
 +    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
      element.addEventListener('dragstart', e => {
          // Push this to the end of the event cue
          // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
-@@ -370,6 +377,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -370,6 +384,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
@@ -121,7 +135,7 @@ index 2fdae1d..0011c34 100644
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -380,7 +399,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -380,7 +406,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
              handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
@@ -146,7 +160,7 @@ index 2fdae1d..0011c34 100644
                          return false;
                      }
                      return false;
-@@ -390,16 +426,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -390,16 +433,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                      if (locked) {
                          return false;
                      }
