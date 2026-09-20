@@ -310,10 +310,19 @@
                 class="text-doc-outline-item"
                 :data-level="row.entry.level"
               >
-                <!-- @mousedown.stop so grabbing the chevron never also fires
-                     the link's own @mousedown.prevent navigation right next
-                     to it - they are siblings, not nested, precisely so a
-                     chevron click can never bubble into "navigate". -->
+                <!-- @mousedown.stop.prevent: `.stop` so grabbing the chevron
+                     never also fires the link's own @mousedown right next to
+                     it (siblings, not nested, but a pointer can technically
+                     land on both during a fast drag-like click), `.prevent`
+                     so a mouse click never steals focus away from wherever
+                     it already was (matches every other toolbar control's
+                     click-without-stealing-focus convention in this file).
+                     The actual toggle is on @click, not @mousedown, on
+                     purpose: `.prevent` on mousedown does not suppress the
+                     click that still fires afterward on mouseup, and click
+                     is also what a keyboard Enter/Space on a focused button
+                     dispatches - @mousedown alone left this unreachable from
+                     the keyboard entirely (caught in review before merge). -->
                 <button
                   v-if="row.hasChildren"
                   type="button"
@@ -321,13 +330,20 @@
                   :title="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
                   :aria-label="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
                   :aria-expanded="!outlineCollapsedSections.has(row.entry.id)"
-                  @mousedown.stop.prevent="toggleOutlineSection(row.entry.id)"
+                  @mousedown.stop.prevent
+                  @click="toggleOutlineSection(row.entry.id)"
                 ><ChevronRight v-if="outlineCollapsedSections.has(row.entry.id)" :size="13" aria-hidden="true" /><ChevronDown v-else :size="13" aria-hidden="true" /></button>
                 <span v-else class="text-doc-outline-chevron-spacer" aria-hidden="true"></span>
+                <!-- Same @mousedown/@click split as the chevron above, and
+                     for the same reason (pre-existing on this link, fixed
+                     alongside the chevron in the same review pass): a
+                     mousedown-only handler is unreachable from the
+                     keyboard. -->
                 <button
                   type="button"
                   class="text-doc-outline-link"
-                  @mousedown.prevent="navigateFromOutline(row.entry.pos)"
+                  @mousedown.prevent
+                  @click="navigateFromOutline(row.entry.pos)"
                   @mouseenter="onOutlineLinkHover($event)"
                 >
                   {{ row.entry.text || outlineLabels.empty }}
@@ -455,7 +471,9 @@
           <div class="text-doc-outline-drawer-title">{{ outlineLabels.title }}</div>
           <ol v-if="outlineEntries.length" class="text-doc-outline-list">
             <li v-for="entry in outlineEntries" :key="entry.id" class="text-doc-outline-item" :data-level="entry.level">
-              <button type="button" class="text-doc-outline-link" @mousedown.prevent="navigateFromOutline(entry.pos)">
+              <!-- @mousedown/@click split, same reasoning as the desktop
+                   panel's own outline link. -->
+              <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos)">
                 {{ entry.text || outlineLabels.empty }}
               </button>
             </li>

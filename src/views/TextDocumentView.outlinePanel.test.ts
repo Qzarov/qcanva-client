@@ -134,6 +134,31 @@ describe('the in-panel collapse toggle', () => {
     wrapper.unmount();
   });
 
+  it('is a real, natively-focusable <button> carrying an aria-label (never a bare div/span)', async () => {
+    const wrapper = await mountEditableDoc();
+    const toggle = wrapper.find('.text-doc-outline-collapse-toggle');
+    expect(toggle.element.tagName).toBe('BUTTON');
+    expect(toggle.attributes('type')).toBe('button');
+    expect(toggle.attributes('aria-label')).toBeTruthy();
+    expect(toggle.attributes('disabled')).toBeUndefined();
+    wrapper.unmount();
+  });
+
+  it('updates its aria-label/aria-pressed as the panel toggles, so it never announces stale state', async () => {
+    const wrapper = await mountEditableDoc();
+    const toggle = wrapper.find('.text-doc-outline-collapse-toggle');
+    expect(toggle.attributes('aria-label')).toBe(wrapper.vm.outlineLabels.hide);
+    expect(toggle.attributes('aria-pressed')).toBe('false');
+
+    await toggle.trigger('click');
+
+    const toggleAfter = wrapper.find('.text-doc-outline-collapse-toggle');
+    expect(toggleAfter.attributes('aria-label')).toBe(wrapper.vm.outlineLabels.show);
+    expect(toggleAfter.attributes('aria-pressed')).toBe('true');
+
+    wrapper.unmount();
+  });
+
   it('hides the OLD header button once the desktop sidebar has its own toggle', async () => {
     const wrapper = await mountEditableDoc();
     expect(wrapper.find('.text-doc-outline-btn').exists()).toBe(false);
@@ -173,6 +198,56 @@ describe('resizing the outline panel', () => {
     wrapper.unmount();
   });
 
+  it('removes the window resize listeners on a normal mouseup (not just on the next drag)', async () => {
+    const wrapper = await mountEditableDoc();
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    wrapper.vm.startOutlineResize({ preventDefault: () => undefined, clientX: 300 } as MouseEvent);
+    expect(addSpy).toHaveBeenCalledWith('mousemove', expect.any(Function));
+    expect(addSpy).toHaveBeenCalledWith('mouseup', expect.any(Function));
+    const addedMove = addSpy.mock.calls.find((call) => call[0] === 'mousemove')?.[1];
+    const addedUp = addSpy.mock.calls.find((call) => call[0] === 'mouseup')?.[1];
+
+    window.dispatchEvent(new MouseEvent('mouseup'));
+
+    // The EXACT same function references handed to addEventListener must be
+    // the ones passed to removeEventListener, or the browser silently keeps
+    // the old listener attached (a mismatched reference is a no-op remove).
+    expect(removeSpy).toHaveBeenCalledWith('mousemove', addedMove);
+    expect(removeSpy).toHaveBeenCalledWith('mouseup', addedUp);
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('removes the window resize listeners on unmount even mid-drag, before mouseup ever fires', async () => {
+    const wrapper = await mountEditableDoc();
+    const addSpy = vi.spyOn(window, 'addEventListener');
+    const removeSpy = vi.spyOn(window, 'removeEventListener');
+
+    wrapper.vm.startOutlineResize({ preventDefault: () => undefined, clientX: 300 } as MouseEvent);
+    const addedMove = addSpy.mock.calls.find((call) => call[0] === 'mousemove')?.[1];
+    const addedUp = addSpy.mock.calls.find((call) => call[0] === 'mouseup')?.[1];
+
+    wrapper.unmount(); // no mouseup ever dispatched - the drag was abandoned mid-flight
+
+    expect(removeSpy).toHaveBeenCalledWith('mousemove', addedMove);
+    expect(removeSpy).toHaveBeenCalledWith('mouseup', addedUp);
+    expect(document.body.classList.contains('text-doc-outline-resizing')).toBe(false);
+
+    // A stray mousemove/mouseup after unmount must be a pure no-op: no
+    // throw, and nothing left listening to react to it.
+    expect(() => {
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 999 }));
+      window.dispatchEvent(new MouseEvent('mouseup'));
+    }).not.toThrow();
+
+    addSpy.mockRestore();
+    removeSpy.mockRestore();
+  });
+
   it('restores the persisted width on the next mount', async () => {
     localStorage.setItem('qcanva-outline-width', '333');
     const wrapper = await mountEditableDoc();
@@ -190,6 +265,27 @@ describe('resizing the outline panel', () => {
     const wrapperB = await mountEditableDoc();
     expect(wrapperB.vm.outlineWidth).toBe(480);
     wrapperB.unmount();
+  });
+
+  it('falls back to the default for the literal string "NaN" (not just an arbitrary non-numeric string)', async () => {
+    localStorage.setItem('qcanva-outline-width', 'NaN');
+    const wrapper = await mountEditableDoc();
+    expect(wrapper.vm.outlineWidth).toBe(240);
+    wrapper.unmount();
+  });
+
+  it('clamps a stored 9999 (a genuinely finite, but wildly out-of-range, number) to the max', async () => {
+    localStorage.setItem('qcanva-outline-width', '9999');
+    const wrapper = await mountEditableDoc();
+    expect(wrapper.vm.outlineWidth).toBe(480);
+    wrapper.unmount();
+  });
+
+  it('clamps a negative stored width to the min, rather than treating it as a fresh install', async () => {
+    localStorage.setItem('qcanva-outline-width', '-50');
+    const wrapper = await mountEditableDoc();
+    expect(wrapper.vm.outlineWidth).toBe(220);
+    wrapper.unmount();
   });
 
   it('double-clicking the resize handle resets to the default width and persists that reset', async () => {
@@ -241,13 +337,65 @@ describe('collapsible sections inside the outline panel', () => {
     const chevron = wrapper.find('.text-doc-outline-chevron');
     expect(chevron.exists()).toBe(true);
     const selectionBefore = editor.state.selection.from;
+    // The real toggle fires on click (see the template's own comment on
+    // why) - mousedown alone must do nothing but preventDefault.
     await chevron.trigger('mousedown');
+    await flushPromises();
+    expect(wrapper.vm.outlineVisibleRows).toHaveLength(2);
+
+    await chevron.trigger('click');
     await flushPromises();
 
     // The section collapsed (chevron's own effect)...
     expect(wrapper.vm.outlineVisibleRows).toHaveLength(1);
     // ...but the editor's selection never moved - a chevron press is not a navigation.
     expect(editor.state.selection.from).toBe(selectionBefore);
+
+    wrapper.unmount();
+  });
+
+  it('is keyboard-reachable: a real <button> with aria-label/aria-expanded, activated by click (what a focused button dispatches on Enter/Space)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Overview</h1><h2>Details</h2>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const chevron = wrapper.find('.text-doc-outline-chevron');
+    expect(chevron.element.tagName).toBe('BUTTON');
+    expect(chevron.attributes('type')).toBe('button');
+    expect(chevron.attributes('aria-label')).toBeTruthy();
+    expect(chevron.attributes('aria-expanded')).toBe('true');
+    expect(chevron.attributes('disabled')).toBeUndefined();
+
+    // A browser dispatches `click` for a focused button's Enter/Space the
+    // same as for a pointer click - jsdom does not simulate that native
+    // translation, so exercising `click` directly is exactly what proves
+    // keyboard activation works, without needing to fake a real browser's
+    // keydown-to-click behavior.
+    await chevron.trigger('click');
+    expect(wrapper.vm.outlineVisibleRows).toHaveLength(1);
+    expect(wrapper.find('.text-doc-outline-chevron').attributes('aria-expanded')).toBe('false');
+
+    wrapper.unmount();
+  });
+
+  it('the outline link is also click-activated, not mousedown-only - the same keyboard gap fixed alongside the chevron', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Overview</h1><p></p><h2>Details</h2>');
+    editor.commands.setTextSelection(1);
+    await flushPromises();
+    await settleContentUpdate();
+
+    const detailsRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Details');
+    const link = wrapper.findAll('.text-doc-outline-link').find((el: any) => el.text() === 'Details')!;
+
+    await link.trigger('mousedown');
+    expect(editor.state.selection.from).toBe(1); // mousedown alone must not navigate
+
+    await link.trigger('click');
+    expect(editor.state.selection.from).toBe(detailsRow.entry.pos + 1);
 
     wrapper.unmount();
   });
