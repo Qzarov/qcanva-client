@@ -2,7 +2,7 @@ import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { nodeSpec } from '../documents/document-nodes';
 import { headingOutline, type HeadingOutlineEntry } from '../documents/heading-anchors';
-import { headingBlocks } from './collapsible-heading';
+import { collapsedAncestors, headingBlocks } from './collapsible-heading';
 
 /**
  * The table-of-contents block.
@@ -211,27 +211,64 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
  * completely unchanged - reproduced by comparing a bare
  * `heading.scrollIntoView(...)` (worked) against the exact same call
  * preceded by a plain `.focus()` (did not).
+ *
+ * EXPANDS first, if the target sits inside a collapsed section
+ * (`collapsedAncestors`, collapsible-heading.ts): a heading hidden by
+ * `.text-doc-collapsed-block`'s `display: none` has no box for
+ * `scrollIntoView` to scroll to at all - reported as "the outline click did
+ * nothing", root-caused to exactly that (a live element, invisible, so the
+ * call below silently no-ops on it). Expanding goes through
+ * `toggleHeadingCollapse` - the SAME command the chevron itself dispatches -
+ * never a second way to flip `collapsed`. Every found ancestor opens in ONE
+ * transaction (chained), so a doubly-nested fold does not flash the middle
+ * layer open before the outer one catches up.
+ *
+ * The scroll itself waits a `requestAnimationFrame` when (and only when)
+ * something was actually expanded: an attribute change is applied to
+ * `view.state` synchronously, but the RESULTING layout (the height
+ * `scrollIntoView`'s geometry depends on, now that a `display: none` block
+ * became visible) is only guaranteed settled once the browser has painted a
+ * frame with it - scrolling before that risks measuring against the
+ * still-collapsed layout. Skipped entirely when nothing needed opening (the
+ * common case, and the ordinary already-visible click this function always
+ * handled): no reason to hold a frame for a DOM mutation that never
+ * happened.
  */
 export function focusHeading(editor: Editor, pos: number): void {
-  editor
-    .chain()
-    .focus(null, { scrollIntoView: false })
-    // +1: inside the heading's text, not on the node boundary.
-    .setTextSelection(pos + 1)
-    .run();
+  const ancestors = collapsedAncestors(editor.state.doc, pos);
+  if (ancestors.length > 0) {
+    let chain = editor.chain();
+    for (const ancestor of ancestors) chain = chain.toggleHeadingCollapse(ancestor.from);
+    chain.run();
+  }
 
-  // `pos` itself (the heading node's OWN start, not pos + 1) is what
-  // `nodeDOM` needs - it resolves the DOM node representing the document
-  // node AFTER the given position (see prosemirror-view's own doc comment
-  // on nodeDOM). Falls back to the chained command above only if it
-  // returns null (an opaque node view, or - a real possibility since this
-  // is a live collaborative document - the position no longer points at a
-  // heading by the time this runs), so a target still gets roughly on
-  // screen rather than not moving at all.
-  const dom = editor.view.nodeDOM(pos);
-  if (dom instanceof HTMLElement) {
-    dom.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const reveal = () => {
+    editor
+      .chain()
+      .focus(null, { scrollIntoView: false })
+      // +1: inside the heading's text, not on the node boundary.
+      .setTextSelection(pos + 1)
+      .run();
+
+    // `pos` itself (the heading node's OWN start, not pos + 1) is what
+    // `nodeDOM` needs - it resolves the DOM node representing the document
+    // node AFTER the given position (see prosemirror-view's own doc comment
+    // on nodeDOM). Falls back to the chained command above only if it
+    // returns null (an opaque node view, or - a real possibility since this
+    // is a live collaborative document - the position no longer points at a
+    // heading by the time this runs), so a target still gets roughly on
+    // screen rather than not moving at all.
+    const dom = editor.view.nodeDOM(pos);
+    if (dom instanceof HTMLElement) {
+      dom.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      editor.chain().scrollIntoView().run();
+    }
+  };
+
+  if (ancestors.length > 0) {
+    requestAnimationFrame(reveal);
   } else {
-    editor.chain().scrollIntoView().run();
+    reveal();
   }
 }

@@ -84,6 +84,22 @@ async function settleContentUpdate() {
   await new Promise((resolve) => setTimeout(resolve, 50));
 }
 
+function topLevel(doc: any): any[] {
+  const blocks: any[] = [];
+  doc.forEach((node: any, offset: number) => blocks.push({ node, from: offset, to: offset + node.nodeSize }));
+  return blocks;
+}
+
+/**
+ * `focusHeading` defers its scroll a `requestAnimationFrame` when (and only
+ * when) it had to expand a collapsed ancestor first - see that function's
+ * own comment. Same wait TextDocumentView.bubbleMenu.test.ts already
+ * established for an rAF-deferred update.
+ */
+async function settlePostExpandFrame() {
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
@@ -337,6 +353,197 @@ describe('mobile drawer navigation', () => {
 
     expect(editor.state.selection.from).toBe(detailsEntry.pos + 1);
     expect(wrapper.vm.outlineMobileOpen).toBe(false);
+
+    wrapper.unmount();
+  });
+});
+
+describe('navigating to a heading inside a collapsed section', () => {
+  it('target inside ONE collapsed parent: the parent auto-expands and the scroll still lands on the target', async () => {
+    const scrollSpy = vi.spyOn(Element.prototype, 'scrollIntoView');
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const [chapter] = topLevel(editor.state.doc);
+    editor.commands.toggleHeadingCollapse(chapter.from);
+    await flushPromises();
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(true);
+    scrollSpy.mockClear();
+
+    const targetRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Target');
+    wrapper.vm.navigateFromOutline(targetRow.entry.pos, targetRow.entry.id);
+    await flushPromises();
+    await settlePostExpandFrame();
+
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(targetRow.entry.pos + 1);
+    const smoothCall = scrollSpy.mock.calls.findIndex((call) => (call[0] as any)?.behavior === 'smooth');
+    expect(smoothCall).toBeGreaterThanOrEqual(0);
+    expect((scrollSpy.mock.instances[smoothCall] as HTMLElement).textContent).toBe('Target');
+
+    scrollSpy.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('target inside TWO nested collapsed parents: both expand in one go', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Details</h2><h3>Target</h3>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const [chapter, details] = topLevel(editor.state.doc);
+    editor.commands.toggleHeadingCollapse(chapter.from);
+    await flushPromises();
+    editor.commands.toggleHeadingCollapse(details.from);
+    await flushPromises();
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(true);
+    expect(editor.state.doc.nodeAt(details.from).attrs.collapsed).toBe(true);
+
+    const targetRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Target');
+    wrapper.vm.navigateFromOutline(targetRow.entry.pos, targetRow.entry.id);
+    await flushPromises();
+    await settlePostExpandFrame();
+
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.doc.nodeAt(details.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(targetRow.entry.pos + 1);
+
+    wrapper.unmount();
+  });
+
+  it('target already visible: navigating touches no collapsed state at all', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+    await settleContentUpdate();
+    // Deliberately nothing collapsed.
+
+    const targetRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Target');
+    wrapper.vm.navigateFromOutline(targetRow.entry.pos, targetRow.entry.id);
+    await flushPromises();
+
+    const [chapter] = topLevel(editor.state.doc);
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(targetRow.entry.pos + 1);
+
+    wrapper.unmount();
+  });
+
+  it('duplicate heading text, one occurrence hidden inside a collapsed section: expands the right parent and lands on the right occurrence', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent(
+      '<h1>Overview</h1><p>first section</p><h1>Chapter</h1><h2>Overview</h2><p>second section</p>',
+    );
+    await flushPromises();
+    await settleContentUpdate();
+
+    const [, , chapter] = topLevel(editor.state.doc);
+    editor.commands.toggleHeadingCollapse(chapter.from);
+    await flushPromises();
+
+    const rows = wrapper.vm.outlineVisibleRows.filter((r: any) => r.entry.text === 'Overview');
+    expect(rows).toHaveLength(2);
+    const secondOverview = rows[1];
+
+    wrapper.vm.navigateFromOutline(secondOverview.entry.pos, secondOverview.entry.id);
+    await flushPromises();
+    await settlePostExpandFrame();
+
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(secondOverview.entry.pos + 1);
+    const afterSecond = editor.state.doc.textBetween(secondOverview.entry.pos, editor.state.doc.content.size, ' ');
+    expect(afterSecond).toContain('second section');
+    expect(afterSecond).not.toContain('first section');
+
+    wrapper.unmount();
+  });
+
+  it('mobile drawer: tapping a heading hidden inside a collapsed section still expands, navigates, and closes the drawer', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const [chapter] = topLevel(editor.state.doc);
+    editor.commands.toggleHeadingCollapse(chapter.from);
+    await flushPromises();
+
+    wrapper.vm.outlineIsDesktop = false;
+    wrapper.vm.outlineMobileOpen = true;
+    await wrapper.vm.$nextTick();
+
+    const targetEntry = wrapper.vm.outlineEntries.find((e: any) => e.text === 'Target');
+    const drawerLinks = Array.from(
+      document.querySelectorAll('.text-doc-outline-drawer .text-doc-outline-link'),
+    ) as HTMLElement[];
+    const link = drawerLinks.find((el) => el.textContent === 'Target')!;
+    expect(link).toBeTruthy();
+    link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flushPromises();
+    await settlePostExpandFrame();
+
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(targetEntry.pos + 1);
+    expect(wrapper.vm.outlineMobileOpen).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('navigating UPWARD into a collapsed section works the same as downward', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2><h1>Later</h1>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const [chapter] = topLevel(editor.state.doc);
+    editor.commands.toggleHeadingCollapse(chapter.from);
+    await flushPromises();
+
+    const laterRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Later');
+    wrapper.vm.navigateFromOutline(laterRow.entry.pos, laterRow.entry.id);
+    await flushPromises();
+    expect(editor.state.selection.from).toBe(laterRow.entry.pos + 1);
+
+    // Now navigate back UP into the still-collapsed Target.
+    const targetRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Target');
+    wrapper.vm.navigateFromOutline(targetRow.entry.pos, targetRow.entry.id);
+    await flushPromises();
+    await settlePostExpandFrame();
+
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(targetRow.entry.pos + 1);
+
+    wrapper.unmount();
+  });
+
+  it('the OUTLINE\'s own chevron only folds the sidebar branch - it never touches document collapsed state or navigates', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+    await settleContentUpdate();
+
+    const chapterRow = wrapper.vm.outlineVisibleRows.find((r: any) => r.entry.text === 'Chapter');
+    const selectionBefore = editor.state.selection.from;
+
+    wrapper.vm.toggleOutlineSection(chapterRow.entry.id);
+    await wrapper.vm.$nextTick();
+
+    const [chapter] = topLevel(editor.state.doc);
+    // The SIDEBAR hid "Target" from the outline list...
+    expect(wrapper.vm.outlineVisibleRows.some((r: any) => r.entry.text === 'Target')).toBe(false);
+    // ...but the DOCUMENT's own fold state is completely untouched, and the
+    // editor's selection never moved - this was a pure sidebar UI toggle.
+    expect(editor.state.doc.nodeAt(chapter.from).attrs.collapsed).toBe(false);
+    expect(editor.state.selection.from).toBe(selectionBefore);
 
     wrapper.unmount();
   });
