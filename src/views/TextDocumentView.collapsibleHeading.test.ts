@@ -7,7 +7,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
-import { collapsedRanges } from '../text-documents/collapsible-heading';
+import { collapsedAncestors, collapsedRanges } from '../text-documents/collapsible-heading';
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'doc-1' }, fullPath: '/docs/doc-1' }),
@@ -180,6 +180,119 @@ describe('Enter on a collapsed heading', () => {
     expect(json.content.map((n: any) => n.type)).toEqual(['heading', 'paragraph', 'paragraph']);
     expect(json.content[1].content ?? null).toBeNull(); // the split-off empty paragraph, right after the heading
     expect(json.content[2].content?.[0]?.text).toBe('x');
+
+    wrapper.unmount();
+  });
+});
+
+describe('collapsedAncestors - what must be expanded to reveal a heading', () => {
+  it('finds a single collapsed parent (H1 > H2, H2 the target)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+
+    const [chapter, target] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 0); // collapse Chapter
+    await flushPromises();
+
+    const ancestors = collapsedAncestors(editor.state.doc, target.from);
+    expect(ancestors.map((a) => a.from)).toEqual([chapter.from]);
+
+    wrapper.unmount();
+  });
+
+  it('finds BOTH ancestors when nested two deep (H1 collapsed > H2 collapsed > H3 target)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Details</h2><h3>Target</h3>');
+    await flushPromises();
+
+    const [chapter, details, target] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 0);
+    await flushPromises();
+    // Positions are stable across the first toggle (attribute-only change).
+    collapseHeadingAt(wrapper, 1);
+    await flushPromises();
+
+    const ancestors = collapsedAncestors(editor.state.doc, target.from);
+    // Nearest-first: Details (the immediate parent) before Chapter.
+    expect(ancestors.map((a) => a.from)).toEqual([details.from, chapter.from]);
+
+    wrapper.unmount();
+  });
+
+  it('finds only the collapsed one when a shallower ancestor is already expanded (H1 open > H2 collapsed > H3 target)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Details</h2><h3>Target</h3>');
+    await flushPromises();
+
+    const [, details, target] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 1); // only Details, Chapter stays open
+    await flushPromises();
+
+    const ancestors = collapsedAncestors(editor.state.doc, target.from);
+    expect(ancestors.map((a) => a.from)).toEqual([details.from]);
+
+    wrapper.unmount();
+  });
+
+  it('skips a missing intermediate level (H1 collapsed, straight to H3 - no H2 in between)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h3>Target</h3>');
+    await flushPromises();
+
+    const [chapter, target] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 0);
+    await flushPromises();
+
+    const ancestors = collapsedAncestors(editor.state.doc, target.from);
+    expect(ancestors.map((a) => a.from)).toEqual([chapter.from]);
+
+    wrapper.unmount();
+  });
+
+  it('returns nothing when the target is already fully visible (no collapsed ancestor at all)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2>');
+    await flushPromises();
+    // Deliberately nothing collapsed.
+
+    const [, target] = topLevel(editor.state.doc);
+    expect(collapsedAncestors(editor.state.doc, target.from)).toEqual([]);
+
+    wrapper.unmount();
+  });
+
+  it('does not treat the target heading\'s OWN collapsed state as hiding itself', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>Chapter</h1><h2>Target</h2><p>child text</p>');
+    await flushPromises();
+
+    const [, target] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 1); // Target folds its OWN child paragraph, not itself
+    await flushPromises();
+
+    expect(collapsedAncestors(editor.state.doc, target.from)).toEqual([]);
+
+    wrapper.unmount();
+  });
+
+  it('a sibling collapsed section at the SAME level never hides a heading after it (fold ends at the next same-level heading)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<h1>First</h1><p>a</p><h1>Second</h1>');
+    await flushPromises();
+
+    const [, , second] = topLevel(editor.state.doc);
+    collapseHeadingAt(wrapper, 0); // collapse First - stops at Second, a same-level heading
+    await flushPromises();
+
+    expect(collapsedAncestors(editor.state.doc, second.from)).toEqual([]);
 
     wrapper.unmount();
   });

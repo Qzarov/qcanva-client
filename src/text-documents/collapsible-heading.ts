@@ -107,6 +107,49 @@ export function headingBlocks(doc: ProseMirrorNode): TopLevelBlock[] {
 }
 
 /**
+ * The COLLAPSED headings that hide the heading at `pos` - what a navigation
+ * caller (the outline panel, a `headingLink`) must expand before that
+ * heading's own DOM exists to scroll to at all (a `display: none` element,
+ * per `.text-doc-collapsed-block` in style.css, has nothing for
+ * `scrollIntoView` to do).
+ *
+ * "Ancestor" here is the same nesting `outline-tree.ts`'s tree uses: walking
+ * backward from `pos`, the nearest heading with a strictly lower level, then
+ * the next one lower than THAT, and so on - exactly the boundary
+ * `foldedBlocks`/`collapsedRanges` use going forward (a fold reaches until
+ * the next same-or-higher-level heading), just walked in the other
+ * direction. A level an author skipped (h1 straight to h3) does not break
+ * this: the nearest lower-level heading is still found by level comparison
+ * alone, with no assumption that ranks are consecutive.
+ *
+ * Returned nearest-first (the innermost collapsed ancestor first, the
+ * outermost last) - expanding them is order-independent (each is a
+ * zero-width `setNodeMarkup` at a fixed position, so opening one never moves
+ * another's `pos`), but a caller that only needs "is ANYTHING collapsed"
+ * reads more naturally from the closest one.
+ */
+export function collapsedAncestors(doc: ProseMirrorNode, pos: number): TopLevelBlock[] {
+  const target = headingAt(doc, pos);
+  if (!target) return [];
+
+  const blocks = topLevelBlocks(doc);
+  const targetIndex = blocks.findIndex((block) => block.from === target.from);
+  let minLevel = clampHeadingLevel(target.node.attrs.level);
+  const ancestors: TopLevelBlock[] = [];
+
+  for (let index = targetIndex - 1; index >= 0; index -= 1) {
+    const candidate = blocks[index]!;
+    if (!isHeading(candidate.node)) continue;
+    const level = clampHeadingLevel(candidate.node.attrs.level);
+    if (level >= minLevel) continue;
+    minLevel = level;
+    if (clampCollapsed(candidate.node.attrs.collapsed)) ancestors.push(candidate);
+  }
+
+  return ancestors;
+}
+
+/**
  * The chevron beside a heading.
  *
  * Inline Lucide-style svg, 24x24 stroke-width 2, from the shared glyph set -
@@ -158,9 +201,25 @@ declare module '@tiptap/core' {
   }
 }
 
-/** The heading the position sits in, or null. */
+/**
+ * The heading the position sits in, or null.
+ *
+ * Half-open (`pos < block.to`, not `<=`): two adjacent headings with nothing
+ * between them share a boundary - the first one's `to` equals the second
+ * one's `from` - and a caller resolving a heading BY that second heading's
+ * own start position (the outline panel, a `headingLink`, both always pass a
+ * heading's own `from`) needs that boundary point to resolve to the second
+ * heading, not silently match whichever heading happens to come first in
+ * `headingBlocks`. An inclusive upper bound found and matched a position
+ * caller never mentioned once - the immediately PRECEDING heading - which is
+ * exactly wrong for that lookup while still being harmless for this
+ * function's other caller (`state.selection.from`, which sits at most at
+ * `block.to - 1`, one past a heading's last character, never at `block.to`
+ * itself: the caret is never literally AT the boundary of the node it is
+ * inside).
+ */
 function headingAt(doc: ProseMirrorNode, pos: number): TopLevelBlock | null {
-  return headingBlocks(doc).find((block) => pos >= block.from && pos <= block.to) ?? null;
+  return headingBlocks(doc).find((block) => pos >= block.from && pos < block.to) ?? null;
 }
 
 /**
