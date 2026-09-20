@@ -308,7 +308,9 @@
                 v-for="row in outlineVisibleRows"
                 :key="row.entry.id"
                 class="text-doc-outline-item"
+                :class="{ 'text-doc-outline-item-active': row.entry.id === activeOutlineHeadingId }"
                 :data-level="row.entry.level"
+                :data-outline-item="row.entry.id"
               >
                 <!-- @mousedown.stop.prevent: `.stop` so grabbing the chevron
                      never also fires the link's own @mousedown right next to
@@ -343,7 +345,7 @@
                   type="button"
                   class="text-doc-outline-link"
                   @mousedown.prevent
-                  @click="navigateFromOutline(row.entry.pos)"
+                  @click="navigateFromOutline(row.entry.pos, row.entry.id)"
                   @mouseenter="onOutlineLinkHover($event)"
                 >
                   {{ row.entry.text || outlineLabels.empty }}
@@ -473,7 +475,7 @@
             <li v-for="entry in outlineEntries" :key="entry.id" class="text-doc-outline-item" :data-level="entry.level">
               <!-- @mousedown/@click split, same reasoning as the desktop
                    panel's own outline link. -->
-              <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos)">
+              <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos, entry.id)">
                 {{ entry.text || outlineLabels.empty }}
               </button>
             </li>
@@ -1338,10 +1340,54 @@ export default defineComponent({
       outlineCollapsedSections.value = next;
     }
 
-    function navigateFromOutline(pos: number): void {
+    /**
+     * Which outline row is "active" - the one last navigated to FROM the
+     * outline itself. Not a continuous scroll-spy (this editor has no
+     * IntersectionObserver watching every heading as the document scrolls):
+     * a reader picking a heading gets a persistent marker of where they
+     * told the outline to take them, which is what "existing highlight"
+     * meant to preserve here, given no prior turn actually built a
+     * continuous one - see this task's own summary for that judgment call.
+     */
+    const activeOutlineHeadingId = ref<string | null>(null);
+
+    /**
+     * Brings the outline's own list item into view within the SIDEBAR's own
+     * scroll area - deliberately NOT `Element.scrollIntoView` (which
+     * `scrollHighlightedIntoView` below already wraps for the slash/mention
+     * menus): found live that calling `scrollIntoView` a SECOND time, even
+     * with `block: 'nearest'`, even on this totally unrelated scroll
+     * container (the outline panel's own list, never the document), reliably
+     * CANCELS a smooth `scrollIntoView` already animating elsewhere (the
+     * heading's own, from `focusHeading`) - a real Chromium scroll-queue
+     * quirk, confirmed by removing this call entirely and watching the
+     * heading scroll land correctly. Deferring it (`nextTick`, even a full
+     * `requestAnimationFrame`) narrowed but never fully closed the window.
+     * A plain `scrollTop` assignment doesn't touch that queue at all, so it
+     * can never re-trigger the interference regardless of timing.
+     */
+    function scrollOutlineItemIntoView(headingId: string): void {
+      const container = document.querySelector('.text-doc-outline-panel-inner');
+      const item = document.querySelector(`[data-outline-item="${headingId}"]`);
+      if (!(container instanceof HTMLElement) || !(item instanceof HTMLElement)) return;
+      const itemTop = item.offsetTop;
+      const itemBottom = itemTop + item.offsetHeight;
+      if (itemTop < container.scrollTop) {
+        container.scrollTop = itemTop;
+      } else if (itemBottom > container.scrollTop + container.clientHeight) {
+        container.scrollTop = itemBottom - container.clientHeight;
+      }
+    }
+
+    function navigateFromOutline(pos: number, headingId: string): void {
       if (!editor.value) return;
       focusHeading(editor.value, pos);
-      if (!outlineIsDesktop.value) outlineMobileOpen.value = false;
+      activeOutlineHeadingId.value = headingId;
+      if (!outlineIsDesktop.value) {
+        outlineMobileOpen.value = false;
+        return;
+      }
+      void nextTick(() => scrollOutlineItemIntoView(headingId));
     }
 
     /**
@@ -2934,6 +2980,7 @@ export default defineComponent({
       outlineCollapsedSections,
       outlineWidth,
       outlineResizing,
+      activeOutlineHeadingId,
       outlineLabels,
       toggleOutlinePanel,
       closeOutlineMobile,

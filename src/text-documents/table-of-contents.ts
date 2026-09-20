@@ -185,13 +185,53 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
  * the one already-mounted view. Exported for the outline panel and
  * `headingLink`'s click handler, both of which resolve a target's `pos`
  * their own way before calling this.
+ *
+ * SCROLLING is the native `Element.scrollIntoView`, not ProseMirror's own
+ * chained `.scrollIntoView()` command - found root-causing a report that
+ * navigating to a heading ABOVE the current scroll position landed it
+ * directly behind `.text-doc-topbar`'s sticky ~65px header (reproduced
+ * live: the heading's own rect.top measured well under the topbar's
+ * height). ProseMirror's command computes its own "is this in view"
+ * viewport math with no notion of a sticky element overlaying part of that
+ * viewport; the native call instead respects `scroll-margin-top` (set on
+ * headings in style.css), which is exactly the mechanism CSS provides for
+ * this - a fixed/sticky header offset - and gets real smooth scrolling
+ * (`behavior: 'smooth'`) for free, on whichever ancestor actually scrolls
+ * (`.text-doc-page`, not `window` - this editor is not the page's only
+ * scrollable element).
+ *
+ * `focus(null, { scrollIntoView: false })`, not a bare `.focus()`: tiptap's
+ * own focus command defaults `scrollIntoView` to `true` and, if left on,
+ * runs ProseMirror's OWN scroll-into-view internally (deferred a frame via
+ * `requestAnimationFrame` - see @tiptap/core's own focus command) - a
+ * SECOND, competing scroll call with exactly the sticky-header blindness
+ * described above. Caught live: it did not just leave the wrong final
+ * position, it silently cancelled the native smooth scroll below outright
+ * for every UPWARD navigation, leaving `.text-doc-page`'s scrollTop
+ * completely unchanged - reproduced by comparing a bare
+ * `heading.scrollIntoView(...)` (worked) against the exact same call
+ * preceded by a plain `.focus()` (did not).
  */
 export function focusHeading(editor: Editor, pos: number): void {
   editor
     .chain()
-    .focus()
+    .focus(null, { scrollIntoView: false })
     // +1: inside the heading's text, not on the node boundary.
     .setTextSelection(pos + 1)
-    .scrollIntoView()
     .run();
+
+  // `pos` itself (the heading node's OWN start, not pos + 1) is what
+  // `nodeDOM` needs - it resolves the DOM node representing the document
+  // node AFTER the given position (see prosemirror-view's own doc comment
+  // on nodeDOM). Falls back to the chained command above only if it
+  // returns null (an opaque node view, or - a real possibility since this
+  // is a live collaborative document - the position no longer points at a
+  // heading by the time this runs), so a target still gets roughly on
+  // screen rather than not moving at all.
+  const dom = editor.view.nodeDOM(pos);
+  if (dom instanceof HTMLElement) {
+    dom.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else {
+    editor.chain().scrollIntoView().run();
+  }
 }

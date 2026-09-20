@@ -6098,6 +6098,17 @@ body {
   background: var(--ui-surface-subtle);
 }
 
+/* The row last navigated to FROM the outline (activeOutlineHeadingId in
+   TextDocumentView.vue) - a persistent "you picked this one" marker, not a
+   continuous scroll-spy (see that ref's own comment for why). Desktop panel
+   only: the mobile drawer closes the instant a pick is made, so it would
+   never actually be seen there. */
+.text-doc-outline-panel .text-doc-outline-item-active .text-doc-outline-link {
+  background: var(--ui-brand-soft);
+  color: var(--ui-accent-strong);
+  font-weight: 600;
+}
+
 /* DESKTOP PANEL ONLY: one line, ellipsized - never a horizontal scrollbar
    on the panel itself. A native title tooltip is set on hover (see
    onOutlineLinkHover in TextDocumentView.vue), and ONLY when this actually
@@ -6299,6 +6310,15 @@ body.text-doc-outline-resizing {
 .text-doc-paper .ProseMirror h6 {
   margin: 1.1em 0 0.45em;
   line-height: 1.2;
+  /* .text-doc-topbar is `position: sticky` and ~56-65px tall - a heading
+     scrolled to the very top of its scroll container (.text-doc-page, see
+     that rule's own comment) lands directly BEHIND it, not merely near it,
+     since the topbar overlays the top of the SAME scroll area rather than
+     pushing content down. Native `Element.scrollIntoView` (used by
+     `focusHeading` in table-of-contents.ts) respects this automatically;
+     ProseMirror's own `scrollIntoView` command does not, which is why
+     `focusHeading` was rewritten to call the native one directly. */
+  scroll-margin-top: 80px;
 }
 
 /* No font-size was ever set for headings here, so they fell back to the
