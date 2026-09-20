@@ -277,6 +277,92 @@ describe('drag handle wiring', () => {
   });
 });
 
+describe('native text-selection drag is refused, block-handle drag is not', () => {
+  /**
+   * jsdom does not implement `DataTransfer`, so a real `dragstart` (which
+   * browsers fire with one attached) cannot be dispatched here - only
+   * whether `handleDOMEvents.dragstart` itself calls `preventDefault()`
+   * given a certain `view.state.selection`, which is exactly what decides
+   * whether the browser's native "drag this selection" gesture proceeds.
+   * The actual end-to-end gesture (select text, try to drag it, watch
+   * nothing happen) is live-browser-only - see this file's own header on
+   * why the pointer gesture generally cannot be driven here.
+   */
+  function dispatchDragstart(editor: any): { defaultPrevented: boolean } {
+    const event = new Event('dragstart', { bubbles: true, cancelable: true }) as DragEvent;
+    editor.view.dom.dispatchEvent(event);
+    return { defaultPrevented: event.defaultPrevented };
+  }
+
+  it('refuses a dragstart while a non-empty TextSelection (highlighted text) is active', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>Drag me if you can</p>');
+    editor.commands.setTextSelection({ from: 1, to: 10 });
+    await flushPromises();
+    expect(editor.state.selection.empty).toBe(false);
+
+    const { defaultPrevented } = dispatchDragstart(editor);
+    expect(defaultPrevented).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('does NOT refuse a dragstart with an empty selection (a plain caret, nothing highlighted to drag)', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>Just a caret here</p>');
+    editor.commands.setTextSelection(1);
+    await flushPromises();
+    expect(editor.state.selection.empty).toBe(true);
+
+    const { defaultPrevented } = dispatchDragstart(editor);
+    expect(defaultPrevented).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('does NOT refuse a dragstart while a NodeSelection is active - the block handle\'s own drag must keep working', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>alpha</p><p>beta</p>');
+    await flushPromises();
+
+    // The exact selection type @tiptap/extension-drag-handle's own
+    // dragHandler sets (via NodeRangeSelection, a NodeSelection subclass)
+    // right before its own dragstart fires - see dragBlockToEnd above for
+    // the same construction.
+    const before = posBeforeBlock(editor.state.doc, 0);
+    const ranges = getSelectionRanges(editor.state.doc.resolve(before), editor.state.doc.resolve(before + 1), 0);
+    const selection = NodeRangeSelection.create(editor.state.doc, ranges[0]!.$from.pos, ranges[ranges.length - 1]!.$to.pos);
+    editor.view.dispatch(editor.state.tr.setSelection(selection));
+
+    const { defaultPrevented } = dispatchDragstart(editor);
+    expect(defaultPrevented).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('leaves ordinary text selection itself completely alone - selecting is not what gets refused, only dragging it', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>Select this whole sentence please</p>');
+    editor.commands.setTextSelection({ from: 1, to: 20 });
+    await flushPromises();
+
+    expect(editor.state.selection.empty).toBe(false);
+    expect(editor.state.doc.textBetween(editor.state.selection.from, editor.state.selection.to)).toBe(
+      'Select this whole s',
+    );
+    // Selecting/formatting never touches dragstart at all - this is the
+    // OTHER half of "does not break copy/paste/links/inline formatting".
+    editor.chain().focus().toggleBold().run();
+    expect(editor.getHTML()).toContain('<strong>');
+
+    wrapper.unmount();
+  });
+});
+
 describe('reordering a block under the CRDT', () => {
   it('reorders the block and emits Yjs updates for the delete and the insert', async () => {
     const wrapper = await mountEditableDoc();
@@ -359,6 +445,32 @@ describe('reordering a block under the CRDT', () => {
     expect(doc.child(1).attrs.variant).toBe('warning');
     expect(doc.child(1).childCount).toBe(1);
     expect(editor.getHTML()).toContain('<aside data-variant="warning"><p>careful</p></aside>');
+
+    wrapper.unmount();
+  });
+
+  it('reorders a Table Block as one whole unit, without losing rows/cells or splitting it apart', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>before</p><table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>');
+    await flushPromises();
+
+    dragBlockToEnd(editor, 1); // the table is the second top-level block
+    await flushPromises();
+
+    const doc = editor.state.doc;
+    expect(doc.childCount).toBe(2);
+    expect(doc.child(0).type.name).toBe('paragraph');
+    expect(doc.child(1).type.name).toBe('table');
+    // Whole table, not a lone row/cell dragged out from inside it - both
+    // rows and all four cells rode along together.
+    expect(doc.child(1).childCount).toBe(2);
+    doc.child(1).forEach((row: any) => expect(row.childCount).toBe(2));
+    expect(editor.getText()).toContain('a1');
+    expect(editor.getText()).toContain('b2');
+
+    const replica = replicaFromSentUpdates();
+    expect(String(replica.getXmlFragment('default'))).toContain('table');
 
     wrapper.unmount();
   });

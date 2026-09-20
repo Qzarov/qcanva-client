@@ -815,6 +815,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
+import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
@@ -2396,6 +2397,36 @@ export default defineComponent({
       },
       editorProps: {
         handleClick: (_view, _pos, event) => handleEditorLinkClick(event),
+        handleDOMEvents: {
+          /**
+           * Refuses the browser's own "drag this selection" behaviour:
+           * highlighted text is native-draggable by default in every
+           * browser, no `draggable` attribute needed, and there is no CSS
+           * property that turns it off without also breaking selection
+           * itself (`user-select: none` would). Block reordering must go
+           * through the drag handle only (@tiptap/extension-drag-handle's
+           * own `dragstart` listener, bound to the SEPARATE handle element
+           * this editor renders OUTSIDE `view.dom` - see renderDragHandle
+           * above) - entirely unaffected by this, since it never reaches
+           * this handler at all.
+           *
+           * Scoped to a non-empty TextSelection specifically: a
+           * NodeSelection (what the handle's own drag sets up on THIS
+           * view's selection before its native dragstart fires) is left
+           * alone, falling through to ProseMirror's own handling - the
+           * one thing this must never block. Copy/paste, links and inline
+           * formatting never go through `dragstart` at all, so none of
+           * them are touched by this.
+           */
+          dragstart: (view, event) => {
+            const { selection } = view.state;
+            if (selection instanceof TextSelection && !selection.empty) {
+              event.preventDefault();
+              return true;
+            }
+            return false;
+          },
+        },
       },
     });
 
