@@ -42,6 +42,15 @@
             :aria-label="t('redo')"
             @click="redoEdit"
           ><Redo2 :size="17" aria-hidden="true" /></button>
+          <button
+            type="button"
+            class="btn-ghost text-doc-outline-btn"
+            :class="{ active: outlinePanelOpen }"
+            :title="outlineLabels.toggle"
+            :aria-label="outlineLabels.toggle"
+            :aria-pressed="outlinePanelOpen"
+            @click="toggleOutlinePanel"
+          ><ListTree :size="17" aria-hidden="true" /></button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
@@ -66,6 +75,7 @@
             <Teleport to="body">
               <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
               <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
+                <button type="button" class="text-doc-menu-item" @click="toggleOutlinePanelFromDocMenu">{{ outlineLabels.toggle }}</button>
                 <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('share') }}</button>
                 <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
                 <button type="button" class="text-doc-menu-item" @click="copyDocumentLinkFromDocMenu">{{ t('copyLink') }}</button>
@@ -269,6 +279,39 @@
         @change="onImageSelected"
       />
 
+      <!--
+        OUTLINE PANEL (auto-generated, separate from the manually-inserted
+        `tableOfContents` block below). Desktop: a persistent sidebar
+        alongside .text-doc-editor-shell, in a shared flex row so the shell
+        re-centers itself in whatever space remains (see .text-doc-body's own
+        CSS comment). Mobile/narrow: no sidebar at all - see the Teleported
+        drawer variant further down, opened by the header button instead.
+      -->
+      <div class="text-doc-body">
+        <aside
+          v-if="outlineIsDesktop"
+          class="text-doc-outline-panel"
+          :class="{ 'text-doc-outline-panel-collapsed': !outlinePanelOpen }"
+          :aria-label="outlineLabels.title"
+        >
+          <div class="text-doc-outline-panel-inner">
+            <div class="text-doc-outline-panel-title">{{ outlineLabels.title }}</div>
+            <ol v-if="outlineEntries.length" class="text-doc-outline-list">
+              <li
+                v-for="entry in outlineEntries"
+                :key="entry.id"
+                class="text-doc-outline-item"
+                :data-level="entry.level"
+              >
+                <button type="button" class="text-doc-outline-link" @mousedown.prevent="navigateFromOutline(entry.pos)">
+                  {{ entry.text || outlineLabels.empty }}
+                </button>
+              </li>
+            </ol>
+            <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
+          </div>
+        </aside>
+
       <main class="text-doc-editor-shell">
         <article
           class="text-doc-paper"
@@ -357,6 +400,29 @@
           </div>
         </section>
       </main>
+      </div>
+
+      <!--
+        MOBILE/NARROW outline drawer - same backdrop+Escape primitive as the
+        Share sheet and link editor sheet (front task 6's "use the existing
+        primitive" rule), teleported for the same reason the doc-menu
+        popover is: the topbar's own backdrop-filter makes it a stacking
+        context, so a plain child z-index cannot win against it.
+      -->
+      <Teleport to="body">
+        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer-backdrop" @click="closeOutlineMobile"></div>
+        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer" role="dialog" :aria-label="outlineLabels.title">
+          <div class="text-doc-outline-drawer-title">{{ outlineLabels.title }}</div>
+          <ol v-if="outlineEntries.length" class="text-doc-outline-list">
+            <li v-for="entry in outlineEntries" :key="entry.id" class="text-doc-outline-item" :data-level="entry.level">
+              <button type="button" class="text-doc-outline-link" @mousedown.prevent="navigateFromOutline(entry.pos)">
+                {{ entry.text || outlineLabels.empty }}
+              </button>
+            </li>
+          </ol>
+          <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
+        </div>
+      </Teleport>
 
       <!--
         The access-request dialog (ruling R3): one component for both an
@@ -575,10 +641,10 @@
       >
         <button
           v-for="(item, index) in mentionItems"
-          :key="item.kind === 'document' ? item.id : 'create'"
+          :key="item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create'"
           class="text-doc-mention-item"
           :class="{ active: index === mentionIndex }"
-          :data-mention-item="item.kind === 'document' ? item.id : 'create'"
+          :data-mention-item="item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create'"
           role="option"
           :aria-selected="index === mentionIndex"
           type="button"
@@ -588,6 +654,10 @@
           <template v-if="item.kind === 'document'">
             <span class="text-doc-mention-item-icon" v-html="mentionDocumentIcon"></span>
             <span class="text-doc-mention-item-label">{{ item.title }}</span>
+          </template>
+          <template v-else-if="item.kind === 'heading'">
+            <span class="text-doc-mention-item-icon" v-html="mentionHeadingIcon"></span>
+            <span class="text-doc-mention-item-label">{{ item.label || t('untitledHeading') }}</span>
           </template>
           <template v-else>
             <span class="text-doc-mention-item-icon" v-html="mentionCreateIcon"></span>
@@ -644,7 +714,9 @@ import Image from '@tiptap/extension-image';
 import TaskItem from '@tiptap/extension-task-item';
 import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
-import { TableOfContents, type TableOfContentsLabels } from '../text-documents/table-of-contents';
+import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
+import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
+import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
   SlashMenu,
@@ -695,10 +767,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -826,6 +898,7 @@ export default defineComponent({
       }
     }
     const copyDocumentLinkFromDocMenu = () => { closeDocMenu(); void copyDocumentLink(); };
+    const toggleOutlinePanelFromDocMenu = () => { closeDocMenu(); toggleOutlinePanel(); };
 
     /**
      * COPY LINK ROW (front task: the whole row is the control now, no
@@ -1023,6 +1096,136 @@ export default defineComponent({
     };
     paintI18nLabels();
     watch(locale, paintI18nLabels);
+
+    /**
+     * OUTLINE PANEL (auto-generated, separate from the manually-inserted
+     * `tableOfContents` block above - both stay, see the design discussion
+     * this shipped from).
+     *
+     * Desktop ("there's room" = the viewport is wide enough that a 240px
+     * sidebar and the paper's own 920px reading width both fit without
+     * squeezing either uncomfortably): a persistent sidebar, open by
+     * default, collapsible - the collapse choice is a per-browser UI
+     * preference (`localStorage`, never the document), same reasoning as
+     * `useTheme.ts`'s own preference storage.
+     *
+     * Narrower than that (including mobile): no sidebar at all - opened via
+     * the header's outline button as a bottom-sheet-style overlay, closed
+     * again by the backdrop, Escape, or picking a heading.
+     */
+    const OUTLINE_DESKTOP_MIN_WIDTH = 1100;
+    const OUTLINE_COLLAPSED_STORAGE_KEY = 'qcanva-outline-collapsed';
+
+    function readOutlineCollapsedPref(): boolean {
+      try {
+        return localStorage.getItem(OUTLINE_COLLAPSED_STORAGE_KEY) === '1';
+      } catch {
+        return false;
+      }
+    }
+    function writeOutlineCollapsedPref(collapsed: boolean): void {
+      try {
+        localStorage.setItem(OUTLINE_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+      } catch {
+        // Best-effort only, same as useTheme.ts's own storage guard - a
+        // blocked/full localStorage must not break the toggle itself.
+      }
+    }
+
+    const outlineIsDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH : true);
+    const outlineCollapsedPref = ref(readOutlineCollapsedPref());
+    const outlineMobileOpen = ref(false);
+
+    function updateOutlineIsDesktop(): void {
+      outlineIsDesktop.value = window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH;
+    }
+    onMounted(() => window.addEventListener('resize', updateOutlineIsDesktop));
+    onBeforeUnmount(() => window.removeEventListener('resize', updateOutlineIsDesktop));
+
+    /** Visible right now, on WHICHEVER breakpoint currently applies. */
+    const outlinePanelOpen = computed(() => (outlineIsDesktop.value ? !outlineCollapsedPref.value : outlineMobileOpen.value));
+
+    function toggleOutlinePanel(): void {
+      if (outlineIsDesktop.value) {
+        outlineCollapsedPref.value = !outlineCollapsedPref.value;
+        writeOutlineCollapsedPref(outlineCollapsedPref.value);
+        return;
+      }
+      outlineMobileOpen.value = !outlineMobileOpen.value;
+    }
+    function closeOutlineMobile(): void {
+      outlineMobileOpen.value = false;
+    }
+    const onOutlineMobileEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeOutlineMobile();
+    };
+    watch(outlineMobileOpen, (open) => {
+      if (open) window.addEventListener('keydown', onOutlineMobileEscape);
+      else window.removeEventListener('keydown', onOutlineMobileEscape);
+    });
+    onBeforeUnmount(() => window.removeEventListener('keydown', onOutlineMobileEscape));
+
+    /**
+     * The live outline this panel and the in-document `tableOfContents`
+     * block both draw from - `documentOutline` is a pure read of
+     * `editor.state.doc`, so `editorTransactionTick` is what actually makes
+     * this recompute (see the UNDO/REDO section's own comment on why that
+     * ref exists at all).
+     */
+    const outlineEntries = computed(() => {
+      void editorTransactionTick.value;
+      return editor.value ? documentOutline(editor.value.state.doc) : [];
+    });
+
+    function navigateFromOutline(pos: number): void {
+      if (!editor.value) return;
+      focusHeading(editor.value, pos);
+      if (!outlineIsDesktop.value) outlineMobileOpen.value = false;
+    }
+
+    const outlineLabels = { title: '', empty: '', toggle: '' };
+    const paintOutlineLabels = () => {
+      outlineLabels.title = t('outlineTitle');
+      outlineLabels.empty = t('outlineEmpty');
+      outlineLabels.toggle = t('outlineToggle');
+    };
+    paintOutlineLabels();
+    watch(locale, paintOutlineLabels);
+
+    /** Scrolls to and selects the heading `headingId` names, in THIS document only (see heading-id.ts). */
+    function navigateToHeadingLink(headingId: string): void {
+      if (!editor.value) return;
+      const target = findHeadingById(editor.value.state.doc, headingId);
+      if (target) focusHeading(editor.value, target.pos);
+    }
+
+    const headingLinkNodeLabels = { deleted: '' };
+    const paintHeadingLinkNodeLabels = () => {
+      headingLinkNodeLabels.deleted = t('headingLinkDeletedTooltip');
+    };
+    paintHeadingLinkNodeLabels();
+    watch(locale, paintHeadingLinkNodeLabels);
+
+    /**
+     * Powers the `@`-mention picker's heading section (mention-menu.ts).
+     * Client-side and synchronous, unlike `searchMentionCandidates` above:
+     * the candidates are THIS document's own headings, already loaded in
+     * this editor, never a server search - see heading-id.ts's file comment
+     * on why this stays same-document-only.
+     *
+     * `ensureHeadingIds` runs first so a heading typed moments ago (still
+     * missing an id - see that function's own comment) is still offered and
+     * insertable, not silently missing from the list until some unrelated
+     * later edit happens to backfill it.
+     */
+    function searchHeadings(query: string): Array<{ headingId: string; label: string }> {
+      if (!editor.value?.state) return [];
+      ensureHeadingIds(editor.value);
+      const entries = headingIdEntries(editor.value.state.doc);
+      const normalizedQuery = query.trim().toLowerCase();
+      if (!normalizedQuery) return entries;
+      return entries.filter((entry) => entry.label.toLowerCase().includes(normalizedQuery));
+    }
 
     /**
      * BUBBLE MENU state.
@@ -1480,7 +1683,7 @@ export default defineComponent({
     watch(mentionIndex, () => {
       const item = mentionItems.value[mentionIndex.value];
       if (!item) return;
-      const value = item.kind === 'document' ? item.id : 'create';
+      const value = item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create';
       void scrollHighlightedIntoView(`[data-mention-item="${value}"]`);
     });
 
@@ -1853,6 +2056,14 @@ export default defineComponent({
         // attribute and not a second heading node).
         CollapsibleHeading.configure({ labels: headingCollapseLabels }),
         TableOfContents.configure({ labels: tableOfContentsLabels }),
+        // Adds the stable `headingId` a headingLink resolves against - see
+        // heading-id.ts's file comment for why this is separate from the
+        // derived, text-based anchor collapsibleHeading/TableOfContents use.
+        HeadingId,
+        HeadingLink.configure({
+          onNavigate: navigateToHeadingLink,
+          labels: headingLinkNodeLabels,
+        }),
         SlashMenu.configure({
           controller: slashController,
           label: slashLabel,
@@ -1869,6 +2080,7 @@ export default defineComponent({
         MentionMenu.configure({
           controller: mentionController,
           search: searchMentionCandidates,
+          searchHeadings,
           onCreatePage: (query, context) => void handleMentionCreatePage(query, context),
         }),
         NodeRange,
@@ -1939,6 +2151,7 @@ export default defineComponent({
       onCreate: ({ editor: createdEditor }) => {
         refreshBlockCount();
         ensureRedoTracked(createdEditor);
+        ensureHeadingIds(createdEditor);
       },
       // Fires for a remote collaborator's change as well as this user's, so
       // the count is the document's, not this keyboard's.
@@ -2447,6 +2660,7 @@ export default defineComponent({
       toggleBacklinksExpanded,
       onBacklinkClick,
       mentionDocumentIcon: lucideIcon(EDITOR_GLYPHS.fileText),
+      mentionHeadingIcon: lucideIcon(EDITOR_GLYPHS.listTree),
       mentionCreateIcon: lucideIcon(EDITOR_GLYPHS.filePlus),
       linkEditorOpen,
       linkEditorHadLink,
@@ -2524,6 +2738,15 @@ export default defineComponent({
       documentUrl,
       copyDocumentLink,
       copyDocumentLinkFromDocMenu,
+      toggleOutlinePanelFromDocMenu,
+      outlinePanelOpen,
+      outlineIsDesktop,
+      outlineMobileOpen,
+      outlineEntries,
+      outlineLabels,
+      toggleOutlinePanel,
+      closeOutlineMobile,
+      navigateFromOutline,
       linkRowCopied,
       copyDocumentLinkFromRow,
       slugInput,

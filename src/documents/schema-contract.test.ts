@@ -55,8 +55,9 @@ describe('schema contract', () => {
   });
 
   it('lists one record per node, per mark, per declared value set and per limit', () => {
-    // 21 DOCUMENT_NODES entries (17 + table/tableRow/tableHeader/tableCell)
-    // + 6 MARK_TAGS entries + 1 attrValues entry + 2 capacity entries.
-    expect(canonicalSchema().split('\n')).toHaveLength(30);
+    // 22 DOCUMENT_NODES entries (17 + table/tableRow/tableHeader/tableCell +
+    // headingLink) + 6 MARK_TAGS entries + 1 attrValues entry + 2 capacity
+    // entries.
+    expect(canonicalSchema().split('\n')).toHaveLength(31);
   });
 });

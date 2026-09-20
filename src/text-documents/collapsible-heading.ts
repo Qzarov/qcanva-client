@@ -55,16 +55,36 @@ function isHeading(node: ProseMirrorNode): boolean {
 }
 
 /**
- * The blocks a collapsed heading hides: everything after it up to the next
- * heading of the same or a higher level.
+ * The blocks a heading at `blocks[index]` of the given `level` would fold:
+ * everything after it up to the next heading of the same or a higher level.
  *
  * "Higher level" means a SMALLER number - an h1 is higher than an h2 - so
  * folding an h2 stops at the next h2 or h1 and swallows the h3s in between,
- * which is the nesting a reader expects. Exported as a pure function over the
- * document so the rule can be asserted directly rather than through the DOM.
+ * which is the nesting a reader expects. The ONE place this rule is written
+ * out: `collapsedRanges` (what a closed fold hides) and `foldEnd` (where a
+ * closed fold's content resumes - see the `Enter` shortcut below) both call
+ * this rather than each re-deriving "how far does a fold reach", which is
+ * exactly the kind of rule two independent copies could quietly disagree on.
+ */
+function foldedBlocks(blocks: TopLevelBlock[], index: number, level: number): TopLevelBlock[] {
+  const covered: TopLevelBlock[] = [];
+  for (let next = index + 1; next < blocks.length; next += 1) {
+    const candidate = blocks[next];
+    if (!candidate) break;
+    if (isHeading(candidate.node) && clampHeadingLevel(candidate.node.attrs.level) <= level) break;
+    covered.push(candidate);
+  }
+
+  return covered;
+}
+
+/**
+ * The blocks a collapsed heading hides, across the WHOLE document.
  *
- * Ranges from two nested folds can cover the same block; they are keyed by
- * start position so the same block is never decorated twice.
+ * Exported as a pure function over the document so the rule can be asserted
+ * directly rather than through the DOM. Ranges from two nested folds can
+ * cover the same block; they are keyed by start position so the same block
+ * is never decorated twice.
  */
 export function collapsedRanges(doc: ProseMirrorNode): { from: number; to: number }[] {
   const blocks = topLevelBlocks(doc);
@@ -73,13 +93,7 @@ export function collapsedRanges(doc: ProseMirrorNode): { from: number; to: numbe
   blocks.forEach((block, index) => {
     if (!isHeading(block.node) || !clampCollapsed(block.node.attrs.collapsed)) return;
     const level = clampHeadingLevel(block.node.attrs.level);
-
-    for (let next = index + 1; next < blocks.length; next += 1) {
-      const candidate = blocks[next];
-      if (!candidate) break;
-      if (isHeading(candidate.node) && clampHeadingLevel(candidate.node.attrs.level) <= level) {
-        break;
-      }
+    for (const candidate of foldedBlocks(blocks, index, level)) {
       hidden.set(candidate.from, { from: candidate.from, to: candidate.to });
     }
   });
@@ -149,6 +163,23 @@ function headingAt(doc: ProseMirrorNode, pos: number): TopLevelBlock | null {
   return headingBlocks(doc).find((block) => pos >= block.from && pos <= block.to) ?? null;
 }
 
+/**
+ * The position right after the LAST block `heading`'s own fold covers - its
+ * own end if collapsing it would hide nothing. A fold's END is exactly
+ * where a reader visibly resumes once it is collapsed, which is exactly
+ * where pressing Enter on a collapsed heading needs to land - see the
+ * `Enter` shortcut below.
+ */
+function foldEnd(doc: ProseMirrorNode, heading: TopLevelBlock): number {
+  const blocks = topLevelBlocks(doc);
+  const index = blocks.findIndex((block) => block.from === heading.from);
+  const level = clampHeadingLevel(heading.node.attrs.level);
+  const covered = foldedBlocks(blocks, index, level);
+  const last = covered[covered.length - 1];
+
+  return last ? last.to : heading.to;
+}
+
 export const CollapsibleHeading = Extension.create<CollapsibleHeadingOptions>({
   name: 'collapsibleHeading',
 
@@ -207,6 +238,55 @@ export const CollapsibleHeading = Extension.create<CollapsibleHeadingOptions>({
 
           return true;
         },
+    };
+  },
+
+  /**
+   * Enter inside a COLLAPSED heading (reported bug: the heading looked like
+   * it "stayed collapsed" and swallowed whatever was typed next). The
+   * default `splitBlock` command inserts the new block immediately after
+   * the heading, which is exactly the first position `collapsedRanges`
+   * hides while the fold is closed - the new line was never lost, only
+   * invisible.
+   *
+   * Inserting somewhere ELSE inside the same still-collapsed range is not
+   * enough on its own: `collapsedRanges` hides the WHOLE span between the
+   * heading and the next same-or-higher-level heading, regardless of where
+   * within it something new lands - a first version of this fix that only
+   * moved the insertion point to `foldEnd` learned that the hard way (a
+   * test asserting the new paragraph stayed OUT of `collapsedRanges` caught
+   * it: it didn't). So this EXPANDS the heading in the same transaction
+   * (mirrors `toggleHeadingCollapse`'s own `setNodeMarkup`) and inserts the
+   * new paragraph at the fold's END (`foldEnd`) - a reader sees the whole
+   * previously-hidden section unfold, with their new empty line sitting
+   * right after it, which is what "add a line under this (collapsed)
+   * block" means once there is nothing left collapsed to hide it in.
+   *
+   * Falls through to the default behaviour (`return false`) whenever the
+   * heading under the caret is not collapsed, or the selection is a range -
+   * ordinary mid-heading splitting is unaffected.
+   */
+  addKeyboardShortcuts() {
+    return {
+      Enter: () => {
+        const { state } = this.editor;
+        if (!state.selection.empty) return false;
+        const target = headingAt(state.doc, state.selection.from);
+        if (!target || !clampCollapsed(target.node.attrs.collapsed)) return false;
+
+        const insertPos = foldEnd(state.doc, target);
+
+        return this.editor
+          .chain()
+          .command(({ tr, dispatch }) => {
+            if (dispatch) tr.setNodeMarkup(target.from, undefined, { ...target.node.attrs, collapsed: false });
+            return true;
+          })
+          .insertContentAt(insertPos, { type: 'paragraph' })
+          .setTextSelection(insertPos + 1)
+          .scrollIntoView()
+          .run();
+      },
     };
   },
 

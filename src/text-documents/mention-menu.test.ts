@@ -35,4 +35,23 @@ describe('mention menu item builder', () => {
   it('offers "create page" even for an empty query, carrying the empty text', () => {
     expect(buildMentionMenuItems([], '')).toEqual<MentionMenuItem[]>([{ kind: 'create', query: '' }]);
   });
+
+  it('lists this document\'s own matching headings BEFORE other documents, then "create page" last', () => {
+    const items = buildMentionMenuItems(
+      [{ id: 'doc-1', title: 'Roadmap' }],
+      'road',
+      [{ headingId: 'h-1', label: 'Roadmap Overview' }],
+    );
+
+    expect(items).toEqual<MentionMenuItem[]>([
+      { kind: 'heading', headingId: 'h-1', label: 'Roadmap Overview' },
+      { kind: 'document', id: 'doc-1', title: 'Roadmap' },
+      { kind: 'create', query: 'road' },
+    ]);
+  });
+
+  it('omits the heading section entirely when nothing in this document matched', () => {
+    const items = buildMentionMenuItems([{ id: 'doc-1', title: 'Roadmap' }], 'road', []);
+    expect(items.filter((item) => item.kind === 'heading')).toEqual([]);
+  });
 });

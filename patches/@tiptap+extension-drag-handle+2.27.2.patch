@@ -1,19 +1,42 @@
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-index be31c0d..adcbbee 100644
+index be31c0d..bd38a61 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-@@ -378,6 +378,8 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -218,6 +218,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+     let currentNode = null;
+     let currentNodePos = -1;
+     let currentNodeRelPos;
++    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
++    // handle visible a little longer than an instant mouseleave would.
++    let hideTimeoutId = null;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 350;
+     element.addEventListener('dragstart', e => {
+         // Push this to the end of the event cue
+         // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
+@@ -378,6 +382,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
 +                    // See index.js for why this reset is required.
 +                    popup = null;
++                    // A pending delayed hide (see mouseleave below) firing after the
++                    // view is gone would touch a destroyed popup/editor.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -389,6 +391,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -388,7 +400,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+             handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
++                        // Deliberately immediate - see index.js for why.
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                            hideTimeoutId = null;
++                        }
                          popup.hide();
 +                        // See index.js for why this reset is required.
 +                        currentNode = null;
@@ -22,11 +45,58 @@ index be31c0d..adcbbee 100644
                          return false;
                      }
                      return false;
+@@ -398,16 +419,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                     if (locked) {
+                         return false;
+                     }
+-                    // If e.target is not inside the wrapper, hide.
++                    // If e.target is not inside the wrapper, hide - after a short
++                    // grace period. See index.js for the full reasoning.
+                     if (e.target && !wrapper.contains(e.relatedTarget)) {
+-                        popup === null || popup === void 0 ? void 0 : popup.hide();
+-                        currentNode = null;
+-                        currentNodePos = -1;
+-                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                        }
++                        hideTimeoutId = setTimeout(() => {
++                            hideTimeoutId = null;
++                            popup === null || popup === void 0 ? void 0 : popup.hide();
++                            currentNode = null;
++                            currentNodePos = -1;
++                            onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        }, DRAG_HANDLE_HIDE_DELAY_MS);
+                     }
+                     return false;
+                 },
+                 mousemove(view, e) {
++                    // A pending delayed hide is stale the instant the mouse is
++                    // back inside the editor - see index.js for the full
++                    // reasoning.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     // Do not continue if popup is not initialized or open.
+                     if (!element || !popup || locked) {
+                         return false;
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-index 2fdae1d..69274ec 100644
+index 2fdae1d..d3ff1ed 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-@@ -370,6 +370,12 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -210,6 +210,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+     let currentNode = null;
+     let currentNodePos = -1;
+     let currentNodeRelPos;
++    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
++    // handle visible a little longer than an instant mouseleave would.
++    let hideTimeoutId = null;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 350;
+     element.addEventListener('dragstart', e => {
+         // Push this to the end of the event cue
+         // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
+@@ -370,6 +374,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
@@ -36,12 +106,28 @@ index 2fdae1d..69274ec 100644
 +                    // every setProps()/show() call after that silently no-ops on the dead
 +                    // instance, and the drag handle freezes wherever it last rendered.
 +                    popup = null;
++                    // A pending delayed hide (see mouseleave below) firing after the
++                    // view is gone would touch a destroyed popup/editor.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -381,6 +387,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -380,7 +396,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+             handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
++                        // Deliberately immediate, not the delayed hide mouseleave
++                        // uses below: starting to type is a definite signal, not
++                        // an ambient "mouse is somewhere near the edge" one, and
++                        // a stale pending hide must not fire later and null out
++                        // onNodeChange again after this one already did.
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                            hideTimeoutId = null;
++                        }
                          popup.hide();
 +                        // Mirror mouseleave/hideDragHandle: without resetting
 +                        // these, mousemove's `outerNode !== currentNode` guard
@@ -54,3 +140,51 @@ index 2fdae1d..69274ec 100644
                          return false;
                      }
                      return false;
+@@ -390,16 +423,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                     if (locked) {
+                         return false;
+                     }
+-                    // If e.target is not inside the wrapper, hide.
++                    // If e.target is not inside the wrapper, hide - but not
++                    // instantly: the handle floats to the left of the actual
++                    // text content, outside the editor's own DOM bounding box,
++                    // so moving the mouse FROM the text TOWARD the handle itself
++                    // crosses this "leave" trigger before mousemove ever reports
++                    // reaching the handle - hiding immediately made the handle
++                    // disappear the moment someone tried to grab it. A short
++                    // grace period (cleared by mousemove below the instant the
++                    // mouse re-enters the editor, over the handle or not) covers
++                    // exactly that gap without meaningfully delaying a hide the
++                    // mouse actually left for good.
+                     if (e.target && !wrapper.contains(e.relatedTarget)) {
+-                        popup === null || popup === void 0 ? void 0 : popup.hide();
+-                        currentNode = null;
+-                        currentNodePos = -1;
+-                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                        }
++                        hideTimeoutId = setTimeout(() => {
++                            hideTimeoutId = null;
++                            popup === null || popup === void 0 ? void 0 : popup.hide();
++                            currentNode = null;
++                            currentNodePos = -1;
++                            onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        }, DRAG_HANDLE_HIDE_DELAY_MS);
+                     }
+                     return false;
+                 },
+                 mousemove(view, e) {
++                    // A pending delayed hide from a moment-ago mouseleave is
++                    // stale the instant the mouse is back inside the editor,
++                    // over the handle's own gap or not - cancel it here rather
++                    // than only in the `outerNode !== currentNode` branch below,
++                    // so lingering over the SAME still-hovered block after a
++                    // brief mouseleave does not still hide out from under it.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     // Do not continue if popup is not initialized or open.
+                     if (!element || !popup || locked) {
+                         return false;
