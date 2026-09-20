@@ -341,6 +341,39 @@ html, body {
   width: 100%;
   height: 100%;
   overflow-y: auto;
+  /* QCanva-styled main scrollbar: narrow, muted (never the bright
+     --ui-brand green as a resting state - that stays reserved for actual
+     brand accents), a little brighter on hover so it still reads as
+     interactive without shouting. Firefox first (scrollbar-width/-color
+     apply to any element, including html/body); WebKit reads the
+     ::-webkit-scrollbar* pseudo-elements below instead and ignores these
+     two properties. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-muted) var(--ui-surface-subtle);
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: var(--ui-surface-subtle);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: var(--ui-text-muted);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--ui-accent-strong);
+  background-clip: padding-box;
 }
 
 body {
@@ -5956,30 +5989,38 @@ body {
 }
 
 .text-doc-outline-panel {
-  flex: 0 0 240px;
-  width: 240px;
   position: sticky;
   top: 56px;
   align-self: stretch;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
   max-height: calc(100vh - 56px);
-  overflow-y: auto;
   border-right: 1px solid var(--ui-border);
-  transition: width 0.15s ease, padding 0.15s ease;
+  /* The positioning context for .text-doc-outline-resize-handle below -
+     `position: sticky` already establishes one, same as `relative` would. */
 }
 
-.text-doc-outline-panel-inner {
-  padding: 20px 16px;
-  min-width: 240px;
-}
-
-/* Collapsed via width, not `display: none`: an instant width:0 with hidden
-   overflow reads as a slide-away rather than a jump, and the panel stays in
-   the DOM so its own scroll position survives being reopened. */
+/* Collapsed to a narrow, always-visible strip - never `display: none` or
+   width:0: the collapse toggle below has to stay reachable to expand again,
+   and an instant jump (rather than this narrow handle) would read as the
+   panel vanishing rather than tucking away. */
 .text-doc-outline-panel-collapsed {
-  flex-basis: 0;
-  width: 0;
+  width: 28px;
   border-right: none;
-  overflow: hidden;
+}
+
+/* Only the LIST scrolls - the collapse toggle sits outside this element (a
+   flex sibling, not a descendant), so a long outline can never scroll it
+   out of reach without resorting to `position: sticky` tricks inside the
+   scroll container itself. */
+.text-doc-outline-panel-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 16px;
 }
 
 .text-doc-outline-panel-title,
@@ -6001,6 +6042,43 @@ body {
   padding: 0;
 }
 
+/* The row: an optional chevron (or its spacer, for a leaf, so every title
+   still starts at the same x regardless) then the link, side by side -
+   indent (below) lands on the ROW, not the link alone, so the two shift
+   right together. Scoped to the DESKTOP panel specifically: the mobile
+   drawer's own `<li>` has no chevron in its markup at all and keeps its
+   original block layout untouched (see the mobile scope note this task
+   shipped from). */
+.text-doc-outline-panel .text-doc-outline-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.text-doc-outline-chevron,
+.text-doc-outline-chevron-spacer {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-outline-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.text-doc-outline-chevron:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+
 .text-doc-outline-link {
   display: block;
   width: 100%;
@@ -6020,17 +6098,131 @@ body {
   background: var(--ui-surface-subtle);
 }
 
+/* DESKTOP PANEL ONLY: one line, ellipsized - never a horizontal scrollbar
+   on the panel itself. A native title tooltip is set on hover (see
+   onOutlineLinkHover in TextDocumentView.vue), and ONLY when this actually
+   truncates. Left as multi-line word-wrap for the mobile drawer above (see
+   the mobile scope note this task shipped from) - a bottom sheet has the
+   vertical room a fixed-height sidebar does not. */
+.text-doc-outline-panel .text-doc-outline-link {
+  width: auto;
+  flex: 1 1 auto;
+  /* Without this, a flex item's default min-width:auto refuses to shrink
+     below its own text's natural width, and text-overflow: ellipsis below
+     never gets the chance to apply at all. */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+
 /* Indent by heading depth - the same tree read `data-level` already gives
-   the in-document tableOfContents block (table-of-contents.ts's own CSS). */
-.text-doc-outline-item[data-level='2'] .text-doc-outline-link { padding-left: 20px; }
-.text-doc-outline-item[data-level='3'] .text-doc-outline-link { padding-left: 32px; }
-.text-doc-outline-item[data-level='4'] .text-doc-outline-link { padding-left: 44px; }
-.text-doc-outline-item[data-level='5'] .text-doc-outline-link { padding-left: 56px; }
-.text-doc-outline-item[data-level='6'] .text-doc-outline-link { padding-left: 68px; }
+   the in-document tableOfContents block (table-of-contents.ts's own CSS).
+   Shallower than that block's own indent: a chevron/spacer already pushes
+   the link text over by 20px (18px + the row's own 2px gap) on every row,
+   so the FIRST level of nesting needs less additional padding here to land
+   in the same visual place. */
+.text-doc-outline-panel .text-doc-outline-item[data-level='2'] { padding-left: 10px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='3'] { padding-left: 22px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='4'] { padding-left: 34px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='5'] { padding-left: 46px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='6'] { padding-left: 58px; }
 
 .text-doc-outline-empty {
   color: var(--ui-text-muted);
   font-size: 13px;
+}
+
+/* Straddles the panel's own right edge (half inside, half in the 3px slack
+   next to the border) so it is easy to grab without adding a dead 6px gap
+   between the outline and the document. Absolutely positioned against the
+   panel (`position: sticky` above already gives it a containing block), so
+   it spans the full height regardless of how much of that height the
+   scrollable list versus the pinned collapse toggle end up taking. */
+.text-doc-outline-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.text-doc-outline-resize-handle:hover {
+  background: var(--ui-border);
+}
+
+/* A body class (see startOutlineResize in TextDocumentView.vue), not
+   something scoped to the handle: mid-drag the cursor is routinely well
+   past the 6px strip, over the document or the sidebar's own list, and both
+   the cursor and "no accidental text selection" need to hold everywhere
+   until the button is released. */
+body.text-doc-outline-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Bottom of the panel, pinned outside the scrollable list (see
+   .text-doc-outline-panel-inner's own comment) so it survives an outline
+   long enough to scroll. Right-aligned per the request ("ближе к правому
+   краю") rather than centered, so it reads as belonging to the panel's own
+   edge next to the document, not as a generic centered footer control. */
+.text-doc-outline-collapse-toggle {
+  align-self: flex-end;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 6px 6px 8px auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+/* Collapsed: the toggle is the ONLY thing left in the panel, so it centers
+   in the narrow strip instead of hugging a now-nonexistent list's edge. */
+.text-doc-outline-panel-collapsed .text-doc-outline-collapse-toggle {
+  align-self: center;
+  margin: 8px auto;
+}
+
+.text-doc-outline-collapse-toggle:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+
+/* Thin, muted, QCanva-styled scrollbar for the outline's own scroll area -
+   see the page-wide scrollbar rule (html, body) for the shared color logic;
+   duplicated rather than a shared selector list because Firefox's
+   `scrollbar-width: thin` and WebKit's pixel `::-webkit-scrollbar` sizing
+   are set to different concrete values here (a narrow sidebar can afford an
+   even thinner bar than the full page). */
+.text-doc-outline-panel-inner {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-muted) transparent;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar {
+  width: 6px;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-thumb {
+  background: var(--ui-text-muted);
+  border-radius: 999px;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-thumb:hover {
+  background: var(--ui-accent-strong);
 }
 
 /* MOBILE/NARROW drawer - same bottom-sheet shape as .text-doc-link-sheet,

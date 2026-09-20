@@ -42,7 +42,13 @@
             :aria-label="t('redo')"
             @click="redoEdit"
           ><Redo2 :size="17" aria-hidden="true" /></button>
+          <!-- Desktop sidebar has its own collapse/expand arrow now (see
+               .text-doc-outline-collapse-toggle below) - this header button
+               stays only for the narrower breakpoints, where there is no
+               sidebar to put one inside (tablet-width drawer, and mobile via
+               the "⋮" popover entry further down). -->
           <button
+            v-if="!outlineIsDesktop"
             type="button"
             class="btn-ghost text-doc-outline-btn"
             :class="{ active: outlinePanelOpen }"
@@ -291,25 +297,59 @@
         <aside
           v-if="outlineIsDesktop"
           class="text-doc-outline-panel"
-          :class="{ 'text-doc-outline-panel-collapsed': !outlinePanelOpen }"
+          :class="{ 'text-doc-outline-panel-collapsed': !outlinePanelOpen, 'text-doc-outline-panel-resizing': outlineResizing }"
+          :style="outlinePanelOpen ? { width: outlineWidth + 'px', flexBasis: outlineWidth + 'px' } : {}"
           :aria-label="outlineLabels.title"
         >
-          <div class="text-doc-outline-panel-inner">
+          <div v-if="outlinePanelOpen" class="text-doc-outline-panel-inner">
             <div class="text-doc-outline-panel-title">{{ outlineLabels.title }}</div>
-            <ol v-if="outlineEntries.length" class="text-doc-outline-list">
+            <ol v-if="outlineVisibleRows.length" class="text-doc-outline-list">
               <li
-                v-for="entry in outlineEntries"
-                :key="entry.id"
+                v-for="row in outlineVisibleRows"
+                :key="row.entry.id"
                 class="text-doc-outline-item"
-                :data-level="entry.level"
+                :data-level="row.entry.level"
               >
-                <button type="button" class="text-doc-outline-link" @mousedown.prevent="navigateFromOutline(entry.pos)">
-                  {{ entry.text || outlineLabels.empty }}
+                <!-- @mousedown.stop so grabbing the chevron never also fires
+                     the link's own @mousedown.prevent navigation right next
+                     to it - they are siblings, not nested, precisely so a
+                     chevron click can never bubble into "navigate". -->
+                <button
+                  v-if="row.hasChildren"
+                  type="button"
+                  class="text-doc-outline-chevron"
+                  :title="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
+                  :aria-label="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
+                  :aria-expanded="!outlineCollapsedSections.has(row.entry.id)"
+                  @mousedown.stop.prevent="toggleOutlineSection(row.entry.id)"
+                ><ChevronRight v-if="outlineCollapsedSections.has(row.entry.id)" :size="13" aria-hidden="true" /><ChevronDown v-else :size="13" aria-hidden="true" /></button>
+                <span v-else class="text-doc-outline-chevron-spacer" aria-hidden="true"></span>
+                <button
+                  type="button"
+                  class="text-doc-outline-link"
+                  @mousedown.prevent="navigateFromOutline(row.entry.pos)"
+                  @mouseenter="onOutlineLinkHover($event)"
+                >
+                  {{ row.entry.text || outlineLabels.empty }}
                 </button>
               </li>
             </ol>
             <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
           </div>
+          <div
+            v-if="outlinePanelOpen"
+            class="text-doc-outline-resize-handle"
+            @mousedown="startOutlineResize"
+            @dblclick="resetOutlineWidth"
+          ></div>
+          <button
+            type="button"
+            class="text-doc-outline-collapse-toggle"
+            :title="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
+            :aria-label="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
+            :aria-pressed="!outlinePanelOpen"
+            @click="toggleOutlinePanel"
+          ><ChevronLeft v-if="outlinePanelOpen" :size="15" aria-hidden="true" /><ChevronRight v-else :size="15" aria-hidden="true" /></button>
         </aside>
 
       <main class="text-doc-editor-shell">
@@ -716,6 +756,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
+import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -767,10 +808,10 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1115,6 +1156,17 @@ export default defineComponent({
      */
     const OUTLINE_DESKTOP_MIN_WIDTH = 1100;
     const OUTLINE_COLLAPSED_STORAGE_KEY = 'qcanva-outline-collapsed';
+    const OUTLINE_WIDTH_STORAGE_KEY = 'qcanva-outline-width';
+    // "Использовать значения, лучше соответствующие текущему layout" - 240
+    // is the sidebar's own original fixed width, kept as both the default
+    // and the double-click-to-reset target; 220/480 leave enough room for
+    // .text-doc-editor-shell's 920px reading width at the desktop breakpoint
+    // this panel starts showing at (OUTLINE_DESKTOP_MIN_WIDTH) without
+    // squeezing it into scrollbar territory - see the live-checked widths
+    // in this task's own report.
+    const OUTLINE_DEFAULT_WIDTH = 240;
+    const OUTLINE_MIN_WIDTH = 220;
+    const OUTLINE_MAX_WIDTH = 480;
 
     function readOutlineCollapsedPref(): boolean {
       try {
@@ -1131,10 +1183,32 @@ export default defineComponent({
         // blocked/full localStorage must not break the toggle itself.
       }
     }
+    function readOutlineWidth(): number {
+      try {
+        const raw = localStorage.getItem(OUTLINE_WIDTH_STORAGE_KEY);
+        const parsed = raw === null ? NaN : Number(raw);
+        return Number.isFinite(parsed) ? clampOutlineWidth(parsed, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH) : OUTLINE_DEFAULT_WIDTH;
+      } catch {
+        return OUTLINE_DEFAULT_WIDTH;
+      }
+    }
+    function writeOutlineWidth(width: number): void {
+      try {
+        localStorage.setItem(OUTLINE_WIDTH_STORAGE_KEY, String(width));
+      } catch {
+        // Best-effort, same as the collapse preference above.
+      }
+    }
 
     const outlineIsDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH : true);
     const outlineCollapsedPref = ref(readOutlineCollapsedPref());
     const outlineMobileOpen = ref(false);
+    const outlineWidth = ref(readOutlineWidth());
+    // A resize is in progress: adds the "no text selection, col-resize
+    // cursor everywhere" body class (style.css) for the duration of the
+    // drag, since the cursor can slide off the 6px handle itself onto the
+    // document text at any moment mid-drag.
+    const outlineResizing = ref(false);
 
     function updateOutlineIsDesktop(): void {
       outlineIsDesktop.value = window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH;
@@ -1166,16 +1240,85 @@ export default defineComponent({
     onBeforeUnmount(() => window.removeEventListener('keydown', onOutlineMobileEscape));
 
     /**
+     * RESIZE (desktop sidebar only - the mobile drawer has no handle and
+     * always fills its own bottom-sheet width). Plain mousemove/mouseup on
+     * `window`, not the handle itself: the cursor routinely outruns a 6px
+     * strip mid-drag, and losing tracking the instant that happens would
+     * leave the drag "stuck" from the user's perspective.
+     */
+    let outlineResizeStartX = 0;
+    let outlineResizeStartWidth = 0;
+
+    function onOutlineResizeMove(event: MouseEvent): void {
+      const delta = event.clientX - outlineResizeStartX;
+      outlineWidth.value = clampOutlineWidth(outlineResizeStartWidth + delta, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH);
+    }
+    function stopOutlineResize(): void {
+      outlineResizing.value = false;
+      document.body.classList.remove('text-doc-outline-resizing');
+      window.removeEventListener('mousemove', onOutlineResizeMove);
+      window.removeEventListener('mouseup', stopOutlineResize);
+      writeOutlineWidth(outlineWidth.value);
+    }
+    function startOutlineResize(event: MouseEvent): void {
+      // Not a click on the outline's own content: prevents text selection
+      // starting in the document/panel as the mouse sweeps across it.
+      event.preventDefault();
+      outlineResizeStartX = event.clientX;
+      outlineResizeStartWidth = outlineWidth.value;
+      outlineResizing.value = true;
+      // A BODY class, not a class on the handle: the cursor routinely
+      // outruns the 6px strip mid-drag, and `col-resize`/no-selection must
+      // hold everywhere it wanders until the button is released, not just
+      // while it happens to still be over the handle itself.
+      document.body.classList.add('text-doc-outline-resizing');
+      window.addEventListener('mousemove', onOutlineResizeMove);
+      window.addEventListener('mouseup', stopOutlineResize);
+    }
+    /** Double-click the handle: back to the original width, same as a fresh install. */
+    function resetOutlineWidth(): void {
+      outlineWidth.value = OUTLINE_DEFAULT_WIDTH;
+      writeOutlineWidth(OUTLINE_DEFAULT_WIDTH);
+    }
+    onBeforeUnmount(() => {
+      window.removeEventListener('mousemove', onOutlineResizeMove);
+      window.removeEventListener('mouseup', stopOutlineResize);
+      document.body.classList.remove('text-doc-outline-resizing');
+    });
+
+    /**
      * The live outline this panel and the in-document `tableOfContents`
      * block both draw from - `documentOutline` is a pure read of
      * `editor.state.doc`, so `editorTransactionTick` is what actually makes
      * this recompute (see the UNDO/REDO section's own comment on why that
-     * ref exists at all).
+     * ref exists at all). Flat, in document order - the mobile drawer
+     * renders this directly and unchanged; the desktop sidebar renders the
+     * TREE built from it instead (below), so the two stay independent by
+     * construction rather than by remembering not to touch one from the
+     * other's code path.
      */
     const outlineEntries = computed(() => {
       void editorTransactionTick.value;
       return editor.value ? documentOutline(editor.value.state.doc) : [];
     });
+
+    /**
+     * DESKTOP SIDEBAR TREE. Which sections are folded is a per-viewer
+     * browsing convenience local to this panel - never persisted, never
+     * touching the document's own (unrelated) per-heading `collapsed`
+     * attribute (collapsible-heading.ts) - see outline-tree.ts's file
+     * comment for why the two must stay separate.
+     */
+    const outlineCollapsedSections = ref<Set<string>>(new Set());
+    const outlineTree = computed(() => buildOutlineTree(outlineEntries.value));
+    const outlineVisibleRows = computed(() => flattenVisibleOutline(outlineTree.value, outlineCollapsedSections.value));
+
+    function toggleOutlineSection(id: string): void {
+      const next = new Set(outlineCollapsedSections.value);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      outlineCollapsedSections.value = next;
+    }
 
     function navigateFromOutline(pos: number): void {
       if (!editor.value) return;
@@ -1183,11 +1326,37 @@ export default defineComponent({
       if (!outlineIsDesktop.value) outlineMobileOpen.value = false;
     }
 
-    const outlineLabels = { title: '', empty: '', toggle: '' };
+    /**
+     * A native browser tooltip, but only when the single-line, ellipsized
+     * heading title (style.css's `.text-doc-outline-link`) is ACTUALLY
+     * truncated - measured on hover rather than kept as reactive state per
+     * row, since it only ever matters at the one moment a reader's pointer
+     * is already sitting on the element asking for it. Comparing scrollWidth
+     * against clientWidth is exactly what "does this need an ellipsis"
+     * means for a single `white-space: nowrap` line.
+     */
+    function onOutlineLinkHover(event: MouseEvent): void {
+      const link = event.currentTarget as HTMLElement;
+      link.title = link.scrollWidth > link.clientWidth ? link.textContent?.trim() ?? '' : '';
+    }
+
+    const outlineLabels = {
+      title: '',
+      empty: '',
+      toggle: '',
+      hide: '',
+      show: '',
+      collapseSection: '',
+      expandSection: '',
+    };
     const paintOutlineLabels = () => {
       outlineLabels.title = t('outlineTitle');
       outlineLabels.empty = t('outlineEmpty');
       outlineLabels.toggle = t('outlineToggle');
+      outlineLabels.hide = t('outlineHide');
+      outlineLabels.show = t('outlineShow');
+      outlineLabels.collapseSection = t('outlineCollapseSection');
+      outlineLabels.expandSection = t('outlineExpandSection');
     };
     paintOutlineLabels();
     watch(locale, paintOutlineLabels);
@@ -2743,10 +2912,18 @@ export default defineComponent({
       outlineIsDesktop,
       outlineMobileOpen,
       outlineEntries,
+      outlineVisibleRows,
+      outlineCollapsedSections,
+      outlineWidth,
+      outlineResizing,
       outlineLabels,
       toggleOutlinePanel,
       closeOutlineMobile,
       navigateFromOutline,
+      toggleOutlineSection,
+      startOutlineResize,
+      resetOutlineWidth,
+      onOutlineLinkHover,
       linkRowCopied,
       copyDocumentLinkFromRow,
       slugInput,
