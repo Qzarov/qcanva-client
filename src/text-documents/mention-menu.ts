@@ -41,6 +41,19 @@ export type MentionMenuDocumentItem = {
 };
 
 /**
+ * One heading of THIS SAME document the picker can insert as a
+ * `headingLink` - never a heading of another document (out of scope, see
+ * heading-id.ts's own file comment). Sourced client-side from the live
+ * document outline, never a server search, so it carries no separate
+ * loading state the way document results do.
+ */
+export type MentionMenuHeadingItem = {
+  kind: 'heading';
+  headingId: string;
+  label: string;
+};
+
+/**
  * The trailing "Create page named …" row, carrying the typed text. What it
  * DOES is the next task (front task 8): this extension only has to make sure
  * choosing it is possible and tells the caller what was typed, rather than
@@ -51,19 +64,24 @@ export type MentionMenuCreateItem = {
   query: string;
 };
 
-export type MentionMenuItem = MentionMenuDocumentItem | MentionMenuCreateItem;
+export type MentionMenuItem = MentionMenuDocumentItem | MentionMenuHeadingItem | MentionMenuCreateItem;
 
 /**
- * Builds the picker's list from search results: the matching documents, in
- * the order the search returned them, then the create row - ALWAYS last,
- * even when nothing matched (an empty query included), so there is always
- * something to press Enter on.
+ * Builds the picker's list from search results: this document's own matching
+ * headings first (the most likely target while writing IN a document, and
+ * free of network latency), then the matching OTHER documents, then the
+ * create row - ALWAYS last, even when nothing matched (an empty query
+ * included), so there is always something to press Enter on.
  */
 export function buildMentionMenuItems(
   results: Array<{ id: string; title: string }>,
   query: string,
+  headingResults: Array<{ headingId: string; label: string }> = [],
 ): MentionMenuItem[] {
   return [
+    ...headingResults.map(
+      (result): MentionMenuHeadingItem => ({ kind: 'heading', headingId: result.headingId, label: result.label }),
+    ),
     ...results.map((result): MentionMenuDocumentItem => ({ kind: 'document', id: result.id, title: result.title })),
     { kind: 'create', query },
   ];
@@ -98,8 +116,17 @@ export type MentionMenuOptions = {
    * must not be handed a wider search.
    */
   search: (query: string) => Promise<Array<{ id: string; title: string }>>;
+  /**
+   * This SAME document's headings matching the typed query. Synchronous and
+   * client-side (see heading-id.ts) - never a wider search, and never
+   * another document's headings (out of scope, same boundary `search`
+   * above already respects for documents).
+   */
+  searchHeadings: (query: string) => Array<{ headingId: string; label: string }>;
   /** Inserts the chosen target as a `mention` node, id + its CURRENT title as label. */
   insertMention: (editor: Editor, range: Range, item: MentionMenuDocumentItem) => void;
+  /** Inserts the chosen heading as a `headingLink` node, headingId + its CURRENT text as label. */
+  insertHeadingLink: (editor: Editor, range: Range, item: MentionMenuHeadingItem) => void;
   /** The create row's seam: told the typed text, not yet told to create anything. */
   onCreatePage: (query: string, context: { editor: Editor; range: Range }) => void;
 };
@@ -126,6 +153,22 @@ export function insertMentionAtRange(editor: Editor, range: Range, attrs: { id: 
     .run();
 }
 
+/**
+ * The `headingLink` twin of `insertMentionAtRange` above, for exactly the
+ * same reason: this is the ONE place that replaces the typed `@query` with
+ * the chosen node, so a heading picked from the list and a heading inserted
+ * any other way in the future cannot drift apart.
+ */
+export function insertHeadingLinkAtRange(editor: Editor, range: Range, attrs: { headingId: string; label: string }) {
+  editor
+    .chain()
+    .focus()
+    .deleteRange(range)
+    .insertContent({ type: 'headingLink', attrs })
+    .insertContent(' ')
+    .run();
+}
+
 export const MentionMenu = Extension.create<MentionMenuOptions>({
   name: 'mentionMenu',
 
@@ -133,8 +176,12 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
     return {
       controller: null,
       search: async () => [],
+      searchHeadings: () => [],
       insertMention: (editor: Editor, range: Range, item: MentionMenuDocumentItem) => {
         insertMentionAtRange(editor, range, { id: item.id, label: item.title });
+      },
+      insertHeadingLink: (editor: Editor, range: Range, item: MentionMenuHeadingItem) => {
+        insertHeadingLinkAtRange(editor, range, { headingId: item.headingId, label: item.label });
       },
       onCreatePage: () => undefined,
     };
@@ -157,10 +204,15 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
         allowedPrefixes: null,
         startOfLine: false,
         allow: ({ state, range }) => mentionMenuAllows(state, range),
-        items: async ({ query }) => buildMentionMenuItems(await options.search(query), query),
+        items: async ({ query }) =>
+          buildMentionMenuItems(await options.search(query), query, options.searchHeadings(query)),
         command: ({ editor, range, props }) => {
           if (props.kind === 'document') {
             options.insertMention(editor, range, props);
+            return;
+          }
+          if (props.kind === 'heading') {
+            options.insertHeadingLink(editor, range, props);
             return;
           }
           options.onCreatePage(props.query, { editor, range });

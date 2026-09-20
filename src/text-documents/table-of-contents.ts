@@ -177,11 +177,16 @@ export const TableOfContents = Node.create<TableOfContentsOptions>({
 /**
  * Put the caret in a heading and bring it on screen.
  *
- * Position-based rather than anchor-based: the editor's DOM carries no `id`
- * attributes (those are derived by the backend when it renders the stored
- * html), so there is no `#anchor` for a browser to jump to here.
+ * Position-based rather than a real browser `#anchor` jump: a heading DOES
+ * carry a `data-heading-id` attribute now (see heading-id.ts), but that is a
+ * data attribute, not an `id` the browser's own fragment navigation reads -
+ * this editor is a single Yjs-backed ProseMirror view, not a sequence of
+ * addressable pages, so "jump to a heading" is always a scroll+select inside
+ * the one already-mounted view. Exported for the outline panel and
+ * `headingLink`'s click handler, both of which resolve a target's `pos`
+ * their own way before calling this.
  */
-function focusHeading(editor: Editor, pos: number): void {
+export function focusHeading(editor: Editor, pos: number): void {
   editor
     .chain()
     .focus()

@@ -5632,6 +5632,23 @@ body {
   flex-shrink: 0;
 }
 
+/* OUTLINE TOGGLE. Same icon-only 44px touch target as Undo/Redo above -
+   hidden at mobile widths (see the 760px media query below), reachable
+   there through the "⋮" popover instead, exactly like Share/History. */
+.text-doc-outline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.text-doc-outline-btn.active {
+  color: var(--ui-accent-strong);
+}
+
 /* THE PAGE TITLE (front task: title placement). Lives inside .text-doc-paper,
    above EditorContent - visually the document's own first line, not header
    chrome. Bigger than the body's own H1 (see collapsible-heading.ts's
@@ -5926,6 +5943,133 @@ body {
   width: 16px;
   height: 16px;
 }
+
+/* OUTLINE PANEL body wrapper. A flex row so the desktop sidebar and
+   .text-doc-editor-shell share one row; .text-doc-editor-shell's own
+   `margin: 0 auto` still centers IT in whatever space is left over once the
+   sidebar (a fixed flex-basis, not growing) has taken its own - the standard
+   "center one flex item among siblings" technique, so adding the sidebar
+   never requires touching .text-doc-editor-shell's own centering rule. */
+.text-doc-body {
+  display: flex;
+  align-items: flex-start;
+}
+
+.text-doc-outline-panel {
+  flex: 0 0 240px;
+  width: 240px;
+  position: sticky;
+  top: 56px;
+  align-self: stretch;
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+  border-right: 1px solid var(--ui-border);
+  transition: width 0.15s ease, padding 0.15s ease;
+}
+
+.text-doc-outline-panel-inner {
+  padding: 20px 16px;
+  min-width: 240px;
+}
+
+/* Collapsed via width, not `display: none`: an instant width:0 with hidden
+   overflow reads as a slide-away rather than a jump, and the panel stays in
+   the DOM so its own scroll position survives being reopened. */
+.text-doc-outline-panel-collapsed {
+  flex-basis: 0;
+  width: 0;
+  border-right: none;
+  overflow: hidden;
+}
+
+.text-doc-outline-panel-title,
+.text-doc-outline-drawer-title {
+  margin-bottom: 10px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.text-doc-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.text-doc-outline-link {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.text-doc-outline-link:hover {
+  background: var(--ui-surface-subtle);
+}
+
+/* Indent by heading depth - the same tree read `data-level` already gives
+   the in-document tableOfContents block (table-of-contents.ts's own CSS). */
+.text-doc-outline-item[data-level='2'] .text-doc-outline-link { padding-left: 20px; }
+.text-doc-outline-item[data-level='3'] .text-doc-outline-link { padding-left: 32px; }
+.text-doc-outline-item[data-level='4'] .text-doc-outline-link { padding-left: 44px; }
+.text-doc-outline-item[data-level='5'] .text-doc-outline-link { padding-left: 56px; }
+.text-doc-outline-item[data-level='6'] .text-doc-outline-link { padding-left: 68px; }
+
+.text-doc-outline-empty {
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* MOBILE/NARROW drawer - same bottom-sheet shape as .text-doc-link-sheet,
+   but not confined to a max-width media query: it is only ever in the DOM
+   when outlineIsDesktop is false (the `v-if` in the template), so no media
+   query is needed here to keep it from also rendering on desktop. */
+.text-doc-outline-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.text-doc-outline-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 71;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+}
+
+.text-doc-outline-drawer .text-doc-outline-link {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.text-doc-outline-drawer .text-doc-outline-item[data-level='2'] .text-doc-outline-link { padding-left: 24px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='3'] .text-doc-outline-link { padding-left: 36px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='4'] .text-doc-outline-link { padding-left: 48px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='5'] .text-doc-outline-link { padding-left: 60px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='6'] .text-doc-outline-link { padding-left: 72px; }
 
 .text-doc-editor-shell {
   max-width: 920px;
@@ -6798,6 +6942,28 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   cursor: default;
 }
 
+/* headingLink follows the same visual language as mention above - a link to
+   a heading in the SAME document, styled identically to a link to another
+   document, so an author never has to guess which kind they're looking at. */
+.text-doc-heading-link {
+  display: inline;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.text-doc-heading-link-accessible {
+  color: var(--content-document-link);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.text-doc-heading-link-deleted {
+  color: var(--content-code-comment);
+  text-decoration: line-through;
+  cursor: default;
+}
+
 .text-doc-drag-handle {
   display: flex;
   align-items: center;
@@ -6999,9 +7165,11 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
      header: back / undo / redo / sync / user / kebab) - neither needs its
      own permanent button once the popover holds both, matching the sync
      chip's own move from a standalone pill down to a small inline label in
-     the same row. */
+     the same row. Outline joins them here for the same reason - the popover
+     already carries its own toggle entry (see the template). */
   .text-doc-history-btn,
-  .text-doc-access-btn {
+  .text-doc-access-btn,
+  .text-doc-outline-btn {
     display: none;
   }
 

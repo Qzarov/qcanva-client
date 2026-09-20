@@ -60,7 +60,15 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     // previews read - dropping a collapsed section from them would silently
     // hide content rather than fold it. This editor hides those blocks in its
     // own DOM only.
-    attrs: ["level", "collapsed"],
+    //
+    // `headingId` is a STABLE per-heading identity, assigned once (see
+    // heading-id.ts) when a heading is created and never regenerated, unlike
+    // the derived, text-based slug the outline/table-of-contents anchors use
+    // (see documents/heading-anchors.ts). It exists so a `headingLink`
+    // survives its target being retitled or moved: a slug-based reference
+    // would silently point at the wrong heading (or none) the moment the
+    // text it was built from changed.
+    attrs: ["level", "collapsed", "headingId"],
     textSeparator: "\n",
   },
   { name: "bulletList", group: "block", tag: "ul" },
@@ -158,6 +166,21 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     // No textSeparator: a mention sits inline in the middle of a sentence,
     // the same as `text` and `hardBreak` above, so it must not force a break
     // around itself the way callout or image (both block-level) do.
+  },
+  {
+    name: "headingLink",
+    group: "inline",
+    tag: "span",
+    // An atom, structured exactly like `mention` above and for the same
+    // reason: `headingId` and `label` are its whole content, nothing
+    // authored underneath it. `headingId` names a heading in THIS SAME
+    // document (unlike mention's `id`, which names another document) via
+    // the heading's own stable `headingId` attribute, never a derived slug.
+    // `label` is the heading's text AT INSERT TIME, a fallback for when the
+    // live text cannot be resolved.
+    selfClosing: true,
+    attrs: ["headingId", "label"],
+    // No textSeparator, same reasoning as `mention`.
   },
 ];
 
