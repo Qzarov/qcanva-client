@@ -1,19 +1,22 @@
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-index be31c0d..bd38a61 100644
+index be31c0d..7088911 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
-@@ -218,6 +218,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -218,6 +218,13 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
      let currentNode = null;
      let currentNodePos = -1;
      let currentNodeRelPos;
 +    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
 +    // handle visible a little longer than an instant mouseleave would.
++    // 350ms (this constant's original value) still felt too eager in
++    // practice; 800ms is the "comfortable, not sluggish" middle of the
++    // 700-900ms range asked for after living with the shorter one.
 +    let hideTimeoutId = null;
-+    const DRAG_HANDLE_HIDE_DELAY_MS = 350;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
      element.addEventListener('dragstart', e => {
          // Push this to the end of the event cue
          // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
-@@ -378,6 +382,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -378,6 +385,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
@@ -28,7 +31,7 @@ index be31c0d..bd38a61 100644
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -388,7 +400,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -388,7 +403,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
              handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
@@ -45,7 +48,7 @@ index be31c0d..bd38a61 100644
                          return false;
                      }
                      return false;
-@@ -398,16 +419,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -398,16 +422,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                      if (locked) {
                          return false;
                      }
@@ -82,21 +85,24 @@ index be31c0d..bd38a61 100644
                      if (!element || !popup || locked) {
                          return false;
 diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-index 2fdae1d..d3ff1ed 100644
+index 2fdae1d..0011c34 100644
 --- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
 +++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
-@@ -210,6 +210,10 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -210,6 +210,13 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
      let currentNode = null;
      let currentNodePos = -1;
      let currentNodeRelPos;
 +    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
 +    // handle visible a little longer than an instant mouseleave would.
++    // 350ms (this constant's original value) still felt too eager in
++    // practice; 800ms is the "comfortable, not sluggish" middle of the
++    // 700-900ms range asked for after living with the shorter one.
 +    let hideTimeoutId = null;
-+    const DRAG_HANDLE_HIDE_DELAY_MS = 350;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
      element.addEventListener('dragstart', e => {
          // Push this to the end of the event cue
          // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
-@@ -370,6 +374,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -370,6 +377,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                  // TODO: Kills even on hot reload
                  destroy() {
                      popup === null || popup === void 0 ? void 0 : popup.destroy();
@@ -115,7 +121,7 @@ index 2fdae1d..d3ff1ed 100644
                      if (element) {
                          removeNode(wrapper);
                      }
-@@ -380,7 +396,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -380,7 +399,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
              handleDOMEvents: {
                  keydown(view) {
                      if (popup && popup.state.isVisible && view.hasFocus()) {
@@ -140,7 +146,7 @@ index 2fdae1d..d3ff1ed 100644
                          return false;
                      }
                      return false;
-@@ -390,16 +423,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+@@ -390,16 +426,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
                      if (locked) {
                          return false;
                      }
