@@ -3,7 +3,7 @@
     <button
       class="mobile-modebar-btn"
       :class="{ active: mode === 'hand' }"
-      :aria-pressed="String(mode === 'hand')"
+      :aria-pressed="mode === 'hand'"
       :aria-label="t('handMode')"
       @touchstart.passive="lp.onTouchStart(t('handMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
@@ -21,7 +21,7 @@
     <button
       class="mobile-modebar-btn"
       :class="{ active: mode === 'cursor' }"
-      :aria-pressed="String(mode === 'cursor')"
+      :aria-pressed="mode === 'cursor'"
       :aria-label="t('cursorMode')"
       @touchstart.passive="lp.onTouchStart(t('cursorMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
@@ -36,7 +36,7 @@
     <button
       class="mobile-modebar-btn"
       :class="{ active: mode === 'draw' }"
-      :aria-pressed="String(mode === 'draw')"
+      :aria-pressed="mode === 'draw'"
       :aria-label="t('drawMode')"
       @touchstart.passive="lp.onTouchStart(t('drawMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
