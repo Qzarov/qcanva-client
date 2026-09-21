@@ -29,6 +29,7 @@ const baseHandlers = {
   edgeCycleArrow: noop,
   drawingDuplicate: noop,
   drawingDelete: noop,
+  drawingColorSection: noop,
 };
 
 // ──────────────────────────────────────────────

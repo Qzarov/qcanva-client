@@ -2338,14 +2338,6 @@ export default defineComponent({
       closeContextMenu();
     };
 
-    // Selects exactly one item, clearing all other selection types.
-    const selectExclusive = (kind: 'node' | 'drawing' | 'edge', id: string) => {
-      clearSelection();
-      if (kind === 'node') selectedNodeIds.value = [id];
-      else if (kind === 'drawing') selectedDrawingIds.value = [id];
-      else if (kind === 'edge') selectedEdgeId.value = id;
-    };
-
     // Commits a marquee selection box (in world coordinates) to selectedNodeIds + selectedDrawingIds.
     const commitMarqueeSelection = (x1: number, y1: number, x2: number, y2: number) => {
       if (x2 - x1 <= 5 && y2 - y1 <= 5) return;
