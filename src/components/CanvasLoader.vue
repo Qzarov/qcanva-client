@@ -922,6 +922,7 @@ export default defineComponent({
     const { t } = useI18n();
     const { effectiveTheme } = useTheme();
     const { mode: mobileInteractionMode } = useMobileCanvasMode();
+    const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
     const { enabled: minimapEnabled } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -3397,7 +3398,7 @@ export default defineComponent({
           if (touchNode?.positionLocked) {
             return;
           }
-          if (mobileInteractionMode.value === 'hand') {
+          if (isTouchDevice && mobileInteractionMode.value === 'hand') {
             // Hand mode: pan the viewport on drag; tap still selects (handled in onTouchEnd).
             isPanning.value = true;
             panStart.x = t.clientX;
@@ -3478,7 +3479,7 @@ export default defineComponent({
         const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
         if (activeTouchNode?.positionLocked) return;
 
-        if (touchNodeId && !props.readonly && mobileInteractionMode.value !== 'hand') {
+        if (touchNodeId && !props.readonly && (!isTouchDevice || mobileInteractionMode.value !== 'hand')) {
           // Cursor mode: drag the node once the threshold is crossed.
           if (!touchDragging) {
             touchDragging = true;
@@ -3494,7 +3495,7 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchNodeId && !props.readonly && mobileInteractionMode.value === 'hand') {
+        } else if (touchNodeId && !props.readonly && isTouchDevice && mobileInteractionMode.value === 'hand') {
           // Hand mode on a node: pan the viewport (isPanning was primed in onTouchStart).
           camera.x = cameraStart.x + (t.clientX - panStart.x);
           camera.y = cameraStart.y + (t.clientY - panStart.y);
