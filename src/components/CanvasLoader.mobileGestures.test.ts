@@ -506,7 +506,7 @@ describe('CanvasLoader — unified selection model', () => {
   it('marquee commits selectedDrawingIds for drawings that intersect (Task 6/7)', async () => {
     // Pass drawing via initialData so CanvasLoader initialises drawings ref correctly.
     // pen points format is a flat number array: [x0, y0, x1, y1, ...]
-    const drawing = { id: 'draw1', tool: 'pen', points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '', createdBy: '' };
+    const drawing = { id: 'draw1', tool: 'pen' as const, points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '', createdBy: '' };
     const wrapper = mount(CanvasLoader, {
       props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
       attachTo: document.body,
@@ -546,7 +546,7 @@ describe('CanvasLoader — unified selection model', () => {
   });
 
   it('clearSelection helper clears drawing selection (Task 8)', async () => {
-    const drawing = { id: 'draw1', tool: 'pen', points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '', createdBy: '' };
+    const drawing = { id: 'draw1', tool: 'pen' as const, points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '', createdBy: '' };
     const wrapper = mount(CanvasLoader, {
       props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
       attachTo: document.body,
