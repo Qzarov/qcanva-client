@@ -625,6 +625,36 @@
         @pointerdown.stop
         @click.stop
       >
+        <!-- Upward popup for color or width (floats above panel) -->
+        <div v-if="drawMobilePopup === 'color'" class="mobile-draw-popup" @click.stop>
+          <div class="mobile-draw-popup-colors">
+            <button
+              v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
+              :key="'mdpop-'+c"
+              class="mobile-draw-popup-swatch"
+              :style="{ background: c }"
+              :class="{ active: canvasRef?.drawColor === c }"
+              @click="canvasRef?.setDrawColor(c); drawMobilePopup = null"
+            ></button>
+          </div>
+        </div>
+        <div v-else-if="drawMobilePopup === 'width'" class="mobile-draw-popup" @click.stop>
+          <div class="mobile-draw-popup-width">
+            <input
+              class="mobile-draw-popup-width-slider"
+              type="range" min="1" max="20"
+              :value="canvasRef?.drawWidth ?? 4"
+              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))"
+              :aria-label="t('width')"
+            />
+            <span class="mobile-draw-popup-width-label">{{ canvasRef?.drawWidth ?? 4 }}</span>
+          </div>
+        </div>
+        <!-- Backdrop to close draw mode popup on tap-outside -->
+        <Teleport to="body">
+          <div v-if="drawMobilePopup" class="mobile-draw-popup-backdrop" @click="drawMobilePopup = null" aria-hidden="true"/>
+        </Teleport>
+
         <div class="mobile-draw-tools">
           <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" :aria-label="t('toolPen')">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
@@ -650,29 +680,23 @@
           <span class="mobile-draw-vsep"></span>
           <button
             class="mobile-draw-color-btn"
+            :class="{ active: drawMobilePopup === 'color' }"
             :style="{ background: canvasRef?.drawColor || '#e03131' }"
-            @click="drawPaletteColorOpen = !drawPaletteColorOpen"
+            @click="drawMobilePopup = drawMobilePopup === 'color' ? null : 'color'"
             :aria-label="t('color')"
           ></button>
-        </div>
-        <div v-if="drawPaletteColorOpen" class="mobile-draw-colors">
           <button
-            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
-            :key="'mdraw-'+c"
-            class="mobile-draw-color-swatch"
-            :style="{ background: c }"
-            :class="{ active: canvasRef?.drawColor === c }"
-            @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
-          ></button>
-        </div>
-        <div class="mobile-draw-width-row">
-          <input
-            class="mobile-draw-width-slider"
-            type="range" min="1" max="20"
-            :value="canvasRef?.drawWidth ?? 4"
-            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))"
+            class="mobile-draw-width-btn"
+            :class="{ active: drawMobilePopup === 'width' }"
+            @click="drawMobilePopup = drawMobilePopup === 'width' ? null : 'width'"
             :aria-label="t('width')"
-          />
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <line x1="3" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              <line x1="3" y1="13" x2="21" y2="13" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+              <line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -1108,6 +1132,7 @@ export default defineComponent({
         if (!insidePanel) {
           drawPanelOpen.value = false;
           drawPaletteColorOpen.value = false;
+          drawMobilePopup.value = null;
           if (!el?.closest?.('.draw-capture')) canvasRef.value?.setDrawTool('select');
         }
       }
@@ -2106,6 +2131,7 @@ export default defineComponent({
     const drawPanelOpen = ref(false);
     const drawColorPickerOpen = ref(false);
     const drawPaletteColorOpen = ref(false);
+    const drawMobilePopup = ref<null | 'color' | 'width'>(null);
     const toggleDrawPanel = () => {
       drawPanelOpen.value = !drawPanelOpen.value;
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
@@ -2119,6 +2145,7 @@ export default defineComponent({
       } else {
         drawPanelOpen.value = false;
         drawPaletteColorOpen.value = false;
+        drawMobilePopup.value = null;
         canvasRef.value?.setDrawTool('select');
       }
     });
@@ -2136,7 +2163,7 @@ export default defineComponent({
     return {
       t,
       route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
-      drawColorPickerOpen, drawPaletteColorOpen,
+      drawColorPickerOpen, drawPaletteColorOpen, drawMobilePopup,
       loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
       checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,

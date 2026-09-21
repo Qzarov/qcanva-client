@@ -161,6 +161,7 @@
     </div>
 
     <footer class="dashboard-sidebar-footer">
+      <div v-if="!compactPresentation" class="dashboard-sidebar-version">QCanva v{{ appVersion }}</div>
       <AccountMenu placement="sidebar" :compact="compactPresentation" />
       <button
         type="button"
@@ -182,6 +183,9 @@
 import { ChevronDown, Clock3, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
+import packageJson from '../../../package.json';
+
+const appVersion = packageJson.version;
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
 import {

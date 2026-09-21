@@ -4,7 +4,7 @@ export type NodeActionKey =
   | 'bring-front' | 'send-back' | 'hide' | 'image-title'
   | 'delete' | 'undo' | 'redo'
   | 'edge-style' | 'edge-arrow'
-  | 'drawing-duplicate' | 'drawing-delete' | 'drawing-color';
+  | 'drawing-duplicate' | 'drawing-delete' | 'drawing-color' | 'drawing-stroke-width';
 
 export type NodeAction = {
   key: NodeActionKey;
@@ -66,6 +66,7 @@ export type BuildActionsParams = {
     drawingDuplicate: () => void;
     drawingDelete: () => void;
     drawingColorSection: () => void;
+    drawingStrokeWidthSection: () => void;
   };
 };
 
@@ -90,6 +91,7 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
   if (p.kind === 'drawing') {
     return [
       { key: 'drawing-color', label: 'Color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-stroke-width', label: 'Width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
       { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
       { key: 'drawing-delete', label: 'Delete', handler: p.handlers.drawingDelete, danger: true, disabled: r },
     ];
@@ -97,6 +99,8 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
 
   if (p.kind === 'multi-drawing' || p.kind === 'mixed') {
     return [
+      { key: 'drawing-color', label: 'Color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-stroke-width', label: 'Width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
       { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
       { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
     ];

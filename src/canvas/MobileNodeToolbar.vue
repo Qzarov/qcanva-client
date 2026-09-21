@@ -1,7 +1,7 @@
 <template>
   <!-- Shown only when there is an active selection and not editing text -->
   <div v-if="selectionKind !== 'none'" class="mobile-node-toolbar" role="toolbar" :aria-label="t('nodeActions')">
-    <!-- Sub-panel: expands above the icon row for fill/text color/border sections -->
+    <!-- Sub-panel: expands above the icon row for fill/text color/border sections (non-drawing) -->
     <div v-if="activeSection" class="mobile-node-subpanel" @click.stop>
       <!-- Fill (background) colors -->
       <template v-if="activeSection === 'fill'">
@@ -56,21 +56,6 @@
             :aria-label="t('clearColor')"
             @click="canvasRef?.setNodeFontColor(nodeId, undefined)"
           >×</button>
-        </div>
-      </template>
-
-      <!-- Drawing color -->
-      <template v-if="activeSection === 'drawing-color'">
-        <div class="mobile-subpanel-colors">
-          <button
-            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
-            :key="'mdc'+c"
-            class="tb-color"
-            :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
-            :style="{ background: c }"
-            :aria-label="c"
-            @click="canvasRef?.setSelectedDrawingColor(c)"
-          />
         </div>
       </template>
 
@@ -161,6 +146,39 @@
       </template>
     </div>
 
+    <!-- Drawing popup: floats above the icon row without changing toolbar height -->
+    <div v-if="drawingSection" class="mobile-drawing-popup" @click.stop>
+      <template v-if="drawingSection === 'drawing-color'">
+        <div class="mobile-drawing-popup-colors">
+          <button
+            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
+            :key="'mdpc'+c"
+            class="mobile-drawing-popup-swatch"
+            :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
+            :style="{ background: c }"
+            :aria-label="c"
+            @click="canvasRef?.setSelectedDrawingColor(c); drawingSection = null"
+          />
+        </div>
+      </template>
+      <template v-else-if="drawingSection === 'drawing-stroke-width'">
+        <div class="mobile-drawing-popup-width">
+          <input
+            class="mobile-drawing-popup-width-slider"
+            type="range" min="1" max="20"
+            :value="canvasRef?.selectedDrawingObj?.width ?? 4"
+            @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))"
+            :aria-label="t('width')"
+          />
+          <span class="mobile-drawing-popup-width-label">{{ canvasRef?.selectedDrawingObj?.width ?? 4 }}</span>
+        </div>
+      </template>
+    </div>
+    <!-- Backdrop closes drawing popup on tap-outside -->
+    <Teleport to="body">
+      <div v-if="drawingSection" class="mobile-drawing-popup-backdrop" @click="drawingSection = null" aria-hidden="true"/>
+    </Teleport>
+
     <!-- Icon row -->
     <div class="mobile-node-toolbar-row">
       <!-- Visible actions -->
@@ -169,12 +187,12 @@
           class="mobile-toolbar-btn"
           :class="{
             'mobile-toolbar-btn-danger': action.danger,
-            'mobile-toolbar-btn-active': action.isSectionToggle && activeSection === action.key,
+            'mobile-toolbar-btn-active': action.isSectionToggle && (activeSection === action.key || drawingSection === action.key),
           }"
           :disabled="action.disabled"
           :title="action.label"
           :aria-label="action.label"
-          :aria-pressed="action.isSectionToggle ? activeSection === action.key : undefined"
+          :aria-pressed="action.isSectionToggle ? (activeSection === action.key || drawingSection === action.key) : undefined"
           @click="onActionClick(action)"
         >
           <component :is="'svg'" v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
@@ -275,6 +293,9 @@ const ICON_PATHS: Record<string, string> = {
                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="1.8" fill="none"/>`,
   'drawing-color': `<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8" fill="none"/>
                     <circle cx="12" cy="12" r="4" fill="currentColor"/>`,
+  'drawing-stroke-width': `<line x1="3" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="3" y1="13" x2="21" y2="13" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                            <line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>`,
 };
 
 export default defineComponent({
@@ -287,7 +308,10 @@ export default defineComponent({
     const { t } = useI18n();
 
     const activeSection = ref<string | null>(null);
+    const drawingSection = ref<string | null>(null);
     const overflowOpen = ref(false);
+
+    const DRAWING_SECTIONS = ['drawing-color', 'drawing-stroke-width'];
 
     const aligns = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
@@ -336,17 +360,18 @@ export default defineComponent({
           undo: () => cr.undo(),
           redo: () => cr.redo(),
           toggleHide: () => cr.toggleSelectedNodesHidden?.(),
-          fillSection: () => toggleSection('fill'),
-          textColorSection: () => toggleSection('text-color'),
-          borderColorSection: () => toggleSection('border-color'),
-          borderStyleSection: () => toggleSection('border-style'),
-          alignSection: () => toggleSection('alignment'),
-          imageTitleSection: () => toggleSection('image-title'),
+          fillSection: () => triggerSection('fill'),
+          textColorSection: () => triggerSection('text-color'),
+          borderColorSection: () => triggerSection('border-color'),
+          borderStyleSection: () => triggerSection('border-style'),
+          alignSection: () => triggerSection('alignment'),
+          imageTitleSection: () => triggerSection('image-title'),
           edgeToggleStyle: () => cr.onEdgeToggleStyle?.(cr.selectedEdgeId),
           edgeCycleArrow: () => cr.onEdgeCycleArrow?.(cr.selectedEdgeId),
           drawingDuplicate: () => cr.duplicateSelectedDrawing?.(),
           drawingDelete: () => cr.deleteSelectedDrawing?.(),
-          drawingColorSection: () => toggleSection('drawing-color'),
+          drawingColorSection: () => triggerSection('drawing-color'),
+          drawingStrokeWidthSection: () => triggerSection('drawing-stroke-width'),
         },
       });
     });
@@ -354,29 +379,38 @@ export default defineComponent({
     const visibleActions = computed(() => actions.value.slice(0, MAX_VISIBLE_ACTIONS));
     const overflowActions = computed(() => actions.value.slice(MAX_VISIBLE_ACTIONS));
 
-    const toggleSection = (section: string) => {
+    const triggerSection = (section: string) => {
       overflowOpen.value = false;
-      activeSection.value = activeSection.value === section ? null : section;
+      if (DRAWING_SECTIONS.includes(section)) {
+        drawingSection.value = drawingSection.value === section ? null : section;
+        activeSection.value = null;
+      } else {
+        activeSection.value = activeSection.value === section ? null : section;
+        drawingSection.value = null;
+      }
     };
 
     // Close sub-panel / overflow when selection changes.
     watch(selectionKind, () => {
       activeSection.value = null;
+      drawingSection.value = null;
       overflowOpen.value = false;
     });
 
     const onActionClick = (action: NodeAction) => {
       action.handler();
-      // Direct actions close any open sub-panel.
-      if (!action.isSectionToggle) activeSection.value = null;
+      if (!action.isSectionToggle) {
+        activeSection.value = null;
+        drawingSection.value = null;
+      }
     };
 
     const onOverflowActionClick = (action: NodeAction) => {
+      overflowOpen.value = false;
       action.handler();
       if (!action.isSectionToggle) {
-        overflowOpen.value = false;
-      } else {
-        overflowOpen.value = false; // show sub-panel in main toolbar
+        activeSection.value = null;
+        drawingSection.value = null;
       }
     };
 
@@ -399,6 +433,7 @@ export default defineComponent({
       visibleActions,
       overflowActions,
       activeSection,
+      drawingSection,
       overflowOpen,
       aligns,
       iconProps,

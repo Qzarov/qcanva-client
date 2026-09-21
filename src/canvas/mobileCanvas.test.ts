@@ -30,6 +30,7 @@ const baseHandlers = {
   drawingDuplicate: noop,
   drawingDelete: noop,
   drawingColorSection: noop,
+  drawingStrokeWidthSection: noop,
 };
 
 // ──────────────────────────────────────────────
@@ -208,10 +209,45 @@ describe('buildNodeActions — drawing', () => {
     handlers: baseHandlers,
   };
 
-  it('returns duplicate and delete', () => {
+  it('returns color, stroke-width, duplicate and delete', () => {
     const keys = buildNodeActions(drawing).map((a) => a.key);
+    expect(keys).toContain('drawing-color');
+    expect(keys).toContain('drawing-stroke-width');
     expect(keys).toContain('drawing-duplicate');
     expect(keys).toContain('drawing-delete');
+  });
+
+  it('marks color and stroke-width as section toggles', () => {
+    const actions = buildNodeActions(drawing);
+    const color = actions.find((a) => a.key === 'drawing-color');
+    const width = actions.find((a) => a.key === 'drawing-stroke-width');
+    expect(color?.isSectionToggle).toBe(true);
+    expect(width?.isSectionToggle).toBe(true);
+  });
+});
+
+describe('buildNodeActions — multi-drawing', () => {
+  const multiDrawing = {
+    kind: 'multi-drawing' as const,
+    isLocked: false,
+    canUndo: false,
+    canRedo: false,
+    isOwner: false,
+    isReadonly: false,
+    handlers: baseHandlers,
+  };
+
+  it('returns color, stroke-width, duplicate and delete', () => {
+    const keys = buildNodeActions(multiDrawing).map((a) => a.key);
+    expect(keys).toContain('drawing-color');
+    expect(keys).toContain('drawing-stroke-width');
+    expect(keys).toContain('drawing-duplicate');
+    expect(keys).toContain('delete');
+  });
+
+  it('fits within MAX_VISIBLE_ACTIONS without overflow', () => {
+    const actions = buildNodeActions(multiDrawing);
+    expect(actions.length).toBeLessThanOrEqual(MAX_VISIBLE_ACTIONS);
   });
 });
 

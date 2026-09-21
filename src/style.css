@@ -757,6 +757,15 @@ body {
   padding-top: 12px;
   border-top: 1px solid var(--ui-border);
 }
+.dashboard-sidebar-version {
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+  opacity: 0.65;
+  padding: 0 10px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .dashboard-sidebar-footer .account-menu,
 .dashboard-sidebar-footer .account-menu-trigger {
   width: 100%;
@@ -7471,6 +7480,17 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
   .account-menu-trigger.current-user-badge {
     padding: 6px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Sidebar AccountMenu: restore username display (header/canvas keep icon-only) */
+  .account-menu--sidebar .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: inline;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .text-doc-menu-mobile {
@@ -8417,6 +8437,60 @@ textarea:focus-visible {
 .mobile-overflow-item:disabled { opacity: 0.35; pointer-events: none; }
 .mobile-overflow-item-danger { color: var(--ui-danger-foreground); }
 
+/* ===== Drawing popup (MobileNodeToolbar — floats above icon row) ===== */
+.mobile-drawing-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 12px 16px;
+  z-index: 92;
+}
+.mobile-drawing-popup-colors {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-drawing-popup-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-drawing-popup-swatch.active {
+  border-color: var(--ui-accent-strong);
+  transform: scale(1.15);
+}
+.mobile-drawing-popup-width {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-drawing-popup-width-slider {
+  flex: 1;
+  accent-color: var(--color-brands);
+}
+.mobile-drawing-popup-width-label {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mobile-drawing-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
 /* ===== Mobile Draw Panel (above modebar when draw mode active) ===== */
 /* Mobile Add bottom sheet */
 .mobile-add-backdrop {
@@ -8525,32 +8599,85 @@ textarea:focus-visible {
   cursor: pointer;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s, box-shadow 0.12s;
 }
-.mobile-draw-colors {
+.mobile-draw-color-btn.active {
+  border-color: var(--ui-accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-strong) 30%, transparent);
+}
+.mobile-draw-width-btn {
   display: flex;
-  gap: 8px;
   align-items: center;
-  padding: 4px 0;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
 }
-.mobile-draw-color-swatch {
-  width: 28px;
-  height: 28px;
+.mobile-draw-width-btn:active { background: var(--ui-surface-subtle); }
+.mobile-draw-width-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+
+/* Draw mode popup (floats above the draw panel) */
+.mobile-draw-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 12px 16px;
+  z-index: 92;
+}
+.mobile-draw-popup-colors {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-draw-popup-swatch {
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 2px solid transparent;
   cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s, border-color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
-.mobile-draw-color-swatch.active {
+.mobile-draw-popup-swatch.active {
   border-color: var(--ui-accent-strong);
+  transform: scale(1.15);
 }
-.mobile-draw-width-row {
+.mobile-draw-popup-width {
   display: flex;
   align-items: center;
-  padding: 2px 4px;
+  gap: 10px;
 }
-.mobile-draw-width-slider {
-  width: 100%;
+.mobile-draw-popup-width-slider {
+  flex: 1;
   accent-color: var(--color-brands);
+}
+.mobile-draw-popup-width-label {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mobile-draw-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
 }
 
 /* Show mobile components and adjust layout at mobile breakpoint */

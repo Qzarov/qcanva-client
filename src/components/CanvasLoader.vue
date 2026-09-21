@@ -3145,18 +3145,18 @@ export default defineComponent({
 
     // Drawing action methods
     const setSelectedDrawingColor = (color: string) => {
-      const d = selectedDrawingObj.value;
-      if (!d) return;
+      const ids = selectedDrawingIds.value;
+      if (!ids.length) return;
       pushUndo();
-      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, color } : x));
-      emitOp({ type: "draw-update", id: d.id, changes: { color } } as CanvasOp);
+      drawings.value = drawings.value.map((x) => (ids.includes(x.id) ? { ...x, color } : x));
+      ids.forEach((id) => emitOp({ type: "draw-update", id, changes: { color } } as CanvasOp));
     };
     const setSelectedDrawingWidth = (width: number) => {
-      const d = selectedDrawingObj.value;
-      if (!d) return;
+      const ids = selectedDrawingIds.value;
+      if (!ids.length) return;
       pushUndo();
-      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, width } : x));
-      emitOp({ type: "draw-update", id: d.id, changes: { width } } as CanvasOp);
+      drawings.value = drawings.value.map((x) => (ids.includes(x.id) ? { ...x, width } : x));
+      ids.forEach((id) => emitOp({ type: "draw-update", id, changes: { width } } as CanvasOp));
     };
     const duplicateSelectedDrawing = () => {
       const d = selectedDrawingObj.value;
