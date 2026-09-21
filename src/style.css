@@ -8190,9 +8190,9 @@ textarea:focus-visible {
 }
 
 /* ===== Mobile-only visibility helper ===== */
-.mobile-only { display: none; }
+.mobile-only { display: none !important; }
 
-/* ===== Mobile Modebar (Hand / Cursor toggle) ===== */
+/* ===== Mobile Modebar (Hand / Cursor / Draw) ===== */
 .mobile-modebar {
   position: fixed;
   bottom: 0;
@@ -8201,29 +8201,26 @@ textarea:focus-visible {
   z-index: 92;
   display: flex;
   justify-content: center;
-  gap: 4px;
-  padding: 6px 16px;
-  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  gap: 2px;
+  padding: 4px 12px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom));
   background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--ui-border);
-  /* Keep out from under visual keyboard */
   bottom: env(safe-area-inset-bottom, 0px);
 }
 .mobile-modebar-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 3px;
-  min-width: 88px;
+  flex: 1 1 0;
+  max-width: 80px;
   min-height: 44px;
-  padding: 6px 16px;
+  padding: 0;
   border: none;
   border-radius: 10px;
   background: transparent;
   color: var(--ui-text-secondary);
-  font-size: 11px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
@@ -8233,10 +8230,21 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
   color: var(--ui-accent-strong);
 }
-.mobile-modebar-label {
-  font-size: 10px;
+/* Long-press tooltip above the modebar */
+.mobile-modebar-tooltip {
+  position: fixed;
+  bottom: calc(var(--canvas-toolbar-height, 52px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ui-text);
+  color: var(--ui-surface-elevated);
+  font-size: 12px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 500;
 }
 
 /* ===== Mobile Node Toolbar ===== */
@@ -8360,22 +8368,109 @@ textarea:focus-visible {
 .mobile-overflow-item:disabled { opacity: 0.35; pointer-events: none; }
 .mobile-overflow-item-danger { color: var(--ui-danger-foreground); }
 
+/* ===== Mobile Draw Panel (above modebar when draw mode active) ===== */
+.mobile-draw-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--canvas-toolbar-height, 52px);
+  z-index: 91;
+  flex-direction: column;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 6px 12px;
+  gap: 4px;
+}
+.mobile-draw-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.mobile-draw-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  flex: 1 1 0;
+}
+.mobile-draw-tool-btn:active { background: var(--ui-surface-subtle); }
+.mobile-draw-tool-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+.mobile-draw-vsep {
+  width: 1px;
+  height: 24px;
+  background: var(--ui-border);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+.mobile-draw-color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-border);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-draw-colors {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+}
+.mobile-draw-color-swatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-draw-color-swatch.active {
+  border-color: var(--ui-accent-strong);
+}
+.mobile-draw-width-row {
+  display: flex;
+  align-items: center;
+  padding: 2px 4px;
+}
+.mobile-draw-width-slider {
+  width: 100%;
+  accent-color: var(--color-brands);
+}
+
 /* Show mobile components and adjust layout at mobile breakpoint */
 @media (max-width: 640px) {
-  .mobile-only { display: flex; }
+  .mobile-only { display: flex !important; }
 
   /* Hide the old vertical block-menu on mobile — replaced by MobileNodeToolbar */
   .block-menu { display: none !important; }
+
+  /* Hide the floating desktop draw-toolbar toggle on mobile — Draw button is in the modebar */
+  .draw-toolbar { display: none !important; }
 }
 
 /* Landscape: allow slightly smaller touch targets to fit more on screen */
 @media (max-width: 640px) and (orientation: landscape) {
-  .mobile-modebar-btn { min-height: 40px; min-width: 72px; }
+  .mobile-modebar-btn { min-height: 40px; }
   .mobile-toolbar-btn { min-height: 40px; }
+  .mobile-draw-tool-btn { min-height: 40px; }
 }
 
-/* Very narrow screens: shrink labels, keep touch targets */
+/* Very narrow screens: keep touch targets */
 @media (max-width: 360px) {
-  .mobile-modebar-btn { min-width: 72px; padding: 6px 10px; }
-  .mobile-modebar-label { font-size: 9px; }
+  .mobile-modebar-btn { max-width: 64px; }
 }

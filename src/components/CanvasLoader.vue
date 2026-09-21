@@ -923,6 +923,7 @@ export default defineComponent({
     const { effectiveTheme } = useTheme();
     const { mode: mobileInteractionMode } = useMobileCanvasMode();
     const isTouchDevice = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const isHandMode = computed(() => isTouchDevice && mobileInteractionMode.value === 'hand');
     const { enabled: minimapEnabled } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -1079,6 +1080,29 @@ export default defineComponent({
         edges.value = newData.edges || [];
         drawings.value = newData.drawings || [];
         nextTick(() => fitToContent());
+      }
+    });
+
+    // Entering Hand mode: clear all selection and cancel any in-progress interaction.
+    watch(mobileInteractionMode, (newMode) => {
+      if (!isTouchDevice) return;
+      if (newMode === 'hand') {
+        selectedNodeIds.value = [];
+        selectedEdgeId.value = null;
+        selectedDrawingId.value = null;
+        if (editingNodeId.value) onEditEnd();
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchResizing = false;
+        touchConnecting = false;
+        connDragging.value = false;
+        connFromEdge.value = '';
+        isPanning.value = false;
+        resizeNodeId.value = null;
+        stopAutoPan();
+        drawMoveStart = null;
+        drawMoveOrigin = null;
+        drawMovePreview.value = null;
       }
     });
 
@@ -3043,6 +3067,7 @@ export default defineComponent({
     // Drawing pointer handlers (select + drag)
     const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
       if (drawTool.value !== "select") return;
+      if (isHandMode.value) return;
       e.stopPropagation();
       selectedDrawingId.value = d.id;
       selectedNodeIds.value = [];
@@ -3350,6 +3375,16 @@ export default defineComponent({
         touchResizing = false;
         if (contextMenu.visible) closeContextMenu();
 
+        // Hand mode: read-only pan — skip ALL node/resize/connect interaction.
+        if (isTouchDevice && mobileInteractionMode.value === 'hand') {
+          isPanning.value = true;
+          panStart.x = t.clientX;
+          panStart.y = t.clientY;
+          cameraStart.x = camera.x;
+          cameraStart.y = camera.y;
+          return;
+        }
+
         // Did we start on a resize handle? (touch-resize for mobile)
         const handleEl = (e.target as HTMLElement | null)?.closest('.resize-handle') as HTMLElement | null;
         const handleNodeEl = handleEl?.closest('[data-node-id]') as HTMLElement | null;
@@ -3398,22 +3433,13 @@ export default defineComponent({
           if (touchNode?.positionLocked) {
             return;
           }
-          if (isTouchDevice && mobileInteractionMode.value === 'hand') {
-            // Hand mode: pan the viewport on drag; tap still selects (handled in onTouchEnd).
-            isPanning.value = true;
-            panStart.x = t.clientX;
-            panStart.y = t.clientY;
-            cameraStart.x = camera.x;
-            cameraStart.y = camera.y;
-          } else {
-            // Cursor mode: prime a node drag as usual.
-            lastPointer.x = t.clientX;
-            lastPointer.y = t.clientY;
-            dragMouseStart.x = t.clientX;
-            dragMouseStart.y = t.clientY;
-            dragCameraStart.x = camera.x;
-            dragCameraStart.y = camera.y;
-          }
+          // Cursor mode: prime a node drag as usual.
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          dragMouseStart.x = t.clientX;
+          dragMouseStart.y = t.clientY;
+          dragCameraStart.x = camera.x;
+          dragCameraStart.y = camera.y;
         } else if (touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
           selectedNodeIds.value = [touchNodeId];
@@ -3479,7 +3505,7 @@ export default defineComponent({
         const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
         if (activeTouchNode?.positionLocked) return;
 
-        if (touchNodeId && !props.readonly && (!isTouchDevice || mobileInteractionMode.value !== 'hand')) {
+        if (touchNodeId && !props.readonly) {
           // Cursor mode: drag the node once the threshold is crossed.
           if (!touchDragging) {
             touchDragging = true;
@@ -3495,10 +3521,6 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchNodeId && !props.readonly && isTouchDevice && mobileInteractionMode.value === 'hand') {
-          // Hand mode on a node: pan the viewport (isPanning was primed in onTouchStart).
-          camera.x = cameraStart.x + (t.clientX - panStart.x);
-          camera.y = cameraStart.y + (t.clientY - panStart.y);
         } else if (touchNodeId && props.readonly) {
           emit('readonly-action');
         } else if (isPanning.value) {
@@ -3573,6 +3595,16 @@ export default defineComponent({
         resizeNodeId.value = null;
         touchResizing = false;
         touchNodeId = null;
+        return;
+      }
+
+      // Hand mode: pan only — no tap-select, no double-tap edit, no create-on-tap.
+      if (isTouchDevice && mobileInteractionMode.value === 'hand') {
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchNodeId = null;
+        isPanning.value = false;
+        lastTouchDist.value = 0;
         return;
       }
 
