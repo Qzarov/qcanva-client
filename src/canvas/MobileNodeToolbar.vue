@@ -59,6 +59,21 @@
         </div>
       </template>
 
+      <!-- Drawing color -->
+      <template v-if="activeSection === 'drawing-color'">
+        <div class="mobile-subpanel-colors">
+          <button
+            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
+            :key="'mdc'+c"
+            class="tb-color"
+            :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
+            :style="{ background: c }"
+            :aria-label="c"
+            @click="canvasRef?.setSelectedDrawingColor(c)"
+          />
+        </div>
+      </template>
+
       <!-- Border color -->
       <template v-if="activeSection === 'border-color'">
         <div class="mobile-subpanel-colors">
@@ -258,6 +273,8 @@ const ICON_PATHS: Record<string, string> = {
                         <rect x="4" y="4" width="11" height="11" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/>`,
   'drawing-delete': `<polyline points="3 6 5 6 21 6" stroke="currentColor" stroke-width="1.8" fill="none"/>
                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke="currentColor" stroke-width="1.8" fill="none"/>`,
+  'drawing-color': `<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8" fill="none"/>
+                    <circle cx="12" cy="12" r="4" fill="currentColor"/>`,
 };
 
 export default defineComponent({
@@ -285,7 +302,7 @@ export default defineComponent({
       getSelectionKind({
         selectedNodeIds: props.canvasRef?.selectedNodeIds ?? [],
         selectedEdgeId: props.canvasRef?.selectedEdgeId ?? null,
-        selectedDrawingId: props.canvasRef?.selectedDrawingId ?? null,
+        selectedDrawingIds: props.canvasRef?.selectedDrawingIds ?? [],
       }),
     );
 
@@ -329,6 +346,7 @@ export default defineComponent({
           edgeCycleArrow: () => cr.onEdgeCycleArrow?.(cr.selectedEdgeId),
           drawingDuplicate: () => cr.duplicateSelectedDrawing?.(),
           drawingDelete: () => cr.deleteSelectedDrawing?.(),
+          drawingColorSection: () => toggleSection('drawing-color'),
         },
       });
     });

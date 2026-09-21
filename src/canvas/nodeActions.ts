@@ -3,7 +3,8 @@ export type NodeActionKey =
   | 'alignment' | 'duplicate' | 'lock' | 'layer-up' | 'layer-down'
   | 'bring-front' | 'send-back' | 'hide' | 'image-title'
   | 'delete' | 'undo' | 'redo'
-  | 'edge-style' | 'edge-arrow' | 'drawing-duplicate' | 'drawing-delete';
+  | 'edge-style' | 'edge-arrow'
+  | 'drawing-duplicate' | 'drawing-delete' | 'drawing-color';
 
 export type NodeAction = {
   key: NodeActionKey;
@@ -15,17 +16,21 @@ export type NodeAction = {
   isSectionToggle?: boolean;
 };
 
-export type SelectionKind = 'node' | 'multi-node' | 'edge' | 'drawing' | 'none';
+export type SelectionKind = 'node' | 'multi-node' | 'edge' | 'drawing' | 'multi-drawing' | 'mixed' | 'none';
 
 export function getSelectionKind(p: {
   selectedNodeIds: string[];
   selectedEdgeId: string | null;
-  selectedDrawingId: string | null;
+  selectedDrawingIds: string[];
 }): SelectionKind {
+  const hasNodes = p.selectedNodeIds.length > 0;
+  const hasDrawings = p.selectedDrawingIds.length > 0;
+  if (hasNodes && hasDrawings) return 'mixed';
   if (p.selectedNodeIds.length > 1) return 'multi-node';
   if (p.selectedNodeIds.length === 1) return 'node';
   if (p.selectedEdgeId) return 'edge';
-  if (p.selectedDrawingId) return 'drawing';
+  if (p.selectedDrawingIds.length > 1) return 'multi-drawing';
+  if (p.selectedDrawingIds.length === 1) return 'drawing';
   return 'none';
 }
 
@@ -60,6 +65,7 @@ export type BuildActionsParams = {
     // drawing-specific
     drawingDuplicate: () => void;
     drawingDelete: () => void;
+    drawingColorSection: () => void;
   };
 };
 
@@ -83,8 +89,16 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
 
   if (p.kind === 'drawing') {
     return [
+      { key: 'drawing-color', label: 'Color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
       { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
       { key: 'drawing-delete', label: 'Delete', handler: p.handlers.drawingDelete, danger: true, disabled: r },
+    ];
+  }
+
+  if (p.kind === 'multi-drawing' || p.kind === 'mixed') {
+    return [
+      { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
+      { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
     ];
   }
 

@@ -5486,9 +5486,19 @@ body {
     font-size: 10px;
   }
 
+  /* Hide collaborator avatars on mobile — saves up to 78px, prevents topbar overflow at 320px */
   .online-users {
-    max-width: 72px;
-    overflow: hidden;
+    display: none;
+  }
+
+  /* Hide WS connected dot — only takes 8px but adds noise; sync badge covers status */
+  .topbar-ws-status {
+    display: none;
+  }
+
+  /* Floating drawing toolbar uses desktop pointer precision — hidden on touch */
+  .drawing-actions-toolbar.desktop-only {
+    display: none;
   }
 
   .sync-notice {

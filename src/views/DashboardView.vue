@@ -136,10 +136,8 @@
         <option value="title-asc">{{ t('titleAsc') }}</option>
         <option value="title-desc">{{ t('titleDesc') }}</option>
       </select>
-      <!-- Recent has its own sort trigger inline in its section header;
-           this covers every other view (folders/public), which only share
-           the toolbar. -->
-      <div v-if="activeSection.kind !== 'recent'" class="control-menu dash-sort-menu-mobile">
+      <!-- Sort trigger for public view; folder view gets it inlined in the folder header -->
+      <div v-if="activeSection.kind === 'public'" class="control-menu dash-sort-menu-mobile">
         <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
           <ArrowUpDown :size="15" aria-hidden="true" />
         </button>
@@ -389,6 +387,30 @@
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
                   <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
                 </span>
+              </div>
+              <!-- Sort button in folder header -->
+              <div class="control-menu dash-sort-menu-mobile folder-header-sort">
+                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+                  <ArrowUpDown :size="15" aria-hidden="true" />
+                </button>
+                <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                    <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('newest') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                    <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('oldest') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                    <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('titleAsc') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                    <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('titleDesc') }}</span>
+                  </button>
+                </div>
               </div>
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button

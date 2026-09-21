@@ -943,7 +943,7 @@ export default defineComponent({
     const setDrawWidth = (w: number) => { drawWidth.value = w; };
 
     // Drawing selection + drag state
-    const selectedDrawingId = ref<string | null>(null);
+    const selectedDrawingIds = ref<string[]>([]);
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
@@ -1089,7 +1089,7 @@ export default defineComponent({
       if (newMode === 'hand') {
         selectedNodeIds.value = [];
         selectedEdgeId.value = null;
-        selectedDrawingId.value = null;
+        selectedDrawingIds.value = [];
         if (editingNodeId.value) onEditEnd();
         dragNodeId.value = null;
         touchDragging = false;
@@ -1871,7 +1871,7 @@ export default defineComponent({
         return;
       }
       if (resizeNodeId.value) return;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       if (node.positionLocked) {
         // A locked block can't be moved, so a drag starting on it should behave
         // like a drag on empty canvas — begin a marquee selection. A plain click
@@ -2005,7 +2005,7 @@ export default defineComponent({
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
       selectedNodeIds.value = [];
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
     };
 
     const onDeleteEdge = () => {
@@ -2328,6 +2328,36 @@ export default defineComponent({
 
     const closeContextMenu = () => { contextMenu.visible = false; };
 
+    // Clears all selection state and closes element-bound UI.
+    // Does NOT close global canvas panels (history, chat, plugins, minimap).
+    const clearSelection = () => {
+      selectedNodeIds.value = [];
+      selectedDrawingIds.value = [];
+      selectedEdgeId.value = null;
+      if (editingNodeId.value) onEditEnd();
+      closeContextMenu();
+    };
+
+    // Selects exactly one item, clearing all other selection types.
+    const selectExclusive = (kind: 'node' | 'drawing' | 'edge', id: string) => {
+      clearSelection();
+      if (kind === 'node') selectedNodeIds.value = [id];
+      else if (kind === 'drawing') selectedDrawingIds.value = [id];
+      else if (kind === 'edge') selectedEdgeId.value = id;
+    };
+
+    // Commits a marquee selection box (in world coordinates) to selectedNodeIds + selectedDrawingIds.
+    const commitMarqueeSelection = (x1: number, y1: number, x2: number, y2: number) => {
+      if (x2 - x1 <= 5 && y2 - y1 <= 5) return;
+      selectedNodeIds.value = viewerNodes.value.filter((n) =>
+        n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
+      ).map((n) => n.id);
+      selectedDrawingIds.value = drawings.value.filter((d) => {
+        const b = drawingBounds(d);
+        return b.x + b.w > x1 && b.x < x2 && b.y + b.h > y1 && b.y < y2;
+      }).map((d) => d.id);
+    };
+
     const positionContextMenu = (e: MouseEvent) => {
       const rect = viewport.value!.getBoundingClientRect();
       const menuWidth = Math.min(260, rect.width - 16);
@@ -2356,7 +2386,7 @@ export default defineComponent({
 
     const onDrawingContextMenu = (e: MouseEvent, d: { id: string }) => {
       e.preventDefault(); e.stopPropagation();
-      selectedDrawingId.value = d.id;
+      selectedDrawingIds.value = [d.id];
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       positionContextMenu(e);
@@ -2777,7 +2807,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       scheduleChange(true);
     };
 
@@ -2790,7 +2820,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       scheduleChange(true);
     };
 
@@ -2923,9 +2953,7 @@ export default defineComponent({
       }
       // Escape — deselect
       if (e.key === "Escape") {
-        selectedNodeIds.value = [];
-        selectedEdgeId.value = null;
-        selectedDrawingId.value = null;
+        clearSelection();
         return;
       }
       if (editingNodeId.value || editingEdgeId.value) return;
@@ -2946,7 +2974,7 @@ export default defineComponent({
           emitOp({ type: 'node-delete', ids });
           selectedNodeIds.value = [];
           e.preventDefault();
-        } else if (selectedDrawingId.value) {
+        } else if (selectedDrawingIds.value.length > 0) {
           e.preventDefault();
           deleteSelectedDrawing();
         }
@@ -3043,7 +3071,7 @@ export default defineComponent({
     };
 
     // Drawing selection computeds
-    const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingId.value) || null);
+    const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingIds.value[0]) || null);
     const isDraggingDrawing = computed(() => drawMovePreview.value !== null);
     const shownDrawing = (d: Drawing): Drawing =>
       (drawMovePreview.value && drawMovePreview.value.id === d.id ? drawMovePreview.value : d);
@@ -3069,7 +3097,7 @@ export default defineComponent({
       if (drawTool.value !== "select") return;
       if (isHandMode.value) return;
       e.stopPropagation();
-      selectedDrawingId.value = d.id;
+      selectedDrawingIds.value = [d.id];
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -3122,7 +3150,7 @@ export default defineComponent({
       const copy: Drawing = { ...translateDrawing(d, 16, 16), id: genId(), createdAt: new Date().toISOString() };
       pushUndo();
       drawings.value = [...drawings.value, copy];
-      selectedDrawingId.value = copy.id;
+      selectedDrawingIds.value = [copy.id];
       emitOp({ type: "draw-add", drawing: copy } as CanvasOp);
     };
     const deleteSelectedDrawing = () => {
@@ -3130,7 +3158,7 @@ export default defineComponent({
       if (!d) return;
       const id = d.id;
       pushUndo();
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       drawings.value = drawings.value.filter((x) => x.id !== id);
       emitOp({ type: "draw-remove", id } as CanvasOp);
     };
@@ -3175,8 +3203,9 @@ export default defineComponent({
 
     // Clear stale selection when peer removes the selected drawing
     watch(drawings, () => {
-      if (selectedDrawingId.value && !drawings.value.some((d) => d.id === selectedDrawingId.value)) {
-        selectedDrawingId.value = null;
+      if (selectedDrawingIds.value.length > 0) {
+        const live = new Set(drawings.value.map((d) => d.id));
+        selectedDrawingIds.value = selectedDrawingIds.value.filter((id) => live.has(id));
       }
     });
 
@@ -3187,7 +3216,7 @@ export default defineComponent({
         selectedNodeIds.value = [];
       }
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
 
@@ -3283,13 +3312,7 @@ export default defineComponent({
         const y1 = Math.min(selBox.startY, selBox.curY);
         const x2 = Math.max(selBox.startX, selBox.curX);
         const y2 = Math.max(selBox.startY, selBox.curY);
-        // Only select if box is bigger than a tiny drag (avoid deselect on click)
-        if (x2 - x1 > 5 || y2 - y1 > 5) {
-          const hits = viewerNodes.value.filter((n) =>
-            n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
-          ).map((n) => n.id);
-          selectedNodeIds.value = hits;
-        }
+        commitMarqueeSelection(x1, y1, x2, y2);
         selBox.active = false;
       }
       isPanning.value = false;
@@ -3427,6 +3450,7 @@ export default defineComponent({
         if (touchNodeId && !props.readonly) {
           // Select immediately (so the style toolbar appears).
           if (!selectedNodeIds.value.includes(touchNodeId)) {
+            selectedDrawingIds.value = [];
             selectedNodeIds.value = [touchNodeId];
           }
           selectedEdgeId.value = null;
@@ -3442,6 +3466,7 @@ export default defineComponent({
           dragCameraStart.y = camera.y;
         } else if (touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
+          selectedDrawingIds.value = [];
           selectedNodeIds.value = [touchNodeId];
         } else {
           // Empty canvas — route by mobile interaction mode
@@ -3635,11 +3660,11 @@ export default defineComponent({
         const y1 = Math.min(selBox.startY, selBox.curY);
         const x2 = Math.max(selBox.startX, selBox.curX);
         const y2 = Math.max(selBox.startY, selBox.curY);
-        if (x2 - x1 > 5 || y2 - y1 > 5) {
-          const hits = viewerNodes.value.filter((n) =>
-            n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
-          ).map((n) => n.id);
-          selectedNodeIds.value = hits;
+        if (x2 - x1 <= 5 && y2 - y1 <= 5) {
+          // Tap on empty canvas (point-size selBox) → clear all selection
+          clearSelection();
+        } else {
+          commitMarqueeSelection(x1, y1, x2, y2);
         }
         selBox.active = false;
         isPanning.value = false;
@@ -3679,11 +3704,8 @@ export default defineComponent({
         } else if (isDouble && props.readonly) {
           emit('readonly-action');
         } else {
-          // Single tap on blank space → deselect / close
-          if (editingNodeId.value) onEditEnd();
-          selectedNodeIds.value = [];
-          selectedEdgeId.value = null;
-          closeContextMenu();
+          // Single tap on blank space → clear all selection
+          clearSelection();
           lastTapTime = now;
           lastTapTarget = "__empty__";
         }
@@ -3923,7 +3945,7 @@ export default defineComponent({
       if (!node || !viewport.value) return;
       selectedNodeIds.value = [nodeId];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       const centerX = node.x + node.width / 2;
       const centerY = node.y + node.height / 2;
       camera.x = viewport.value.clientWidth / 2 - centerX * camera.scale;
@@ -4253,8 +4275,9 @@ export default defineComponent({
       setNodeTitle,
       flashNodeId,
       imageInput,
-      selectedDrawingId,
+      selectedDrawingIds,
       selectedDrawingObj,
+      clearSelection,
       isDraggingDrawing,
       selectedBounds,
       selectedDrawingScreenRect,

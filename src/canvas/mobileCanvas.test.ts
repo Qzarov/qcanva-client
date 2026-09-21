@@ -37,27 +37,35 @@ const baseHandlers = {
 
 describe('getSelectionKind', () => {
   it('returns none when nothing selected', () => {
-    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: null, selectedDrawingId: null })).toBe('none');
+    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: null, selectedDrawingIds: [] })).toBe('none');
   });
 
   it('returns node for single node', () => {
-    expect(getSelectionKind({ selectedNodeIds: ['a'], selectedEdgeId: null, selectedDrawingId: null })).toBe('node');
+    expect(getSelectionKind({ selectedNodeIds: ['a'], selectedEdgeId: null, selectedDrawingIds: [] })).toBe('node');
   });
 
   it('returns multi-node for 2+ nodes', () => {
-    expect(getSelectionKind({ selectedNodeIds: ['a', 'b'], selectedEdgeId: null, selectedDrawingId: null })).toBe('multi-node');
+    expect(getSelectionKind({ selectedNodeIds: ['a', 'b'], selectedEdgeId: null, selectedDrawingIds: [] })).toBe('multi-node');
   });
 
   it('returns edge', () => {
-    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: 'e1', selectedDrawingId: null })).toBe('edge');
+    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: 'e1', selectedDrawingIds: [] })).toBe('edge');
   });
 
-  it('returns drawing', () => {
-    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: null, selectedDrawingId: 'd1' })).toBe('drawing');
+  it('returns drawing for single drawing', () => {
+    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: null, selectedDrawingIds: ['d1'] })).toBe('drawing');
+  });
+
+  it('returns multi-drawing for 2+ drawings', () => {
+    expect(getSelectionKind({ selectedNodeIds: [], selectedEdgeId: null, selectedDrawingIds: ['d1', 'd2'] })).toBe('multi-drawing');
+  });
+
+  it('returns mixed when nodes and drawings both selected', () => {
+    expect(getSelectionKind({ selectedNodeIds: ['a'], selectedEdgeId: null, selectedDrawingIds: ['d1'] })).toBe('mixed');
   });
 
   it('node takes precedence over edge', () => {
-    expect(getSelectionKind({ selectedNodeIds: ['a'], selectedEdgeId: 'e1', selectedDrawingId: null })).toBe('node');
+    expect(getSelectionKind({ selectedNodeIds: ['a'], selectedEdgeId: 'e1', selectedDrawingIds: [] })).toBe('node');
   });
 });
 

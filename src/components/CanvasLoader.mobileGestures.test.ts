@@ -437,3 +437,136 @@ describe('MobileModebar — tooltip on long press (Task 9)', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────
+// New batch — Unified selection model (Tasks 3/4/8 of new batch)
+// ─────────────────────────────────────────────────────────────
+
+describe('CanvasLoader — unified selection model', () => {
+  it('tap on empty canvas clears node selection (Task 3/8)', async () => {
+    const node = { id: 'N1', type: 'text', text: 'N', x: 50, y: 50, width: 80, height: 40 };
+    const wrapper = mountLoader([node]);
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.selectedNodeIds.value = ['N1'];
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    // Tap on empty canvas (well away from the node)
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 900, y: 900 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selectedNodeIds).toHaveLength(0);
+  });
+
+  it('tap on empty canvas clears drawing selection (Task 3/4/8)', async () => {
+    const wrapper = mountLoader();
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const state = (wrapper.getCurrentComponent() as any).setupState;
+    state.selectedDrawingIds.value = ['d1'];
+    const vm = wrapper.vm as any;
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 900, y: 900 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selectedDrawingIds).toHaveLength(0);
+  });
+
+  it('tapping a node clears drawing selection (Task 3/4)', async () => {
+    const node = { id: 'N1', type: 'text', text: 'N', x: 400, y: 400, width: 80, height: 40 };
+    const wrapper = mountLoader([node]);
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const state = (wrapper.getCurrentComponent() as any).setupState;
+    state.selectedDrawingIds.value = ['d1'];
+    const vm = wrapper.vm as any;
+
+    // Need to actually hit the node element — use a nodeEl with data-node-id
+    const nodeEl = document.createElement('div');
+    nodeEl.dataset.nodeId = 'N1';
+    document.body.appendChild(nodeEl);
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', nodeEl, [{ x: 450, y: 420 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    nodeEl.remove();
+
+    expect(vm.selectedDrawingIds).toHaveLength(0);
+    expect(vm.selectedNodeIds).toContain('N1');
+  });
+
+  it('marquee commits selectedDrawingIds for drawings that intersect (Task 6/7)', async () => {
+    // Pass drawing via initialData so CanvasLoader initialises drawings ref correctly.
+    // pen points format is a flat number array: [x0, y0, x1, y1, ...]
+    const drawing = { id: 'draw1', tool: 'pen', points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '' };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    // Marquee from (0, 0) to (100, 100) in screen space = world space at scale 1
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 0, y: 0 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', viewport, [{ x: 100, y: 100 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selectedDrawingIds).toContain('draw1');
+  });
+
+  it('clearSelection helper clears edge selection (Task 8)', async () => {
+    const wrapper = mountLoader();
+    await flushPromises();
+
+    const vm = wrapper.vm as any;
+    // onEdgeClick is the public API to set selectedEdgeId
+    vm.onEdgeClick('e1');
+    expect(vm.selectedEdgeId).toBe('e1');
+
+    vm.clearSelection();
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selectedEdgeId).toBeNull();
+  });
+
+  it('clearSelection helper clears drawing selection (Task 8)', async () => {
+    const drawing = { id: 'draw1', tool: 'pen', points: [10, 10, 50, 50], color: '#000', width: 2, createdAt: '' };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    // commitMarqueeSelection (internal) is called by the touch handler; trigger it via marquee gesture
+    vm.camera.x = 0; vm.camera.y = 0; vm.camera.scale = 1;
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 0, y: 0 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', viewport, [{ x: 100, y: 100 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+    expect(vm.selectedDrawingIds).toContain('draw1');
+
+    vm.clearSelection();
+    await wrapper.vm.$nextTick();
+    expect(vm.selectedDrawingIds).toHaveLength(0);
+  });
+});
+

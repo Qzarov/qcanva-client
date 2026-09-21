@@ -348,10 +348,10 @@
         </div>
       </div>
 
-      <!-- Floating actions toolbar for a selected drawing -->
+      <!-- Floating actions toolbar for a selected drawing (desktop only; mobile uses MobileNodeToolbar) -->
       <div
-        v-if="role !== 'read' && canvasRef?.selectedDrawingId && canvasRef?.selectedDrawingScreenRect"
-        class="drawing-actions-toolbar"
+        v-if="role !== 'read' && canvasRef?.selectedDrawingIds?.length === 1 && canvasRef?.selectedDrawingScreenRect"
+        class="drawing-actions-toolbar desktop-only"
         :style="{
           left: canvasRef.selectedDrawingScreenRect.left + 'px',
           top: Math.max(8, canvasRef.selectedDrawingScreenRect.top - 52) + 'px'
