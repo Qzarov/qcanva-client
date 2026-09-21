@@ -922,7 +922,7 @@ export default defineComponent({
     const { t } = useI18n();
     const { effectiveTheme } = useTheme();
     const { mode: mobileInteractionMode } = useMobileCanvasMode();
-    const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    const isTouchDevice = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
     const { enabled: minimapEnabled } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
