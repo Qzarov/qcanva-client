@@ -29,7 +29,9 @@ export default mergeConfig(
         '**/dist/**',
         '**/.worktrees/**',
         '**/.claude/worktrees/**',
+        '**/tests/**',
         '**/*.visual.spec.ts',
+        '**/*.smoke.spec.ts',
       ],
       server: {
         deps: {
