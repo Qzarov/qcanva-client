@@ -162,6 +162,19 @@
             @click="setCanvasPlugin(plugin.id, !plugin.enabled)"
           ><span class="plugin-toggle-label">{{ plugin.enabled ? t('pluginOn') : t('pluginOff') }}</span><span class="plugin-toggle-knob"></span></button>
         </div>
+        <!-- Minimap preference — local per-device, not per-canvas; always visible in settings -->
+        <div class="canvas-plugin-row canvas-plugin-row-minimap">
+          <div><strong>{{ t('minimap') }}</strong></div>
+          <button
+            class="plugin-toggle"
+            :class="{ on: minimapEnabled }"
+            role="switch"
+            :aria-checked="minimapEnabled"
+            :aria-label="`${t('minimap')}: ${minimapEnabled ? t('pluginEnabled') : t('pluginDisabled')}`"
+            :title="minimapEnabled ? t('disablePlugin') : t('enablePlugin')"
+            @click="setMinimapEnabled(!minimapEnabled)"
+          ><span class="plugin-toggle-label">{{ minimapEnabled ? t('pluginOn') : t('pluginOff') }}</span><span class="plugin-toggle-knob"></span></button>
+        </div>
         <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
           <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">{{ t('addCharacterCard') }}</button>
           <button class="btn-ghost btn-sm" @click="loadTemplateImport">{{ t('importFromTemplates') }}</button>
@@ -584,6 +597,17 @@
         </button>
       </div>
 
+      <!-- Mobile node editing toolbar (above mode bar, mobile only) -->
+      <MobileNodeToolbar
+        v-if="!canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        :canvas-ref="canvasRef"
+        :role="role ?? 'read'"
+        class="mobile-only"
+      />
+
+      <!-- Mobile mode bar: Hand / Cursor (mobile only) -->
+      <MobileModebar ref="modebarRef" class="mobile-only" />
+
       <!-- Access panel -->
       <div v-if="showShare" class="share-panel">
         <div class="share-panel-header">
@@ -890,7 +914,10 @@ import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useI18n } from '../composables/useI18n';
+import { useMinimapPreference } from '../composables/useMinimapPreference';
 import CanvasLoader from '../components/CanvasLoader.vue';
+import MobileModebar from '../canvas/MobileModebar.vue';
+import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
 
 interface CanvasChangePayload {
   nodes: any[];
@@ -900,7 +927,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { AccountMenu, AccessGate, CanvasLoader, ChatPanel },
+  components: { AccountMenu, AccessGate, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -922,6 +949,7 @@ export default defineComponent({
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
     const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded, pluginItems, setEnabled: setPluginEnabled } = usePlugins();
+    const { enabled: minimapEnabled, setEnabled: setMinimapEnabled } = useMinimapPreference();
     const showPlugins = ref(false);
     const settingPluginId = ref('');
     const diceEnabled = computed(() => isPluginEnabled('dice'));
@@ -932,6 +960,7 @@ export default defineComponent({
     const diceCount = ref(1);
     const diceModifier = ref(0);
     const canvasRef = ref<any>(null);
+    const modebarRef = ref<{ $el?: HTMLElement } | null>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
     // Which expandable section of the mobile block menu is open ('' = none)
@@ -1070,7 +1099,10 @@ export default defineComponent({
       const root = canvasViewRef.value;
       if (!root) return;
       root.style.setProperty('--canvas-topbar-height', `${topbarRef.value?.offsetHeight || 44}px`);
-      root.style.setProperty('--canvas-toolbar-height', '0px');
+      // Include mobile bottom bars in the toolbar-height offset so minimap/notices clear them.
+      const modebarEl = modebarRef.value?.$el as HTMLElement | undefined;
+      const modebarH = modebarEl?.offsetHeight ?? 0;
+      root.style.setProperty('--canvas-toolbar-height', modebarH > 0 ? `${modebarH}px` : '0px');
     }
 
     function observeChromeMetrics() {
@@ -1083,6 +1115,8 @@ export default defineComponent({
       chromeResizeObserver = new ResizeObserver(updateChromeMetrics);
       if (topbarRef.value) chromeResizeObserver.observe(topbarRef.value);
       if (nodeToolbarRef.value) chromeResizeObserver.observe(nodeToolbarRef.value);
+      const modebarEl = modebarRef.value?.$el as HTMLElement | undefined;
+      if (modebarEl) chromeResizeObserver.observe(modebarEl);
       updateChromeMetrics();
     }
 
@@ -1976,7 +2010,7 @@ export default defineComponent({
 
     return {
       t,
-      route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
+      route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen,
       loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
       checkingResourcePassword,
@@ -2003,6 +2037,7 @@ export default defineComponent({
       showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
+      minimapEnabled, setMinimapEnabled,
       drawPanelOpen,
       toggleDrawPanel,
       diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,

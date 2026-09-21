@@ -8188,3 +8188,194 @@ textarea:focus-visible {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
 }
+
+/* ===== Mobile-only visibility helper ===== */
+.mobile-only { display: none; }
+
+/* ===== Mobile Modebar (Hand / Cursor toggle) ===== */
+.mobile-modebar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 92;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 16px;
+  padding-bottom: calc(6px + env(safe-area-inset-bottom));
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  /* Keep out from under visual keyboard */
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+.mobile-modebar-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 88px;
+  min-height: 44px;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-modebar-btn:active { background: var(--ui-surface-subtle); }
+.mobile-modebar-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+.mobile-modebar-label {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* ===== Mobile Node Toolbar ===== */
+.mobile-node-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* Use the measured modebar height (set by ResizeObserver in CanvasView) */
+  bottom: var(--canvas-toolbar-height, 61px);
+  z-index: 91;
+}
+.mobile-node-toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+}
+.mobile-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  flex: 1 1 0;
+  max-width: 60px;
+}
+.mobile-toolbar-btn:active { background: var(--ui-surface-subtle); }
+.mobile-toolbar-btn.mobile-toolbar-btn-active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+.mobile-toolbar-btn.mobile-toolbar-btn-danger { color: var(--ui-danger-foreground); }
+.mobile-toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
+
+/* Sub-panel: expands above the icon row */
+.mobile-node-subpanel {
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 8px 12px;
+}
+.mobile-subpanel-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.mobile-subpanel-colors .tb-color { width: 28px; height: 28px; border-radius: 50%; }
+.mobile-subpanel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mobile-subpanel-title-input {
+  width: 100%;
+  margin: 0;
+}
+
+/* Overflow backdrop */
+.mobile-overflow-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 310;
+  background: rgba(0,0,0,.35);
+}
+
+/* Overflow bottom sheet */
+.mobile-overflow-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 311;
+  background: var(--ui-surface-elevated);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  max-height: 60dvh;
+  overflow-y: auto;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.18);
+}
+.mobile-overflow-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--ui-border);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+}
+.mobile-overflow-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+.mobile-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 20px;
+  background: transparent;
+  border: none;
+  color: var(--ui-text);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-overflow-item:active { background: var(--ui-surface-subtle); }
+.mobile-overflow-item:disabled { opacity: 0.35; pointer-events: none; }
+.mobile-overflow-item-danger { color: var(--ui-danger-foreground); }
+
+/* Show mobile components and adjust layout at mobile breakpoint */
+@media (max-width: 640px) {
+  .mobile-only { display: flex; }
+
+  /* Hide the old vertical block-menu on mobile — replaced by MobileNodeToolbar */
+  .block-menu { display: none !important; }
+}
+
+/* Landscape: allow slightly smaller touch targets to fit more on screen */
+@media (max-width: 640px) and (orientation: landscape) {
+  .mobile-modebar-btn { min-height: 40px; min-width: 72px; }
+  .mobile-toolbar-btn { min-height: 40px; }
+}
+
+/* Very narrow screens: shrink labels, keep touch targets */
+@media (max-width: 360px) {
+  .mobile-modebar-btn { min-width: 72px; padding: 6px 10px; }
+  .mobile-modebar-label { font-size: 9px; }
+}

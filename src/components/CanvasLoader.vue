@@ -630,10 +630,10 @@
       </div>
     </div>
 
-    <!-- Minimap -->
+    <!-- Minimap (hidden by default on mobile; toggled via useMinimapPreference) -->
     <div
       class="minimap"
-      v-if="minimapData"
+      v-if="minimapData && minimapEnabled"
       @mousedown.stop="onMinimapDown"
       @mousemove.stop="onMinimapMove"
       @mouseup.stop="onMinimapUp"
@@ -793,6 +793,8 @@ import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextT
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
 import { useTheme } from "../composables/useTheme";
+import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
+import { useMinimapPreference } from "../composables/useMinimapPreference";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
@@ -919,6 +921,8 @@ export default defineComponent({
     // carries hardcoded labels from before i18n existed.
     const { t } = useI18n();
     const { effectiveTheme } = useTheme();
+    const { mode: mobileInteractionMode } = useMobileCanvasMode();
+    const { enabled: minimapEnabled } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
@@ -3385,7 +3389,7 @@ export default defineComponent({
         const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
 
         if (touchNodeId && !props.readonly) {
-          // Select immediately (so the style toolbar appears) and prime a drag.
+          // Select immediately (so the style toolbar appears).
           if (!selectedNodeIds.value.includes(touchNodeId)) {
             selectedNodeIds.value = [touchNodeId];
           }
@@ -3393,12 +3397,22 @@ export default defineComponent({
           if (touchNode?.positionLocked) {
             return;
           }
-          lastPointer.x = t.clientX;
-          lastPointer.y = t.clientY;
-          dragMouseStart.x = t.clientX;
-          dragMouseStart.y = t.clientY;
-          dragCameraStart.x = camera.x;
-          dragCameraStart.y = camera.y;
+          if (mobileInteractionMode.value === 'hand') {
+            // Hand mode: pan the viewport on drag; tap still selects (handled in onTouchEnd).
+            isPanning.value = true;
+            panStart.x = t.clientX;
+            panStart.y = t.clientY;
+            cameraStart.x = camera.x;
+            cameraStart.y = camera.y;
+          } else {
+            // Cursor mode: prime a node drag as usual.
+            lastPointer.x = t.clientX;
+            lastPointer.y = t.clientY;
+            dragMouseStart.x = t.clientX;
+            dragMouseStart.y = t.clientY;
+            dragCameraStart.x = camera.x;
+            dragCameraStart.y = camera.y;
+          }
         } else if (touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
           selectedNodeIds.value = [touchNodeId];
@@ -3464,8 +3478,8 @@ export default defineComponent({
         const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
         if (activeTouchNode?.positionLocked) return;
 
-        if (touchNodeId && !props.readonly) {
-          // Begin the actual node drag the first time we cross the threshold
+        if (touchNodeId && !props.readonly && mobileInteractionMode.value !== 'hand') {
+          // Cursor mode: drag the node once the threshold is crossed.
           if (!touchDragging) {
             touchDragging = true;
             pushUndo();
@@ -3480,6 +3494,10 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
+        } else if (touchNodeId && !props.readonly && mobileInteractionMode.value === 'hand') {
+          // Hand mode on a node: pan the viewport (isPanning was primed in onTouchStart).
+          camera.x = cameraStart.x + (t.clientX - panStart.x);
+          camera.y = cameraStart.y + (t.clientY - panStart.y);
         } else if (touchNodeId && props.readonly) {
           emit('readonly-action');
         } else if (isPanning.value) {
@@ -4126,6 +4144,7 @@ export default defineComponent({
       strokeToPath,
       Math,
       minimapData,
+      minimapEnabled,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,
@@ -5135,8 +5154,10 @@ g:hover > .edge-midpoint-conn {
   }
 
   .minimap {
-    left: 8px;
-    bottom: calc(var(--canvas-toolbar-height, 0px) + 12px + env(safe-area-inset-bottom));
+    left: auto;
+    right: 8px;
+    bottom: auto;
+    top: calc(var(--canvas-topbar-height, 52px) + 8px);
     width: 132px;
     height: 88px;
   }

@@ -173,6 +173,9 @@ export const messages = {
     syncReasonForbidden: 'У вас нет прав применить это изменение',
     syncReasonInvalidOp: 'Канвас отклонил данные операции',
     syncReasonTimeout: 'Не дождались подтверждения в реальном времени',
+    handMode: 'Рука', cursorMode: 'Выбор', modeBar: 'Режим взаимодействия',
+    moreActions: 'Ещё', clearColor: 'Сбросить цвет',
+    minimap: 'Миникарта', minimapToggle: 'Миникарта (мобильная)',
   },
   en: {
     language: 'Language', english: 'English', russian: 'Русский',
@@ -320,6 +323,9 @@ export const messages = {
     syncReasonForbidden: 'You do not have permission to apply this change',
     syncReasonInvalidOp: 'Canvas rejected the operation payload',
     syncReasonTimeout: 'Realtime acknowledgement timed out',
+    handMode: 'Hand', cursorMode: 'Cursor', modeBar: 'Interaction mode',
+    moreActions: 'More', clearColor: 'Clear color',
+    minimap: 'Minimap', minimapToggle: 'Minimap (mobile)',
   },
 } as const;
 
