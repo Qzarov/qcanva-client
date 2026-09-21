@@ -4134,7 +4134,7 @@ body {
 }
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .canvas-topbar-undo,
-  .canvas-topbar-redo { display: inline-flex; }
+  .canvas-topbar-redo { display: inline-flex; width: 44px; height: 44px; }
 }
 .topbar-title {
   background: transparent;
@@ -5389,17 +5389,22 @@ body {
   }
 
   .topbar-right {
-    gap: 6px;
+    gap: 2px;
     flex-wrap: nowrap;
     margin-left: auto;
     flex: 0 0 auto;
   }
 
-  /* Kebab toggles the actions dropdown on mobile */
+  /* Sync badge is secondary info — hidden on mobile, accessible via ⋮ menu */
+  .sync-menu-wrap {
+    display: none;
+  }
+
+  /* Kebab toggles the actions dropdown on mobile — 44px touch target matching text-doc */
   .topbar-menu-btn {
     display: inline-flex;
-    min-height: 36px;
-    min-width: 36px;
+    min-height: 44px;
+    min-width: 44px;
     flex: 0 0 auto;
   }
 

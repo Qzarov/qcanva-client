@@ -570,3 +570,205 @@ describe('CanvasLoader — unified selection model', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────
+// New batch — Drawing touch bugs (Bugs 2/3/4)
+// ─────────────────────────────────────────────────────────────
+
+describe('CanvasLoader — drawing tap stays selected (Bug 3)', () => {
+  it('tapping a drawing in cursor mode keeps it selected after touchend', async () => {
+    // pen drawing passes through world point (30, 30) — camera at origin/scale=1
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 30, y: 30 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    // Drawing must remain selected — no blink/clear
+    expect(vm.selectedDrawingIds).toContain('draw1');
+  });
+
+  it('tapping a drawing does not start marquee selection', async () => {
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 30, y: 30 }]));
+    expect(vm.selBox.active).toBe(false);
+  });
+});
+
+describe('CanvasLoader — drawing drag does not start marquee (Bug 4)', () => {
+  it('dragging a drawing beyond threshold does not activate selBox', async () => {
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 30, y: 30 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', viewport, [{ x: 80, y: 80 }]));
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selBox.active).toBe(false);
+  });
+});
+
+describe('CanvasLoader — empty canvas still starts marquee (regression)', () => {
+  it('dragging empty canvas in cursor mode starts marquee when no drawing is hit', async () => {
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const viewport = wrapper.find('.canvas-viewport').element;
+    // Touch at (500, 500) — well away from the drawing at (25-35, 25-35)
+    viewport.dispatchEvent(touchEvent('touchstart', viewport, [{ x: 500, y: 500 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', viewport, [{ x: 600, y: 600 }]));
+    await wrapper.vm.$nextTick();
+
+    expect(vm.selBox.active).toBe(true);
+  });
+});
+
+describe('CanvasLoader — mixed node+drawing selection moves together (Bug 2)', () => {
+  it('dragging a node also moves a concurrently selected drawing', async () => {
+    const node = { id: 'N1', type: 'text', text: 'A', x: 200, y: 200, width: 80, height: 40 };
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [node], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    // Set selection via proxyRefs assignment (not .value — that just adds a prop to the array)
+    const state = (wrapper.getCurrentComponent() as any).setupState;
+    state.selectedNodeIds = ['N1'];
+    state.selectedDrawingIds = ['draw1'];
+
+    // Get initial drawing points
+    const initialPts = [...vm.drawings.find((d: any) => d.id === 'draw1').points];
+
+    const nodeEl = wrapper.find('[data-node-id="N1"]').element;
+    const viewport = wrapper.find('.canvas-viewport').element;
+
+    // Start drag on node, move 50px right
+    viewport.dispatchEvent(touchEvent('touchstart', nodeEl, [{ x: 240, y: 220 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', nodeEl, [{ x: 290, y: 220 }]));
+    await wrapper.vm.$nextTick();
+
+    const movedDrawing = vm.drawings.find((d: any) => d.id === 'draw1');
+    // Drawing x-coords (even indices) should have shifted by ~50
+    expect(movedDrawing.points[0]).toBeGreaterThan(initialPts[0]);
+  });
+
+  it('undo after mixed move reverts both node and drawing positions', async () => {
+    const node = { id: 'N1', type: 'text', text: 'A', x: 200, y: 200, width: 80, height: 40 };
+    const drawing = {
+      id: 'draw1', tool: 'pen' as const, points: [25, 25, 35, 35],
+      color: '#000', width: 2, createdAt: '', createdBy: '',
+    };
+    const wrapper = mount(CanvasLoader, {
+      props: { initialData: { nodes: [node], edges: [], drawings: [drawing] }, readonly: false },
+      attachTo: document.body,
+    });
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+
+    const vm = wrapper.vm as any;
+    vm.camera.x = 0;
+    vm.camera.y = 0;
+    vm.camera.scale = 1;
+    await wrapper.vm.$nextTick();
+
+    const nodeInitialX = vm.nodes.find((n: any) => n.id === 'N1').x;
+    const drawInitialPts = [...vm.drawings.find((d: any) => d.id === 'draw1').points];
+
+    const state = (wrapper.getCurrentComponent() as any).setupState;
+    state.selectedNodeIds = ['N1'];
+    state.selectedDrawingIds = ['draw1'];
+
+    const nodeEl = wrapper.find('[data-node-id="N1"]').element;
+    const viewport = wrapper.find('.canvas-viewport').element;
+
+    viewport.dispatchEvent(touchEvent('touchstart', nodeEl, [{ x: 240, y: 220 }]));
+    viewport.dispatchEvent(touchEvent('touchmove', nodeEl, [{ x: 290, y: 220 }]));
+    viewport.dispatchEvent(touchEvent('touchend', viewport, []));
+    await wrapper.vm.$nextTick();
+
+    // Positions should have changed
+    expect(vm.nodes.find((n: any) => n.id === 'N1').x).not.toBe(nodeInitialX);
+    expect(vm.drawings.find((d: any) => d.id === 'draw1').points[0]).not.toBe(drawInitialPts[0]);
+
+    // Single undo reverts both
+    vm.undo();
+    await wrapper.vm.$nextTick();
+
+    expect(vm.nodes.find((n: any) => n.id === 'N1').x).toBe(nodeInitialX);
+    expect(vm.drawings.find((d: any) => d.id === 'draw1').points[0]).toBe(drawInitialPts[0]);
+  });
+});
+

@@ -968,6 +968,7 @@ export default defineComponent({
     let touchStartY = 0;
     let touchMoved = false;
     let touchNodeId: string | null = null; // node under the active single-finger touch
+    let touchDrawingId: string | null = null; // drawing under the active single-finger touch
     let touchDragging = false; // an actual node drag is in progress
     let touchResizing = false; // a resize via a touch on a resize handle is in progress
     let touchConnecting = false; // a connection drag via a touch on a connection point is in progress
@@ -1758,6 +1759,7 @@ export default defineComponent({
     // Node drag handlers
     // Store initial positions of all dragged nodes for multi-drag
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
+    const dragDrawingsInitial = ref<Map<string, Drawing>>(new Map());
 
     // The selection may also contain locked blocks (for example, after marquee
     // selection around a group). Only nodes recorded at drag start are movable;
@@ -1802,7 +1804,7 @@ export default defineComponent({
     };
 
     const updateActiveDragFromPointer = () => {
-      if (dragNodeId.value) {
+      if (dragNodeId.value || dragDrawingsInitial.value.size > 0) {
         const dx = (lastPointer.x - dragMouseStart.x - camera.x + dragCameraStart.x) / camera.scale;
         const dy = (lastPointer.y - dragMouseStart.y - camera.y + dragCameraStart.y) / camera.scale;
         for (const [id, init] of dragNodesInitial.value) {
@@ -1811,6 +1813,11 @@ export default defineComponent({
             node.x = snap(init.x + dx);
             node.y = snap(init.y + dy);
           }
+        }
+        for (const [id, init] of dragDrawingsInitial.value) {
+          const moved = translateDrawing(init, dx, dy);
+          const idx = drawings.value.findIndex((d) => d.id === id);
+          if (idx >= 0) drawings.value.splice(idx, 1, moved);
         }
       }
 
@@ -3086,6 +3093,7 @@ export default defineComponent({
 
     // Drawing pointer handlers (select + drag)
     const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
+      if (isTouchDevice) return; // on touch, drawing tap/drag is owned by onTouchStart
       if (drawTool.value !== "select") return;
       if (isHandMode.value) return;
       e.stopPropagation();
@@ -3119,6 +3127,20 @@ export default defineComponent({
             ? { x1: moved.x1, y1: moved.y1, x2: moved.x2, y2: moved.y2 }
             : { x: moved.x, y: moved.y };
       emitOp({ type: "draw-update", id: origin.id, changes } as CanvasOp);
+    };
+
+    const commitDrawingDrags = () => {
+      for (const [id] of dragDrawingsInitial.value) {
+        const moved = drawings.value.find((d) => d.id === id);
+        if (!moved) continue;
+        const changes =
+          (moved.tool === "pen" || moved.tool === "highlighter")
+            ? { points: moved.points }
+            : (moved.tool === "line" || moved.tool === "arrow")
+              ? { x1: moved.x1, y1: moved.y1, x2: moved.x2, y2: moved.y2 }
+              : { x: moved.x, y: moved.y };
+        emitOp({ type: "draw-update", id, changes } as CanvasOp);
+      }
     };
 
     // Drawing action methods
@@ -3463,10 +3485,32 @@ export default defineComponent({
         } else {
           // Empty canvas — route by mobile interaction mode
           if (isTouchDevice && mobileInteractionMode.value === 'cursor') {
-            // Cursor mode: 1 finger on empty canvas → marquee selection, not pan
             const rect = viewport.value!.getBoundingClientRect();
             const wx = (t.clientX - rect.left - camera.x) / camera.scale;
             const wy = (t.clientY - rect.top - camera.y) / camera.scale;
+
+            // Check for drawing hit before starting marquee (fixes blink + marquee-during-drag)
+            if (!props.readonly) {
+              const tol = 12 / camera.scale;
+              const hitD = [...drawings.value].reverse().find((d) => hitTestDrawing(d, wx, wy, tol));
+              if (hitD) {
+                if (!selectedDrawingIds.value.includes(hitD.id)) {
+                  selectedDrawingIds.value = [hitD.id];
+                  selectedNodeIds.value = [];
+                  selectedEdgeId.value = null;
+                }
+                touchDrawingId = hitD.id;
+                lastPointer.x = t.clientX;
+                lastPointer.y = t.clientY;
+                dragMouseStart.x = t.clientX;
+                dragMouseStart.y = t.clientY;
+                dragCameraStart.x = camera.x;
+                dragCameraStart.y = camera.y;
+                return;
+              }
+            }
+
+            // Cursor mode: 1 finger on empty canvas → marquee selection, not pan
             selBox.active = true;
             selBox.startX = wx;
             selBox.startY = wy;
@@ -3488,6 +3532,8 @@ export default defineComponent({
         selBox.active = false; // cancel marquee without committing
         onDrawPointerCancel(); // cancel any in-progress draw stroke
         touchNodeId = null;
+        touchDrawingId = null;
+        dragDrawingsInitial.value = new Map();
         touchDragging = false;
         touchResizing = false;
         touchConnecting = false;
@@ -3550,7 +3596,33 @@ export default defineComponent({
               const n = nodes.value.find((nd) => nd.id === id);
               if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
             }
+            // Capture selected drawings for mixed node+drawing move (Bug 2)
+            dragDrawingsInitial.value = new Map();
+            for (const id of selectedDrawingIds.value) {
+              const d = drawings.value.find((x) => x.id === id);
+              if (d) dragDrawingsInitial.value.set(id, { ...d });
+            }
             startAutoPan();
+          }
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          updateActiveDragFromPointer();
+        } else if (touchDrawingId) {
+          // Drawing drag once threshold is crossed.
+          if (!touchDragging) {
+            touchDragging = true;
+            pushUndo();
+            dragDrawingsInitial.value = new Map();
+            for (const id of selectedDrawingIds.value) {
+              const d = drawings.value.find((x) => x.id === id);
+              if (d) dragDrawingsInitial.value.set(id, { ...d });
+            }
+            // Capture selected nodes for mixed drawing+node move
+            dragNodesInitial.value = new Map();
+            for (const id of selectedNodeIds.value) {
+              const n = nodes.value.find((nd) => nd.id === id);
+              if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+            }
           }
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
@@ -3636,6 +3708,26 @@ export default defineComponent({
         return;
       }
 
+      // Finalize a drawing touch (tap or drag)
+      if (touchDrawingId) {
+        if (touchDragging && dragDrawingsInitial.value.size > 0) {
+          commitDrawingDrags();
+          if (dragNodesInitial.value.size > 0) {
+            const moves = getDraggedMoves();
+            if (moves.length) emitOp({ type: 'nodes-move', moves });
+          }
+        }
+        dragDrawingsInitial.value = new Map();
+        dragNodesInitial.value = new Map();
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchDrawingId = null;
+        touchNodeId = null;
+        isPanning.value = false;
+        lastTouchDist.value = 0;
+        return;
+      }
+
       // Hand mode: pan only — no tap-select, no double-tap edit, no create-on-tap.
       if (isTouchDevice && mobileInteractionMode.value === 'hand') {
         dragNodeId.value = null;
@@ -3707,8 +3799,10 @@ export default defineComponent({
       if (touchDragging && dragNodeId.value) {
         const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
+        commitDrawingDrags(); // emit ops for any drawings that moved with the nodes
       }
 
+      dragDrawingsInitial.value = new Map();
       dragNodeId.value = null;
       touchDragging = false;
       touchNodeId = null;
