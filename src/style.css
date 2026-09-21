@@ -4130,16 +4130,45 @@ body {
 }
 .back-btn:hover { color: var(--ui-text); background: var(--ui-hover, rgba(0,0,0,.06)); }
 
-/* Canvas header undo/redo (mobile-only, 44px touch targets) */
+/* Canvas header undo/redo + overflow kebab (mobile-only icon buttons).
+   Self-contained on purpose — they intentionally do NOT use .btn-ghost/.btn-sm.
+   Those generic classes get width-mutating overrides at mobile widths
+   (e.g. the dashboard's `@media (max-width:420px){ .btn-ghost{width:100%} }`
+   and the actions-dropdown's `flex-basis`), which ballooned these to
+   100%/50% of the row and pushed the header past the viewport. Owning the
+   full box here keeps them a fixed 44×44 touch target that no global rule
+   can stretch — the same reason Docs' undo/redo carry their own class. */
+.canvas-topbar-undo,
+.canvas-topbar-redo,
+.topbar-menu-btn {
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex: 0 0 auto;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
 .canvas-topbar-undo,
 .canvas-topbar-redo {
   display: none;
-  align-items: center;
-  justify-content: center;
   width: 36px;
   height: 36px;
-  padding: 0;
-  flex-shrink: 0;
+}
+.canvas-topbar-undo:hover,
+.canvas-topbar-redo:hover,
+.topbar-menu-btn:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+.canvas-topbar-undo:disabled,
+.canvas-topbar-redo:disabled {
+  opacity: 0.55;
+  cursor: default;
+  pointer-events: none;
 }
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .canvas-topbar-undo,
@@ -5507,6 +5536,14 @@ body {
 
   /* Hide WS connected dot — only takes 8px but adds noise; sync badge covers status */
   .topbar-ws-status {
+    display: none;
+  }
+
+  /* Avatar/account menu is secondary on a canvas — the mobile header is
+     Back / Title / Undo / Redo / ⋮ (the "user" per spec moves out of the row).
+     Scoped to .canvas-topbar so the Docs header (which keeps its avatar inline)
+     and the sidebar AccountMenu are untouched. */
+  .canvas-topbar .topbar-right .account-menu {
     display: none;
   }
 

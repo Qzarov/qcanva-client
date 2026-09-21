@@ -122,7 +122,7 @@
           <!-- Undo / Redo (mobile header only — desktop uses keyboard / controls panel) -->
           <button
             v-if="role !== 'read'"
-            class="btn-ghost btn-sm canvas-topbar-undo mobile-only"
+            class="canvas-topbar-undo mobile-only"
             :disabled="!canvasRef?.canUndo"
             :title="t('undo')"
             :aria-label="t('undo')"
@@ -132,7 +132,7 @@
           </button>
           <button
             v-if="role !== 'read'"
-            class="btn-ghost btn-sm canvas-topbar-redo mobile-only"
+            class="canvas-topbar-redo mobile-only"
             :disabled="!canvasRef?.canRedo"
             :title="t('redo')"
             :aria-label="t('redo')"
@@ -145,7 +145,7 @@
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">{{ t('login') }}</router-link>
 
           <!-- Overflow menu toggle (mobile only) -->
-          <button class="topbar-menu-btn btn-ghost btn-sm" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
+          <button class="topbar-menu-btn" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
         </div>
