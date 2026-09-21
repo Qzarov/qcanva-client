@@ -4105,6 +4105,37 @@ body {
   padding: 4px;
 }
 .topbar-back:hover { color: var(--ui-text); }
+
+/* Shared back button used across Canvas, TextDocument, HtmlDocument */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+  color: var(--dark-text-secondary);
+  text-decoration: none;
+  border-radius: 6px;
+}
+.back-btn:hover { color: var(--ui-text); background: var(--ui-hover, rgba(0,0,0,.06)); }
+
+/* Canvas header undo/redo (mobile-only, 44px touch targets) */
+.canvas-topbar-undo,
+.canvas-topbar-redo {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  flex-shrink: 0;
+}
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-topbar-undo,
+  .canvas-topbar-redo { display: inline-flex; }
+}
 .topbar-title {
   background: transparent;
   border: none;
@@ -5327,7 +5358,7 @@ body {
 }
 
 /* ===== Canvas mobile layout ===== */
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   html, body {
     overflow: hidden;
   }
@@ -7395,8 +7426,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
      the same row. Outline joins them here for the same reason - the popover
      already carries its own toggle entry (see the template). */
   .text-doc-history-btn,
-  .text-doc-access-btn,
-  .text-doc-outline-btn {
+  .text-doc-access-btn {
     display: none;
   }
 
@@ -8230,6 +8260,10 @@ textarea:focus-visible {
   background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
   color: var(--ui-accent-strong);
 }
+/* Add button: slightly distinct (not a toggle, no active state) */
+.mobile-modebar-add { color: var(--ui-accent-strong, #6366f1); }
+.mobile-modebar-add:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, transparent); }
+
 /* Long-press tooltip above the modebar */
 .mobile-modebar-tooltip {
   position: fixed;
@@ -8369,6 +8403,58 @@ textarea:focus-visible {
 .mobile-overflow-item-danger { color: var(--ui-danger-foreground); }
 
 /* ===== Mobile Draw Panel (above modebar when draw mode active) ===== */
+/* Mobile Add bottom sheet */
+.mobile-add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(0, 0, 0, 0.35);
+}
+.mobile-add-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 201;
+  background: var(--ui-surface-elevated);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+}
+.mobile-add-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--ui-border);
+  border-radius: 2px;
+  margin: 0 auto 12px;
+}
+.mobile-add-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.mobile-add-sheet-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 72px;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 8px;
+  color: var(--ui-text);
+  font-size: 12px;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); }
+.mobile-add-sheet-icon { display: flex; align-items: center; justify-content: center; }
+.mobile-add-sheet-icon svg { width: 22px; height: 22px; }
+.mobile-add-sheet-label { text-align: center; line-height: 1.2; }
+
 .mobile-draw-panel {
   position: fixed;
   left: 0;
@@ -8453,7 +8539,7 @@ textarea:focus-visible {
 }
 
 /* Show mobile components and adjust layout at mobile breakpoint */
-@media (max-width: 640px) {
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .mobile-only { display: flex !important; }
 
   /* Hide the old vertical block-menu on mobile — replaced by MobileNodeToolbar */

@@ -20,10 +20,19 @@
         matching Notion's own split between "page title" and "app bar".
       -->
       <header class="text-doc-topbar">
-        <router-link :to="backTarget.to" class="btn-ghost text-doc-back-btn" :aria-label="backTarget.label" :title="backTarget.label">
-          <ArrowLeft :size="18" aria-hidden="true" />
-        </router-link>
+        <BackButton :to="backTarget.to" :label="backTarget.label" />
         <div class="text-doc-topbar-actions">
+          <!-- Outline: first action after Back, visible on mobile/tablet where there is no sidebar -->
+          <button
+            v-if="!outlineIsDesktop"
+            type="button"
+            class="btn-ghost text-doc-outline-btn"
+            :class="{ active: outlinePanelOpen }"
+            :title="outlineLabels.toggle"
+            :aria-label="outlineLabels.toggle"
+            :aria-pressed="outlinePanelOpen"
+            @click="toggleOutlinePanel"
+          ><ListTree :size="17" aria-hidden="true" /></button>
           <button
             v-if="canEditContent"
             type="button"
@@ -42,21 +51,6 @@
             :aria-label="t('redo')"
             @click="redoEdit"
           ><Redo2 :size="17" aria-hidden="true" /></button>
-          <!-- Desktop sidebar has its own collapse/expand arrow now (see
-               .text-doc-outline-collapse-toggle below) - this header button
-               stays only for the narrower breakpoints, where there is no
-               sidebar to put one inside (tablet-width drawer, and mobile via
-               the "⋮" popover entry further down). -->
-          <button
-            v-if="!outlineIsDesktop"
-            type="button"
-            class="btn-ghost text-doc-outline-btn"
-            :class="{ active: outlinePanelOpen }"
-            :title="outlineLabels.toggle"
-            :aria-label="outlineLabels.toggle"
-            :aria-pressed="outlinePanelOpen"
-            @click="toggleOutlinePanel"
-          ><ListTree :size="17" aria-hidden="true" /></button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
@@ -81,7 +75,6 @@
             <Teleport to="body">
               <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
               <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
-                <button type="button" class="text-doc-menu-item" @click="toggleOutlinePanelFromDocMenu">{{ outlineLabels.toggle }}</button>
                 <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('share') }}</button>
                 <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
                 <button type="button" class="text-doc-menu-item" @click="copyDocumentLinkFromDocMenu">{{ t('copyLink') }}</button>
@@ -829,10 +822,11 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BubbleMenu, EditorContent, ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1320,7 +1314,7 @@ export default defineComponent({
      */
     const outlineEntries = computed(() => {
       void editorTransactionTick.value;
-      return editor.value ? documentOutline(editor.value.state.doc) : [];
+      return editor.value?.state?.doc ? documentOutline(editor.value.state.doc) : [];
     });
 
     /**
@@ -2034,7 +2028,7 @@ export default defineComponent({
       try {
         const result = await textDocuments.mentions(resolvedId.value);
         mentionResolutions.clear();
-        for (const item of result.items) mentionResolutions.set(item.id, item);
+        for (const item of (result?.items || [])) mentionResolutions.set(item.id, item);
       } catch {
         // Resolution not loaded: mention-node.ts falls back to each node's
         // stored label rather than an empty mention or a spinner.
@@ -2142,7 +2136,7 @@ export default defineComponent({
     async function loadBacklinks() {
       try {
         const result = await textDocuments.backlinks(resolvedId.value);
-        backlinks.value = result.items;
+        backlinks.value = result?.items || [];
       } catch {
         // Same fallback as loadMentionResolutions: an empty list, not a
         // crash and not a stale one left showing.

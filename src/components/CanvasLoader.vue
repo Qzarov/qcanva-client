@@ -3444,15 +3444,32 @@ export default defineComponent({
           // read-only: tap just selects, no drag/pan
           selectedNodeIds.value = [touchNodeId];
         } else {
-          // Empty canvas → pan
-          isPanning.value = true;
-          panStart.x = t.clientX;
-          panStart.y = t.clientY;
-          cameraStart.x = camera.x;
-          cameraStart.y = camera.y;
+          // Empty canvas — route by mobile interaction mode
+          if (isTouchDevice && mobileInteractionMode.value === 'cursor') {
+            // Cursor mode: 1 finger on empty canvas → marquee selection, not pan
+            const rect = viewport.value!.getBoundingClientRect();
+            const wx = (t.clientX - rect.left - camera.x) / camera.scale;
+            const wy = (t.clientY - rect.top - camera.y) / camera.scale;
+            selBox.active = true;
+            selBox.startX = wx;
+            selBox.startY = wy;
+            selBox.curX = wx;
+            selBox.curY = wy;
+          } else if (isTouchDevice && mobileInteractionMode.value === 'draw') {
+            // Draw mode: pointer events on .draw-capture handle the stroke — don't pan
+          } else {
+            // Desktop or fallback: pan viewport
+            isPanning.value = true;
+            panStart.x = t.clientX;
+            panStart.y = t.clientY;
+            cameraStart.x = camera.x;
+            cameraStart.y = camera.y;
+          }
         }
       } else if (e.touches.length === 2) {
-        // Second finger down → abandon any single-finger drag/pan/resize/connect, go to pinch
+        // Second finger down → cancel any single-finger operation, start pinch/pan
+        selBox.active = false; // cancel marquee without committing
+        onDrawPointerCancel(); // cancel any in-progress draw stroke
         touchNodeId = null;
         touchDragging = false;
         touchResizing = false;
@@ -3523,6 +3540,10 @@ export default defineComponent({
           updateActiveDragFromPointer();
         } else if (touchNodeId && props.readonly) {
           emit('readonly-action');
+        } else if (selBox.active) {
+          const rect = viewport.value!.getBoundingClientRect();
+          selBox.curX = (t.clientX - rect.left - camera.x) / camera.scale;
+          selBox.curY = (t.clientY - rect.top - camera.y) / camera.scale;
         } else if (isPanning.value) {
           camera.x = cameraStart.x + (t.clientX - panStart.x);
           camera.y = cameraStart.y + (t.clientY - panStart.y);
@@ -3605,6 +3626,24 @@ export default defineComponent({
         touchNodeId = null;
         isPanning.value = false;
         lastTouchDist.value = 0;
+        return;
+      }
+
+      // Finalize touch marquee (Cursor mode, empty-canvas drag)
+      if (selBox.active) {
+        const x1 = Math.min(selBox.startX, selBox.curX);
+        const y1 = Math.min(selBox.startY, selBox.curY);
+        const x2 = Math.max(selBox.startX, selBox.curX);
+        const y2 = Math.max(selBox.startY, selBox.curY);
+        if (x2 - x1 > 5 || y2 - y1 > 5) {
+          const hits = viewerNodes.value.filter((n) =>
+            n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
+          ).map((n) => n.id);
+          selectedNodeIds.value = hits;
+        }
+        selBox.active = false;
+        isPanning.value = false;
+        touchNodeId = null;
         return;
       }
 
@@ -4000,6 +4039,7 @@ export default defineComponent({
 
     return {
       t,
+      camera,
       addMenuOpen,
       addMenuWrap,
       addMenuEntries,

@@ -26,9 +26,7 @@
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
-        <router-link :to="backTarget.to" class="topbar-back">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-        </router-link>
+        <BackButton :to="backTarget.to" :label="backTarget.label" />
         <input
           v-if="canManageSettings"
           class="topbar-title"
@@ -103,21 +101,9 @@
               <span class="topbar-action-label">{{ t('shortcuts') }}</span>
             </button>
 
-            <!-- Canvas actions (mobile dropdown only — replaces the floating controls panel) -->
+            <!-- Canvas actions (mobile dropdown only — create actions moved to + sheet) -->
             <div class="topbar-canvas-actions">
               <span class="topbar-actions-sep"></span>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.addTextNodeCenter(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span>{{ t('addTextBlock') }}</span>
-              </button>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.addGroupCenter(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                <span>{{ t('createGroup') }}</span>
-              </button>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.openImagePicker(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                <span>{{ t('addImageBtn') }}</span>
-              </button>
               <button class="btn-ghost btn-sm" @click="canvasRef?.resetView(); menuOpen = false">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                 <span>{{ t('resetView') }}</span>
@@ -126,15 +112,42 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <span>{{ t('exportCanvas') }}</span>
               </button>
+              <button class="btn-ghost btn-sm" @click="copyPublicLink(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>{{ t('copyLink') }}</span>
+              </button>
             </div>
           </div>
+
+          <!-- Undo / Redo (mobile header only — desktop uses keyboard / controls panel) -->
+          <button
+            v-if="role !== 'read'"
+            class="btn-ghost btn-sm canvas-topbar-undo mobile-only"
+            :disabled="!canvasRef?.canUndo"
+            :title="t('undo')"
+            :aria-label="t('undo')"
+            @click="canvasRef?.undo()"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
+          </button>
+          <button
+            v-if="role !== 'read'"
+            class="btn-ghost btn-sm canvas-topbar-redo mobile-only"
+            :disabled="!canvasRef?.canRedo"
+            :title="t('redo')"
+            :aria-label="t('redo')"
+            @click="canvasRef?.redo()"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
+          </button>
+
+          <AccountMenu v-if="currentUser" />
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">{{ t('login') }}</router-link>
 
           <!-- Overflow menu toggle (mobile only) -->
           <button class="topbar-menu-btn btn-ghost btn-sm" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
-          <AccountMenu v-if="currentUser" />
-          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">{{ t('login') }}</router-link>
         </div>
       </div>
 
@@ -663,8 +676,27 @@
         </div>
       </div>
 
-      <!-- Mobile mode bar: Hand / Cursor / Draw (mobile only) -->
-      <MobileModebar ref="modebarRef" class="mobile-only" />
+      <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
+      <MobileModebar ref="modebarRef" class="mobile-only" @add="addSheetOpen = true" />
+
+      <!-- Mobile Add sheet -->
+      <Teleport to="body">
+        <div v-if="addSheetOpen" class="mobile-add-backdrop" @click="addSheetOpen = false"></div>
+        <div v-if="addSheetOpen" class="mobile-add-sheet" role="dialog" :aria-label="t('add')" @click.stop>
+          <div class="mobile-add-sheet-handle"></div>
+          <div class="mobile-add-sheet-grid">
+            <button
+              v-for="entry in canvasRef?.addMenuEntries"
+              :key="entry.key"
+              class="mobile-add-sheet-item"
+              @click="canvasRef?.runAddMenuEntry(entry.key); addSheetOpen = false"
+            >
+              <span class="mobile-add-sheet-icon" v-html="entry.icon"></span>
+              <span class="mobile-add-sheet-label">{{ entry.label }}</span>
+            </button>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- Access panel -->
       <div v-if="showShare" class="share-panel">
@@ -689,6 +721,10 @@
             <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
           </div>
           <div class="slug-hint">{{ t('slugHint') }}</div>
+          <div class="slug-row" style="margin-top: 10px;">
+            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('copyLink')" />
+            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
+          </div>
         </div>
 
         <div class="share-section">
@@ -977,6 +1013,8 @@ import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
+import BackButton from '../components/BackButton.vue';
+import { getPublicOrigin } from '../api/public-origin';
 
 interface CanvasChangePayload {
   nodes: any[];
@@ -986,7 +1024,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { AccountMenu, AccessGate, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
+  components: { AccountMenu, AccessGate, BackButton, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1000,9 +1038,23 @@ export default defineComponent({
     const slugInput = ref('');
     const savingSlug = ref(false);
 
+    const publicUrl = computed(() => {
+      const publicId = slug.value || resolvedId.value;
+      return `${getPublicOrigin()}/canvas/${encodeURIComponent(publicId)}`;
+    });
+
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t } = useI18n();
+
+    const copyPublicLink = async () => {
+      try {
+        await navigator.clipboard.writeText(publicUrl.value);
+        showToast(t('copied'), 'success');
+      } catch {
+        showToast(t('copyLinkFailed'), 'error');
+      }
+    };
     const { mode: mobileMode } = useMobileCanvasMode();
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
@@ -1023,6 +1075,7 @@ export default defineComponent({
     const modebarRef = ref<{ $el?: HTMLElement } | null>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
+    const addSheetOpen = ref(false);
     // Which expandable section of the mobile block menu is open ('' = none)
     const blockSection = ref('');
     const toggleBlockSection = (s: string) => {
@@ -2089,6 +2142,7 @@ export default defineComponent({
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, toggleShare, shareEmail, shareRole, permissions,
+      publicUrl, copyPublicLink,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       slug, slugInput, savingSlug, saveSlug,
       allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
@@ -2106,7 +2160,7 @@ export default defineComponent({
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
       creatingDocument, createAndEmbedDocument, canvasFolderId,
-      showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
+      showShortcuts, menuOpen, addSheetOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       minimapEnabled, setMinimapEnabled,

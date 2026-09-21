@@ -143,7 +143,7 @@ describe("TextDocumentView", () => {
       const wrapper = mount(TextDocumentView);
       await flushPromises();
 
-      const back = wrapper.find("header .btn-ghost");
+      const back = wrapper.find("header .back-btn");
       // The label follows the locale now; it used to be hardcoded Russian for
       // every user, which is exactly what this assertion was pinning. It's
       // now an icon-only button (front task 1), so the locale-driven label
@@ -164,9 +164,49 @@ describe("TextDocumentView", () => {
       const wrapper = mount(TextDocumentView);
       await flushPromises();
 
-      const back = wrapper.find("header .btn-ghost");
+      const back = wrapper.find("header .back-btn");
       expect(back.attributes("aria-label")).toBe(useI18n().t("backToCanvas"));
       expect(back.attributes("to")).toBe("/canvas/canvas-77");
+    });
+  });
+
+  describe("mobile header outline and copy link", () => {
+    it("renders outline button in mobile header and toggles drawer", async () => {
+      Object.defineProperty(window, 'innerWidth', { writable: true, configurable: true, value: 500 });
+      window.dispatchEvent(new Event("resize"));
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      const back = wrapper.find("header .back-btn");
+      expect(back.exists()).toBe(true);
+
+      const outlineBtn = wrapper.find("header .text-doc-outline-btn");
+      expect(outlineBtn.exists()).toBe(true);
+
+      expect(wrapper.vm.outlinePanelOpen).toBe(false);
+      await outlineBtn.trigger("click");
+      expect(wrapper.vm.outlinePanelOpen).toBe(true);
+    });
+
+    it("does not render outline in mobile kebab popover menu", async () => {
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      await wrapper.find(".text-doc-menu-trigger").trigger("click");
+      const menu = document.querySelector(".text-doc-menu-popover");
+      expect(menu).not.toBeNull();
+      expect(menu?.textContent).not.toContain("Outline");
+      expect(menu?.textContent).not.toContain("Содержание");
+    });
+
+    it("generates documentUrl with canonical domain qcanva.qzarov.pro and not canvas.qzarov.pro", async () => {
+      vi.stubEnv("VITE_CANONICAL_ORIGIN", "https://qcanva.qzarov.pro");
+      const wrapper = mount(TextDocumentView);
+      await flushPromises();
+
+      expect(wrapper.vm.documentUrl).toContain("https://qcanva.qzarov.pro/docs/doc-1");
+      expect(wrapper.vm.documentUrl).not.toContain("canvas.qzarov.pro");
+      vi.unstubAllEnvs();
     });
   });
 

@@ -18,7 +18,8 @@ describe('getPublicOrigin', () => {
 
   beforeEach(() => {
     isNativePlatform.mockReturnValue(false);
-    vi.stubEnv('VITE_API_URL', 'https://canvas.qzarov.pro/api');
+    vi.stubEnv('VITE_API_URL', 'https://qcanva.qzarov.pro/api');
+    vi.stubEnv('VITE_CANONICAL_ORIGIN', '');
   });
 
   afterEach(() => {
@@ -26,9 +27,16 @@ describe('getPublicOrigin', () => {
     vi.resetModules();
   });
 
-  it('uses window.location.origin in a browser tab (not native)', async () => {
+  it('uses window.location.origin in a browser tab when no canonical env is set', async () => {
     const { getPublicOrigin } = await import('./public-origin');
     expect(getPublicOrigin()).toBe(originalOrigin);
+  });
+
+  it('uses VITE_CANONICAL_ORIGIN in browser tab when it is set', async () => {
+    vi.stubEnv('VITE_CANONICAL_ORIGIN', 'https://qcanva.qzarov.pro');
+    const { getPublicOrigin } = await import('./public-origin');
+    expect(getPublicOrigin()).toBe('https://qcanva.qzarov.pro');
+    expect(getPublicOrigin()).not.toContain('canvas.qzarov.pro');
   });
 
   it('uses the real deployed host, not the WebView origin, inside the packaged app', async () => {
@@ -36,8 +44,9 @@ describe('getPublicOrigin', () => {
     const { getPublicOrigin } = await import('./public-origin');
     // Would otherwise be Capacitor's own internal origin (localhost) -
     // this is exactly the bug being fixed.
-    expect(getPublicOrigin()).toBe('https://canvas.qzarov.pro');
+    expect(getPublicOrigin()).toBe('https://qcanva.qzarov.pro');
     expect(getPublicOrigin()).not.toContain('localhost');
+    expect(getPublicOrigin()).not.toContain('canvas.qzarov.pro');
   });
 
   it('derives from VITE_API_URL by stripping /api, matching WS_URL\'s own derivation', async () => {

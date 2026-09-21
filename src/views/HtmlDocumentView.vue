@@ -13,7 +13,7 @@
     />
     <template v-else>
     <header class="html-editor-bar">
-      <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
+      <BackButton :to="backTarget.to" :label="backTarget.label" />
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
       <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">{{ t('access') }}</button>
@@ -255,9 +255,10 @@ import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoratio
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
+import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, HtmlVisualEditor, AccessGate },
+  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate },
   setup() {
     const route = useRoute();
     const router = useRouter();

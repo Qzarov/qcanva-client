@@ -50,6 +50,21 @@
       </svg>
     </button>
 
+    <!-- Add button: action (not a mode), opens the create sheet -->
+    <button
+      class="mobile-modebar-btn mobile-modebar-add"
+      :aria-label="t('add')"
+      @touchstart.passive="lp.onTouchStart(t('add'), $event)"
+      @touchmove.passive="lp.onTouchMove($event)"
+      @touchend="lp.onTouchEnd()"
+      @click="handleAdd"
+    >
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+    </button>
+
     <!-- Long-press tooltip -->
     <div v-if="lp.tooltip.visible" class="mobile-modebar-tooltip" aria-hidden="true">
       {{ lp.tooltip.text }}
@@ -65,7 +80,8 @@ import { useLongPressTooltip } from './useLongPressTooltip';
 
 export default defineComponent({
   name: 'MobileModebar',
-  setup() {
+  emits: ['add'],
+  setup(_, { emit }) {
     const { mode, setMode } = useMobileCanvasMode();
     const { t } = useI18n();
     const lp = useLongPressTooltip();
@@ -75,7 +91,12 @@ export default defineComponent({
       setMode(m);
     }
 
-    return { mode, handleClick, t, lp };
+    function handleAdd() {
+      if (lp.wasConsumed()) return;
+      emit('add');
+    }
+
+    return { mode, handleClick, handleAdd, t, lp };
   },
 });
 </script>
