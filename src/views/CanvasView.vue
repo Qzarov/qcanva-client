@@ -599,13 +599,71 @@
 
       <!-- Mobile node editing toolbar (above mode bar, mobile only) -->
       <MobileNodeToolbar
-        v-if="!canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        v-if="mobileMode === 'cursor' && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         :canvas-ref="canvasRef"
         :role="role ?? 'read'"
         class="mobile-only"
       />
 
-      <!-- Mobile mode bar: Hand / Cursor (mobile only) -->
+      <!-- Mobile draw panel: appears above modebar when draw mode active -->
+      <div
+        v-if="mobileMode === 'draw' && drawPanelOpen && role !== 'read'"
+        class="mobile-draw-panel mobile-only"
+        @pointerdown.stop
+        @click.stop
+      >
+        <div class="mobile-draw-tools">
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" :aria-label="t('toolPen')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'highlighter' }" @click="canvasRef?.setDrawTool('highlighter')" :aria-label="t('toolHighlighter')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 12L12 2l-3 3 10 10 3-3z"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'rect' }" @click="canvasRef?.setDrawTool('rect')" :aria-label="t('toolRect')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'ellipse' }" @click="canvasRef?.setDrawTool('ellipse')" :aria-label="t('toolEllipse')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'line' }" @click="canvasRef?.setDrawTool('line')" :aria-label="t('toolLine')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'arrow' }" @click="canvasRef?.setDrawTool('arrow')" :aria-label="t('toolArrow')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
+          </button>
+          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" :aria-label="t('toolEraser')">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
+          </button>
+          <span class="mobile-draw-vsep"></span>
+          <button
+            class="mobile-draw-color-btn"
+            :style="{ background: canvasRef?.drawColor || '#e03131' }"
+            @click="drawPaletteColorOpen = !drawPaletteColorOpen"
+            :aria-label="t('color')"
+          ></button>
+        </div>
+        <div v-if="drawPaletteColorOpen" class="mobile-draw-colors">
+          <button
+            v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
+            :key="'mdraw-'+c"
+            class="mobile-draw-color-swatch"
+            :style="{ background: c }"
+            :class="{ active: canvasRef?.drawColor === c }"
+            @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
+          ></button>
+        </div>
+        <div class="mobile-draw-width-row">
+          <input
+            class="mobile-draw-width-slider"
+            type="range" min="1" max="20"
+            :value="canvasRef?.drawWidth ?? 4"
+            @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))"
+            :aria-label="t('width')"
+          />
+        </div>
+      </div>
+
+      <!-- Mobile mode bar: Hand / Cursor / Draw (mobile only) -->
       <MobileModebar ref="modebarRef" class="mobile-only" />
 
       <!-- Access panel -->
@@ -897,7 +955,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
+import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -915,6 +973,7 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useI18n } from '../composables/useI18n';
 import { useMinimapPreference } from '../composables/useMinimapPreference';
+import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
@@ -944,6 +1003,7 @@ export default defineComponent({
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t } = useI18n();
+    const { mode: mobileMode } = useMobileCanvasMode();
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
@@ -990,7 +1050,7 @@ export default defineComponent({
       // Close the drawing panel on any click outside it. The draw overlay is tied to the
       // active tool (not the panel), so closing the panel never interrupts a stroke. Only
       // reset to the select tool when the click is NOT on the drawing surface.
-      if (drawPanelOpen.value) {
+      if (drawPanelOpen.value && mobileMode.value !== 'draw') {
         const insidePanel = !!(target && drawToolbarRef.value?.contains(target));
         if (!insidePanel) {
           drawPanelOpen.value = false;
@@ -1998,6 +2058,18 @@ export default defineComponent({
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
     };
 
+    // Sync draw panel with mobile mode changes
+    watch(mobileMode, (newMode) => {
+      if (newMode === 'draw') {
+        drawPanelOpen.value = true;
+        if (canvasRef.value?.drawTool === 'select') canvasRef.value?.setDrawTool('pen');
+      } else {
+        drawPanelOpen.value = false;
+        drawPaletteColorOpen.value = false;
+        canvasRef.value?.setDrawTool('select');
+      }
+    });
+
     const toggleDice = () => { diceOpen.value = !diceOpen.value; };
     const rollDice = () => {
       if (!diceEnabled.value) return;
@@ -2038,6 +2110,7 @@ export default defineComponent({
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       minimapEnabled, setMinimapEnabled,
+      mobileMode,
       drawPanelOpen,
       toggleDrawPanel,
       diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,

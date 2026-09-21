@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS } from './nodeActions';
 
 // ──────────────────────────────────────────────
@@ -246,11 +246,24 @@ describe('useMobileCanvasMode', () => {
     expect(useMobileCanvasMode().mode.value).toBe('cursor');
   });
 
+  it('restores draw mode from storage', async () => {
+    localStorage.setItem('qcanva-canvas-mobile-mode', 'draw');
+    const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
+  });
+
   it('persists mode change to localStorage', async () => {
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
     useMobileCanvasMode().setMode('cursor');
     expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBe('cursor');
     expect(useMobileCanvasMode().mode.value).toBe('cursor');
+  });
+
+  it('persists draw mode to localStorage', async () => {
+    const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
+    useMobileCanvasMode().setMode('draw');
+    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBe('draw');
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
   });
 
   it('switches back to hand', async () => {
@@ -356,5 +369,93 @@ describe('visible/overflow split', () => {
     const actions = buildNodeActions(singleNode);
     const keys = actions.map((a) => a.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+// ──────────────────────────────────────────────
+// useLongPressTooltip
+// ──────────────────────────────────────────────
+
+describe('useLongPressTooltip', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  function makeTouchEvent(x = 10, y = 10): TouchEvent {
+    const touch = { clientX: x, clientY: y } as Touch;
+    return { touches: [touch] } as unknown as TouchEvent;
+  }
+
+  it('tooltip not visible before long press fires', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Hello', makeTouchEvent());
+    vi.advanceTimersByTime(400);
+    expect(lp.tooltip.visible).toBe(false);
+  });
+
+  it('tooltip becomes visible after 500ms', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Hello', makeTouchEvent());
+    vi.advanceTimersByTime(500);
+    expect(lp.tooltip.visible).toBe(true);
+    expect(lp.tooltip.text).toBe('Hello');
+  });
+
+  it('wasConsumed() returns true after long press fires', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent());
+    vi.advanceTimersByTime(500);
+    expect(lp.wasConsumed()).toBe(true);
+  });
+
+  it('wasConsumed() returns false for normal tap (no 500ms wait)', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent());
+    vi.advanceTimersByTime(100);
+    lp.onTouchEnd();
+    expect(lp.wasConsumed()).toBe(false);
+  });
+
+  it('onTouchEnd hides tooltip', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent());
+    vi.advanceTimersByTime(500);
+    expect(lp.tooltip.visible).toBe(true);
+    lp.onTouchEnd();
+    expect(lp.tooltip.visible).toBe(false);
+  });
+
+  it('movement beyond threshold cancels long press', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent(10, 10));
+    vi.advanceTimersByTime(300);
+    lp.onTouchMove(makeTouchEvent(30, 10)); // moved 20px — over threshold
+    vi.advanceTimersByTime(400); // timer was cancelled, should not fire
+    expect(lp.tooltip.visible).toBe(false);
+    expect(lp.wasConsumed()).toBe(false);
+  });
+
+  it('small movement under threshold does not cancel', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent(10, 10));
+    vi.advanceTimersByTime(200);
+    lp.onTouchMove(makeTouchEvent(15, 10)); // moved 5px — under threshold
+    vi.advanceTimersByTime(400); // timer continues
+    expect(lp.tooltip.visible).toBe(true);
+  });
+
+  it('wasConsumed() resets after reading', async () => {
+    const { useLongPressTooltip } = await import('./useLongPressTooltip');
+    const lp = useLongPressTooltip();
+    lp.onTouchStart('Test', makeTouchEvent());
+    vi.advanceTimersByTime(500);
+    expect(lp.wasConsumed()).toBe(true);
+    expect(lp.wasConsumed()).toBe(false);
   });
 });

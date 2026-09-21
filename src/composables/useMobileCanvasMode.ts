@@ -1,6 +1,6 @@
 import { readonly, ref } from 'vue';
 
-export type MobileCanvasMode = 'hand' | 'cursor';
+export type MobileCanvasMode = 'hand' | 'cursor' | 'draw';
 
 const STORAGE_KEY = 'qcanva-canvas-mobile-mode';
 
@@ -13,7 +13,9 @@ const getStorage = (): Storage | undefined => {
 };
 
 const stored = getStorage()?.getItem(STORAGE_KEY);
-const mode = ref<MobileCanvasMode>(stored === 'cursor' ? 'cursor' : 'hand');
+const mode = ref<MobileCanvasMode>(
+  stored === 'cursor' ? 'cursor' : stored === 'draw' ? 'draw' : 'hand'
+);
 
 export function useMobileCanvasMode() {
   const setMode = (m: MobileCanvasMode) => {
