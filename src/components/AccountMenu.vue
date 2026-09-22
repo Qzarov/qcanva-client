@@ -62,7 +62,7 @@
 
 <script setup lang="ts">
 import { LogOut, Puzzle, Settings } from '@lucide/vue';
-import { computed, nextTick, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
 import { useI18n } from '../composables/useI18n';
@@ -112,6 +112,26 @@ const close = (restoreFocus = false) => {
     void nextTick(() => focusTrigger());
   }
 };
+
+// Outside-click close. The transparent .account-menu-backdrop alone is not
+// enough: in a topbar with backdrop-filter (the canvas / text-doc headers) that
+// backdrop's `position: fixed` is contained by the topbar's own box, so it only
+// covers the header strip - a click down in the document never reached it and
+// the menu stayed open (reported bug). A document-level pointerdown closes it
+// wherever the click lands, except on the trigger (its own @click toggles) or
+// inside the popover.
+const onDocumentPointerDown = (event: PointerEvent) => {
+  if (!open.value) return;
+  const target = event.target as Node | null;
+  if (!target) return;
+  if (triggerRef.value?.contains(target) || popoverRef.value?.contains(target)) return;
+  close(false);
+};
+watch(open, (isOpen) => {
+  if (isOpen) document.addEventListener('pointerdown', onDocumentPointerDown, true);
+  else document.removeEventListener('pointerdown', onDocumentPointerDown, true);
+});
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown, true));
 
 const toggleFromClick = () => {
   if (open.value) {

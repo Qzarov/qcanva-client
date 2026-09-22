@@ -7686,7 +7686,11 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 
   .text-doc-paper {
     min-height: 0;
-    padding: 4px 16px;
+    /* Wider LEFT padding on mobile: a real gutter that holds the block
+       controls ("+" on a paragraph, the collapse chevron on a heading) without
+       either landing on the text. Also shifts all content - headings included -
+       a little right, as asked. */
+    padding: 4px 16px 4px 40px;
     border: none;
     box-shadow: none;
     background: transparent;
@@ -7738,11 +7742,24 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     margin: 0;
   }
 
-  /* The chevron's -28px reservation assumed the desktop 64px paper padding;
-     at the new 16px mobile padding that pushed it off the left edge of the
-     viewport entirely. */
+  /* Mobile: a bigger, easier-to-tap collapse chevron, sitting in the paper's
+     wider left gutter (see .text-doc-paper padding above). -32px drops it into
+     that gutter, on screen, clear of the heading text. */
   .text-doc-heading-toggle {
-    left: -18px;
+    left: -32px;
+    width: 30px;
+    height: 30px;
+  }
+  .text-doc-heading-toggle svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* On a heading the collapse chevron is the control; the "+" would land in the
+     same gutter and collide with it, so hide the "+" there (as the drag grip
+     already is). It stays available on ordinary blocks. */
+  .text-doc-block-controls.text-doc-drag-handle--heading .text-doc-add-block {
+    display: none;
   }
 
   /* The handle is a `draggable=true` div reordering blocks via native HTML5

@@ -524,6 +524,7 @@
             :title="button.label"
             :aria-label="button.label"
             type="button"
+            @pointerdown.prevent
             @click="applyBubbleMark(button.mark)"
           >
             <span class="text-doc-bubble-icon" v-html="button.icon"></span>
@@ -535,6 +536,7 @@
             :title="t('linkAdd')"
             :aria-label="t('linkAdd')"
             type="button"
+            @pointerdown.prevent
             @click="openLinkEditor"
           >
             <span class="text-doc-bubble-icon" v-html="linkIcon"></span>
@@ -546,6 +548,7 @@
             :title="t('linkRemove')"
             :aria-label="t('linkRemove')"
             type="button"
+            @pointerdown.prevent
             @click="removeLink"
           >
             <span class="text-doc-bubble-icon" v-html="unlinkIcon"></span>
@@ -2451,10 +2454,26 @@ export default defineComponent({
           search: searchMentionCandidates,
           searchHeadings,
           onCreatePage: (query, context) => void handleMentionCreatePage(query, context),
+          // Resolve the picked document into the live resolution map right away.
+          // Without this a freshly inserted mention stayed `unresolved` (plain
+          // text, not a styled/clickable link) until a page reload re-ran
+          // loadMentionResolutions - the reported "links only render correctly
+          // after reload". The target came from THIS user's own mention search,
+          // so it is accessible to them. Then dispatch a no-op to repaint the
+          // just-inserted node view from the updated map.
+          insertMention: (ed, range, item) => {
+            insertMentionAtRange(ed, range, { id: item.id, label: item.title });
+            mentionResolutions.set(item.id, { id: item.id, title: item.title, accessible: true, deleted: false });
+            const view = ed.view;
+            if (view) view.dispatch(view.state.tr);
+          },
         }),
         NodeRange,
         DragHandle.configure({
           render: renderDragHandle,
+          // 8px into the left gutter. On mobile the paper reserves a wider
+          // left padding (see the 760px rule in style.css) so this gutter has
+          // room for the "+" without it landing on the text.
           tippyOptions: { offset: [0, 8] },
           // The 8px offset above is tuned for an ordinary block. A heading
           // reserves its own -28px slot for the collapse chevron
@@ -2558,6 +2577,22 @@ export default defineComponent({
            * them are touched by this.
            */
           dragstart: (view, event) => {
+            const { selection } = view.state;
+            if (selection instanceof TextSelection && !selection.empty) {
+              event.preventDefault();
+              return true;
+            }
+            return false;
+          },
+          /**
+           * Suppress the browser's NATIVE context menu when text is selected,
+           * so it does not stack on top of our own selection bubble (the
+           * reported overlap). Scoped to a non-empty selection on purpose: a
+           * right-click on an UNSELECTED word still gets the native menu
+           * (spellcheck suggestions, etc.), which a blanket preventDefault
+           * would have thrown away.
+           */
+          contextmenu: (view, event) => {
             const { selection } = view.state;
             if (selection instanceof TextSelection && !selection.empty) {
               event.preventDefault();
