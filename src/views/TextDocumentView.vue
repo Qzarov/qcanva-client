@@ -1139,12 +1139,9 @@ export default defineComponent({
       dragGripElement.setAttribute('aria-label', t('dragBlock'));
       dragGripElement.setAttribute('title', t('dragBlock'));
     };
-    // Insert a fresh empty block just AFTER the block the handle sits beside and
-    // drop the caret into it - the "+" add-block affordance. Deliberately does
-    // NOT auto-type "/": the slash picker's Suggestion plugin only fires on a
-    // real keystroke, so a programmatic "/" would just leave a literal stray
-    // character. The user gets a clean empty block and can type text or "/".
-    // No-op without a valid position.
+    // Insert a fresh empty block just AFTER the block the handle sits beside,
+    // drop the caret into it and type "/" so the block-type picker opens - the
+    // Notion "+" behaviour. No-op without a valid position.
     const addBlockAtDragHandle = () => {
       const ed = editor.value;
       if (!ed || dragHandleNodePos < 0) return;
@@ -1162,6 +1159,11 @@ export default defineComponent({
           if (dispatch) tr.setSelection(TextSelection.create(tr.doc, pos));
           return true;
         })
+        // "/" at the caret opens the slash picker. The Suggestion plugin
+        // re-derives its match from the doc/selection on this transaction, so
+        // the programmatic insert triggers it just like a typed "/" - the earlier
+        // failure was only because the caret was being yanked to the doc end.
+        .insertContent('/')
         .focus(undefined, { scrollIntoView: false })
         .run();
     };

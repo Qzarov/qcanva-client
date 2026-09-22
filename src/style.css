@@ -5826,11 +5826,12 @@ body {
   font-weight: 750;
 }
 
+/* Frameless title: focusing it shows only the caret, no box (background/border)
+   - it reads as the document's first line, like Notion, matching the now
+   card-less .text-doc-paper. */
 .text-doc-title-page-input:focus {
-  border-color: color-mix(in srgb, var(--ui-info) 55%, transparent);
-  background: var(--ui-surface-subtle);
-  padding-left: 6px;
-  padding-right: 6px;
+  border-color: transparent;
+  background: transparent;
 }
 
 .text-doc-title-page-input::placeholder {
@@ -6412,14 +6413,19 @@ body.text-doc-outline-resizing {
 .text-doc-paper {
   position: relative;
   min-height: 72vh;
-  background: var(--content-document-surface);
-  /* Frameless: no border/shadow "card" around the document (was a 1px border +
-     --ui-shadow). The page reads as one continuous surface. */
+  /* Frameless: no border, no shadow, and a TRANSPARENT background so the doc
+     blends into the page instead of reading as a card. Removing only the
+     border/shadow was not enough - the paper's own surface colour
+     (--content-document-surface) differs from --ui-page in BOTH themes (white
+     on off-white in light, #191b20 on #1f2128 in dark), which still drew a
+     visible rectangle. The document text colour follows the theme alongside the
+     page, so contrast is preserved on the page background. */
+  background: transparent;
   padding: 56px 64px;
 }
 
 .text-doc-paper.readonly {
-  background: var(--content-document-surface-readonly);
+  background: transparent;
 }
 
 .text-doc-paper .ProseMirror {
@@ -7522,7 +7528,12 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-text);
   box-shadow: var(--ui-shadow);
 }
-.text-doc-page input,
+/* Form inputs inside the doc page (share dialog, settings, etc.) get a filled,
+   bordered field look. The page TITLE is an <input> too but must stay frameless
+   (it is the document's first line, not a form field), so it is excluded here -
+   otherwise this rule's specificity overrode the title's own transparent
+   background/border and drew a persistent box around it. */
+.text-doc-page input:not(.text-doc-title-page-input),
 .text-doc-page select {
   color: var(--ui-text);
   background-color: var(--ui-surface-subtle);
