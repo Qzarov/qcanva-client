@@ -6619,16 +6619,22 @@ body.text-doc-outline-resizing {
 }
 
 /*
-  TABLE (front task 13-19). `.tableWrapper` is the extension's own wrapping
-  element, emitted only because Table.configure sets `renderWrapper: true`
-  (see the long comment on that call in TextDocumentView.vue for why the
-  wrapper needs that flag explicitly - it is NOT tied to `resizable`, a
-  wrong assumption a live Playwright check caught at front task 33/40) -
-  overflow-x:auto goes there, not on the table itself, so the TABLE scrolls
-  horizontally within its own box and the document page never gets
-  horizontal overflow (front task 16/20). Document-palette tokens
+  TABLE (front task 13-19, column resizing added later). `.tableWrapper` is
+  the extension's own wrapping element, emitted by `renderWrapper: true`
+  (see the long comment on Table.configure in TextDocumentView.vue for the
+  full story, including a prerequisite fix on .text-doc-editor-shell this
+  depended on) - overflow-x:auto goes there, not on the table itself, so the
+  TABLE scrolls horizontally within its own box and the document page never
+  gets horizontal overflow (front task 16/20). Document-palette tokens
   throughout, since this is content, not chrome - same rule
   blockquote/codeBlock above already follow.
+
+  `.column-resize-handle`/`.resize-cursor` below style prosemirror-tables'
+  OWN plugin decorations - that library ships a stylesheet
+  (prosemirror-tables/style/tables.css) this app never imports, so without
+  these the resize affordance is functionally there (dragging works) but
+  invisible. `td`/`th`'s existing `position: relative` (below) is what the
+  absolutely-positioned handle needs; nothing new added for that.
 */
 .text-doc-paper .ProseMirror .tableWrapper {
   margin: 1em 0;
@@ -6645,6 +6651,25 @@ body.text-doc-outline-resizing {
   padding: 6px 10px;
   border: 1px solid var(--content-document-border);
   vertical-align: top;
+}
+/* The drag handle prosemirror-tables' columnResizing plugin decorates onto
+   the cell right before a column boundary - a Decoration.widget, so it must
+   stay `pointer-events: none` itself (the LIBRARY's own mousedown/mousemove
+   handling on view.dom is what actually drives the drag, not this element). */
+.text-doc-paper .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  z-index: 3;
+  background: var(--ui-info);
+  pointer-events: none;
+}
+/* Added to the editor's own root element (view.dom) only while a handle is
+   being dragged or hovered - prosemirror-tables' own doing, not this app's. */
+.text-doc-paper .ProseMirror.resize-cursor {
+  cursor: col-resize;
 }
 .text-doc-paper .ProseMirror th {
   background: var(--content-document-surface-readonly);
@@ -7934,6 +7959,16 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-paper .ProseMirror th {
     min-width: 88px;
     padding: 6px 8px;
+  }
+
+  /* Not a config change (Table.configure stays the same for every viewport -
+     see its own comment) - prosemirror-tables' columnResizing plugin binds
+     mousedown/mousemove only, so dragging to resize a column is not
+     attemptable on a touchscreen regardless of whether this handle is
+     visible. Hidden here purely so mobile doesn't show an affordance that
+     cannot be used there. */
+  .text-doc-paper .ProseMirror .column-resize-handle {
+    display: none;
   }
 
   /* Collapsed by default (backlinksExpanded), so the section no longer needs
