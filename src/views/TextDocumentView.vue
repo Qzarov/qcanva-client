@@ -499,7 +499,7 @@
         class="text-doc-bubble-menu"
         :editor="editor"
         :should-show="bubbleShouldShow"
-        :tippy-options="{ duration: 100 }"
+        :tippy-options="bubbleTippyOptions"
       >
         <template v-if="!linkEditorOpen">
           <button
@@ -808,7 +808,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
@@ -1468,11 +1468,40 @@ export default defineComponent({
     const bubbleMarkButtons = computed(() =>
       BUBBLE_MARK_BUTTONS.map((button) => ({ ...button, label: t(button.labelKey) })),
     );
+    // Keep the bubble mounted while the DESKTOP link form is open. Clicking the
+    // link button moves focus out of the editor, which collapses its selection;
+    // shouldShowBubbleMenu then saw from === to and returned false, so the whole
+    // bubble (and the link input inside it) was destroyed the instant the user
+    // reached for it - the "link menu disappears" bug. Gated to desktop: on
+    // mobile the link editor is the Teleported bottom sheet, and the in-bubble
+    // form is display:none there, so forcing the bubble open would only leave an
+    // empty tippy box floating behind the sheet.
     const bubbleShouldShow = ({ state, from, to }: { state: any; from: number; to: number }) =>
-      shouldShowBubbleMenu(state, from, to);
+      (linkEditorOpen.value && !isMobileEditorLayout()) || shouldShowBubbleMenu(state, from, to);
+
+    // On touch platforms the OS selection toolbar (iOS edit menu, Android
+    // action bar) can't be removed from web code and anchors just ABOVE the
+    // selection. Rather than fight it, we coexist. We keep our bubble ABOVE the
+    // selection too (NOT below - a below-placed bubble gets hidden by the
+    // on-screen keyboard whenever the selection sits low on the screen, and
+    // tippy's flip only reasons about the layout viewport, not the keyboard),
+    // but push it further up with a larger `offset` distance so the native
+    // toolbar fits in the gap BETWEEN the selection and our bubble instead of
+    // stacking on top of it. Both stay above the selection, clear of the
+    // keyboard. Desktop keeps the default small offset. Same on iOS + Android.
+    const isTouchPointer =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches;
+    const bubbleTippyOptions = isTouchPointer
+      ? { duration: 100, offset: [0, 52] as [number, number] }
+      : { duration: 100 };
 
     const applyBubbleMark = (mark: string) => {
-      editor.value?.chain().focus().toggleMark(mark).run();
+      // scrollIntoView:false — on mobile the selection that triggered the bubble
+      // is already on screen; letting focus() re-scroll it (as the keyboard
+      // reopens) is what made the page visibly jump when a format was applied.
+      editor.value?.chain().focus(undefined, { scrollIntoView: false }).toggleMark(mark).run();
     };
 
     /**
@@ -1561,7 +1590,7 @@ export default defineComponent({
 
     const removeLink = () => {
       restoreLinkSelection();
-      editor.value?.chain().focus().extendMarkRange('link').unsetLink().run();
+      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
       closeLinkEditor();
     };
 
@@ -1580,7 +1609,7 @@ export default defineComponent({
         return;
       }
       restoreLinkSelection();
-      editor.value?.chain().focus().extendMarkRange('link').setLink({ href }).run();
+      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').setLink({ href }).run();
       closeLinkEditor();
     };
 
@@ -2275,7 +2304,36 @@ export default defineComponent({
           isAllowedUri: (href, ctx) => isRenderableHref(href, ctx.defaultValidate),
         }),
         TaskList,
-        TaskItem.configure({ nested: true }),
+        // Same mobile fix as the heading chevron (see collapsible-heading.ts):
+        // the stock TaskItem only `preventDefault`s the checkbox's `mousedown`,
+        // so on touch the editable focuses and the on-screen keyboard pops the
+        // instant a todo is ticked. A `pointerdown` handler fires first for
+        // touch too; preventing its default suppresses that focus/keyboard while
+        // the checkbox still toggles on the click that follows.
+        TaskItem.extend({
+          addProseMirrorPlugins() {
+            return [
+              ...(this.parent?.() ?? []),
+              new Plugin({
+                props: {
+                  handleDOMEvents: {
+                    pointerdown: (_view, event) => {
+                      const target = event.target as HTMLElement | null;
+                      if (
+                        target instanceof HTMLInputElement &&
+                        target.type === 'checkbox' &&
+                        target.closest('li[data-type="taskItem"]')
+                      ) {
+                        event.preventDefault();
+                      }
+                      return false;
+                    },
+                  },
+                },
+              }),
+            ];
+          },
+        }).configure({ nested: true }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
         Callout,
@@ -2926,6 +2984,7 @@ export default defineComponent({
       keyboardInset,
       bubbleMarkButtons,
       bubbleShouldShow,
+      bubbleTippyOptions,
       applyBubbleMark,
       tableMenuShouldShow,
       tableMenuGetReferenceClientRect,

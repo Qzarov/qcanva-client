@@ -60,7 +60,13 @@ vi.mock("@tiptap/extension-image", () => ({
   default: { configure: vi.fn(() => ({})) },
 }));
 vi.mock("@tiptap/extension-task-item", () => ({
-  default: { configure: vi.fn(() => ({})) },
+  // The view now calls TaskItem.extend({...}).configure({...}) (a pointerdown
+  // handler that stops the mobile keyboard opening when a todo is ticked), so
+  // the stub has to support the .extend(...).configure(...) chain.
+  default: {
+    extend: vi.fn(() => ({ configure: vi.fn(() => ({})) })),
+    configure: vi.fn(() => ({})),
+  },
 }));
 vi.mock("@tiptap/extension-collaboration", () => ({
   default: { configure: vi.fn(() => ({})) },

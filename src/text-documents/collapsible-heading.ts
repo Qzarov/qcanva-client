@@ -404,9 +404,18 @@ export const CollapsibleHeading = Extension.create<CollapsibleHeadingOptions>({
                   block.from + 1,
                   (view, getPos) => {
                     const button = collapseToggle(collapsed, labels(), editable);
-                    button.addEventListener('mousedown', (event) => {
-                      // preventDefault so the click does not move the caret
-                      // or start a selection in the heading behind it.
+                    // `pointerdown`, not `mousedown`: on touch a `mousedown`
+                    // handler fires only AFTER the browser has already focused
+                    // the editable behind the chevron and popped the on-screen
+                    // keyboard - so folding a heading on mobile flashed the
+                    // keyboard open. `pointerdown` is the one event that fires
+                    // for mouse AND touch before that focus, and preventing its
+                    // default is what stops both the caret move and the
+                    // keyboard. Fires once per interaction, so no double-toggle.
+                    button.addEventListener('pointerdown', (event) => {
+                      // preventDefault so the tap does not move the caret,
+                      // start a selection, or focus the editor (mobile keyboard)
+                      // in the heading behind it.
                       event.preventDefault();
                       if (!view.editable) return;
                       // Resolved at CLICK time, not captured at build time:

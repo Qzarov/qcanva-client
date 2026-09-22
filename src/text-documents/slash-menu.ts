@@ -251,28 +251,17 @@ export function isInCodeContext(state: EditorState, pos: number): boolean {
 }
 
 /**
- * GUARD 1B - a `/` inside ANY styled run (bold, italic, underline, strike,
- * link, ...) is ordinary text too, not just code.
+ * Whether `pos` sits inside any inline mark (bold, italic, underline, strike,
+ * link, ...). Still used by the MENTION menu (mention-menu.ts) to keep `@`
+ * literal inside a styled run.
  *
- * Choosing a menu item calls a BLOCK-level command (`setNode`, `toggleList`,
- * ...): it restructures the whole textblock the caret is in, regardless of
- * where inside that block the `/` was typed. Typing it INSIDE the visible
- * text of a link or a bold/italic run - after whitespace mid-phrase, not at
- * the start of a fresh line - is a bigger, more surprising action than a
- * user reaching for a slash command is asking for. That is exactly GUARD 1's
- * reasoning for `code`; this guard generalizes it to every mark, so a link's
- * text, a bold sentence or a mid-phrase italic run all get the same
- * protection code already had. It is deliberately a separate guard rather
- * than a rewrite of `isInCodeContext`: GUARD 1 stays name-accurate (it is
- * still about code specifically, including the code BLOCK ancestor, which
- * has no mark at all), and this one is skipped for free wherever GUARD 1
- * already refused (code counts as a mark too).
- *
- * An empty, unstyled block is unaffected: `$pos.marks()` reads the marks
- * resolvable from the surrounding CONTENT, not the editor's pending
- * "stored marks" for the next keystroke, so a `/` at the start of a plain
- * empty paragraph still opens the menu even if bold was just toggled on for
- * whatever gets typed next.
+ * NOTE: the SLASH menu deliberately no longer consults this. It used to (old
+ * "GUARD 1B": a `/` inside a formatted run was suppressed the way code still
+ * is), but a user typing `/` on text they had just formatted expected the menu
+ * and got nothing - a reported bug. Formatting a run says nothing about whether
+ * the next `/` is a command or literal text, so for the slash trigger only code
+ * (GUARD 1, genuinely literal) and position (GUARD 2, the mid-word `and/or`
+ * rule) gate it now. See `slashMenuAllows`.
  */
 export function isInMarkedContext(state: EditorState, pos: number): boolean {
   return state.doc.resolve(pos).marks().length > 0;
@@ -302,10 +291,9 @@ export function isAtBlockStartOrAfterWhitespace(state: EditorState, pos: number)
   return /\s/.test(before);
 }
 
-/** All three guards. `range.from` is the position of the `/` itself. */
+/** The trigger guards. `range.from` is the position of the `/` itself. */
 export function slashMenuAllows(state: EditorState, range: { from: number }): boolean {
   if (isInCodeContext(state, range.from)) return false;
-  if (isInMarkedContext(state, range.from)) return false;
   if (!isAtBlockStartOrAfterWhitespace(state, range.from)) return false;
 
   return true;

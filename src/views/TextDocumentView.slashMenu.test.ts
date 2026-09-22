@@ -8,7 +8,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
-import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext, isInMarkedContext } from '../text-documents/slash-menu';
+import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext } from '../text-documents/slash-menu';
 import { CALLOUT_VARIANTS, DOCUMENT_NODES } from '../documents/document-nodes';
 import { messages } from '../composables/useI18n';
 
@@ -227,29 +227,13 @@ describe('slash menu trigger', () => {
     wrapper.unmount();
   });
 
-  // ---- GUARD 1B: a slash inside ANY mark (not just code) is not a menu -----
+  // ---- Formatted text does NOT block the trigger (removed GUARD 1B) ---------
+  // A `/` in bold/italic/link text opens the menu exactly as in plain text, as
+  // long as GUARD 1 (code) and GUARD 2 (block-start/after-whitespace) allow it.
+  // This reverses the old "any mark suppresses the slash" behaviour, which the
+  // user reported as a bug ("slash does nothing on formatted text").
 
-  it('isInMarkedContext is true inside bold or link text and false in plain prose', async () => {
-    const wrapper = await mountEditableDoc();
-    wrapper.vm.editor.commands.setContent('<p><strong>bold text</strong></p>');
-    let { state } = wrapper.vm.editor;
-    const boldAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
-    expect(isInMarkedContext(state, boldAt)).toBe(true);
-
-    wrapper.vm.editor.commands.setContent('<p><a href="https://example.com">link text</a></p>');
-    ({ state } = wrapper.vm.editor);
-    const linkAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
-    expect(isInMarkedContext(state, linkAt)).toBe(true);
-
-    wrapper.vm.editor.commands.setContent('<p>plain text</p>');
-    ({ state } = wrapper.vm.editor);
-    const plainAt = state.doc.textBetween(0, state.doc.content.size).indexOf('text') + 1;
-    expect(isInMarkedContext(state, plainAt)).toBe(false);
-
-    wrapper.unmount();
-  });
-
-  it('does NOT open on a slash typed inside bold text after whitespace', async () => {
+  it('opens on a slash typed inside bold text after whitespace', async () => {
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
     editor.commands.setContent('<p><strong>bold text</strong></p>');
@@ -259,15 +243,14 @@ describe('slash menu trigger', () => {
 
     await type(wrapper, '/');
 
-    expect(pluginState(wrapper).active).toBe(false);
-    expect(wrapper.vm.slashOpen).toBe(false);
-    expect(editor.getText()).toBe('bold /text');
+    expect(pluginState(wrapper).active).toBe(true);
+    expect(wrapper.vm.slashOpen).toBe(true);
     expect(editor.isActive('bold')).toBe(true);
 
     wrapper.unmount();
   });
 
-  it('does NOT open on a slash typed inside a link\'s visible text after whitespace', async () => {
+  it('opens on a slash typed inside a link\'s visible text after whitespace', async () => {
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
     editor.commands.setContent('<p><a href="https://example.com">full guide</a></p>');
@@ -277,15 +260,14 @@ describe('slash menu trigger', () => {
 
     await type(wrapper, '/');
 
-    expect(pluginState(wrapper).active).toBe(false);
-    expect(wrapper.vm.slashOpen).toBe(false);
-    expect(editor.getText()).toBe('full /guide');
+    expect(pluginState(wrapper).active).toBe(true);
+    expect(wrapper.vm.slashOpen).toBe(true);
     expect(editor.isActive('link')).toBe(true);
 
     wrapper.unmount();
   });
 
-  it('does NOT open on a slash typed inside italic text after whitespace', async () => {
+  it('opens on a slash typed inside italic text after whitespace', async () => {
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
     editor.commands.setContent('<p><em>italic text</em></p>');
@@ -293,9 +275,8 @@ describe('slash menu trigger', () => {
 
     await type(wrapper, '/');
 
-    expect(pluginState(wrapper).active).toBe(false);
-    expect(wrapper.vm.slashOpen).toBe(false);
-    expect(editor.getText()).toBe('italic /text');
+    expect(pluginState(wrapper).active).toBe(true);
+    expect(wrapper.vm.slashOpen).toBe(true);
     expect(editor.isActive('italic')).toBe(true);
 
     wrapper.unmount();
@@ -312,7 +293,6 @@ describe('slash menu trigger', () => {
 
     expect(pluginState(wrapper).active).toBe(true);
     expect(wrapper.vm.slashOpen).toBe(true);
-    expect(isInMarkedContext(editor.state, editor.state.selection.from)).toBe(false);
 
     wrapper.unmount();
   });

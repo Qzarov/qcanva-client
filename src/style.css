@@ -331,7 +331,14 @@
   font-weight: 400;
   color: var(--ui-text);
   background-color: var(--ui-page);
-  font-synthesis: none;
+  /* `style` (not `none`): allow the browser to synthesize an OBLIQUE slant when
+     the active face has no real italic. Noto Sans is loaded with an italic axis
+     (see index.html) so italic normally uses real glyphs, but the Capacitor app
+     / offline / a CSP block can leave the italic face unavailable — without
+     synthesis, `font-style: italic` then rendered upright (italic "not
+     displaying"). Weight synthesis stays OFF (real bold weights are loaded), so
+     this does not reintroduce faux-bold. */
+  font-synthesis: style;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -6406,6 +6413,14 @@ body.text-doc-outline-resizing {
   font-size: 16px;
   line-height: 1.72;
   cursor: text;
+  /* We deliberately do NOT suppress the OS selection menu (no
+     -webkit-touch-callout: none). The chosen behaviour is coexistence: keep the
+     native copy/paste/select-all menu on every touch platform, and push OUR
+     formatting bubble further ABOVE the selection (see bubbleTippyOptions in
+     TextDocumentView.vue) so the native toolbar fits in the gap between the
+     selection and our bubble instead of overlapping it - both above the
+     selection, clear of the on-screen keyboard. Avoids losing native
+     copy/paste on iOS and keeps one behaviour across iOS + Android. */
 }
 
 .text-doc-paper .ProseMirror h1,
@@ -7501,14 +7516,34 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
     gap: 2px;
   }
 
+  /* On mobile the sync indicator becomes a fixed-size colour DOT, not a text
+     badge. Two birds: (1) the reported "jump while typing" was an auto-width
+     text badge changing size as the label cycled Saving/Synced/Offline (+ " · N")
+     and shoving undo/redo/user on every sync tick — a fixed 16px box can't
+     reflow anything; (2) a text badge wide enough to read ate ~64px the tight
+     mobile header (back/outline/undo/redo/sync/user/kebab) does not have at
+     320px. The dot inherits its colour from the .text-doc-sync-<kind> rules via
+     currentColor, so status still reads at a glance; font-size:0 hides the label
+     and the pending suffix. */
   .text-doc-sync {
-    width: auto;
-    max-width: 22vw;
+    width: 16px;
+    max-width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
     border: none;
     background: transparent;
-    padding: 0 2px;
-    font-size: 11px;
-    font-weight: 500;
+    font-size: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .text-doc-sync::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
   }
 
   .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
