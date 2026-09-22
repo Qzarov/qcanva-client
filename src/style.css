@@ -6421,6 +6421,17 @@ body.text-doc-outline-resizing {
   max-width: 920px;
   margin: 0 auto;
   padding: 32px 24px 80px;
+  /* A flex item's automatic minimum size defaults to its min-content width
+     (`min-width: auto`) - without this override, a wide block's intrinsic
+     width (a table with enough columns/cellMinWidth to need more than the
+     shell's own width) stretches THIS shell sideways instead of staying put
+     and letting the block's own overflow wrapper (.tableWrapper) scroll
+     internally. The `--full` variant below already carries this; this base
+     rule was missing it - the same flex-sizing rule applies regardless of
+     the reading-width cap. Any future wide block (not just resized table
+     columns) is exposed to this the moment its own min-content width
+     exceeds the shell's. */
+  min-width: 0;
 }
 
 /* Fullscreen (full-width) mode: drop the 920px reading cap and grow to fill the
