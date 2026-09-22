@@ -51,6 +51,19 @@
             :aria-label="t('redo')"
             @click="redoEdit"
           ><Redo2 :size="17" aria-hidden="true" /></button>
+          <!-- Fullscreen width (web only): drops the 920px reading cap so the
+               document fills the space beside the outline panel - or the whole
+               width when the panel is hidden. Icon-only with a tooltip. -->
+          <button
+            v-if="outlineIsDesktop"
+            type="button"
+            class="btn-ghost text-doc-fullscreen-btn"
+            :class="{ active: fullscreenDoc }"
+            :title="fullscreenDoc ? t('docFullscreenExit') : t('docFullscreen')"
+            :aria-label="fullscreenDoc ? t('docFullscreenExit') : t('docFullscreen')"
+            :aria-pressed="fullscreenDoc"
+            @click="fullscreenDoc = !fullscreenDoc"
+          ><Minimize2 v-if="fullscreenDoc" :size="17" aria-hidden="true" /><Maximize2 v-else :size="17" aria-hidden="true" /></button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
           <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
@@ -363,7 +376,7 @@
           ><ChevronLeft v-if="outlinePanelOpen" :size="15" aria-hidden="true" /><ChevronRight v-else :size="15" aria-hidden="true" /></button>
         </aside>
 
-      <main class="text-doc-editor-shell">
+      <main class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
         <article
           class="text-doc-paper"
           :class="{ readonly: !canEditContent }"
@@ -822,11 +835,11 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1111,22 +1124,85 @@ export default defineComponent({
      * a NodeRangeSelection over the hovered block, so without that extension
      * registered a drag has nothing to pick up.
      */
-    let dragHandleElement: HTMLElement | null = null;
+    // The extension positions ONE element beside the hovered block. That
+    // element is now a container holding two controls - a "+" add-block button
+    // and the drag grip - so both share the one popup and neither can flicker
+    // away while the pointer moves between them (the extension's hide-delay
+    // patch keys off `wrapper.contains`, and both live in that wrapper).
+    let dragHandleElement: HTMLElement | null = null; // the container (draggable, positioned)
+    let dragGripElement: HTMLElement | null = null; // the grip child (carries the drag label)
+    // Which block the handle is currently parked beside, tracked via
+    // onNodeChange so the "+" knows where to insert.
+    let dragHandleNodePos = -1;
     const paintDragHandleLabel = () => {
-      if (!dragHandleElement) return;
-      dragHandleElement.setAttribute('aria-label', t('dragBlock'));
-      dragHandleElement.setAttribute('title', t('dragBlock'));
+      if (!dragGripElement) return;
+      dragGripElement.setAttribute('aria-label', t('dragBlock'));
+      dragGripElement.setAttribute('title', t('dragBlock'));
+    };
+    // Insert a fresh empty block just AFTER the block the handle sits beside and
+    // drop the caret into it - the "+" add-block affordance. Deliberately does
+    // NOT auto-type "/": the slash picker's Suggestion plugin only fires on a
+    // real keystroke, so a programmatic "/" would just leave a literal stray
+    // character. The user gets a clean empty block and can type text or "/".
+    // No-op without a valid position.
+    const addBlockAtDragHandle = () => {
+      const ed = editor.value;
+      if (!ed || dragHandleNodePos < 0) return;
+      const node = ed.state.doc.nodeAt(dragHandleNodePos);
+      if (!node) return;
+      const insertPos = dragHandleNodePos + node.nodeSize;
+      ed.chain()
+        .insertContentAt(insertPos, { type: 'paragraph' })
+        .command(({ tr, dispatch }) => {
+          // Drop the caret INSIDE the new empty paragraph. Computed on tr.doc
+          // (the post-insert document) so there is no cross-transaction
+          // position mapping - a plain `.focus(insertPos + 1)` was being mapped
+          // through the insert and overshot the caret into the following block.
+          const pos = Math.min(insertPos + 1, tr.doc.content.size);
+          if (dispatch) tr.setSelection(TextSelection.create(tr.doc, pos));
+          return true;
+        })
+        .focus(undefined, { scrollIntoView: false })
+        .run();
     };
     const renderDragHandle = () => {
-      const element = document.createElement('div');
-      element.className = 'text-doc-drag-handle';
-      element.setAttribute('role', 'button');
+      const container = document.createElement('div');
+      container.className = 'text-doc-block-controls';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'text-doc-add-block';
+      addBtn.setAttribute('aria-label', t('addBlock'));
+      addBtn.setAttribute('title', t('addBlock'));
+      // The container is what the extension makes draggable; keep "+" a pure
+      // click target so grabbing it never starts a block drag.
+      addBtn.draggable = false;
+      addBtn.innerHTML = lucideIcon(EDITOR_GLYPHS.plus);
+      addBtn.addEventListener('dragstart', (event) => { event.preventDefault(); event.stopPropagation(); });
+      // preventDefault so the button never steals focus from the editor on
+      // press - otherwise it grabs focus AFTER the click handler's .focus()
+      // runs, leaving the editor blurred and the just-set caret inert. The
+      // click still fires. stopPropagation keeps the press off the draggable
+      // container so grabbing "+" never starts a block drag.
+      addBtn.addEventListener('pointerdown', (event) => { event.preventDefault(); event.stopPropagation(); });
+      // stopPropagation so the click does not bubble to the editor shell's
+      // focusEditor handler, which focuses the doc END for clicks landing
+      // outside .ProseMirror (the "+" lives in the drag-handle popup, not the
+      // content) and would otherwise yank the caret out of the new block.
+      addBtn.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); addBlockAtDragHandle(); });
+
+      const grip = document.createElement('div');
+      grip.className = 'text-doc-drag-handle';
+      grip.setAttribute('role', 'button');
       // Inline Lucide-style svg (lucide "grip-vertical"), never an emoji.
-      element.innerHTML = lucideIcon(EDITOR_GLYPHS.gripVertical);
-      dragHandleElement = element;
+      grip.innerHTML = lucideIcon(EDITOR_GLYPHS.gripVertical);
+
+      container.append(addBtn, grip);
+      dragHandleElement = container;
+      dragGripElement = grip;
       paintDragHandleLabel();
 
-      return element;
+      return container;
     };
     // The element is built once, when the editor is created, so its label has
     // to be repainted rather than re-rendered when the language changes.
@@ -1182,6 +1258,11 @@ export default defineComponent({
     const OUTLINE_DEFAULT_WIDTH = 240;
     const OUTLINE_MIN_WIDTH = 220;
     const OUTLINE_MAX_WIDTH = 480;
+
+    // Fullscreen (full-width) reading mode - web only, session-scoped. When on,
+    // the editor shell drops its 920px cap and fills the space beside the
+    // outline panel (or the whole width when the panel is collapsed).
+    const fullscreenDoc = ref(false);
 
     function readOutlineCollapsedPref(): boolean {
       try {
@@ -2377,7 +2458,11 @@ export default defineComponent({
           // reserves its own -28px slot for the collapse chevron
           // (.text-doc-heading-toggle in style.css), which the handle would
           // otherwise land right on top of, so nudge it further left there.
-          onNodeChange: ({ node }) => {
+          // `pos` is passed at runtime (see the extension's update() dispatch)
+          // but is missing from its published callback type, hence the cast.
+          onNodeChange: (params) => {
+            const { node } = params;
+            dragHandleNodePos = (params as { pos?: number }).pos ?? -1;
             if (!dragHandleElement) return;
             dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
           },
@@ -3058,6 +3143,7 @@ export default defineComponent({
       toggleOutlinePanelFromDocMenu,
       outlinePanelOpen,
       outlineIsDesktop,
+      fullscreenDoc,
       outlineMobileOpen,
       outlineEntries,
       outlineVisibleRows,

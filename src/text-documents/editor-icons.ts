@@ -57,6 +57,8 @@ export const EDITOR_GLYPHS = {
   squareCode: '<path d="m10 9-3 3 3 3"/><path d="m14 9 3 3-3 3"/><rect width="18" height="18" x="3" y="3" rx="2"/>',
   /** lucide "minus" */
   minus: '<path d="M5 12h14"/>',
+  /** lucide "plus" - the add-block affordance beside the drag handle */
+  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   /** lucide "image" */
   image:
     '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',

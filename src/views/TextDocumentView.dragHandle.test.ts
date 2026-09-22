@@ -235,37 +235,50 @@ beforeEach(() => {
 });
 
 describe('drag handle wiring', () => {
-  it('renders one handle element with an inline Lucide-style icon, never an emoji', async () => {
+  it('renders the block-controls with a "+" button and a grip, each an inline Lucide-style icon, never an emoji', async () => {
     const wrapper = await mountEditableDoc();
 
     // tippy takes ownership of this element at construction and moves it
     // into its own (unattached, until a real hover shows it) popper, so it
     // is never reliably reachable via `document.querySelector` - read it
-    // straight from the component instead.
+    // straight from the component instead. The handle is now a container
+    // holding the "+" add-block button and the drag grip.
     const handle = wrapper.vm.getDragHandleElement() as HTMLElement;
     expect(handle).toBeTruthy();
-    expect(handle.className).toBe('text-doc-drag-handle');
-    const svg = handle.querySelector('svg')!;
-    expect(svg).toBeTruthy();
-    expect(svg.getAttribute('width')).toBe('24');
-    expect(svg.getAttribute('height')).toBe('24');
-    expect(svg.getAttribute('stroke-width')).toBe('2');
-    expect(handle.textContent).toBe('');
+    expect(handle.className).toBe('text-doc-block-controls');
+
+    const addBtn = handle.querySelector('.text-doc-add-block')!;
+    const grip = handle.querySelector('.text-doc-drag-handle')!;
+    expect(addBtn).toBeTruthy();
+    expect(grip).toBeTruthy();
+    // "+" sits to the LEFT of the grip.
+    expect(handle.firstElementChild).toBe(addBtn);
+
+    for (const el of [addBtn, grip]) {
+      const svg = el.querySelector('svg')!;
+      expect(svg).toBeTruthy();
+      expect(svg.getAttribute('width')).toBe('24');
+      expect(svg.getAttribute('height')).toBe('24');
+      expect(svg.getAttribute('stroke-width')).toBe('2');
+      expect(el.textContent).toBe('');
+    }
 
     wrapper.unmount();
   });
 
-  it('labels the handle from i18n, in the active language', async () => {
+  it('labels the grip and the add-block button from i18n, in the active language', async () => {
     const wrapper = await mountEditableDoc();
     const handle = wrapper.vm.getDragHandleElement() as HTMLElement;
+    const grip = handle.querySelector('.text-doc-drag-handle')!;
+    const addBtn = handle.querySelector('.text-doc-add-block')!;
 
-    expect(handle.getAttribute('aria-label')).toBe(messages.en.dragBlock);
+    expect(grip.getAttribute('aria-label')).toBe(messages.en.dragBlock);
+    expect(addBtn.getAttribute('aria-label')).toBe(messages.en.addBlock);
 
-    // The element is built once, when the editor is created; the label is
-    // repainted on a locale change rather than re-rendered.
+    // The grip label is repainted on a locale change rather than re-rendered.
     useI18n().setLocale('ru');
     await wrapper.vm.$nextTick();
-    expect(handle.getAttribute('aria-label')).toBe(messages.ru.dragBlock);
+    expect(grip.getAttribute('aria-label')).toBe(messages.ru.dragBlock);
 
     useI18n().setLocale('en');
     wrapper.unmount();

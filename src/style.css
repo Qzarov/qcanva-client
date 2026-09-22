@@ -5768,7 +5768,8 @@ body {
    real 44px touch target, not just a visually-44px box with a smaller
    hit area. */
 .text-doc-undo-btn,
-.text-doc-redo-btn {
+.text-doc-redo-btn,
+.text-doc-fullscreen-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5776,6 +5777,10 @@ body {
   height: 44px;
   padding: 0;
   flex-shrink: 0;
+}
+
+.text-doc-fullscreen-btn.active {
+  color: var(--ui-accent-strong);
 }
 
 /* OUTLINE TOGGLE. Same icon-only 44px touch target as Undo/Redo above -
@@ -6393,12 +6398,23 @@ body.text-doc-outline-resizing {
   padding: 32px 24px 80px;
 }
 
+/* Fullscreen (full-width) mode: drop the 920px reading cap and grow to fill the
+   flex row. The outline panel is a flex SIBLING, so "fill the row" already
+   means "all width except the panel"; when the panel is collapsed to its narrow
+   strip the shell takes essentially the whole width. */
+.text-doc-editor-shell--full {
+  max-width: none;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .text-doc-paper {
   position: relative;
   min-height: 72vh;
   background: var(--content-document-surface);
-  border: 1px solid var(--ui-border);
-  box-shadow: var(--ui-shadow);
+  /* Frameless: no border/shadow "card" around the document (was a 1px border +
+     --ui-shadow). The page reads as one continuous surface. */
   padding: 56px 64px;
 }
 
@@ -7296,6 +7312,39 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--content-code-comment);
   text-decoration: line-through;
   cursor: default;
+}
+
+/* The block controls popup: "+" (add block) on the left, drag grip on the
+   right. One flex row so both sit in the single drag-handle popup and stay
+   visible together on hover. */
+.text-doc-block-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.text-doc-add-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.text-doc-add-block:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-add-block svg {
+  width: 16px;
+  height: 16px;
 }
 
 .text-doc-drag-handle {
