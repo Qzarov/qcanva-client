@@ -1185,6 +1185,21 @@ export default defineComponent({
     const searchIndex = ref(0);
 
     const saving = ref(false);
+    /**
+     * SYNC STATUS DELAY (bug: fast typing/drawing made the badge flicker
+     * between Saving/Synced on every op, "рябило в глазах"). Same principle
+     * TextDocumentView.vue's own `pendingSaveDelayed`/`SAVE_INDICATOR_DELAY_MS`
+     * already applies to documents: `pendingSaveDelayed` only flips true if
+     * something is STILL pending after this delay, so a normal fast
+     * round-trip during a burst of edits never shows anything but a calm
+     * "Synced" - a genuinely slow save still shows "Saving..." for as long
+     * as it actually takes. The watcher driving this is set up further
+     * down, right after `pendingOpsCount` itself exists (from
+     * useCanvasSocket) - see that file's own comment for why a computed's
+     * lazy getter can reference it safely from here regardless.
+     */
+    const SAVE_INDICATOR_DELAY_MS = 400;
+    const pendingSaveDelayed = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
     const shareRole = ref('read');
@@ -1199,12 +1214,13 @@ export default defineComponent({
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let isApplyingRemote = false;
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
+    let saveIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
     let chromeResizeObserver: ResizeObserver | null = null;
 
     const syncStatus = computed(() => {
       if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
       if (isResyncing.value) return { kind: 'resyncing', label: t('syncResyncing') };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
+      if (pendingSaveDelayed.value) return { kind: 'saving', label: t('syncSaving') };
       if (wsConnected.value) return { kind: 'synced', label: t('syncSynced') };
       return { kind: 'offline', label: t('syncOffline') };
     });
@@ -1280,6 +1296,20 @@ export default defineComponent({
       onChatMessage,
       onChatError,
     } = useCanvasSocket(resolvedId);
+
+    watch(() => saving.value || pendingOpsCount.value > 0, (isPending) => {
+      if (saveIndicatorTimer) {
+        clearTimeout(saveIndicatorTimer);
+        saveIndicatorTimer = null;
+      }
+      if (!isPending) {
+        pendingSaveDelayed.value = false;
+        return;
+      }
+      saveIndicatorTimer = setTimeout(() => {
+        if (saving.value || pendingOpsCount.value > 0) pendingSaveDelayed.value = true;
+      }, SAVE_INDICATOR_DELAY_MS);
+    });
 
     const otherUsers = computed(() => {
       return onlineUsers.value.filter((_u) => {
@@ -2123,6 +2153,7 @@ export default defineComponent({
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
+      if (saveIndicatorTimer) clearTimeout(saveIndicatorTimer);
       window.removeEventListener('resize', updateChromeMetrics);
       window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
