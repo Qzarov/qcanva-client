@@ -4234,8 +4234,15 @@ body {
   z-index: 99;
 }
 .topbar-status { font-size: 11px; color: var(--ui-text-secondary); }
+/* FIXED width (bug: this badge's own auto-width used to reflow the online-
+   users/ws-status/user-menu buttons to its right on every sync tick, as the
+   label cycled Saving/Synced/Offline/Conflict/Resyncing/" · N" - the same
+   class of "layout jump" .text-doc-sync's own comment documents and already
+   fixed for text documents. Sized to fit the longest realistic label
+   ("Пересинхронизация") without ellipsis; anything longer (an unusually
+   large pending count, say) truncates rather than growing the box. */
 .topbar-sync {
-  min-width: 64px;
+  width: 150px;
   height: 22px;
   padding: 0 8px;
   appearance: none;
@@ -4247,6 +4254,10 @@ body {
   font-weight: 600;
   border: 1px solid var(--ui-border);
   cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .sync-menu-wrap {
   position: relative;
@@ -5820,10 +5831,23 @@ body {
   font-weight: 750;
   line-height: 1.25;
   outline: none;
+  /* A long title WRAPS rather than being cut off - the bug this fixed. */
+  overflow-wrap: break-word;
 }
 
 .text-doc-title-page-readonly {
   font-weight: 750;
+}
+
+/* A <textarea> (not the single-line <input> it replaced, which could never
+   wrap at all): height is driven entirely by autosizeTitleTextarea's own
+   scrollHeight measurement, so the native resize handle and scrollbar would
+   only fight that - and font-family is reset because a textarea, unlike an
+   input, is not guaranteed to inherit the page's font in every browser. */
+.text-doc-title-page-input {
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
 }
 
 /* Frameless title: focusing it shows only the caret, no box (background/border)
