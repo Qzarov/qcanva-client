@@ -1565,23 +1565,23 @@ export default defineComponent({
     const bubbleShouldShow = ({ state, from, to }: { state: any; from: number; to: number }) =>
       (linkEditorOpen.value && !isMobileEditorLayout()) || shouldShowBubbleMenu(state, from, to);
 
-    // On touch platforms the OS selection toolbar (iOS edit menu, Android
-    // action bar) can't be removed from web code and anchors just ABOVE the
-    // selection. Rather than fight it, we coexist. We keep our bubble ABOVE the
-    // selection too (NOT below - a below-placed bubble gets hidden by the
-    // on-screen keyboard whenever the selection sits low on the screen, and
-    // tippy's flip only reasons about the layout viewport, not the keyboard),
-    // but push it further up with a larger `offset` distance so the native
-    // toolbar fits in the gap BETWEEN the selection and our bubble instead of
-    // stacking on top of it. Both stay above the selection, clear of the
-    // keyboard. Desktop keeps the default small offset. Same on iOS + Android.
+    // A native selection menu appears ON SELECTION on both touch (iOS edit menu,
+    // Android action bar) AND some desktop browsers (e.g. Yandex on Linux), and
+    // it can't be removed from web code - so we coexist rather than suppress.
+    // Our bubble stays ABOVE the selection (never below - a below-placed bubble
+    // is hidden by the mobile keyboard when the selection is low, and tippy's
+    // flip only reasons about the layout viewport, not the keyboard), pushed up
+    // with a larger `offset` so the native menu fits in the gap BETWEEN the
+    // selection and our bubble instead of stacking on top of it. Applied on
+    // every platform now, since desktop hits the same overlap.
     const isTouchPointer =
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches;
-    const bubbleTippyOptions = isTouchPointer
-      ? { duration: 100, offset: [0, 52] as [number, number] }
-      : { duration: 100 };
+    const bubbleTippyOptions = {
+      duration: 100,
+      offset: [0, isTouchPointer ? 52 : 44] as [number, number],
+    };
 
     const applyBubbleMark = (mark: string) => {
       // scrollIntoView:false — on mobile the selection that triggered the bubble
@@ -2577,22 +2577,6 @@ export default defineComponent({
            * them are touched by this.
            */
           dragstart: (view, event) => {
-            const { selection } = view.state;
-            if (selection instanceof TextSelection && !selection.empty) {
-              event.preventDefault();
-              return true;
-            }
-            return false;
-          },
-          /**
-           * Suppress the browser's NATIVE context menu when text is selected,
-           * so it does not stack on top of our own selection bubble (the
-           * reported overlap). Scoped to a non-empty selection on purpose: a
-           * right-click on an UNSELECTED word still gets the native menu
-           * (spellcheck suggestions, etc.), which a blanket preventDefault
-           * would have thrown away.
-           */
-          contextmenu: (view, event) => {
             const { selection } = view.state;
             if (selection instanceof TextSelection && !selection.empty) {
               event.preventDefault();

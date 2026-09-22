@@ -6445,6 +6445,21 @@ body.text-doc-outline-resizing {
      copy/paste on iOS and keeps one behaviour across iOS + Android. */
 }
 
+/* Explicit selection highlight. Vertical keyboard selection (Shift+ArrowUp/Down,
+   across lines/blocks) left the DOM selection present but UNPAINTED in Chromium
+   forks (reported in Yandex) while horizontal keyboard and mouse selection
+   painted fine on the browser default. Declaring the highlight ourselves forces
+   it to render for every selection path. Both `::selection` and
+   `::-moz-selection` for cross-engine cover. */
+.text-doc-paper .ProseMirror ::selection,
+.text-doc-paper .ProseMirror::selection {
+  background: color-mix(in srgb, var(--content-document-link) 28%, transparent);
+}
+.text-doc-paper .ProseMirror ::-moz-selection,
+.text-doc-paper .ProseMirror::-moz-selection {
+  background: color-mix(in srgb, var(--content-document-link) 28%, transparent);
+}
+
 .text-doc-paper .ProseMirror h1,
 .text-doc-paper .ProseMirror h2,
 .text-doc-paper .ProseMirror h3,
@@ -7270,30 +7285,43 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
 /* The mention itself, INSIDE the document paper - so unlike the chrome
    above, it stays on the fixed --content-* paper palette used everywhere
    else inside .text-doc-paper. */
+/* Document mentions render as a distinct chip - "@" + title inside a rounded
+   frame - so a link to another document is unmistakably not plain text (a bare
+   coloured/underlined title was reported as indistinguishable). The "@" is a
+   ::before so it never enters the node text or serialization. */
 .text-doc-mention {
   display: inline;
-  border-radius: 3px;
-  padding: 0 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--content-document-link) 40%, transparent);
+  background: color-mix(in srgb, var(--content-document-link) 10%, transparent);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.text-doc-mention-accessible::before,
+.text-doc-mention-inaccessible::before {
+  content: '@';
+  opacity: 0.6;
+  margin-right: 1px;
 }
 
 /* Link colour for mentions in document paper follows themed --content-document-link */
 .text-doc-mention-accessible {
   color: var(--content-document-link);
-  text-decoration: underline;
-  text-decoration-style: dotted;
   cursor: pointer;
 }
 
 .text-doc-mention-inaccessible {
   color: var(--content-document-link);
-  text-decoration: underline;
-  text-decoration-style: dotted;
   opacity: 0.65;
   cursor: pointer;
 }
 
 .text-doc-mention-deleted {
   color: var(--content-code-comment);
+  border-color: color-mix(in srgb, var(--content-code-comment) 40%, transparent);
+  background: transparent;
   text-decoration: line-through;
   cursor: default;
 }
