@@ -396,16 +396,18 @@
             reaching the paper's own focusEditor($event) handler, which would
             otherwise immediately steal focus back into the editor.
           -->
-          <input
+          <textarea
             v-if="canEditContent"
+            ref="titleTextareaRef"
             v-model="title"
+            rows="1"
             class="text-doc-title-page-input"
             :placeholder="t('untitled')"
             :aria-label="t('documentTitle')"
             @blur="saveTitle"
             @keydown.enter.prevent="focusEditorStart"
             @click.stop
-          />
+          ></textarea>
           <h1 v-else class="text-doc-title-page-readonly" @click.stop>{{ title || t('untitledDocument') }}</h1>
           <EditorContent v-if="editor" :editor="editor" />
         </article>
@@ -2761,6 +2763,76 @@ export default defineComponent({
       showToast('Title saved', 'success');
     }
 
+    /**
+     * TITLE WRAPPING (bug: a long title was silently cut off instead of
+     * wrapping). The editable title is a `<textarea>`, not the `<input>` it
+     * used to be - an `<input>` is fundamentally single-line and can never
+     * wrap, no matter the CSS. A textarea wraps on its own; it just does not
+     * grow its own height with content, so this measures the content
+     * (`scrollHeight`) and sets the element's height to match on every
+     * change to `title`, from any source: typing, undo, or `load()` setting
+     * the initial value from the server.
+     */
+    const titleTextareaRef = ref<HTMLTextAreaElement | null>(null);
+    function autosizeTitleTextarea(): void {
+      const el = titleTextareaRef.value;
+      if (!el) return;
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+    watch(title, (value) => {
+      // A textarea, unlike the input it replaced, lets a paste carry literal
+      // newlines into this single-line field. Collapsed here so `title`
+      // itself never contains one - it still visually wraps across several
+      // lines via CSS, but every OTHER place this string is shown as a
+      // single line (Dashboard cards, search results, the browser tab title)
+      // stays safe from an embedded line break it never had to handle before.
+      const sanitized = value.replace(/[\r\n]+/g, ' ');
+      if (sanitized !== value) {
+        title.value = sanitized;
+        return; // re-triggers this watcher, which then falls through to resize
+      }
+      // scrollHeight needs the browser to have actually laid out the
+      // CURRENT content before it means anything - a frame gives that, the
+      // same guarantee already established for this class of bug in
+      // `focusHeading` (table-of-contents.ts).
+      requestAnimationFrame(autosizeTitleTextarea);
+    });
+    /**
+     * MOUNT, and any LATER width change: watching the ref alone (fires once,
+     * the instant `v-if` mounts the element) undersized this in a live
+     * browser - measured live, the textarea's own width was 422px right at
+     * mount and 362px from ~300ms on (the outline panel/sidebar chrome
+     * still settling), and nothing re-measures once `title` itself has
+     * stopped changing. A ResizeObserver on the textarea itself catches
+     * BOTH: its first callback fires with the initial size (replacing a
+     * separate on-mount call), and any FURTHER real width change - this
+     * settling, a later window resize, the outline panel opening/closing -
+     * re-triggers it the same way. Filtered to WIDTH specifically so this
+     * function's OWN height writes (this observer's only other kind of
+     * self-generated entry) never re-trigger it.
+     */
+    let titleResizeObserver: ResizeObserver | null = null;
+    let lastObservedTitleWidth = -1;
+    watch(titleTextareaRef, (el) => {
+      titleResizeObserver?.disconnect();
+      titleResizeObserver = null;
+      if (!el) return;
+      if (typeof ResizeObserver === 'undefined') {
+        requestAnimationFrame(autosizeTitleTextarea); // best effort without it
+        return;
+      }
+      lastObservedTitleWidth = -1;
+      titleResizeObserver = new ResizeObserver((entries) => {
+        const width = entries[0]?.contentRect.width ?? -1;
+        if (width === lastObservedTitleWidth) return;
+        lastObservedTitleWidth = width;
+        autosizeTitleTextarea();
+      });
+      titleResizeObserver.observe(el);
+    });
+    onBeforeUnmount(() => titleResizeObserver?.disconnect());
+
     async function loadPermissions() {
       permissions.value = await textDocuments.permissions(resolvedId.value);
     }
@@ -3205,6 +3277,8 @@ export default defineComponent({
       selectedHistory,
       restoringHistory,
       saveTitle,
+      titleTextareaRef,
+      autosizeTitleTextarea,
       saveSlug,
       saveAccessSettings,
       doShare,
