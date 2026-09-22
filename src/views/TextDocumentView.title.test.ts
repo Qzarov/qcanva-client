@@ -207,21 +207,41 @@ describe('document title as the page\'s first element', () => {
     // own width settled from 422px to 362px about 300ms after mount, well
     // after a single requestAnimationFrame) - is real-browser-only; no
     // jsdom layout exists for a "width changed" event to mean anything.
-    mocks.get.mockResolvedValue(docPayload({
-      title: 'A title that was already long the moment this document first loaded, not typed afterward',
-    }));
-    const wrapper = mount(TextDocumentView, {
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
-    });
-    await flushPromises();
-    const el = wrapper.get('.text-doc-title-page-input').element as HTMLTextAreaElement;
-    Object.defineProperty(el, 'scrollHeight', { value: 90, configurable: true });
+    //
+    // Stubbed on the PROTOTYPE, before mount, rather than on the element
+    // instance after it: the mount-time watcher schedules its
+    // requestAnimationFrame the moment `v-if` renders the textarea, which
+    // happens somewhere inside `await flushPromises()` - an instance-level
+    // stub set only after that await returns raced that callback and lost
+    // on a slower CI machine (observed there: '0px', the un-stubbed jsdom
+    // default, instead of the stubbed value). Stubbing the prototype first
+    // means every textarea - including the one about to be created -
+    // already returns 90 from the very first read, regardless of exactly
+    // when the app's own resize runs relative to this test's own code.
+    const originalDescriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'scrollHeight');
+    Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', { value: 90, configurable: true });
 
-    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    try {
+      mocks.get.mockResolvedValue(docPayload({
+        title: 'A title that was already long the moment this document first loaded, not typed afterward',
+      }));
+      const wrapper = mount(TextDocumentView, {
+        global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+      });
+      await flushPromises();
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
 
-    expect(el.style.height).toBe('90px');
+      const el = wrapper.get('.text-doc-title-page-input').element as HTMLTextAreaElement;
+      expect(el.style.height).toBe('90px');
 
-    wrapper.unmount();
+      wrapper.unmount();
+    } finally {
+      if (originalDescriptor) {
+        Object.defineProperty(HTMLTextAreaElement.prototype, 'scrollHeight', originalDescriptor);
+      } else {
+        delete (HTMLTextAreaElement.prototype as any).scrollHeight;
+      }
+    }
   });
 
   it('collapses an embedded newline (e.g. from pasting multi-line text) so the title stays single-line everywhere else it is shown', async () => {
