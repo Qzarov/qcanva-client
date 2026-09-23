@@ -551,6 +551,52 @@ describe('reordering a block under the CRDT', () => {
     wrapper.unmount();
   });
 
+  it('a resized column\'s width (colwidth) rides along when the whole table is dragged as one block', async () => {
+    // colwidth is just a normal node attribute, so it survives a
+    // NodeRangeSelection's slice the same way any other attribute (a
+    // heading's level, a callout's variant) already does - this pins that
+    // the whole-block drag this codebase built for headings/tables (see
+    // "reorders a Table Block as one whole unit" above) does not
+    // special-case attributes away, since that path is custom code in this
+    // repo rather than library behaviour on its own.
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>before</p><table><tr><td>a1</td><td>b1</td></tr><tr><td>a2</td><td>b2</td></tr></table>');
+    await flushPromises();
+
+    let firstCellPos = -1;
+    editor.state.doc.descendants((node: any, pos: number) => {
+      if (firstCellPos !== -1) return false;
+      if (node.type.name === 'tableCell') {
+        firstCellPos = pos;
+        return false;
+      }
+      return true;
+    });
+    expect(firstCellPos).toBeGreaterThanOrEqual(0);
+    const cellNode = editor.state.doc.nodeAt(firstCellPos);
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(firstCellPos, undefined, { ...cellNode.attrs, colwidth: [220] }));
+    await flushPromises();
+
+    dragBlockToEnd(editor, 1); // the table is the second top-level block
+    await flushPromises();
+
+    const doc = editor.state.doc;
+    expect(doc.child(1).type.name).toBe('table');
+    let resizedCellAfterDrag: any = null;
+    doc.child(1).descendants((node: any) => {
+      if (resizedCellAfterDrag) return false;
+      if (node.type.name === 'tableCell') {
+        resizedCellAfterDrag = node;
+        return false;
+      }
+      return true;
+    });
+    expect(resizedCellAfterDrag?.attrs?.colwidth).toEqual([220]);
+
+    wrapper.unmount();
+  });
+
   it('applies the same updates to a replica in either arrival order and lands on one document', async () => {
     // Not two concurrent clients - see the header. This only shows that the
     // update stream is order-insensitive the way a CRDT update stream is

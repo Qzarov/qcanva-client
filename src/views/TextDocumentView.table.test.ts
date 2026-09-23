@@ -96,6 +96,25 @@ beforeEach(() => {
 });
 
 describe('table block lifecycle', () => {
+  it('is configured for column resizing with the specific values this app depends on (regression guard: nothing else here would fail if these were silently reverted)', async () => {
+    const wrapper = await mountEditableDoc();
+    const tableExt = wrapper.vm.editor.extensionManager.extensions.find((ext: any) => ext.name === 'table');
+
+    expect(tableExt.options.resizable).toBe(true);
+    // Matches this file's own CSS floor (td/th min-width: 100px) - the
+    // extension's own default (25) would let a stored width be smaller than
+    // what actually renders, causing the next drag to compute from
+    // mismatched geometry ("width snaps back").
+    expect(tableExt.options.cellMinWidth).toBe(100);
+    // Keeps the table at width: 100% with a growing min-width as columns
+    // widen (the last column absorbs slack) instead of detaching to a
+    // fixed width the moment every column has a stored width.
+    expect(tableExt.options.lastColumnResizable).toBe(false);
+    expect(tableExt.options.renderWrapper).toBe(true);
+
+    wrapper.unmount();
+  });
+
   it('inserts a 3x3 table with a header row via insertTable', async () => {
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
@@ -286,5 +305,64 @@ describe('table block lifecycle', () => {
     expect(editor.state.doc.childCount).toBe(before + 1);
 
     wrapper.unmount();
+  });
+
+  it('getHTML() emits <colgroup> for a table, unconditionally - the schema/serialization side of resizing was already there before resizable:true was ever turned on', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+    await flushPromises();
+
+    expect(editor.getHTML()).toContain('<colgroup');
+
+    wrapper.unmount();
+  });
+
+  it('a resized column\'s width (colwidth) round-trips through serialization: content survives a re-mount from the same stored state', async () => {
+    const first = await mountEditableDoc();
+    const editor = first.vm.editor;
+    editor.commands.setContent('<p></p>');
+    editor.chain().focus().insertTable({ rows: 2, cols: 2, withHeaderRow: true }).run();
+    await flushPromises();
+
+    // What dragging a column boundary produces under the hood
+    // (prosemirror-tables' own updateColumnWidth: a plain setNodeMarkup) -
+    // the SAME node-attribute write a real drag makes, not a parallel
+    // mechanism invented for this test.
+    let firstCellPos = -1;
+    editor.state.doc.descendants((node: any, pos: number) => {
+      if (firstCellPos !== -1) return false;
+      if (node.type.name === 'tableHeader' || node.type.name === 'tableCell') {
+        firstCellPos = pos;
+        return false;
+      }
+      return true;
+    });
+    expect(firstCellPos).toBeGreaterThanOrEqual(0);
+    const cellNode = editor.state.doc.nodeAt(firstCellPos);
+    editor.view.dispatch(editor.state.tr.setNodeMarkup(firstCellPos, undefined, { ...cellNode.attrs, colwidth: [220] }));
+    await flushPromises();
+
+    const html = editor.getHTML();
+    expect(html).toContain('<colgroup');
+
+    const second = await mountEditableDoc();
+    second.vm.editor.commands.setContent(html);
+    await flushPromises();
+
+    let resizedCell: any = null;
+    second.vm.editor.state.doc.descendants((node: any) => {
+      if (resizedCell) return false;
+      if (node.type.name === 'tableHeader' || node.type.name === 'tableCell') {
+        resizedCell = node;
+        return false;
+      }
+      return true;
+    });
+    expect(resizedCell?.attrs?.colwidth).toEqual([220]);
+
+    first.unmount();
+    second.unmount();
   });
 });
