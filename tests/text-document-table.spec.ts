@@ -123,22 +123,21 @@ async function tableWrapperOverflowChain(page: Page) {
 
 test.describe('table horizontal overflow containment', () => {
   /**
-   * A table with MANY narrow columns and no explicit per-column widths does
-   * NOT actually overflow its wrapper today - verified live. Two compounding
-   * causes, neither of them `td { min-width: 100px }` (style.css) being
-   * ignored, as first assumed: `@tiptap/extension-table`'s `renderHTML`
-   * always stamps an inline `min-width` on the `<table>` from its OWN
-   * `cellMinWidth` option (default 25, not this app's 100px CSS floor), AND
-   * - since `resizable: false` means no NodeView - that inline value is set
-   * ONCE at insert and never kept in sync as columns are added afterward,
-   * so a grown table's `<colgroup>`/inline `min-width` stays stale at the
-   * ORIGINAL column count. Real, non-stale overflow needs explicit stored
-   * widths - covered by the resize feature's own overflow-after-resize
-   * test, not here. What IS worth pinning at this level, independent of
-   * resizing: the wrapper's own overflow CSS is correctly wired, and if the
-   * table it contains ever does need to overflow (a resize, or a future
-   * `cellMinWidth` change), only the WRAPPER scrolls - the shell around it
-   * never blows out sideways.
+   * With `resizable: true` (Table.configure - see its own comment in
+   * TextDocumentView.vue), a many-column table DOES genuinely overflow its
+   * wrapper with nothing dragged: `cellMinWidth: 100` feeds the same
+   * total-width computation used to decide whether the table needs more
+   * room than its container, and the resizable NodeView keeps that
+   * computation in sync as columns are added (unlike the pre-resizing
+   * `resizable: false` state, where an inline min-width set once at insert
+   * went stale the moment a column was added afterward - not the case
+   * anymore). What this pins: the wrapper's own overflow CSS is correctly
+   * wired, AND - the actual regression this guards against - the shell
+   * around it never blows out sideways instead of the wrapper scrolling.
+   * That second half is the one that actually caught a bug live:
+   * `.text-doc-editor-shell` (a flex item) was missing `min-width: 0`, and
+   * a wide table stretched the WHOLE SHELL instead of staying put - fixed
+   * as its own commit, this spec is what would catch a regression of it.
    */
   test('the wrapper is wired for horizontal scroll and nothing above it blows out sideways, on desktop', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -151,6 +150,10 @@ test.describe('table horizontal overflow containment', () => {
     const chain = await tableWrapperOverflowChain(page);
     expect(chain.length).toBeGreaterThan(0);
     expect(chain[0]!.overflowX).toBe('auto');
+    // 10 columns genuinely overflows now (cellMinWidth: 100, NodeView keeps
+    // colgroup in sync) - not just "the CSS is wired", the table actually
+    // needs more room than the wrapper has.
+    expect(chain[0]!.scrollWidth).toBeGreaterThan(chain[0]!.clientWidth);
     for (const ancestor of chain.slice(1)) {
       expect(ancestor.scrollWidth - ancestor.clientWidth).toBeLessThanOrEqual(1);
     }
@@ -167,6 +170,7 @@ test.describe('table horizontal overflow containment', () => {
     const chain = await tableWrapperOverflowChain(page);
     expect(chain.length).toBeGreaterThan(0);
     expect(chain[0]!.overflowX).toBe('auto');
+    expect(chain[0]!.scrollWidth).toBeGreaterThan(chain[0]!.clientWidth);
     for (const ancestor of chain.slice(1)) {
       expect(ancestor.scrollWidth - ancestor.clientWidth).toBeLessThanOrEqual(1);
     }

@@ -2522,11 +2522,12 @@ export default defineComponent({
          * not live.
          *
          * DELIBERATE CONSEQUENCE, not a bug: with this floor, any table with
-         * more than ~7-8 columns (mobile) or more than ~19-20 (this app's
-         * desktop reading width) already needs to scroll horizontally by
-         * default, with nothing dragged - `cellMinWidth` feeds the SAME
-         * total-width computation used to decide whether the table needs
-         * more room than its container. Accepted: narrow columns that
+         * more than ~4 columns (mobile, ~311px of editor content width) or
+         * more than ~8 (this app's desktop reading width, ~744px) already
+         * needs to scroll horizontally by default, with nothing dragged -
+         * `cellMinWidth` feeds the SAME total-width computation used to
+         * decide whether the table needs more room than its container.
+         * Measured live, not estimated. Accepted: narrow columns that
          * actually scroll beat columns squeezed illegibly thin.
          *
          * `lastColumnResizable: false`: the last column never gets a stored
@@ -2546,16 +2547,20 @@ export default defineComponent({
          * Playwright check caught it): the extension's `.tableWrapper` div -
          * where style.css puts `overflow-x: auto` so the table scrolls
          * within itself instead of the page - is the resizable NodeView's
-         * own wrapper now that `resizable: true` is on, but this option
-         * still matters independently: it is what makes `getHTML()`
-         * serialization (used for e.g. a read-only render path) emit the
-         * same wrapper, so the scroll behaviour is not something only an
-         * EDITABLE, resizable-NodeView instance gets. Confirmed live,
-         * pre-resizing: without this flag no `.tableWrapper` element exists
-         * in the DOM at all, `overflow-x: auto` on a bare `<table>` is a
-         * no-op in Chromium, and a wide table's excess width bled straight
-         * into `#app`'s global `overflow-x: hidden` and was silently
-         * clipped rather than scrollable.
+         * own wrapper now that `resizable: true` is on (`editable: true` is
+         * set unconditionally at construction here, so that NodeView is
+         * always what's active, viewer or not - see `isResizable`/
+         * `view.editable` in the extension's own source for why a
+         * subsequent `setEditable(false)` for a read-only role still
+         * disables the drag itself without swapping NodeViews). Kept
+         * anyway: it is a costless flag already proven correct for the
+         * pre-resizing state, and there is no reason to remove it on a
+         * flip that does not need its removal. Confirmed live, pre-
+         * resizing: without this flag no `.tableWrapper` element exists in
+         * the DOM at all, `overflow-x: auto` on a bare `<table>` is a no-op
+         * in Chromium, and a wide table's excess width bled straight into
+         * `#app`'s global `overflow-x: hidden` and was silently clipped
+         * rather than scrollable.
          *
          * A SEPARATE, PREREXISTING bug this resurfaced: `.text-doc-editor-
          * shell` (a flex item) was missing `min-width: 0`, so a table (or

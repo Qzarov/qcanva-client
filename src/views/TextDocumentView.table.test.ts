@@ -96,6 +96,25 @@ beforeEach(() => {
 });
 
 describe('table block lifecycle', () => {
+  it('is configured for column resizing with the specific values this app depends on (regression guard: nothing else here would fail if these were silently reverted)', async () => {
+    const wrapper = await mountEditableDoc();
+    const tableExt = wrapper.vm.editor.extensionManager.extensions.find((ext: any) => ext.name === 'table');
+
+    expect(tableExt.options.resizable).toBe(true);
+    // Matches this file's own CSS floor (td/th min-width: 100px) - the
+    // extension's own default (25) would let a stored width be smaller than
+    // what actually renders, causing the next drag to compute from
+    // mismatched geometry ("width snaps back").
+    expect(tableExt.options.cellMinWidth).toBe(100);
+    // Keeps the table at width: 100% with a growing min-width as columns
+    // widen (the last column absorbs slack) instead of detaching to a
+    // fixed width the moment every column has a stored width.
+    expect(tableExt.options.lastColumnResizable).toBe(false);
+    expect(tableExt.options.renderWrapper).toBe(true);
+
+    wrapper.unmount();
+  });
+
   it('inserts a 3x3 table with a header row via insertTable', async () => {
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
