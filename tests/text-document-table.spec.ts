@@ -236,6 +236,70 @@ test.describe('mobile touch', () => {
   });
 });
 
+/* ---------------- Column resizing affordance ---------------- */
+
+/** Width of the cell `index` in the first row. */
+async function firstRowCellWidth(page: Page, index: number) {
+  return page.locator('.ProseMirror table tr').first().locator('th, td').nth(index).evaluate((el) => el.getBoundingClientRect().width);
+}
+
+/** Drags from x (at the first row's vertical middle) by dx, like a user grabbing a border. */
+async function dragBorder(page: Page, x: number, dx: number) {
+  const row = (await page.locator('.ProseMirror table tr').first().boundingBox())!;
+  const y = row.y + row.height / 2;
+  await page.mouse.move(x - 8, y);
+  await page.mouse.move(x, y, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(x + dx, y, { steps: 10 });
+  await page.mouse.up();
+  await page.mouse.move(x + dx, y + 200);
+}
+
+test.describe('desktop: column borders', () => {
+  test('hovering a border only changes the cursor: no painted bar, no scrollbar', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertWideTable(page, 3);
+    const first = (await page.locator('.ProseMirror table tr').first().locator('th, td').first().boundingBox())!;
+    await page.mouse.move(first.x + first.width - 2, first.y + first.height / 2, { steps: 3 });
+
+    await expect(page.locator('.ProseMirror')).toHaveClass(/resize-cursor/);
+    const state = await page.evaluate(() => {
+      const handle = document.querySelector('.column-resize-handle') as HTMLElement | null;
+      const wrapper = document.querySelector('.tableWrapper') as HTMLElement;
+      return {
+        handle: !!handle,
+        background: handle ? getComputedStyle(handle).backgroundColor : '',
+        overY: wrapper.scrollHeight - wrapper.clientHeight,
+        overX: wrapper.scrollWidth - wrapper.clientWidth,
+      };
+    });
+    expect(state.handle).toBe(true);
+    expect(state.background).toBe('rgba(0, 0, 0, 0)');
+    expect(state.overY).toBeLessThanOrEqual(0);
+    expect(state.overX).toBeLessThanOrEqual(0);
+  });
+
+  test('the last column can be narrowed (table gets narrower) and widened (table stretches)', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertWideTable(page, 3);
+    const table = () => page.locator('.ProseMirror table').evaluate((el) => el.getBoundingClientRect().width);
+    const startLast = await firstRowCellWidth(page, 2);
+    const startTable = await table();
+    const right = await page.locator('.ProseMirror table').evaluate((el) => el.getBoundingClientRect().right);
+
+    await dragBorder(page, right - 2, -80);
+    expect(await firstRowCellWidth(page, 2)).toBeLessThan(startLast - 60);
+    expect(await table()).toBeLessThan(startTable - 60);
+
+    const right2 = await page.locator('.ProseMirror table').evaluate((el) => el.getBoundingClientRect().right);
+    await dragBorder(page, right2 - 2, 250);
+    expect(await firstRowCellWidth(page, 2)).toBeGreaterThan(startLast + 100);
+    const g = await tableGeometry(page);
+    expect(g.wrapperRight).toBeGreaterThan(g.columnRight + 100);
+    expectNoScrollContainerOverflow(g);
+  });
+});
+
 /* ---------------- Reordering rows and columns (table-move.ts) ---------------- */
 
 /** Inserts a 3x3 table and types a..i into it, row by row (Tab walks the cells). */

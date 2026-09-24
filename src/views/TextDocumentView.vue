@@ -831,6 +831,7 @@ import {
 } from '../documents/document-capacity';
 import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
 import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
+import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
@@ -2557,18 +2558,17 @@ export default defineComponent({
          * Measured live, not estimated. Accepted: narrow columns that
          * actually scroll beat columns squeezed illegibly thin.
          *
-         * `lastColumnResizable: false`: the last column never gets a stored
-         * width, so `fixedWidth` (the extension's own internal flag for
-         * "every column has been sized") never flips true and the table
-         * keeps `width: 100%` with a growing `min-width` as earlier columns
-         * are widened, absorbing slack into that last column - the behaviour
-         * most document editors use. Without it, once EVERY column has been
-         * dragged, `updateColumns` sets the table's own inline
-         * `width: <sum>px`, which beats this file's `width: 100%` and
-         * detaches the table from the page's own width the moment the last
-         * column is touched - caught via review, not live, but the
-         * comparison the review used was empirical (real `updateColumns`
-         * source, not assumed behaviour).
+         * `lastColumnResizable: true` (it was false until the table
+         * wrapper learnt to shrink-wrap its table - see .tableWrapper in
+         * style.css): once EVERY column has a stored width, `updateColumns`
+         * gives the table an inline `width: <sum>px`, beating the CSS
+         * `width: 100%`. That used to detach the table from the page width
+         * for good; now it is exactly what "resize the last column" should
+         * do - narrow it and the table ends short of the text column's right
+         * edge, widen it and the table grows into the page's free width,
+         * then scrolls, like any other wide table. While some column is
+         * still unsized, the table keeps `width: 100%` and those columns
+         * absorb the slack.
          *
          * `renderWrapper: true` (front task 33/40, fixed after a live
          * Playwright check caught it): the extension's `.tableWrapper` div -
@@ -2626,12 +2626,16 @@ export default defineComponent({
          * cross-repo feature. Left as a follow-up, not a blocker for the
          * live collaborative editor.
          */
-        Table.configure({ resizable: true, renderWrapper: true, cellMinWidth: 100, lastColumnResizable: false }),
+        Table.configure({ resizable: true, renderWrapper: true, cellMinWidth: 100, lastColumnResizable: true }),
         TableRow,
         TableHeader,
         TableCell,
         // Desktop drag grips for reordering rows/columns (none on phones -
         // the table menu's arrows cover that). See table-move.ts.
+        // Grabbing the LAST column's border stores every column's current
+        // width first, so the table's right edge follows the drag. See
+        // table-column-widths.ts.
+        PinColumnWidthsOnLastColumnResize,
         TableMoveHandles.configure({ columnLabel: () => t('tableDragColumn'), rowLabel: () => t('tableDragRow'), mobileMaxWidth: 760 }),
         // Refuses a transaction that would add a top-level block past the
         // ceiling, and NOTHING else - never a Yjs transaction, never an edit
