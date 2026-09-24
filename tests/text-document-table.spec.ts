@@ -236,3 +236,125 @@ test.describe('mobile touch', () => {
   });
 });
 
+/* ---------------- Reordering rows and columns (table-move.ts) ---------------- */
+
+/** Inserts a 3x3 table and types a..i into it, row by row (Tab walks the cells). */
+async function insertLetteredTable(page: Page) {
+  await insertWideTable(page, 3);
+  await page.locator('.ProseMirror table th, .ProseMirror table td').first().click();
+  for (const [i, letter] of [...'abcdefghi'].entries()) {
+    if (i > 0) await page.keyboard.press('Tab');
+    await page.keyboard.type(letter);
+  }
+}
+
+async function tableGrid(page: Page): Promise<string[][]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll('.ProseMirror table tr')).map((tr) =>
+      Array.from(tr.children).map((c) => (c.textContent ?? '').trim()),
+    ),
+  );
+}
+
+function cellByText(page: Page, text: string) {
+  return page.locator('.ProseMirror table').locator('th, td').filter({ hasText: new RegExp(`^${text}$`) });
+}
+
+/** Hovers `fromText`'s cell, grabs its `axis` grip and releases it at (x, y). */
+async function dragGrip(page: Page, axis: 'row' | 'column', fromText: string, to: { x: number; y: number }) {
+  await cellByText(page, fromText).hover();
+  const grip = page.locator(`[data-table-grip="${axis}"]`);
+  await expect(grip).toBeVisible();
+  const box = (await grip.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // Several steps so it behaves like a real drag, not a teleport.
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await expect(page.locator('.text-doc-table-drop-indicator')).toBeVisible();
+  await page.mouse.up();
+}
+
+test.describe('desktop: drag a grip to reorder', () => {
+  test('dragging the first column past the last one moves it there, and Ctrl+Z puts it back', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertLetteredTable(page);
+    const lastCell = (await cellByText(page, 'c').boundingBox())!;
+
+    await dragGrip(page, 'column', 'a', { x: lastCell.x + lastCell.width - 4, y: lastCell.y + 10 });
+
+    expect(await tableGrid(page)).toEqual([['b', 'c', 'a'], ['e', 'f', 'd'], ['h', 'i', 'g']]);
+    await expect(page.locator('.text-doc-table-drop-indicator')).toBeHidden();
+    await page.keyboard.press('Control+z');
+    expect(await tableGrid(page)).toEqual([['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']]);
+  });
+
+  test('dragging the last row above the second moves it there', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertLetteredTable(page);
+    const secondRow = (await cellByText(page, 'd').boundingBox())!;
+
+    await dragGrip(page, 'row', 'g', { x: secondRow.x + 10, y: secondRow.y + 3 });
+
+    expect((await tableGrid(page)).map((r) => r[0])).toEqual(['a', 'g', 'd']);
+  });
+
+  test('releasing a grip where the line already is changes nothing', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertLetteredTable(page);
+    const own = (await cellByText(page, 'e').boundingBox())!;
+    await cellByText(page, 'e').hover();
+    const grip = (await page.locator('[data-table-grip="column"]').boundingBox())!;
+    await page.mouse.move(grip.x + 9, grip.y + 9);
+    await page.mouse.down();
+    await page.mouse.move(own.x + own.width / 2 + 5, own.y + 10, { steps: 4 });
+    await expect(page.locator('.text-doc-table-drop-indicator')).toBeHidden();
+    await page.mouse.up();
+    expect(await tableGrid(page)).toEqual([['a', 'b', 'c'], ['d', 'e', 'f'], ['g', 'h', 'i']]);
+  });
+
+  test('menu arrows move the caret\'s row and column on desktop too', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertLetteredTable(page);
+    await cellByText(page, 'e').click();
+    await page.locator('[data-table-move="column-right"]').click();
+    await page.locator('[data-table-move="row-up"]').click();
+    // "e" went right (b <-> c columns swap), then its row went up.
+    expect(await tableGrid(page)).toEqual([['d', 'f', 'e'], ['a', 'c', 'b'], ['g', 'i', 'h']]);
+  });
+});
+
+test.describe('mobile: reorder with the table menu arrows', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('no drag grips; the arrows move the caret\'s column and row and stop at the edges', async ({ page }) => {
+    await setupTextDocMocks(page);
+    await page.goto('/docs/reg-doc');
+    await page.waitForSelector('.ProseMirror', { timeout: 15000 });
+    await insertLetteredTable(page);
+
+    await cellByText(page, 'a').tap();
+    await expect(page.locator('[data-table-grip]:visible')).toHaveCount(0);
+    await expect(page.locator('[data-table-move="column-left"]')).toBeDisabled();
+    await expect(page.locator('[data-table-move="row-up"]')).toBeDisabled();
+
+    await page.locator('[data-table-move="column-right"]').tap();
+    await page.locator('[data-table-move="column-right"]').tap();
+    expect((await tableGrid(page))[0]).toEqual(['b', 'c', 'a']);
+    // The caret followed "a" to the last column: no further right.
+    await expect(page.locator('[data-table-move="column-right"]')).toBeDisabled();
+
+    // Last column is now a/d/g; "a"'s row goes down one.
+    await page.locator('[data-table-move="row-down"]').tap();
+    expect((await tableGrid(page)).map((r) => r[2])).toEqual(['d', 'a', 'g']);
+
+    // Every button of the (wrapped) menu stays on screen.
+    const boxes = await page.locator('.text-doc-table-menu button').evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right })),
+    );
+    for (const b of boxes) {
+      expect(b.left).toBeGreaterThanOrEqual(0);
+      expect(b.right).toBeLessThanOrEqual(390);
+    }
+  });
+});
+
