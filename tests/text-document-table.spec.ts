@@ -92,87 +92,147 @@ export async function insertWideTable(page: Page, columns: number) {
 }
 
 /**
- * Walks from `.tableWrapper` up through every ancestor, reading each one's
- * clientWidth/scrollWidth/overflow-x. The wrapper is expected to be the
- * ONLY element in the chain where scrollWidth exceeds clientWidth - every
- * ancestor above it must stay exactly contained. A weaker check (e.g. just
- * `document.documentElement`'s own scrollWidth vs clientWidth) cannot tell
- * "the wrapper correctly scrolls" apart from "some ancestor blew out
- * sideways and #app's own `overflow-x: hidden` silently clipped the
- * difference" - both look identical at the document level. Caught exactly
- * that live: `.text-doc-editor-shell` (a flex item with `min-width: auto`
- * before this task's own fix) stretched to the table's min-content width
- * instead of staying put, and the excess was clipped rather than scrolled.
+ * Where the first table sits relative to the text column and the page, plus
+ * every real scroll container above it (overflow-x other than `visible`,
+ * and the document root). A stretched table is ALLOWED to overhang the
+ * centered column's own boxes (the paper, the reading-width shell - all
+ * `overflow: visible`, nothing scrolls there); what must never happen is a
+ * scroll container above the wrapper gaining horizontal overflow. That is
+ * the regression this spec was first written for: `.text-doc-editor-shell`
+ * (a flex item) missing `min-width: 0` let a wide table stretch the whole
+ * shell, so `.text-doc-page` scrolled sideways / `#app` clipped it, instead
+ * of the table scrolling inside its own wrapper.
  */
-async function tableWrapperOverflowChain(page: Page) {
+async function tableGeometry(page: Page) {
   return page.evaluate(() => {
-    const chain: { tag: string; clientWidth: number; scrollWidth: number; overflowX: string }[] = [];
-    let el = document.querySelector('.tableWrapper') as HTMLElement | null;
+    const wrapper = document.querySelector('.tableWrapper') as HTMLElement;
+    const column = document.querySelector('.ProseMirror') as HTMLElement;
+    const body = document.querySelector('.text-doc-body') as HTMLElement;
+    const w = wrapper.getBoundingClientRect();
+    const c = column.getBoundingClientRect();
+    const scrollContainersOverflow: { tag: string; over: number }[] = [];
+    let el = wrapper.parentElement;
     while (el) {
-      chain.push({
-        tag: el.tagName + (el.className ? '.' + String(el.className).split(' ')[0] : ''),
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        overflowX: getComputedStyle(el).overflowX,
-      });
+      if (getComputedStyle(el).overflowX !== 'visible' || el === document.documentElement) {
+        scrollContainersOverflow.push({
+          tag: el.tagName + (el.className ? '.' + String(el.className).split(' ')[0] : ''),
+          over: el.scrollWidth - el.clientWidth,
+        });
+      }
       el = el.parentElement;
     }
-    return chain;
+    return {
+      wrapperLeft: w.left,
+      wrapperRight: w.right,
+      wrapperClient: wrapper.clientWidth,
+      wrapperScroll: wrapper.scrollWidth,
+      overflowX: getComputedStyle(wrapper).overflowX,
+      columnLeft: c.left,
+      columnRight: c.right,
+      bodyRight: body.getBoundingClientRect().right,
+      scrollContainersOverflow,
+    };
   });
 }
 
-test.describe('table horizontal overflow containment', () => {
-  /**
-   * With `resizable: true` (Table.configure - see its own comment in
-   * TextDocumentView.vue), a many-column table DOES genuinely overflow its
-   * wrapper with nothing dragged: `cellMinWidth: 100` feeds the same
-   * total-width computation used to decide whether the table needs more
-   * room than its container, and the resizable NodeView keeps that
-   * computation in sync as columns are added (unlike the pre-resizing
-   * `resizable: false` state, where an inline min-width set once at insert
-   * went stale the moment a column was added afterward - not the case
-   * anymore). What this pins: the wrapper's own overflow CSS is correctly
-   * wired, AND - the actual regression this guards against - the shell
-   * around it never blows out sideways instead of the wrapper scrolling.
-   * That second half is the one that actually caught a bug live:
-   * `.text-doc-editor-shell` (a flex item) was missing `min-width: 0`, and
-   * a wide table stretched the WHOLE SHELL instead of staying put - fixed
-   * as its own commit, this spec is what would catch a regression of it.
-   */
-  test('the wrapper is wired for horizontal scroll and nothing above it blows out sideways, on desktop', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await setupTextDocMocks(page);
-    await page.goto('/docs/reg-doc');
-    await page.waitForSelector('.ProseMirror', { timeout: 15000 });
+function expectNoScrollContainerOverflow(geometry: Awaited<ReturnType<typeof tableGeometry>>) {
+  expect(geometry.scrollContainersOverflow.length).toBeGreaterThan(0);
+  for (const container of geometry.scrollContainersOverflow) {
+    expect(container.over, container.tag).toBeLessThanOrEqual(1);
+  }
+}
 
-    await insertWideTable(page, 10);
+async function openDoc(page: Page, viewport: { width: number; height: number }) {
+  await page.setViewportSize(viewport);
+  await setupTextDocMocks(page);
+  await page.goto('/docs/reg-doc');
+  await page.waitForSelector('.ProseMirror', { timeout: 15000 });
+}
 
-    const chain = await tableWrapperOverflowChain(page);
-    expect(chain.length).toBeGreaterThan(0);
-    expect(chain[0]!.overflowX).toBe('auto');
-    // 10 columns genuinely overflows now (cellMinWidth: 100, NodeView keeps
-    // colgroup in sync) - not just "the CSS is wired", the table actually
-    // needs more room than the wrapper has.
-    expect(chain[0]!.scrollWidth).toBeGreaterThan(chain[0]!.clientWidth);
-    for (const ancestor of chain.slice(1)) {
-      expect(ancestor.scrollWidth - ancestor.clientWidth).toBeLessThanOrEqual(1);
-    }
+test.describe('desktop: a wide table stretches into the page before it scrolls', () => {
+  test('a table that fits keeps exactly the text column\'s width', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertWideTable(page, 3);
+
+    const g = await tableGeometry(page);
+    expect(Math.abs(g.wrapperLeft - g.columnLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(g.wrapperRight - g.columnRight)).toBeLessThanOrEqual(1);
+    expect(g.wrapperScroll).toBe(g.wrapperClient);
   });
 
-  test('the wrapper is wired for horizontal scroll and nothing above it blows out sideways, on a mobile viewport', async ({ page }) => {
-    await page.setViewportSize({ width: 375, height: 700 });
-    await setupTextDocMocks(page);
-    await page.goto('/docs/reg-doc');
-    await page.waitForSelector('.ProseMirror', { timeout: 15000 });
-
+  test('on a wide window a 10-column table uses the free page width and needs no scroll at all', async ({ page }) => {
+    await openDoc(page, { width: 1920, height: 1000 });
     await insertWideTable(page, 10);
 
-    const chain = await tableWrapperOverflowChain(page);
-    expect(chain.length).toBeGreaterThan(0);
-    expect(chain[0]!.overflowX).toBe('auto');
-    expect(chain[0]!.scrollWidth).toBeGreaterThan(chain[0]!.clientWidth);
-    for (const ancestor of chain.slice(1)) {
-      expect(ancestor.scrollWidth - ancestor.clientWidth).toBeLessThanOrEqual(1);
-    }
+    const g = await tableGeometry(page);
+    // Still left-aligned with the text...
+    expect(Math.abs(g.wrapperLeft - g.columnLeft)).toBeLessThanOrEqual(1);
+    // ...but reaching well past the text column's right edge...
+    expect(g.wrapperRight).toBeGreaterThan(g.columnRight + 200);
+    // ...and wide enough for the whole table, so nothing scrolls.
+    expect(g.wrapperScroll).toBeLessThanOrEqual(g.wrapperClient + 1);
+    expectNoScrollContainerOverflow(g);
+  });
+
+  test('a table wider than the whole free width stretches to the page edge, then scrolls inside itself', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await insertWideTable(page, 10);
+
+    const g = await tableGeometry(page);
+    expect(g.overflowX).toBe('auto');
+    expect(Math.abs(g.wrapperLeft - g.columnLeft)).toBeLessThanOrEqual(1);
+    expect(g.wrapperRight).toBeGreaterThan(g.columnRight);
+    // Stops short of the window edge (TABLE_BLEED_RIGHT_GUTTER in the view).
+    expect(g.wrapperRight).toBeLessThanOrEqual(g.bodyRight - 31);
+    expect(g.wrapperScroll).toBeGreaterThan(g.wrapperClient);
+    expectNoScrollContainerOverflow(g);
   });
 });
+
+test.describe('mobile: a wide table stays in the text column and scrolls', () => {
+  test('at 375px the table keeps the column\'s width and scrolls inside itself', async ({ page }) => {
+    await openDoc(page, { width: 375, height: 700 });
+    await insertWideTable(page, 10);
+
+    const g = await tableGeometry(page);
+    expect(g.overflowX).toBe('auto');
+    expect(Math.abs(g.wrapperLeft - g.columnLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(g.wrapperRight - g.columnRight)).toBeLessThanOrEqual(1);
+    expect(g.wrapperScroll).toBeGreaterThan(g.wrapperClient);
+    expectNoScrollContainerOverflow(g);
+  });
+});
+
+test.describe('mobile touch', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('a horizontal swipe over a wide table scrolls the table, not the page', async ({ page, context }) => {
+    await setupTextDocMocks(page);
+    await page.goto('/docs/reg-doc');
+    await page.waitForSelector('.ProseMirror', { timeout: 15000 });
+    await insertWideTable(page, 10);
+    await page.locator('.ProseMirror').evaluate((el) => (el as HTMLElement).blur());
+
+    const box = (await page.locator('.tableWrapper').boundingBox())!;
+    const y = box.y + box.height / 2;
+    const startX = box.x + box.width - 30;
+    const cdp = await context.newCDPSession(page);
+    const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', x: number) =>
+      cdp.send('Input.dispatchTouchEvent', { type, touchPoints: type === 'touchEnd' ? [] : [{ x, y }] });
+    await touch('touchStart', startX);
+    for (let i = 1; i <= 12; i++) {
+      await touch('touchMove', startX - i * 18);
+      await page.waitForTimeout(16);
+    }
+    await touch('touchEnd', startX - 12 * 18);
+    await page.waitForTimeout(400);
+
+    const scrolled = await page.evaluate(() => ({
+      table: (document.querySelector('.tableWrapper') as HTMLElement).scrollLeft,
+      page: (document.querySelector('.text-doc-page') as HTMLElement).scrollLeft,
+    }));
+    expect(scrolled.table).toBeGreaterThan(50);
+    expect(scrolled.page).toBe(0);
+  });
+});
+

@@ -366,3 +366,37 @@ describe('table block lifecycle', () => {
     second.unmount();
   });
 });
+
+describe('table stretch room (--text-doc-table-bleed)', () => {
+  /**
+   * jsdom has no layout, so the two rects the measurement reads are stubbed;
+   * what this pins is the arithmetic and that the result lands on the paper,
+   * where style.css's `.tableWrapper` max-width reads it. The actual stretch
+   * is covered live in tests/text-document-table.spec.ts.
+   */
+  async function bleedFor(bodyRight: number, columnRight: number): Promise<string> {
+    const wrapper = await mountEditableDoc();
+    const body = wrapper.vm.docBodyRef as HTMLElement;
+    const paper = wrapper.vm.docPaperRef as HTMLElement;
+    const column = paper.querySelector('.ProseMirror') as HTMLElement;
+    body.getBoundingClientRect = () => ({ right: bodyRight } as DOMRect);
+    column.getBoundingClientRect = () => ({ right: columnRight } as DOMRect);
+
+    // Any of the watched layout inputs re-measures; fullscreen is the simplest.
+    wrapper.vm.fullscreenDoc = !wrapper.vm.fullscreenDoc;
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+
+    const value = paper.style.getPropertyValue('--text-doc-table-bleed');
+    wrapper.unmount();
+    return value;
+  }
+
+  it('is the free width right of the text column, minus a gutter from the page edge', async () => {
+    expect(await bleedFor(1500, 1000)).toBe('468px');
+  });
+
+  it('never goes negative when there is less spare room than the gutter (phones)', async () => {
+    expect(await bleedFor(375, 355)).toBe('0px');
+  });
+});

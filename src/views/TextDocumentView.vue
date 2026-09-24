@@ -299,7 +299,7 @@
         CSS comment). Mobile/narrow: no sidebar at all - see the Teleported
         drawer variant further down, opened by the header button instead.
       -->
-      <div class="text-doc-body">
+      <div ref="docBodyRef" class="text-doc-body">
         <aside
           v-if="outlineIsDesktop"
           class="text-doc-outline-panel"
@@ -376,8 +376,9 @@
           ><ChevronLeft v-if="outlinePanelOpen" :size="15" aria-hidden="true" /><ChevronRight v-else :size="15" aria-hidden="true" /></button>
         </aside>
 
-      <main class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
+      <main ref="docShellRef" class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
         <article
+          ref="docPaperRef"
           class="text-doc-paper"
           :class="{ readonly: !canEditContent }"
           @click="focusEditor($event)"
@@ -2907,6 +2908,52 @@ export default defineComponent({
     });
     onBeforeUnmount(() => titleResizeObserver?.disconnect());
 
+    /**
+     * How far a wide table may grow past the right edge of the text column,
+     * exposed as `--text-doc-table-bleed` on the paper (style.css's
+     * `.tableWrapper` rule caps its own width with it). The text column is
+     * capped at a reading width and centered in whatever the outline panel
+     * leaves free, so the spare room to its right depends on the window, the
+     * panel's width/collapsed state and fullscreen mode - none of which CSS
+     * can read from inside the column. The table itself stays left-aligned
+     * with the text and only grows rightward: growing symmetrically would
+     * shift the whole table left by half of every column-resize drag, so the
+     * dragged border would lag behind the cursor.
+     */
+    const docBodyRef = ref<HTMLElement | null>(null);
+    const docShellRef = ref<HTMLElement | null>(null);
+    const docPaperRef = ref<HTMLElement | null>(null);
+    // Keeps a stretched table clear of the window's own right edge.
+    const TABLE_BLEED_RIGHT_GUTTER = 32;
+    function updateTableBleed(): void {
+      const body = docBodyRef.value;
+      const paper = docPaperRef.value;
+      const column = paper?.querySelector('.ProseMirror');
+      if (!body || !paper || !(column instanceof HTMLElement)) return;
+      const spare = body.getBoundingClientRect().right - column.getBoundingClientRect().right;
+      const bleed = Math.max(0, Math.floor(spare - TABLE_BLEED_RIGHT_GUTTER));
+      paper.style.setProperty('--text-doc-table-bleed', `${bleed}px`);
+    }
+    let tableBleedObserver: ResizeObserver | null = null;
+    watch([docBodyRef, docShellRef, docPaperRef], ([body, shell, paper]) => {
+      tableBleedObserver?.disconnect();
+      tableBleedObserver = null;
+      if (!body || !shell || !paper) return;
+      if (typeof ResizeObserver !== 'undefined') {
+        tableBleedObserver = new ResizeObserver(() => updateTableBleed());
+        tableBleedObserver.observe(body);
+        tableBleedObserver.observe(shell);
+      }
+      updateTableBleed();
+    });
+    // The outline panel can move the (fixed-width) column sideways without
+    // resizing the body or the shell, which is all the observer watches; and
+    // the editor's own `.ProseMirror` element can mount after the paper does.
+    watch([outlineWidth, outlinePanelOpen, outlineIsDesktop, fullscreenDoc, editor], () => {
+      void nextTick(updateTableBleed);
+    });
+    onBeforeUnmount(() => tableBleedObserver?.disconnect());
+
     async function loadPermissions() {
       permissions.value = await textDocuments.permissions(resolvedId.value);
     }
@@ -3352,6 +3399,9 @@ export default defineComponent({
       restoringHistory,
       saveTitle,
       titleTextareaRef,
+      docBodyRef,
+      docShellRef,
+      docPaperRef,
       autosizeTitleTextarea,
       saveSlug,
       saveAccessSettings,
