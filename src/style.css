@@ -6636,9 +6636,20 @@ body.text-doc-outline-resizing {
   invisible. `td`/`th`'s existing `position: relative` (below) is what the
   absolutely-positioned handle needs; nothing new added for that.
 */
+/* Shrink-wraps the table, but never narrower than the text column: a table
+   that fits keeps the column's width exactly as before, a wider one grows to
+   the RIGHT (left edge stays aligned with the text) into the page's free
+   width up to --text-doc-table-bleed (measured in TextDocumentView.vue), and
+   only past that does it scroll horizontally inside this wrapper. fit-content
+   works here because the table uses fixed layout: its intrinsic width is the
+   inline min-width prosemirror-tables stamps on it (column widths /
+   cellMinWidth), not its cell text. */
 .text-doc-paper .ProseMirror .tableWrapper {
   margin: 1em 0;
   overflow-x: auto;
+  width: fit-content;
+  min-width: 100%;
+  max-width: calc(100% + var(--text-doc-table-bleed, 0px));
 }
 .text-doc-paper .ProseMirror table {
   border-collapse: collapse;
@@ -7969,6 +7980,12 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
      cannot be used there. */
   .text-doc-paper .ProseMirror .column-resize-handle {
     display: none;
+  }
+
+  /* No room to stretch into on a phone: the table stays exactly the text
+     column's width and a wider one scrolls horizontally inside it. */
+  .text-doc-paper .ProseMirror .tableWrapper {
+    max-width: 100%;
   }
 
   /* Collapsed by default (backlinksExpanded), so the section no longer needs
