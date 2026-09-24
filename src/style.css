@@ -6647,6 +6647,9 @@ body.text-doc-outline-resizing {
 .text-doc-paper .ProseMirror .tableWrapper {
   margin: 1em 0;
   overflow-x: auto;
+  /* Only ever scrolls sideways (overflow-x: auto alone would make y auto
+     too, so a pixel of anything overhanging a row showed a vertical bar). */
+  overflow-y: hidden;
   width: fit-content;
   min-width: 100%;
   max-width: calc(100% + var(--text-doc-table-bleed, 0px));
@@ -6667,15 +6670,22 @@ body.text-doc-outline-resizing {
    the cell right before a column boundary - a Decoration.widget, so it must
    stay `pointer-events: none` itself (the LIBRARY's own mousedown/mousemove
    handling on view.dom is what actually drives the drag, not this element). */
+/* Invisible on purpose: hovering a border only switches the cursor
+   (.resize-cursor below) - a painted bar read as noise. It stays inside the
+   row's box (bottom: 0, and right: 0 on a row's last cell): anything poking
+   out of .tableWrapper, which scrolls, made a scrollbar pop up on hover. */
 .text-doc-paper .ProseMirror .column-resize-handle {
   position: absolute;
   right: -2px;
   top: 0;
-  bottom: -2px;
+  bottom: 0;
   width: 4px;
   z-index: 3;
-  background: var(--ui-info);
+  background: transparent;
   pointer-events: none;
+}
+.text-doc-paper .ProseMirror tr > :last-child > .column-resize-handle {
+  right: 0;
 }
 /* Added to the editor's own root element (view.dom) only while a handle is
    being dragged or hovered - prosemirror-tables' own doing, not this app's. */
@@ -6737,6 +6747,74 @@ body.text-doc-outline-resizing {
 }
 .text-doc-table-btn-danger {
   color: var(--ui-danger-foreground);
+}
+.text-doc-table-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.text-doc-table-btn:disabled:hover {
+  background: transparent;
+}
+.text-doc-table-menu-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 2px;
+  background: var(--ui-border);
+}
+
+/* Row/column drag grips (table-move.ts). Fixed-position chrome on <body>,
+   placed from the hovered cell's rect - never inside the document. */
+.text-doc-table-grip {
+  position: fixed;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text-muted, var(--ui-text));
+  box-shadow: var(--shadow-dropdown);
+  cursor: grab;
+  touch-action: none;
+}
+.text-doc-table-grip svg {
+  width: 12px;
+  height: 12px;
+}
+/* The glyph is grip-vertical; the column grip lies across the column. */
+.text-doc-table-grip-column svg {
+  transform: rotate(90deg);
+}
+.text-doc-table-grip:hover,
+.text-doc-table-grip.is-active {
+  background: var(--ui-info);
+  border-color: var(--ui-info);
+  color: #fff;
+}
+.text-doc-table-grip.is-active,
+body.text-doc-table-dragging,
+body.text-doc-table-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.text-doc-table-drop-indicator,
+.text-doc-table-drag-source {
+  position: fixed;
+  z-index: 59;
+  pointer-events: none;
+}
+.text-doc-table-drop-indicator {
+  border-radius: 2px;
+  background: var(--ui-info);
+}
+.text-doc-table-drag-source {
+  background: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--ui-info) 55%, transparent);
+  outline-offset: -1px;
 }
 
 /* CodeBlockLowlight. Syntax colours are themed via --content-code-* tokens
@@ -7964,6 +8042,22 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   .text-doc-table-btn {
     width: 36px;
     height: 36px;
+  }
+  /* Nine buttons (+ the move arrows) no longer fit a 320px screen in one
+     row; wrap them instead of overflowing it. */
+  .text-doc-table-menu {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 24px);
+  }
+  /* A wrapped row would leave a separator dangling at its end. */
+  .text-doc-table-menu-sep {
+    display: none;
+  }
+  /* Reordering on a phone is the menu arrows; the drag grips are desktop
+     only (table-move.ts also never shows them below this breakpoint). */
+  .text-doc-table-grip {
+    display: none !important;
   }
 
   .text-doc-paper .ProseMirror td,

@@ -106,10 +106,11 @@ describe('table block lifecycle', () => {
     // what actually renders, causing the next drag to compute from
     // mismatched geometry ("width snaps back").
     expect(tableExt.options.cellMinWidth).toBe(100);
-    // Keeps the table at width: 100% with a growing min-width as columns
-    // widen (the last column absorbs slack) instead of detaching to a
-    // fixed width the moment every column has a stored width.
-    expect(tableExt.options.lastColumnResizable).toBe(false);
+    // The last column is resizable too: once every column is sized the
+    // table takes their summed width, which the shrink-wrapping
+    // .tableWrapper follows (narrower than the text column, or stretched
+    // into the page and then scrolled) - see the Table.configure comment.
+    expect(tableExt.options.lastColumnResizable).toBe(true);
     expect(tableExt.options.renderWrapper).toBe(true);
 
     wrapper.unmount();

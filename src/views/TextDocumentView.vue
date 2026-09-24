@@ -593,6 +593,12 @@
       >
         <button type="button" class="text-doc-table-btn" :title="t('tableAddRow')" :aria-label="t('tableAddRow')" @click="tableAddRow"><Rows3 :size="15" aria-hidden="true" /></button>
         <button type="button" class="text-doc-table-btn" :title="t('tableAddColumn')" :aria-label="t('tableAddColumn')" @click="tableAddColumn"><Columns3 :size="15" aria-hidden="true" /></button>
+        <span class="text-doc-table-menu-sep" aria-hidden="true"></span>
+        <button type="button" class="text-doc-table-btn" data-table-move="row-up" :title="t('tableMoveRowUp')" :aria-label="t('tableMoveRowUp')" :disabled="!tableCanMove.rowUp" @click="tableMove('row', -1)"><ArrowUp :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn" data-table-move="row-down" :title="t('tableMoveRowDown')" :aria-label="t('tableMoveRowDown')" :disabled="!tableCanMove.rowDown" @click="tableMove('row', 1)"><ArrowDown :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn" data-table-move="column-left" :title="t('tableMoveColumnLeft')" :aria-label="t('tableMoveColumnLeft')" :disabled="!tableCanMove.columnLeft" @click="tableMove('column', -1)"><ArrowLeft :size="15" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn" data-table-move="column-right" :title="t('tableMoveColumnRight')" :aria-label="t('tableMoveColumnRight')" :disabled="!tableCanMove.columnRight" @click="tableMove('column', 1)"><ArrowRight :size="15" aria-hidden="true" /></button>
+        <span class="text-doc-table-menu-sep" aria-hidden="true"></span>
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteRow')" :aria-label="t('tableDeleteRow')" @click="tableDeleteRow"><Rows3 :size="15" aria-hidden="true" /></button>
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteColumn')" :aria-label="t('tableDeleteColumn')" @click="tableDeleteColumn"><Columns3 :size="15" aria-hidden="true" /></button>
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDelete')" :aria-label="t('tableDelete')" @click="tableDeleteTable"><Trash2 :size="15" aria-hidden="true" /></button>
@@ -824,6 +830,8 @@ import {
   capacityLevel,
 } from '../documents/document-capacity';
 import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
+import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
+import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
@@ -841,11 +849,11 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1633,6 +1641,25 @@ export default defineComponent({
     const tableDeleteRow = () => { editor.value?.chain().focus().deleteRow().run(); };
     const tableDeleteColumn = () => { editor.value?.chain().focus().deleteColumn().run(); };
     const tableDeleteTable = () => { editor.value?.chain().focus().deleteTable().run(); };
+    // Menu arrows: move the caret's row/column one step (on a phone, the only
+    // way to reorder - see table-move.ts). The caret stays in the moved cell,
+    // so repeated presses keep moving the same line.
+    const tableMove = (axis: TableAxis, delta: -1 | 1) => {
+      const current = editor.value;
+      if (!current) return;
+      current.commands.focus();
+      moveCurrentTableLine(current.view, axis, delta);
+    };
+    const tableCanMove = computed(() => {
+      void editorTransactionTick.value;
+      // `?.selection?.$head`, not just `?.state`: several TextDocumentView
+      // test fixtures mock the editor down to a bare state object (same
+      // reason canUndo below guards with ?.can?.()).
+      const state = editor.value?.state;
+      const ready = !!state?.selection?.$head;
+      const can = (axis: TableAxis, delta: -1 | 1) => ready && canMoveCurrentTableLine(state!, axis, delta);
+      return { rowUp: can('row', -1), rowDown: can('row', 1), columnLeft: can('column', -1), columnRight: can('column', 1) };
+    });
 
     /**
      * The mobile link editor is a bottom sheet, not the in-place bubble -
@@ -2531,18 +2558,17 @@ export default defineComponent({
          * Measured live, not estimated. Accepted: narrow columns that
          * actually scroll beat columns squeezed illegibly thin.
          *
-         * `lastColumnResizable: false`: the last column never gets a stored
-         * width, so `fixedWidth` (the extension's own internal flag for
-         * "every column has been sized") never flips true and the table
-         * keeps `width: 100%` with a growing `min-width` as earlier columns
-         * are widened, absorbing slack into that last column - the behaviour
-         * most document editors use. Without it, once EVERY column has been
-         * dragged, `updateColumns` sets the table's own inline
-         * `width: <sum>px`, which beats this file's `width: 100%` and
-         * detaches the table from the page's own width the moment the last
-         * column is touched - caught via review, not live, but the
-         * comparison the review used was empirical (real `updateColumns`
-         * source, not assumed behaviour).
+         * `lastColumnResizable: true` (it was false until the table
+         * wrapper learnt to shrink-wrap its table - see .tableWrapper in
+         * style.css): once EVERY column has a stored width, `updateColumns`
+         * gives the table an inline `width: <sum>px`, beating the CSS
+         * `width: 100%`. That used to detach the table from the page width
+         * for good; now it is exactly what "resize the last column" should
+         * do - narrow it and the table ends short of the text column's right
+         * edge, widen it and the table grows into the page's free width,
+         * then scrolls, like any other wide table. While some column is
+         * still unsized, the table keeps `width: 100%` and those columns
+         * absorb the slack.
          *
          * `renderWrapper: true` (front task 33/40, fixed after a live
          * Playwright check caught it): the extension's `.tableWrapper` div -
@@ -2600,10 +2626,17 @@ export default defineComponent({
          * cross-repo feature. Left as a follow-up, not a blocker for the
          * live collaborative editor.
          */
-        Table.configure({ resizable: true, renderWrapper: true, cellMinWidth: 100, lastColumnResizable: false }),
+        Table.configure({ resizable: true, renderWrapper: true, cellMinWidth: 100, lastColumnResizable: true }),
         TableRow,
         TableHeader,
         TableCell,
+        // Desktop drag grips for reordering rows/columns (none on phones -
+        // the table menu's arrows cover that). See table-move.ts.
+        // Grabbing the LAST column's border stores every column's current
+        // width first, so the table's right edge follows the drag. See
+        // table-column-widths.ts.
+        PinColumnWidthsOnLastColumnResize,
+        TableMoveHandles.configure({ columnLabel: () => t('tableDragColumn'), rowLabel: () => t('tableDragRow'), mobileMaxWidth: 760 }),
         // Refuses a transaction that would add a top-level block past the
         // ceiling, and NOTHING else - never a Yjs transaction, never an edit
         // or a deletion. See capacity-guard.ts.
@@ -3119,6 +3152,12 @@ export default defineComponent({
       }
       const target = event?.target;
       if (target instanceof Element && target.closest('.ProseMirror')) return;
+      // The table menu (a BubbleMenu, rendered inside this paper) acts on the
+      // caret's cell: a click on one of its buttons bubbling here would
+      // throw the caret to the document end right after the command ran -
+      // the next arrow press would then move the wrong row, or the menu
+      // would vanish altogether when the table isn't the last block.
+      if (target instanceof Element && target.closest('.text-doc-table-menu')) return;
       editor.value?.chain().focus('end').run();
     }
 
@@ -3296,6 +3335,8 @@ export default defineComponent({
       tableDeleteRow,
       tableDeleteColumn,
       tableDeleteTable,
+      tableMove,
+      tableCanMove,
       openLinkEditor,
       closeLinkEditor,
       applyLink,
