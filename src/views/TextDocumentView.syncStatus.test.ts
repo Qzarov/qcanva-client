@@ -1,15 +1,14 @@
 // @vitest-environment jsdom
 //
-// Front task 3: sync status delay and the states it can be in. The layout-
-// shift root cause itself was CSS (.text-doc-sync sizing to its own text in
-// a flex row) - not something a jsdom test can observe without real layout -
-// so what's tested here is the state machine the delay adds: pendingSaveDelayed
-// only flips true if pendingUpdatesCount is STILL > 0 after the delay, so a
-// fast save never shows anything but Synced.
+// The document's sync badge: one of Synced / Saving… / Offline / Sync failed,
+// with no pending count on screen. The timing itself (show delay, settle,
+// minimum visible time) is unit-tested in useCalmSyncStatus.test.ts; this
+// checks the view wires it to the real socket state and renders it calmly.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
+import { CALM_SAVING_DEFAULTS } from '../composables/useCalmSyncStatus';
 
 // Populated with REAL refs by the async mock factory below (vi.hoisted
 // callbacks run before any import, including 'vue', resolves - so the refs
@@ -21,6 +20,7 @@ const state = vi.hoisted(() => ({
   connected: null as any,
   pendingUpdatesCount: null as any,
   rejectHandler: null as null | ((reject: unknown) => void),
+  ackHandler: null as null | ((ack: { revision: number }) => void),
 }));
 
 vi.mock('vue-router', () => ({
@@ -67,7 +67,7 @@ vi.mock('../composables/useTextDocumentSocket', async () => {
       sendAwareness: () => undefined,
       onRemoteUpdate: () => undefined,
       onReject: (cb: (reject: unknown) => void) => { state.rejectHandler = cb; },
-      onAck: () => undefined,
+      onAck: (cb: (ack: { revision: number }) => void) => { state.ackHandler = cb; },
       setRevision: () => undefined,
       clearPendingUpdates: () => undefined,
     }),
@@ -95,86 +95,134 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('sync status delay (front task 3)', () => {
+
+const { showDelayMs, settleMs, minVisibleMs } = CALM_SAVING_DEFAULTS;
+const badgeText = (wrapper: any) => wrapper.find('.text-doc-sync').text();
+
+async function tick(wrapper: any, ms = 0) {
+  if (ms) vi.advanceTimersByTime(ms);
+  await flushPromises();
+  await wrapper.vm.$nextTick();
+}
+
+async function failWithConflict(wrapper: any) {
+  // Timeout + a failed REST fallback (applyUpdate rejects) is the one
+  // handleReject branch that leaves syncIssue at 'conflict' rather than
+  // reloading and clearing it - see handleReject in TextDocumentView.vue.
+  state.rejectHandler!({ reason: 'timeout', pending: { update: 'base64==' }, clientUpdateId: 'c1' });
+  await flushPromises();
+  await wrapper.vm.$nextTick();
+}
+
+describe('document sync badge', () => {
   it('starts Synced when connected with nothing pending', async () => {
     const wrapper = await mountDoc();
     expect(wrapper.vm.syncStatus.kind).toBe('synced');
+    expect(badgeText(wrapper)).toBe('Synced');
     wrapper.unmount();
   });
 
-  it('does NOT show Saving immediately when a save starts - stays Synced through a fast round-trip', async () => {
+  it('a save faster than the delay never shows Saving…', async () => {
     vi.useFakeTimers();
     const wrapper = await mountDoc();
-
     state.pendingUpdatesCount.value = 1;
-    await wrapper.vm.$nextTick();
+    await tick(wrapper, showDelayMs - 100);
     expect(wrapper.vm.syncStatus.kind).toBe('synced');
-
-    // Resolves well before the delay elapses.
     state.pendingUpdatesCount.value = 0;
-    await wrapper.vm.$nextTick();
-    vi.advanceTimersByTime(1000);
-    await flushPromises();
-
+    await tick(wrapper, 2000);
     expect(wrapper.vm.syncStatus.kind).toBe('synced');
-
     wrapper.unmount();
   });
 
-  it('shows Saving once the pending save outlasts the delay', async () => {
+  it('a long save shows Saving…, with no count in the badge (only in its tooltip)', async () => {
     vi.useFakeTimers();
     const wrapper = await mountDoc();
-
-    state.pendingUpdatesCount.value = 1;
-    await wrapper.vm.$nextTick();
-    vi.advanceTimersByTime(500);
-    await flushPromises();
-
+    state.pendingUpdatesCount.value = 7;
+    await tick(wrapper, showDelayMs);
     expect(wrapper.vm.syncStatus.kind).toBe('saving');
-
+    expect(badgeText(wrapper)).toBe('Saving…');
+    expect(wrapper.find('.text-doc-sync').attributes('title')).toContain('7 changes pending');
     wrapper.unmount();
   });
 
-  it('returns to Synced once the slow save resolves', async () => {
+  it('pending-count changes during Saving… leave the shown text untouched', async () => {
     vi.useFakeTimers();
     const wrapper = await mountDoc();
+    state.pendingUpdatesCount.value = 7;
+    await tick(wrapper, showDelayMs);
+    const seen = new Set<string>();
+    for (const n of [12, 4, 9, 2]) {
+      state.pendingUpdatesCount.value = n;
+      await tick(wrapper, 80);
+      seen.add(badgeText(wrapper));
+    }
+    expect([...seen]).toEqual(['Saving…']);
+    wrapper.unmount();
+  });
 
+  it('new edits right after the queue empties do not blink Synced', async () => {
+    vi.useFakeTimers();
+    const wrapper = await mountDoc();
     state.pendingUpdatesCount.value = 1;
-    await wrapper.vm.$nextTick();
-    vi.advanceTimersByTime(500);
-    await flushPromises();
-    expect(wrapper.vm.syncStatus.kind).toBe('saving');
-
+    await tick(wrapper, showDelayMs + minVisibleMs);
     state.pendingUpdatesCount.value = 0;
-    await wrapper.vm.$nextTick();
-    expect(wrapper.vm.syncStatus.kind).toBe('synced');
-
+    await tick(wrapper, settleMs - 50);
+    expect(wrapper.vm.syncStatus.kind).toBe('saving');
+    state.pendingUpdatesCount.value = 3;
+    await tick(wrapper, 100);
+    expect(wrapper.vm.syncStatus.kind).toBe('saving');
     wrapper.unmount();
   });
 
-  it('shows Offline when disconnected with nothing pending', async () => {
+  it('queue at 0 settles into a stable Synced', async () => {
+    vi.useFakeTimers();
+    const wrapper = await mountDoc();
+    state.pendingUpdatesCount.value = 1;
+    await tick(wrapper, showDelayMs);
+    state.pendingUpdatesCount.value = 0;
+    await tick(wrapper, Math.max(settleMs, minVisibleMs));
+    expect(wrapper.vm.syncStatus.kind).toBe('synced');
+    await tick(wrapper, 5000);
+    expect(badgeText(wrapper)).toBe('Synced');
+    wrapper.unmount();
+  });
+
+  it('Offline shows immediately, even over a pending save', async () => {
+    vi.useFakeTimers();
+    const wrapper = await mountDoc();
+    state.pendingUpdatesCount.value = 2;
+    state.connected.value = false;
+    await tick(wrapper);
+    expect(wrapper.vm.syncStatus.kind).toBe('offline');
+    expect(badgeText(wrapper)).toBe('Offline');
+    await tick(wrapper, 5000);
+    expect(wrapper.vm.syncStatus.kind).toBe('offline');
+    wrapper.unmount();
+  });
+
+  it('Sync failed shows immediately and stays until a successful ack, then Synced', async () => {
+    vi.useFakeTimers();
+    const wrapper = await mountDoc();
+    await failWithConflict(wrapper);
+    expect(wrapper.vm.syncStatus.kind).toBe('failed');
+    expect(badgeText(wrapper)).toBe('Sync failed');
+    await tick(wrapper, 10000);
+    expect(wrapper.vm.syncStatus.kind).toBe('failed');
+
+    state.ackHandler!({ revision: 2 });
+    await tick(wrapper);
+    expect(wrapper.vm.syncStatus.kind).toBe('synced');
+    wrapper.unmount();
+  });
+
+  it('recovers from Offline to Synced when the connection comes back', async () => {
     const wrapper = await mountDoc();
     state.connected.value = false;
     await wrapper.vm.$nextTick();
-
     expect(wrapper.vm.syncStatus.kind).toBe('offline');
-
-    wrapper.unmount();
-  });
-
-  it('shows the explicit "Sync failed" label on a conflict, taking priority over saving/offline', async () => {
-    const wrapper = await mountDoc();
-    expect(state.rejectHandler).toBeTruthy();
-
-    // Timeout + a failed REST fallback (applyUpdate rejects) is the one
-    // handleReject branch that leaves syncIssue at 'conflict' rather than
-    // reloading and clearing it - see handleReject in TextDocumentView.vue.
-    state.rejectHandler!({ reason: 'timeout', pending: { update: 'base64==' }, clientUpdateId: 'c1' });
-    await flushPromises();
-
-    expect(wrapper.vm.syncStatus.kind).toBe('conflict');
-    expect(wrapper.vm.syncStatus.label).toBe('Sync failed');
-
+    state.connected.value = true;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.syncStatus.kind).toBe('synced');
     wrapper.unmount();
   });
 });

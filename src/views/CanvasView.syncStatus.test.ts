@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
 //
-// Bug: the sync badge flickered between Saving/Synced on every op during a
-// burst of fast edits ("рябило в глазах"). Same principle
-// TextDocumentView.vue's own `pendingSaveDelayed`/`SAVE_INDICATOR_DELAY_MS`
-// already applies to documents (see TextDocumentView.syncStatus.test.ts,
-// which this file mirrors): `pendingSaveDelayed` only flips true if
-// something is STILL pending after the delay, so a fast round-trip during a
-// burst of edits never shows anything but a calm Synced.
+// The canvas sync badge: one of Synced / Saving… / Offline / Sync failed,
+// no pending-ops count on screen (it used to tick on every drawn op). The
+// timing (show delay, settle, minimum visible time) is unit-tested in
+// useCalmSyncStatus.test.ts; this checks the canvas wires it to its socket
+// state, saving flag and conflict handling.
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { defineComponent, ref } from 'vue';
@@ -159,7 +157,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('sync status delay (canvas - same principle as TextDocumentView)', () => {
+describe('canvas sync badge', () => {
   it('starts Synced when connected with nothing pending', async () => {
     const wrapper = await mountCanvas();
     expect(wrapper.vm.syncStatus.kind).toBe('synced');
@@ -210,10 +208,36 @@ describe('sync status delay (canvas - same principle as TextDocumentView)', () =
     await flushPromises();
     expect(wrapper.vm.syncStatus.kind).toBe('saving');
 
+    // Not instantly: Synced only once the queue stayed empty for the settle
+    // time (and Saving… was up for its minimum time).
     state.pendingOpsCount.value = 0;
     await wrapper.vm.$nextTick();
+    expect(wrapper.vm.syncStatus.kind).toBe('saving');
+    vi.advanceTimersByTime(1000);
+    await flushPromises();
     expect(wrapper.vm.syncStatus.kind).toBe('synced');
 
+    wrapper.unmount();
+  });
+
+  it('never puts the pending count in the badge text (tooltip only)', async () => {
+    vi.useFakeTimers();
+    const wrapper = await mountCanvas();
+    state.pendingOpsCount.value = 9;
+    vi.advanceTimersByTime(500);
+    await flushPromises();
+    const badge = wrapper.find('.topbar-sync');
+    expect(badge.text()).toBe('Saving…');
+    expect(badge.attributes('title')).toContain('9 changes pending');
+    wrapper.unmount();
+  });
+
+  it('shows Offline immediately, even over pending ops', async () => {
+    const wrapper = await mountCanvas();
+    state.pendingOpsCount.value = 3;
+    state.connected.value = false;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.syncStatus.kind).toBe('offline');
     wrapper.unmount();
   });
 
@@ -227,7 +251,7 @@ describe('sync status delay (canvas - same principle as TextDocumentView)', () =
     wrapper.unmount();
   });
 
-  it('shows Conflict on a rejected op, taking priority over saving/offline - not gated by the delay', async () => {
+  it('shows Sync failed on a rejected op immediately - not gated by the delay', async () => {
     const wrapper = await mountCanvas();
     expect(state.rejectHandler).toBeTruthy();
 
@@ -236,7 +260,8 @@ describe('sync status delay (canvas - same principle as TextDocumentView)', () =
     state.rejectHandler!({ reason: 'stale-revision', clientOpId: 'op-1', serverRevision: 9 });
     await flushPromises();
 
-    expect(wrapper.vm.syncStatus.kind).toBe('conflict');
+    expect(wrapper.vm.syncStatus.kind).toBe('failed');
+    expect(wrapper.vm.syncStatus.label).toBe('Sync failed');
 
     wrapper.unmount();
   });
