@@ -126,10 +126,12 @@ describe('link tap/click actions popover', () => {
     wrapper.vm.handleEditorLinkClick(event);
     await flushPromises();
 
-    // The popover's own top must sit above the link's top edge (with room
-    // to spare for its own height), not below it or overlapping it.
-    expect(wrapper.vm.linkActionMenuStyle.top.replace('px', '')).toMatch(/^\d+$/);
-    expect(parseFloat(wrapper.vm.linkActionMenuStyle.top)).toBeLessThan(400);
+    // Anchored by its bottom edge just above the link's top edge, whatever
+    // its own height - never over the link text.
+    expect(wrapper.vm.linkActionMenuStyle.top).toBeUndefined();
+    const menuBottom = window.innerHeight - parseFloat(wrapper.vm.linkActionMenuStyle.bottom);
+    expect(menuBottom).toBeLessThanOrEqual(400);
+    expect(menuBottom).toBeGreaterThan(380);
 
     wrapper.unmount();
   });

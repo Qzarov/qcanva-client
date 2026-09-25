@@ -7342,8 +7342,11 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-text-secondary);
 }
 
+/* Wraps rather than overflowing the fixed-width menu: four actions
+   (Copy / Edit / Remove link / Open) don't fit one row in Russian. */
 .text-doc-link-action-buttons {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
 }
@@ -7360,6 +7363,7 @@ aside[data-variant='danger'] > .text-doc-callout-icon {
   color: var(--ui-text);
   font: inherit;
   font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
 }
 .text-doc-link-action-btn:hover {
