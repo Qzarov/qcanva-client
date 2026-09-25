@@ -74,6 +74,15 @@
       </div>
 
       <div class="share-section">
+        <!-- Copying the link is what people open this for: first. -->
+        <template v-if="visibility === 'public'">
+          <div class="share-section-title">{{ t('publicDocumentLink') }}</div>
+          <div class="slug-row" data-share-copy-row>
+            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('publicDocumentLink')" />
+            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
+          </div>
+          <div class="slug-hint">{{ t('publicLinkHint') }}</div>
+        </template>
         <div class="share-section-title">{{ t('shareLinkSection') }}</div>
         <div class="slug-row">
           <span class="slug-prefix">/html/</span>
@@ -89,14 +98,6 @@
           <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
         </div>
         <div class="slug-hint">{{ t('slugHint') }}</div>
-        <template v-if="visibility === 'public'">
-          <div class="share-section-title">{{ t('publicDocumentLink') }}</div>
-          <div class="slug-row">
-            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('publicDocumentLink')" />
-            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
-          </div>
-          <div class="slug-hint">{{ t('publicLinkHint') }}</div>
-        </template>
       </div>
 
       <div class="share-section">

@@ -130,6 +130,27 @@
           </div>
 
           <div class="share-panel-body">
+            <!-- Copying the link is what people open this for: first. -->
+            <div class="share-section">
+              <div class="share-section-title">{{ t('shareLinkSection') }}</div>
+              <button
+                type="button"
+                class="share-link-row"
+                :class="{ 'share-link-row-copied': linkRowCopied }"
+                :aria-label="t('copyLink')"
+                @click="copyDocumentLinkFromRow"
+              >
+                <Link2 :size="15" class="share-link-icon" aria-hidden="true" />
+                <span class="share-link-url" :title="documentUrl">{{ documentUrl }}</span>
+                <span v-if="linkRowCopied" class="share-link-copied">
+                  <Check :size="15" aria-hidden="true" /> {{ t('copied') }}
+                </span>
+                <Copy v-else :size="15" class="share-link-copy-icon" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div class="share-section-divider" aria-hidden="true"></div>
+
             <div class="share-section">
               <div class="share-section-title">{{ t('generalAccessSection') }}</div>
               <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
@@ -160,24 +181,6 @@
             </div>
 
             <div class="share-section-divider" aria-hidden="true"></div>
-
-            <div class="share-section">
-              <div class="share-section-title">{{ t('shareLinkSection') }}</div>
-              <button
-                type="button"
-                class="share-link-row"
-                :class="{ 'share-link-row-copied': linkRowCopied }"
-                :aria-label="t('copyLink')"
-                @click="copyDocumentLinkFromRow"
-              >
-                <Link2 :size="15" class="share-link-icon" aria-hidden="true" />
-                <span class="share-link-url" :title="documentUrl">{{ documentUrl }}</span>
-                <span v-if="linkRowCopied" class="share-link-copied">
-                  <Check :size="15" aria-hidden="true" /> {{ t('copied') }}
-                </span>
-                <Copy v-else :size="15" class="share-link-copy-icon" aria-hidden="true" />
-              </button>
-            </div>
 
             <div class="share-section">
               <div class="share-section-title">{{ t('customLinkSection') }}</div>
