@@ -18,6 +18,8 @@ const state = vi.hoisted(() => ({
   connected: null as any,
   pendingOpsCount: null as any,
   rejectHandler: null as null | ((reject: unknown) => void),
+  applyRemoteData: null as any,
+  resync: null as any,
 }));
 
 vi.mock('vue-router', () => ({
@@ -30,6 +32,7 @@ vi.mock('../components/CanvasLoader.vue', () => ({
     name: 'CanvasLoaderStub',
     setup(_props, { expose }) {
       expose({
+        applyRemoteData: (...args: unknown[]) => state.applyRemoteData?.(...args),
         addDocumentEmbed: vi.fn(),
         getCanvasData: () => ({ nodes: [], edges: [], drawings: [] }),
         selectedNodeId: null,
@@ -64,6 +67,7 @@ vi.mock('../api/client', () => ({
       role: 'owner',
     }),
     update: vi.fn().mockResolvedValue({ revision: 8 }),
+    resync: (...args: unknown[]) => state.resync(...args),
     listPermissions: vi.fn().mockResolvedValue([]),
     permissions: vi.fn().mockResolvedValue([]),
     getMessages: vi.fn().mockResolvedValue([]),
@@ -149,6 +153,9 @@ async function mountCanvas(): Promise<any> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.applyRemoteData = vi.fn();
+  // Default: the resync request fails, leaving the conflict showing.
+  state.resync = vi.fn().mockRejectedValue(new Error('resync unavailable'));
   state.connected.value = true;
   state.pendingOpsCount.value = 0;
 });
@@ -262,6 +269,26 @@ describe('canvas sync badge', () => {
 
     expect(wrapper.vm.syncStatus.kind).toBe('failed');
     expect(wrapper.vm.syncStatus.label).toBe('Sync failed');
+
+    wrapper.unmount();
+  });
+
+  it('a conflict resync applies the fresh state in place - no second pass through initial-data', async () => {
+    const wrapper = await mountCanvas();
+    const initialData = wrapper.vm.canvasData;
+    const fresh = { nodes: [{ id: 'n1', type: 'text', text: 'x', x: 0, y: 0, width: 10, height: 10 }], edges: [], drawings: [] };
+    state.resync.mockResolvedValueOnce({ canvas: { data: JSON.stringify(fresh), revision: 12 } });
+
+    state.rejectHandler!({ reason: 'stale-revision', clientOpId: 'op-1', serverRevision: 11 });
+    await flushPromises();
+
+    expect(state.applyRemoteData).toHaveBeenCalledWith(fresh);
+    // Re-assigning canvasData re-fired CanvasLoader's initial-data watcher:
+    // the same data applied again in the server's node order (every image
+    // moved and repainted) plus a camera re-fit.
+    expect(wrapper.vm.canvasData).toBe(initialData);
+    expect(wrapper.vm.revision).toBe(12);
+    expect(wrapper.vm.syncStatus.kind).toBe('synced');
 
     wrapper.unmount();
   });
