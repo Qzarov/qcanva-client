@@ -66,9 +66,15 @@
           ><Minimize2 v-if="fullscreenDoc" :size="17" aria-hidden="true" /><Maximize2 v-else :size="17" aria-hidden="true" /></button>
           <button v-if="role === 'owner'" class="btn-ghost btn-sm text-doc-access-btn" @click="showShare = !showShare">{{ t('share') }}</button>
           <button class="btn-ghost btn-sm text-doc-history-btn" @click="toggleHistory">{{ t('history') }}</button>
-          <button v-if="canEditContent" class="text-doc-sync" :class="`text-doc-sync-${syncStatus.kind}`">
-            {{ syncStatus.label }}<template v-if="pendingUpdatesCount"> · {{ pendingUpdatesCount }}</template>
-          </button>
+          <button
+            v-if="canEditContent"
+            type="button"
+            class="text-doc-sync"
+            :class="`text-doc-sync-${syncStatus.kind}`"
+            :title="syncStatusTitle"
+            :aria-label="syncStatusTitle"
+            @click="showSyncStatusHint"
+          >{{ syncStatus.label }}</button>
           <AccountMenu v-if="currentUser" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
           <div class="control-menu text-doc-menu-mobile">
@@ -830,6 +836,7 @@ import {
   capacityLevel,
 } from '../documents/document-capacity';
 import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
+import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
 import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
 import Collaboration from '@tiptap/extension-collaboration';
@@ -1045,34 +1052,33 @@ export default defineComponent({
     const currentUser = computed(() => getCurrentUser());
 
     /**
-     * SYNC STATUS DELAY (front task: sync jumping).
-     *
-     * Root cause of the layout jump was CSS (.text-doc-sync sizes to its own
-     * text, so every label-length change reflows its flex siblings) - fixed
-     * in style.css with a reserved min-width. This delay is a separate,
-     * deliberately requested UX change: a normal autosave resolves in well
-     * under a second, and flashing "Saving..." for that instant reads as
-     * noisier than useful. `pendingSaveDelayed` only flips true if
-     * pendingUpdatesCount is STILL > 0 after SAVE_INDICATOR_DELAY_MS, so a
-     * fast round-trip never shows anything but a calm "Synced"; a slow one
-     * still shows "Saving..." for as long as it actually takes. This does
-     * NOT touch when a save happens or how conflicts/offline are detected -
-     * only when the "Saving..." label is allowed to render.
+     * SYNC STATUS: one of Synced / Saving… / Offline / Sync failed, never a
+     * changes counter (it ticked 7 -> 12 -> 4 on every keystroke). When
+     * "Saving…" may appear, and for how long, is useCalmSaving's job - see
+     * useCalmSyncStatus.ts; `savingVisible` is set up further down, next to
+     * `pendingUpdatesCount` (a computed's lazy getter can reference it from
+     * here). The count itself only goes into the badge's tooltip. The badge's
+     * box is a fixed size in style.css, so no state change moves its
+     * neighbours; on phones it is a dot, and a tap spells the state out.
      */
-    const SAVE_INDICATOR_DELAY_MS = 400;
-    const pendingSaveDelayed = ref(false);
-    // The watch driving pendingSaveDelayed is set up further down, right
-    // after `pendingUpdatesCount` itself exists (from useTextDocumentSocket)
-    // - unlike a computed's lazy getter, watch() evaluates its source
-    // immediately on creation, so it cannot reference a not-yet-declared
-    // const the way syncStatus below safely can.
-
+    const SYNC_STATUS_LABEL_KEYS = {
+      synced: 'syncSynced',
+      saving: 'syncSaving',
+      offline: 'syncOffline',
+      failed: 'syncFailed',
+    } as const;
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: t('syncFailed') };
-      if (pendingSaveDelayed.value) return { kind: 'saving', label: t('syncSaving') };
-      if (connected.value) return { kind: 'synced', label: t('syncSynced') };
-      return { kind: 'offline', label: t('syncOffline') };
+      const kind = resolveSyncStatus({ failed: !!syncIssue.value, offline: !connected.value, saving: savingVisible.value });
+      return { kind, label: t(SYNC_STATUS_LABEL_KEYS[kind]) };
     });
+    const syncStatusTitle = computed(() =>
+      pendingUpdatesCount.value > 0
+        ? `${syncStatus.value.label} · ${t('syncPendingChanges').replace('{count}', String(pendingUpdatesCount.value))}`
+        : syncStatus.value.label,
+    );
+    function showSyncStatusHint() {
+      if (isMobileEditorLayout()) showToast(syncStatusTitle.value, syncStatus.value.kind === 'failed' ? 'error' : 'info');
+    }
 
     const imageInput = ref<HTMLInputElement | null>(null);
     const uploadingImage = ref(false);
@@ -2732,23 +2738,7 @@ export default defineComponent({
       clearPendingUpdates,
     } = useTextDocumentSocket(resolvedId);
 
-    let saveIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
-    watch(() => pendingUpdatesCount.value > 0, (isPending) => {
-      if (saveIndicatorTimer) {
-        clearTimeout(saveIndicatorTimer);
-        saveIndicatorTimer = null;
-      }
-      if (!isPending) {
-        pendingSaveDelayed.value = false;
-        return;
-      }
-      saveIndicatorTimer = setTimeout(() => {
-        if (pendingUpdatesCount.value > 0) pendingSaveDelayed.value = true;
-      }, SAVE_INDICATOR_DELAY_MS);
-    });
-    onBeforeUnmount(() => {
-      if (saveIndicatorTimer) clearTimeout(saveIndicatorTimer);
-    });
+    const savingVisible = useCalmSaving(() => pendingUpdatesCount.value > 0);
 
     function syncEditorEditable() {
       if (loading.value) return;
@@ -3384,6 +3374,8 @@ export default defineComponent({
       connected,
       pendingUpdatesCount,
       syncStatus,
+      syncStatusTitle,
+      showSyncStatusHint,
       showShare,
       closeShare,
       docMenuOpen,

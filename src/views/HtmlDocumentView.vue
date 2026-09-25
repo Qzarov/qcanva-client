@@ -30,9 +30,7 @@
       </div>
       <button class="btn-ghost html-desktop-action" @click="toggleHistory">{{ t('history') }}</button>
       <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
-        <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
-          {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
-        </button>
+        <button type="button" class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" :title="htmlSyncTitle" @click="showSyncEvents = !showSyncEvents">{{ htmlSyncStatus.label }}</button>
         <div v-if="showSyncEvents" class="html-sync-popover">
           <div class="html-sync-head">
             <strong>{{ t('syncPopoverTitle') }}</strong>
@@ -58,7 +56,7 @@
           <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">{{ t('exportPdf') }}</button>
           <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">{{ t('history') }}</button>
           <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
-            {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+            {{ htmlSyncStatus.label }}
           </button>
         </div>
       </div>
@@ -255,6 +253,7 @@ import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoratio
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
+import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
@@ -327,13 +326,30 @@ export default defineComponent({
       return `${getPublicOrigin()}/html/${encodeURIComponent(publicId)}`;
     });
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
+    /**
+     * Sync badge: the shared calm states (useCalmSyncStatus.ts - no pending
+     * count on screen, "Saving…" only for a save that is actually slow),
+     * plus "Unsaved": this editor saves on the Save button only, so edits not
+     * yet saved are a steady state worth showing, not flicker.
+     * `htmlSavingVisible` is set up below, next to `pendingOpsCount`.
+     */
+    const HTML_SYNC_LABEL_KEYS = {
+      synced: 'syncSynced',
+      saving: 'syncSaving',
+      offline: 'syncOffline',
+      failed: 'syncFailed',
+      dirty: 'syncUnsaved',
+    } as const;
     const htmlSyncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: t('syncSaving') };
-      if (isDirty.value) return { kind: 'dirty', label: t('syncUnsaved') };
-      if (htmlWsConnected.value) return { kind: 'synced', label: t('syncSynced') };
-      return { kind: 'offline', label: t('syncOffline') };
+      const base = resolveSyncStatus({ failed: !!syncIssue.value, offline: !htmlWsConnected.value, saving: htmlSavingVisible.value });
+      const kind = base === 'synced' && isDirty.value ? 'dirty' : base;
+      return { kind, label: t(HTML_SYNC_LABEL_KEYS[kind]) };
     });
+    const htmlSyncTitle = computed(() =>
+      pendingOpsCount.value > 0
+        ? `${htmlSyncStatus.value.label} · ${t('syncPendingChanges').replace('{count}', String(pendingOpsCount.value))}`
+        : htmlSyncStatus.value.label,
+    );
 
     const {
       connected: htmlWsConnected,
@@ -347,6 +363,7 @@ export default defineComponent({
       setRevision,
       clearPendingOps,
     } = useHtmlSocket(resolvedId);
+    const htmlSavingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
 
     async function load() {
       try {
@@ -821,7 +838,7 @@ export default defineComponent({
       t,
       backTarget,
       title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
-      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
+      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus, htmlSyncTitle,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestingAccess, accessRequestSent, showShare, shareEmail,
       shareRole, permissions, checkingResourcePassword,

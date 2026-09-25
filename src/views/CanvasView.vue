@@ -57,7 +57,7 @@
               :title="syncBadgeTitle"
               @click="showSyncEvents = !showSyncEvents"
             >
-              {{ syncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+              {{ syncStatus.label }}
             </button>
             <div v-if="showSyncEvents" class="sync-events-popover">
               <div class="sync-events-head">
@@ -1025,6 +1025,7 @@ import AccessGate from '../components/AccessGate.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
@@ -1185,21 +1186,6 @@ export default defineComponent({
     const searchIndex = ref(0);
 
     const saving = ref(false);
-    /**
-     * SYNC STATUS DELAY (bug: fast typing/drawing made the badge flicker
-     * between Saving/Synced on every op, "рябило в глазах"). Same principle
-     * TextDocumentView.vue's own `pendingSaveDelayed`/`SAVE_INDICATOR_DELAY_MS`
-     * already applies to documents: `pendingSaveDelayed` only flips true if
-     * something is STILL pending after this delay, so a normal fast
-     * round-trip during a burst of edits never shows anything but a calm
-     * "Synced" - a genuinely slow save still shows "Saving..." for as long
-     * as it actually takes. The watcher driving this is set up further
-     * down, right after `pendingOpsCount` itself exists (from
-     * useCanvasSocket) - see that file's own comment for why a computed's
-     * lazy getter can reference it safely from here regardless.
-     */
-    const SAVE_INDICATOR_DELAY_MS = 400;
-    const pendingSaveDelayed = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
     const shareRole = ref('read');
@@ -1214,19 +1200,36 @@ export default defineComponent({
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
     let isApplyingRemote = false;
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
-    let saveIndicatorTimer: ReturnType<typeof setTimeout> | null = null;
     let chromeResizeObserver: ResizeObserver | null = null;
 
+    /**
+     * SYNC STATUS: one of Synced / Saving… / Offline / Sync failed, never a
+     * pending-ops counter (it ticked on every drawn op). When "Saving…" may
+     * appear and for how long is useCalmSaving's job (useCalmSyncStatus.ts,
+     * shared with the document editors); `savingVisible` is set up below,
+     * next to `pendingOpsCount`. A resync after a rejected op is real
+     * ongoing work, so it reads as "Saving…" straight away; a conflict is
+     * "Sync failed" until the resync/ack clears syncIssue. The count and
+     * revision stay in the badge's tooltip and its sync-events popover.
+     */
+    const SYNC_STATUS_LABEL_KEYS = {
+      synced: 'syncSynced',
+      saving: 'syncSaving',
+      offline: 'syncOffline',
+      failed: 'syncFailed',
+    } as const;
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: t('syncConflict') };
-      if (isResyncing.value) return { kind: 'resyncing', label: t('syncResyncing') };
-      if (pendingSaveDelayed.value) return { kind: 'saving', label: t('syncSaving') };
-      if (wsConnected.value) return { kind: 'synced', label: t('syncSynced') };
-      return { kind: 'offline', label: t('syncOffline') };
+      const kind = resolveSyncStatus({
+        failed: !!syncIssue.value,
+        offline: !wsConnected.value,
+        saving: isResyncing.value || savingVisible.value,
+      });
+      return { kind, label: t(SYNC_STATUS_LABEL_KEYS[kind]) };
     });
 
     const syncBadgeTitle = computed(() => {
-      const parts = [`Revision ${revision.value}`, `${pendingOpsCount.value} pending`];
+      const parts = [syncStatus.value.label, `r${revision.value}`];
+      if (pendingOpsCount.value > 0) parts.push(t('syncPendingChanges').replace('{count}', String(pendingOpsCount.value)));
       if (latestSyncReason.value) parts.push(latestSyncReason.value);
       return parts.join(' · ');
     });
@@ -1297,19 +1300,7 @@ export default defineComponent({
       onChatError,
     } = useCanvasSocket(resolvedId);
 
-    watch(() => saving.value || pendingOpsCount.value > 0, (isPending) => {
-      if (saveIndicatorTimer) {
-        clearTimeout(saveIndicatorTimer);
-        saveIndicatorTimer = null;
-      }
-      if (!isPending) {
-        pendingSaveDelayed.value = false;
-        return;
-      }
-      saveIndicatorTimer = setTimeout(() => {
-        if (saving.value || pendingOpsCount.value > 0) pendingSaveDelayed.value = true;
-      }, SAVE_INDICATOR_DELAY_MS);
-    });
+    const savingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
 
     const otherUsers = computed(() => {
       return onlineUsers.value.filter((_u) => {
@@ -2153,7 +2144,6 @@ export default defineComponent({
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
-      if (saveIndicatorTimer) clearTimeout(saveIndicatorTimer);
       window.removeEventListener('resize', updateChromeMetrics);
       window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
