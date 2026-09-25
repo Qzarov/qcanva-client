@@ -746,7 +746,7 @@
           </template>
           <template v-else>
             <span class="text-doc-mention-item-icon" v-html="mentionCreateIcon"></span>
-            <span class="text-doc-mention-item-label">{{ t('mentionCreatePagePrefix') }} "{{ item.query }}"</span>
+            <span class="text-doc-mention-item-label">{{ item.query.trim() ? `${t('mentionCreatePagePrefix')} "${item.query}"` : t('mentionCreateBlankPage') }}</span>
           </template>
         </button>
         <div v-if="!mentionItems.length" class="text-doc-mention-empty">{{ t('mentionNoResults') }}</div>

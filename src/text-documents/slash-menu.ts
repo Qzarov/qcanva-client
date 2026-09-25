@@ -68,6 +68,26 @@ export const SLASH_MENU_ITEMS: SlashMenuItem[] = [
     },
   },
   {
+    id: 'pageLink',
+    labelKey: 'slashPageLink',
+    keywords: ['link', 'page', 'mention', 'doc', 'document', 'reference', 'block', '@', 'ssylka', 'ссылка', 'страница', 'упоминание', 'документ', 'блок'],
+    icon: lucideIcon(EDITOR_GLYPHS.fileText),
+    /**
+     * Second in the list on purpose - the whole point is to be seen.
+     * A visible way into the "@" picker (links to other documents and to
+     * headings/blocks), which people didn't find by typing "@". Replaces
+     * the typed `/query` with "@": the mention Suggestion plugin re-derives
+     * its match from this transaction exactly as for a typed "@" (the same
+     * way the block "+" button opens THIS menu by inserting "/"), so the
+     * picker, its search and "create page" are the real ones - nothing is
+     * duplicated here. The slash menu's own guards (not in code, at a block
+     * start or after whitespace) are the ones the "@" picker needs too.
+     */
+    run: ({ editor, range }) => {
+      editor.chain().focus().deleteRange(range).insertContent('@').run();
+    },
+  },
+  {
     id: 'heading1',
     labelKey: 'slashHeading1',
     keywords: ['h1', 'heading', 'title', 'zagolovok'],

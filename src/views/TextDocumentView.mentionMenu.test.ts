@@ -171,6 +171,33 @@ describe('mention menu trigger', () => {
     wrapper.unmount();
   });
 
+  it('opens from the slash menu\'s "Link to page" item (also what the block "+" opens)', async () => {
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p></p>');
+    wrapper.vm.editor.commands.focus('end');
+
+    await type(wrapper, '/link');
+    expect(wrapper.vm.slashOpen).toBe(true);
+    const index = wrapper.vm.slashItems.findIndex((item: any) => item.id === 'pageLink');
+    expect(index).toBeGreaterThanOrEqual(0);
+
+    wrapper.vm.selectSlashItem(index);
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.vm.slashOpen).toBe(false);
+    expect(pluginState(wrapper).active).toBe(true);
+    expect(wrapper.vm.mentionOpen).toBe(true);
+    // The typed "/link" is gone; only the "@" trigger is left for the picker.
+    expect(wrapper.vm.editor.state.doc.textContent).toBe('@');
+
+    await type(wrapper, 'road');
+    await flushPromises();
+    expect(search).toHaveBeenLastCalledWith('road');
+
+    wrapper.unmount();
+  });
+
   it('opens on @ after whitespace mid-paragraph', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p></p>');

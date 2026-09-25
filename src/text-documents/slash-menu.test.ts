@@ -12,9 +12,10 @@ import { messages } from '../composables/useI18n';
 const label = (item: SlashMenuItem) => messages.en[item.labelKey];
 
 describe('slash menu item table', () => {
-  it('offers exactly the seventeen blocks the editor can insert', () => {
+  it('offers exactly the eighteen blocks/actions the editor can insert', () => {
     expect(SLASH_MENU_ITEMS.map((item) => item.id)).toEqual([
       'paragraph',
+      'pageLink',
       'heading1',
       'heading2',
       'heading3',
