@@ -439,6 +439,62 @@ describe('dashboard sidebar navigation', () => {
     vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
   });
 
+  it('adds my own public resources to Public even when the server list (latest 100) left them out', async () => {
+    vi.mocked(textDocuments.list).mockResolvedValue({
+      documents: [
+        { id: 'doc-old-public', title: 'Old public doc', ownerId: 'user-1', visibility: 'public' },
+        { id: 'doc-unlisted', title: 'Unlisted doc', ownerId: 'user-1', visibility: 'public', listedInPublic: false },
+        { id: 'doc-private', title: 'Private doc', ownerId: 'user-1', visibility: 'private' },
+        { id: 'doc-theirs', title: 'Their shared doc', ownerId: 'user-9', visibility: 'public' },
+      ],
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValue({
+      groups: [],
+      documents: [{ id: 'html-legacy', title: 'Legacy shared html', ownerId: 'user-1', shared: true }],
+    } as never);
+    vi.mocked(canvas.list).mockResolvedValue({
+      own: [
+        { id: 'canvas-legacy', title: 'Legacy public canvas', ownerId: 'user-1', isPublic: true },
+        { id: 'canvas-private', title: 'Private canvas', ownerId: 'user-1', isPublic: false, visibility: 'private' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+
+    const text = wrapper.get('[data-section="public"]').text();
+    expect(text).toContain('Old public doc');
+    expect(text).toContain('Legacy shared html');
+    expect(text).toContain('Legacy public canvas');
+    expect(text).not.toContain('Unlisted doc');
+    expect(text).not.toContain('Private doc');
+    expect(text).not.toContain('Private canvas');
+    // Only MY resources are added this way: someone else's comes from the server list.
+    expect(text).not.toContain('Their shared doc');
+
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValue({ groups: [], documents: [] } as never);
+    vi.mocked(canvas.list).mockResolvedValue({ own: [], shared: [], public: [], welcome: null } as never);
+  });
+
+  it('does not list a resource twice when the server list already has my public doc', async () => {
+    const mine = { id: 'doc-both', title: 'Listed twice?', ownerId: 'user-1', visibility: 'public' };
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [mine] } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [mine] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+
+    const occurrences = wrapper.get('[data-section="public"]').text().split('Listed twice?').length - 1;
+    expect(occurrences).toBe(1);
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+  });
+
   it('puts the Public sort control on the Public heading row', async () => {
     const wrapper = mountDashboard();
     await flushPromises();

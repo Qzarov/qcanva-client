@@ -1679,11 +1679,34 @@ export default defineComponent({
       const mine = !!currentUser.value?.id && item.ownerId === currentUser.value.id;
       return publicOwnerFilter.value === 'mine' ? mine : !mine;
     };
-    const publicFiltered = computed(() => sortFolderItems(
-      [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
-        .filter(matchesPublicItem)
-        .filter(matchesPublicOwner),
-    ));
+    // The server's public lists only look at the latest 100 updated
+    // resources (of everyone), so an older public doc of MINE could be
+    // missing. Mine are already loaded in full (own lists, foldered ones
+    // included), so they are added here - by the same rules the server uses
+    // (explicit visibility, else the legacy isPublic / shared flag; and not
+    // opted out of Public) - without duplicating any the server did return.
+    const isOwnPublic = (item: any, legacyPublic: boolean) => {
+      if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
+      if (item.listedInPublic === false) return false;
+      if (item.visibility === 'public') return true;
+      if (item.visibility === 'authenticated') return false;
+      return legacyPublic;
+    };
+    const ownPublicResources = computed(() => [
+      ...own.value.filter((c: any) => isOwnPublic(c, !!c.isPublic)).map((c: any) => normalizeCanvas(c, false)),
+      ...allHtmlDocumentsRaw.value.filter((d: any) => isOwnPublic(d, !!d.shared)),
+      ...allTextDocumentsRaw.value.filter((d: any) => isOwnPublic(d, false)),
+    ]);
+    const publicFiltered = computed(() => {
+      const listed = [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value];
+      const seen = new Set(listed.map((item) => `${item.type}:${item.id}`));
+      const extra = ownPublicResources.value.filter((item) => !seen.has(`${item.type}:${item.id}`));
+      return sortFolderItems(
+        [...listed, ...extra]
+          .filter(matchesPublicItem)
+          .filter(matchesPublicOwner),
+      );
+    });
 
     /**
      * Every resource the user can see and filter, folder-nested or not, goes
