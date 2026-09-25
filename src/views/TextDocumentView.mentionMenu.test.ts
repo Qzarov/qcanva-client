@@ -19,7 +19,7 @@ const mentions = vi.fn();
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'doc-1' }, fullPath: '/docs/doc-1' }),
-  useRouter: () => ({ push, replace }),
+  useRouter: () => ({ push, replace, resolve: (to: any) => ({ href: `/docs/${to.params.id}` }) }),
 }));
 
 vi.mock('../api/client', () => ({
@@ -315,9 +315,49 @@ describe('mention rendering: current title over the stored label', () => {
     expect(el.getAttribute('data-mention-state')).toBe('accessible');
     expect(el.classList.contains('text-doc-mention-accessible')).toBe(true);
 
+    // Web: the linked document opens in a NEW TAB; this one stays open.
+    const tab = { opener: {} as unknown };
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window);
+    el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(open).toHaveBeenCalledWith('/docs/target-1', '_blank');
+    expect(tab.opener).toBeNull();
+    expect(push).not.toHaveBeenCalled();
+
+    // A blocked popup falls back to opening it here instead of doing nothing.
+    open.mockReturnValue(null);
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     expect(push).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'target-1' } }));
+    open.mockRestore();
 
+    wrapper.unmount();
+  });
+
+  it('on the phone layout opens the linked document in the same tab', async () => {
+    mentions.mockResolvedValue({
+      items: [{ id: 'target-1', title: 'Roadmap', accessible: true, deleted: false }],
+    });
+    // jsdom has no matchMedia at all; the view reads the 760px phone query.
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(max-width: 760px)',
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+    }));
+    const open = vi.spyOn(window, 'open');
+    const wrapper = await mountEditableDoc();
+    wrapper.vm.editor.commands.setContent('<p><span data-mention-id="target-1">Roadmap</span></p>');
+    await flushPromises();
+    await wrapper.vm.$nextTick();
+
+    wrapper.vm.editor.view.dom.querySelector('[data-mention-id="target-1"]')
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(open).not.toHaveBeenCalled();
+    expect(push).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'target-1' } }));
+
+    open.mockRestore();
+    vi.unstubAllGlobals();
     wrapper.unmount();
   });
 

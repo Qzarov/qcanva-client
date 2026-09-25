@@ -239,6 +239,66 @@ describe('TextDocumentView callout', () => {
     wrapper.unmount();
   });
 
+  it('lets you pick the callout\'s kind (icon + colour) from its icon', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<aside data-variant="info"><p>Heads up</p></aside>');
+    await wrapper.vm.$nextTick();
+
+    const trigger = wrapper.get('.ProseMirror aside .text-doc-callout-icon');
+    expect(trigger.element.tagName).toBe('BUTTON');
+    expect(wrapper.find('[data-callout-variant-menu]').exists()).toBe(false);
+
+    trigger.element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    const menu = wrapper.get('[data-callout-variant-menu]');
+    const options = menu.findAll('[data-callout-variant]');
+    expect(options.map((o) => o.attributes('data-callout-variant'))).toEqual(CALLOUT_VARIANTS);
+    expect(menu.get('[data-callout-variant="info"]').attributes('aria-checked')).toBe('true');
+    // Each option shows its own icon (the colour comes from its variant).
+    for (const option of options) expect(option.find('svg').exists()).toBe(true);
+
+    menu.get('[data-callout-variant="warning"]').element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await wrapper.vm.$nextTick();
+
+    expect(findCallout(editor.getJSON()).attrs.variant).toBe('warning');
+    expect(wrapper.find('.ProseMirror aside[data-variant="warning"]').exists()).toBe(true);
+    expect(wrapper.find('[data-callout-variant-menu]').exists()).toBe(false);
+    // The text is untouched.
+    expect(editor.getText()).toContain('Heads up');
+
+    wrapper.unmount();
+  });
+
+  it('closes the kind menu on Escape without changing anything', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<aside data-variant="success"><p>x</p></aside>');
+    await wrapper.vm.$nextTick();
+
+    wrapper.get('.ProseMirror aside .text-doc-callout-icon').element
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(wrapper.find('[data-callout-variant-menu]').exists()).toBe(true);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(wrapper.find('[data-callout-variant-menu]').exists()).toBe(false);
+    expect(findCallout(editor.getJSON()).attrs.variant).toBe('success');
+
+    wrapper.unmount();
+  });
+
+  it('does not offer the kind menu in a read-only editor', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = (wrapper.vm as any).editor;
+    editor.commands.setContent('<aside data-variant="danger"><p>x</p></aside>');
+    editor.setEditable(false);
+    await wrapper.vm.$nextTick();
+
+    wrapper.get('.ProseMirror aside .text-doc-callout-icon').element
+      .dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    expect(wrapper.find('[data-callout-variant-menu]').exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
   it('still produces Yjs updates when typing inside a callout', async () => {
     const wrapper = await mountEditableDoc();
     const editor = (wrapper.vm as any).editor;

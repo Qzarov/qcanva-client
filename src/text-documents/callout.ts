@@ -98,7 +98,20 @@ declare module '@tiptap/core' {
   }
 }
 
-export const Callout = Node.create({
+/** Visible names of the callout kinds, plus the kind menu's own name. */
+export type CalloutLabels = Record<string, string> & { choose: string };
+
+export interface CalloutOptions {
+  labels: CalloutLabels;
+}
+
+export const Callout = Node.create<CalloutOptions>({
+  addOptions() {
+    return {
+      labels: { info: 'Info', warning: 'Warning', success: 'Success', danger: 'Danger', choose: 'Callout kind' },
+    };
+  },
+
   name: 'callout',
   group: 'block',
   // Block content, like a blockquote: a callout is not a leaf.
@@ -170,21 +183,100 @@ export const Callout = Node.create({
    * document or therefore the stored projection.
    */
   addNodeView() {
-    return ({ node }) => {
+    const labels = this.options.labels;
+    return ({ node, editor, getPos }) => {
+      let current = node;
       const dom = document.createElement(TAG);
       dom.className = 'text-doc-callout';
-      const icon = document.createElement('span');
+      // The icon is also the way to change the callout's kind (its icon and
+      // colour together - that pair IS the variant the shared schema
+      // stores). A <button> for keyboard/screen readers; not editable and
+      // not part of the document, so the caret skips it.
+      const icon = document.createElement('button');
+      icon.type = 'button';
       icon.className = 'text-doc-callout-icon';
-      // Not editable and not part of the document: the caret must skip it.
       icon.setAttribute('contenteditable', 'false');
+      icon.setAttribute('aria-haspopup', 'menu');
       const body = document.createElement('div');
       body.className = 'text-doc-callout-body';
+      let menu: HTMLElement | null = null;
 
       const paint = (variant: unknown) => {
         const bounded = clampCalloutVariant(variant);
         dom.setAttribute('data-variant', bounded);
         icon.innerHTML = calloutIconSvg(bounded);
+        const label = labels.choose;
+        icon.title = label;
+        icon.setAttribute('aria-label', label);
+        icon.tabIndex = editor.isEditable ? 0 : -1;
       };
+
+      const closeMenu = () => {
+        if (!menu) return;
+        menu.remove();
+        menu = null;
+        icon.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('pointerdown', onOutside, true);
+        document.removeEventListener('keydown', onKey, true);
+      };
+      const onOutside = (event: Event) => {
+        if (menu && !menu.contains(event.target as HTMLElement) && !icon.contains(event.target as HTMLElement)) closeMenu();
+      };
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        closeMenu();
+        icon.focus();
+      };
+      const choose = (variant: string) => {
+        closeMenu();
+        const pos = typeof getPos === 'function' ? getPos() : undefined;
+        if (typeof pos !== 'number' || !editor.isEditable) return;
+        if (clampCalloutVariant(current.attrs.variant) === variant) return;
+        editor.view.dispatch(
+          editor.state.tr.setNodeMarkup(pos, undefined, { ...current.attrs, variant: clampCalloutVariant(variant) }),
+        );
+      };
+      const openMenu = () => {
+        if (menu || !editor.isEditable) return;
+        const active = clampCalloutVariant(current.attrs.variant);
+        menu = document.createElement('div');
+        menu.className = 'text-doc-callout-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', labels.choose);
+        menu.dataset.calloutVariantMenu = '';
+        menu.setAttribute('contenteditable', 'false');
+        for (const variant of CALLOUT_VARIANTS) {
+          const item = document.createElement('button');
+          item.type = 'button';
+          item.className = 'text-doc-callout-menu-item';
+          item.dataset.calloutVariant = variant;
+          item.dataset.variant = variant;
+          item.setAttribute('role', 'menuitemradio');
+          item.setAttribute('aria-checked', String(variant === active));
+          item.innerHTML = `<span class="text-doc-callout-menu-icon">${calloutIconSvg(variant)}</span>`;
+          const text = document.createElement('span');
+          text.textContent = labels[variant] ?? variant;
+          item.appendChild(text);
+          item.addEventListener('click', (event) => {
+            event.preventDefault();
+            choose(variant);
+          });
+          menu.appendChild(item);
+        }
+        dom.insertBefore(menu, body);
+        icon.setAttribute('aria-expanded', 'true');
+        document.addEventListener('pointerdown', onOutside, true);
+        document.addEventListener('keydown', onKey, true);
+      };
+
+      icon.addEventListener('mousedown', (event) => event.preventDefault());
+      icon.addEventListener('click', (event) => {
+        event.preventDefault();
+        if (menu) closeMenu();
+        else openMenu();
+      });
 
       paint(node.attrs.variant);
       dom.append(icon, body);
@@ -194,13 +286,28 @@ export const Callout = Node.create({
         contentDOM: body,
         update: (updated) => {
           if (updated.type.name !== 'callout') return false;
+          current = updated;
           paint(updated.attrs.variant);
 
           return true;
         },
-        // The icon is chrome, not content: a mutation inside it must not be
-        // read back into the document.
-        ignoreMutation: (mutation) => icon.contains(mutation.target),
+        // Icon and menu are chrome, not content: ProseMirror must neither read
+        // their mutations back into the document nor handle their events.
+        // Opening/closing the menu is a childList mutation whose TARGET is
+        // the <aside> itself (the menu's parent), so it must be recognised
+        // by what was added/removed - missed, ProseMirror re-created the node
+        // view and the fresh menu vanished with the old DOM.
+        ignoreMutation: (mutation) => {
+          if (mutation.type === 'selection') return false;
+          if (icon.contains(mutation.target) || (!!menu && menu.contains(mutation.target))) return true;
+          if (mutation.type !== 'childList' || mutation.target !== dom) return false;
+          const changed = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
+          return changed.length > 0 && changed.every(
+            (n) => n instanceof HTMLElement && n.classList.contains('text-doc-callout-menu'),
+          );
+        },
+        stopEvent: (event) => icon.contains(event.target as HTMLElement) || (!!menu && menu.contains(event.target as HTMLElement)),
+        destroy: closeMenu,
       };
     };
   },

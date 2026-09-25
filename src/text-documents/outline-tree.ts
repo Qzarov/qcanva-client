@@ -83,3 +83,16 @@ export function clampOutlineWidth(width: number, min: number, max: number): numb
 
   return Math.min(max, Math.max(min, width));
 }
+
+/**
+ * The outline row for position `pos` (the caret): the section it is in,
+ * i.e. the last heading starting at or before it. Null above the first
+ * heading. Entries may come in any order.
+ */
+export function headingIdAtPos(entries: readonly HeadingOutlineEntry[], pos: number): string | null {
+  let best: HeadingOutlineEntry | null = null;
+  for (const entry of entries) {
+    if (entry.pos <= pos && (!best || entry.pos > best.pos)) best = entry;
+  }
+  return best?.id ?? null;
+}
