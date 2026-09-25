@@ -313,6 +313,146 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
   });
 
+  it('home is one feed: Recent, Folders, Shared, Interactive, Public in order, each capped with "Show all"', async () => {
+    withDefaultFolders();
+    const doc = (i: number, owner = 'user-9', extra: Record<string, unknown> = {}) => ({
+      id: `s-${owner}-${i}`, title: `Doc ${owner} ${i}`, ownerId: owner, visibility: 'private', ...extra,
+    });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({ documents: Array.from({ length: 6 }, (_, i) => doc(i)) } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: Array.from({ length: 2 }, (_, i) => doc(i, 'user-7', { visibility: 'public' })),
+    } as never);
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({ templates: [] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const order = wrapper.findAll('[data-feed-section]').map((el) => el.attributes('data-feed-section'));
+    // Interactive is empty, so it isn't in the feed.
+    expect(order).toEqual(['recent', 'shared', 'public']);
+    const shared = wrapper.get('[data-feed-section="shared"]');
+    const cards = (el: any) => el.findAll('.dash-grid > *').length;
+    expect(cards(shared)).toBe(4);
+    expect(cards(wrapper.get('[data-feed-section="public"]'))).toBe(2);
+    expect(wrapper.find('[data-feed-section="public"] [data-feed-show-all]').exists()).toBe(false);
+
+    const showAll = shared.get('[data-feed-show-all]');
+    expect(showAll.text()).toContain('6');
+    await showAll.trigger('click');
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'shared' });
+    expect(wrapper.findAll('[data-section="shared"] .dash-grid > *').length).toBe(6);
+  });
+
+  it('the feed bar lists the sections present and scrolls to the one clicked', async () => {
+    withDefaultFolders();
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({
+      documents: [{ id: 's-1', title: 'Shared doc', ownerId: 'user-9', visibility: 'private' }],
+    } as never);
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    const links = wrapper.findAll('[data-feed-nav]');
+    expect(links.map((l) => l.attributes('data-feed-nav'))).toEqual(['recent', 'folders', 'shared']);
+    const target = wrapper.get('[data-feed-section="shared"]').element as HTMLElement;
+    const scroll = vi.fn();
+    target.scrollIntoView = scroll;
+    await wrapper.get('[data-feed-nav="shared"]').trigger('click');
+    expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth', block: 'start' }));
+    expect(wrapper.get('[data-feed-nav="shared"]').attributes('aria-current')).toBe('true');
+    wrapper.unmount();
+  });
+
+  it('creates a document right inside a folder from the folder\'s menu', async () => {
+    withDefaultFolders();
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-b');
+    await nextTick();
+
+    vm.toggleFolderMenu('folder-b');
+    await nextTick();
+    await wrapper.get('[data-folder-create="text-document"]').trigger('click');
+    await flushPromises();
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
+    vm.toggleFolderMenu('folder-b');
+    await nextTick();
+    await wrapper.get('[data-folder-create="canvas"]').trigger('click');
+    await flushPromises();
+    expect(canvas.create).toHaveBeenLastCalledWith(expect.anything(), undefined, 'folder-b');
+  });
+
+  it('lets the New menu pick the destination folder, defaulting to the folder you are in', async () => {
+    withDefaultFolders();
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-c');
+    await nextTick();
+
+    vm.toggleNewMenu();
+    await nextTick();
+    const picker = wrapper.get('[data-new-item-folder]');
+    expect((picker.element as HTMLSelectElement).value).toBe('folder-c');
+
+    await picker.setValue('folder-b');
+    vm.createTextDocument();
+    await flushPromises();
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
+  });
+
+  it('keeps creating into Unsorted from the New menu when you are not inside a folder', async () => {
+    withDefaultFolders();
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.toggleNewMenu();
+    await nextTick();
+    expect((wrapper.get('[data-new-item-folder]').element as HTMLSelectElement).value).toBe('');
+    vm.createTextDocument();
+    await flushPromises();
+    // folder-a is the mocked "Unsorted".
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));
+  });
+
+  it('moves a root folder into another folder from its menu, never into itself or its own subtree', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'folder-a', name: 'Unsorted', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-w', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-w1', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [], htmlDocuments: [] },
+        { id: 'folder-h', name: 'Home', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(resourceFolders.moveFolder).mockResolvedValue({ id: 'folder-w', parentId: 'folder-h' });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-w');
+    await nextTick();
+
+    vm.openFolderParentModal(vm.activeFolder);
+    await nextTick();
+    const destinations = () => wrapper.findAll('[data-folder-parent-option]').map((b) => b.attributes('data-folder-parent-option'));
+    // Not itself, not its own subfolder, not the technical Unsorted; root is offered only for a nested folder.
+    expect(destinations()).toEqual(['folder-h']);
+
+    await wrapper.get('[data-folder-parent-option="folder-h"]').trigger('click');
+    await wrapper.get('[data-folder-parent-save]').trigger('click');
+    await flushPromises();
+    expect(resourceFolders.moveFolder).toHaveBeenCalledWith('folder-w', 'folder-h');
+
+    // A nested folder can go back to the root.
+    vm.openFolderParentModal({ id: 'folder-w1', name: 'Plans', parentId: 'folder-w' });
+    await nextTick();
+    expect(destinations()).toContain('root');
+    await wrapper.get('[data-folder-parent-option="root"]').trigger('click');
+    await wrapper.get('[data-folder-parent-save]').trigger('click');
+    await flushPromises();
+    expect(resourceFolders.moveFolder).toHaveBeenLastCalledWith('folder-w1', null);
+    withDefaultFolders();
+  });
+
   it('steps up one folder level on the Android Back button instead of offering to exit', async () => {
     vi.mocked(resourceFolders.list).mockResolvedValueOnce({
       own: [
@@ -1882,6 +2022,35 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     await nextTick();
 
     expect(titles()).toEqual(['Canvas Item']);
+  });
+
+  it('shows where each Recent resource lives (its folder path), nothing for unfiled ones', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-w', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-p', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [], htmlDocuments: [{ id: 'r-doc-9', title: 'Q3 plan', folderId: 'folder-p' }] },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [{ id: 'r-canvas-9', title: 'Loose canvas' }],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValueOnce({
+      documents: [{ id: 'r-doc-9', title: 'Q3 plan', ownerId: 'user-1', folderId: 'folder-p' }],
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'r-doc-9', resourceType: 'html-document', updatedAt: '2026-01-02T00:00:00.000Z' },
+      { resourceId: 'r-canvas-9', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const cards = wrapper.findAll('.dashboard-recent-card');
+    expect(cards.map((c) => c.find('.dashboard-recent-title').text())).toEqual(['Q3 plan', 'Loose canvas']);
+    expect(cards[0]!.find('[data-recent-folder-path]').text()).toBe('Work / Plans');
+    expect(cards[1]!.find('[data-recent-folder-path]').exists()).toBe(false);
   });
 
   it('filters Recent by search query', async () => {
