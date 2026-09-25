@@ -107,6 +107,17 @@
               <span>{{ t('new') }}</span>
             </button>
             <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
+              <label v-if="isLoggedIn && folderOptions.length" class="dashboard-new-destination">
+                <span>{{ t('createIn') }}</span>
+                <select v-model="newItemFolderId" data-new-item-folder>
+                  <option value="">{{ t('createInUnsorted') }}</option>
+                  <option
+                    v-for="option in newItemFolderOptions"
+                    :key="option.id"
+                    :value="option.id"
+                  >{{ '\u00a0\u00a0'.repeat(option.depth) }}{{ option.name }}</option>
+                </select>
+              </label>
               <button class="card-menu-item" @click="createCanvas">
                 <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('newCanvas') }}</span>
@@ -204,10 +215,27 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
+    <!-- Home is one feed (Recent, Folders, Shared, Interactive, Public):
+         this sticky bar jumps between its sections and marks the one in
+         view, so moving around needs no sidebar. -->
+    <nav v-if="isHomeFeed && feedNavSections.length > 1" class="dashboard-feed-nav" :aria-label="t('dashboardSections')">
+      <button
+        v-for="section in feedNavSections"
+        :key="section"
+        type="button"
+        class="dashboard-feed-nav-item"
+        :class="{ active: activeFeedSection === section }"
+        :aria-current="activeFeedSection === section ? 'true' : undefined"
+        :data-feed-nav="section"
+        @click="scrollToFeedSection(section)"
+      >{{ t(FEED_SECTION_LABELS[section]) }}</button>
+    </nav>
     <section
       v-if="isLoggedIn && activeSection.kind === 'recent'"
-      class="dash-section dashboard-recents"
+      id="feed-recent"
+      class="dash-section dashboard-recents dashboard-feed-section"
       data-dashboard-view="recent"
+      data-feed-section="recent"
     >
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
@@ -267,6 +295,12 @@
         <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
           <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
           <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
+          <span
+            v-if="recentFolderPath(item)"
+            class="dashboard-recent-path"
+            :title="recentFolderPath(item)"
+            data-recent-folder-path
+          ><Folder :size="12" aria-hidden="true" />{{ recentFolderPath(item) }}</span>
           <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
           <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
         </button>
@@ -284,7 +318,7 @@
         <ChevronUp v-else :size="15" aria-hidden="true" />
       </button>
 
-      <div v-if="recentFolderTiles.length" class="dash-section-head dashboard-recent-folders-head">
+      <div v-if="recentFolderTiles.length" id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
         <h2>{{ t('folders') }}</h2>
       </div>
       <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
@@ -413,11 +447,21 @@
                     @click="openRenameFolderModal(activeFolder)"
                     :disabled="isBusy"
                   >{{ t('rename') }}</button>
+                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">{{ t('newCanvas') }}</button>
+                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">{{ t('document') }}</button>
+                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">{{ t('htmlDocument') }}</button>
                   <button
                     class="card-menu-item"
                     @click="openSubfolderModal(activeFolder)"
                     :disabled="isBusy"
                   >{{ t('addFolder') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    data-action="move-folder-parent"
+                    @click="openFolderParentModal(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('moveFolderInto') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
@@ -590,36 +634,18 @@
           </div>
         </section>
 
-      <section
-        v-if="isLoggedIn && activeSection.kind === 'interactive'"
-        class="dash-section"
-        data-dashboard-view="interactive"
-        data-section="interactive-templates"
-      >
-        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid">
-          <article v-for="item in visibleInteractiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
-            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-            </div>
-          </article>
-        </div>
-        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">No interactive templates yet.</div>
-      </section>
-
       <div
-        v-if="isLoggedIn && activeSection.kind === 'shared'"
+        v-if="isLoggedIn && (activeSection.kind === 'shared' || (isHomeFeed && sharedFiltered.length))"
+        :id="isHomeFeed ? 'feed-shared' : undefined"
         class="dash-section"
-        data-dashboard-view="shared"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'shared'"
+        :data-feed-section="isHomeFeed ? 'shared' : undefined"
         data-section="shared"
       >
         <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
-          <template v-for="item in sharedFiltered" :key="'shared-' + item.type + '-' + item.id">
+          <template v-for="item in feedItems(sharedFiltered)" :key="'shared-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -691,13 +717,54 @@
           </article>
           </template>
         </div>
-        <div v-if="!sharedFiltered.length" class="dash-empty">No shared resources yet.</div>
+        <div v-if="!sharedFiltered.length" class="dash-empty">{{ t('noSharedResources') }}</div>
+        <button
+          v-if="isHomeFeed && sharedFiltered.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'shared' })"
+        >{{ t('showAll') }} {{ sharedFiltered.length }}</button>
       </div>
 
-      <div
-        v-if="activeSection.kind === 'public'"
+      <section
+        v-if="isLoggedIn && (activeSection.kind === 'interactive' || (isHomeFeed && visibleInteractiveTemplateItems.length))"
+        :id="isHomeFeed ? 'feed-interactive' : undefined"
         class="dash-section"
-        data-dashboard-view="public"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'interactive'"
+        :data-feed-section="isHomeFeed ? 'interactive' : undefined"
+        data-section="interactive-templates"
+      >
+        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
+        <div class="dash-grid">
+          <article v-for="item in feedItems(visibleInteractiveTemplateItems)" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
+            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
+          </article>
+        </div>
+        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">{{ t('noInteractiveTemplates') }}</div>
+        <button
+          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'interactive' })"
+        >{{ t('showAll') }} {{ visibleInteractiveTemplateItems.length }}</button>
+      </section>
+
+      <div
+        v-if="activeSection.kind === 'public' || (isHomeFeed && publicFiltered.length)"
+        :id="isHomeFeed ? 'feed-public' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'public'"
+        :data-feed-section="isHomeFeed ? 'public' : undefined"
         data-section="public"
       >
         <!-- Heading row like Recents': title, Mine/Others, and the phone sort
@@ -742,7 +809,7 @@
           </div>
         </div>
         <div class="dash-grid">
-          <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
+          <template v-for="item in feedItems(publicFiltered)" :key="'public-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -820,6 +887,13 @@
           </template>
         </div>
         <div v-if="!publicFiltered.length" class="dash-empty">{{ t('noPublicResources') }}</div>
+        <button
+          v-if="isHomeFeed && publicFiltered.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'public' })"
+        >{{ t('showAll') }} {{ publicFiltered.length }}</button>
       </div>
 
       <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
@@ -958,6 +1032,43 @@
             @click="saveSubfolderModal"
             :disabled="isBusy || !subfolderModal.value.trim()"
           >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
+          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+        </div>
+        <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
+        <div v-if="folderParentOptions.length" class="folder-parent-list">
+          <button
+            v-for="option in folderParentOptions"
+            :key="option.id"
+            class="folder-parent-option folder-destination"
+            :class="{ active: folderParentModal.targetId === option.id }"
+            :style="{ paddingLeft: 12 + option.depth * 16 + 'px' }"
+            :data-folder-parent-option="option.id"
+            @click="folderParentModal.targetId = option.id"
+          >
+            <span class="folder-destination-name">
+              <span v-if="option.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ option.id === 'root' ? t('moveFolderToRoot') : option.name }}
+            </span>
+            <span v-if="option.id !== 'root'" class="folder-destination-path">{{ option.path || t('inRoot') }}</span>
+          </button>
+        </div>
+        <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
+        <div class="dashboard-modal-actions dashboard-modal-actions-row">
+          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button
+            class="btn-primary"
+            data-folder-parent-save
+            @click="saveFolderParentModal"
+            :disabled="isBusy || !folderParentModal.targetId"
+          >{{ actionLabel('move-folder-parent', t('move')) }}</button>
         </div>
       </div>
     </div>
@@ -1148,7 +1259,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
@@ -1166,6 +1277,7 @@ import {
   type SidebarWidthState,
 } from '../dashboard/navigation';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
+import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 
@@ -1278,6 +1390,8 @@ export default defineComponent({
     FileCode2,
     FilePlus2,
     FileText,
+    Folder,
+    FolderInput,
     FolderPlus,
     LayoutGridIcon,
     LayoutTemplate,
@@ -1816,6 +1930,13 @@ export default defineComponent({
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
+    // Where a resource lives, for the Recent tiles ("Work / Plans").
+    const folderPathById = computed(() => folderPaths(allResourceFolders.value));
+    const folderIdByKey = computed(() => folderIdByResourceKey(allResourceFolders.value));
+    const recentFolderPath = (item: { type: string; id: string }) => {
+      const folderId = folderIdByKey.value.get(`${item.type}:${item.id}`);
+      return folderId ? folderPathById.value.get(folderId) || '' : '';
+    };
     /**
      * Destinations for the move dialog, in tree order. Each carries its depth and
      * the path to its parent, so picking a nested folder is unambiguous.
@@ -2101,6 +2222,98 @@ export default defineComponent({
       recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, RECENT_COLLAPSED_LIMIT),
     );
     const recentShowAllAvailable = computed(() => recentTotal.value > RECENT_COLLAPSED_LIMIT);
+
+    /**
+     * HOME AS ONE FEED. Shared / Interactive / Public render on Home too,
+     * below Recent and Folders, as the SAME blocks their own sections use,
+     * capped at FEED_LIMIT cards with "Show all N" opening the full section.
+     * Empty ones are left out of the feed. The sticky bar above lists the
+     * sections present, scrolls to one on click, and marks the one in view.
+     */
+    const FEED_LIMIT = 4;
+    const FEED_SECTION_LABELS = {
+      recent: 'recents',
+      folders: 'folders',
+      shared: 'sharedWithMe',
+      interactive: 'interactiveTemplate',
+      public: 'public',
+    } as const;
+    type FeedSection = keyof typeof FEED_SECTION_LABELS;
+    const isHomeFeed = computed(() => isLoggedIn && activeSection.value.kind === 'recent');
+    const feedItems = <T,>(items: T[]): T[] => (isHomeFeed.value ? items.slice(0, FEED_LIMIT) : items);
+    const feedNavSections = computed<FeedSection[]>(() => {
+      if (!isHomeFeed.value) return [];
+      const sections: FeedSection[] = ['recent'];
+      if (recentFolderTiles.value.length) sections.push('folders');
+      if (sharedFiltered.value.length) sections.push('shared');
+      if (visibleInteractiveTemplateItems.value.length) sections.push('interactive');
+      if (publicFiltered.value.length) sections.push('public');
+      return sections;
+    });
+    const activeFeedSection = ref<FeedSection>('recent');
+    // The section last jumped to from the bar. It stays current while it's
+    // in view, until the user scrolls by hand: near the end of a short feed
+    // the section jumped to may never reach the bar.
+    let feedJumpTarget: FeedSection | null = null;
+    const scrollToFeedSection = (section: FeedSection) => {
+      activeFeedSection.value = section;
+      feedJumpTarget = section;
+      document.getElementById(`feed-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    /**
+     * Scroll-spy: the current section is the last one whose top has passed
+     * under the sticky bar - except at the very end of the feed, where the
+     * last sections can never reach the bar, so the last one in view wins
+     * (otherwise jumping to Public highlighted whatever sat above it).
+     */
+    let feedScroller: HTMLElement | null = null;
+    let feedSpyFrame = 0;
+    const updateActiveFeedSection = () => {
+      feedSpyFrame = 0;
+      const sections = feedNavSections.value;
+      if (!feedScroller || !sections.length) return;
+      const box = feedScroller.getBoundingClientRect();
+      const barBottom = document.querySelector('.dashboard-feed-nav')?.getBoundingClientRect().bottom ?? box.top;
+      const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
+      if (feedJumpTarget) {
+        const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
+        if (rect && rect.bottom > barBottom && rect.top < box.bottom) {
+          activeFeedSection.value = feedJumpTarget;
+          return;
+        }
+        feedJumpTarget = null;
+      }
+      let current: FeedSection = sections[0]!;
+      for (const section of sections) {
+        const top = document.getElementById(`feed-${section}`)?.getBoundingClientRect().top;
+        if (top === undefined) continue;
+        if (top <= barBottom + 24 || (atEnd && top < box.bottom)) current = section;
+      }
+      activeFeedSection.value = current;
+    };
+    const onFeedManualScroll = () => { feedJumpTarget = null; };
+    const onFeedScroll = () => {
+      if (!feedSpyFrame) feedSpyFrame = requestAnimationFrame(updateActiveFeedSection);
+    };
+    // Set up once mounted: the scroll container exists then, and a watch
+    // reads its source right away while the sections it lists
+    // (recentFolderTiles...) are declared further down in this setup.
+    onMounted(() => {
+      feedScroller = (document.querySelector('.dashboard-central-shell .app-main') as HTMLElement | null)
+        ?? (document.querySelector('.app-main') as HTMLElement | null);
+      feedScroller?.addEventListener('scroll', onFeedScroll, { passive: true });
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.addEventListener(type, onFeedManualScroll, { passive: true });
+      }
+      watch(feedNavSections, () => { void nextTick(updateActiveFeedSection); }, { flush: 'post' });
+    });
+    onBeforeUnmount(() => {
+      feedScroller?.removeEventListener('scroll', onFeedScroll);
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.removeEventListener(type, onFeedManualScroll);
+      }
+      if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
+    });
     const toggleRecentExpanded = () => {
       recentExpanded.value = !recentExpanded.value;
     };
@@ -2331,32 +2544,46 @@ export default defineComponent({
       openTextDocument(id);
     };
 
-    const createCanvas = async () => {
+    /**
+     * Where a new item goes: the folder asked for (a folder's own menu), else
+     * the New menu's "Create in" choice - which defaults to the folder you
+     * are in - else Unsorted, as before.
+     */
+    const newItemFolderId = ref('');
+    const newItemFolderOptions = computed(() => folderOptions.value.filter((option) => !isTechnicalFolder(option)));
+    const resolveCreateFolderId = async (explicitFolderId?: unknown) => {
+      if (typeof explicitFolderId === 'string' && explicitFolderId) return explicitFolderId;
+      if (newItemFolderId.value && ownResourceFolders.value.some((f) => f.id === newItemFolderId.value)) return newItemFolderId.value;
+      return (await ensureFolderByName('Unsorted'))?.id;
+    };
+
+    // `folderId` is optional; a click handler may pass its event instead.
+    const createCanvas = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
-      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolder?.id), 'Canvas created');
+      const targetFolderId = await resolveCreateFolderId(folderId);
+      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolderId), 'Canvas created');
       if (!c) return;
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async () => {
+    const createHtmlDocument = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
+      const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolder?.id }),
+        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolderId }),
         'HTML document created',
       );
       if (!doc) return;
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async () => {
+    const createTextDocument = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
+      const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolder?.id }),
+        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolderId }),
         'Document created',
       );
       if (!doc) return;
@@ -3206,7 +3433,12 @@ export default defineComponent({
     const toggleNewMenu = () => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
+      const opening = openControlMenu.value !== 'new';
+      openControlMenu.value = opening ? 'new' : '';
+      if (!opening) return;
+      // Default destination: the (own, non-technical) folder you're in.
+      const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
+      newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
     };
 
     const toggleFolderMenu = (folderId: string) => {
@@ -3370,6 +3602,53 @@ export default defineComponent({
       if (!created) return;
       // Unfold the parent so the folder that was just created is actually visible.
       expandTree(parentId);
+      await load();
+    };
+
+    // ---- moving a folder under another one ----
+    // Any own folder (a root one included) can go under another own folder,
+    // or back to the root. Never under itself or its own subtree, nor the
+    // technical Unsorted - the backend enforces the same (plus depth and
+    // name clashes, whose errors surface as the usual feedback toast).
+    const folderParentModal = ref<{ open: boolean; folderId: string; name: string; currentParentId: string | null; targetId: string }>({
+      open: false, folderId: '', name: '', currentParentId: null, targetId: '',
+    });
+    const folderParentOptions = computed(() => {
+      const { open, folderId, currentParentId } = folderParentModal.value;
+      if (!open || !folderId) return [];
+      const blocked = descendantFolderIds(ownResourceFolders.value, folderId);
+      blocked.add(folderId);
+      const options = folderOptions.value
+        .filter((option) => !blocked.has(option.id))
+        .filter((option) => option.id !== currentParentId)
+        .filter((option) => !isTechnicalFolder(option));
+      return currentParentId ? [{ id: 'root', name: '', depth: 0, path: '' }, ...options] : options;
+    });
+    const openFolderParentModal = (folder: { id: string; name: string; parentId?: string | null }) => {
+      closeCardMenu();
+      openControlMenu.value = '';
+      folderParentModal.value = {
+        open: true,
+        folderId: folder.id,
+        name: folder.name,
+        currentParentId: folder.parentId ?? null,
+        targetId: '',
+      };
+    };
+    const closeFolderParentModal = () => {
+      folderParentModal.value = { open: false, folderId: '', name: '', currentParentId: null, targetId: '' };
+    };
+    const saveFolderParentModal = async () => {
+      const { folderId, targetId } = folderParentModal.value;
+      if (!folderId || !targetId) return;
+      const parentId = targetId === 'root' ? null : targetId;
+      try {
+        await runAction('move-folder-parent', () => resourceFolders.moveFolder(folderId, parentId), t('folderMoved'));
+      } catch {
+        return; // runAction already showed the reason; the dialog stays open to pick another place.
+      }
+      closeFolderParentModal();
+      if (parentId) expandTree(parentId);
       await load();
     };
 
@@ -3878,6 +4157,21 @@ export default defineComponent({
       load,
       openCreateGroupModal,
       openMoveFolderModal,
+      isHomeFeed,
+      feedItems,
+      FEED_LIMIT,
+      FEED_SECTION_LABELS,
+      feedNavSections,
+      activeFeedSection,
+      scrollToFeedSection,
+      newItemFolderId,
+      newItemFolderOptions,
+      folderParentModal,
+      folderParentOptions,
+      openFolderParentModal,
+      closeFolderParentModal,
+      saveFolderParentModal,
+      recentFolderPath,
       goToParentFolder,
       openMoveHtmlFolderModal,
       openMoveInteractiveTemplateFolderModal,

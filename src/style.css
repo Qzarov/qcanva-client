@@ -1285,6 +1285,91 @@ body {
   color: var(--ui-text-secondary);
   font-size: 11px;
 }
+/* Home feed section bar (DashboardView): sticky, one chip per section in
+   the feed; the section in view is highlighted. Scrolls sideways on phones. */
+.dashboard-feed-nav {
+  position: sticky;
+  /* .app-main's own top padding: stick to the scroll edge, not below it. */
+  top: -32px;
+  z-index: 30;
+  display: flex;
+  gap: 6px;
+  margin: 0 0 14px;
+  padding: 8px 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--ui-page);
+}
+.dashboard-feed-nav::-webkit-scrollbar {
+  display: none;
+}
+.dashboard-feed-nav-item {
+  flex: 0 0 auto;
+  padding: 6px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-full);
+  background: var(--ui-surface);
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dashboard-feed-nav-item:hover {
+  color: var(--ui-text);
+}
+.dashboard-feed-nav-item.active {
+  border-color: var(--color-brands);
+  background: color-mix(in srgb, var(--color-brands) 14%, var(--ui-surface));
+  color: var(--ui-text);
+}
+/* Jump targets land below the sticky bar, not under it. */
+.dashboard-feed-section,
+.dashboard-feed-anchor {
+  scroll-margin-top: 64px;
+}
+.dashboard-feed-section + .dashboard-feed-section {
+  margin-top: 28px;
+}
+/* New menu: "Create in [folder]" above the item types. */
+.dashboard-new-destination {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px 8px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+}
+.dashboard-new-destination select {
+  width: 100%;
+  min-width: 180px;
+  padding: 6px 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+}
+/* Where the resource lives ("Work / Plans"), under its title. */
+.dashboard-recent-path {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dashboard-recent-path svg {
+  flex: 0 0 auto;
+}
 .dashboard-recents-list .dashboard-recent-card {
   min-height: 62px;
   grid-template-columns: 22px minmax(0, 1fr) auto;
@@ -3031,6 +3116,9 @@ body {
 
   .app-main.dashboard {
     padding: 16px 12px calc(24px + env(safe-area-inset-bottom));
+  }
+  .app-main.dashboard .dashboard-feed-nav {
+    top: -16px;
   }
 
   .dash-actions {

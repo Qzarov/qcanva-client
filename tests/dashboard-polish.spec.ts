@@ -28,7 +28,12 @@ async function setupDashboard(page: Page) {
       });
     }
     if (path === '/text-documents') {
-      return json({ documents: [textDoc('doc-1', 'Plan'), textDoc('doc-2', 'Notes'), textDoc('doc-pub', 'My public doc', { visibility: 'public', folderId: 'folder-a' })] });
+      return json({ documents: [
+        textDoc('doc-1', 'Plan'),
+        textDoc('doc-2', 'Notes'),
+        textDoc('doc-pub', 'My public doc', { visibility: 'public', folderId: 'folder-a' }),
+        ...Array.from({ length: 6 }, (_, i) => textDoc(`sh-${i}`, `Shared ${i}`, { ownerId: 'user-9' })),
+      ] });
     }
     if (path === '/text-documents/public') {
       return json({ documents: [textDoc('doc-pub', 'My public doc', { visibility: 'public', folderId: 'folder-a' }), textDoc('doc-other', 'Their doc', { ownerId: 'user-9', visibility: 'public' })] });
@@ -38,7 +43,12 @@ async function setupDashboard(page: Page) {
     if (path === '/interactive-templates') return json({ templates: [] });
     if (path === '/access-requests/incoming') return json([]);
     if (path === '/tags') return json({ tags: [] });
-    if (path.startsWith('/recent-resources')) return json([]);
+    if (path.startsWith('/recent-resources')) {
+      return json([
+        { id: 'r1', resourceType: 'text-document', resourceId: 'doc-pub', updatedAt: now },
+        { id: 'r2', resourceType: 'text-document', resourceId: 'doc-1', updatedAt: now },
+      ]);
+    }
     return json({});
   });
 }
@@ -134,5 +144,69 @@ test.describe('mobile', () => {
     expect(Math.abs(a.y - b.y)).toBeLessThan(2);
     expect(a.x + a.width).toBeLessThanOrEqual(b.x + 1);
     await page.screenshot({ path: '/tmp/dash-move-mobile.png' });
+  });
+});
+
+/**
+ * The section's top is just below the sticky bar - or, for a section near
+ * the end, the feed is scrolled as far as it goes (nothing left below it).
+ */
+async function expectScrolledTo(page: Page, section: string) {
+  const state = await page.evaluate((name) => {
+    const main = document.querySelector('.app-main') as HTMLElement;
+    const bar = document.querySelector('.dashboard-feed-nav') as HTMLElement;
+    const el = document.querySelector(`[data-feed-section="${name}"]`) as HTMLElement;
+    return {
+      offset: el.getBoundingClientRect().top - bar.getBoundingClientRect().bottom,
+      atEnd: main.scrollTop >= main.scrollHeight - main.clientHeight - 2,
+      scrolled: main.scrollTop,
+    };
+  }, section);
+  expect(state.scrolled).toBeGreaterThan(0);
+  expect(state.atEnd || (state.offset >= -4 && state.offset < 40)).toBe(true);
+}
+
+test.describe('desktop: home is one feed', () => {
+  test('sections in order, the bar jumps to one and marks the section in view; Recent shows folder paths', async ({ page }) => {
+    await openDashboard(page, { width: 1280, height: 800 });
+    const order = await page.locator('[data-feed-section]').evaluateAll((els) => els.map((el) => el.getAttribute('data-feed-section')));
+    expect(order).toEqual(['recent', 'shared', 'public']);
+    await expect(page.locator('[data-feed-nav]')).toHaveText(['Recent', 'Folders', 'Shared with me', 'Public']);
+    await expect(page.locator('[data-feed-section="shared"] .dash-grid > *')).toHaveCount(4);
+
+    const recentPath = page.locator('.dashboard-recent-card', { hasText: 'My public doc' }).locator('[data-recent-folder-path]');
+    await expect(recentPath).toHaveText('Work');
+
+    await page.locator('[data-feed-nav="public"]').click();
+    await expect(page.locator('[data-feed-nav="public"]')).toHaveAttribute('aria-current', 'true');
+    await page.waitForTimeout(700); // smooth scroll
+    await page.screenshot({ path: '/tmp/dash-feed-desktop.png' });
+    await expectScrolledTo(page, 'public');
+    // Still Public once the scroll settled (the spy must not hand it to a section above).
+    await expect(page.locator('[data-feed-nav="public"]')).toHaveAttribute('aria-current', 'true');
+    // The bar stays on screen (sticky) while the feed scrolls.
+    const barTop = await page.locator('.dashboard-feed-nav').evaluate((el) => el.getBoundingClientRect().top);
+    expect(barTop).toBeGreaterThanOrEqual(0);
+
+    // Scroll-spy: scrolling back up by hand makes Recent current again.
+    await page.mouse.move(700, 500);
+    await page.mouse.wheel(0, -3000);
+    await expect(page.locator('[data-feed-nav="recent"]')).toHaveAttribute('aria-current', 'true');
+  });
+});
+
+test.describe('mobile: home feed', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('the section bar works without opening the sidebar', async ({ page }) => {
+    await setupDashboard(page);
+    await page.goto('/dashboard');
+    await page.waitForSelector('[data-feed-section="recent"]', { timeout: 15000 });
+    await page.locator('[data-feed-nav="shared"]').tap();
+    await expect(page.locator('[data-feed-nav="shared"]')).toHaveAttribute('aria-current', 'true');
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: '/tmp/dash-feed-mobile.png' });
+    await expectScrolledTo(page, 'shared');
+    await expect(page.locator('[data-feed-nav="shared"]')).toHaveAttribute('aria-current', 'true');
   });
 });
