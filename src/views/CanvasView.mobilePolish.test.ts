@@ -46,6 +46,39 @@ vi.mock('../components/ChatPanel.vue', () => ({
   default: defineComponent({ name: 'ChatPanelStub', setup: () => () => null }),
 }));
 
+// No real socket: unmocked, every mount opened a live WebSocket to the dev
+// backend, whose late errors/logs could land while vitest was already tearing
+// the worker down ("Closing rpc while onUserConsoleLog was pending" - an
+// intermittent unhandled error that fails the whole run, and so the deploy's
+// test gate). These tests are about the header and menus, not sync.
+vi.mock('../composables/useCanvasSocket', async () => {
+  const vue = await vi.importActual<typeof import('vue')>('vue');
+  return {
+    useCanvasSocket: () => ({
+      connected: vue.ref(true),
+      onlineUsers: vue.ref([]),
+      remoteCursors: vue.ref(new Map()),
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      sendUpdate: vi.fn(),
+      sendOp: vi.fn(() => 'op-1'),
+      sendCursor: vi.fn(),
+      onRemoteCanvasUpdate: vi.fn(),
+      onRemoteOp: vi.fn(),
+      onReject: vi.fn(),
+      onAck: vi.fn(),
+      setRevision: vi.fn(),
+      pendingOpsCount: vue.ref(0),
+      realtimeOpsUnavailable: vue.ref(false),
+      clearPendingOps: vi.fn(),
+      sendChat: vi.fn(),
+      sendRoll: vi.fn(),
+      onChatMessage: vi.fn(),
+      onChatError: vi.fn(),
+    }),
+  };
+});
+
 vi.mock('../api/client', () => ({
   ApiError: class ApiError extends Error {
     status: number;

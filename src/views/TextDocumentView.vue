@@ -522,6 +522,7 @@
         :editor="editor"
         :should-show="bubbleShouldShow"
         :tippy-options="bubbleTippyOptions"
+        :update-delay="0"
       >
         <template v-if="!linkEditorOpen">
           <button
@@ -771,6 +772,7 @@
         <div class="text-doc-link-action-buttons">
           <button type="button" class="text-doc-link-action-btn" @click="copyLinkActionHref">{{ t('linkCopy') }}</button>
           <button type="button" class="text-doc-link-action-btn" @click="editLinkAction">{{ t('linkEdit') }}</button>
+          <button type="button" class="text-doc-link-action-btn" data-link-action="remove" @click="removeLinkAction">{{ t('linkRemove') }}</button>
           <button type="button" class="text-doc-link-action-btn text-doc-link-action-open" @click="openLinkActionHref">
             <ExternalLink :size="13" aria-hidden="true" />{{ t('linkOpen') }}
           </button>
@@ -795,7 +797,7 @@ import Link from '@tiptap/extension-link';
 import { isRenderableHref } from '../documents/link-policy';
 import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
-import TaskItem from '@tiptap/extension-task-item';
+import { QuietTaskItem } from '../text-documents/task-item';
 import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
@@ -842,7 +844,7 @@ import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-colum
 import Collaboration from '@tiptap/extension-collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
-import { Plugin, TextSelection } from '@tiptap/pm/state';
+import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
@@ -1595,6 +1597,9 @@ export default defineComponent({
       typeof window !== 'undefined' &&
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(pointer: coarse)').matches;
+    // `:update-delay="0"` on the bubble (template): the extension's default
+    // 250ms delay left the bubble sitting at the PREVIOUS selection while a
+    // new one was made, then jumping over - it read as a random position.
     const bubbleTippyOptions = {
       duration: 100,
       offset: [0, isTouchPointer ? 52 : 44] as [number, number],
@@ -1694,6 +1699,30 @@ export default defineComponent({
         linkRangeTracker = trackRange(editor.value, { from, to });
       }
       linkEditorOpen.value = true;
+      // Desktop: straight into the box as soon as it renders, so typing goes
+      // to the URL, not over the selected text in the document - and a
+      // keystroke meant for the box can't count as "back to the doc". (Callers
+      // must not leave an editor focus() pending - tiptap's lands a frame
+      // later and would take focus back; see editLinkAction.)
+      if (!isMobileEditorLayout()) {
+        void nextTick(() => {
+          if (!linkEditorOpen.value) return;
+          (document.querySelector('[data-bubble-link-input]') as HTMLInputElement | null)?.focus();
+        });
+      }
+    };
+
+    /**
+     * The desktop link box stays up while it's open (bubbleShouldShow), so
+     * it has to go away once the user goes back to the document - otherwise
+     * it followed the caret around forever (the "link box hangs over the
+     * cursor" bug). Wired to a mousedown/keydown IN THE EDITOR (see
+     * editorProps.handleDOMEvents): a mousedown arrives before the click
+     * moves the selection, so the bubble's next check already sees the box
+     * closed; and a collaborator's edit never counts as "going back".
+     */
+    const closeLinkEditorOnDocumentInput = () => {
+      if (linkEditorOpen.value && !isMobileEditorLayout()) closeLinkEditor();
     };
 
     const closeLinkEditor = () => {
@@ -1750,10 +1779,18 @@ export default defineComponent({
      */
     const linkActionOpen = ref(false);
     const linkActionHref = ref('');
-    const linkActionRect = ref<{ top: number; left: number } | null>(null);
-    const linkActionMenuStyle = computed(() =>
-      linkActionRect.value ? { top: `${linkActionRect.value.top}px`, left: `${linkActionRect.value.left}px` } : undefined,
-    );
+    // Above the link it is anchored by its BOTTOM edge, so however tall it
+    // renders (its buttons wrap to two rows in Russian), it ends just above
+    // the link instead of overlapping it; below the link, by its top.
+    const linkActionRect = ref<{ top?: number; bottom?: number; left: number } | null>(null);
+    const linkActionMenuStyle = computed(() => {
+      const r = linkActionRect.value;
+      if (!r) return undefined;
+      return {
+        left: `${r.left}px`,
+        ...(r.bottom !== undefined ? { bottom: `${r.bottom}px` } : { top: `${r.top ?? 0}px` }),
+      };
+    });
     const closeLinkActionMenu = () => {
       linkActionOpen.value = false;
       linkActionHref.value = '';
@@ -1792,9 +1829,16 @@ export default defineComponent({
      * both platforms consistent and gives openLinkEditor the correct full
      * range to capture via trackRange).
      */
+    /** Takes the link off the clicked link's whole text (the caret sits inside it after the click). */
+    function removeLinkAction() {
+      closeLinkActionMenu();
+      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
+    }
     function editLinkAction() {
       closeLinkActionMenu();
-      editor.value?.chain().focus().extendMarkRange('link').run();
+      // No .focus() here: the link box takes focus itself (openLinkEditor),
+      // and tiptap's deferred focus would steal it back a frame later.
+      editor.value?.chain().extendMarkRange('link').run();
       openLinkEditor();
     }
 
@@ -1816,14 +1860,16 @@ export default defineComponent({
       const href = anchor.getAttribute('href') || '';
       if (!href) return false;
       const rect = anchor.getBoundingClientRect();
-      const ESTIMATED_MENU_HEIGHT = 96;
+      // Only decides above vs below; the menu's real height doesn't matter
+      // for placement (see linkActionRect). Two rows of buttons, worst case.
+      const ESTIMATED_MENU_HEIGHT = 160;
       // Opens ABOVE the link by default (front task: it used to sit right on
       // top of the link text, which the popover's own background then hid) -
       // falls back to below only when there isn't enough room above.
       const opensBelow = rect.top - 6 - ESTIMATED_MENU_HEIGHT < 8;
       linkActionHref.value = href;
       linkActionRect.value = {
-        top: opensBelow ? rect.bottom + 6 : Math.max(8, rect.top - 6 - ESTIMATED_MENU_HEIGHT),
+        ...(opensBelow ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - (rect.top - 6) }),
         left: Math.min(Math.max(8, rect.left), window.innerWidth - 258),
       };
       linkActionOpen.value = true;
@@ -2426,36 +2472,9 @@ export default defineComponent({
           isAllowedUri: (href, ctx) => isRenderableHref(href, ctx.defaultValidate),
         }),
         TaskList,
-        // Same mobile fix as the heading chevron (see collapsible-heading.ts):
-        // the stock TaskItem only `preventDefault`s the checkbox's `mousedown`,
-        // so on touch the editable focuses and the on-screen keyboard pops the
-        // instant a todo is ticked. A `pointerdown` handler fires first for
-        // touch too; preventing its default suppresses that focus/keyboard while
-        // the checkbox still toggles on the click that follows.
-        TaskItem.extend({
-          addProseMirrorPlugins() {
-            return [
-              ...(this.parent?.() ?? []),
-              new Plugin({
-                props: {
-                  handleDOMEvents: {
-                    pointerdown: (_view, event) => {
-                      const target = event.target as HTMLElement | null;
-                      if (
-                        target instanceof HTMLInputElement &&
-                        target.type === 'checkbox' &&
-                        target.closest('li[data-type="taskItem"]')
-                      ) {
-                        event.preventDefault();
-                      }
-                      return false;
-                    },
-                  },
-                },
-              }),
-            ];
-          },
-        }).configure({ nested: true }),
+        // Ticking a todo never focuses the editor (on a phone that opened
+        // the keyboard and scrolled the page to the caret) - see task-item.ts.
+        QuietTaskItem.configure({ nested: true }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
         Callout,
@@ -2672,6 +2691,14 @@ export default defineComponent({
       editorProps: {
         handleClick: (_view, _pos, event) => handleEditorLinkClick(event),
         handleDOMEvents: {
+          mousedown: () => {
+            closeLinkEditorOnDocumentInput();
+            return false;
+          },
+          keydown: () => {
+            closeLinkEditorOnDocumentInput();
+            return false;
+          },
           /**
            * Refuses the browser's own "drag this selection" behaviour:
            * highlighted text is native-draggable by default in every
@@ -3135,6 +3162,7 @@ export default defineComponent({
       }
     }
 
+    const FOCUS_EDITOR_IGNORE = '[data-tippy-root], .text-doc-table-menu, button, input, textarea, select, label, a';
     function focusEditor(event?: MouseEvent) {
       if (!canEditContent.value) {
         notifyReadOnlyEditAttempt();
@@ -3142,12 +3170,14 @@ export default defineComponent({
       }
       const target = event?.target;
       if (target instanceof Element && target.closest('.ProseMirror')) return;
-      // The table menu (a BubbleMenu, rendered inside this paper) acts on the
-      // caret's cell: a click on one of its buttons bubbling here would
-      // throw the caret to the document end right after the command ran -
-      // the next arrow press would then move the wrong row, or the menu
-      // would vanish altogether when the table isn't the last block.
-      if (target instanceof Element && target.closest('.text-doc-table-menu')) return;
+      // Only a click on the paper itself means "put me in the document".
+      // The bubble menus (formatting, link box, table menu - tippy popups
+      // rendered inside this paper) and any control act on the caret's
+      // current place: a click on one bubbling here threw the caret to the
+      // document END right after - the link box lost its input to the doc
+      // mid-typing, Bold on a phone scrolled the page down to the end, the
+      // table menu's next arrow moved the wrong row.
+      if (target instanceof Element && target.closest(FOCUS_EDITOR_IGNORE)) return;
       editor.value?.chain().focus('end').run();
     }
 
@@ -3328,6 +3358,7 @@ export default defineComponent({
       tableMove,
       tableCanMove,
       openLinkEditor,
+      removeLinkAction,
       closeLinkEditor,
       applyLink,
       removeLink,
