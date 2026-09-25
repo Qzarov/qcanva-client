@@ -8,6 +8,7 @@
 // code block whose language is one of those aliases still highlights.
 import { createLowlight } from 'lowlight';
 import bash from 'highlight.js/lib/languages/bash';
+import plaintext from 'highlight.js/lib/languages/plaintext';
 import css from 'highlight.js/lib/languages/css';
 import javascript from 'highlight.js/lib/languages/javascript';
 import json from 'highlight.js/lib/languages/json';
@@ -20,6 +21,7 @@ export const lowlight = createLowlight();
 
 lowlight.register({
   bash,
+  plaintext,
   css,
   javascript,
   json,

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, type OutlineTreeNode } from './outline-tree';
+import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, type OutlineTreeNode } from './outline-tree';
 import type { HeadingOutlineEntry } from '../documents/heading-anchors';
 
 function entry(id: string, level: number, text = id, pos = 0): HeadingOutlineEntry {
@@ -102,5 +102,26 @@ describe('clampOutlineWidth', () => {
 
   it('falls back to the minimum for a non-finite candidate (NaN from a bad drag delta)', () => {
     expect(clampOutlineWidth(NaN, 220, 480)).toBe(220);
+  });
+});
+
+describe('headingIdAtPos (the outline row for where the caret is)', () => {
+  const entries = [entry('intro', 1, 'Intro', 10), entry('setup', 2, 'Setup', 40), entry('usage', 1, 'Usage', 90)];
+
+  it('is the section the caret is in: the last heading at or before it', () => {
+    expect(headingIdAtPos(entries, 10)).toBe('intro');
+    expect(headingIdAtPos(entries, 25)).toBe('intro');
+    expect(headingIdAtPos(entries, 40)).toBe('setup');
+    expect(headingIdAtPos(entries, 89)).toBe('setup');
+    expect(headingIdAtPos(entries, 500)).toBe('usage');
+  });
+
+  it('is nothing above the first heading, or with no headings at all', () => {
+    expect(headingIdAtPos(entries, 3)).toBeNull();
+    expect(headingIdAtPos([], 50)).toBeNull();
+  });
+
+  it('does not depend on the entries being sorted', () => {
+    expect(headingIdAtPos([...entries].reverse(), 60)).toBe('setup');
   });
 });

@@ -487,7 +487,13 @@
         <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer" role="dialog" :aria-label="outlineLabels.title">
           <div class="text-doc-outline-drawer-title">{{ outlineLabels.title }}</div>
           <ol v-if="outlineEntries.length" class="text-doc-outline-list">
-            <li v-for="entry in outlineEntries" :key="entry.id" class="text-doc-outline-item" :data-level="entry.level">
+            <li
+              v-for="entry in outlineEntries"
+              :key="entry.id"
+              class="text-doc-outline-item"
+              :class="{ 'text-doc-outline-item-active': entry.id === activeOutlineHeadingId }"
+              :data-level="entry.level"
+            >
               <!-- @mousedown/@click split, same reasoning as the desktop
                    panel's own outline link. -->
               <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos, entry.id)">
@@ -787,10 +793,11 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
+import { Capacitor } from '@capacitor/core';
 import type { Editor, Range } from '@tiptap/core';
 import { trackRange } from '../text-documents/preserve-range';
 import StarterKit from '@tiptap/starter-kit';
-import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import { CodeBlockWithLanguage } from '../text-documents/code-block-language';
 import { lowlight } from '../text-documents/code-highlighting';
 import Underline from '@tiptap/extension-underline';
 import Link from '@tiptap/extension-link';
@@ -802,7 +809,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline } from '../text-documents/outline-tree';
+import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -1441,15 +1448,23 @@ export default defineComponent({
     }
 
     /**
-     * Which outline row is "active" - the one last navigated to FROM the
-     * outline itself. Not a continuous scroll-spy (this editor has no
-     * IntersectionObserver watching every heading as the document scrolls):
-     * a reader picking a heading gets a persistent marker of where they
-     * told the outline to take them, which is what "existing highlight"
-     * meant to preserve here, given no prior turn actually built a
-     * continuous one - see this task's own summary for that judgment call.
+     * Which outline row is "active": the section the CARET is in (the last
+     * heading at or before it), following the caret as it moves - and so
+     * also the heading just picked from the outline, since that puts the
+     * caret there. Tracked from the selection, not the scroll position:
+     * recomputed in onSelectionUpdate straight from the editor's current
+     * document (which also fires when typing or a collaborator's edit shifts
+     * the caret). Not a watch on outlineEntries - that would keep the
+     * computed cached between a no-emit setContent and its lazy refresh.
      */
     const activeOutlineHeadingId = ref<string | null>(null);
+    function syncActiveOutlineHeading(ed: Editor): void {
+      const id = headingIdAtPos(documentOutline(ed.state.doc), ed.state.selection.head);
+      if (id === activeOutlineHeadingId.value) return;
+      activeOutlineHeadingId.value = id;
+      // Keep it in view in the sidebar (scrollTop only - see the helper).
+      if (id && outlineIsDesktop.value) void nextTick(() => scrollOutlineItemIntoView(id));
+    }
 
     /**
      * Brings the outline's own list item into view within the SIDEBAR's own
@@ -2294,8 +2309,25 @@ export default defineComponent({
       router.replace({ name: 'text-document', params: { id: preferredId }, query: restQuery }).catch(() => {});
     }
 
+    /**
+     * A link to another document. On the web it opens in a NEW TAB, so the
+     * document you're in stays where it was; in the Android app and on the
+     * phone layout (no real tabs there) it opens in place. A blocked popup
+     * falls back to opening in place rather than doing nothing. Opened
+     * without "noopener" in the features only because window.open then
+     * always returns null (no way to see a block); the opener link is cut
+     * right after instead.
+     */
     const navigateToMention = (id: string) => {
-      router.push({ name: 'text-document', params: { id } }).catch(() => {});
+      const location = { name: 'text-document', params: { id } } as const;
+      if (!Capacitor.isNativePlatform() && !isMobileEditorLayout()) {
+        const tab = window.open(router.resolve(location).href, '_blank');
+        if (tab) {
+          tab.opener = null;
+          return;
+        }
+      }
+      router.push(location).catch(() => {});
     };
 
     /**
@@ -2463,7 +2495,12 @@ export default defineComponent({
         // CodeBlockLowlight (added below) is the only node registered for
         // "codeBlock" - having both would register the name twice.
         StarterKit.configure({ history: false, codeBlock: false }),
-        CodeBlockLowlight.configure({ lowlight }),
+        // CodeBlockLowlight plus a language picker in the block's corner
+        // (code-block-language.ts).
+        CodeBlockWithLanguage.configure({
+          lowlight,
+          labels: { auto: t('codeLanguageAuto'), plaintext: t('codeLanguagePlain'), choose: t('codeLanguageChoose') },
+        }),
         Underline,
         // A collaborator's Yjs update reaches this editor without passing the
         // backend's renderer, so the href filter has to live here too.
@@ -2477,7 +2514,16 @@ export default defineComponent({
         QuietTaskItem.configure({ nested: true }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
-        Callout,
+        // Clicking a callout's icon picks its kind (icon + colour) - callout.ts.
+        Callout.configure({
+          labels: {
+            info: t('calloutInfo'),
+            warning: t('calloutWarning'),
+            success: t('calloutSuccess'),
+            danger: t('calloutDanger'),
+            choose: t('calloutChoose'),
+          },
+        }),
         // Adds `collapsed` to StarterKit's own heading node (see the file
         // comment in collapsible-heading.ts for why this is a global
         // attribute and not a second heading node).
@@ -2684,6 +2730,7 @@ export default defineComponent({
       // the count is the document's, not this keyboard's.
       onUpdate: () => { refreshBlockCount(); editorTransactionTick.value++; },
       onSelectionUpdate: ({ editor }) => {
+        syncActiveOutlineHeading(editor);
         if (!canEditContent.value) return;
         const selection = editor.state.selection;
         sendAwareness({ anchor: selection.anchor, head: selection.head });

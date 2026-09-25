@@ -103,6 +103,40 @@ afterEach(() => {
   document.body.classList.remove('text-doc-outline-resizing');
 });
 
+describe('the outline marks the section the caret is in', () => {
+  it('highlights the heading of the caret\'s section and follows the caret', async () => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    editor.commands.setContent('<p>Preface</p><h1>Intro</h1><p>one</p><h2>Setup</h2><p>two</p><h1>Usage</h1><p>three</p>');
+    await settleContentUpdate();
+    await flushPromises();
+
+    const activeText = () => wrapper.findAll('.text-doc-outline-item-active').map((w: any) => w.text());
+    const caretIn = async (text: string) => {
+      let pos = -1;
+      editor.state.doc.descendants((node: any, p: number) => {
+        if (pos < 0 && node.isText && node.text === text) pos = p + 1;
+        return pos < 0;
+      });
+      editor.commands.setTextSelection(pos);
+      await flushPromises();
+      await wrapper.vm.$nextTick();
+    };
+
+    await caretIn('two');
+    expect(activeText()).toEqual(['Setup']);
+    await caretIn('three');
+    expect(activeText()).toEqual(['Usage']);
+    await caretIn('Intro');
+    expect(activeText()).toEqual(['Intro']);
+    // Above the first heading: no section, no highlight.
+    await caretIn('Preface');
+    expect(activeText()).toEqual([]);
+
+    wrapper.unmount();
+  });
+});
+
 describe('the in-panel collapse toggle', () => {
   it('collapses/expands the desktop sidebar and persists the choice across a remount', async () => {
     const wrapper = await mountEditableDoc();

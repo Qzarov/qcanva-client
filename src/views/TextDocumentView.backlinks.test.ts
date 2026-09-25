@@ -17,7 +17,7 @@ const backlinks = vi.fn();
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'doc-1' }, fullPath: '/docs/doc-1' }),
-  useRouter: () => ({ push, replace }),
+  useRouter: () => ({ push, replace, resolve: (to: any) => ({ href: `/docs/${to.params.id}` }) }),
 }));
 
 vi.mock('../api/client', () => ({
@@ -136,12 +136,16 @@ describe('TextDocumentView backlinks block', () => {
     const wrapper = await mountDoc();
     await wrapper.get('.text-doc-backlinks-head').trigger('click');
 
+    // Web: opens the source document in a new tab (same as a mention).
+    const open = vi.spyOn(window, 'open').mockReturnValue({ opener: {} } as unknown as Window);
     await wrapper.get('[data-backlink-id="src-1"]').trigger('click');
-    expect(push).toHaveBeenCalledWith(expect.objectContaining({ params: { id: 'src-1' } }));
+    expect(open).toHaveBeenCalledWith('/docs/src-1', '_blank');
 
-    push.mockClear();
+    open.mockClear();
     await wrapper.get('[data-backlink-id="src-2"]').trigger('click');
+    expect(open).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalled();
+    open.mockRestore();
 
     wrapper.unmount();
   });
