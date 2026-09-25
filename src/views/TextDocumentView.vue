@@ -75,7 +75,7 @@
             :aria-label="syncStatusTitle"
             @click="showSyncStatusHint"
           >{{ syncStatus.label }}</button>
-          <AccountMenu v-if="currentUser" />
+          <AccountMenu v-if="currentUser" :show-plugins="false" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
           <div class="control-menu text-doc-menu-mobile">
             <button

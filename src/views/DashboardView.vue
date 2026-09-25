@@ -136,30 +136,6 @@
         <option value="title-asc">{{ t('titleAsc') }}</option>
         <option value="title-desc">{{ t('titleDesc') }}</option>
       </select>
-      <!-- Sort trigger for public view; folder view gets it inlined in the folder header -->
-      <div v-if="activeSection.kind === 'public'" class="control-menu dash-sort-menu-mobile">
-        <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
-          <ArrowUpDown :size="15" aria-hidden="true" />
-        </button>
-        <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-            <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-            <span>{{ t('newest') }}</span>
-          </button>
-          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-            <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-            <span>{{ t('oldest') }}</span>
-          </button>
-          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-            <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-            <span>{{ t('titleAsc') }}</span>
-          </button>
-          <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-            <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-            <span>{{ t('titleDesc') }}</span>
-          </button>
-        </div>
-      </div>
       <div class="content-type-tabs">
         <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">{{ t('all') }}</button>
         <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
@@ -222,6 +198,8 @@
       </div>
     </div>
 
+    <!-- Floating (style.css), never in the page flow: the list must not
+         shift down and back up around a refresh or an action's result. -->
     <div v-if="isRefreshing && !loading" class="dashboard-refresh-status" role="status" aria-live="polite">
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
@@ -333,10 +311,17 @@
       aria-live="polite"
     >
       <span class="dashboard-pull-icon" aria-hidden="true">{{ isRefreshing ? '↻' : '↓' }}</span>
-      <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить' }}</span>
+      <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? t('releaseToRefresh') : t('pullToRefresh') }}</span>
     </div>
 
-    <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
+    <div
+      v-if="feedback.message"
+      class="dashboard-toast"
+      :class="`dashboard-toast-${feedback.type}`"
+      :role="feedback.type === 'error' ? 'alert' : 'status'"
+      aria-live="polite"
+      data-dashboard-toast
+    >
       {{ feedback.message }}
     </div>
 
@@ -381,7 +366,7 @@
                   :title="t('back')"
                   :aria-label="t('back')"
                   data-folder-back-button
-                  @click.stop="activeFolder.parentId ? selectFolder(activeFolder.parentId) : selectDashboardSection({ kind: 'recent' })"
+                  @click.stop="goToParentFolder"
                 ><ArrowLeft :size="16" aria-hidden="true" /></button>
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
@@ -715,7 +700,47 @@
         data-dashboard-view="public"
         data-section="public"
       >
-        <h2>{{ t('public') }}</h2>
+        <!-- Heading row like Recents': title, Mine/Others, and the phone sort
+             control (it used to sit in the toolbar, a row above the title). -->
+        <div class="dash-section-head dashboard-public-head">
+          <h2>{{ t('public') }}</h2>
+          <div class="dashboard-public-head-controls">
+            <div v-if="isLoggedIn" class="dashboard-public-owner-filter" role="group" :aria-label="t('publicOwnerFilter')">
+              <button
+                v-for="option in PUBLIC_OWNER_FILTERS"
+                :key="option"
+                type="button"
+                :class="{ active: publicOwnerFilter === option }"
+                :aria-pressed="publicOwnerFilter === option"
+                :data-public-owner-filter="option"
+                @click.stop="publicOwnerFilter = option"
+              >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
+            </div>
+            <div class="control-menu dash-sort-menu-mobile">
+              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+                <ArrowUpDown :size="15" aria-hidden="true" />
+              </button>
+              <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                  <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('newest') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                  <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('oldest') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                  <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('titleAsc') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                  <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('titleDesc') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
         <div class="dash-grid">
           <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
           <div
@@ -794,7 +819,7 @@
           </article>
           </template>
         </div>
-        <div v-if="!publicFiltered.length" class="dash-empty">No public resources yet.</div>
+        <div v-if="!publicFiltered.length" class="dash-empty">{{ t('noPublicResources') }}</div>
       </div>
 
       <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
@@ -853,7 +878,7 @@
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? 'Move to group' : 'Create group' }}</h3>
+          <h3>{{ folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
@@ -881,7 +906,7 @@
             <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
           </button>
         </div>
-        <div class="dashboard-modal-actions">
+        <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
             {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? t('move') : t('create')) }}
@@ -1129,6 +1154,7 @@ import { Capacitor } from '@capacitor/core';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
@@ -1642,11 +1668,45 @@ export default defineComponent({
         .filter((item) => !placedResourceKeys.value.has(`${item.type}:${item.id}`))
         .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
     ));
-    const publicFiltered = computed(() => sortFolderItems(
-      [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
-        .filter((item) => !placedResourceKeys.value.has(`${item.type}:${item.id}`))
-        .filter(matchesPublicItem),
-    ));
+    // Public lists every public resource, wherever it is filed: unlike
+    // Shared (whose foldered items already show in their folder), a public
+    // doc of mine inside one of my folders simply vanished from Public.
+    const PUBLIC_OWNER_FILTERS = ['all', 'mine', 'others'] as const;
+    const PUBLIC_OWNER_FILTER_LABELS = { all: 'all', mine: 'publicMine', others: 'publicOthers' } as const;
+    const publicOwnerFilter = ref<(typeof PUBLIC_OWNER_FILTERS)[number]>('all');
+    const matchesPublicOwner = (item: { ownerId?: string | null }) => {
+      if (publicOwnerFilter.value === 'all') return true;
+      const mine = !!currentUser.value?.id && item.ownerId === currentUser.value.id;
+      return publicOwnerFilter.value === 'mine' ? mine : !mine;
+    };
+    // The server's public lists only look at the latest 100 updated
+    // resources (of everyone), so an older public doc of MINE could be
+    // missing. Mine are already loaded in full (own lists, foldered ones
+    // included), so they are added here - by the same rules the server uses
+    // (explicit visibility, else the legacy isPublic / shared flag; and not
+    // opted out of Public) - without duplicating any the server did return.
+    const isOwnPublic = (item: any, legacyPublic: boolean) => {
+      if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
+      if (item.listedInPublic === false) return false;
+      if (item.visibility === 'public') return true;
+      if (item.visibility === 'authenticated') return false;
+      return legacyPublic;
+    };
+    const ownPublicResources = computed(() => [
+      ...own.value.filter((c: any) => isOwnPublic(c, !!c.isPublic)).map((c: any) => normalizeCanvas(c, false)),
+      ...allHtmlDocumentsRaw.value.filter((d: any) => isOwnPublic(d, !!d.shared)),
+      ...allTextDocumentsRaw.value.filter((d: any) => isOwnPublic(d, false)),
+    ]);
+    const publicFiltered = computed(() => {
+      const listed = [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value];
+      const seen = new Set(listed.map((item) => `${item.type}:${item.id}`));
+      const extra = ownPublicResources.value.filter((item) => !seen.has(`${item.type}:${item.id}`));
+      return sortFolderItems(
+        [...listed, ...extra]
+          .filter(matchesPublicItem)
+          .filter(matchesPublicOwner),
+      );
+    });
 
     /**
      * Every resource the user can see and filter, folder-nested or not, goes
@@ -3458,6 +3518,18 @@ export default defineComponent({
       mobileSidebarOpen.value = false;
     };
 
+    /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
+    const goToParentFolder = (): boolean => {
+      const folder = activeSection.value.kind === 'folder' ? activeFolder.value : null;
+      if (!folder) return false;
+      if (folder.parentId) selectFolder(folder.parentId);
+      else selectDashboardSection({ kind: 'recent' });
+      return true;
+    };
+    // Android's system Back inside a folder does the same as the folder's
+    // own back arrow, rather than main.ts offering to exit the app.
+    useBackHandler(goToParentFolder);
+
     const toggleSidebarWidth = () => {
       sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
       writeSidebarWidthState(storage(), sidebarWidthState.value);
@@ -3722,6 +3794,9 @@ export default defineComponent({
       resetDashboardPull,
       sharedFiltered,
       publicFiltered,
+      publicOwnerFilter,
+      PUBLIC_OWNER_FILTERS,
+      PUBLIC_OWNER_FILTER_LABELS,
       allTagNames,
       isTagSelected,
       toggleSelectedTag,
@@ -3803,6 +3878,7 @@ export default defineComponent({
       load,
       openCreateGroupModal,
       openMoveFolderModal,
+      goToParentFolder,
       openMoveHtmlFolderModal,
       openMoveInteractiveTemplateFolderModal,
       openMoveResourceFolderModal,

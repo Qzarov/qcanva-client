@@ -162,7 +162,7 @@
 
     <footer class="dashboard-sidebar-footer">
       <div v-if="!compactPresentation" class="dashboard-sidebar-version">QCanva v{{ appVersion }}</div>
-      <AccountMenu placement="sidebar" :compact="compactPresentation" />
+      <AccountMenu placement="sidebar" :compact="compactPresentation" :show-plugins="false" />
       <button
         type="button"
         class="btn-ghost btn-sm dashboard-sidebar-width-toggle"

@@ -63,7 +63,7 @@
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
         {{ saving ? t('savingEllipsis') : t('save') }}
       </button>
-      <AccountMenu v-if="currentUser" />
+      <AccountMenu v-if="currentUser" :show-plugins="false" />
       <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
     </header>
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>

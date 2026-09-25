@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
 import { nextTick } from 'vue';
-import { mount, flushPromises, type MountingOptions } from '@vue/test-utils';
+import { enableAutoUnmount, mount, flushPromises, type MountingOptions } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
+import { runBackHandlers } from '../composables/useBackHandler';
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
@@ -80,6 +81,11 @@ vi.mock('../api/client', () => ({
     list: vi.fn().mockResolvedValue({ tags: [] }),
   },
 }));
+
+// Unmount every dashboard after its test: a mounted one keeps its Android
+// Back handler registered (module-level registry), which would otherwise
+// answer Back presses in later tests.
+enableAutoUnmount(afterEach);
 
 function mountDashboard(options: MountingOptions<any> = {}) {
   return mount(DashboardView, {
@@ -307,6 +313,31 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Archive');
   });
 
+  it('steps up one folder level on the Android Back button instead of offering to exit', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValueOnce({
+      own: [
+        { id: 'folder-b', name: 'Target', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-c', name: 'Archive', role: 'owner', parentId: 'folder-b', canvases: [], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-c');
+    await nextTick();
+
+    expect(runBackHandlers()).toBe(true);
+    expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
+    expect(runBackHandlers()).toBe(true);
+    expect(vm.activeSection).toEqual({ kind: 'recent' });
+    // Home: nothing left to step back to - main.ts may now offer to exit.
+    expect(runBackHandlers()).toBe(false);
+
+    wrapper.unmount();
+    expect(runBackHandlers()).toBe(false);
+  });
+
   it('keeps a searched-out active folder mounted with filtered contents', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
@@ -370,6 +401,108 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-section="interactive-templates"]').exists()).toBe(true);
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(false);
     expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
+  });
+
+  it('lists my public doc in Public even though it sits in one of my folders, and filters Mine/Others', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'folder-a', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], textDocuments: [{ id: 'doc-mine', title: 'My public doc', folderId: 'folder-a' }] },
+      ],
+      shared: [],
+    } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({
+      documents: [
+        { id: 'doc-mine', title: 'My public doc', ownerId: 'user-1', visibility: 'public', folderId: 'folder-a' },
+        { id: 'doc-theirs', title: 'Their public doc', ownerId: 'user-9', visibility: 'public' },
+      ],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+
+    const section = () => wrapper.get('[data-section="public"]');
+    expect(section().text()).toContain('My public doc');
+    expect(section().text()).toContain('Their public doc');
+
+    await wrapper.get('[data-public-owner-filter="mine"]').trigger('click');
+    expect(section().text()).toContain('My public doc');
+    expect(section().text()).not.toContain('Their public doc');
+
+    await wrapper.get('[data-public-owner-filter="others"]').trigger('click');
+    expect(section().text()).not.toContain('My public doc');
+    expect(section().text()).toContain('Their public doc');
+
+    await wrapper.get('[data-public-owner-filter="all"]').trigger('click');
+    expect(section().text()).toContain('My public doc');
+    expect(section().text()).toContain('Their public doc');
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+  });
+
+  it('adds my own public resources to Public even when the server list (latest 100) left them out', async () => {
+    vi.mocked(textDocuments.list).mockResolvedValue({
+      documents: [
+        { id: 'doc-old-public', title: 'Old public doc', ownerId: 'user-1', visibility: 'public' },
+        { id: 'doc-unlisted', title: 'Unlisted doc', ownerId: 'user-1', visibility: 'public', listedInPublic: false },
+        { id: 'doc-private', title: 'Private doc', ownerId: 'user-1', visibility: 'private' },
+        { id: 'doc-theirs', title: 'Their shared doc', ownerId: 'user-9', visibility: 'public' },
+      ],
+    } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValue({
+      groups: [],
+      documents: [{ id: 'html-legacy', title: 'Legacy shared html', ownerId: 'user-1', shared: true }],
+    } as never);
+    vi.mocked(canvas.list).mockResolvedValue({
+      own: [
+        { id: 'canvas-legacy', title: 'Legacy public canvas', ownerId: 'user-1', isPublic: true },
+        { id: 'canvas-private', title: 'Private canvas', ownerId: 'user-1', isPublic: false, visibility: 'private' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+
+    const text = wrapper.get('[data-section="public"]').text();
+    expect(text).toContain('Old public doc');
+    expect(text).toContain('Legacy shared html');
+    expect(text).toContain('Legacy public canvas');
+    expect(text).not.toContain('Unlisted doc');
+    expect(text).not.toContain('Private doc');
+    expect(text).not.toContain('Private canvas');
+    // Only MY resources are added this way: someone else's comes from the server list.
+    expect(text).not.toContain('Their shared doc');
+
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
+    vi.mocked(htmlDocuments.list).mockResolvedValue({ groups: [], documents: [] } as never);
+    vi.mocked(canvas.list).mockResolvedValue({ own: [], shared: [], public: [], welcome: null } as never);
+  });
+
+  it('does not list a resource twice when the server list already has my public doc', async () => {
+    const mine = { id: 'doc-both', title: 'Listed twice?', ownerId: 'user-1', visibility: 'public' };
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [mine] } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [mine] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+
+    const occurrences = wrapper.get('[data-section="public"]').text().split('Listed twice?').length - 1;
+    expect(occurrences).toBe(1);
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+  });
+
+  it('puts the Public sort control on the Public heading row', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="public"]').trigger('click');
+    await flushPromises();
+    const head = wrapper.get('[data-section="public"] .dash-section-head');
+    expect(head.find('h2').exists()).toBe(true);
+    expect(head.find('.dash-sort-button-mobile').exists()).toBe(true);
   });
 
   it('filters interactive templates by search and resource type', async () => {
