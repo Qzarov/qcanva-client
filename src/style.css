@@ -1119,35 +1119,64 @@ body {
   transform: rotate(180deg);
   color: var(--ui-text);
 }
+/* Action results ("Moved to Work", errors) float at the bottom centre,
+   outside the page flow - they used to be a sticky block ABOVE the list,
+   pushing it down for ~3s and pulling it back up. Solid (tinted) surfaces,
+   since they now sit over content. */
 .dashboard-toast {
-  position: sticky;
-  top: 12px;
-  z-index: 80;
-  margin-bottom: 16px;
-  padding: 12px 14px;
+  position: fixed;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 1200;
+  width: max-content;
+  max-width: min(480px, calc(100vw - 32px));
+  margin: 0;
+  padding: 12px 16px;
   border: 1px solid var(--ui-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
   font-size: 13px;
   color: var(--ui-text);
-  backdrop-filter: blur(12px);
+  pointer-events: none;
 }
 .dashboard-toast-success {
-  background: var(--ui-success-soft);
-  border-color: color-mix(in srgb, var(--ui-success) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-success) 14%, var(--ui-surface-elevated));
+  border-color: color-mix(in srgb, var(--ui-success) 35%, var(--ui-border));
 }
 .dashboard-toast-error {
-  background: var(--ui-danger-soft);
-  border-color: color-mix(in srgb, var(--ui-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--ui-danger) 14%, var(--ui-surface-elevated));
+  border-color: color-mix(in srgb, var(--ui-danger) 35%, var(--ui-border));
 }
-.dashboard-refresh-status {
+/* "Updating list…" (and, in the app, the pull-to-refresh status below):
+   a pill floating at the top centre instead of a row above the list. */
+.dashboard-refresh-status,
+.dashboard-pull-status {
+  position: fixed;
+  left: 50%;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  transform: translateX(-50%);
+  z-index: 1200;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin: -12px 0 14px;
+  margin: 0;
+  padding: 6px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
   color: var(--ui-text-secondary);
   font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .dashboard-pull-status {
+  display: none;
+}
+/* In the app the pull status already says "Updating list…" while refreshing. */
+.app-layout:has(.dashboard-pull-status) .dashboard-refresh-status {
   display: none;
 }
 .dashboard-recents { margin-bottom: 22px; }
@@ -1212,6 +1241,35 @@ body {
   transform: translateY(-1px);
 }
 .dashboard-recent-card .resource-title-icon { margin-top: 1px; }
+/* "Show all N / Show less" under the Recents: a centred brand-coloured pill
+   (it used to be an unstyled browser button on desktop; phones override
+   it with a full-width row in the mobile block). */
+.dashboard-recent-show-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 12px auto 0;
+  padding: 6px 14px;
+  min-height: 32px;
+  border: 1px solid color-mix(in srgb, var(--color-brands) 35%, var(--ui-border));
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-brands-light);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.dashboard-recent-show-all:hover {
+  background: color-mix(in srgb, var(--color-brands) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands) 60%, var(--ui-border));
+}
+.dashboard-recent-show-all:focus-visible {
+  outline: 2px solid var(--color-brands);
+  outline-offset: 2px;
+}
 .dashboard-recent-title {
   overflow: hidden;
   font-size: 13px;
@@ -1448,6 +1506,36 @@ body {
   cursor: pointer;
 }
 .content-type-tabs button.active {
+  background: var(--color-brands);
+  color: var(--color-brand-on);
+}
+/* Public heading row: title left; Mine/Others (same segmented look as the
+   content-type tabs) and, on phones, the sort control on the right. */
+.dashboard-public-head-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.dashboard-public-owner-filter {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+}
+.dashboard-public-owner-filter button {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dark-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dashboard-public-owner-filter button.active {
   background: var(--color-brands);
   color: var(--color-brand-on);
 }
@@ -2723,14 +2811,7 @@ body {
 
 @media (max-width: 720px) {
   .dashboard-pull-status {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    height: 30px;
-    margin: -8px 0 10px;
-    color: var(--ui-text-secondary);
-    font-size: 12px;
+    display: inline-flex;
     transition: color var(--transition-fast);
   }
   .dashboard-pull-status.ready { color: var(--ui-accent-strong); }
@@ -3405,6 +3486,17 @@ body {
   .dashboard-modal-actions .btn-ghost {
     width: 100%;
   }
+  /* Two-button dialogs (move to / create a group): Cancel and the action
+     side by side, sharing the width, instead of stacked. */
+  .dashboard-modal-actions.dashboard-modal-actions-row {
+    flex-direction: row;
+  }
+  .dashboard-modal-actions.dashboard-modal-actions-row .btn-primary,
+  .dashboard-modal-actions.dashboard-modal-actions-row .btn-ghost {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
 
   .tag-editor-row {
     grid-template-columns: 1fr auto;
@@ -3423,7 +3515,8 @@ body {
   /* Recent's own header stays a single row (Recent | sort | grid/list),
      overriding the generic column-stack above - it's exactly what section
      16 of the mobile redesign calls for, not a stacked section head. */
-  .dashboard-recent-head {
+  .dashboard-recent-head,
+  .dashboard-public-head {
     flex-direction: row;
     align-items: center;
     justify-content: space-between;

@@ -55,6 +55,17 @@ describe('AccountMenu', () => {
     expect(wrapper.text()).toContain('Settings');
   });
 
+  it('can leave out Plugins (dashboard sidebar, text documents) while keeping the rest', async () => {
+    const wrapper = mount(AccountMenu, {
+      props: { placement: 'sidebar', showPlugins: false },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } },
+    });
+    await wrapper.get('[data-account-menu-trigger]').trigger('click');
+    expect(wrapper.text()).not.toContain('Plugins');
+    expect(wrapper.text()).toContain('Settings');
+    expect(wrapper.find('[data-account-menu-sign-out]').exists()).toBe(true);
+  });
+
   it('opens from ArrowDown and focuses the theme choices with dialog semantics', async () => {
     const wrapper = mount(AccountMenu, {
       attachTo: document.body,

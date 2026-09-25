@@ -46,7 +46,7 @@
         <ThemeSelector ref="selectorRef" />
       </div>
       <nav class="account-menu-links" :aria-label="userLabel">
-        <router-link to="/plugins" class="account-menu-item" @click="close(false)">
+        <router-link v-if="showPlugins" to="/plugins" class="account-menu-item" @click="close(false)">
           <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
         </router-link>
         <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
@@ -74,9 +74,12 @@ const emit = defineEmits<{ opened: [] }>();
 const props = withDefaults(defineProps<{
   compact?: boolean;
   placement?: 'header' | 'sidebar';
+  /** Plugins only exist for canvases so far: off where they'd lead nowhere useful. */
+  showPlugins?: boolean;
 }>(), {
   compact: false,
   placement: 'header',
+  showPlugins: true,
 });
 
 const router = useRouter();
@@ -89,6 +92,7 @@ const userTitle = computed(() => currentUser?.email || currentUser?.name || user
 const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCase() || 'U');
 const compact = computed(() => props.compact);
 const placement = computed(() => props.placement);
+const showPlugins = computed(() => props.showPlugins);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const popoverRef = ref<HTMLDivElement | null>(null);
 const selectorRef = ref<InstanceType<typeof ThemeSelector> | null>(null);
