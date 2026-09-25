@@ -118,6 +118,16 @@ describe('Share sheet', () => {
     wrapper.unmount();
   });
 
+  it('puts copying the link first in the panel', async () => {
+    const wrapper = await mountEditableDoc();
+    await wrapper.get('.text-doc-access-btn').trigger('click');
+
+    const firstSection = document.querySelector('.text-doc-share-panel .share-panel-body > .share-section');
+    expect(firstSection?.querySelector('.share-link-row')).toBeTruthy();
+
+    wrapper.unmount();
+  });
+
   it('closes on an outside tap (the backdrop)', async () => {
     const wrapper = await mountEditableDoc();
     await wrapper.get('.text-doc-access-btn').trigger('click');
@@ -263,7 +273,8 @@ describe('Password protected access (front task: merged into General Access)', (
     const sectionTitles = Array.from(document.querySelectorAll('.share-section-title')).map((el) => el.textContent);
     expect(sectionTitles.some((title) => /password/i.test(title || ''))).toBe(false);
 
-    const generalSection = document.querySelector('.share-panel-body .share-section');
+    // General Access = the section holding the visibility picker (no longer the first one: copying the link is).
+    const generalSection = document.querySelector('.share-visibility-select')?.closest('.share-section');
     const checkboxLabels = Array.from(generalSection!.querySelectorAll('label.share-checkbox')).map((el) => el.textContent);
     expect(checkboxLabels.some((label) => /password/i.test(label || ''))).toBe(true);
 
