@@ -219,3 +219,62 @@ test.describe('mobile: no page jumps', () => {
     expect(focused).toBe(false);
   });
 });
+
+/* ---------------- "Link to page" from the + button / slash menu ---------------- */
+
+/** Document search for the "@" picker (registered after the fixture's catch-all, so it wins). */
+async function mockDocumentSearch(page: Page) {
+  await page.route('http://localhost:3001/api/text-documents/search**', (route) =>
+    route.fulfill({ json: { items: [{ id: 'target-1', title: 'Roadmap' }] } }));
+}
+
+async function linkPageThroughPlus(page: Page, pick: (locator: ReturnType<Page['locator']>) => Promise<void>) {
+  const firstBlock = page.locator('.ProseMirror p').first();
+  await firstBlock.hover();
+  const plus = page.locator('.text-doc-add-block');
+  await expect(plus).toBeVisible();
+  await pick(plus);
+  const item = page.locator('[data-slash-item="pageLink"]:visible');
+  await expect(item).toBeVisible();
+  await pick(item);
+  const result = page.locator('.text-doc-mention-item', { hasText: 'Roadmap' });
+  await expect(result).toBeVisible();
+  await pick(result);
+  await expect(page.locator('.ProseMirror [data-mention-id="target-1"]')).toBeVisible();
+  // Nothing typed was left behind: no "/", no "@".
+  const text = await page.locator('.ProseMirror').innerText();
+  expect(text).not.toContain('/');
+  expect(text).not.toContain('@');
+}
+
+test.describe('desktop: Link to page', () => {
+  test('the block "+" offers "Link to page", which opens the document picker and inserts the link', async ({ page }) => {
+    await openDoc(page, { width: 1280, height: 800 });
+    await mockDocumentSearch(page);
+    await page.locator('.ProseMirror').click();
+    await page.keyboard.type('Intro paragraph.');
+    await linkPageThroughPlus(page, (l) => l.click());
+  });
+});
+
+test.describe('mobile: Link to page', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('the same flow works from the phone slash sheet', async ({ page }) => {
+    await openDoc(page);
+    await mockDocumentSearch(page);
+    await page.locator('.ProseMirror').tap();
+    await page.keyboard.type('Intro paragraph.');
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/link');
+    const item = page.locator('[data-slash-item="pageLink"]:visible');
+    await expect(item).toBeVisible();
+    await item.tap();
+    const result = page.locator('.text-doc-mention-item', { hasText: 'Roadmap' });
+    await expect(result).toBeVisible();
+    await result.tap();
+    await expect(page.locator('.ProseMirror [data-mention-id="target-1"]')).toBeVisible();
+    expect(await page.locator('.ProseMirror').innerText()).not.toContain('/link');
+    await page.screenshot({ path: '/tmp/pagelink-mobile.png' });
+  });
+});
