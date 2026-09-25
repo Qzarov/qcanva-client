@@ -621,7 +621,7 @@
         v-for="cursor in remoteCursors"
         :key="'cursor-' + cursor.socketId"
         class="remote-cursor"
-        :style="{ left: cursor.x + 'px', top: cursor.y + 'px' }"
+        :style="{ transform: `translate(${cursor.x}px, ${cursor.y}px)` }"
       >
         <svg width="16" height="20" viewBox="0 0 16 20" :fill="cursor.color">
           <path d="M0 0 L16 12 L8 12 L4 20 Z"/>
@@ -796,6 +796,7 @@ import { useTheme } from "../composables/useTheme";
 import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
 import { useMinimapPreference } from "../composables/useMinimapPreference";
 import { computeResizedRect } from "../canvas/resizeMath";
+import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
@@ -4103,10 +4104,12 @@ export default defineComponent({
       };
     });
 
-    // Apply remote canvas data without triggering change event
+    // Apply remote canvas data without triggering change event. In THIS
+    // client's element order (see keepLocalOrder): a collaborator's snapshot
+    // taken verbatim reshuffled the DOM and repainted every image.
     const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => {
-      nodes.value = data.nodes;
-      edges.value = data.edges;
+      nodes.value = keepLocalOrder(nodes.value, data.nodes || []);
+      edges.value = keepLocalOrder(edges.value, data.edges || []);
       drawings.value = data.drawings || [];
     };
 
@@ -5270,11 +5273,19 @@ g:hover > .edge-midpoint-conn {
 }
 
 /* ===== Remote cursors ===== */
+/* Moved by transform on its own compositor layer, never by left/top: the
+   cursor lives inside .canvas-world, and a left/top change there repainted
+   the layer holding the canvas's images on every cursor move of every
+   collaborator (measured: 54 repaints of that layer for one cursor sweep) -
+   with many large images that re-raster is what made them blink. */
 .remote-cursor {
   position: absolute;
+  left: 0;
+  top: 0;
   pointer-events: none;
   z-index: 100;
-  transition: left 0.1s linear, top 0.1s linear;
+  will-change: transform;
+  transition: transform 0.1s linear;
 }
 .remote-cursor svg {
   filter: drop-shadow(0 1px 2px var(--ui-overlay));

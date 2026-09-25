@@ -1567,8 +1567,11 @@ export default defineComponent({
         const res = await canvasApi.resync(resolvedId.value, revision.value);
         const parsed = JSON.parse(res.canvas.data);
         isApplyingRemote = true;
+        // applyRemoteData only - not also `canvasData.value = parsed`: that
+        // re-fired CanvasLoader's initial-data watcher, which re-applied the
+        // same data in the server's node order (reshuffling and repainting
+        // every image) and re-fitted the camera, mid-collaboration.
         canvasRef.value?.applyRemoteData(parsed);
-        canvasData.value = parsed;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         clearPendingOps();
