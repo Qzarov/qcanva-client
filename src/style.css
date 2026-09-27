@@ -773,6 +773,14 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.dashboard-sidebar-source {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.dashboard-sidebar-source:hover {
+  color: var(--ui-text);
+}
 .dashboard-sidebar-footer .account-menu,
 .dashboard-sidebar-footer .account-menu-trigger {
   width: 100%;
