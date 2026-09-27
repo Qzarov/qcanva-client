@@ -161,7 +161,16 @@
     </div>
 
     <footer class="dashboard-sidebar-footer">
-      <div v-if="!compactPresentation" class="dashboard-sidebar-version">QCanva v{{ appVersion }}</div>
+      <div v-if="!compactPresentation" class="dashboard-sidebar-version">
+        QCanva v{{ appVersion }} ·
+        <a
+          :href="SOURCE_CODE_URL"
+          class="dashboard-sidebar-source"
+          target="_blank"
+          rel="noopener noreferrer"
+          data-source-link
+        >{{ t('sourceCode') }}</a>
+      </div>
       <AccountMenu placement="sidebar" :compact="compactPresentation" :show-plugins="false" />
       <button
         type="button"
@@ -188,6 +197,7 @@ import packageJson from '../../../package.json';
 const appVersion = packageJson.version;
 import LanguageToggle from '../LanguageToggle.vue';
 import { useI18n } from '../../composables/useI18n';
+import { SOURCE_CODE_URL } from '../../app-info';
 import {
   isDashboardSectionActive,
   type DashboardFolderNavItem,

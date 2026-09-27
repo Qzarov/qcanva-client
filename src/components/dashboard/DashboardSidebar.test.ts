@@ -103,6 +103,16 @@ describe('DashboardSidebar', () => {
     document.body.innerHTML = '';
   });
 
+  it('links the source code next to the version (AGPL: users of the service can get its source)', () => {
+    const wrapper = mountSidebar();
+    const link = wrapper.get('[data-source-link]');
+    expect(link.attributes('href')).toBe('https://github.com/Qzarov/qcanva-client');
+    expect(link.attributes('target')).toBe('_blank');
+    expect(link.attributes('rel')).toContain('noopener');
+    expect(link.text()).toBe('Source code');
+    expect(wrapper.get('.dashboard-sidebar-version').text()).toContain('QCanva v');
+  });
+
   it('renders Home as a collapsed disclosure before the remaining top-level destinations', async () => {
     const wrapper = mountSidebar({ activeSection: { kind: 'recent' } });
 
