@@ -13,17 +13,17 @@
       </div>
 
       <div class="dnd-cs-identity">
-        <input class="dnd-cs-name" :readonly="readonly" :value="data.identity.name" placeholder="Имя персонажа" aria-label="Имя персонажа" @change="setIdentity('name', $ev($event))" />
+        <input class="dnd-cs-name" :readonly="readonly" :value="data.identity.name" placeholder="Имя персонажа" aria-label="Имя персонажа" @change="setIdentity('name', evVal($event))" />
         <div class="dnd-cs-subline">
-          <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', $ev($event))" />
+          <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', evVal($event))" />
           <span class="dnd-cs-dot">—</span>
-          <input :readonly="readonly" :value="data.identity.className" placeholder="Класс" aria-label="Класс" @change="setIdentity('className', $ev($event))" />
+          <input :readonly="readonly" :value="data.identity.className" placeholder="Класс" aria-label="Класс" @change="setIdentity('className', evVal($event))" />
         </div>
         <div class="dnd-cs-xp">
-          <label class="dnd-cs-level">Уровень <input type="number" min="1" max="20" :readonly="readonly" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', $ev($event), 1, 20)" /></label>
-          <label class="dnd-cs-xp-field">XP <input type="number" min="0" :readonly="readonly" :value="data.identity.experience" aria-label="Опыт" @change="setNumber(data.identity, 'experience', $ev($event), 0)" /></label>
+          <label class="dnd-cs-level">Уровень <input type="number" min="1" max="20" :readonly="readonly" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', evVal($event), 1, 20)" /></label>
+          <label class="dnd-cs-xp-field">XP <input type="number" min="0" :readonly="readonly" :value="data.identity.experience" aria-label="Опыт" @change="setNumber(data.identity, 'experience', evVal($event), 0)" /></label>
           <span class="dnd-cs-xp-next">/ {{ data.identity.nextLevelExperience || '—' }}
-            <input type="number" min="0" :readonly="readonly" :value="data.identity.nextLevelExperience" aria-label="Опыт до следующего уровня" @change="setNumber(data.identity, 'nextLevelExperience', $ev($event), 0)" />
+            <input type="number" min="0" :readonly="readonly" :value="data.identity.nextLevelExperience" aria-label="Опыт до следующего уровня" @change="setNumber(data.identity, 'nextLevelExperience', evVal($event), 0)" />
           </span>
           <div class="dnd-cs-xp-bar" role="progressbar" :aria-valuenow="xpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: xpPercent + '%' }"></span></div>
         </div>
@@ -32,21 +32,21 @@
 
     <!-- ===== COMBAT STRIP ===== -->
     <div class="dnd-cs-combat">
-      <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', $ev($event), 0)" /></div>
-      <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', $ev($event), 0)" /></div>
+      <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
+      <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
       <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
       <div class="dnd-cs-stat readonly-stat"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong>
-        <input v-if="!readonly" class="dnd-cs-init-bonus" type="number" :value="data.combat.customInitiativeBonus" aria-label="Бонус инициативы" title="Доп. бонус инициативы" @change="setNumber(data.combat, 'customInitiativeBonus', $ev($event))" /></div>
+        <input v-if="!readonly" class="dnd-cs-init-bonus" type="number" :value="data.combat.customInitiativeBonus" aria-label="Бонус инициативы" title="Доп. бонус инициативы" @change="setNumber(data.combat, 'customInitiativeBonus', evVal($event))" /></div>
       <div class="dnd-cs-stat dnd-cs-hp">
         <span>HP</span>
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Убрать HP" @click="changeHp(-1)">−</button>
-        <input type="number" min="0" :readonly="readonly" :value="data.combat.currentHp" aria-label="Текущие HP" @change="setNumber(data.combat, 'currentHp', $ev($event), 0)" />
+        <input type="number" min="0" :readonly="readonly" :value="data.combat.currentHp" aria-label="Текущие HP" @change="setNumber(data.combat, 'currentHp', evVal($event), 0)" />
         <b>/</b>
-        <input type="number" min="1" :readonly="readonly" :value="data.combat.maxHp" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', $ev($event), 1)" />
+        <input type="number" min="1" :readonly="readonly" :value="data.combat.maxHp" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', evVal($event), 1)" />
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Добавить HP" @click="changeHp(1)">+</button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
-      <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', $ev($event), 0)" /></div>
+      <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /></div>
       <button type="button" class="dnd-cs-toggle" :class="{ on: data.combat.inspiration }" :disabled="readonly" :aria-pressed="data.combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
       <div class="dnd-cs-stat dnd-cs-exhaustion"><span>Истощение</span>
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Меньше истощения" @click="changeExhaustion(-1)">−</button>
@@ -54,6 +54,14 @@
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Больше истощения" @click="changeExhaustion(1)">+</button>
       </div>
     </div>
+    </section>
+
+    <!-- ===== PASSIVE SCORES (compact, up top) ===== -->
+    <section class="dnd-cs-passives">
+      <div v-for="p in passives" :key="p.key" class="dnd-cs-passive">
+        <strong>{{ p.value }}</strong>
+        <span>{{ p.label }}</span>
+      </div>
     </section>
 
     <!-- ===== BODY: abilities+skills (left) | tabs (right) ===== -->
@@ -64,7 +72,7 @@
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
             <header class="dnd-cs-ability-head">
               <span class="dnd-cs-ability-name">{{ ability.short }}</span>
-              <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, $ev($event))" />
+              <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, evVal($event))" />
             </header>
             <div class="dnd-cs-roll-row">
               <button type="button" class="dnd-cs-roll" :title="'Проверка: ' + ability.label" @click="roll('check', ability.label, abilityModifier(data.abilities[ability.key].score))">Проверка <b>{{ formatModifier(abilityModifier(data.abilities[ability.key].score)) }}</b></button>
@@ -87,14 +95,6 @@
           </article>
         </section>
 
-        <!-- Passive scores -->
-        <section class="dnd-cs-passives">
-          <div v-for="p in passives" :key="p.key" class="dnd-cs-passive">
-            <strong>{{ p.value }}</strong>
-            <span>{{ p.label }}</span>
-          </div>
-        </section>
-
         <!-- Proficiencies -->
         <section class="dnd-cs-proficiencies">
           <h4>Владения</h4>
@@ -109,7 +109,7 @@
           <div class="dnd-cs-prof-list">
             <span class="dnd-cs-prof-label">Языки и прочее</span>
             <div v-for="(val, i) in data.proficiencies.languages" :key="'lang' + i" class="dnd-cs-prof-row">
-              <input :readonly="readonly" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, $ev($event))" />
+              <input :readonly="readonly" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, evVal($event))" />
               <button v-if="!readonly" type="button" aria-label="Удалить" @click="removeProfListItem('languages', i)">×</button>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add-sm" @click="addProfListItem('languages')">+ Добавить</button>
@@ -128,18 +128,18 @@
           <template v-if="data.activeTab === 'attacks'">
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
               <div class="dnd-cs-attack-top">
-                <input class="dnd-cs-attack-name" :readonly="readonly" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', $ev($event))" />
+                <input class="dnd-cs-attack-name" :readonly="readonly" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', evVal($event))" />
                 <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить атаку" @click="removeItem('attacks', item.id)">×</button>
               </div>
               <div class="dnd-cs-attack-fields">
-                <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', $ev($event))" />
-                <input :readonly="readonly" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', $ev($event))" />
-                <input :readonly="readonly" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', $ev($event))" />
+                <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', evVal($event))" />
+                <input :readonly="readonly" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', evVal($event))" />
+                <input :readonly="readonly" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', evVal($event))" />
               </div>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('attacks')">+ Добавить атаку</button>
             <label class="dnd-cs-freetext">Атаки и заклинания
-              <textarea :readonly="readonly" :value="data.attacksNotes" placeholder="Свободные заметки по атакам и заклинаниям" @change="setField('attacksNotes', $ev($event))"></textarea>
+              <textarea :readonly="readonly" :value="data.attacksNotes" placeholder="Свободные заметки по атакам и заклинаниям" @change="setField('attacksNotes', evVal($event))"></textarea>
             </label>
           </template>
 
@@ -147,15 +147,15 @@
           <template v-else-if="data.activeTab === 'features'">
             <div v-for="item in data.features" :key="item.id" class="dnd-cs-feature-row">
               <div class="dnd-cs-feature-main">
-                <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название умения" @change="setItem('features', item.id, 'name', $ev($event))" />
+                <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название умения" @change="setItem('features', item.id, 'name', evVal($event))" />
                 <div class="dnd-cs-uses">
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !item.maxUses" aria-label="Использовать" @click="changeUses(item.id, -1)">−</button>
-                  <span>{{ item.currentUses || 0 }}/<input type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" aria-label="Максимум использований" @change="setItemNumber('features', item.id, 'maxUses', $ev($event))" /></span>
+                  <span>{{ item.currentUses || 0 }}/<input type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" aria-label="Максимум использований" @change="setItemNumber('features', item.id, 'maxUses', evVal($event))" /></span>
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !item.maxUses" aria-label="Восстановить" @click="changeUses(item.id, 1)">+</button>
                 </div>
                 <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить умение" @click="removeItem('features', item.id)">×</button>
               </div>
-              <textarea :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', $ev($event))"></textarea>
+              <textarea :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', evVal($event))"></textarea>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('features')">+ Добавить умение</button>
           </template>
@@ -164,9 +164,9 @@
           <template v-else-if="data.activeTab === 'equipment'">
             <div v-for="item in data.equipment" :key="item.id" class="dnd-cs-equip-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.equipped" :disabled="readonly" aria-label="Экипировано" @change="toggleItem('equipment', item.id, 'equipped')" /></label>
-              <input :readonly="readonly" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', $ev($event))" />
-              <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', $ev($event))" />
-              <input :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', $ev($event))" />
+              <input :readonly="readonly" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
+              <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', evVal($event))" />
+              <input :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', evVal($event))" />
               <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
@@ -175,7 +175,7 @@
           <!-- Personality -->
           <template v-else-if="data.activeTab === 'personality'">
             <label v-for="field in personalityFields" :key="field.key" class="dnd-cs-freetext">{{ field.label }}
-              <textarea :readonly="readonly" :value="data.personality[field.key]" :aria-label="field.label" @change="setPersonality(field.key, $ev($event))"></textarea>
+              <textarea :readonly="readonly" :value="data.personality[field.key]" :aria-label="field.label" @change="setPersonality(field.key, evVal($event))"></textarea>
             </label>
           </template>
 
@@ -184,8 +184,8 @@
             <div v-for="item in data.goals" :key="item.id" class="dnd-cs-goal-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.completed" :disabled="readonly" aria-label="Выполнено" @change="toggleItem('goals', item.id, 'completed')" /></label>
               <div class="dnd-cs-goal-main">
-                <input :class="{ done: item.completed }" :readonly="readonly" :value="item.name" placeholder="Цель" aria-label="Название цели" @change="setItem('goals', item.id, 'name', $ev($event))" />
-                <input :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание цели" @change="setItem('goals', item.id, 'description', $ev($event))" />
+                <input :class="{ done: item.completed }" :readonly="readonly" :value="item.name" placeholder="Цель" aria-label="Название цели" @change="setItem('goals', item.id, 'name', evVal($event))" />
+                <input :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание цели" @change="setItem('goals', item.id, 'description', evVal($event))" />
               </div>
               <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить цель" @click="removeItem('goals', item.id)">×</button>
             </div>
@@ -194,7 +194,7 @@
 
           <!-- Notes -->
           <template v-else-if="data.activeTab === 'notes'">
-            <textarea class="dnd-cs-notes" :readonly="readonly" :value="data.notes" placeholder="Заметки персонажа" aria-label="Заметки персонажа" @change="setField('notes', $ev($event))"></textarea>
+            <textarea class="dnd-cs-notes" :readonly="readonly" :value="data.notes" placeholder="Заметки персонажа" aria-label="Заметки персонажа" @change="setField('notes', evVal($event))"></textarea>
           </template>
 
           <!-- Spells -->
@@ -202,10 +202,10 @@
             <div class="dnd-cs-spell-head"><span></span><span>Заклинание</span><span>Ур.</span><span></span></div>
             <div v-for="item in data.spells" :key="item.id" class="dnd-cs-spell-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
-              <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', $ev($event))" />
-              <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" @change="setItemNumber('spells', item.id, 'level', $ev($event))" />
+              <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
+              <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" @change="setItemNumber('spells', item.id, 'level', evVal($event))" />
               <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
-              <input class="dnd-cs-spell-notes" :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', $ev($event))" />
+              <input class="dnd-cs-spell-notes" :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('spells')">+ Добавить заклинание</button>
           </template>
@@ -256,7 +256,7 @@ export default defineComponent({
     const change = () => emit('change');
     // `<input @change>` gives a buffered value (fires on blur), matching the
     // parent's own buffered autosave - no per-keystroke saves.
-    const $ev = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+    const evVal = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
 
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
     const initiative = computed(() => initiativeBonus(props.data));
@@ -352,7 +352,11 @@ export default defineComponent({
     onBeforeUnmount(() => { timers.forEach(clearTimeout); });
 
     return {
-      abilities: DND_ABILITIES,
+      // Display order groups the two SHORTEST cards (STR: 1 skill, CON: 0) into
+      // the first grid row so they sit together and stay compact, instead of
+      // each being stretched to a tall neighbour's height.
+      abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
+        .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
       tabs: [
         { key: 'attacks', label: 'Атаки' }, { key: 'features', label: 'Умения' }, { key: 'equipment', label: 'Снаряжение' },
         { key: 'personality', label: 'Характер' }, { key: 'goals', label: 'Цели' }, { key: 'notes', label: 'Заметки' }, { key: 'spells', label: 'Заклинания' },
@@ -364,7 +368,7 @@ export default defineComponent({
       weaponOptions: ['Простое', 'Воинское'],
       proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
-      $ev, setIdentity, setNumber, setField, setPersonality,
+      evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
       skillMod, skillProf, skillProfTitle, cycleSkill,
       changeHp, changeExhaustion, toggleInspiration,
@@ -468,9 +472,9 @@ export default defineComponent({
 .dnd-cs-hp-btn:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); border-color: color-mix(in srgb, var(--dnd-glass-accent) 45%, transparent); color: var(--dnd-glass-accent); }
 .dnd-cs-hp-btn:disabled { opacity: .45; cursor: default; }
 
-/* ===== TOP CARD ===== */
-.dnd-cs-topcard { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
-.dnd-cs-header { display: flex; gap: 16px; align-items: center; }
+/* ===== TOP CARD (identity + combat as one compact block) ===== */
+.dnd-cs-topcard { display: flex; flex-direction: column; gap: 10px; padding: 13px 16px; }
+.dnd-cs-header { display: flex; gap: 14px; align-items: center; }
 .dnd-cs-portrait {
   position: relative; flex: 0 0 76px; display: grid; place-items: center;
   width: 76px; height: 76px; border-radius: 22px; overflow: visible;
@@ -507,8 +511,8 @@ export default defineComponent({
 }
 .dnd-cs-hp-bar { flex-basis: 100%; height: 8px; }
 
-/* Combat strip */
-.dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding-top: 4px; border-top: 1px solid var(--dnd-glass-border); }
+/* Combat strip - flows straight under identity as one block (no separator). */
+.dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-stat span { white-space: nowrap; }
 .dnd-cs-stat input { width: 50px; font-size: 14px; font-weight: 700; color: var(--ui-text); text-transform: none; letter-spacing: 0; }
@@ -582,11 +586,11 @@ export default defineComponent({
 .dnd-cs-pip.expertise { background: radial-gradient(circle, transparent 30%, var(--dnd-glass-accent) 34%); border-color: var(--dnd-glass-accent); box-shadow: 0 0 8px var(--dnd-glass-accent-glow); }
 .dnd-cs-pip.half { background: var(--dnd-text-dim); border-color: var(--dnd-text-dim); }
 
-/* Passives */
-.dnd-cs-passives { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.dnd-cs-passive { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; text-align: center; }
-.dnd-cs-passive strong { font-size: 20px; font-weight: 800; color: var(--ui-text); }
-.dnd-cs-passive span { font-size: 10px; letter-spacing: .03em; color: var(--dnd-text-dim); }
+/* Passives - compact chips in a single row up top. */
+.dnd-cs-passives { display: flex; flex-wrap: wrap; gap: 8px; }
+.dnd-cs-passive { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; }
+.dnd-cs-passive strong { font-size: 17px; font-weight: 800; color: var(--dnd-glass-accent); font-variant-numeric: tabular-nums; }
+.dnd-cs-passive span { font-size: 11px; letter-spacing: .02em; color: var(--dnd-text-dim); }
 
 /* Proficiencies */
 .dnd-cs-proficiencies { padding: 12px; }

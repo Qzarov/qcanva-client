@@ -19,6 +19,27 @@ describe('DndCharacterSheet interactions', () => {
     expect(wrapper.findAll('.dnd-cs-tabs button')).toHaveLength(7);
   });
 
+  // Regression: the input @change handlers referenced a `$ev(...)` helper, but
+  // Vue strips `$`-prefixed setup returns, so every text/number edit threw and
+  // nothing saved. This drives the real @change path (not a button) and asserts
+  // the model mutates AND `change` fires, which is what triggers the parent save.
+  it('persists text/number input edits and emits change', async () => {
+    const { data, wrapper } = mountSheet();
+    const score = wrapper.get('.dnd-cs-ability-score');
+    (score.element as HTMLInputElement).value = '18';
+    await score.trigger('change');
+    expect(data.abilities.strength.score).toBe(18);
+
+    const equipTab = wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Характер')!;
+    await equipTab.trigger('click');
+    const traits = wrapper.get('.dnd-cs-tab-panel textarea');
+    (traits.element as HTMLTextAreaElement).value = 'Храбрый';
+    await traits.trigger('change');
+    expect(data.personality.traits).toBe('Храбрый');
+
+    expect(wrapper.emitted('change')).toBeTruthy();
+  });
+
   it('adds and removes an attack and emits change', async () => {
     const { data, wrapper } = mountSheet();
     await wrapper.get('.dnd-cs-add').trigger('click'); // Attacks tab is default
