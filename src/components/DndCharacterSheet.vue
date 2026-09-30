@@ -1,6 +1,7 @@
 <template>
   <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly }">
-    <!-- ===== HEADER ===== -->
+    <!-- ===== TOP CARD: identity + combat ===== -->
+    <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
       <div class="dnd-cs-portrait" :class="{ empty: !data.identity.portraitUrl }">
         <img v-if="data.identity.portraitUrl" :src="data.identity.portraitUrl" alt="Портрет персонажа" />
@@ -44,6 +45,7 @@
         <input type="number" min="1" :readonly="readonly" :value="data.combat.maxHp" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', $ev($event), 1)" />
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Добавить HP" @click="changeHp(1)">+</button>
       </div>
+      <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
       <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', $ev($event), 0)" /></div>
       <button type="button" class="dnd-cs-toggle" :class="{ on: data.combat.inspiration }" :disabled="readonly" :aria-pressed="data.combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
       <div class="dnd-cs-stat dnd-cs-exhaustion"><span>Истощение</span>
@@ -52,6 +54,7 @@
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Больше истощения" @click="changeExhaustion(1)">+</button>
       </div>
     </div>
+    </section>
 
     <!-- ===== BODY: abilities+skills (left) | tabs (right) ===== -->
     <div class="dnd-cs-body">
@@ -118,7 +121,7 @@
           <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :class="{ active: data.activeTab === tab.key }" :aria-selected="data.activeTab === tab.key" @click="setTab(tab.key)">{{ tab.label }}</button>
         </nav>
 
-        <div class="dnd-cs-tab-panel" role="tabpanel">
+        <div class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
           <!-- Attacks -->
           <template v-if="data.activeTab === 'attacks'">
             <div class="dnd-cs-attack-head"><span>Название</span><span>Бонус</span><span>Урон</span><span>Тип</span><span></span></div>
@@ -241,6 +244,11 @@ export default defineComponent({
       if (!next || next <= 0) return 0;
       return Math.max(0, Math.min(100, Math.round((props.data.identity.experience / next) * 100)));
     });
+    const hpPercent = computed(() => {
+      const max = props.data.combat.maxHp;
+      if (!max || max <= 0) return 0;
+      return Math.max(0, Math.min(100, Math.round((props.data.combat.currentHp / max) * 100)));
+    });
 
     const skillsByAbility = computed(() => {
       const map: Record<DndAbilityKey, typeof DND_SKILLS[number][]> = { strength: [], dexterity: [], constitution: [], intelligence: [], wisdom: [], charisma: [] };
@@ -316,7 +324,7 @@ export default defineComponent({
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
       armorOptions: ['Лёгкие', 'Средние', 'Тяжёлые', 'Щиты'],
       weaponOptions: ['Простое', 'Воинское'],
-      proficiencyBonus, initiative, initial, xpPercent, skillsByAbility, passives,
+      proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
       $ev, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
@@ -330,96 +338,252 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.dnd-cs { display: flex; flex-direction: column; gap: 14px; color: var(--ui-text); }
-.dnd-cs input, .dnd-cs textarea { color: var(--ui-text); background: var(--ui-surface-subtle); border: 1px solid var(--ui-border); border-radius: 6px; padding: 6px 8px; font: inherit; box-sizing: border-box; }
-.dnd-cs input:focus, .dnd-cs textarea:focus { outline: none; border-color: var(--ui-accent-strong, var(--ui-brand-soft-on)); }
-.dnd-cs textarea { width: 100%; min-height: 64px; resize: vertical; }
-.dnd-cs input[type='number'] { width: 100%; }
-.dnd-cs h4 { margin: 0 0 8px; font-size: 13px; color: var(--ui-text-secondary); }
+/* ===== Liquid Glass visual tokens (develop the style from here) ===== */
+.dnd-cs {
+  --dnd-glass-bg: rgba(17, 21, 18, 0.55);
+  --dnd-glass-border: rgba(120, 190, 140, 0.16);
+  --dnd-glass-highlight: rgba(255, 255, 255, 0.07);
+  --dnd-glass-accent: #00ff00;
+  --dnd-glass-accent-soft: rgba(0, 255, 0, 0.13);
+  --dnd-glass-accent-glow: rgba(0, 255, 0, 0.30);
+  --dnd-glass-radius: 20px;
+  --dnd-sub-bg: rgba(255, 255, 255, 0.035);
+  --dnd-text-dim: #86a593;
 
-/* Header */
-.dnd-cs-header { display: flex; gap: 14px; align-items: flex-start; }
-.dnd-cs-portrait { position: relative; flex: 0 0 64px; display: grid; place-items: center; width: 64px; height: 64px; border: 1px solid var(--ui-border); border-radius: 50%; overflow: visible; background: var(--ui-brand-soft); color: var(--ui-brand-soft-on); font-size: 24px; font-weight: 700; }
-.dnd-cs-portrait img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.dnd-cs-portrait-actions { position: absolute; right: -6px; bottom: -4px; display: flex; gap: 2px; }
-.dnd-cs-portrait-actions button { width: 20px; height: 20px; padding: 0; border: 1px solid var(--ui-border); border-radius: 50%; background: var(--ui-surface-elevated); color: var(--ui-text); cursor: pointer; }
-.dnd-cs-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
-.dnd-cs-name { font-size: 20px; font-weight: 700; background: transparent; border-color: transparent; padding-left: 0; }
-.dnd-cs-subline { display: flex; align-items: center; gap: 6px; }
-.dnd-cs-subline input { flex: 1; min-width: 0; }
-.dnd-cs-dot { color: var(--ui-text-secondary); }
-.dnd-cs-xp { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--ui-text-secondary); }
-.dnd-cs-level input, .dnd-cs-xp-field input { width: 62px; }
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  color: var(--ui-text);
+}
+
+/* Big translucent surface WITH blur - used only on the few large panels
+   (top card, tab panel) so we never stack backdrop-filter on dozens of rows. */
+.dnd-glass {
+  position: relative;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006)), var(--dnd-glass-bg);
+  border: 1px solid var(--dnd-glass-border);
+  border-radius: var(--dnd-glass-radius);
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow: inset 0 1px 0 var(--dnd-glass-highlight), 0 10px 34px rgba(0, 0, 0, 0.38);
+}
+/* Soft highlight along the top edge (the "liquid" sheen). */
+.dnd-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%);
+}
+.dnd-glass > * { position: relative; z-index: 1; }
+
+/* Smaller inner cards: translucent + bordered, NO blur (kept cheap). */
+.dnd-cs-ability,
+.dnd-cs-passive,
+.dnd-cs-proficiencies {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.008));
+  border: 1px solid var(--dnd-glass-border);
+  border-radius: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* ===== Inputs: read as plain values in idle, reveal edit affordance on hover/focus ===== */
+.dnd-cs input,
+.dnd-cs textarea {
+  color: var(--ui-text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px 6px;
+  font: inherit;
+  box-sizing: border-box;
+  transition: background 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+.dnd-cs textarea { width: 100%; min-height: 60px; resize: vertical; line-height: 1.5; }
+.dnd-cs input[type='number'] { width: 100%; }
+.dnd-cs input:hover:not([readonly]):not(:focus),
+.dnd-cs textarea:hover:not([readonly]):not(:focus) {
+  background: rgba(255, 255, 255, 0.045);
+  border-color: var(--dnd-glass-border);
+}
+.dnd-cs input:focus,
+.dnd-cs textarea:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.28);
+  border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
+  box-shadow: 0 0 0 3px var(--dnd-glass-accent-soft);
+}
+.dnd-cs input::placeholder,
+.dnd-cs textarea::placeholder { color: color-mix(in srgb, var(--dnd-text-dim) 75%, transparent); }
+.dnd-cs h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
+
+/* Small round +/- glass buttons, reused for HP / exhaustion / uses. */
+.dnd-cs-hp-btn {
+  width: 24px; height: 24px; flex: 0 0 24px; padding: 0;
+  border: 1px solid var(--dnd-glass-border); border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05); color: var(--ui-text);
+  cursor: pointer; font-size: 15px; line-height: 1;
+  transition: background 150ms, border-color 150ms, color 150ms;
+}
+.dnd-cs-hp-btn:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); border-color: color-mix(in srgb, var(--dnd-glass-accent) 45%, transparent); color: var(--dnd-glass-accent); }
+.dnd-cs-hp-btn:disabled { opacity: .45; cursor: default; }
+
+/* ===== TOP CARD ===== */
+.dnd-cs-topcard { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.dnd-cs-header { display: flex; gap: 16px; align-items: center; }
+.dnd-cs-portrait {
+  position: relative; flex: 0 0 76px; display: grid; place-items: center;
+  width: 76px; height: 76px; border-radius: 22px; overflow: visible;
+  background: radial-gradient(120% 120% at 30% 20%, var(--dnd-glass-accent-soft), rgba(0,0,0,.25));
+  border: 1px solid color-mix(in srgb, var(--dnd-glass-accent) 30%, transparent);
+  color: var(--dnd-glass-accent); font-size: 30px; font-weight: 800;
+  box-shadow: 0 0 22px rgba(0, 255, 0, 0.10), inset 0 1px 0 var(--dnd-glass-highlight);
+}
+.dnd-cs-portrait img { width: 100%; height: 100%; border-radius: 21px; object-fit: cover; }
+.dnd-cs-portrait-actions { position: absolute; right: -6px; bottom: -6px; display: flex; gap: 2px; }
+.dnd-cs-portrait-actions button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 50%; background: rgba(10,14,11,.85); color: var(--ui-text); cursor: pointer; }
+.dnd-cs-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.dnd-cs-name { font-size: 26px; font-weight: 800; letter-spacing: -.01em; padding: 2px 4px; }
+.dnd-cs-subline { display: flex; align-items: center; gap: 4px; color: var(--dnd-text-dim); font-size: 13px; }
+.dnd-cs-subline input { flex: 1; min-width: 0; color: var(--dnd-text-dim); }
+.dnd-cs-dot { opacity: .6; }
+.dnd-cs-xp { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); }
+.dnd-cs-level { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--ui-text); }
+.dnd-cs-level input, .dnd-cs-xp-field input { width: 58px; }
+.dnd-cs-xp-field { display: inline-flex; align-items: center; gap: 4px; }
 .dnd-cs-xp-next { display: inline-flex; align-items: center; gap: 4px; }
-.dnd-cs-xp-next input { width: 72px; }
-.dnd-cs-xp-bar { flex: 1 1 120px; min-width: 100px; height: 6px; border-radius: 999px; background: var(--ui-surface-subtle); overflow: hidden; }
-.dnd-cs-xp-bar span { display: block; height: 100%; background: var(--ui-brand-soft-on, #44cf6e); }
+.dnd-cs-xp-next input { width: 66px; }
+
+/* Progress bars (XP + HP): dark track, acid-green fill with glow. */
+.dnd-cs-xp-bar, .dnd-cs-hp-bar {
+  flex: 1 1 120px; min-width: 90px; height: 7px; border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45); overflow: hidden; border: 1px solid var(--dnd-glass-border);
+}
+.dnd-cs-xp-bar span, .dnd-cs-hp-bar span {
+  display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--dnd-glass-accent) 70%, #0a7a2e), var(--dnd-glass-accent));
+  box-shadow: 0 0 10px var(--dnd-glass-accent-glow);
+  transition: width 200ms ease;
+}
+.dnd-cs-hp-bar { flex-basis: 100%; height: 8px; }
 
 /* Combat strip */
-.dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface-subtle); }
-.dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ui-text-secondary); }
+.dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; padding-top: 4px; border-top: 1px solid var(--dnd-glass-border); }
+.dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-stat span { white-space: nowrap; }
-.dnd-cs-stat input { width: 56px; }
-.dnd-cs-stat.readonly-stat strong { color: var(--ui-text); font-size: 15px; }
-.dnd-cs-init-bonus { width: 44px !important; }
-.dnd-cs-hp input { width: 52px; }
-.dnd-cs-hp-btn { width: 26px; height: 26px; flex: 0 0 26px; padding: 0; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface-elevated); color: var(--ui-text); cursor: pointer; font-size: 15px; line-height: 1; }
-.dnd-cs-hp-btn:disabled { opacity: .5; cursor: default; }
-.dnd-cs-toggle { padding: 6px 10px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-elevated); color: var(--ui-text-secondary); cursor: pointer; }
-.dnd-cs-toggle.on { border-color: var(--ui-brand-soft-on, #44cf6e); color: var(--ui-brand-soft-on, #44cf6e); background: var(--ui-brand-soft); }
-.dnd-cs-exhaustion strong { min-width: 14px; text-align: center; color: var(--ui-text); }
+.dnd-cs-stat input { width: 50px; font-size: 14px; font-weight: 700; color: var(--ui-text); text-transform: none; letter-spacing: 0; }
+.dnd-cs-stat.readonly-stat strong { color: var(--ui-text); font-size: 16px; font-weight: 800; }
+.dnd-cs-init-bonus { width: 40px !important; }
+.dnd-cs-hp { flex-basis: 100%; gap: 8px; }
+.dnd-cs-hp > span:first-child { font-size: 11px; }
+.dnd-cs-hp input { width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
+.dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
+.dnd-cs-toggle {
+  padding: 7px 12px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04); color: var(--dnd-text-dim);
+  cursor: pointer; font-size: 12px; letter-spacing: .02em;
+  transition: all 160ms ease;
+}
+.dnd-cs-toggle.on {
+  border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
+  color: var(--dnd-glass-accent);
+  background: var(--dnd-glass-accent-soft);
+  box-shadow: 0 0 16px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
+}
+.dnd-cs-exhaustion strong { min-width: 14px; text-align: center; color: var(--ui-text); font-size: 15px; }
 
-/* Body layout */
-.dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+/* ===== BODY ===== */
+.dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); gap: 14px; align-items: start; }
 .dnd-cs-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .dnd-cs-right { min-width: 0; }
 
 /* Abilities + skills */
 .dnd-cs-abilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.dnd-cs-ability { border: 1px solid var(--ui-border); border-radius: 10px; padding: 8px; background: var(--ui-surface-subtle); }
-.dnd-cs-ability-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
-.dnd-cs-ability-score { display: flex; align-items: center; gap: 6px; }
-.dnd-cs-ability-name { font-weight: 700; font-size: 12px; width: 34px; color: var(--ui-text-secondary); }
-.dnd-cs-ability-score input { width: 52px; font-weight: 700; text-align: center; }
-.dnd-cs-ability-mod { font-weight: 700; color: var(--ui-text); font-style: normal; }
-.dnd-cs-save { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface-elevated); color: var(--ui-text-secondary); font-size: 12px; cursor: pointer; }
-.dnd-cs-save.prof { color: var(--ui-text); }
-.dnd-cs-skills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
-.dnd-cs-skills li { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.dnd-cs-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ui-text-secondary); }
-.dnd-cs-skill-mod { font-weight: 600; color: var(--ui-text); }
-.dnd-cs-skill-pip { padding: 0; border: 0; background: transparent; cursor: pointer; }
-.dnd-cs-pip { display: inline-block; width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--ui-border); box-sizing: border-box; }
-.dnd-cs-pip.proficient { background: var(--ui-brand-soft-on, #44cf6e); border-color: var(--ui-brand-soft-on, #44cf6e); }
-.dnd-cs-pip.expertise { background: var(--ui-brand-soft-on, #44cf6e); border-color: var(--ui-brand-soft-on, #44cf6e); box-shadow: 0 0 0 2px var(--ui-brand-soft); }
-.dnd-cs-pip.half { background: var(--ui-text-secondary); border-color: var(--ui-text-secondary); }
+.dnd-cs-ability { padding: 10px 10px 8px; }
+.dnd-cs-ability-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.dnd-cs-ability-score { display: flex; align-items: baseline; gap: 8px; }
+.dnd-cs-ability-name { font-weight: 800; font-size: 11px; letter-spacing: .08em; color: var(--dnd-text-dim); width: 32px; }
+.dnd-cs-ability-score input { width: 48px; font-weight: 800; font-size: 22px; text-align: center; padding: 2px; }
+.dnd-cs-ability-mod { font-weight: 800; font-size: 15px; color: var(--dnd-glass-accent); font-style: normal; margin-left: auto; }
+.dnd-cs-save {
+  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+  border: 1px solid var(--dnd-glass-border); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03); color: var(--dnd-text-dim); font-size: 11px; cursor: pointer;
+  transition: all 150ms ease;
+}
+.dnd-cs-save.prof { color: var(--ui-text); border-color: color-mix(in srgb, var(--dnd-glass-accent) 40%, transparent); }
+.dnd-cs-skills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.dnd-cs-skills li { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px; border-radius: 6px; }
+.dnd-cs-skills li:hover { background: rgba(255, 255, 255, 0.03); }
+.dnd-cs-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dnd-text-dim); }
+.dnd-cs-skill-mod { font-weight: 700; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+.dnd-cs-skill-pip { padding: 0; border: 0; background: transparent; cursor: pointer; display: inline-flex; }
+/* Proficiency ring: idle empty ring, proficient filled green, expertise double ring. */
+.dnd-cs-pip { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--dnd-glass-border); box-sizing: border-box; transition: all 150ms ease; }
+.dnd-cs-pip.on,
+.dnd-cs-pip.proficient { background: var(--dnd-glass-accent); border-color: var(--dnd-glass-accent); box-shadow: 0 0 8px var(--dnd-glass-accent-glow); }
+.dnd-cs-pip.expertise { background: radial-gradient(circle, transparent 30%, var(--dnd-glass-accent) 34%); border-color: var(--dnd-glass-accent); box-shadow: 0 0 8px var(--dnd-glass-accent-glow); }
+.dnd-cs-pip.half { background: var(--dnd-text-dim); border-color: var(--dnd-text-dim); }
 
 /* Passives */
 .dnd-cs-passives { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.dnd-cs-passive { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-subtle); text-align: center; }
-.dnd-cs-passive strong { font-size: 18px; }
-.dnd-cs-passive span { font-size: 11px; color: var(--ui-text-secondary); }
+.dnd-cs-passive { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; text-align: center; }
+.dnd-cs-passive strong { font-size: 20px; font-weight: 800; color: var(--ui-text); }
+.dnd-cs-passive span { font-size: 10px; letter-spacing: .03em; color: var(--dnd-text-dim); }
 
 /* Proficiencies */
-.dnd-cs-proficiencies { border: 1px solid var(--ui-border); border-radius: 10px; padding: 10px; }
-.dnd-cs-prof-group, .dnd-cs-prof-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 12px; }
-.dnd-cs-prof-label { flex: 0 0 100%; color: var(--ui-text-secondary); font-size: 11px; }
-.dnd-cs-prof-group label { display: inline-flex; align-items: center; gap: 4px; }
+.dnd-cs-proficiencies { padding: 12px; }
+.dnd-cs-prof-group, .dnd-cs-prof-list { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; font-size: 12px; }
+.dnd-cs-prof-label { flex: 0 0 100%; color: var(--dnd-text-dim); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; }
+/* Proficiency options as glass chips. */
+.dnd-cs-prof-group label {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+  border: 1px solid var(--dnd-glass-border); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03); cursor: pointer; user-select: none;
+}
+.dnd-cs-prof-group label:has(input:checked) {
+  border-color: color-mix(in srgb, var(--dnd-glass-accent) 50%, transparent);
+  background: var(--dnd-glass-accent-soft); color: var(--dnd-glass-accent);
+}
+.dnd-cs-prof-group input { width: auto; accent-color: var(--dnd-glass-accent); }
 .dnd-cs-prof-row { display: flex; gap: 4px; width: 100%; }
 .dnd-cs-prof-row input { flex: 1; }
-.dnd-cs-prof-row button, .dnd-cs-row-remove { flex: 0 0 26px; width: 26px; height: 26px; padding: 0; border: 1px solid var(--ui-border); border-radius: 6px; background: var(--ui-surface-elevated); color: var(--ui-text-secondary); cursor: pointer; }
-.dnd-cs-add, .dnd-cs-add-sm { align-self: flex-start; padding: 6px 10px; border: 1px dashed var(--ui-border); border-radius: 8px; background: transparent; color: var(--ui-text-secondary); cursor: pointer; font-size: 12px; }
-.dnd-cs-add { margin-top: 8px; }
+.dnd-cs-prof-row button, .dnd-cs-row-remove {
+  flex: 0 0 26px; width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--dnd-glass-border); border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04); color: var(--dnd-text-dim); cursor: pointer;
+  transition: all 150ms ease;
+}
+.dnd-cs-row-remove:hover { color: #ff6b6b; border-color: rgba(255,107,107,.4); }
+.dnd-cs-add, .dnd-cs-add-sm {
+  align-self: flex-start; padding: 7px 12px; border: 1px dashed var(--dnd-glass-border); border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
+  transition: all 150ms ease;
+}
+.dnd-cs-add:hover, .dnd-cs-add-sm:hover { border-color: color-mix(in srgb, var(--dnd-glass-accent) 40%, transparent); color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft); }
+.dnd-cs-add { margin-top: 6px; }
 
-/* Tabs */
-.dnd-cs-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
-.dnd-cs-tabs button { padding: 6px 10px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-subtle); color: var(--ui-text-secondary); cursor: pointer; font-size: 12px; }
-.dnd-cs-tabs button.active { border-color: var(--ui-brand-soft-on, #44cf6e); color: var(--ui-text); background: var(--ui-brand-soft); }
-.dnd-cs-tab-panel { border: 1px solid var(--ui-border); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; min-height: 160px; }
+/* ===== TABS ===== */
+.dnd-cs-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.dnd-cs-tabs button {
+  padding: 7px 14px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
+  transition: all 160ms ease;
+}
+.dnd-cs-tabs button:hover { color: var(--ui-text); }
+.dnd-cs-tabs button.active {
+  border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
+  color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft);
+  box-shadow: 0 0 16px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
+}
+.dnd-cs-tab-panel { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
 
-/* Attack / spell / equipment rows */
-.dnd-cs-attack-head, .dnd-cs-spell-head { display: grid; gap: 6px; font-size: 11px; color: var(--ui-text-secondary); }
+/* Rows */
+.dnd-cs-attack-head, .dnd-cs-spell-head { display: grid; gap: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); padding: 0 4px; }
 .dnd-cs-attack-head { grid-template-columns: 2fr 1fr 1.2fr 1.2fr 26px; }
+.dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.025); padding: 6px 8px; transition: border-color 150ms, background 150ms; }
+.dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(255, 255, 255, 0.045); }
 .dnd-cs-attack-row { display: grid; grid-template-columns: 2fr 1fr 1.2fr 1.2fr 26px; gap: 6px; align-items: center; }
 .dnd-cs-spell-head { grid-template-columns: 30px 1fr 52px 26px; }
 .dnd-cs-spell-row { display: grid; grid-template-columns: 30px 1fr 52px 26px; gap: 6px; align-items: center; }
@@ -427,23 +591,26 @@ export default defineComponent({
 .dnd-cs-equip-row { display: grid; grid-template-columns: 28px 2fr 60px 2fr 26px; gap: 6px; align-items: center; }
 .dnd-cs-goal-row { display: grid; grid-template-columns: 28px 1fr 26px; gap: 6px; align-items: start; }
 .dnd-cs-goal-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.dnd-cs-goal-main input.done { text-decoration: line-through; color: var(--ui-text-secondary); }
+.dnd-cs-goal-main input.done { text-decoration: line-through; color: var(--dnd-text-dim); }
 .dnd-cs-equip-check { display: grid; place-items: center; }
+.dnd-cs-equip-check input { accent-color: var(--dnd-glass-accent); }
 .dnd-cs-qty { text-align: center; }
-.dnd-cs-feature-row { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--ui-border); }
+.dnd-cs-feature-row { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.025); }
 .dnd-cs-feature-main { display: flex; align-items: center; gap: 6px; }
-.dnd-cs-feature-main > input { flex: 1; min-width: 0; }
-.dnd-cs-uses { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; }
-.dnd-cs-uses input { width: 44px; }
-.dnd-cs-freetext { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ui-text-secondary); }
-.dnd-cs-notes { min-height: 220px; }
+.dnd-cs-feature-main > input { flex: 1; min-width: 0; font-weight: 600; }
+.dnd-cs-uses { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; color: var(--dnd-text-dim); }
+.dnd-cs-uses input { width: 40px; }
+.dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
+.dnd-cs-notes { min-height: 240px; text-transform: none; }
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
+  .dnd-cs-topcard { padding: 14px; }
+  .dnd-cs-name { font-size: 22px; }
   .dnd-cs-body { grid-template-columns: 1fr; }
   .dnd-cs-abilities { grid-template-columns: 1fr; }
-  .dnd-cs-combat { gap: 6px; }
-  .dnd-cs-stat input { width: 48px; }
+  .dnd-cs-combat { gap: 8px 12px; }
+  .dnd-cs-stat input { width: 46px; }
   .dnd-cs-attack-head { display: none; }
   .dnd-cs-attack-row { grid-template-columns: 1fr 1fr; }
   .dnd-cs-attack-row .dnd-cs-row-remove { grid-column: 2; justify-self: end; }
