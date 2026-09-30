@@ -93,7 +93,9 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.template-page { min-height:100vh; padding:20px; background:var(--ui-page); color:var(--ui-text); }
+/* Own scroll container: the global mobile rule `@media(max-width:640px){html,body{overflow:hidden}}`
+   (there for the canvas) otherwise traps this tall sheet with no way to scroll. */
+.template-page { height:100vh; height:100dvh; overflow-y:auto; overflow-x:hidden; padding:20px; background:var(--ui-page); color:var(--ui-text); }
 .template-header { display:flex; justify-content:space-between; max-width:1080px; margin:0 auto 26px; }
 .template-header-actions { display:flex; align-items:center; gap:10px; }
 .template-save-status,.template-kind { color:var(--ui-text-secondary); font-size:13px; }

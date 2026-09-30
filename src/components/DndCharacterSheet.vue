@@ -63,23 +63,25 @@
         <section class="dnd-cs-abilities">
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
             <header class="dnd-cs-ability-head">
-              <div class="dnd-cs-ability-score">
-                <span class="dnd-cs-ability-name">{{ ability.short }}</span>
-                <input type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, $ev($event))" />
-                <em class="dnd-cs-ability-mod">{{ formatModifier(abilityModifier(data.abilities[ability.key].score)) }}</em>
-              </div>
-              <button type="button" class="dnd-cs-save" :class="{ prof: data.abilities[ability.key].savingThrowProficient }" :disabled="readonly" :aria-pressed="data.abilities[ability.key].savingThrowProficient" :title="'Спасбросок ' + ability.label" @click="toggleSave(ability.key)">
-                <span class="dnd-cs-pip" :class="{ on: data.abilities[ability.key].savingThrowProficient }"></span>
-                Спас {{ formatModifier(savingThrow(ability.key)) }}
-              </button>
+              <span class="dnd-cs-ability-name">{{ ability.short }}</span>
+              <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, $ev($event))" />
             </header>
+            <div class="dnd-cs-roll-row">
+              <button type="button" class="dnd-cs-roll" :title="'Проверка: ' + ability.label" @click="roll('check', ability.label, abilityModifier(data.abilities[ability.key].score))">Проверка <b>{{ formatModifier(abilityModifier(data.abilities[ability.key].score)) }}</b></button>
+              <div class="dnd-cs-save-cell">
+                <button type="button" class="dnd-cs-pip-btn" :class="{ on: data.abilities[ability.key].savingThrowProficient }" :disabled="readonly" :aria-pressed="data.abilities[ability.key].savingThrowProficient" :title="data.abilities[ability.key].savingThrowProficient ? 'Владение спасброском' : 'Нет владения спасброском'" @click="toggleSave(ability.key)"><span class="dnd-cs-pip" :class="{ on: data.abilities[ability.key].savingThrowProficient }"></span></button>
+                <button type="button" class="dnd-cs-roll" :title="'Спасбросок: ' + ability.label" @click="roll('save', ability.label, savingThrow(ability.key))">Спас <b>{{ formatModifier(savingThrow(ability.key)) }}</b></button>
+              </div>
+            </div>
             <ul class="dnd-cs-skills">
               <li v-for="skill in skillsByAbility[ability.key]" :key="skill.key">
                 <button type="button" class="dnd-cs-skill-pip" :class="skillProf(skill.key)" :disabled="readonly" :title="skillProfTitle(skill.key)" @click="cycleSkill(skill.key)">
                   <span class="dnd-cs-pip" :class="skillProf(skill.key)"></span>
                 </button>
-                <span class="dnd-cs-skill-name">{{ skill.label }}</span>
-                <span class="dnd-cs-skill-mod">{{ formatModifier(skillMod(skill.key)) }}</span>
+                <button type="button" class="dnd-cs-skill-roll" :title="'Проверка: ' + skill.label" @click="roll('skill', skill.label, skillMod(skill.key))">
+                  <span class="dnd-cs-skill-name">{{ skill.label }}</span>
+                  <span class="dnd-cs-skill-mod">{{ formatModifier(skillMod(skill.key)) }}</span>
+                </button>
               </li>
             </ul>
           </article>
@@ -124,13 +126,16 @@
         <div class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
           <!-- Attacks -->
           <template v-if="data.activeTab === 'attacks'">
-            <div class="dnd-cs-attack-head"><span>Название</span><span>Бонус</span><span>Урон</span><span>Тип</span><span></span></div>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
-              <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', $ev($event))" />
-              <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="+5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', $ev($event))" />
-              <input :readonly="readonly" :value="item.damage || ''" placeholder="1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', $ev($event))" />
-              <input :readonly="readonly" :value="item.damageType || ''" placeholder="колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', $ev($event))" />
-              <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить атаку" @click="removeItem('attacks', item.id)">×</button>
+              <div class="dnd-cs-attack-top">
+                <input class="dnd-cs-attack-name" :readonly="readonly" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', $ev($event))" />
+                <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить атаку" @click="removeItem('attacks', item.id)">×</button>
+              </div>
+              <div class="dnd-cs-attack-fields">
+                <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', $ev($event))" />
+                <input :readonly="readonly" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', $ev($event))" />
+                <input :readonly="readonly" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', $ev($event))" />
+              </div>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('attacks')">+ Добавить атаку</button>
             <label class="dnd-cs-freetext">Атаки и заклинания
@@ -207,11 +212,25 @@
         </div>
       </div>
     </div>
+
+    <!-- Roll toasts: bottom-left, glass, auto-dismiss after 10s. Teleported to
+         body so the scroll container never clips them. -->
+    <Teleport to="body">
+      <div class="dnd-cs-toasts" aria-live="polite">
+        <transition-group name="dnd-cs-toast">
+          <div v-for="t in rolls" :key="t.id" class="dnd-cs-toast" :class="t.crit">
+            <button type="button" class="dnd-cs-toast-close" aria-label="Закрыть" @click="dismissRoll(t.id)">×</button>
+            <div class="dnd-cs-toast-head">{{ t.typeLabel }} · {{ t.name }}</div>
+            <div class="dnd-cs-toast-formula">1d20 (<b>{{ t.d }}</b>) {{ t.modText }} = <strong>{{ t.total }}</strong></div>
+          </div>
+        </transition-group>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, type PropType } from 'vue';
+import { computed, defineComponent, onBeforeUnmount, ref, type PropType } from 'vue';
 import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
@@ -220,8 +239,11 @@ import {
 } from '../dnd/characterSheet';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
+type RollKind = 'check' | 'save' | 'skill';
+type RollToast = { id: string; typeLabel: string; name: string; d: number; modText: string; total: number; crit: '' | 'crit-max' | 'crit-min' };
 
 const newId = () => Math.random().toString(36).slice(2, 10);
+const ROLL_TOAST_MS = 10000;
 
 export default defineComponent({
   name: 'DndCharacterSheet',
@@ -313,6 +335,22 @@ export default defineComponent({
 
     const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };
 
+    // ===== Dice rolls + toasts =====
+    const rolls = ref<RollToast[]>([]);
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const rollTypeLabel: Record<RollKind, string> = { check: 'Проверка', save: 'Спасбросок', skill: 'Проверка' };
+    const dismissRoll = (id: string) => { rolls.value = rolls.value.filter((r) => r.id !== id); };
+    const roll = (kind: RollKind, name: string, modifier: number) => {
+      const d = Math.floor(Math.random() * 20) + 1;
+      const total = d + modifier;
+      const modText = modifier === 0 ? '' : modifier > 0 ? `+ ${modifier}` : `− ${Math.abs(modifier)}`;
+      const id = newId();
+      const crit: RollToast['crit'] = d === 20 ? 'crit-max' : d === 1 ? 'crit-min' : '';
+      rolls.value = [{ id, typeLabel: rollTypeLabel[kind], name, d, modText, total, crit }, ...rolls.value].slice(0, 5);
+      timers.push(setTimeout(() => dismissRoll(id), ROLL_TOAST_MS));
+    };
+    onBeforeUnmount(() => { timers.forEach(clearTimeout); });
+
     return {
       abilities: DND_ABILITIES,
       tabs: [
@@ -332,6 +370,7 @@ export default defineComponent({
       changeHp, changeExhaustion, toggleInspiration,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
+      rolls, roll, dismissRoll,
     };
   },
 });
@@ -340,15 +379,15 @@ export default defineComponent({
 <style scoped>
 /* ===== Liquid Glass visual tokens (develop the style from here) ===== */
 .dnd-cs {
-  --dnd-glass-bg: rgba(17, 21, 18, 0.55);
-  --dnd-glass-border: rgba(120, 190, 140, 0.16);
-  --dnd-glass-highlight: rgba(255, 255, 255, 0.07);
+  --dnd-glass-bg: rgba(13, 17, 14, 0.72);
+  --dnd-glass-border: rgba(130, 210, 155, 0.28);
+  --dnd-glass-highlight: rgba(255, 255, 255, 0.10);
   --dnd-glass-accent: #00ff00;
-  --dnd-glass-accent-soft: rgba(0, 255, 0, 0.13);
-  --dnd-glass-accent-glow: rgba(0, 255, 0, 0.30);
+  --dnd-glass-accent-soft: rgba(0, 255, 0, 0.16);
+  --dnd-glass-accent-glow: rgba(0, 255, 0, 0.36);
   --dnd-glass-radius: 20px;
-  --dnd-sub-bg: rgba(255, 255, 255, 0.035);
-  --dnd-text-dim: #86a593;
+  --dnd-sub-bg: rgba(255, 255, 255, 0.06);
+  --dnd-text-dim: #a7c8b4;
 
   display: flex;
   flex-direction: column;
@@ -382,10 +421,10 @@ export default defineComponent({
 .dnd-cs-ability,
 .dnd-cs-passive,
 .dnd-cs-proficiencies {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.008));
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)), rgba(10, 14, 11, 0.5);
   border: 1px solid var(--dnd-glass-border);
   border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 /* ===== Inputs: read as plain values in idle, reveal edit affordance on hover/focus ===== */
@@ -500,25 +539,42 @@ export default defineComponent({
 
 /* Abilities + skills */
 .dnd-cs-abilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.dnd-cs-ability { padding: 10px 10px 8px; }
-.dnd-cs-ability-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
-.dnd-cs-ability-score { display: flex; align-items: baseline; gap: 8px; }
-.dnd-cs-ability-name { font-weight: 800; font-size: 11px; letter-spacing: .08em; color: var(--dnd-text-dim); width: 32px; }
-.dnd-cs-ability-score input { width: 48px; font-weight: 800; font-size: 22px; text-align: center; padding: 2px; }
-.dnd-cs-ability-mod { font-weight: 800; font-size: 15px; color: var(--dnd-glass-accent); font-style: normal; margin-left: auto; }
-.dnd-cs-save {
-  display: flex; align-items: center; gap: 6px; padding: 4px 8px;
+.dnd-cs-ability { padding: 10px; }
+.dnd-cs-ability-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.dnd-cs-ability-name { font-weight: 800; font-size: 12px; letter-spacing: .08em; color: var(--ui-text); flex: 1; }
+.dnd-cs-ability-score { width: 46px !important; flex: 0 0 46px; font-weight: 800; font-size: 18px; text-align: center; padding: 2px; }
+/* Check + save roll row under the ability title. */
+.dnd-cs-roll-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.dnd-cs-save-cell { display: flex; align-items: center; gap: 4px; }
+.dnd-cs-roll {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px;
   border: 1px solid var(--dnd-glass-border); border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03); color: var(--dnd-text-dim); font-size: 11px; cursor: pointer;
-  transition: all 150ms ease;
+  background: rgba(255, 255, 255, 0.05); color: var(--dnd-text-dim);
+  font-size: 11px; cursor: pointer; white-space: nowrap;
+  transition: all 140ms ease;
 }
-.dnd-cs-save.prof { color: var(--ui-text); border-color: color-mix(in srgb, var(--dnd-glass-accent) 40%, transparent); }
+.dnd-cs-roll b { color: var(--ui-text); font-size: 12px; font-variant-numeric: tabular-nums; }
+.dnd-cs-roll:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
+  color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft);
+  box-shadow: 0 0 12px var(--dnd-glass-accent-glow);
+}
+.dnd-cs-roll:hover:not(:disabled) b { color: var(--dnd-glass-accent); }
+.dnd-cs-roll:active:not(:disabled) { transform: translateY(1px); }
+.dnd-cs-pip-btn { padding: 3px; border: 0; background: transparent; cursor: pointer; display: inline-flex; line-height: 0; }
 .dnd-cs-skills { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
-.dnd-cs-skills li { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 2px 2px; border-radius: 6px; }
-.dnd-cs-skills li:hover { background: rgba(255, 255, 255, 0.03); }
-.dnd-cs-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dnd-text-dim); }
+.dnd-cs-skills li { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.dnd-cs-skill-roll {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  padding: 3px 8px; border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--dnd-text-dim); cursor: pointer; font: inherit;
+  transition: all 130ms ease;
+}
+.dnd-cs-skill-roll:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); border-color: color-mix(in srgb, var(--dnd-glass-accent) 40%, transparent); color: var(--dnd-glass-accent); }
+.dnd-cs-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
 .dnd-cs-skill-mod { font-weight: 700; color: var(--ui-text); font-variant-numeric: tabular-nums; }
-.dnd-cs-skill-pip { padding: 0; border: 0; background: transparent; cursor: pointer; display: inline-flex; }
+.dnd-cs-skill-roll:hover:not(:disabled) .dnd-cs-skill-mod { color: var(--dnd-glass-accent); }
+.dnd-cs-skill-pip { padding: 0; border: 0; background: transparent; cursor: pointer; display: inline-flex; line-height: 0; }
 /* Proficiency ring: idle empty ring, proficient filled green, expertise double ring. */
 .dnd-cs-pip { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--dnd-glass-border); box-sizing: border-box; transition: all 150ms ease; }
 .dnd-cs-pip.on,
@@ -580,11 +636,15 @@ export default defineComponent({
 .dnd-cs-tab-panel { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
 
 /* Rows */
-.dnd-cs-attack-head, .dnd-cs-spell-head { display: grid; gap: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); padding: 0 4px; }
-.dnd-cs-attack-head { grid-template-columns: 2fr 1fr 1.2fr 1.2fr 26px; }
-.dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.025); padding: 6px 8px; transition: border-color 150ms, background 150ms; }
-.dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(255, 255, 255, 0.045); }
-.dnd-cs-attack-row { display: grid; grid-template-columns: 2fr 1fr 1.2fr 1.2fr 26px; gap: 6px; align-items: center; }
+.dnd-cs-spell-head { display: grid; gap: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); padding: 0 4px; }
+.dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.04); padding: 8px; transition: border-color 150ms, background 150ms; }
+.dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(255, 255, 255, 0.06); }
+/* Attack card: name row on top, bonus/damage/type wrap below - never overflows. */
+.dnd-cs-attack-row { display: flex; flex-direction: column; gap: 6px; }
+.dnd-cs-attack-top { display: flex; align-items: center; gap: 6px; }
+.dnd-cs-attack-name { flex: 1; min-width: 0; font-weight: 600; }
+.dnd-cs-attack-fields { display: flex; flex-wrap: wrap; gap: 6px; }
+.dnd-cs-attack-fields input { flex: 1 1 90px; min-width: 0; }
 .dnd-cs-spell-head { grid-template-columns: 30px 1fr 52px 26px; }
 .dnd-cs-spell-row { display: grid; grid-template-columns: 30px 1fr 52px 26px; gap: 6px; align-items: center; }
 .dnd-cs-spell-notes { grid-column: 1 / -1; }
@@ -602,6 +662,34 @@ export default defineComponent({
 .dnd-cs-uses input { width: 40px; }
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
+
+/* ===== Roll toasts (Teleported to body: literal colours, not .dnd-cs tokens) ===== */
+.dnd-cs-toasts {
+  position: fixed; left: 16px; bottom: 16px; z-index: 3000;
+  display: flex; flex-direction: column-reverse; gap: 8px;
+  max-width: min(330px, calc(100vw - 32px)); pointer-events: none;
+}
+.dnd-cs-toast {
+  position: relative; pointer-events: auto;
+  padding: 10px 30px 10px 13px; border-radius: 14px;
+  background: linear-gradient(160deg, rgba(22, 30, 24, 0.93), rgba(9, 13, 10, 0.93));
+  border: 1px solid rgba(0, 255, 0, 0.30);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.14), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  color: #eaf6ee;
+}
+.dnd-cs-toast-head { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: #8fe0a4; margin-bottom: 3px; }
+.dnd-cs-toast-formula { font-size: 15px; font-variant-numeric: tabular-nums; }
+.dnd-cs-toast-formula b { color: #d3ecda; font-weight: 700; }
+.dnd-cs-toast-formula strong { color: #00ff00; font-size: 18px; font-weight: 800; }
+.dnd-cs-toast.crit-max { border-color: rgba(0, 255, 0, 0.65); box-shadow: 0 0 30px rgba(0, 255, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+.dnd-cs-toast.crit-max .dnd-cs-toast-formula strong { text-shadow: 0 0 12px rgba(0, 255, 0, 0.7); }
+.dnd-cs-toast.crit-min { border-color: rgba(255, 90, 90, 0.55); box-shadow: 0 0 22px rgba(255, 70, 70, 0.28), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+.dnd-cs-toast.crit-min .dnd-cs-toast-formula strong { color: #ff6b6b; }
+.dnd-cs-toast-close { position: absolute; top: 5px; right: 8px; padding: 0; width: 18px; height: 18px; border: 0; background: transparent; color: #8fe0a4; cursor: pointer; font-size: 15px; line-height: 1; }
+.dnd-cs-toast-close:hover { color: #eaf6ee; }
+.dnd-cs-toast-enter-active, .dnd-cs-toast-leave-active { transition: opacity 220ms ease, transform 220ms ease; }
+.dnd-cs-toast-enter-from, .dnd-cs-toast-leave-to { opacity: 0; transform: translateX(-18px); }
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
