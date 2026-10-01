@@ -52,6 +52,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, type InteractiveTemplate } from '../api/client';
 import type { BoardOperation, BoardParticipant } from '../boards/types';
 import BoardEditor from '../components/board/BoardEditor.vue';
@@ -142,6 +143,7 @@ async function load() {
     const loadedTemplate = await interactiveTemplates.get(loadingBoardId);
     if (sequence !== loadSequence || boardId.value !== loadingBoardId) return;
     template.value = loadedTemplate;
+    markResourceOpened('interactive-template', loadedTemplate.id);
     templateType.value = loadedTemplate.templateType;
     if (loadedTemplate.templateType === 'dnd-character') return;
 

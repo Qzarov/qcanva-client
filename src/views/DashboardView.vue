@@ -1261,7 +1261,9 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
@@ -2467,7 +2469,10 @@ export default defineComponent({
     const onDashboardPullEnd = () => {
       const shouldRefresh = dashboardPullDistance.value >= DASHBOARD_PULL_THRESHOLD && !isRefreshing.value;
       resetDashboardPull();
-      if (shouldRefresh) void load({ showLoading: false });
+      if (shouldRefresh) {
+        void load({ showLoading: false });
+        void loadRecentResources();
+      }
     };
 
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
@@ -2475,9 +2480,7 @@ export default defineComponent({
       if (!item) return;
       const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
-      void recentResourcesApi.markOpened(type, item.id).catch(() => {
-        // Opening a resource must remain available if saving its recent entry fails.
-      });
+      markResourceOpened(type, item.id);
     };
 
     const openCanvas = (id: string) => {
@@ -4021,8 +4024,29 @@ export default defineComponent({
       }
     };
 
+    /**
+     * Recents follow you between devices: a resource opened on the web shows
+     * up here as soon as this dashboard is looked at again - the tab regains
+     * focus, or the Android app comes back to the foreground (the dashboard
+     * stays mounted in the background, so mounting alone is not enough).
+     */
+    const onDashboardVisible = () => {
+      if (document.visibilityState === 'visible') void loadRecentResources();
+    };
+    let appStateListener: PluginListenerHandle | null = null;
+    let dashboardUnmounted = false;
+
     onMounted(() => {
       void loadRecentResources();
+      document.addEventListener('visibilitychange', onDashboardVisible);
+      if (Capacitor.isNativePlatform()) {
+        void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) void loadRecentResources();
+        }).then((handle) => {
+          if (dashboardUnmounted) void handle.remove();
+          else appStateListener = handle;
+        });
+      }
       const cached = restoreDashboardCache();
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
@@ -4036,6 +4060,10 @@ export default defineComponent({
       refreshOverflowIndicators();
     });
     onBeforeUnmount(() => {
+      dashboardUnmounted = true;
+      document.removeEventListener('visibilitychange', onDashboardVisible);
+      void appStateListener?.remove();
+      appStateListener = null;
       removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
       restoreBodyOverflow();

@@ -10237,3 +10237,19 @@ textarea:focus-visible {
     var(--ui-page);
   background-attachment: fixed;
 }
+
+/* Phone: the dashboard's ambient light, toned down. On a narrow screen the
+   large ambient spots cover nearly the whole viewport at full strength, so a
+   page-coloured veil - the same technique as the documents - keeps them a
+   hint rather than a wash. The shared token and desktop are untouched. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .dashboard-view {
+    background:
+      linear-gradient(0deg,
+        color-mix(in srgb, var(--ui-page) 65%, transparent),
+        color-mix(in srgb, var(--ui-page) 65%, transparent)),
+      var(--ui-glass-ambient),
+      var(--ui-page);
+    background-attachment: fixed;
+  }
+}

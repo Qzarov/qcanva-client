@@ -719,6 +719,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useBackHandler } from '../composables/useBackHandler';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
 import { Capacitor } from '@capacitor/core';
 import type { Editor, Range } from '@tiptap/core';
@@ -2786,6 +2787,7 @@ export default defineComponent({
         const res = await textDocuments.get(resolvedId.value);
         writeNativeResourceCache('text-document', [id, res.document.id, res.document.slug || ''], res);
         resolvedId.value = res.document.id;
+        markResourceOpened('text-document', res.document.id);
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title || 'Untitled document';

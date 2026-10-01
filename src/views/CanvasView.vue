@@ -980,6 +980,7 @@ import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useRe
 import { useI18n } from '../composables/useI18n';
 import { useMinimapPreference } from '../composables/useMinimapPreference';
 import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { useBackHandler } from '../composables/useBackHandler';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
@@ -1371,6 +1372,7 @@ export default defineComponent({
         // Canonicalize to the real id (the URL may have been a slug) so the WS
         // room and all mutations use it.
         resolvedId.value = res.canvas.id;
+        markResourceOpened('canvas', res.canvas.id);
         slug.value = res.canvas.slug || null;
         slugInput.value = slug.value || '';
         // Prettify the address bar: prefer the slug when present.

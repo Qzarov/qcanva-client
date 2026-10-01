@@ -254,6 +254,7 @@ import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoratio
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import BackButton from '../components/BackButton.vue';
 
@@ -374,6 +375,7 @@ export default defineComponent({
         writeNativeResourceCache('html', [id, res.document.id, res.document.slug || ''], res);
         // Canonicalize to the real id (URL may have been a slug).
         resolvedId.value = res.document.id;
+        markResourceOpened('html-document', res.document.id);
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;

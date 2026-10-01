@@ -11,6 +11,8 @@ vi.mock('vue-router', () => ({
   useRoute: () => ({ params: { id: 'canvas-1' }, query: {} }),
 }));
 
+const markOpened = vi.fn().mockResolvedValue({});
+
 // A minimal CanvasLoader exposing just the selection API the Back chain uses.
 const selectedNodeIds = ref<string[]>([]);
 const clearSelection = vi.fn(() => { selectedNodeIds.value = []; });
@@ -47,7 +49,9 @@ vi.mock('../api/client', () => ({
   canvas: {
     get: vi.fn(() => Promise.resolve({
       canvas: {
-        id: 'canvas-1',
+        // Opened as /canvas/canvas-1 - a slug; the real id differs.
+        id: 'canvas-real',
+        slug: 'canvas-1',
         title: 'Canvas',
         data: JSON.stringify({ nodes: [], edges: [], drawings: [] }),
         revision: 1,
@@ -66,6 +70,7 @@ vi.mock('../api/client', () => ({
   isAdmin: vi.fn(() => false),
   setToken: vi.fn(),
   textDocuments: { list: vi.fn().mockResolvedValue({ documents: [] }), create: vi.fn() },
+  recentResources: { list: vi.fn().mockResolvedValue([]), markOpened: (...args: unknown[]) => markOpened(...args) },
 }));
 
 vi.mock('../composables/useCanvasSocket', () => ({
@@ -169,5 +174,14 @@ describe('CanvasView on mobile', () => {
     useMobileCanvasMode().setMode('cursor');
     wrapper.unmount();
     expect(runBackHandlers()).toBe(false);
+  });
+});
+
+describe('CanvasView Recents', () => {
+  it('records the opened canvas under its real id, even when opened by its slug', async () => {
+    const wrapper = await mountView();
+    expect(markOpened).toHaveBeenCalledWith('canvas', 'canvas-real');
+    expect(markOpened).not.toHaveBeenCalledWith('canvas', 'canvas-1');
+    wrapper.unmount();
   });
 });

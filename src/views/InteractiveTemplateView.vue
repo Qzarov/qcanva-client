@@ -24,6 +24,7 @@
 <script lang="ts">
 import { defineComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
 import { createDndCharacterSheet, normalizeDndCharacterSheet } from '../dnd/characterSheet';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -81,6 +82,7 @@ export default defineComponent({
     onMounted(async () => {
       try {
         template.value = await interactiveTemplates.get(String(route.params.id));
+        markResourceOpened('interactive-template', template.value?.id);
         Object.assign(data, normalizeDndCharacterSheet(template.value.data));
       } catch (e: any) {
         error.value = e?.message || 'Шаблон не найден';

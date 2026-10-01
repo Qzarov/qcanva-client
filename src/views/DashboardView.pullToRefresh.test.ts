@@ -13,9 +13,20 @@
 import { flushPromises, mount, type MountingOptions } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
+import { recentResources } from '../api/client';
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: { isNativePlatform: () => true },
+}));
+
+const appListeners: Record<string, (state: { isActive: boolean }) => void> = {};
+vi.mock('@capacitor/app', () => ({
+  App: {
+    addListener: vi.fn((event: string, handler: (state: { isActive: boolean }) => void) => {
+      appListeners[event] = handler;
+      return Promise.resolve({ remove: vi.fn() });
+    }),
+  },
 }));
 
 vi.mock('vue-router', () => ({
@@ -119,5 +130,54 @@ describe('dashboard pull-to-refresh vs. an open folder body', () => {
     expect(move.preventDefault).toHaveBeenCalled();
 
     wrapper.unmount();
+  });
+});
+
+describe('dashboard Recents stay in step with other devices', () => {
+  const listCalls = () => (recentResources.list as ReturnType<typeof vi.fn>).mock.calls.length;
+
+  it('reloads Recents on pull-to-refresh', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    const before = listCalls();
+
+    vm.onDashboardPullStart(fakeTouch(100));
+    vm.onDashboardPullMove(fakeTouch(600));
+    vm.onDashboardPullEnd();
+    await flushPromises();
+
+    expect(listCalls()).toBeGreaterThan(before);
+    wrapper.unmount();
+  });
+
+  it('reloads Recents when the app comes back to the foreground', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const before = listCalls();
+
+    appListeners.appStateChange?.({ isActive: false });
+    await flushPromises();
+    expect(listCalls()).toBe(before);
+
+    appListeners.appStateChange?.({ isActive: true });
+    await flushPromises();
+    expect(listCalls()).toBe(before + 1);
+    wrapper.unmount();
+  });
+
+  it('reloads Recents when the tab becomes visible again, and stops after unmount', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const before = listCalls();
+
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flushPromises();
+    expect(listCalls()).toBe(before + 1);
+
+    wrapper.unmount();
+    document.dispatchEvent(new Event('visibilitychange'));
+    await flushPromises();
+    expect(listCalls()).toBe(before + 1);
   });
 });
