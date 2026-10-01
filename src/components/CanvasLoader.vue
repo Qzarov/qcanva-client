@@ -294,18 +294,17 @@
             </button>
             <span class="node-fullscreen-editor-title">{{ t('editText') }}</span>
           </header>
-          <textarea
-            ref="fullscreenEditorRef"
-            class="node-editor node-fullscreen-editor-input"
-            :style="{
-              backgroundColor: 'var(--content-canvas-editor-surface)',
-              color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || 'var(--content-canvas-editor-text)',
-            }"
-            :value="fullscreenEditingNode.text"
-            @input="onEditInput($event, fullscreenEditingNode)"
-            @keydown.stop
-            @keyup.stop
-          ></textarea>
+          <div class="node-fullscreen-editor-card">
+            <textarea
+              ref="fullscreenEditorRef"
+              class="node-editor node-fullscreen-editor-input"
+              :style="{ color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || undefined }"
+              :value="fullscreenEditingNode.text"
+              @input="onEditInput($event, fullscreenEditingNode)"
+              @keydown.stop
+              @keyup.stop
+            ></textarea>
+          </div>
         </div>
       </Teleport>
 
@@ -4901,42 +4900,77 @@ g:hover > .edge-midpoint-conn {
 }
 
 /* Phone layout: full-screen text editor, opened from the bottom toolbar.
-   Sits above the canvas chrome (mode bar, toolbars) but below toasts. */
+   Sits above the canvas chrome (mode bar, toolbars) but below toasts.
+   QCanva Liquid Glass (same recipe as the D&D sheet): a dense frosted backdrop
+   the canvas only shows through as a blur, a glass header and a glass card
+   around the text. */
 .node-fullscreen-editor {
+  --nfe-backdrop: rgba(10, 14, 11, 0.86);
+  --nfe-glass-bg: rgba(13, 17, 14, 0.72);
+  --nfe-glass-border: rgba(130, 210, 155, 0.28);
+  --nfe-glass-highlight: rgba(255, 255, 255, 0.10);
+  --nfe-glass-sheen: rgba(255, 255, 255, 0.08);
+  --nfe-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
+  --nfe-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  --nfe-button-bg: rgba(255, 255, 255, 0.06);
+  --nfe-focus-glow: rgba(140, 255, 140, 0.22);
+
   position: fixed;
   inset: 0;
   z-index: 2000;
   display: flex;
   flex-direction: column;
   height: 100dvh;
-  background: var(--content-canvas-editor-surface);
+  background: var(--nfe-backdrop);
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  color: var(--ui-text);
+}
+
+:root[data-theme='light'] .node-fullscreen-editor {
+  --nfe-backdrop: rgba(240, 246, 241, 0.88);
+  --nfe-glass-bg: rgba(255, 255, 255, 0.72);
+  --nfe-glass-border: rgba(20, 91, 37, 0.16);
+  --nfe-glass-highlight: rgba(255, 255, 255, 0.9);
+  --nfe-glass-sheen: rgba(255, 255, 255, 0.55);
+  --nfe-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
+  --nfe-glass-shadow: 0 10px 34px rgba(26, 48, 31, 0.12);
+  --nfe-button-bg: rgba(20, 91, 37, 0.06);
+  --nfe-focus-glow: rgba(20, 91, 37, 0.14);
 }
 
 .node-fullscreen-editor-header {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   flex-shrink: 0;
-  min-height: 52px;
-  padding: env(safe-area-inset-top, 0px) 8px 0;
-  border-bottom: 1px solid var(--ui-border);
-  background: var(--ui-surface-elevated);
-  color: var(--ui-text);
+  min-height: 56px;
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  border-bottom: 1px solid var(--nfe-glass-border);
+  background: var(--nfe-glass-tint), var(--nfe-glass-bg);
+  box-shadow: inset 0 -1px 0 var(--nfe-glass-highlight), var(--nfe-glass-shadow);
 }
 
 .node-fullscreen-editor-back {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border: none;
-  border-radius: 10px;
-  background: transparent;
+  border: 1px solid var(--nfe-glass-border);
+  border-radius: 999px;
+  background: var(--nfe-button-bg);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight);
   color: inherit;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.node-fullscreen-editor-back:active {
+  background: var(--nfe-focus-glow);
 }
 
 .node-fullscreen-editor-title {
@@ -4944,11 +4978,44 @@ g:hover > .edge-midpoint-conn {
   font-weight: 600;
 }
 
+/* Glass card around the text. The textarea itself is transparent - a
+   textarea cannot carry the ::before sheen. */
+.node-fullscreen-editor-card {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--nfe-glass-border);
+  border-radius: 20px;
+  background: var(--nfe-glass-tint), var(--nfe-glass-bg);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight), var(--nfe-glass-shadow);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.node-fullscreen-editor-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--nfe-glass-sheen), transparent 42%);
+}
+
+.node-fullscreen-editor-card:focus-within {
+  border-color: var(--ui-focus);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight), 0 0 0 3px var(--nfe-focus-glow), var(--nfe-glass-shadow);
+}
+
 .node-editor.node-fullscreen-editor-input {
+  position: relative;
   flex: 1;
   height: auto;
   min-height: 0;
-  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: 16px;
+  background: transparent;
+  color: var(--ui-text);
   font-size: 16px;
 }
 
