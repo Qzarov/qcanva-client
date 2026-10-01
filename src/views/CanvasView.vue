@@ -1036,6 +1036,7 @@ import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useRe
 import { useI18n } from '../composables/useI18n';
 import { useMinimapPreference } from '../composables/useMinimapPreference';
 import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
+import { useBackHandler } from '../composables/useBackHandler';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
@@ -1081,7 +1082,9 @@ export default defineComponent({
         showToast(t('copyLinkFailed'), 'error');
       }
     };
-    const { mode: mobileMode } = useMobileCanvasMode();
+    const { mode: mobileMode, setMode: setMobileMode, resetMode: resetMobileMode } = useMobileCanvasMode();
+    // Every canvas opens in Hand mode (pan only), whatever mode the last one was left in.
+    resetMobileMode();
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
@@ -2161,6 +2164,46 @@ export default defineComponent({
       drawPanelOpen.value = !drawPanelOpen.value;
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
     };
+
+    // Android system Back on the canvas peels one layer per press: open sheets
+    // and panels, then the selected element's edit toolbar, then Cursor/Draw
+    // mode back to Hand - and only then leaves the canvas (main.ts). The text
+    // editor and the toolbar's own sub-panels register later, so they go first.
+    const closeTopCanvasLayer = (): boolean => {
+      if (pickingNodeForChat.value) {
+        onCancelPickNode();
+        return true;
+      }
+      const openPanel = [
+        showEmbedPicker, showDocPicker, templateImportOpen, showShortcuts, showPlugins,
+        addSheetOpen, menuOpen, diceOpen, showSyncEvents, showShare, showHistory, chatOpen,
+      ].find((panel) => panel.value);
+      if (openPanel) {
+        openPanel.value = false;
+        return true;
+      }
+      if (drawMobilePopup.value || drawPaletteColorOpen.value || drawColorPickerOpen.value) {
+        drawMobilePopup.value = null;
+        drawPaletteColorOpen.value = false;
+        drawColorPickerOpen.value = false;
+        return true;
+      }
+      if (activeToolbarMenu.value || blockSection.value) {
+        closeNodeEditingPanels();
+        return true;
+      }
+      const canvas = canvasRef.value;
+      if (canvas?.selectedNodeIds?.length || canvas?.selectedEdgeId || canvas?.selectedDrawingIds?.length) {
+        canvas.clearSelection();
+        return true;
+      }
+      if (mobileMode.value !== 'hand') {
+        setMobileMode('hand');
+        return true;
+      }
+      return false;
+    };
+    useBackHandler(closeTopCanvasLayer);
 
     // Sync draw panel with mobile mode changes
     watch(mobileMode, (newMode) => {

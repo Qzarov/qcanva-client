@@ -287,7 +287,7 @@ describe('buildNodeActions — none', () => {
 });
 
 // ──────────────────────────────────────────────
-// useMobileCanvasMode — localStorage persistence
+// useMobileCanvasMode — always opens in Hand, not persisted
 // ──────────────────────────────────────────────
 
 describe('useMobileCanvasMode', () => {
@@ -296,50 +296,37 @@ describe('useMobileCanvasMode', () => {
     localStorage.clear();
   });
 
-  it('defaults to hand mode when no stored value', async () => {
+  it('defaults to hand mode', async () => {
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
     expect(useMobileCanvasMode().mode.value).toBe('hand');
   });
 
-  it('restores cursor mode from storage', async () => {
+  it('ignores and clears a mode stored by older builds', async () => {
     localStorage.setItem('qcanva-canvas-mobile-mode', 'cursor');
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
-    expect(useMobileCanvasMode().mode.value).toBe('cursor');
+    expect(useMobileCanvasMode().mode.value).toBe('hand');
+    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBeNull();
   });
 
-  it('restores draw mode from storage', async () => {
-    localStorage.setItem('qcanva-canvas-mobile-mode', 'draw');
-    const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
-    expect(useMobileCanvasMode().mode.value).toBe('draw');
-  });
-
-  it('persists mode change to localStorage', async () => {
-    const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
-    useMobileCanvasMode().setMode('cursor');
-    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBe('cursor');
-    expect(useMobileCanvasMode().mode.value).toBe('cursor');
-  });
-
-  it('persists draw mode to localStorage', async () => {
+  it('switches modes without persisting them', async () => {
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
     useMobileCanvasMode().setMode('draw');
-    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBe('draw');
     expect(useMobileCanvasMode().mode.value).toBe('draw');
+    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBeNull();
   });
 
-  it('switches back to hand', async () => {
+  it('resetMode returns to hand', async () => {
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
     useMobileCanvasMode().setMode('cursor');
-    useMobileCanvasMode().setMode('hand');
+    useMobileCanvasMode().resetMode();
     expect(useMobileCanvasMode().mode.value).toBe('hand');
-    expect(localStorage.getItem('qcanva-canvas-mobile-mode')).toBe('hand');
   });
 
   it('does not throw when storage is unavailable', async () => {
-    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+    const removeItem = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('denied'); });
     const { useMobileCanvasMode } = await import('../composables/useMobileCanvasMode');
-    expect(() => useMobileCanvasMode().setMode('cursor')).not.toThrow();
-    setItem.mockRestore();
+    expect(useMobileCanvasMode().mode.value).toBe('hand');
+    removeItem.mockRestore();
   });
 });
 

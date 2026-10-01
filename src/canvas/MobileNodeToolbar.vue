@@ -249,6 +249,7 @@
 import { computed, defineComponent, ref, watch, type PropType } from 'vue';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeAction } from './nodeActions';
 import { useI18n } from '../composables/useI18n';
+import { useBackHandler } from '../composables/useBackHandler';
 
 const ICON_PATHS: Record<string, string> = {
   'edit-text': `<path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
@@ -417,6 +418,17 @@ export default defineComponent({
         drawingSection.value = null;
       }
     };
+
+    // Android system Back closes an open sub-panel / popup / "more" sheet first;
+    // the selection itself is cleared by CanvasView's handler on the next press.
+    // Mounted after CanvasView, so this handler is asked before the view's one.
+    useBackHandler(() => {
+      if (!overflowOpen.value && !activeSection.value && !drawingSection.value) return false;
+      overflowOpen.value = false;
+      activeSection.value = null;
+      drawingSection.value = null;
+      return true;
+    });
 
     const onTitleInput = (e: Event) => {
       const val = (e.target as HTMLInputElement).value;
