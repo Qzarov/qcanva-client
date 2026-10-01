@@ -1,6 +1,6 @@
 <template>
   <div
-    class="app-layout"
+    class="app-layout dashboard-view"
     @click.capture="onAppClickCapture"
     @keydown.capture="onAppKeydownCapture"
     @click="closeCardMenu"

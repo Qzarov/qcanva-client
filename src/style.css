@@ -38,6 +38,14 @@
   --ui-glass-accent-border: rgba(140, 255, 140, 0.45);
   --ui-glass-accent-text: #8cff8c;
   --ui-glass-accent-glow: 0 0 18px rgba(0, 255, 0, 0.18);
+  /* What glass pages sit on: soft brand-tinted light, so the glass has
+     something to refract. Cards are glass without blur (cheap in numbers). */
+  --ui-glass-ambient:
+    radial-gradient(1100px 620px at 8% -12%, rgba(0, 255, 0, 0.10), transparent 62%),
+    radial-gradient(900px 560px at 108% 4%, rgba(83, 223, 221, 0.08), transparent 60%),
+    radial-gradient(800px 600px at 60% 120%, rgba(168, 130, 255, 0.07), transparent 60%);
+  --ui-glass-card-bg: rgba(255, 255, 255, 0.04);
+  --ui-glass-card-hover: rgba(255, 255, 255, 0.08);
   --ui-brand: #00ff00;
   --ui-accent-strong: #8cff8c;
   --ui-brand-on: #071307;
@@ -188,6 +196,12 @@
   --ui-glass-accent-border: rgba(20, 91, 37, 0.35);
   --ui-glass-accent-text: #145b25;
   --ui-glass-accent-glow: 0 0 16px rgba(32, 207, 69, 0.16);
+  --ui-glass-ambient:
+    radial-gradient(1100px 620px at 8% -12%, rgba(32, 207, 69, 0.14), transparent 62%),
+    radial-gradient(900px 560px at 108% 4%, rgba(83, 223, 221, 0.14), transparent 60%),
+    radial-gradient(800px 600px at 60% 120%, rgba(168, 130, 255, 0.10), transparent 60%);
+  --ui-glass-card-bg: rgba(255, 255, 255, 0.62);
+  --ui-glass-card-hover: rgba(255, 255, 255, 0.85);
   --ui-brand: #20cf45;
   --ui-accent-strong: #145b25;
   --ui-brand-on: #06220c;
@@ -9802,4 +9816,161 @@ textarea:focus-visible {
     height: 40px;
     min-width: 40px;
   }
+}
+
+/* ===== Dashboard: Liquid Glass =====
+   Same recipe as the canvas (--ui-glass-* tokens): the page sits on a soft
+   ambient light; the big panels (sidebar, header, control panel, menus,
+   dialogs) are blurred glass; resource cards and folder tiles are glass
+   WITHOUT blur - a dashboard can hold dozens, and a backdrop-filter on each
+   would cost every scroll on a phone. Scoped to .dashboard-view (the
+   dashboard root) - .app-layout is shared with the HTML docs list. */
+.dashboard-view {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.dashboard-view :is(.app-main, .dashboard-app-shell) {
+  background: transparent;
+}
+
+/* Blurred glass panels. */
+.dashboard-view :is(
+  .dashboard-sidebar,
+  .app-header,
+  .resource-control-panel,
+  .card-menu,
+  .mobile-action-popover,
+  .dashboard-modal,
+  .dashboard-tag-sheet
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+/* Edge-to-edge bars: glass, but no floating shadow. */
+.dashboard-view :is(.dashboard-sidebar, .app-header) {
+  box-shadow: inset -1px 0 0 var(--ui-glass-highlight);
+}
+.dashboard-view .app-header {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+}
+
+/* Glass cards and tiles: no blur, a tint, a light top edge, a lift on hover. */
+.dashboard-view :is(
+  .dashboard-recent-card,
+  .canvas-card,
+  .subfolder-card,
+  .folder-manager-row,
+  .access-request-row
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+.dashboard-view :is(.dashboard-recent-card, .canvas-card, .subfolder-card):hover {
+  background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  transform: translateY(-1px);
+}
+
+/* Segmented controls: a glass track; the chosen segment is accent glass. */
+.dashboard-view :is(.content-type-tabs, .dashboard-recent-view-toggle, .dashboard-public-owner-filter) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Fields: inset glass panes. */
+.dashboard-view :is(
+  .dash-search,
+  .dash-sort-select,
+  .card-title-input,
+  .dashboard-modal-input,
+  .folder-manager-trigger
+) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+
+/* Buttons that stand on their own: inset glass panes. */
+.dashboard-view :is(.btn-ghost, .tag-filter, .dashboard-feed-nav-item, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.dashboard-view :is(.btn-ghost, .tag-filter, .dashboard-feed-nav-item, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item):hover:not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+}
+
+/* Bare rows and icon buttons: no fill until hovered. */
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .card-menu-item,
+  .card-manage,
+  .card-pin,
+  .dashboard-modal-close,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+}
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .card-menu-item,
+  .card-manage,
+  .card-pin,
+  .dashboard-modal-close,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+):is(:hover, :active):not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is selected. */
+.dashboard-view :is(.btn-primary, .dashboard-fab),
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .tag-filter,
+  .dashboard-feed-nav-item,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+).active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.dashboard-view :is(.btn-primary, .dashboard-fab):hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+/* The floating "+" floats over cards: it gets the blur the cards don't. */
+.dashboard-view .dashboard-fab {
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow), var(--ui-glass-shadow);
+}
+
+/* The sticky section nav (Recent / Folders / Public) used to paint a page-
+   coloured band so cards scrolled under it unseen. Now the band is gone and
+   its pills are full glass - content blurs under them, like the canvas bar. */
+.dashboard-view .dashboard-feed-nav {
+  background: transparent;
+}
+.dashboard-view .dashboard-feed-nav-item {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
