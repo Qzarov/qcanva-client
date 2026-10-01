@@ -96,3 +96,17 @@ export function headingIdAtPos(entries: readonly HeadingOutlineEntry[], pos: num
   }
   return best?.id ?? null;
 }
+
+/**
+ * The outline row for what is on screen when there is no caret: the section
+ * being read, i.e. the last heading whose top has scrolled up to or past the
+ * reading line (a viewport y). Null above the first heading. Only headings
+ * that are laid out belong in `headings` - one folded away has no top.
+ */
+export function headingIdAtReadingLine(headings: readonly { id: string; top: number }[], line: number): string | null {
+  let best: { id: string; top: number } | null = null;
+  for (const heading of headings) {
+    if (heading.top <= line && (!best || heading.top >= best.top)) best = heading;
+  }
+  return best?.id ?? null;
+}

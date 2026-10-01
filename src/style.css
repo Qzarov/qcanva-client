@@ -6485,7 +6485,8 @@ body {
    continuous scroll-spy (see that ref's own comment for why). Desktop panel
    only: the mobile drawer closes the instant a pick is made, so it would
    never actually be seen there. */
-.text-doc-outline-panel .text-doc-outline-item-active .text-doc-outline-link {
+.text-doc-outline-panel .text-doc-outline-item-active .text-doc-outline-link,
+.text-doc-outline-drawer .text-doc-outline-item-active .text-doc-outline-link {
   background: var(--ui-brand-soft);
   color: var(--ui-accent-strong);
   font-weight: 600;
@@ -6820,6 +6821,48 @@ body.text-doc-outline-resizing {
    generic ul/ol indent there too so nesting reads as depth, not double indent. */
 .text-doc-paper .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
   padding-left: 1.5rem;
+}
+
+/* "Done N of M" above a todo list (a widget decoration, see task-item.ts). */
+.text-doc-paper .ProseMirror .task-list-progress {
+  margin: 0.75em 0 -0.25em;
+  color: var(--ui-text-muted);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror .task-list-progress[data-complete="true"] {
+  color: var(--ui-accent-strong);
+}
+
+/* A ticked todo: its own text struck through and folded to one line. Nested
+   todos under it stay visible; the todo the caret is in stays expanded so its
+   full text can still be edited. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  color: var(--ui-text-muted);
+  text-decoration: line-through;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"]:not(.task-item-has-caret) > div > p:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"]:not(.task-item-has-caret) > div > :not(:first-child):not(ul) {
+  display: none;
+}
+
+/* When the todo was ticked. */
+.text-doc-paper .ProseMirror .task-item-meta {
+  flex: 0 0 auto;
+  margin: 0.25em 0 0 0.5rem;
+  color: var(--ui-text-muted);
+  font-size: 0.75em;
+  white-space: nowrap;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror .task-item-meta[hidden] {
+  display: none;
 }
 
 .text-doc-paper .ProseMirror img {

@@ -111,6 +111,10 @@ describe('the outline marks the section the caret is in', () => {
     await settleContentUpdate();
     await flushPromises();
 
+    // The user has placed a caret (the outline follows it only then - with no
+    // caret it follows the scroll). jsdom fires no `focus` for a
+    // contenteditable, so send the one a tap would.
+    editor.view.dom.dispatchEvent(new FocusEvent('focus'));
     const activeText = () => wrapper.findAll('.text-doc-outline-item-active').map((w: any) => w.text());
     const caretIn = async (text: string) => {
       let pos = -1;

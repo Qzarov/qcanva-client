@@ -6,7 +6,7 @@ import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { QuietTaskItem } from './task-item';
+import { QuietTaskItem, parseCheckedAt, taskListProgress } from './task-item';
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -98,5 +98,100 @@ describe('QuietTaskItem', () => {
     tick(box);
     expect(checkedStates(ed).Second).toBe(false);
     expect(box.checked).toBe(false);
+  });
+});
+
+function taskAttrs(ed: Editor, label: string): Record<string, unknown> {
+  let attrs: Record<string, unknown> = {};
+  ed.state.doc.descendants((node) => {
+    if (node.type.name === 'taskItem' && node.firstChild?.textContent === label) attrs = node.attrs;
+  });
+  return attrs;
+}
+
+function itemLi(ed: Editor, label: string): HTMLElement {
+  const li = Array.from(ed.view.dom.querySelectorAll('li')).find(
+    (el) => el.querySelector(':scope > div > p')?.textContent === label,
+  );
+  if (!(li instanceof HTMLElement)) throw new Error(`no item ${label}`);
+  return li;
+}
+
+describe('QuietTaskItem meta', () => {
+  it('stamps when a todo was ticked, and clears it when unticked', () => {
+    const ed = makeEditor();
+    tick(checkbox(ed, 'Second'));
+    const checkedAt = taskAttrs(ed, 'Second').checkedAt;
+    expect(typeof checkedAt).toBe('string');
+    expect(Math.abs(Date.parse(checkedAt as string) - Date.now())).toBeLessThan(5000);
+
+    tick(checkbox(ed, 'Second'));
+    expect(taskAttrs(ed, 'Second').checkedAt).toBeNull();
+  });
+
+  it('shows when it was ticked next to a ticked todo only', () => {
+    const ed = makeEditor();
+    const meta = () => itemLi(ed, 'Second').querySelector(':scope > .task-item-meta') as HTMLElement;
+    expect(meta().hidden).toBe(true);
+    tick(checkbox(ed, 'Second'));
+    expect(meta().hidden).toBe(false);
+    expect(meta().textContent).not.toBe('');
+    tick(checkbox(ed, 'Second'));
+    expect(meta().hidden).toBe(true);
+  });
+
+  it('does not carry the tick time into an item split off a ticked one', () => {
+    const ed = makeEditor();
+    tick(checkbox(ed, 'Second'));
+    let end = 0;
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.textContent === 'Second') end = pos + node.nodeSize - 1;
+    });
+    ed.chain().setTextSelection(end).splitListItem('taskItem').run();
+    const items: Array<Record<string, unknown>> = [];
+    ed.state.doc.descendants((node) => {
+      if (node.type.name === 'taskItem') items.push(node.attrs);
+    });
+    const split = items[items.length - 1]!;
+    expect(split.checked).toBe(false);
+    expect(split.checkedAt).toBeNull();
+  });
+
+  it('shows "done N of M" above a top-level list, counting nested todos too', () => {
+    const ed = makeEditor();
+    const progress = () => Array.from(ed.view.dom.querySelectorAll('.task-list-progress')).map((el) => el.textContent);
+    // One counter for the outer list; the nested list is counted in it.
+    expect(progress()).toEqual(['0/3']);
+    tick(checkbox(ed, 'Inner'));
+    expect(progress()).toEqual(['1/3']);
+    tick(checkbox(ed, 'Outer'));
+    tick(checkbox(ed, 'Second'));
+    expect(progress()).toEqual(['3/3']);
+    expect((ed.view.dom.querySelector('.task-list-progress') as HTMLElement).dataset.complete).toBe('true');
+  });
+
+  it('marks the todo the caret is in, so a ticked one unfolds for editing', () => {
+    const ed = makeEditor();
+    let inSecond = 0;
+    ed.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'paragraph' && node.textContent === 'Second') inSecond = pos + 1;
+    });
+    ed.commands.setTextSelection(inSecond);
+    expect(itemLi(ed, 'Second').classList.contains('task-item-has-caret')).toBe(true);
+    expect(itemLi(ed, 'Outer').classList.contains('task-item-has-caret')).toBe(false);
+  });
+});
+
+describe('parseCheckedAt / taskListProgress', () => {
+  it('reads only a valid stored date', () => {
+    expect(parseCheckedAt('2026-10-01T10:00:00.000Z')?.toISOString()).toBe('2026-10-01T10:00:00.000Z');
+    for (const bad of [null, undefined, '', 'yesterday', 42, {}]) expect(parseCheckedAt(bad)).toBeNull();
+  });
+
+  it('counts every todo under a list', () => {
+    const ed = makeEditor();
+    let list: any = null;
+    ed.state.doc.forEach((node) => { if (node.type.name === 'taskList') list = node; });
+    expect(taskListProgress(list)).toEqual({ done: 0, total: 3 });
   });
 });

@@ -1,5 +1,5 @@
 <template>
-  <div class="text-doc-page">
+  <div ref="pageRef" class="text-doc-page" @scroll.passive="onPageScroll">
     <div v-if="loading" class="canvas-loading">Loading document...</div>
     <AccessGate
       v-else-if="accessDenied"
@@ -496,6 +496,8 @@
               class="text-doc-outline-item"
               :class="{ 'text-doc-outline-item-active': entry.id === activeOutlineHeadingId }"
               :data-level="entry.level"
+              :data-outline-item="entry.id"
+              :aria-current="entry.id === activeOutlineHeadingId ? 'location' : undefined"
             >
               <!-- @mousedown/@click split, same reasoning as the desktop
                    panel's own outline link. -->
@@ -795,6 +797,7 @@
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
+import { useBackHandler } from '../composables/useBackHandler';
 import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
 import { Capacitor } from '@capacitor/core';
 import type { Editor, Range } from '@tiptap/core';
@@ -812,7 +815,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos } from '../text-documents/outline-tree';
+import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -1366,6 +1369,11 @@ export default defineComponent({
     watch(outlineMobileOpen, (open) => {
       if (open) window.addEventListener('keydown', onOutlineMobileEscape);
       else window.removeEventListener('keydown', onOutlineMobileEscape);
+      // Open the drawer on the current section (caret, or on-screen without
+      // one), not at the top.
+      if (open && editor.value) syncActiveOutlineHeading(editor.value);
+      const activeId = activeOutlineHeadingId.value;
+      if (open && activeId) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-drawer', activeId));
     });
     onBeforeUnmount(() => window.removeEventListener('keydown', onOutlineMobileEscape));
 
@@ -1461,12 +1469,38 @@ export default defineComponent({
      * computed cached between a no-emit setContent and its lazy refresh.
      */
     const activeOutlineHeadingId = ref<string | null>(null);
+    const pageRef = ref<HTMLElement | null>(null);
+    /**
+     * Whether there is a caret to follow. Off until the editor is first
+     * focused and again once system Back takes the caret away - NOT plain
+     * `isFocused`: tapping the outline button blurs the editor, yet the caret
+     * the user placed is still the place they mean.
+     */
+    const hasCaret = ref(false);
+
+    /** With no caret, the section being read: the last heading above the reading line. */
+    function headingIdInView(ed: Editor): string | null {
+      const page = pageRef.value;
+      if (!page) return null;
+      const line = page.getBoundingClientRect().top + Math.min(120, page.clientHeight * 0.25);
+      const headings = documentOutline(ed.state.doc).flatMap((entry) => {
+        const dom = ed.view.nodeDOM(entry.pos);
+        // A heading folded inside a collapsed section has no layout (and a
+        // zero rect that would otherwise read as "scrolled past").
+        if (!(dom instanceof HTMLElement) || dom.getClientRects().length === 0) return [];
+        return [{ id: entry.id, top: dom.getBoundingClientRect().top }];
+      });
+      return headingIdAtReadingLine(headings, line);
+    }
+
     function syncActiveOutlineHeading(ed: Editor): void {
-      const id = headingIdAtPos(documentOutline(ed.state.doc), ed.state.selection.head);
+      const id = hasCaret.value
+        ? headingIdAtPos(documentOutline(ed.state.doc), ed.state.selection.head)
+        : headingIdInView(ed);
       if (id === activeOutlineHeadingId.value) return;
       activeOutlineHeadingId.value = id;
       // Keep it in view in the sidebar (scrollTop only - see the helper).
-      if (id && outlineIsDesktop.value) void nextTick(() => scrollOutlineItemIntoView(id));
+      if (id && outlineIsDesktop.value) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', id));
     }
 
     /**
@@ -1484,9 +1518,10 @@ export default defineComponent({
      * A plain `scrollTop` assignment doesn't touch that queue at all, so it
      * can never re-trigger the interference regardless of timing.
      */
-    function scrollOutlineItemIntoView(headingId: string): void {
-      const container = document.querySelector('.text-doc-outline-panel-inner');
-      const item = document.querySelector(`[data-outline-item="${headingId}"]`);
+    function scrollOutlineItemIntoView(containerSelector: string, headingId: string): void {
+      const container = document.querySelector(containerSelector);
+      const item = Array.from(container?.querySelectorAll<HTMLElement>('[data-outline-item]') ?? [])
+        .find((el) => el.dataset.outlineItem === headingId);
       if (!(container instanceof HTMLElement) || !(item instanceof HTMLElement)) return;
       const itemTop = item.offsetTop;
       const itemBottom = itemTop + item.offsetHeight;
@@ -1505,7 +1540,7 @@ export default defineComponent({
         outlineMobileOpen.value = false;
         return;
       }
-      void nextTick(() => scrollOutlineItemIntoView(headingId));
+      void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', headingId));
     }
 
     /**
@@ -2514,7 +2549,22 @@ export default defineComponent({
         TaskList,
         // Ticking a todo never focuses the editor (on a phone that opened
         // the keyboard and scrolled the page to the caret) - see task-item.ts.
-        QuietTaskItem.configure({ nested: true }),
+        // Also stamps when a todo was ticked and shows "Done N of M" above
+        // each list - the labels are read at paint time, so they follow the locale.
+        QuietTaskItem.configure({
+          nested: true,
+          labels: {
+            progress: (done, total) =>
+              t('taskProgress').replace('{done}', String(done)).replace('{total}', String(total)),
+            checkedAt: (date) => new Intl.DateTimeFormat(locale.value, {
+              day: 'numeric',
+              month: 'short',
+              ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
+              hour: '2-digit',
+              minute: '2-digit',
+            }).format(date),
+          },
+        }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
         // Clicking a callout's icon picks its kind (icon + colour) - callout.ts.
@@ -2728,6 +2778,11 @@ export default defineComponent({
         refreshBlockCount();
         ensureRedoTracked(createdEditor);
         ensureHeadingIds(createdEditor);
+        void nextTick(() => syncActiveOutlineHeading(createdEditor));
+      },
+      onFocus: ({ editor: focusedEditor }) => {
+        hasCaret.value = true;
+        syncActiveOutlineHeading(focusedEditor);
       },
       // Fires for a remote collaborator's change as well as this user's, so
       // the count is the document's, not this keyboard's.
@@ -3361,9 +3416,45 @@ export default defineComponent({
       ydoc.destroy();
     });
 
+    // Android system Back in a document peels one layer per press: an open
+    // menu / panel / outline, then the caret (blur - the document stays open),
+    // and only then leaves (main.ts). While the keyboard is up, Android spends
+    // the first press hiding it before the app ever sees one.
+    useBackHandler(() => {
+      if (slashOpen.value) { cancelSlashMenu(); return true; }
+      if (mentionOpen.value) { mentionDismissed = true; closeMentionMenu(); return true; }
+      if (linkEditorOpen.value) { closeLinkEditor(); return true; }
+      if (linkActionOpen.value) { closeLinkActionMenu(); return true; }
+      if (docMenuOpen.value) { closeDocMenu(); return true; }
+      if (outlineMobileOpen.value) { closeOutlineMobile(); return true; }
+      if (showShare.value) { closeShare(); return true; }
+      if (showHistory.value) { closeHistory(); return true; }
+      if (editor.value?.isFocused || hasCaret.value) {
+        editor.value?.commands.blur();
+        hasCaret.value = false;
+        if (editor.value) syncActiveOutlineHeading(editor.value);
+        return true;
+      }
+      return false;
+    });
+
+    // Without a caret the outline follows the scroll (one update per frame).
+    let pageScrollFrame = 0;
+    const onPageScroll = () => {
+      if (hasCaret.value || pageScrollFrame) return;
+      pageScrollFrame = requestAnimationFrame(() => {
+        pageScrollFrame = 0;
+        if (!hasCaret.value && editor.value) syncActiveOutlineHeading(editor.value);
+      });
+    };
+    onBeforeUnmount(() => { if (pageScrollFrame) cancelAnimationFrame(pageScrollFrame); });
+
     return {
       t,
       slashOpen,
+      pageRef,
+      onPageScroll,
+      hasCaret,
       slashItems,
       slashIndex,
       slashMenuStyle,

@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, type OutlineTreeNode } from './outline-tree';
+import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine, type OutlineTreeNode } from './outline-tree';
 import type { HeadingOutlineEntry } from '../documents/heading-anchors';
 
 function entry(id: string, level: number, text = id, pos = 0): HeadingOutlineEntry {
@@ -102,6 +102,26 @@ describe('clampOutlineWidth', () => {
 
   it('falls back to the minimum for a non-finite candidate (NaN from a bad drag delta)', () => {
     expect(clampOutlineWidth(NaN, 220, 480)).toBe(220);
+  });
+});
+
+describe('headingIdAtReadingLine (the outline row for what is on screen, with no caret)', () => {
+  const headings = [{ id: 'intro', top: -400 }, { id: 'setup', top: -20 }, { id: 'usage', top: 300 }];
+
+  it('is the last heading scrolled up to or past the reading line', () => {
+    expect(headingIdAtReadingLine(headings, 100)).toBe('setup');
+    expect(headingIdAtReadingLine(headings, -20)).toBe('setup');
+    expect(headingIdAtReadingLine(headings, 300)).toBe('usage');
+    expect(headingIdAtReadingLine(headings, -100)).toBe('intro');
+  });
+
+  it('is nothing above the first heading, or with no headings laid out', () => {
+    expect(headingIdAtReadingLine(headings, -500)).toBeNull();
+    expect(headingIdAtReadingLine([], 100)).toBeNull();
+  });
+
+  it('does not depend on the order headings come in', () => {
+    expect(headingIdAtReadingLine([...headings].reverse(), 100)).toBe('setup');
   });
 });
 
