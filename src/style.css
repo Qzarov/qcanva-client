@@ -9974,3 +9974,147 @@ textarea:focus-visible {
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
+
+/* ===== Text and HTML documents: Liquid Glass =====
+   Same recipe and tokens as the canvas and the dashboard (--ui-glass-*,
+   nothing new): the page on the ambient light, the sticky header and every
+   floating panel as blurred glass, buttons as glass panes / bare rows /
+   accent glass. The document's own content - the text, the HTML preview -
+   keeps its colours. text-doc-* / html-history-* classes exist only here, so
+   the teleported ones need no page scope; shared classes (btn-*, menus,
+   share panel) are scoped to the two pages and their teleported panels. */
+:is(.text-doc-page, .html-editor-page) {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.html-editor-page :is(.html-editor-main, .html-visual-editor) {
+  background: transparent;
+}
+
+/* Blurred glass: the sticky headers and every floating panel. */
+.text-doc-topbar,
+.html-editor-bar,
+.text-doc-outline-panel,
+.text-doc-outline-drawer,
+.text-doc-bubble-menu,
+.text-doc-table-menu,
+.text-doc-link-action-menu,
+.text-doc-slash-menu,
+.text-doc-mention-menu,
+.text-doc-menu-popover,
+.text-doc-link-sheet,
+.text-doc-slash-sheet,
+.html-history-panel,
+.html-sync-popover,
+.html-editor-page :is(.mobile-action-popover, .html-share-panel) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+/* Edge-to-edge: glass, no floating shadow. */
+.text-doc-topbar,
+.html-editor-bar {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+  border-bottom-color: var(--ui-glass-border);
+}
+.text-doc-outline-panel {
+  box-shadow: inset -1px 0 0 var(--ui-glass-highlight);
+  border-right-color: var(--ui-glass-border);
+}
+
+/* Fields and lists inside the glass: inset panes. */
+.text-doc-bubble-link-input,
+.text-doc-link-sheet-input,
+.html-history-list,
+.html-editor-page :is(.html-title-input, .html-structure-item, .html-block-btn) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.html-editor-page .html-mode-tabs {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Buttons that stand on their own: inset glass panes. */
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet)
+  :is(.btn-ghost, .text-doc-sync, .html-save-state, .account-menu-trigger, .text-doc-capacity-btn) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet)
+  :is(.btn-ghost, .text-doc-sync, .html-save-state, .account-menu-trigger, .text-doc-capacity-btn):hover:not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+}
+/* The back arrow and the outline's own toggles stay bare icons. */
+:is(.text-doc-page, .html-editor-page) :is(.back-btn, .text-doc-outline-collapse-toggle, .text-doc-outline-chevron) {
+  border-radius: 999px;
+}
+
+/* Bare rows and icon buttons: no fill until hovered or highlighted. */
+.text-doc-bubble-btn,
+.text-doc-menu-item,
+.text-doc-slash-item,
+.text-doc-mention-item,
+.text-doc-link-action-btn,
+.text-doc-outline-link,
+.text-doc-backlink-item,
+.text-doc-slash-sheet-close,
+.html-history-item,
+.html-editor-page :is(.card-menu-item, .html-mode-tabs button) {
+  border-radius: 10px;
+}
+:is(
+  .text-doc-bubble-btn,
+  .text-doc-menu-item,
+  .text-doc-slash-item,
+  .text-doc-mention-item,
+  .text-doc-link-action-btn,
+  .text-doc-outline-link,
+  .text-doc-backlink-item,
+  .text-doc-slash-sheet-close,
+  .html-history-item
+):is(:hover, :active):not(:disabled, .active, .is-active),
+.html-editor-page :is(.card-menu-item, .html-mode-tabs button):is(:hover, :active):not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is selected / highlighted. */
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet) .btn-primary,
+:is(.text-doc-page, .html-editor-page) .btn-ghost.active,
+.text-doc-slash-item.active,
+.text-doc-mention-item.active,
+.text-doc-bubble-btn:is(.active, .is-active),
+.html-history-item.active,
+.text-doc-outline-item-active .text-doc-outline-link,
+.html-editor-page .html-mode-tabs button.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet) .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.html-editor-page .html-mode-tabs {
+  border-radius: 999px;
+  padding: 2px;
+}
+.html-editor-page .html-mode-tabs button {
+  border-radius: 999px;
+}
+/* Phone: the document's sync state is a bare dot, not a pane. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .text-doc-page .text-doc-sync {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}

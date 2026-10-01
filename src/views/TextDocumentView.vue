@@ -119,6 +119,7 @@
         :allow-public-edit="allowPublicEdit"
         :listed-in-public="listedInPublic"
         :permissions="permissions"
+        glass
         v-model:slug="slugInput"
         v-model:share-email="shareEmail"
         v-model:share-role="shareRole"
