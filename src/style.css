@@ -19,6 +19,17 @@
   --ui-border: #313442;
   --ui-overlay: rgba(0, 0, 0, 0.64);
   --ui-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+  /* QCanva Liquid Glass: a translucent, blurred surface with a faint tint,
+     a light top edge and a soft drop shadow (canvas chrome, the mobile
+     full-screen editor). One recipe so a palette can recolour it in one place. */
+  --ui-glass-bg: rgba(13, 17, 14, 0.72);
+  --ui-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
+  --ui-glass-border: rgba(130, 210, 155, 0.28);
+  --ui-glass-highlight: rgba(255, 255, 255, 0.10);
+  --ui-glass-sheen: rgba(255, 255, 255, 0.08);
+  --ui-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  --ui-glass-blur: 18px;
+  --ui-glass-focus-glow: rgba(140, 255, 140, 0.22);
   --ui-brand: #00ff00;
   --ui-accent-strong: #8cff8c;
   --ui-brand-on: #071307;
@@ -155,6 +166,14 @@
   --ui-border: #dce3dd;
   --ui-overlay: rgba(23, 32, 25, 0.34);
   --ui-shadow: 0 18px 50px rgba(26, 48, 31, 0.12);
+  --ui-glass-bg: rgba(255, 255, 255, 0.72);
+  --ui-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
+  --ui-glass-border: rgba(20, 91, 37, 0.16);
+  --ui-glass-highlight: rgba(255, 255, 255, 0.9);
+  --ui-glass-sheen: rgba(255, 255, 255, 0.55);
+  --ui-glass-shadow: 0 10px 34px rgba(26, 48, 31, 0.12);
+  --ui-glass-blur: 18px;
+  --ui-glass-focus-glow: rgba(20, 91, 37, 0.14);
   --ui-brand: #20cf45;
   --ui-accent-strong: #145b25;
   --ui-brand-on: #06220c;
@@ -5010,6 +5029,9 @@ body {
 }
 .share-form input {
   flex: 1;
+  /* Without this a flex item never shrinks below its intrinsic width, and in
+     the 320px share panel the Invite button was pushed off the edge. */
+  min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--dark-neutral-border);
   border-radius: var(--radius-full);
@@ -5043,6 +5065,7 @@ body {
   color: var(--ui-text);
 }
 .share-form button {
+  flex-shrink: 0;
   padding: 6px 12px;
   border: none;
   border-radius: var(--radius-full);
@@ -9456,4 +9479,112 @@ textarea:focus-visible {
 /* Very narrow screens: keep touch targets */
 @media (max-width: 360px) {
   .mobile-modebar-btn { max-width: 64px; }
+}
+
+/* ===== Canvas chrome: Liquid Glass =====
+   Every floating surface of the canvas - top bar, toolbars and their
+   popovers, mobile mode bar / node toolbar / sheets, side panels, context
+   menu, minimap, zoom controls - on one glass recipe (the --ui-glass-*
+   tokens above). Canvas CONTENT (nodes, their colours, edges, drawings) is
+   untouched. Scoped under .canvas-view so documents and the dashboard keep
+   their own look, and so it outranks CanvasLoader.vue's own (later-loaded)
+   rules for the same elements. */
+.canvas-view :is(
+  .canvas-topbar,
+  .topbar-actions,
+  .sync-events-popover,
+  .node-toolbar-tabs,
+  .toolbar-popover,
+  .block-menu,
+  .history-panel,
+  .embed-picker-panel,
+  .chat-drawer,
+  .chat-pick-hint,
+  .canvas-plugin-panel,
+  .draw-toolbar-panel,
+  .draw-toolbar-toggle,
+  .dice-panel,
+  .drawing-actions-toolbar,
+  .mobile-modebar,
+  .mobile-node-toolbar-row,
+  .mobile-node-subpanel,
+  .mobile-drawing-popup,
+  .mobile-add-sheet,
+  .mobile-draw-panel,
+  .mobile-draw-popup,
+  .context-menu,
+  .minimap,
+  .canvas-controls,
+  .ctrl-add-menu,
+  .edge-action-btn,
+  .edge-label-input
+),
+/* Teleported to <body>, outside .canvas-view - canvas-only classes. */
+.mobile-overflow-sheet,
+.share-panel.share-panel-glass {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+
+/* The top bar spans the screen edge to edge: glass, but no floating shadow. */
+.canvas-view .canvas-topbar {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+  border-bottom-color: var(--ui-glass-border);
+}
+
+/* Phone: the bottom bars float as glass capsules instead of edge-to-edge
+   strips (their height above the screen edge is measured into
+   --canvas-toolbar-height by CanvasView, gap included). */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-view .mobile-modebar {
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 8px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 22px;
+  }
+
+  /* A column, centred: the sub-panel sits above the icon row, and both hug
+     their content instead of the row stopping short of the screen edge. The
+     full-width wrapper itself never blocks a tap on the canvas beside them. */
+  .canvas-view .mobile-node-toolbar {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
+    padding: 0 10px;
+    pointer-events: none;
+  }
+  .canvas-view .mobile-node-toolbar > * {
+    pointer-events: auto;
+    max-width: 100%;
+  }
+  .canvas-view :is(.mobile-node-toolbar-row, .mobile-node-subpanel) {
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
+  }
+  .canvas-view .mobile-node-toolbar-row {
+    padding: 4px 6px;
+  }
+}
+
+/* The canvas share sheet must cover the canvas' own floating bars (mode bar
+   z-index 92): the sheet and its dimming backdrop sit above them. */
+.text-doc-share-backdrop.share-backdrop-glass { z-index: 119; }
+.share-panel.share-panel-glass { z-index: 120; }
+
+/* In the narrow share sheet an e-mail / password field gets a row of its own,
+   with the role picker and the button wrapping beneath it. */
+.share-panel .share-form {
+  flex-wrap: wrap;
+}
+.share-panel .share-form input {
+  flex: 1 1 100%;
+}
+.share-panel .share-form select {
+  flex: 1 1 auto;
 }

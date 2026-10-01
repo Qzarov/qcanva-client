@@ -222,7 +222,9 @@ describe('custom slug (front task 9/10)', () => {
     wrapper.vm.slugInput = 'Invalid Slug!';
     await wrapper.vm.$nextTick();
 
-    expect(wrapper.vm.slugFormatError).toBeTruthy();
+    // The sheet (ResourceSharePanel) shows the format error inline...
+    expect(document.querySelector('.text-doc-share-panel .slug-error')?.textContent?.trim()).toBeTruthy();
+    // ...and the save never reaches the API, even when called directly.
     await wrapper.vm.saveSlug();
 
     expect(mocks.update).not.toHaveBeenCalled();

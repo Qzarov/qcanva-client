@@ -722,93 +722,37 @@
         </div>
       </Teleport>
 
-      <!-- Access panel -->
-      <div v-if="showShare" class="share-panel">
-        <div class="share-panel-header">
-          <h3>{{ t('access') }}</h3>
-          <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
-        </div>
-
-        <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">{{ t('shareLinkSection') }}</div>
-          <!-- Copying the link is what people open this for: first. -->
-          <div class="slug-row" data-share-copy-row>
-            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('copyLink')" />
-            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
-          </div>
-          <div class="slug-row" style="margin-top: 10px;">
-            <span class="slug-prefix">/canvas/</span>
-            <input
-              v-model="slugInput"
-              class="slug-input"
-              placeholder="my-canvas"
-              spellcheck="false"
-              autocapitalize="off"
-              autocomplete="off"
-              @keydown.enter="saveSlug"
-            />
-            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
-          </div>
-          <div class="slug-hint">{{ t('slugHint') }}</div>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">{{ t('whoCanView') }}</div>
-          <select class="share-visibility-select" :value="visibility" @change="setVisibility(($event.target as HTMLSelectElement).value as any)">
-            <option value="private">{{ t('visibilityPrivate') }}</option>
-            <option value="authenticated">{{ t('visibilityAuthOnly') }}</option>
-            <option value="public">{{ t('visibilityPublic') }}</option>
-          </select>
-          <label class="share-checkbox">
-            <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
-            <span>{{ t('allowPublicEditing') }}</span>
-          </label>
-          <label class="share-checkbox">
-            <input
-              type="checkbox"
-              :checked="listedInPublic"
-              :disabled="visibility !== 'public'"
-              @change="togglePublicListing"
-            />
-            <span>{{ t('showInPublic') }}</span>
-          </label>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">{{ t('invitePeople') }}</div>
-          <div class="share-form">
-            <input v-model="shareEmail" :placeholder="t('email')" type="email" />
-            <select v-model="shareRole">
-              <option value="read">{{ t('canView') }}</option>
-              <option value="edit">{{ t('canEdit') }}</option>
-            </select>
-            <button @click="doShare">{{ t('inviteBtn') }}</button>
-          </div>
-          <div v-if="permissions.length" class="share-list">
-            <div v-for="p in permissions" :key="p.id" class="share-item">
-              <span>{{ p.user?.email || p.userId }}</span>
-              <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
-              <button @click="doRevoke(p.userId)">×</button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
-          <label class="share-checkbox">
-            <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>{{ t('enablePasswordAccess') }}</span>
-          </label>
-          <div v-if="passwordAccessEnabled" class="share-form">
-            <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
-            <select v-model="passwordAccessRole">
-              <option value="read">{{ t('canView') }}</option>
-              <option value="edit">{{ t('canEdit') }}</option>
-            </select>
-            <button @click="savePasswordAccess">{{ t('save') }}</button>
-          </div>
-        </div>
-      </div>
+      <!-- Share sheet: the same one text documents use (ResourceSharePanel.vue). -->
+      <ResourceSharePanel
+        v-if="role === 'owner'"
+        :open="showShare"
+        :title="t('shareCanvasTitle')"
+        :url="publicUrl"
+        :copy-link="copyPublicLink"
+        slug-prefix="/canvas/"
+        slug-placeholder="my-canvas"
+        :slug-error="slugError"
+        :saving-slug="savingSlug"
+        :visibility="visibility"
+        :allow-public-edit="allowPublicEdit"
+        :listed-in-public="listedInPublic"
+        :permissions="permissions"
+        glass
+        v-model:slug="slugInput"
+        v-model:share-email="shareEmail"
+        v-model:share-role="shareRole"
+        v-model:password-access-enabled="passwordAccessEnabled"
+        v-model:password-access-password="passwordAccessPassword"
+        v-model:password-access-role="passwordAccessRole"
+        @close="showShare = false"
+        @update:visibility="setVisibility"
+        @update:allow-public-edit="setAllowPublicEdit"
+        @update:listed-in-public="setListedInPublic"
+        @save-password="savePasswordAccess"
+        @save-slug="saveSlug"
+        @invite="doShare"
+        @revoke="doRevoke"
+      />
 
       <!-- History panel -->
       <div v-if="showHistory" class="history-panel">
@@ -1041,6 +985,8 @@ import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
 import BackButton from '../components/BackButton.vue';
+import ResourceSharePanel from '../components/ResourceSharePanel.vue';
+import { slugFormatIsValid } from '../sharing/slug';
 import { getPublicOrigin } from '../api/public-origin';
 
 interface CanvasChangePayload {
@@ -1051,7 +997,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { AccountMenu, AccessGate, BackButton, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
+  components: { AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1192,7 +1138,7 @@ export default defineComponent({
     const saving = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
-    const shareRole = ref('read');
+    const shareRole = ref<'read' | 'edit'>('read');
     const permissions = ref<any[]>([]);
     const passwordAccessEnabled = ref(false);
     const passwordAccessPassword = ref('');
@@ -1261,9 +1207,14 @@ export default defineComponent({
       if (!root) return;
       root.style.setProperty('--canvas-topbar-height', `${topbarRef.value?.offsetHeight || 44}px`);
       // Include mobile bottom bars in the toolbar-height offset so minimap/notices clear them.
+      // Measured from the screen's bottom edge to the mode bar's top - its height plus the
+      // gap it floats at (Liquid Glass capsule) - so everything stacked above clears both.
       const modebarEl = modebarRef.value?.$el as HTMLElement | undefined;
-      const modebarH = modebarEl?.offsetHeight ?? 0;
-      root.style.setProperty('--canvas-toolbar-height', modebarH > 0 ? `${modebarH}px` : '0px');
+      const modebarRect = modebarEl?.getBoundingClientRect();
+      const modebarSpace = modebarEl && modebarEl.offsetHeight > 0 && modebarRect
+        ? Math.max(modebarEl.offsetHeight, Math.round(window.innerHeight - modebarRect.top))
+        : 0;
+      root.style.setProperty('--canvas-toolbar-height', `${modebarSpace}px`);
     }
 
     function observeChromeMetrics() {
@@ -1656,8 +1607,13 @@ export default defineComponent({
       }
     };
 
+    // The server's answer to the last slug save, shown inline by the share sheet.
+    const slugError = ref('');
+    watch(slugInput, () => { slugError.value = ''; });
+
     const saveSlug = async () => {
-      if (role.value !== 'owner') return;
+      if (role.value !== 'owner' || !slugFormatIsValid(slugInput.value)) return;
+      slugError.value = '';
       const next = slugInput.value.trim().toLowerCase();
       if ((next || null) === (slug.value || null)) return; // unchanged
       savingSlug.value = true;
@@ -1669,16 +1625,17 @@ export default defineComponent({
         const preferred = slug.value || resolvedId.value;
         if (route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
       } catch (err: any) {
-        showToast(err.message || 'Failed to update link', 'error');
-        slugInput.value = slug.value || '';
+        // Keep what was typed so the inline error explains THIS value.
+        slugError.value = err.message || t('linkSaveFailed');
+        showToast(err.message || t('linkSaveFailed'), 'error');
       } finally {
         savingSlug.value = false;
       }
     };
 
-    const togglePublicEdit = async (e: Event) => {
+    const setAllowPublicEdit = async (value: boolean) => {
       if (!canManageSettings.value) return;
-      allowPublicEdit.value = (e.target as HTMLInputElement).checked;
+      allowPublicEdit.value = value;
       try {
         await canvasApi.update(resolvedId.value, { allowPublicEdit: allowPublicEdit.value });
         showToast(allowPublicEdit.value ? 'Public edit enabled' : 'Public edit disabled', 'success');
@@ -1688,10 +1645,10 @@ export default defineComponent({
       }
     };
 
-    const togglePublicListing = async (e: Event) => {
+    const setListedInPublic = async (value: boolean) => {
       if (!canManageSettings.value) return;
       const previous = listedInPublic.value;
-      listedInPublic.value = (e.target as HTMLInputElement).checked;
+      listedInPublic.value = value;
       try {
         await canvasApi.update(resolvedId.value, { listedInPublic: listedInPublic.value });
         showToast(listedInPublic.value ? 'Shown in Public' : 'Hidden from Public', 'success');
@@ -2240,7 +2197,7 @@ export default defineComponent({
       publicUrl, copyPublicLink,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       slug, slugInput, savingSlug, saveSlug,
-      allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
+      allowPublicEdit, listedInPublic, canManageSettings, setAllowPublicEdit, setListedInPublic, slugError,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated, isAdmin, currentUser, canViewHistory,

@@ -86,9 +86,15 @@ function posInside(editor: any, text: string): number {
   return at;
 }
 
-/** Places the caret. jsdom does not fire `focus` for a contenteditable, so send it. */
-function focusAt(editor: any, pos: number): void {
+/**
+ * Places the caret. TipTap's focus command lands a frame later, so wait for
+ * it - otherwise, on a busy runner, it can arrive after a test has already
+ * taken the caret away. jsdom does not fire `focus` for a contenteditable,
+ * so send the one a tap would.
+ */
+async function focusAt(editor: any, pos: number): Promise<void> {
   editor.commands.focus(pos);
+  await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
   editor.view.dom.dispatchEvent(new FocusEvent('focus'));
 }
 
@@ -111,7 +117,7 @@ describe('system Back in a text document (phone)', () => {
   it('closes the outline, then takes the caret away and stays, then lets Back leave', async () => {
     const w = await mountPhoneDoc();
     const editor = w.vm.editor;
-    focusAt(editor, posInside(editor, 'b'));
+    await focusAt(editor, posInside(editor, 'b'));
     w.vm.toggleOutlinePanel();
     await flushPromises();
     expect(w.vm.outlineMobileOpen).toBe(true);
@@ -135,7 +141,7 @@ describe('outline drawer marks the current section (phone)', () => {
   it('follows the caret', async () => {
     const w = await mountPhoneDoc();
     const editor = w.vm.editor;
-    focusAt(editor, posInside(editor, 'b'));
+    await focusAt(editor, posInside(editor, 'b'));
     await flushPromises();
     w.vm.toggleOutlinePanel();
     await flushPromises();

@@ -104,126 +104,36 @@
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
-      <!--
-        SHARE SHEET (front task 7/8/9). One markup for both breakpoints - the
-        mobile media query turns this into a bottom sheet (vertical sections,
-        full-width controls, safe-area, backdrop) while desktop keeps a
-        floating panel; both now share the same outside-tap/Escape-to-close
-        backdrop primitive already used by AccountMenu.vue and the dashboard's
-        tag sheet, per the "use the existing primitive" rule (front task 6).
-      -->
-      <Teleport to="body">
-        <div v-if="showShare && role === 'owner'" class="text-doc-share-backdrop" @click="closeShare"></div>
-        <section
-          v-if="showShare && role === 'owner'"
-          class="share-panel text-doc-share-panel"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="t('shareDocumentTitle')"
-          @keydown.esc.stop="closeShare"
-          @click.stop
-        >
-          <div class="text-doc-share-grabber" aria-hidden="true"></div>
-          <div class="share-panel-header">
-            <h3>{{ t('shareDocumentTitle') }}</h3>
-            <button type="button" class="text-doc-share-close" :aria-label="t('close')" @click="closeShare"><X :size="16" aria-hidden="true" /></button>
-          </div>
-
-          <div class="share-panel-body">
-            <!-- Copying the link is what people open this for: first. -->
-            <div class="share-section">
-              <div class="share-section-title">{{ t('shareLinkSection') }}</div>
-              <button
-                type="button"
-                class="share-link-row"
-                :class="{ 'share-link-row-copied': linkRowCopied }"
-                :aria-label="t('copyLink')"
-                @click="copyDocumentLinkFromRow"
-              >
-                <Link2 :size="15" class="share-link-icon" aria-hidden="true" />
-                <span class="share-link-url" :title="documentUrl">{{ documentUrl }}</span>
-                <span v-if="linkRowCopied" class="share-link-copied">
-                  <Check :size="15" aria-hidden="true" /> {{ t('copied') }}
-                </span>
-                <Copy v-else :size="15" class="share-link-copy-icon" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div class="share-section-divider" aria-hidden="true"></div>
-
-            <div class="share-section">
-              <div class="share-section-title">{{ t('generalAccessSection') }}</div>
-              <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
-                <option value="private">{{ t('visibilityPrivateDash') }}</option>
-                <option value="authenticated">{{ t('visibilityAuthOnlyDash') }}</option>
-                <option value="public">{{ t('visibilityPublicDash') }}</option>
-              </select>
-              <label class="share-checkbox">
-                <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-                <span>{{ t('allowPublicEditing') }}</span>
-              </label>
-              <label class="share-checkbox">
-                <input type="checkbox" v-model="listedInPublic" :disabled="visibility !== 'public'" @change="saveAccessSettings" />
-                <span>{{ t('showInPublic') }}</span>
-              </label>
-              <label class="share-checkbox">
-                <input type="checkbox" v-model="passwordAccessEnabled" />
-                <span>{{ t('enablePasswordAccess') }}</span>
-              </label>
-              <div v-if="passwordAccessEnabled" class="share-form share-password-form">
-                <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
-                <select v-model="passwordAccessRole">
-                  <option value="read">{{ t('canView') }}</option>
-                  <option value="edit">{{ t('canEdit') }}</option>
-                </select>
-                <button type="button" class="btn-primary" @click="savePasswordAccess">{{ t('save') }}</button>
-              </div>
-            </div>
-
-            <div class="share-section-divider" aria-hidden="true"></div>
-
-            <div class="share-section">
-              <div class="share-section-title">{{ t('customLinkSection') }}</div>
-              <div class="slug-row">
-                <span class="slug-prefix">/docs/</span>
-                <input
-                  v-model="slugInput"
-                  class="slug-input"
-                  placeholder="my-document"
-                  spellcheck="false"
-                  autocapitalize="off"
-                  autocomplete="off"
-                  @keydown.enter.prevent="saveSlug"
-                />
-              </div>
-              <div v-if="slugError || slugFormatError" class="slug-error" role="alert">{{ slugError || slugFormatError }}</div>
-              <div v-else class="slug-hint">{{ t('slugHint') }}</div>
-              <button type="button" class="btn-primary share-save-slug-btn" :disabled="savingSlug || !!slugFormatError" @click="saveSlug">{{ t('save') }}</button>
-            </div>
-
-            <div class="share-section-divider" aria-hidden="true"></div>
-
-            <div class="share-section">
-              <div class="share-section-title">{{ t('invitePeople') }}</div>
-              <div class="share-form">
-                <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
-                <select v-model="shareRole">
-                  <option value="read">{{ t('canView') }}</option>
-                  <option value="edit">{{ t('canEdit') }}</option>
-                </select>
-                <button type="button" class="btn-primary share-invite-btn" @click="doShare">{{ t('inviteBtn') }}</button>
-              </div>
-              <div v-if="permissions.length" class="share-list">
-                <div v-for="p in permissions" :key="p.id" class="share-item">
-                  <span>{{ p.user?.email || p.userId }}</span>
-                  <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
-                  <button type="button" :aria-label="t('delete')" @click="doRevoke(p.userId)">x</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </Teleport>
+      <!-- Share sheet: shared with the canvas (ResourceSharePanel.vue). -->
+      <ResourceSharePanel
+        v-if="role === 'owner'"
+        :open="showShare"
+        :title="t('shareDocumentTitle')"
+        :url="documentUrl"
+        :copy-link="copyDocumentLink"
+        slug-prefix="/docs/"
+        slug-placeholder="my-document"
+        :slug-error="slugError"
+        :saving-slug="savingSlug"
+        :visibility="visibility"
+        :allow-public-edit="allowPublicEdit"
+        :listed-in-public="listedInPublic"
+        :permissions="permissions"
+        v-model:slug="slugInput"
+        v-model:share-email="shareEmail"
+        v-model:share-role="shareRole"
+        v-model:password-access-enabled="passwordAccessEnabled"
+        v-model:password-access-password="passwordAccessPassword"
+        v-model:password-access-role="passwordAccessRole"
+        @close="closeShare"
+        @update:visibility="(v) => { visibility = v; saveAccessSettings(); }"
+        @update:allow-public-edit="(v) => { allowPublicEdit = v; saveAccessSettings(); }"
+        @update:listed-in-public="(v) => { listedInPublic = v; saveAccessSettings(); }"
+        @save-password="savePasswordAccess"
+        @save-slug="saveSlug"
+        @invite="doShare"
+        @revoke="doRevoke"
+      />
 
       <!-- History (front task 6): same missing-outside-close gap the Share
            panel had, fixed the same way (backdrop + window Escape listener). -->
@@ -861,6 +771,8 @@ import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
 import { accessRequests, ApiError, auth, getCurrentUser, isAuthenticated, setToken, textDocuments, uploadImage, type BacklinkItem, type MentionResolution } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
+import ResourceSharePanel from '../components/ResourceSharePanel.vue';
+import { slugFormatIsValid } from '../sharing/slug';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useTextDocumentSocket, type TextDocumentReject } from '../composables/useTextDocumentSocket';
 import { useToast } from '../composables/useToast';
@@ -875,7 +787,7 @@ import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronL
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -925,22 +837,6 @@ export default defineComponent({
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
     const closeShare = () => { showShare.value = false; };
-    /**
-     * ESCAPE (front task 6/23). The sheet is Teleport'd to <body>, so it and
-     * its trigger button no longer share a DOM subtree - a template
-     * `@keydown.esc` on the sheet only fires for a keypress while focus is
-     * actually INSIDE it, which nothing here moves focus into. A window-level
-     * listener, scoped to exactly while the sheet is open, is what closing on
-     * Escape from anywhere on the page actually requires.
-     */
-    const onShareEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeShare();
-    };
-    watch(showShare, (open) => {
-      if (open) window.addEventListener('keydown', onShareEscape);
-      else window.removeEventListener('keydown', onShareEscape);
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onShareEscape));
     // Mobile-only "⋮" popover that houses Access/History (both stay driven
     // by the same showShare/toggleHistory state the desktop buttons use).
     const docMenuOpen = ref(false);
@@ -1005,45 +901,16 @@ export default defineComponent({
     const copyDocumentLinkFromDocMenu = () => { closeDocMenu(); void copyDocumentLink(); };
     const toggleOutlinePanelFromDocMenu = () => { closeDocMenu(); toggleOutlinePanel(); };
 
-    /**
-     * COPY LINK ROW (front task: the whole row is the control now, no
-     * separate button). `linkRowCopied` drives the row's own inline
-     * "Copied" state - the existing toast (inside copyDocumentLink) still
-     * fires too, since that's the only feedback the doc-menu's "Copy link"
-     * item has (it has no row of its own to show an inline state in).
-     */
-    const linkRowCopied = ref(false);
-    let linkRowCopiedTimer: ReturnType<typeof setTimeout> | null = null;
-    async function copyDocumentLinkFromRow() {
-      await copyDocumentLink();
-      linkRowCopied.value = true;
-      if (linkRowCopiedTimer) clearTimeout(linkRowCopiedTimer);
-      linkRowCopiedTimer = setTimeout(() => { linkRowCopied.value = false; }, 1500);
-    }
-    onBeforeUnmount(() => { if (linkRowCopiedTimer) clearTimeout(linkRowCopiedTimer); });
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
     /**
-     * CUSTOM SLUG VALIDATION (front task 10). Mirrors the backend's
-     * normalizeSlug format rules (common/slug.util.ts, back repo) for
-     * INSTANT feedback while typing - format only, not the reserved-word
-     * list or the uniqueness check, both of which only the server can
-     * answer. `slugError` is the server's own answer (conflict, reserved,
-     * or a format rejection it caught that this pre-check didn't), shown in
-     * preference to the live format hint since it's authoritative; cleared
-     * on every edit so a stale server error doesn't linger over new input.
+     * The server's own answer to the last slug save (conflict, reserved, or a
+     * format rejection the client pre-check missed) - shown by the share
+     * sheet in preference to its live format hint, and cleared on every edit
+     * so a stale error doesn't linger over new input.
      */
-    const SLUG_CLIENT_FORMAT_RE = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
     const slugError = ref('');
-    const slugFormatError = computed(() => {
-      const value = slugInput.value.trim().toLowerCase();
-      if (!value) return '';
-      if (value.length < 2 || value.length > 64) return t('slugInvalidFormat');
-      if (value.includes('--')) return t('slugInvalidFormat');
-      if (!SLUG_CLIENT_FORMAT_RE.test(value)) return t('slugInvalidFormat');
-      return '';
-    });
     watch(slugInput, () => { slugError.value = ''; });
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
@@ -3123,7 +2990,7 @@ export default defineComponent({
     }
 
     async function saveSlug() {
-      if (role.value !== 'owner' || slugFormatError.value) return;
+      if (role.value !== 'owner' || !slugFormatIsValid(slugInput.value)) return;
       slugError.value = '';
       savingSlug.value = true;
       try {
@@ -3578,11 +3445,8 @@ export default defineComponent({
       startOutlineResize,
       resetOutlineWidth,
       onOutlineLinkHover,
-      linkRowCopied,
-      copyDocumentLinkFromRow,
       slugInput,
       slugError,
-      slugFormatError,
       savingSlug,
       visibility,
       allowPublicEdit,

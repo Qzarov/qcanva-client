@@ -4905,15 +4905,17 @@ g:hover > .edge-midpoint-conn {
    the canvas only shows through as a blur, a glass header and a glass card
    around the text. */
 .node-fullscreen-editor {
+  /* The shared glass recipe (--ui-glass-*, style.css); only the full-screen
+     backdrop - denser than any floating panel - and the button are its own. */
   --nfe-backdrop: rgba(10, 14, 11, 0.86);
-  --nfe-glass-bg: rgba(13, 17, 14, 0.72);
-  --nfe-glass-border: rgba(130, 210, 155, 0.28);
-  --nfe-glass-highlight: rgba(255, 255, 255, 0.10);
-  --nfe-glass-sheen: rgba(255, 255, 255, 0.08);
-  --nfe-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
-  --nfe-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  --nfe-glass-bg: var(--ui-glass-bg);
+  --nfe-glass-border: var(--ui-glass-border);
+  --nfe-glass-highlight: var(--ui-glass-highlight);
+  --nfe-glass-sheen: var(--ui-glass-sheen);
+  --nfe-glass-tint: var(--ui-glass-tint);
+  --nfe-glass-shadow: var(--ui-glass-shadow);
   --nfe-button-bg: rgba(255, 255, 255, 0.06);
-  --nfe-focus-glow: rgba(140, 255, 140, 0.22);
+  --nfe-focus-glow: var(--ui-glass-focus-glow);
 
   position: fixed;
   inset: 0;
@@ -4922,21 +4924,14 @@ g:hover > .edge-midpoint-conn {
   flex-direction: column;
   height: 100dvh;
   background: var(--nfe-backdrop);
-  backdrop-filter: blur(24px) saturate(1.2);
-  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: blur(calc(var(--ui-glass-blur) + 6px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(calc(var(--ui-glass-blur) + 6px)) saturate(1.2);
   color: var(--ui-text);
 }
 
 :root[data-theme='light'] .node-fullscreen-editor {
   --nfe-backdrop: rgba(240, 246, 241, 0.88);
-  --nfe-glass-bg: rgba(255, 255, 255, 0.72);
-  --nfe-glass-border: rgba(20, 91, 37, 0.16);
-  --nfe-glass-highlight: rgba(255, 255, 255, 0.9);
-  --nfe-glass-sheen: rgba(255, 255, 255, 0.55);
-  --nfe-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
-  --nfe-glass-shadow: 0 10px 34px rgba(26, 48, 31, 0.12);
   --nfe-button-bg: rgba(20, 91, 37, 0.06);
-  --nfe-focus-glow: rgba(20, 91, 37, 0.14);
 }
 
 .node-fullscreen-editor-header {
