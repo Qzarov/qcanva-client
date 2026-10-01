@@ -30,6 +30,14 @@
   --ui-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
   --ui-glass-blur: 18px;
   --ui-glass-focus-glow: rgba(140, 255, 140, 0.22);
+  /* Buttons on glass: a faint inset "pane" at rest, brighter on hover; the
+     accent (primary action, selected state) is tinted glass with a glow. */
+  --ui-glass-btn-bg: rgba(255, 255, 255, 0.06);
+  --ui-glass-btn-hover: rgba(255, 255, 255, 0.12);
+  --ui-glass-accent-bg: rgba(0, 255, 0, 0.16);
+  --ui-glass-accent-border: rgba(140, 255, 140, 0.45);
+  --ui-glass-accent-text: #8cff8c;
+  --ui-glass-accent-glow: 0 0 18px rgba(0, 255, 0, 0.18);
   --ui-brand: #00ff00;
   --ui-accent-strong: #8cff8c;
   --ui-brand-on: #071307;
@@ -174,6 +182,12 @@
   --ui-glass-shadow: 0 10px 34px rgba(26, 48, 31, 0.12);
   --ui-glass-blur: 18px;
   --ui-glass-focus-glow: rgba(20, 91, 37, 0.14);
+  --ui-glass-btn-bg: rgba(255, 255, 255, 0.55);
+  --ui-glass-btn-hover: rgba(255, 255, 255, 0.9);
+  --ui-glass-accent-bg: rgba(32, 207, 69, 0.16);
+  --ui-glass-accent-border: rgba(20, 91, 37, 0.35);
+  --ui-glass-accent-text: #145b25;
+  --ui-glass-accent-glow: 0 0 16px rgba(32, 207, 69, 0.16);
   --ui-brand: #20cf45;
   --ui-accent-strong: #145b25;
   --ui-brand-on: #06220c;
@@ -9490,7 +9504,6 @@ textarea:focus-visible {
    their own look, and so it outranks CanvasLoader.vue's own (later-loaded)
    rules for the same elements. */
 .canvas-view :is(
-  .canvas-topbar,
   .topbar-actions,
   .sync-events-popover,
   .node-toolbar-tabs,
@@ -9529,11 +9542,6 @@ textarea:focus-visible {
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
 
-/* The top bar spans the screen edge to edge: glass, but no floating shadow. */
-.canvas-view .canvas-topbar {
-  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
-  border-bottom-color: var(--ui-glass-border);
-}
 
 /* Phone: the bottom bars float as glass capsules instead of edge-to-edge
    strips (their height above the screen edge is measured into
@@ -9587,4 +9595,211 @@ textarea:focus-visible {
 }
 .share-panel .share-form select {
   flex: 1 1 auto;
+}
+
+/* ===== Canvas buttons: Liquid Glass =====
+   The top bar is transparent - the canvas runs under it - and its controls
+   float as glass pills (desktop) / circles (phone). Buttons inside glass
+   panels are inset glass panes; icon and menu-row buttons stay bare until
+   hovered / pressed; primary actions and selected states are accent glass. */
+
+/* Transparent top bar: only its own controls take taps, the gaps between
+   them reach the canvas underneath. */
+.canvas-view .canvas-topbar {
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+.canvas-view .canvas-topbar > *,
+.canvas-view .canvas-topbar .topbar-right > * {
+  pointer-events: auto;
+}
+.canvas-view .canvas-topbar .topbar-right {
+  pointer-events: none;
+}
+
+/* Floating glass controls in the top bar. */
+.canvas-view .canvas-topbar :is(
+  .back-btn,
+  .topbar-title,
+  .topbar-title-ro,
+  .topbar-sync,
+  .account-menu-trigger,
+  .canvas-topbar-undo,
+  .canvas-topbar-redo,
+  .topbar-menu-btn,
+  .topbar-login
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+.canvas-view .canvas-topbar :is(.back-btn, .canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn) {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 999px;
+  /* No display here: whether each one shows (⋮ and undo/redo only on a
+     phone) stays with their own rules. */
+  align-items: center;
+  justify-content: center;
+}
+.canvas-view .canvas-topbar :is(.topbar-title, .topbar-title-ro) {
+  height: 36px;
+  max-width: min(42vw, 380px);
+  padding: 0 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 34px;
+}
+.canvas-view .canvas-topbar :is(.topbar-sync, .account-menu-trigger, .topbar-login) {
+  border-radius: 999px;
+}
+.canvas-view .canvas-topbar :is(.back-btn, .topbar-sync, .account-menu-trigger, .canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn, .topbar-login):hover:not(:disabled) {
+  background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
+}
+
+/* Desktop: the inline actions are glass pills too (on a phone they live in
+   the drop-down menu, where they are menu rows - see below). */
+@media (min-width: 641px) and (min-height: 501px), (min-width: 641px) and (orientation: portrait) {
+  .canvas-view .canvas-topbar .topbar-actions {
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .canvas-view .canvas-topbar .topbar-actions > :is(.btn-ghost, .canvas-search-input, .topbar-role) {
+    height: 34px;
+    border-radius: 999px;
+    background: var(--ui-glass-tint), var(--ui-glass-bg);
+    border: 1px solid var(--ui-glass-border);
+    box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+    backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+    -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+    color: var(--ui-text);
+  }
+  .canvas-view .canvas-topbar .topbar-actions > .topbar-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    color: var(--ui-glass-accent-text);
+  }
+  .canvas-view .canvas-topbar .topbar-actions > .btn-ghost:hover {
+    background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
+  }
+}
+
+/* Inset glass panes: buttons that sit inside a glass panel. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .btn-ghost,
+  .toolbar-choice,
+  .block-menu-toggle,
+  .share-link-row,
+  .mobile-add-sheet-item,
+  .mobile-draw-width-btn
+):not(.canvas-topbar *) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .btn-ghost,
+  .toolbar-choice,
+  .block-menu-toggle,
+  .share-link-row,
+  .mobile-add-sheet-item,
+  .mobile-draw-width-btn
+):not(.canvas-topbar *):hover:not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+}
+
+/* Bare icon / row buttons: no fill until hovered or pressed. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .tb-btn,
+  .block-menu-item,
+  .ctx-item,
+  .ctrl-add-menu-item,
+  .mobile-toolbar-btn,
+  .mobile-modebar-btn,
+  .mobile-overflow-item,
+  .mobile-draw-tool-btn,
+  .canvas-controls button,
+  .chat-drawer-close,
+  .text-doc-share-close
+) {
+  border-radius: 12px;
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .tb-btn,
+  .block-menu-item,
+  .ctx-item,
+  .ctrl-add-menu-item,
+  .mobile-toolbar-btn,
+  .mobile-modebar-btn,
+  .mobile-overflow-item,
+  .mobile-draw-tool-btn,
+  .canvas-controls button,
+  .chat-drawer-close,
+  .text-doc-share-close
+):is(:hover, :active):not(:disabled, .active, .open, .mobile-toolbar-btn-active) {
+  /* Selected buttons keep their accent: on a touch screen :hover sticks
+     after the tap that selected them. */
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is currently selected. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button),
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .toolbar-choice,
+  .tb-btn,
+  .block-menu-toggle,
+  .mobile-modebar-btn,
+  .mobile-draw-tool-btn,
+  .mobile-draw-width-btn
+).active,
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .block-menu-item.open,
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .mobile-toolbar-btn.mobile-toolbar-btn-active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button):hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button):disabled {
+  opacity: 0.55;
+}
+
+/* Phone: the top bar's drop-down actions are plain menu rows on the
+   drop-down's own glass, not pills. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+  .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm:is(:hover, :active) {
+    background: var(--ui-glass-btn-hover);
+  }
+  .canvas-view .canvas-topbar :is(.canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn) {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
 }
