@@ -700,14 +700,16 @@
         :aria-label="t('linkAdd')"
         @click.stop
       >
-        <div class="text-doc-link-action-url">{{ linkActionHref }}</div>
+        <!-- One row, like the formatting bubble: where the link goes, then
+             icon actions (names in tooltips / for screen readers). -->
+        <Link2 :size="15" class="text-doc-link-action-icon" aria-hidden="true" />
+        <span class="text-doc-link-action-url" :title="linkActionHref">{{ linkActionHref }}</span>
+        <span class="text-doc-link-action-sep" aria-hidden="true"></span>
         <div class="text-doc-link-action-buttons">
-          <button type="button" class="text-doc-link-action-btn" @click="copyLinkActionHref">{{ t('linkCopy') }}</button>
-          <button type="button" class="text-doc-link-action-btn" @click="editLinkAction">{{ t('linkEdit') }}</button>
-          <button type="button" class="text-doc-link-action-btn" data-link-action="remove" @click="removeLinkAction">{{ t('linkRemove') }}</button>
-          <button type="button" class="text-doc-link-action-btn text-doc-link-action-open" @click="openLinkActionHref">
-            <ExternalLink :size="13" aria-hidden="true" />{{ t('linkOpen') }}
-          </button>
+          <button type="button" class="text-doc-link-action-btn" data-link-action="copy" :title="t('linkCopy')" :aria-label="t('linkCopy')" @click="copyLinkActionHref"><Copy :size="15" aria-hidden="true" /></button>
+          <button type="button" class="text-doc-link-action-btn" data-link-action="edit" :title="t('linkEdit')" :aria-label="t('linkEdit')" @click="editLinkAction"><Pencil :size="15" aria-hidden="true" /></button>
+          <button type="button" class="text-doc-link-action-btn" data-link-action="remove" :title="t('linkRemove')" :aria-label="t('linkRemove')" @click="removeLinkAction"><Unlink :size="15" aria-hidden="true" /></button>
+          <button type="button" class="text-doc-link-action-btn text-doc-link-action-open" data-link-action="open" :title="t('linkOpen')" :aria-label="t('linkOpen')" @click="openLinkActionHref"><ExternalLink :size="15" aria-hidden="true" /></button>
         </div>
       </div>
     </template>
@@ -737,7 +739,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
-import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine } from '../text-documents/outline-tree';
+import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -795,11 +797,11 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1363,10 +1365,11 @@ export default defineComponent({
     const activeOutlineHeadingId = ref<string | null>(null);
     const pageRef = ref<HTMLElement | null>(null);
     /**
-     * Whether there is a caret to follow. Off until the editor is first
-     * focused and again once system Back takes the caret away - NOT plain
+     * Whether the user has placed a caret: on from the first focus, off
+     * once system Back takes it away (so the next Back leaves). NOT plain
      * `isFocused`: tapping the outline button blurs the editor, yet the caret
-     * the user placed is still the place they mean.
+     * the user placed is still there. The outline follows the screen, not
+     * the caret, whatever this says.
      */
     const hasCaret = ref(false);
 
@@ -1374,7 +1377,8 @@ export default defineComponent({
     function headingIdInView(ed: Editor): string | null {
       const page = pageRef.value;
       if (!page) return null;
-      const line = page.getBoundingClientRect().top + Math.min(120, page.clientHeight * 0.25);
+      const pageTop = page.getBoundingClientRect().top;
+      const line = pageTop + Math.min(120, page.clientHeight * 0.25);
       const headings = documentOutline(ed.state.doc).flatMap((entry) => {
         const dom = ed.view.nodeDOM(entry.pos);
         // A heading folded inside a collapsed section has no layout (and a
@@ -1382,13 +1386,21 @@ export default defineComponent({
         if (!(dom instanceof HTMLElement) || dom.getClientRects().length === 0) return [];
         return [{ id: entry.id, top: dom.getBoundingClientRect().top }];
       });
-      return headingIdAtReadingLine(headings, line);
+      const reading = headingIdAtReadingLine(headings, line);
+      if (reading) return reading;
+      // At the top of the document no heading has reached the reading line
+      // yet - point at the first one already on screen rather than at nothing.
+      const screenBottom = pageTop + page.clientHeight;
+      return headings.find((heading) => heading.top < screenBottom)?.id ?? null;
     }
 
+    /**
+     * The outline marks the section on SCREEN - the one being read - not the
+     * one holding the caret: scrolling away from where you typed moves the
+     * pointer with you, on the web and on a phone alike.
+     */
     function syncActiveOutlineHeading(ed: Editor): void {
-      const id = hasCaret.value
-        ? headingIdAtPos(documentOutline(ed.state.doc), ed.state.selection.head)
-        : headingIdInView(ed);
+      const id = headingIdInView(ed);
       if (id === activeOutlineHeadingId.value) return;
       activeOutlineHeadingId.value = id;
       // Keep it in view in the sidebar (scrollTop only - see the helper).
@@ -1810,8 +1822,8 @@ export default defineComponent({
       if (!href) return false;
       const rect = anchor.getBoundingClientRect();
       // Only decides above vs below; the menu's real height doesn't matter
-      // for placement (see linkActionRect). Two rows of buttons, worst case.
-      const ESTIMATED_MENU_HEIGHT = 160;
+      // for placement (see linkActionRect). A single row now.
+      const ESTIMATED_MENU_HEIGHT = 56;
       // Opens ABOVE the link by default (front task: it used to sit right on
       // top of the link text, which the popover's own background then hid) -
       // falls back to below only when there isn't enough room above.
@@ -3335,13 +3347,13 @@ export default defineComponent({
       return false;
     });
 
-    // Without a caret the outline follows the scroll (one update per frame).
+    // The outline follows the scroll (one update per frame).
     let pageScrollFrame = 0;
     const onPageScroll = () => {
-      if (hasCaret.value || pageScrollFrame) return;
+      if (pageScrollFrame) return;
       pageScrollFrame = requestAnimationFrame(() => {
         pageScrollFrame = 0;
-        if (!hasCaret.value && editor.value) syncActiveOutlineHeading(editor.value);
+        if (editor.value) syncActiveOutlineHeading(editor.value);
       });
     };
     onBeforeUnmount(() => { if (pageScrollFrame) cancelAnimationFrame(pageScrollFrame); });

@@ -138,10 +138,17 @@ describe('system Back in a text document (phone)', () => {
 });
 
 describe('outline drawer marks the current section (phone)', () => {
-  it('follows the caret', async () => {
+  it('follows the screen even when the caret sits in another section', async () => {
+    const tops: Record<string, number> = { First: -400, Second: -10, Third: 300 };
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(() => [{}] as unknown as DOMRectList);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const top = /^H\d$/.test(this.tagName) ? tops[this.textContent ?? ''] ?? 0 : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+
     const w = await mountPhoneDoc();
     const editor = w.vm.editor;
-    await focusAt(editor, posInside(editor, 'b'));
+    await focusAt(editor, posInside(editor, 'c'));
     await flushPromises();
     w.vm.toggleOutlinePanel();
     await flushPromises();

@@ -2,7 +2,7 @@
 //
 // Real TipTap editor with the document view's todo extensions.
 
-import { Editor } from '@tiptap/core';
+import { Editor, Extension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -179,6 +179,47 @@ describe('QuietTaskItem meta', () => {
     ed.commands.setTextSelection(inSecond);
     expect(itemLi(ed, 'Second').classList.contains('task-item-has-caret')).toBe(true);
     expect(itemLi(ed, 'Outer').classList.contains('task-item-has-caret')).toBe(false);
+  });
+});
+
+describe('QuietTaskItem progress under a folded heading', () => {
+  // The app's headings carry `collapsed`; StarterKit's do not - add it here.
+  const HeadingCollapsedAttr = Extension.create({
+    name: 'testHeadingCollapsed',
+    addGlobalAttributes() {
+      return [{
+        types: ['heading'],
+        attributes: {
+          collapsed: {
+            default: false,
+            parseHTML: (element: HTMLElement) => element.getAttribute('data-collapsed') === 'true',
+            renderHTML: (attributes: Record<string, unknown>) => (attributes.collapsed ? { 'data-collapsed': 'true' } : {}),
+          },
+        },
+      }];
+    },
+  });
+
+  const foldedDoc = (editable: boolean) => {
+    editor = new Editor({
+      editable,
+      extensions: [StarterKit, HeadingCollapsedAttr, TaskList, QuietTaskItem.configure({ nested: true })],
+      content:
+        '<h2 data-collapsed="true">Folded</h2>' +
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="true"><p>Hidden</p></li></ul>' +
+        '<h2>Open</h2>' +
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Shown</p></li></ul>',
+    });
+    return editor;
+  };
+  const progress = (ed: Editor) => Array.from(ed.view.dom.querySelectorAll('.task-list-progress')).map((el) => el.textContent);
+
+  it('shows no "done N of M" for a list hidden inside a folded section', () => {
+    expect(progress(foldedDoc(true))).toEqual(['0/1']);
+  });
+
+  it('keeps every counter in a read-only document, where nothing is folded away', () => {
+    expect(progress(foldedDoc(false))).toEqual(['1/1', '0/1']);
   });
 });
 

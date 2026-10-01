@@ -103,41 +103,83 @@ afterEach(() => {
   document.body.classList.remove('text-doc-outline-resizing');
 });
 
-describe('the outline marks the section the caret is in', () => {
-  it('highlights the heading of the caret\'s section and follows the caret', async () => {
+describe('the outline at the very top of a document', () => {
+  it('points at the first heading already on screen, before any reaches the reading line', async () => {
+    const tops: Record<string, number> = { Intro: 300, Setup: 600, Usage: 1400 };
+    const clientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(() => [{}] as unknown as DOMRectList);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const top = /^H\d$/.test(this.tagName) ? tops[this.textContent ?? ''] ?? 0 : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+    try {
+      const wrapper = await mountEditableDoc();
+      wrapper.vm.editor.commands.setContent('<p>Preface</p><h1>Intro</h1><p>one</p><h2>Setup</h2><p>two</p><h1>Usage</h1><p>three</p>');
+      await settleContentUpdate();
+      wrapper.vm.onPageScroll();
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await flushPromises();
+
+      // Reading line is at 120px; Intro (300px) has not reached it but is on screen.
+      expect(wrapper.findAll('.text-doc-outline-item-active').map((w: any) => w.text())).toEqual(['Intro']);
+      wrapper.unmount();
+    } finally {
+      vi.restoreAllMocks();
+      if (clientHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', clientHeight);
+      else delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    }
+  });
+});
+
+describe('the outline marks the section on screen, not the caret', () => {
+  it('follows the scroll and ignores where the caret is', async () => {
+    // jsdom has no layout: place the headings by hand, relative to the page.
+    const tops: Record<string, number> = { Intro: 200, Setup: 500, Usage: 900 };
+    vi.spyOn(HTMLElement.prototype, 'getClientRects').mockImplementation(() => [{}] as unknown as DOMRectList);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const top = /^H\d$/.test(this.tagName) ? tops[this.textContent ?? ''] ?? 0 : 0;
+      return { top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
+    });
+
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
     editor.commands.setContent('<p>Preface</p><h1>Intro</h1><p>one</p><h2>Setup</h2><p>two</p><h1>Usage</h1><p>three</p>');
     await settleContentUpdate();
     await flushPromises();
-
-    // The user has placed a caret (the outline follows it only then - with no
-    // caret it follows the scroll). jsdom fires no `focus` for a
-    // contenteditable, so send the one a tap would.
-    editor.view.dom.dispatchEvent(new FocusEvent('focus'));
     const activeText = () => wrapper.findAll('.text-doc-outline-item-active').map((w: any) => w.text());
-    const caretIn = async (text: string) => {
-      let pos = -1;
-      editor.state.doc.descendants((node: any, p: number) => {
-        if (pos < 0 && node.isText && node.text === text) pos = p + 1;
-        return pos < 0;
-      });
-      editor.commands.setTextSelection(pos);
+    const scrollTo = async (next: Record<string, number>) => {
+      Object.assign(tops, next);
+      wrapper.vm.onPageScroll();
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
       await flushPromises();
-      await wrapper.vm.$nextTick();
     };
 
-    await caretIn('two');
-    expect(activeText()).toEqual(['Setup']);
-    await caretIn('three');
-    expect(activeText()).toEqual(['Usage']);
-    await caretIn('Intro');
-    expect(activeText()).toEqual(['Intro']);
     // Above the first heading: no section, no highlight.
-    await caretIn('Preface');
+    await scrollTo({});
     expect(activeText()).toEqual([]);
 
+    await scrollTo({ Intro: -50, Setup: 250, Usage: 650 });
+    expect(activeText()).toEqual(['Intro']);
+    await scrollTo({ Intro: -350, Setup: -20, Usage: 380 });
+    expect(activeText()).toEqual(['Setup']);
+
+    // A caret placed in another section does not pull the pointer to it.
+    editor.view.dom.dispatchEvent(new FocusEvent('focus'));
+    let pos = -1;
+    editor.state.doc.descendants((node: any, p: number) => {
+      if (pos < 0 && node.isText && node.text === 'three') pos = p + 1;
+      return pos < 0;
+    });
+    editor.commands.setTextSelection(pos);
+    await flushPromises();
+    expect(activeText()).toEqual(['Setup']);
+
+    await scrollTo({ Intro: -800, Setup: -460, Usage: -10 });
+    expect(activeText()).toEqual(['Usage']);
+
     wrapper.unmount();
+    vi.restoreAllMocks();
   });
 });
 

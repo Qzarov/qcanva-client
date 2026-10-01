@@ -27,6 +27,7 @@ import TaskItem, { type TaskItemOptions } from '@tiptap/extension-task-item';
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import { collapsedRanges } from './collapsible-heading';
 
 export type TaskItemMetaLabels = {
   /** "Done 3 of 5" above a todo list. */
@@ -92,6 +93,7 @@ export const QuietTaskItem = TaskItem.extend<QuietTaskItemOptions>({
   addProseMirrorPlugins() {
     const parentPlugins = this.parent?.() ?? [];
     const labels = () => this.options.labels;
+    const editable = () => this.editor?.isEditable ?? true;
     return [
       ...parentPlugins,
       new Plugin({
@@ -99,11 +101,18 @@ export const QuietTaskItem = TaskItem.extend<QuietTaskItemOptions>({
         props: {
           decorations: (state) => {
             const decorations: Decoration[] = [];
+            // A folded heading hides its section (collapsible-heading.ts) -
+            // but this counter is a widget, not part of the list's node, so it
+            // must skip such lists itself. Same rule as the fold: nothing is
+            // hidden in a read-only editor.
+            const hidden = editable() ? collapsedRanges(state.doc) : [];
+            const isHidden = (pos: number) => hidden.some((range) => pos >= range.from && pos < range.to);
             // "Done N of M" above every list that is not itself nested in a
             // todo - a nested list is counted in its parent's progress.
             state.doc.descendants((node, pos, parent) => {
               if (node.type.name !== 'taskList') return true;
               if (parent?.type.name === 'taskItem') return true;
+              if (isHidden(pos)) return false;
               const { done, total } = taskListProgress(node);
               if (total === 0) return true;
               decorations.push(
