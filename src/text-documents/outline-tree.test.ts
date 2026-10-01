@@ -1,7 +1,7 @@
 // @vitest-environment node
 
 import { describe, expect, it } from 'vitest';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine, type OutlineTreeNode } from './outline-tree';
+import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine, type OutlineTreeNode } from './outline-tree';
 import type { HeadingOutlineEntry } from '../documents/heading-anchors';
 
 function entry(id: string, level: number, text = id, pos = 0): HeadingOutlineEntry {
@@ -122,6 +122,21 @@ describe('headingIdAtReadingLine (the outline row for what is on screen, with no
 
   it('does not depend on the order headings come in', () => {
     expect(headingIdAtReadingLine([...headings].reverse(), 100)).toBe('setup');
+  });
+});
+
+describe('collectCollapsibleIds (sections that own a chevron)', () => {
+  it('returns every node that has children, in document order', () => {
+    // h1 > (h2a > h3), h2b(leaf) ; plus a second root h1b(leaf)
+    const tree = buildOutlineTree([
+      entry('h1', 1), entry('h2a', 2), entry('h3', 3), entry('h2b', 2), entry('h1b', 1),
+    ]);
+    expect(collectCollapsibleIds(tree)).toEqual(['h1', 'h2a']);
+  });
+
+  it('is empty when nothing nests', () => {
+    expect(collectCollapsibleIds(buildOutlineTree([entry('a', 1), entry('b', 1)]))).toEqual([]);
+    expect(collectCollapsibleIds([])).toEqual([]);
   });
 });
 

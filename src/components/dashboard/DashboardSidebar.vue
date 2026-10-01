@@ -182,7 +182,6 @@
       >
         <PanelLeftOpen v-if="widthState === 'collapsed'" :size="18" aria-hidden="true" />
         <PanelLeftClose v-else :size="18" aria-hidden="true" />
-        <span class="dashboard-sidebar-label">{{ widthToggleLabel }}</span>
       </button>
     </footer>
   </aside>

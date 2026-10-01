@@ -228,7 +228,17 @@
           :aria-label="outlineLabels.title"
         >
           <div v-if="outlinePanelOpen" class="text-doc-outline-panel-inner">
-            <div class="text-doc-outline-panel-title">{{ outlineLabels.title }}</div>
+            <div class="text-doc-outline-panel-title">
+              <span class="text-doc-outline-panel-title-text">{{ outlineLabels.title }}</span>
+              <button
+                v-if="hasCollapsibleOutline"
+                type="button"
+                class="btn-ghost text-doc-outline-expand-all"
+                :title="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
+                :aria-label="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
+                @click="toggleAllOutlineSections"
+              ><ChevronsUpDown v-if="allOutlineSectionsCollapsed" :size="15" aria-hidden="true" /><ChevronsDownUp v-else :size="15" aria-hidden="true" /></button>
+            </div>
             <ol v-if="outlineVisibleRows.length" class="text-doc-outline-list">
               <li
                 v-for="row in outlineVisibleRows"
@@ -293,7 +303,7 @@
             :aria-label="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
             :aria-pressed="!outlinePanelOpen"
             @click="toggleOutlinePanel"
-          ><ChevronLeft v-if="outlinePanelOpen" :size="15" aria-hidden="true" /><ChevronRight v-else :size="15" aria-hidden="true" /></button>
+          ><PanelLeftClose v-if="outlinePanelOpen" :size="16" aria-hidden="true" /><PanelLeftOpen v-else :size="16" aria-hidden="true" /></button>
         </aside>
 
       <main ref="docShellRef" class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
@@ -726,7 +736,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
-import { buildOutlineTree, clampOutlineWidth, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine } from '../text-documents/outline-tree';
+import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtPos, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -784,11 +794,11 @@ import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Redo2, Rows3, Trash2, Undo2, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, Redo2, Rows3, Trash2, Undo2, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Redo2, Rows3, Trash2, Undo2, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1326,6 +1336,19 @@ export default defineComponent({
       outlineCollapsedSections.value = next;
     }
 
+    // Expand / collapse every heading section at once from the panel header.
+    const allCollapsibleOutlineIds = computed(() => collectCollapsibleIds(outlineTree.value));
+    const hasCollapsibleOutline = computed(() => allCollapsibleOutlineIds.value.length > 0);
+    const allOutlineSectionsCollapsed = computed(() =>
+      hasCollapsibleOutline.value &&
+      allCollapsibleOutlineIds.value.every((id) => outlineCollapsedSections.value.has(id)),
+    );
+    function toggleAllOutlineSections(): void {
+      outlineCollapsedSections.value = allOutlineSectionsCollapsed.value
+        ? new Set()
+        : new Set(allCollapsibleOutlineIds.value);
+    }
+
     /**
      * Which outline row is "active": the section the CARET is in (the last
      * heading at or before it), following the caret as it moves - and so
@@ -1433,6 +1456,8 @@ export default defineComponent({
       show: '',
       collapseSection: '',
       expandSection: '',
+      expandAll: '',
+      collapseAll: '',
     };
     const paintOutlineLabels = () => {
       outlineLabels.title = t('outlineTitle');
@@ -1442,6 +1467,8 @@ export default defineComponent({
       outlineLabels.show = t('outlineShow');
       outlineLabels.collapseSection = t('outlineCollapseSection');
       outlineLabels.expandSection = t('outlineExpandSection');
+      outlineLabels.expandAll = t('outlineExpandAll');
+      outlineLabels.collapseAll = t('outlineCollapseAll');
     };
     paintOutlineLabels();
     watch(locale, paintOutlineLabels);
@@ -3443,6 +3470,9 @@ export default defineComponent({
       closeOutlineMobile,
       navigateFromOutline,
       toggleOutlineSection,
+      toggleAllOutlineSections,
+      allOutlineSectionsCollapsed,
+      hasCollapsibleOutline,
       startOutlineResize,
       resetOutlineWidth,
       onOutlineLinkHover,

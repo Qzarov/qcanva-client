@@ -77,6 +77,25 @@ export function flattenVisibleOutline(
   return rows;
 }
 
+/**
+ * Every section id that owns children (i.e. has a chevron). Used to collapse
+ * or expand the whole outline at once from the panel header.
+ */
+export function collectCollapsibleIds(tree: OutlineTreeNode[]): string[] {
+  const ids: string[] = [];
+  const visit = (nodes: OutlineTreeNode[]) => {
+    for (const node of nodes) {
+      if (node.children.length > 0) {
+        ids.push(node.entry.id);
+        visit(node.children);
+      }
+    }
+  };
+  visit(tree);
+
+  return ids;
+}
+
 /** Bounds a candidate outline panel width to the resizable range. */
 export function clampOutlineWidth(width: number, min: number, max: number): number {
   if (!Number.isFinite(width)) return min;

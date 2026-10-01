@@ -1215,6 +1215,9 @@ export default defineComponent({
         ? Math.max(modebarEl.offsetHeight, Math.round(window.innerHeight - modebarRect.top))
         : 0;
       root.style.setProperty('--canvas-toolbar-height', `${modebarSpace}px`);
+      // Mirror onto :root so the add panel - Teleported to <body>, outside
+      // .canvas-view - can float just above the mode bar like the draw panel.
+      document.documentElement.style.setProperty('--canvas-toolbar-height', `${modebarSpace}px`);
     }
 
     function observeChromeMetrics() {
@@ -2111,6 +2114,7 @@ export default defineComponent({
       window.removeEventListener('resize', updateChromeMetrics);
       window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
+      document.documentElement.style.removeProperty('--canvas-toolbar-height');
     });
 
     const drawPanelOpen = ref(false);
