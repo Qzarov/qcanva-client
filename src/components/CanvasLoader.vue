@@ -219,7 +219,7 @@
       >
         <!-- Edit mode -->
         <textarea
-          v-if="editingNodeId === node.id"
+          v-if="editingNodeId === node.id && !isMobileLayout"
           class="node-editor"
           :style="{
             backgroundColor: 'var(--content-canvas-editor-surface)',
@@ -252,17 +252,6 @@
             v-html="renderMarkdown(getNodeRestText(node.text || ''))"
           ></div>
         </div>
-        <button
-          v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !readonly"
-          class="node-edit-trigger"
-          type="button"
-          title="Edit text"
-          @touchstart.stop
-          @mousedown.stop
-          @click.stop="onNodeDblClick(node)"
-        >
-          Edit
-        </button>
         <!-- Resize handles (visible when selected) -->
         <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -280,6 +269,45 @@
         <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
         <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
+
+      <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
+      <Teleport to="body">
+        <div
+          v-if="fullscreenEditingNode"
+          class="node-fullscreen-editor"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('editText')"
+        >
+          <header class="node-fullscreen-editor-header">
+            <button
+              class="node-fullscreen-editor-back"
+              type="button"
+              :aria-label="t('backToCanvas')"
+              :title="t('backToCanvas')"
+              @click="closeTextEditor"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <span class="node-fullscreen-editor-title">{{ t('editText') }}</span>
+          </header>
+          <textarea
+            ref="fullscreenEditorRef"
+            class="node-editor node-fullscreen-editor-input"
+            :style="{
+              backgroundColor: 'var(--content-canvas-editor-surface)',
+              color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || 'var(--content-canvas-editor-text)',
+            }"
+            :value="fullscreenEditingNode.text"
+            @input="onEditInput($event, fullscreenEditingNode)"
+            @keydown.stop
+            @keyup.stop
+          ></textarea>
+        </div>
+      </Teleport>
 
       <!-- Link nodes -->
       <div
@@ -795,6 +823,7 @@ import { useI18n } from "../composables/useI18n";
 import { useTheme } from "../composables/useTheme";
 import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
 import { useMinimapPreference } from "../composables/useMinimapPreference";
+import { registerBackHandler } from "../composables/useBackHandler";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
@@ -925,6 +954,15 @@ export default defineComponent({
     const { mode: mobileInteractionMode } = useMobileCanvasMode();
     const isTouchDevice = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
     const isHandMode = computed(() => isTouchDevice && mobileInteractionMode.value === 'hand');
+    // Phone layout - the same breakpoint that shows .mobile-only UI (style.css).
+    // There a text card is never edited inline: only the bottom toolbar's
+    // "edit text" action opens it, in a full-screen editor.
+    const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 640px), (max-height: 500px) and (orientation: landscape)')
+      : null;
+    const isMobileLayout = ref(mobileLayoutQuery?.matches ?? false);
+    const onMobileLayoutChange = (e: MediaQueryListEvent) => { isMobileLayout.value = e.matches; };
+    mobileLayoutQuery?.addEventListener?.('change', onMobileLayoutChange);
     const { enabled: minimapEnabled } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const nodes = ref<CanvasNode[]>([]);
@@ -1736,6 +1774,7 @@ export default defineComponent({
     // Editing state
     const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
+    const fullscreenEditorRef = ref<HTMLTextAreaElement | null>(null);
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
@@ -1937,16 +1976,33 @@ export default defineComponent({
       startAutoPan();
     };
 
-    // Double-click to edit text
-    const onNodeDblClick = (node: CanvasNode) => {
-      if (node.type !== "text") return;
+    const focusTextEditor = () => {
+      const textarea = isMobileLayout.value ? fullscreenEditorRef.value : editorRefs.value?.[0];
+      textarea?.focus();
+    };
+
+    const startTextEditing = (node: CanvasNode) => {
       emit('node-edit-start', node.id);
       editingNodeId.value = node.id;
-      nextTick(() => {
-        const textarea = editorRefs.value?.[0];
-        if (textarea) textarea.focus();
-      });
+      nextTick(focusTextEditor);
     };
+
+    // Double-click to edit text. Not on the phone layout, where a tap on a
+    // moving canvas is too easy to misfire - there editing is explicit only.
+    const onNodeDblClick = (node: CanvasNode) => {
+      if (node.type !== "text" || isMobileLayout.value) return;
+      startTextEditing(node);
+    };
+
+    // The bottom toolbar's "edit text" action.
+    const openTextEditor = (id: string | null | undefined) => {
+      const node = nodes.value.find((n) => n.id === id);
+      if (!node || node.type !== "text" || props.readonly) return;
+      startTextEditing(node);
+    };
+
+    const isTextNode = (id: string | null | undefined): boolean =>
+      nodes.value.some((n) => n.id === id && n.type === "text");
 
     let editSaveTimer: ReturnType<typeof setTimeout> | null = null;
     const lastEmittedText = new Map<string, string | undefined>();
@@ -1980,6 +2036,32 @@ export default defineComponent({
       editingNodeId.value = null;
       scheduleChange();
     };
+
+    const fullscreenEditingNode = computed<CanvasNode | null>(() => {
+      if (!isMobileLayout.value || !editingNodeId.value) return null;
+      return nodes.value.find((n) => n.id === editingNodeId.value && n.type === "text") ?? null;
+    });
+
+    const closeTextEditor = () => {
+      fullscreenEditorRef.value?.blur();
+      onEditEnd();
+    };
+
+    // While the full-screen editor is open, Android's system Back closes it and
+    // returns to the canvas. Registered on open (not on mount) so it is the most
+    // recent handler and wins over the view's own ones.
+    let unregisterEditorBack: (() => void) | null = null;
+    watch(() => !!fullscreenEditingNode.value, (open) => {
+      if (open && !unregisterEditorBack) {
+        unregisterEditorBack = registerBackHandler(() => {
+          closeTextEditor();
+          return true;
+        });
+      } else if (!open && unregisterEditorBack) {
+        unregisterEditorBack();
+        unregisterEditorBack = null;
+      }
+    });
 
     // Resize handlers
     const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
@@ -2216,10 +2298,7 @@ export default defineComponent({
       emitOp({ type: 'node-add', node: { ...newNode } });
       selectedNodeIds.value = [newNode.id];
       editingNodeId.value = newNode.id;
-      nextTick(() => {
-        const textarea = editorRefs.value?.[0];
-        if (textarea) textarea.focus();
-      });
+      nextTick(focusTextEditor);
     };
 
     const onCanvasDblClick = (e: MouseEvent) => {
@@ -4139,6 +4218,8 @@ export default defineComponent({
 
     onUnmounted(() => {
       if (editSaveTimer) clearTimeout(editSaveTimer);
+      unregisterEditorBack?.();
+      mobileLayoutQuery?.removeEventListener?.('change', onMobileLayoutChange);
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
       stopAutoPan();
       window.removeEventListener("orientationchange", onOrientationChange);
@@ -4195,6 +4276,12 @@ export default defineComponent({
       selBox,
       editingNodeId,
       editorRefs,
+      fullscreenEditorRef,
+      fullscreenEditingNode,
+      isMobileLayout,
+      openTextEditor,
+      closeTextEditor,
+      isTextNode,
       dragNodeId,
       isManipulatingNode,
       onNodeDragStart,
@@ -4813,26 +4900,56 @@ g:hover > .edge-midpoint-conn {
   display: block;
 }
 
-/* Double-tap is fine with a mouse but unreliable on a moving canvas. The
-   explicit action is shown for a selected text card on touch screens below. */
-.node-edit-trigger {
-  display: none;
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 18;
-  min-width: 58px;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid var(--ui-focus);
-  border-radius: 999px;
+/* Phone layout: full-screen text editor, opened from the bottom toolbar.
+   Sits above the canvas chrome (mode bar, toolbars) but below toasts. */
+.node-fullscreen-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--content-canvas-editor-surface);
+}
+
+.node-fullscreen-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-height: 52px;
+  padding: env(safe-area-inset-top, 0px) 8px 0;
+  border-bottom: 1px solid var(--ui-border);
   background: var(--ui-surface-elevated);
   color: var(--ui-text);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
+}
+
+.node-fullscreen-editor-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.node-fullscreen-editor-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.node-editor.node-fullscreen-editor-input {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  font-size: 16px;
 }
 
 /* ===== Resize handles ===== */
@@ -5304,12 +5421,6 @@ g:hover > .edge-midpoint-conn {
 }
 
 @media (max-width: 640px) {
-  .node-edit-trigger {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .canvas-viewport {
     touch-action: none;
   }

@@ -251,6 +251,8 @@ import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeActio
 import { useI18n } from '../composables/useI18n';
 
 const ICON_PATHS: Record<string, string> = {
+  'edit-text': `<path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+                <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>`,
   'fill': `<rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
            <rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor"/>`,
   'text-color': `<text x="4" y="17" font-size="15" font-weight="700" font-family="sans-serif" fill="currentColor">T</text>
@@ -347,7 +349,9 @@ export default defineComponent({
         canRedo: cr.canRedo ?? false,
         isOwner,
         isReadonly,
+        isTextNode: kind === 'node' && !!nid && (cr.isTextNode?.(nid) ?? false),
         handlers: {
+          editText: () => cr.openTextEditor?.(nid),
           duplicate: () => cr.duplicateSelection(),
           delete: () => cr.deleteSelection(),
           toggleLock: () => kind === 'multi-node'

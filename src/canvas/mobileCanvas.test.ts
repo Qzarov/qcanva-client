@@ -136,6 +136,22 @@ describe('buildNodeActions — single node', () => {
     expect(actions.find((a) => a.key === 'fill')?.isSectionToggle).toBe(true);
     expect(actions.find((a) => a.key === 'text-color')?.isSectionToggle).toBe(true);
   });
+
+  it('edit-text comes first for a text node and calls its handler', () => {
+    const editText = vi.fn();
+    const actions = buildNodeActions({ ...singleNode, isTextNode: true, handlers: { ...baseHandlers, editText } });
+    expect(actions[0]?.key).toBe('edit-text');
+    expect(actions[0]?.isSectionToggle).toBeFalsy();
+    actions[0]!.handler();
+    expect(editText).toHaveBeenCalledOnce();
+  });
+
+  it('no edit-text for non-text nodes or read-only canvases', () => {
+    const handlers = { ...baseHandlers, editText: noop };
+    expect(buildNodeActions({ ...singleNode, handlers }).find((a) => a.key === 'edit-text')).toBeUndefined();
+    expect(buildNodeActions({ ...singleNode, isTextNode: true, isReadonly: true, handlers })
+      .find((a) => a.key === 'edit-text')).toBeUndefined();
+  });
 });
 
 // ──────────────────────────────────────────────

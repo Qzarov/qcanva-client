@@ -1,5 +1,5 @@
 export type NodeActionKey =
-  | 'fill' | 'text-color' | 'border-color' | 'border-style'
+  | 'edit-text' | 'fill' | 'text-color' | 'border-color' | 'border-style'
   | 'alignment' | 'duplicate' | 'lock' | 'layer-up' | 'layer-down'
   | 'bring-front' | 'send-back' | 'hide' | 'image-title'
   | 'delete' | 'undo' | 'redo'
@@ -41,7 +41,11 @@ export type BuildActionsParams = {
   canRedo: boolean;
   isOwner: boolean;
   isReadonly: boolean;
+  // Single text node: offer the explicit "edit text" action (mobile edits text
+  // only through it, never by tapping the card).
+  isTextNode?: boolean;
   handlers: {
+    editText?: () => void;
     duplicate: () => void;
     delete: () => void;
     toggleLock: () => void;
@@ -116,8 +120,13 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
     ];
   }
 
-  // Single node — priority order: color sections first (most-used on mobile), then direct actions
+  // Single node — priority order: editing text first, then color sections
+  // (most-used on mobile), then direct actions
+  const editText: NodeAction[] = p.isTextNode && !r && p.handlers.editText
+    ? [{ key: 'edit-text', label: 'Edit text', handler: p.handlers.editText }]
+    : [];
   return [
+    ...editText,
     { key: 'fill', label: 'Background', handler: p.handlers.fillSection, isSectionToggle: true, disabled: r },
     { key: 'text-color', label: 'Text color', handler: p.handlers.textColorSection, isSectionToggle: true, disabled: r },
     { key: 'duplicate', label: 'Duplicate', handler: p.handlers.duplicate, disabled: r },
