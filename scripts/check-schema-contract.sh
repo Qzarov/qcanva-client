@@ -14,7 +14,12 @@
 set -euo pipefail
 
 FRONT_CONTRACT="${FRONT_CONTRACT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/src/documents/schema-contract.ts}"
-BACK_CONTRACT="${BACK_CONTRACT:-/var/www/canvas.qzarov.pro/back/src/text-documents/schema/schema-contract.ts}"
+# The backend sits next to the frontend on the server: <site>/front/repo is
+# this repository, <site>/back is canvas-server-back. Derived from where this
+# repository is rather than hard-coded, so a renamed site directory cannot
+# quietly turn the check into a skip again (a stale hard-coded path did).
+SITE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+BACK_CONTRACT="${BACK_CONTRACT:-$SITE_DIR/back/src/text-documents/schema/schema-contract.ts}"
 EXTRACTOR="$(dirname "${BASH_SOURCE[0]}")/extract-schema-literal.py"
 
 extract() {

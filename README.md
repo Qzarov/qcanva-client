@@ -56,16 +56,30 @@ npm run build
 
 ## Production deploy
 
-На сервере фронтенд-копия находится в `/var/www/canvas.qzarov.pro/front/repo`.
-Запускайте из неё:
+На сервере сайт лежит в `/var/www/qcanva.qzarov.pro/` (оба домена,
+`qcanva.qzarov.pro` и `canvas.qzarov.pro`, отдаются из него):
+
+```text
+/var/www/qcanva.qzarov.pro/
+├── front/
+│   ├── repo/            # git-копия этого репозитория (ветка dev)
+│   ├── releases/        # собранные релизы
+│   ├── dist -> releases/<текущий>        # отсюда отдаёт nginx
+│   └── dist.previous -> releases/<прошлый>
+└── back/                # canvas-server-back (pm2-процесс canvas-back)
+```
+
+Запускайте из `front/repo`:
 
 ```bash
+cd /var/www/qcanva.qzarov.pro/front/repo
 bash scripts/deploy-production.sh
 ```
 
-Скрипт обновляет `dev`, запускает тесты и сборку, затем атомарно переключает
-путь nginx `/var/www/canvas.qzarov.pro/front/dist` на новый release. Хранятся
-только активная и одна предыдущая сборки. Для отката:
+Скрипт обновляет `dev`, сверяет схему документа с бэкендом (`../../back`,
+см. `scripts/check-schema-contract.sh`), запускает тесты и сборку, затем
+атомарно переключает `front/dist` на новый release. Хранятся только активная
+и одна предыдущая сборки. Для отката:
 
 ```bash
 bash scripts/deploy-production.sh rollback
