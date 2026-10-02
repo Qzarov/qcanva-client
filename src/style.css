@@ -1341,49 +1341,10 @@ body {
   color: var(--ui-text-secondary);
   font-size: 11px;
 }
-/* Home feed section bar (DashboardView): sticky, one chip per section in
-   the feed; the section in view is highlighted. Scrolls sideways on phones. */
-.dashboard-feed-nav {
-  position: sticky;
-  /* .app-main's own top padding: stick to the scroll edge, not below it. */
-  top: -32px;
-  z-index: 30;
-  display: flex;
-  gap: 6px;
-  margin: 0 0 14px;
-  padding: 8px 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  background: var(--ui-page);
-}
-.dashboard-feed-nav::-webkit-scrollbar {
-  display: none;
-}
-.dashboard-feed-nav-item {
-  flex: 0 0 auto;
-  padding: 6px 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-full);
-  background: var(--ui-surface);
-  color: var(--ui-text-secondary);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-}
-.dashboard-feed-nav-item:hover {
-  color: var(--ui-text);
-}
-.dashboard-feed-nav-item.active {
-  border-color: var(--color-brands);
-  background: color-mix(in srgb, var(--color-brands) 14%, var(--ui-surface));
-  color: var(--ui-text);
-}
-/* Jump targets land below the sticky bar, not under it. */
+/* Переходы из боковой панели: раздел встаёт под верхний край ленты с небольшим отступом. */
 .dashboard-feed-section,
 .dashboard-feed-anchor {
-  scroll-margin-top: 64px;
+  scroll-margin-top: 16px;
 }
 .dashboard-feed-section + .dashboard-feed-section {
   margin-top: 28px;
@@ -2103,6 +2064,12 @@ body {
 }
 .folder-manager-menu .mobile-action-popover {
   min-width: 180px;
+}
+/* «+» папки — только в вебе: на мобильном элементы создаёт плавающая «+» (≤720px). */
+@media (max-width: 720px) {
+  .folder-create-menu {
+    display: none;
+  }
 }
 .folder-manager-btn {
   padding: 6px 9px;
@@ -3183,9 +3150,6 @@ body {
 
   .app-main.dashboard {
     padding: 16px 12px calc(24px + env(safe-area-inset-bottom));
-  }
-  .app-main.dashboard .dashboard-feed-nav {
-    top: -16px;
   }
 
   .dash-actions {
@@ -9982,13 +9946,13 @@ textarea:focus-visible {
 }
 
 /* Buttons that stand on their own: inset glass panes. */
-.dashboard-view :is(.btn-ghost, .tag-filter, .dashboard-feed-nav-item, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item) {
+.dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
   color: var(--ui-text);
 }
-.dashboard-view :is(.btn-ghost, .tag-filter, .dashboard-feed-nav-item, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item):hover:not(:disabled, .active) {
+.dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item):hover:not(:disabled, .active) {
   background: var(--ui-glass-btn-hover);
 }
 
@@ -10027,7 +9991,6 @@ textarea:focus-visible {
 .dashboard-view :is(
   .dashboard-sidebar-item,
   .tag-filter,
-  .dashboard-feed-nav-item,
   .content-type-tabs button,
   .dashboard-recent-view-toggle button,
   .dashboard-public-owner-filter button
@@ -10045,18 +10008,6 @@ textarea:focus-visible {
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow), var(--ui-glass-shadow);
-}
-
-/* The sticky section nav (Recent / Folders / Public) used to paint a page-
-   coloured band so cards scrolled under it unseen. Now the band is gone and
-   its pills are full glass - content blurs under them, like the canvas bar. */
-.dashboard-view .dashboard-feed-nav {
-  background: transparent;
-}
-.dashboard-view .dashboard-feed-nav-item {
-  background: var(--ui-glass-tint), var(--ui-glass-bg);
-  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
-  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
 
 /* ===== Text and HTML documents: Liquid Glass =====

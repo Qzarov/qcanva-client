@@ -382,26 +382,20 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.findAll('[data-section="shared"] .dash-grid > *').length).toBe(6);
   });
 
-  it('the feed bar lists the sections present and scrolls to the one clicked', async () => {
+  it('has no horizontal section bar on the home feed (web and mobile)', async () => {
     withDefaultFolders();
     vi.mocked(textDocuments.list).mockResolvedValueOnce({
       documents: [{ id: 's-1', title: 'Shared doc', ownerId: 'user-9', visibility: 'private' }],
     } as never);
-    const wrapper = mountDashboard({ attachTo: document.body });
+    const wrapper = mountDashboard();
     await flushPromises();
 
-    const links = wrapper.findAll('[data-feed-nav]');
-    expect(links.map((l) => l.attributes('data-feed-nav'))).toEqual(['recent', 'folders', 'shared']);
-    const target = wrapper.get('[data-feed-section="shared"]').element as HTMLElement;
-    const scroll = vi.fn();
-    target.scrollIntoView = scroll;
-    await wrapper.get('[data-feed-nav="shared"]').trigger('click');
-    expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior: 'smooth', block: 'start' }));
-    expect(wrapper.get('[data-feed-nav="shared"]').attributes('aria-current')).toBe('true');
-    wrapper.unmount();
+    expect(wrapper.find('[data-feed-section="shared"]').exists()).toBe(true);
+    expect(wrapper.find('.dashboard-feed-nav').exists()).toBe(false);
+    expect(wrapper.findAll('[data-feed-nav]')).toHaveLength(0);
   });
 
-  it('creates a document right inside a folder from the folder\'s menu', async () => {
+  it('creates items in a folder from its "+" menu, not from "⋯"', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
@@ -411,10 +405,15 @@ describe('dashboard sidebar navigation', () => {
 
     vm.toggleFolderMenu('folder-b');
     await nextTick();
+    // «⋯» — только управление папкой: пункты создания переехали в «+».
+    expect(wrapper.find('[data-folder-create]').exists()).toBe(false);
+
+    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await nextTick();
     await wrapper.get('[data-folder-create="text-document"]').trigger('click');
     await flushPromises();
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
-    vm.toggleFolderMenu('folder-b');
+    await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
     await wrapper.get('[data-folder-create="canvas"]').trigger('click');
     await flushPromises();
@@ -581,6 +580,53 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-section="interactive-templates"]').exists()).toBe(true);
     expect(wrapper.find('[data-section="shared"]').exists()).toBe(false);
     expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
+  });
+
+  it('keeps a filed interactive template and a filed shared resource in their own sections', async () => {
+    const template = {
+      id: 'template-1', title: 'Board in folder', templateType: 'trello-board', data: {},
+      role: 'owner', createdAt: '', updatedAt: '',
+    };
+    vi.mocked(interactiveTemplates.list).mockResolvedValue({ templates: [template] } as never);
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [], public: [], welcome: null,
+      shared: [{ id: 'shared-in-folder', title: 'Shared canvas', tags: [], ownerId: 'user-9' }],
+    } as never);
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [{
+        id: 'folder-a', name: 'Work', role: 'owner', parentId: null, htmlDocuments: [],
+        canvases: [{ id: 'shared-in-folder', title: 'Shared canvas', folderId: 'folder-a' }],
+        interactiveTemplates: [{ id: 'template-1', title: 'Board in folder', folderId: 'folder-a' }],
+      }],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    expect(vm.visibleInteractiveTemplateItems.map((item: any) => item.id)).toEqual(['template-1']);
+    expect(vm.sharedFiltered.map((item: any) => item.id)).toEqual(['shared-in-folder']);
+  });
+
+  it('creates an interactive template straight into the folder from its "+" menu', async () => {
+    withDefaultFolders();
+    vi.mocked(interactiveTemplates.create).mockResolvedValueOnce({
+      id: 'template-new', title: '', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    vm.selectFolder('folder-b');
+    await nextTick();
+
+    await wrapper.get('[data-folder-create-menu]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-folder-create="interactive-template"]').trigger('click');
+    await nextTick();
+    await wrapper.get('[data-template-type="trello-board"]').trigger('click');
+    await flushPromises();
+
+    expect(resourceFolders.move).toHaveBeenCalledWith('folder-b', 'interactive-template', 'template-new');
   });
 
   it('lists my public doc in Public even though it sits in one of my folders, and filters Mine/Others', async () => {

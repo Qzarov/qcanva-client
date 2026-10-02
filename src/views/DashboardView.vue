@@ -217,21 +217,6 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <!-- Home is one feed (Recent, Folders, Shared, Interactive, Public):
-         this sticky bar jumps between its sections and marks the one in
-         view, so moving around needs no sidebar. -->
-    <nav v-if="isHomeFeed && feedNavSections.length > 1" class="dashboard-feed-nav" :aria-label="t('dashboardSections')">
-      <button
-        v-for="section in feedNavSections"
-        :key="section"
-        type="button"
-        class="dashboard-feed-nav-item"
-        :class="{ active: activeFeedSection === section }"
-        :aria-current="activeFeedSection === section ? 'true' : undefined"
-        :data-feed-nav="section"
-        @click="scrollToFeedSection(section)"
-      >{{ t(FEED_SECTION_LABELS[section]) }}</button>
-    </nav>
     <section
       v-if="isLoggedIn && activeSection.kind === 'recent'"
       id="feed-recent"
@@ -433,6 +418,32 @@
                   </button>
                 </div>
               </div>
+              <!-- Веб: «+» слева от «⋯» — что создать прямо в этой папке. На мобильном скрыт:
+                   там создаёт плавающая «+», она сама подставляет открытую папку. -->
+              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
+                <button
+                  class="folder-manager-trigger folder-create-trigger"
+                  data-folder-create-menu
+                  @click.stop="toggleFolderCreateMenu(activeFolder.id)"
+                  :title="t('new')"
+                  :aria-label="t('new')"
+                  :disabled="isBusy"
+                ><Plus :size="17" aria-hidden="true" /></button>
+                <div v-if="openControlMenu === 'folder-new:' + activeFolder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">
+                    <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('newCanvas') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">
+                    <FileCode2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('htmlDocument') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">
+                    <FileText class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('document') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="interactive-template" @click="openInteractiveTemplatePicker(activeFolder.id)" :disabled="isBusy">
+                    <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('interactiveTemplate') }}</span>
+                  </button>
+                </div>
+              </div>
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button
                   class="folder-manager-trigger"
@@ -449,9 +460,6 @@
                     @click="openRenameFolderModal(activeFolder)"
                     :disabled="isBusy"
                   >{{ t('rename') }}</button>
-                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">{{ t('newCanvas') }}</button>
-                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">{{ t('document') }}</button>
-                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">{{ t('htmlDocument') }}</button>
                   <button
                     class="card-menu-item"
                     @click="openSubfolderModal(activeFolder)"
@@ -1777,13 +1785,14 @@ export default defineComponent({
         (item) => !placedResourceKeys.value.has(`interactive-template:${item.id}`),
       ),
     );
+    // Раздел показывает все шаблоны, в том числе разложенные по папкам: шаблон в папке
+    // остаётся и в папке, и в своём разделе (то же у «Доступные мне» и «Публичные»).
     const visibleInteractiveTemplateItems = computed(() => sortFolderItems(
-      unfiledInteractiveTemplateItems.value.filter((item) => matchesFolderItem(item, t('interactiveTemplate'))),
+      interactiveTemplateRecords.value.filter((item) => matchesFolderItem(item, t('interactiveTemplate'))),
     ) as InteractiveTemplateRecord[]);
 
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
-        .filter((item) => !placedResourceKeys.value.has(`${item.type}:${item.id}`))
         .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
     ));
     // Public lists every public resource, wherever it is filed: unlike
@@ -2277,7 +2286,8 @@ export default defineComponent({
       const sections = feedNavSections.value;
       if (!feedScroller || !sections.length) return;
       const box = feedScroller.getBoundingClientRect();
-      const barBottom = document.querySelector('.dashboard-feed-nav')?.getBoundingClientRect().bottom ?? box.top;
+      // Горизонтальной полосы разделов больше нет — отсчёт от верха ленты.
+      const barBottom = box.top;
       const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
       if (feedJumpTarget) {
         const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
@@ -2608,11 +2618,22 @@ export default defineComponent({
         isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
       );
       if (!template) return;
+      const folderId = templateFolderId.value;
+      templateFolderId.value = null;
+      if (folderId) await resourceFolders.move(folderId, 'interactive-template', template.id);
       interactiveTemplateItems.value = [{ ...template, role: 'owner' }, ...interactiveTemplateItems.value];
       openInteractiveTemplate(template.id);
     };
 
-    const openInteractiveTemplatePicker = () => {
+    // Куда положить новый шаблон: папка из «+» папки или место создания из меню «Новое».
+    const templateFolderId = ref<string | null>(null);
+    const openInteractiveTemplatePicker = (folderId?: unknown) => {
+      templateFolderId.value =
+        typeof folderId === 'string' && folderId
+          ? folderId
+          : newItemFolderId.value && ownResourceFolders.value.some((f) => f.id === newItemFolderId.value)
+            ? newItemFolderId.value
+            : null;
       openControlMenu.value = '';
       templatePickerOpen.value = true;
     };
@@ -3446,6 +3467,13 @@ export default defineComponent({
       newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
     };
 
+    const toggleFolderCreateMenu = (folderId: string) => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      const key = `folder-new:${folderId}`;
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+
     const toggleFolderMenu = (folderId: string) => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
@@ -4214,7 +4242,6 @@ export default defineComponent({
       isHomeFeed,
       feedItems,
       FEED_LIMIT,
-      FEED_SECTION_LABELS,
       feedNavSections,
       activeFeedSection,
       scrollToFeedSection,
@@ -4303,6 +4330,7 @@ export default defineComponent({
       closeCardMenu,
       toggleNewMenu,
       toggleFolderMenu,
+      toggleFolderCreateMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
