@@ -62,8 +62,8 @@
           <button
             type="button"
             class="btn-ghost dashboard-sidebar-item dashboard-sidebar-recent"
-            :class="{ active: activeSection.kind === 'recent' }"
-            :aria-current="activeSection.kind === 'recent' ? 'page' : undefined"
+            :class="{ active: activeSection.kind === 'recent' && !feedTopLevelInView }"
+            :aria-current="activeSection.kind === 'recent' && !feedTopLevelInView ? 'page' : undefined"
             :aria-label="t('recents')"
             :title="compactPresentation ? t('recents') : undefined"
             data-dashboard-section="recent"
@@ -207,6 +207,8 @@ import {
 
 const props = defineProps<{
   activeSection: DashboardSection;
+  /** On the home feed: the section currently on screen, so its item lights up. */
+  feedSection?: string | null;
   widthState: SidebarWidthState;
   mobileOpen: boolean;
   folders: readonly DashboardFolderNavItem[];
@@ -268,10 +270,19 @@ const widthToggleLabel = computed(() => (
 const compactPresentation = computed(() => (
   props.widthState === 'collapsed' && !props.mobileOpen
 ));
+/** The feed is scrolled to Shared / Templates / Public: that item is the active one. */
+const feedTopLevelInView = computed(() => (
+  props.activeSection.kind === 'recent'
+  && !!props.feedSection
+  && props.feedSection !== 'recent'
+  && props.feedSection !== 'folders'
+));
 const homeGroupActive = computed(() => (
-  props.activeSection.kind === 'home'
-  || props.activeSection.kind === 'recent'
-  || props.activeSection.kind === 'folder'
+  !feedTopLevelInView.value && (
+    props.activeSection.kind === 'home'
+    || props.activeSection.kind === 'recent'
+    || props.activeSection.kind === 'folder'
+  )
 ));
 
 watch(() => props.activeSection, (section) => {
@@ -280,6 +291,7 @@ watch(() => props.activeSection, (section) => {
 
 const isActive = (section: DashboardSection) => (
   isDashboardSectionActive(props.activeSection, section)
+  || (feedTopLevelInView.value && props.feedSection === section.kind)
 );
 
 const folderIndent = (depth: number): CSSProperties => ({

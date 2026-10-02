@@ -15,10 +15,11 @@
       <DashboardSidebar
         v-if="isLoggedIn"
         :active-section="activeSection"
+        :feed-section="isHomeFeed ? activeFeedSection : null"
         :width-state="sidebarWidthState"
         :mobile-open="mobileSidebarOpen"
         :folders="sidebarFolders"
-        @select="selectDashboardSection"
+        @select="onSidebarSelect"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @create-folder="openCreateGroupModal"
@@ -152,6 +153,7 @@
         <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
         <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
+        <button :class="{ active: contentFilter === 'interactive-template' }" @click.stop="contentFilter = 'interactive-template'">{{ t('templatesFilter') }}</button>
       </div>
       <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
         <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
@@ -3800,6 +3802,29 @@ export default defineComponent({
       mobileSidebarOpen.value = false;
     };
 
+    /**
+     * The sidebar's Shared / Templates / Public / Recents scroll the home
+     * feed to that section rather than swapping the dashboard for a page of
+     * its own - the feed already shows them all, one under the other. Only a
+     * section the feed has nothing in (so nothing to scroll to) still opens
+     * on its own, where its empty state says why. A guest has no feed: their
+     * dashboard is Public itself.
+     */
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
+    const onSidebarSelect = async (section: DashboardSection) => {
+      const target = section.kind as FeedSection;
+      if (!isLoggedIn || !(FEED_SIDEBAR_SECTIONS as readonly string[]).includes(section.kind)) {
+        selectDashboardSection(section);
+        return;
+      }
+      if (activeSection.value.kind !== 'recent') activeSection.value = { kind: 'recent' };
+      closeCardMenu();
+      mobileSidebarOpen.value = false;
+      await nextTick();
+      if (target === 'recent' || feedNavSections.value.includes(target)) scrollToFeedSection(target);
+      else selectDashboardSection(section);
+    };
+
     /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
     const goToParentFolder = (): boolean => {
       const folder = activeSection.value.kind === 'folder' ? activeFolder.value : null;
@@ -4147,6 +4172,7 @@ export default defineComponent({
       mobileSidebarOpen,
       sidebarFolders,
       selectDashboardSection,
+      onSidebarSelect,
       toggleSidebarWidth,
       openMobileSidebar,
       closeMobileSidebar,

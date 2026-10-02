@@ -195,6 +195,46 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
   });
 
+  it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [{ id: 'shared-1', title: 'From a teammate', tags: [], ownerId: 'someone-else' }],
+      public: [],
+      welcome: null,
+    } as never);
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+    // In the document: the feed finds its section by id.
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+
+    await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+    await flushPromises();
+
+    // Still the one feed, scrolled to its Shared section.
+    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(true);
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
+    expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-shared')).toBe(true);
+    // The sidebar marks the section on screen, not Home.
+    expect(wrapper.get('[data-dashboard-section="shared"]').classes()).toContain('active');
+    scrollIntoView.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('takes Recents from the sidebar back to the top of the feed', async () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    await vm.onSidebarSelect({ kind: 'recent' });
+    await flushPromises();
+
+    expect(vm.activeSection).toEqual({ kind: 'recent' });
+    expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === 'feed-recent')).toBe(true);
+    scrollIntoView.mockRestore();
+    wrapper.unmount();
+  });
+
   it('renders Recent as a grid by default and remembers the list view', async () => {
     vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
       templates: [{ id: 'template-1', title: 'MVP board', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '' }],
@@ -2187,7 +2227,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(overflowBadge?.text()).toBe(`+${4 - visibleTagChips.length}`);
   });
 
-  it('renders the type filters as exactly four equal-width buttons in one row', async () => {
+  it('renders the type filters as exactly five equal-width buttons in one row', async () => {
     // The actual viewport-fit behavior (flex:1;min-width:0;width:100%, see
     // style.css) is CSS-only and unverifiable in jsdom (no real layout
     // engine) - confirmed live instead, at 320/360/390/430px, with zero
@@ -2202,8 +2242,8 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     await flushPromises();
 
     const tabs = wrapper.findAll('.content-type-tabs > button');
-    expect(tabs).toHaveLength(4);
-    expect(tabs.map((el) => el.text())).toEqual(['All', 'Canvas', 'HTML', 'Docs']);
+    expect(tabs).toHaveLength(5);
+    expect(tabs.map((el) => el.text())).toEqual(['All', 'Canvas', 'HTML', 'Docs', 'Templates']);
   });
 
   it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {
