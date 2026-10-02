@@ -10347,3 +10347,33 @@ textarea:focus-visible {
   justify-content: center;
   text-align: center;
 }
+
+/* ===== Text documents: full-height outline panel (desktop) =====
+   The sidebar outline runs the whole height of the window, from the very
+   top, instead of starting under the header. The header is transparent, so
+   the glass Back button floats over the panel's top - and the panel's own
+   content starts below it, so the button never covers an outline entry.
+   Desktop only: below 1100px the outline is a drawer (OUTLINE_DESKTOP_MIN_WIDTH). */
+@media (min-width: 1100px) {
+  .text-doc-page {
+    --text-doc-topbar-height: 64px;
+  }
+  .text-doc-page .text-doc-topbar {
+    height: var(--text-doc-topbar-height);
+    min-height: var(--text-doc-topbar-height);
+    box-sizing: border-box;
+  }
+  .text-doc-page .text-doc-outline-panel {
+    /* Pull it up under the header, which still takes its place in the flow
+       above the document column. */
+    margin-top: calc(-1 * var(--text-doc-topbar-height));
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 1;
+  }
+  .text-doc-page .text-doc-outline-panel-inner {
+    padding-top: calc(var(--text-doc-topbar-height) + 12px);
+  }
+}

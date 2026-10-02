@@ -111,6 +111,33 @@ describe('link tap/click actions popover', () => {
     wrapper.unmount();
   });
 
+  it('stays on screen: a link near the right edge of a phone slides the menu back in', async () => {
+    const innerWidth = window.innerWidth;
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 });
+    const rect = (left: number, top: number, width: number, height: number) =>
+      ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) }) as DOMRect;
+    const spy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.classList.contains('text-doc-link-action-menu')) return rect(0, 0, 360, 44);
+      if (this.tagName === 'A') return rect(300, 400, 60, 20);
+      return rect(0, 0, 0, 0);
+    });
+    try {
+      const wrapper = await mountEditableDoc();
+      wrapper.vm.editor.commands.setContent('<p>see <a href="https://example.com/a-very-long/address">here</a></p>');
+      await wrapper.vm.$nextTick();
+
+      await clickRenderedLink(wrapper);
+      await flushPromises();
+
+      // 390 - 360 - 12: the menu's right edge stops 12px short of the screen's.
+      expect(wrapper.get('.text-doc-link-action-menu').attributes('style')).toContain('left: 18px');
+      wrapper.unmount();
+    } finally {
+      spy.mockRestore();
+      Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: innerWidth });
+    }
+  });
+
   it('opens ABOVE the link by default, not over its own text', async () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<p>see <a href="https://example.com/guide">the guide</a> here</p>');

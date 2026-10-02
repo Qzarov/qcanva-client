@@ -694,6 +694,7 @@
       <div v-if="linkActionOpen" class="text-doc-link-action-backdrop" @click="closeLinkActionMenu"></div>
       <div
         v-if="linkActionOpen"
+        ref="linkActionMenuEl"
         class="text-doc-link-action-menu"
         :style="linkActionMenuStyle"
         role="menu"
@@ -1752,6 +1753,27 @@ export default defineComponent({
         ...(r.bottom !== undefined ? { bottom: `${r.bottom}px` } : { top: `${r.top ?? 0}px` }),
       };
     });
+    /**
+     * Keeps the link menu on screen. Its left edge starts at the link, and
+     * its width is whatever the address and icons need - so it is measured
+     * once rendered and slid back in (12px from each edge) if it would cross
+     * the right side, as it did on a phone.
+     */
+    const LINK_MENU_EDGE = 12;
+    const linkActionMenuEl = ref<HTMLElement | null>(null);
+    const keepLinkActionMenuOnScreen = () => {
+      const el = linkActionMenuEl.value;
+      const current = linkActionRect.value;
+      if (!el || !current) return;
+      const width = el.getBoundingClientRect().width;
+      const maxLeft = Math.max(LINK_MENU_EDGE, window.innerWidth - width - LINK_MENU_EDGE);
+      const left = Math.min(Math.max(LINK_MENU_EDGE, current.left), maxLeft);
+      if (left !== current.left) linkActionRect.value = { ...current, left };
+    };
+    // Also when it moves straight to another link while still open.
+    watch([linkActionOpen, linkActionHref], ([open]) => {
+      if (open) void nextTick(keepLinkActionMenuOnScreen);
+    });
     const closeLinkActionMenu = () => {
       linkActionOpen.value = false;
       linkActionHref.value = '';
@@ -1831,7 +1853,8 @@ export default defineComponent({
       linkActionHref.value = href;
       linkActionRect.value = {
         ...(opensBelow ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - (rect.top - 6) }),
-        left: Math.min(Math.max(8, rect.left), window.innerWidth - 258),
+        // Final placement once its real width is known: keepLinkActionMenuOnScreen.
+        left: rect.left,
       };
       linkActionOpen.value = true;
       // Not `true`: this only shows the popover, it never suppresses
@@ -3417,6 +3440,7 @@ export default defineComponent({
       linkActionOpen,
       linkActionHref,
       linkActionMenuStyle,
+      linkActionMenuEl,
       closeLinkActionMenu,
       copyLinkActionHref,
       openLinkActionHref,
