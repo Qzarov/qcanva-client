@@ -5744,17 +5744,17 @@ body {
     left: auto;
     flex-direction: column;
     align-items: stretch;
-    gap: 4px;
-    min-width: 220px;
-    max-width: calc(100vw - 16px);
-    max-height: calc(100dvh - 64px);
+    gap: 2px;
+    width: 220px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - env(safe-area-inset-top, 0px) - 20px);
     overflow-y: auto;
     margin-top: 6px;
-    padding: 8px;
+    padding: 6px;
     background: var(--ui-surface-elevated);
     backdrop-filter: blur(12px);
-    border: 1px solid var(--dark-neutral-border);
-    border-radius: 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-md);
     box-shadow: var(--ui-shadow);
     z-index: 160;
   }
@@ -5773,7 +5773,7 @@ body {
     width: 100%;
     justify-content: flex-start;
     gap: 8px;
-    min-height: 42px;
+    min-height: 44px;
     font-size: 14px;
     padding: 0 12px;
   }
@@ -9087,6 +9087,43 @@ textarea:focus-visible {
 /* ===== Mobile-only visibility helper ===== */
 .mobile-only { display: none !important; }
 
+.mobile-plugin-bar {
+  position: fixed;
+  top: calc(var(--canvas-topbar-height, 52px) + env(safe-area-inset-top, 0px) + 8px);
+  left: max(10px, env(safe-area-inset-left, 0px));
+  z-index: 105;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100vw - 20px);
+  min-height: 42px;
+  padding: 3px 5px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.mobile-plugin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s, transform .15s;
+}
+.mobile-plugin-btn:active { transform: scale(.94); }
+.mobile-plugin-btn.active {
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+}
+
 /* ===== Mobile Modebar (Hand / Cursor / Draw) ===== */
 .mobile-modebar {
   position: fixed;
@@ -9542,15 +9579,23 @@ textarea:focus-visible {
 /* Show mobile components and adjust layout at mobile breakpoint */
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .mobile-only { display: flex !important; }
+  .canvas-view .canvas-topbar .canvas-ruler-button,
+  .canvas-view .canvas-topbar .canvas-plugin-settings-action { display: none !important; }
+  .canvas-plugin-panel {
+    position: fixed;
+    top: calc(var(--canvas-topbar-height, 60px) + env(safe-area-inset-top, 0px) + 56px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - env(safe-area-inset-top, 0px) - 76px);
+    overflow-y: auto;
+  }
   .canvas-shortcuts-button { display: none !important; }
   .dice-toolbar > .draw-toolbar-toggle { display: none; }
   .dice-toolbar {
     position: fixed;
-    top: calc(var(--canvas-topbar-height, 60px) + 8px);
+    top: calc(var(--canvas-topbar-height, 60px) + env(safe-area-inset-top, 0px) + 56px);
     left: auto;
     right: max(10px, env(safe-area-inset-right));
     max-width: calc(100vw - 20px);
-    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 24px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - env(safe-area-inset-top, 0px) - 76px);
     overflow: auto;
   }
 
@@ -9914,6 +9959,8 @@ textarea:focus-visible {
     background: transparent;
     border-color: transparent;
     box-shadow: none;
+    min-height: 44px;
+    border-radius: 6px;
   }
   .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm:is(:hover, :active) {
     background: var(--ui-glass-btn-hover);
@@ -9922,6 +9969,19 @@ textarea:focus-visible {
     width: 40px;
     height: 40px;
     min-width: 40px;
+  }
+  /* Leave the selected-node More trigger above its backdrop so a second tap
+     can close the menu, while the menu itself floats above that toolbar. */
+  .mobile-overflow-backdrop { z-index: 90; }
+  .mobile-overflow-sheet {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 68px);
+    z-index: 93;
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 92px);
+    padding-bottom: 6px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
   }
 }
 

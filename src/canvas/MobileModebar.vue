@@ -109,7 +109,7 @@ export default defineComponent({
     function handleClick(m: MobileCanvasMode, event: MouseEvent) {
       if (lp.wasConsumed()) return;
       if (m === 'draw' && !props.canEdit) return;
-      emit('mode-change');
+      emit('mode-change', m);
       setMode(m);
       showTapHint(t(m === 'hand' ? 'handMode' : m === 'cursor' ? 'cursorMode' : 'drawMode'), event);
     }

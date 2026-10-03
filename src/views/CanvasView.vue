@@ -40,11 +40,6 @@
           <button v-if="rulerSettings.enabled" data-testid="ruler-tool" class="btn-ghost btn-sm canvas-ruler-button" :class="{active:rulerActive}" :aria-label="t('ruler')" :title="t('ruler')" :aria-pressed="rulerActive" @click="toggleRuler">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m3 16 13-13 5 5L8 21zM6 13l2 2m1-5 3 3m0-6 2 2m1-5 3 3"/></svg>
           </button>
-          <button v-if="role !== 'read' && diceEnabled" ref="diceTopbarRef"
-            class="canvas-topbar-dice mobile-only" :class="{ active: diceOpen }"
-            :aria-label="t('dice')" :aria-expanded="diceOpen" @click="toggleDice" @pointerdown.stop>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/></svg>
-          </button>
           <!-- Compact status, always visible -->
           <div v-if="onlineUsers.length > 1" class="online-users">
             <div
@@ -84,7 +79,7 @@
           </div>
 
           <!-- Secondary actions: inline on desktop, dropdown menu on mobile -->
-          <div class="topbar-actions" :class="{ open: menuOpen }">
+          <div id="canvas-action-menu" class="topbar-actions" :class="{ open: menuOpen }">
             <input
               v-model.trim="searchQuery"
               class="canvas-search-input"
@@ -97,7 +92,7 @@
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="toggleShare(); menuOpen = false">
               {{ t('access') }}
             </button>
-            <button class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">{{ role === 'owner' ? t('plugins') : t('viewSettings') }}</button>
+            <button class="btn-ghost btn-sm canvas-plugin-settings-action" @click="togglePluginSettings">{{ role === 'owner' ? t('plugins') : t('viewSettings') }}</button>
             <button v-if="fullscreenSupported" class="btn-ghost btn-sm canvas-fullscreen-button" :aria-label="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :title="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :aria-pressed="isFullscreen" :disabled="fullscreenBusy" @click="toggleFullscreen">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path v-if="isFullscreen" d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6"/><path v-else d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
             </button>
@@ -156,10 +151,23 @@
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">{{ t('login') }}</router-link>
 
           <!-- Overflow menu toggle (mobile only) -->
-          <button class="topbar-menu-btn" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
+          <button class="topbar-menu-btn" @click="toggleCanvasMenu" :title="menuOpen ? 'Close menu' : 'Menu'" :aria-expanded="menuOpen" aria-controls="canvas-action-menu">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
         </div>
+      </div>
+
+      <!-- Compact plugin actions on phones; canvas tools stay out of the crowded header. -->
+      <div v-if="!menuOpen" class="mobile-plugin-bar mobile-only" role="toolbar" :aria-label="t('plugins')">
+        <button v-if="rulerSettings.enabled" data-testid="mobile-plugin-ruler" class="mobile-plugin-btn" :class="{ active: rulerActive }" :title="t('ruler')" :aria-label="t('ruler')" :aria-pressed="rulerActive" @click="toggleRuler">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m3 16 13-13 5 5L8 21zM6 13l2 2m1-5 3 3m0-6 2 2m1-5 3 3"/></svg>
+        </button>
+        <button v-if="role !== 'read' && diceEnabled" ref="diceTopbarRef" data-testid="mobile-plugin-dice" class="mobile-plugin-btn" :class="{ active: diceOpen }" :title="t('dice')" :aria-label="t('dice')" :aria-expanded="diceOpen" @click="toggleDice" @pointerdown.stop>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/></svg>
+        </button>
+        <button data-testid="mobile-plugin-settings" class="mobile-plugin-btn" :class="{ active: showPlugins }" :title="role === 'owner' ? t('plugins') : t('viewSettings')" :aria-label="role === 'owner' ? t('plugins') : t('viewSettings')" :aria-expanded="showPlugins" @click="togglePluginSettings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.87 2.87-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.2 1.6V21H10.2v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06-2.87-2.87.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 13.8H3v-3.6h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87L4.2 7.07 7.07 4.2l.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10.2 3H13.8A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06 2.87 2.87-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1.2h.1v3.6H21A1.7 1.7 0 0 0 19.4 15z"/></svg>
+        </button>
       </div>
 
       <!-- Tap-away backdrop to close the mobile overflow menu -->
@@ -720,7 +728,7 @@
       </div>
 
       <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
-      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" :add-open="addSheetOpen" @add="openMobileAddSheet" @mode-change="closeMobileSheets" />
+      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" :add-open="addSheetOpen" @add="openMobileAddSheet" @mode-change="onMobileModeChange" />
 
       <!-- Mobile Add sheet -->
       <Teleport to="body">
@@ -2258,6 +2266,43 @@ export default defineComponent({
       diceOpen.value = false;
     }
 
+    function onMobileModeChange(nextMode: 'hand' | 'cursor' | 'draw') {
+      const drawToolsVisible = mobileMode.value === 'draw' && drawPanelOpen.value && !addSheetOpen.value && !diceOpen.value;
+      closeMobileSheets();
+      if (nextMode === 'draw' && mobileMode.value === 'draw') {
+        drawPanelOpen.value = !drawToolsVisible;
+        drawMobilePopup.value = null;
+        drawPaletteColorOpen.value = false;
+      }
+    }
+
+    function togglePluginSettings() {
+      const opening = !showPlugins.value;
+      if (opening) {
+        closeMobileSheets();
+        closeNodeEditingPanels();
+        drawMobilePopup.value = null;
+        menuOpen.value = false;
+        showSyncEvents.value = false;
+      }
+      showPlugins.value = opening;
+    }
+
+    function toggleCanvasMenu() {
+      const opening = !menuOpen.value;
+      if (opening) {
+        closeMobileSheets();
+        closeNodeEditingPanels();
+        drawMobilePopup.value = null;
+        showPlugins.value = false;
+        showSyncEvents.value = false;
+        showShortcuts.value = false;
+        showHistory.value = false;
+        chatOpen.value = false;
+      }
+      menuOpen.value = opening;
+    }
+
     function openMobileAddSheet() {
       if (role.value === 'read') return;
       if (addSheetOpen.value) {
@@ -2330,16 +2375,16 @@ export default defineComponent({
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
       creatingDocument, createAndEmbedDocument, canvasFolderId,
-      showShortcuts, menuOpen, addSheetOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
+      showShortcuts, menuOpen, toggleCanvasMenu, addSheetOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
-      showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
+      showPlugins, togglePluginSettings, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
       minimapEnabled, setMinimapEnabled, minimapSize, setMinimapSize,
       fullscreenSupported, isFullscreen, fullscreenBusy, toggleFullscreen,
       mobileMode,
       drawPanelOpen,
       toggleDrawPanel,
       diceToolbarRef, diceTopbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
-      openMobileAddSheet, closeMobileSheets,
+      openMobileAddSheet, closeMobileSheets, onMobileModeChange,
       chatOpen, chatMessages, toggleChat, onChatSend, onTemplateRoll,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };

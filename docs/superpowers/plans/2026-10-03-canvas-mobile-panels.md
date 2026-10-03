@@ -58,10 +58,10 @@
 
 **Interfaces:** Existing ruler and dice handlers/settings are reused; desktop actions stay in the topbar.
 
-- [ ] Add failing browser checks for a compact mobile plugin bar below the topbar, Dice and Ruler controls only when allowed/enabled, and Settings opening/closing on repeat taps.
-- [ ] Run the focused Playwright scenario and inspect failure.
-- [ ] Move mobile action triggers into the bar; keep the owner settings panel and responsive bounds, and keep actions mutually exclusive.
-- [ ] Rerun focused browser checks.
+- [x] Add failing browser checks for a compact mobile plugin bar below the topbar, Dice and Ruler controls only when allowed/enabled, and Settings opening/closing on repeat taps.
+- [x] Run the focused Playwright scenario and inspect failure.
+- [x] Move mobile action triggers into the bar; keep the owner settings panel and responsive bounds, and keep actions mutually exclusive.
+- [x] Rerun focused browser checks.
 
 ### Task 4: Canvas action menu styling and release checks
 
@@ -69,8 +69,8 @@
 
 **Interfaces:** Existing canvas action handlers are unchanged; desktop actions remain inline.
 
-- [ ] Add failing mobile browser checks for document-like glass menu rows, repeat-tap close, backdrop close, safe viewport fit and Back priority.
-- [ ] Run focused tests and inspect failure.
-- [ ] Adjust the mobile action menu markup/CSS; preserve search, share, history, chat, export and copy link.
-- [ ] Run full unit tests, build, mobile Playwright smoke and relevant regressions; check `git diff --check` and status.
-- [ ] Update only finished block-1 checklist rows in QCanva with `✅ (мобилка)` and a brief `Примечание:` noting verification and remaining real-Android acceptance.
+- [x] Add failing mobile browser checks for document-like glass menu rows, repeat-tap close, backdrop close, safe viewport fit and Back priority.
+- [x] Run focused tests and inspect failure.
+- [x] Adjust the mobile action menu markup/CSS; preserve search, share, history, chat, export and copy link.
+- [x] Run full unit tests, build, mobile Playwright smoke and relevant regressions; check `git diff --check` and status.
+- [x] Update only finished block-1 checklist rows in QCanva with `✅ (мобилка)` and a brief `Примечание:` noting browser verification; report remaining real-Android acceptance in the handoff.

@@ -101,7 +101,7 @@ async function open(
   }
   const page = await context.newPage();
   await page.goto(`${web}/canvas/${canvasId}`);
-  await expect(page.getByTestId("ruler-tool")).toBeVisible();
+  await expect(page.locator('[data-testid="ruler-tool"]:visible, [data-testid="mobile-plugin-ruler"]:visible')).toBeVisible();
   await expect
     .poll(async () => {
       const stats = await (await request.get(`${api}/__test/stats`)).json();
@@ -263,7 +263,7 @@ test("touch drag in a small dark viewport stays bounded, second finger cancels a
     hasTouch: true,
     colorScheme: "dark",
   });
-  await page.getByTestId("ruler-tool").tap();
+  await page.getByTestId("mobile-plugin-ruler").tap();
   const image = (await page.locator("img.node-image").boundingBox())!;
   const cdp = await page.context().newCDPSession(page);
   const start = { x: Math.round(image.x + 30), y: Math.round(image.y + 30) },

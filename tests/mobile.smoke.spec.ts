@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const API = 'http://localhost:3001/api/**';
 
-async function setupMocks(page: Page, options: { dice?: boolean; readonly?: boolean } = {}) {
+async function setupMocks(page: Page, options: { dice?: boolean; ruler?: boolean; readonly?: boolean } = {}) {
   await page.addInitScript(() => {
     localStorage.setItem('qcanva:theme:v1', 'light');
     localStorage.setItem('token', 'mobile-test-token');
@@ -33,6 +33,7 @@ async function setupMocks(page: Page, options: { dice?: boolean; readonly?: bool
               edges: [],
             }),
             slug: null,
+            ...(options.ruler ? { rulerSettings: { enabled: true, unit: 'm', metersPerCanvasUnit: 0.01 } } : {}),
           },
           role: options.readonly ? 'read' : 'owner',
           isPublic: false,
@@ -60,7 +61,10 @@ async function setupMocks(page: Page, options: { dice?: boolean; readonly?: bool
     } else if (path.endsWith('/messages')) {
       await route.fulfill({ json: [] });
     } else if (path.startsWith('/api/plugins/')) {
-      await route.fulfill({ json: options.dice ? [{ id: 'dice', name: 'Dice', enabled: true, surface: 'canvas' }] : [] });
+      await route.fulfill({ json: [
+        ...(options.dice ? [{ id: 'dice', name: 'Dice', enabled: true, surface: 'canvas' }] : []),
+        ...(options.ruler ? [{ id: 'ruler', name: 'Ruler', enabled: true, surface: 'canvas' }] : []),
+      ] });
     } else if (path.endsWith('/resource-folders')) {
       await route.fulfill({ json: { own: [], shared: [] } });
     } else if (path.endsWith('/tags')) {
@@ -87,7 +91,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     expect(sheetBox!.y).toBeGreaterThanOrEqual(0);
     expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(viewport.height);
     await page.locator('.mobile-add-backdrop').click({ position: { x: 5, y: 100 } });
-    const dice = page.locator('.canvas-topbar-dice');
+    const dice = page.getByTestId('mobile-plugin-dice');
     await expect(dice).toBeVisible();
     const diceBox = await dice.boundingBox();
     expect(diceBox!.x).toBeGreaterThanOrEqual(0);
@@ -153,6 +157,109 @@ test('each lower menu tap briefly labels the selected action above its button', 
   await expect(page.locator('.mobile-modebar-tap-hint')).not.toBeVisible({ timeout: 2500 });
   await buttons.nth(3).click();
   await expect(page.locator('.mobile-add-sheet')).not.toBeVisible();
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`enabled plugin tools sit in a compact bar below the header at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setupMocks(page, { dice: true, ruler: true });
+    await page.goto('/canvas/smoke-canvas');
+    const bar = page.locator('.mobile-plugin-bar');
+    await expect(bar).toBeVisible();
+    const [headerBox, barBox] = await Promise.all([page.locator('.canvas-topbar').boundingBox(), bar.boundingBox()]);
+    expect(barBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
+    expect(barBox!.x).toBeGreaterThanOrEqual(0);
+    expect(barBox!.x + barBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(barBox!.height).toBeLessThanOrEqual(52);
+    await expect(page.locator('.canvas-topbar-dice')).not.toBeVisible();
+    await expect(page.locator('[data-testid="ruler-tool"]')).not.toBeVisible();
+    const dice = page.getByTestId('mobile-plugin-dice');
+    const ruler = page.getByTestId('mobile-plugin-ruler');
+    const settings = page.getByTestId('mobile-plugin-settings');
+    await expect(dice).toBeVisible();
+    await expect(ruler).toBeVisible();
+    await expect(settings).toBeVisible();
+    await dice.click();
+    await expect(page.locator('.dice-panel')).toBeVisible();
+    await dice.click();
+    await expect(page.locator('.dice-panel')).not.toBeVisible();
+    await settings.click();
+    await expect(page.locator('.canvas-plugin-panel')).toBeVisible();
+    await settings.click();
+    await expect(page.locator('.canvas-plugin-panel')).not.toBeVisible();
+    await ruler.click();
+    await expect(ruler).toHaveAttribute('aria-pressed', 'true');
+  });
+}
+
+test('reader sees the Ruler and view settings but no Dice control', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setupMocks(page, { readonly: true, ruler: true, dice: true });
+  await page.goto('/canvas/smoke-canvas');
+  await expect(page.getByTestId('mobile-plugin-ruler')).toBeVisible();
+  await expect(page.getByTestId('mobile-plugin-settings')).toBeVisible();
+  await expect(page.getByTestId('mobile-plugin-dice')).toHaveCount(0);
+});
+
+for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`canvas action menu toggles and stays usable at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setupMocks(page, { dice: true, ruler: true });
+    await page.goto('/canvas/smoke-canvas');
+    const trigger = page.locator('.topbar-menu-btn');
+    const menu = page.locator('.topbar-actions');
+    await page.locator('.mobile-modebar-add').click();
+    await expect(page.locator('.mobile-add-sheet')).toBeVisible();
+    await trigger.click();
+    await expect(page.locator('.mobile-add-sheet')).not.toBeVisible();
+    await expect(menu).toBeVisible();
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('.mobile-plugin-bar')).not.toBeVisible();
+    const menuBox = await menu.boundingBox();
+    expect(menuBox!.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox!.x + menuBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(menuBox!.y + menuBox!.height).toBeLessThanOrEqual(viewport.height);
+    const row = menu.getByRole('button', { name: /Export|Экспорт/i });
+    await expect(row).toBeVisible();
+    expect((await row.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    await trigger.click();
+    await expect(menu).not.toBeVisible();
+    await trigger.click();
+    await expect(menu).toBeVisible();
+    await page.locator('.topbar-menu-backdrop').click({ position: { x: 5, y: 150 } });
+    await expect(menu).not.toBeVisible();
+  });
+}
+
+test('selected-node More menu closes on a second tap of its trigger', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setupMocks(page);
+  await page.goto('/canvas/smoke-canvas');
+  await page.locator('.mobile-modebar-btn[aria-label="Cursor"]').click();
+  const node = page.locator('[data-node-id="node-1"]');
+  await expect(node).toBeVisible();
+  const box = await node.boundingBox();
+  await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  const more = page.locator('.mobile-node-toolbar').getByRole('button', { name: /More|Ещё|Еще/i });
+  await expect(more).toBeVisible();
+  await more.click();
+  await expect(page.locator('.mobile-overflow-sheet')).toBeVisible();
+  await more.click();
+  await expect(page.locator('.mobile-overflow-sheet')).not.toBeVisible();
+});
+
+test('tapping Draw again closes and reopens its tools without changing the selected mode', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setupMocks(page);
+  await page.goto('/canvas/smoke-canvas');
+  const draw = page.locator('.mobile-modebar-btn[aria-label="Draw"]');
+  await draw.click();
+  await expect(page.locator('.mobile-draw-panel')).toBeVisible();
+  await draw.click();
+  await expect(page.locator('.mobile-draw-panel')).not.toBeVisible();
+  await expect(draw).toHaveAttribute('aria-pressed', 'true');
+  await draw.click();
+  await expect(page.locator('.mobile-draw-panel')).toBeVisible();
 });
 
 test('Readonly mobile canvases cannot open create or draw controls', async ({ page }) => {
