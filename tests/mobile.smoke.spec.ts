@@ -246,6 +246,12 @@ test('selected-node More menu closes on a second tap of its trigger', async ({ p
   await expect(page.locator('.mobile-overflow-sheet')).toBeVisible();
   await more.click();
   await expect(page.locator('.mobile-overflow-sheet')).not.toBeVisible();
+  await more.click();
+  await page.locator('.topbar-menu-btn').click();
+  await expect(page.locator('.topbar-actions')).toBeVisible();
+  await expect(page.locator('.mobile-overflow-sheet')).not.toBeVisible();
+  await page.locator('.topbar-menu-btn').click();
+  await expect(page.locator('.mobile-node-toolbar')).toBeVisible();
 });
 
 test('tapping Draw again closes and reopens its tools without changing the selected mode', async ({ page }) => {
@@ -259,6 +265,10 @@ test('tapping Draw again closes and reopens its tools without changing the selec
   await expect(page.locator('.mobile-draw-panel')).not.toBeVisible();
   await expect(draw).toHaveAttribute('aria-pressed', 'true');
   await draw.click();
+  await expect(page.locator('.mobile-draw-panel')).toBeVisible();
+  await page.locator('.topbar-menu-btn').click();
+  await expect(page.locator('.mobile-draw-panel')).not.toBeVisible();
+  await page.locator('.topbar-menu-btn').click();
   await expect(page.locator('.mobile-draw-panel')).toBeVisible();
 });
 

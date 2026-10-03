@@ -639,7 +639,7 @@
 
       <!-- Mobile node editing toolbar (above mode bar, mobile only) -->
       <MobileNodeToolbar
-        v-if="mobileMode === 'cursor' && !addSheetOpen && !diceOpen && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        v-if="mobileMode === 'cursor' && !addSheetOpen && !diceOpen && !menuOpen && !showPlugins && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         :canvas-ref="canvasRef"
         :role="role ?? 'read'"
         class="mobile-only"
@@ -647,7 +647,7 @@
 
       <!-- Mobile draw panel: appears above modebar when draw mode active -->
       <div
-        v-if="mobileMode === 'draw' && drawPanelOpen && !addSheetOpen && !diceOpen && role !== 'read'"
+        v-if="mobileMode === 'draw' && drawPanelOpen && !addSheetOpen && !diceOpen && !menuOpen && !showPlugins && role !== 'read'"
         class="mobile-draw-panel mobile-only"
         @pointerdown.stop
         @click.stop
