@@ -120,23 +120,24 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
     ];
   }
 
-  // Single node — priority order: editing text first, then color sections
-  // (most-used on mobile), then direct actions
+  // Keep common settings on the icon row; object operations live in overflow.
   const editText: NodeAction[] = p.isTextNode && !r && p.handlers.editText
     ? [{ key: 'edit-text', label: 'Edit text', handler: p.handlers.editText }]
     : [];
+  const textSettings = p.isTextNode !== false;
   return [
     ...editText,
+    ...(!textSettings ? [{ key: 'image-title' as NodeActionKey, label: 'Title', handler: p.handlers.imageTitleSection, isSectionToggle: true, disabled: r }] : []),
     { key: 'fill', label: 'Background', handler: p.handlers.fillSection, isSectionToggle: true, disabled: r },
-    { key: 'text-color', label: 'Text color', handler: p.handlers.textColorSection, isSectionToggle: true, disabled: r },
+    ...(textSettings ? [{ key: 'text-color' as NodeActionKey, label: 'Text color', handler: p.handlers.textColorSection, isSectionToggle: true, disabled: r }] : []),
+    ...(!textSettings ? [{ key: 'border-color' as NodeActionKey, label: 'Border color', handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
+    { key: 'border-style', label: 'Border', handler: p.handlers.borderStyleSection, isSectionToggle: true, disabled: r },
+    ...(textSettings ? [{ key: 'alignment' as NodeActionKey, label: 'Alignment', handler: p.handlers.alignSection, isSectionToggle: true, disabled: r }] : []),
     { key: 'duplicate', label: 'Duplicate', handler: p.handlers.duplicate, disabled: r },
     { key: 'lock', label: p.isLocked ? 'Unlock' : 'Lock', handler: p.handlers.toggleLock, disabled: r },
     { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
     // overflow items
-    { key: 'border-color', label: 'Border color', handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r },
-    { key: 'border-style', label: 'Border', handler: p.handlers.borderStyleSection, isSectionToggle: true, disabled: r },
-    { key: 'alignment', label: 'Alignment', handler: p.handlers.alignSection, isSectionToggle: true, disabled: r },
-    { key: 'image-title', label: 'Title', handler: p.handlers.imageTitleSection, isSectionToggle: true, disabled: r },
+    ...(textSettings ? [{ key: 'border-color' as NodeActionKey, label: 'Border color', handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
     { key: 'layer-up', label: 'Bring forward', handler: p.handlers.layerUp, disabled: r },
     { key: 'layer-down', label: 'Send backward', handler: p.handlers.layerDown, disabled: r },
     { key: 'bring-front', label: 'Bring to front', handler: p.handlers.bringFront, disabled: r },

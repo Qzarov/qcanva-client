@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { mount, flushPromises } from '@vue/test-utils';
 import { defineComponent, ref } from 'vue';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import CanvasView from './CanvasView.vue';
+import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
@@ -36,6 +37,7 @@ vi.mock('../components/CanvasLoader.vue', () => ({
         selectedNodeId: null,
         selectedNodeIds: [],
         drawTool: 'select',
+        setDrawTool: vi.fn(),
       });
       return () => null;
     },
@@ -75,6 +77,8 @@ vi.mock('../composables/useCanvasSocket', async () => {
       sendRoll: vi.fn(),
       onChatMessage: vi.fn(),
       onChatError: vi.fn(),
+      sendRulerUpdate:vi.fn(),sendRulerClear:vi.fn(),getRulerActor:()=>({socketId:'self',userId:'u1',userName:'U',color:'#a882ff'}),
+      onRulerState:vi.fn(),onRulerUpdate:vi.fn(),onRulerClear:vi.fn(),onRulerSettings:vi.fn(),onRulerError:vi.fn(),
     }),
   };
 });
@@ -119,6 +123,13 @@ vi.mock('../api/client', () => ({
 }));
 
 describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', () => {
+  const wrappers: ReturnType<typeof mount>[] = [];
+  function mountCanvas() {
+    const wrapper = mount(CanvasView);
+    wrappers.push(wrapper);
+    return wrapper;
+  }
+  afterEach(() => wrappers.splice(0).forEach(wrapper => wrapper.unmount()));
   beforeEach(() => {
     vi.clearAllMocks();
     canUndoRef.value = false;
@@ -126,7 +137,7 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
   });
 
   it('renders unified BackButton in topbar', async () => {
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     const backBtn = wrapper.find('.canvas-topbar .back-btn');
@@ -134,7 +145,7 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
   });
 
   it('renders mobile undo and redo buttons with disabled state when history is empty', async () => {
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     const undoBtn = wrapper.find('.canvas-topbar-undo');
@@ -151,7 +162,7 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
     canUndoRef.value = true;
     canRedoRef.value = true;
 
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     const undoBtn = wrapper.find('.canvas-topbar-undo');
@@ -168,7 +179,7 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
   });
 
   it('does not contain Add buttons in the topbar actions menu', async () => {
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     const topbarActionsHtml = wrapper.find('.topbar-canvas-actions').html();
@@ -178,7 +189,7 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
   });
 
   it('opens mobile add sheet when MobileModebar emits add, and calls runAddMenuEntry on item click', async () => {
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     expect(document.querySelector('.mobile-add-sheet')).toBeNull();
@@ -207,11 +218,46 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
 
   it('generates canonical URL for canvas with qcanva.qzarov.pro', async () => {
     vi.stubEnv('VITE_CANONICAL_ORIGIN', 'https://qcanva.qzarov.pro');
-    const wrapper = mount(CanvasView);
+    const wrapper = mountCanvas();
     await flushPromises();
 
     expect(wrapper.vm.publicUrl).toBe('https://qcanva.qzarov.pro/canvas/canvas-1');
     expect(wrapper.vm.publicUrl).not.toContain('canvas.qzarov.pro');
     vi.unstubAllEnvs();
+  });
+
+  it('opening Add closes drawing, dice and node settings without changing canvas data', async () => {
+    const wrapper = mountCanvas();
+    await flushPromises();
+    useMobileCanvasMode().setMode('draw');
+    await wrapper.vm.$nextTick();
+    wrapper.vm.drawMobilePopup = 'color';
+    wrapper.vm.diceOpen = true;
+    wrapper.vm.activeToolbarMenu = 'fill';
+    wrapper.vm.blockSection = 'border';
+    wrapper.vm.showPlugins = true;
+    wrapper.vm.menuOpen = true;
+    wrapper.findComponent({ name: 'MobileModebar' }).vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.addSheetOpen).toBe(true);
+    expect(wrapper.vm.drawPanelOpen).toBe(false);
+    expect(wrapper.vm.drawMobilePopup).toBeNull();
+    expect(wrapper.vm.diceOpen).toBe(false);
+    expect(wrapper.vm.activeToolbarMenu).toBe('');
+    expect(wrapper.vm.blockSection).toBe('');
+    expect(wrapper.vm.showPlugins).toBe(false);
+    expect(wrapper.vm.menuOpen).toBe(false);
+    expect(runAddMenuEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('changing modes closes Add instead of stacking panels', async () => {
+    const wrapper = mountCanvas();
+    await flushPromises();
+    wrapper.findComponent({ name: 'MobileModebar' }).vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    useMobileCanvasMode().setMode('draw');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.addSheetOpen).toBe(false);
+    expect(wrapper.vm.drawPanelOpen).toBe(true);
   });
 });

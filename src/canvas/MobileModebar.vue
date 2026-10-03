@@ -38,6 +38,7 @@
       :class="{ active: mode === 'draw' }"
       :aria-pressed="mode === 'draw'"
       :aria-label="t('drawMode')"
+      :disabled="!canEdit"
       @touchstart.passive="lp.onTouchStart(t('drawMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
@@ -54,6 +55,7 @@
     <button
       class="mobile-modebar-btn mobile-modebar-add"
       :aria-label="t('add')"
+      :disabled="!canEdit"
       @touchstart.passive="lp.onTouchStart(t('add'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
@@ -80,19 +82,23 @@ import { useLongPressTooltip } from './useLongPressTooltip';
 
 export default defineComponent({
   name: 'MobileModebar',
-  emits: ['add'],
-  setup(_, { emit }) {
+  props: { canEdit: { type: Boolean, default: true } },
+  emits: ['add', 'mode-change'],
+  setup(props, { emit }) {
     const { mode, setMode } = useMobileCanvasMode();
     const { t } = useI18n();
     const lp = useLongPressTooltip();
 
     function handleClick(m: MobileCanvasMode) {
       if (lp.wasConsumed()) return;
+      if (m === 'draw' && !props.canEdit) return;
+      emit('mode-change');
       setMode(m);
     }
 
     function handleAdd() {
       if (lp.wasConsumed()) return;
+      if (!props.canEdit) return;
       emit('add');
     }
 

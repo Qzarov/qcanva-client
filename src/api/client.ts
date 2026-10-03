@@ -281,6 +281,7 @@ export const resourceFolders = {
 
 // Canvas
 export const canvas = {
+  setRulerSettings:(id:string,settings:Omit<import('../canvas/ruler').RulerSettings,'enabled'>)=>request<import('../canvas/ruler').RulerSettings>(`/canvas/${id}/ruler-settings`,{method:'PUT',body:JSON.stringify(settings)}),
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string, folderId?: string | null, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folderId, tags }) }),

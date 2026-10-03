@@ -3989,6 +3989,22 @@ body {
   --canvas-topbar-height: 44px;
   --canvas-toolbar-height: 0px;
 }
+.canvas-view:fullscreen {
+  width: 100%;
+  height: 100%;
+  background: var(--ui-surface-solid);
+}
+.canvas-minimap-size-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.canvas-minimap-size-setting select { max-width: 50%; }
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-fullscreen-button { display: none; }
+}
 .canvas-loading, .canvas-error {
   display: flex;
   align-items: center;
@@ -4321,6 +4337,10 @@ body {
   padding-top: 12px;
   border-top: 1px solid var(--ui-border);
 }
+.canvas-ruler-button{display:inline-flex;align-items:center;justify-content:center;flex:0 0 36px;width:36px;min-height:36px;padding:7px;}
+.canvas-ruler-button.active{background:var(--ui-brand-soft);color:var(--ui-accent-strong);}
+.canvas-viewport.is-measuring{cursor:crosshair;touch-action:none;}
+
 .canvas-topbar {
   position: absolute;
   top: 0;
@@ -4387,6 +4407,7 @@ body {
    can stretch — the same reason Docs' undo/redo carry their own class. */
 .canvas-topbar-undo,
 .canvas-topbar-redo,
+.canvas-topbar-dice,
 .topbar-menu-btn {
   align-items: center;
   justify-content: center;
@@ -6633,11 +6654,11 @@ body.text-doc-outline-resizing {
   cursor: pointer;
 }
 
-/* Collapsed: the toggle is the ONLY thing left in the panel, so it centers
-   in the narrow strip instead of hugging a now-nonexistent list's edge. */
+/* Collapsed: the list no longer fills the panel. Keep the toggle at the
+   bottom with an auto top margin, horizontally centered in the strip. */
 .text-doc-outline-panel-collapsed .text-doc-outline-collapse-toggle {
   align-self: center;
-  margin: 8px auto;
+  margin: auto auto 8px;
 }
 
 .text-doc-outline-collapse-toggle:hover {
@@ -9492,6 +9513,17 @@ textarea:focus-visible {
 /* Show mobile components and adjust layout at mobile breakpoint */
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .mobile-only { display: flex !important; }
+  .canvas-shortcuts-button { display: none !important; }
+  .dice-toolbar > .draw-toolbar-toggle { display: none; }
+  .dice-toolbar {
+    position: fixed;
+    top: calc(var(--canvas-topbar-height, 60px) + 8px);
+    left: auto;
+    right: max(10px, env(safe-area-inset-right));
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 24px);
+    overflow: auto;
+  }
 
   /* Hide the old vertical block-menu on mobile — replaced by MobileNodeToolbar */
   .block-menu { display: none !important; }
@@ -9550,6 +9582,7 @@ textarea:focus-visible {
   .edge-label-input
 ),
 /* Teleported to <body>, outside .canvas-view - canvas-only classes. */
+.mobile-add-sheet,
 .mobile-overflow-sheet,
 .share-panel.share-panel-glass {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
@@ -9628,6 +9661,8 @@ textarea:focus-visible {
     right: 10px;
     bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
     padding: 10px 12px;
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 24px);
+    overflow-y: auto;
     border: 1px solid var(--ui-glass-border);
     border-radius: 20px;
     box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
@@ -9686,6 +9721,7 @@ textarea:focus-visible {
   .account-menu-trigger,
   .canvas-topbar-undo,
   .canvas-topbar-redo,
+  .canvas-topbar-dice,
   .topbar-menu-btn,
   .topbar-login
 ) {
@@ -9696,7 +9732,7 @@ textarea:focus-visible {
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   color: var(--ui-text);
 }
-.canvas-view .canvas-topbar :is(.back-btn, .canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn) {
+.canvas-view .canvas-topbar :is(.back-btn, .canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn) {
   width: 36px;
   height: 36px;
   min-width: 36px;
@@ -9720,7 +9756,7 @@ textarea:focus-visible {
 .canvas-view .canvas-topbar :is(.topbar-sync, .account-menu-trigger, .topbar-login) {
   border-radius: 999px;
 }
-.canvas-view .canvas-topbar :is(.back-btn, .topbar-sync, .account-menu-trigger, .canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn, .topbar-login):hover:not(:disabled) {
+.canvas-view .canvas-topbar :is(.back-btn, .topbar-sync, .account-menu-trigger, .canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn, .topbar-login):hover:not(:disabled) {
   background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
 }
 
@@ -9853,7 +9889,7 @@ textarea:focus-visible {
   .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm:is(:hover, :active) {
     background: var(--ui-glass-btn-hover);
   }
-  .canvas-view .canvas-topbar :is(.canvas-topbar-undo, .canvas-topbar-redo, .topbar-menu-btn) {
+  .canvas-view .canvas-topbar :is(.canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn) {
     width: 40px;
     height: 40px;
     min-width: 40px;

@@ -10,7 +10,7 @@
     bottom sheet, desktop keeps a floating panel. The class names are the
     ones the document sheet has always used (style.css), shared as they are.
   -->
-  <Teleport to="body">
+  <Teleport to="body" :disabled="teleportDisabled">
     <div v-if="open" class="text-doc-share-backdrop" :class="{ 'share-backdrop-glass': glass }" @click="emit('close')"></div>
     <section
       v-if="open"
@@ -172,11 +172,14 @@ const props = withDefaults(defineProps<{
   permissions: SharePermission[];
   /** Liquid Glass surface (the canvas); the document keeps its plain sheet. */
   glass?: boolean;
+  /** Keep the sheet inside its parent when that parent is a fullscreen root. */
+  teleportDisabled?: boolean;
 }>(), {
   slugPlaceholder: '',
   slugError: '',
   savingSlug: false,
   glass: false,
+  teleportDisabled: false,
 });
 
 const emit = defineEmits<{

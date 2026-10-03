@@ -95,6 +95,8 @@ vi.mock('../composables/useCanvasSocket', () => ({
     sendRoll: vi.fn(),
     onChatMessage: vi.fn(),
     onChatError: vi.fn(),
+    sendRulerUpdate:vi.fn(),sendRulerClear:vi.fn(),getRulerActor:()=>({socketId:'self',userId:'u1',userName:'U',color:'#a882ff'}),
+    onRulerState:vi.fn(),onRulerUpdate:vi.fn(),onRulerClear:vi.fn(),onRulerSettings:vi.fn(),onRulerError:vi.fn(),
   }),
 }));
 

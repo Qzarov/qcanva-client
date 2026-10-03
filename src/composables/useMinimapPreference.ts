@@ -1,6 +1,8 @@
 import { readonly, ref } from 'vue';
 
 const STORAGE_KEY = 'qcanva-minimap-enabled';
+const SIZE_STORAGE_KEY = 'qcanva-minimap-size';
+export type MinimapSize = 'small' | 'large';
 
 const getStorage = (): Storage | undefined => {
   try {
@@ -10,19 +12,14 @@ const getStorage = (): Storage | undefined => {
   }
 };
 
-// Default OFF on touch/mobile devices, ON on desktop.
-const getDefaultEnabled = (): boolean => {
-  try {
-    return typeof matchMedia === 'undefined'
-      ? true
-      : !matchMedia('(pointer: coarse)').matches;
-  } catch {
-    return true;
-  }
+const readPreference = (key: string): string | null => {
+  try { return getStorage()?.getItem(key) ?? null; }
+  catch { return null; }
 };
 
-const stored = getStorage()?.getItem(STORAGE_KEY);
-const enabled = ref<boolean>(stored !== null ? stored === 'true' : getDefaultEnabled());
+// Default OFF everywhere; preserve a user's explicit stored selection.
+const enabled = ref(readPreference(STORAGE_KEY) === 'true');
+const size = ref<MinimapSize>(readPreference(SIZE_STORAGE_KEY) === 'large' ? 'large' : 'small');
 
 export function useMinimapPreference() {
   const setEnabled = (v: boolean) => {
@@ -34,8 +31,16 @@ export function useMinimapPreference() {
     }
   };
 
+  const setSize = (value: MinimapSize) => {
+    size.value = value;
+    try { getStorage()?.setItem(SIZE_STORAGE_KEY, value); }
+    catch { /* Preferences still work in memory when storage is unavailable. */ }
+  };
+
   return {
     enabled: readonly(enabled),
     setEnabled,
+    size: readonly(size),
+    setSize,
   };
 }

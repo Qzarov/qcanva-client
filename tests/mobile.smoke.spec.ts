@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const API = 'http://localhost:3001/api/**';
 
-async function setupMocks(page: Page) {
+async function setupMocks(page: Page, options: { dice?: boolean; readonly?: boolean } = {}) {
   await page.addInitScript(() => {
     localStorage.setItem('qcanva:theme:v1', 'light');
     localStorage.setItem('token', 'mobile-test-token');
@@ -34,7 +34,7 @@ async function setupMocks(page: Page) {
             }),
             slug: null,
           },
-          role: 'owner',
+          role: options.readonly ? 'read' : 'owner',
           isPublic: false,
           revision: 1,
         },
@@ -59,8 +59,8 @@ async function setupMocks(page: Page) {
       await route.fulfill({ json: { items: [] } });
     } else if (path.endsWith('/messages')) {
       await route.fulfill({ json: [] });
-    } else if (path.endsWith('/plugins')) {
-      await route.fulfill({ json: { plugins: [] } });
+    } else if (path.startsWith('/api/plugins/')) {
+      await route.fulfill({ json: options.dice ? [{ id: 'dice', name: 'Dice', enabled: true, surface: 'canvas' }] : [] });
     } else if (path.endsWith('/resource-folders')) {
       await route.fulfill({ json: { own: [], shared: [] } });
     } else if (path.endsWith('/tags')) {
@@ -70,6 +70,51 @@ async function setupMocks(page: Page) {
     }
   });
 }
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`Mobile panels are exclusive and bounded with dice enabled at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setupMocks(page, { dice: true });
+    await page.goto('/canvas/smoke-canvas');
+    const modebar = page.locator('.mobile-modebar');
+    await expect(modebar).toBeVisible();
+    await modebar.locator('button').nth(2).click();
+    await expect(page.locator('.mobile-draw-panel')).toBeVisible();
+    await modebar.locator('.mobile-modebar-add').click();
+    await expect(page.locator('.mobile-add-sheet')).toBeVisible();
+    await expect(page.locator('.mobile-draw-panel')).not.toBeVisible();
+    const sheetBox = await page.locator('.mobile-add-sheet').boundingBox();
+    expect(sheetBox!.y).toBeGreaterThanOrEqual(0);
+    expect(sheetBox!.y + sheetBox!.height).toBeLessThanOrEqual(viewport.height);
+    await page.locator('.mobile-add-backdrop').click({ position: { x: 5, y: 100 } });
+    const dice = page.locator('.canvas-topbar-dice');
+    await expect(dice).toBeVisible();
+    const diceBox = await dice.boundingBox();
+    expect(diceBox!.x).toBeGreaterThanOrEqual(0);
+    expect(diceBox!.x + diceBox!.width).toBeLessThanOrEqual(viewport.width);
+    await dice.click();
+    await expect(page.locator('.dice-panel')).toBeVisible();
+    const panelBox = await page.locator('.dice-panel').boundingBox();
+    expect(panelBox!.x).toBeGreaterThanOrEqual(0);
+    expect(panelBox!.x + panelBox!.width).toBeLessThanOrEqual(viewport.width);
+    expect(panelBox!.y + panelBox!.height).toBeLessThanOrEqual(viewport.height);
+    await modebar.locator('.mobile-modebar-add').click();
+    await expect(page.locator('.dice-panel')).not.toBeVisible();
+    await expect(page.locator('.mobile-add-sheet')).toBeVisible();
+    await page.locator('.mobile-add-backdrop').click({ position: { x: 5, y: 100 } });
+    await page.locator('.topbar-menu-btn').click();
+    await expect(page.locator('.canvas-shortcuts-button')).toBeHidden();
+  });
+}
+
+test('Readonly mobile canvases cannot open create or draw controls', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setupMocks(page, { readonly: true, dice: true });
+  await page.goto('/canvas/smoke-canvas');
+  await expect(page.locator('.mobile-modebar-add')).toBeDisabled();
+  await expect(page.locator('.mobile-modebar button').nth(2)).toBeDisabled();
+  await expect(page.locator('.canvas-topbar-dice')).toHaveCount(0);
+});
 
 const VIEWPORTS = [
   { width: 320, height: 568, name: '320px portrait' },
@@ -122,7 +167,7 @@ for (const vp of VIEWPORTS) {
     expect(await sheetItems.count()).toBeGreaterThanOrEqual(3);
 
     // Close by clicking backdrop
-    await page.locator('.mobile-add-backdrop').click();
+    await page.locator('.mobile-add-backdrop').click({ position: { x: 5, y: 100 } });
     await expect(addSheet).not.toBeVisible();
   });
 }

@@ -347,10 +347,10 @@ describe('useMinimapPreference', () => {
     vi.unstubAllGlobals();
   });
 
-  it('defaults ON on fine-pointer (desktop) device', async () => {
+  it('defaults OFF on fine-pointer (desktop) device', async () => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false })));
     const { useMinimapPreference } = await import('../composables/useMinimapPreference');
-    expect(useMinimapPreference().enabled.value).toBe(true);
+    expect(useMinimapPreference().enabled.value).toBe(false);
     vi.unstubAllGlobals();
   });
 
@@ -368,6 +368,35 @@ describe('useMinimapPreference', () => {
     expect(localStorage.getItem('qcanva-minimap-enabled')).toBe('true');
     useMinimapPreference().setEnabled(false);
     expect(localStorage.getItem('qcanva-minimap-enabled')).toBe('false');
+  });
+
+  it('defaults to small and persists large size across reloads', async () => {
+    const { useMinimapPreference } = await import('../composables/useMinimapPreference');
+    const preference = useMinimapPreference();
+    expect(preference.size.value).toBe('small');
+    preference.setSize('large');
+    expect(preference.size.value).toBe('large');
+    expect(localStorage.getItem('qcanva-minimap-size')).toBe('large');
+    vi.resetModules();
+    const reloaded = await import('../composables/useMinimapPreference');
+    expect(reloaded.useMinimapPreference().size.value).toBe('large');
+  });
+
+  it('ignores invalid stored sizes without losing visibility', async () => {
+    localStorage.setItem('qcanva-minimap-size', 'huge');
+    localStorage.setItem('qcanva-minimap-enabled', 'true');
+    const { useMinimapPreference } = await import('../composables/useMinimapPreference');
+    expect(useMinimapPreference().size.value).toBe('small');
+    expect(useMinimapPreference().enabled.value).toBe(true);
+  });
+
+  it('works when localStorage reads throw', async () => {
+    const getItem = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+    try {
+      const { useMinimapPreference } = await import('../composables/useMinimapPreference');
+      expect(useMinimapPreference().enabled.value).toBe(false);
+      expect(useMinimapPreference().size.value).toBe('small');
+    } finally { getItem.mockRestore(); }
   });
 
   it('does not throw when storage is unavailable', async () => {

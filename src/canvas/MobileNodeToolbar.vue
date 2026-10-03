@@ -46,8 +46,8 @@
             v-for="c in canvasRef?.fontColors ?? []"
             :key="'mtc'+c"
             class="tb-color"
-            :class="{ active: canvasRef?.getNodeFontColor(nodeId) === c }"
-            :style="{ background: c }"
+            :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(nodeId), c) }"
+            :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }"
             :aria-label="t('textColor') + ' ' + c"
             @click="canvasRef?.setNodeFontColor(nodeId, c)"
           />

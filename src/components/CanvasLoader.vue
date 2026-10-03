@@ -1,9 +1,22 @@
 <template>
   <div
     class="canvas-viewport"
-    :class="{ 'is-manipulating': isManipulatingNode }"
+    :class="{ 'is-manipulating': isManipulatingNode, 'is-measuring': rulerActive }"
     ref="viewport"
-    @wheel.prevent="onWheel"
+    @pointerdown.capture="rulerGesture.onPointerDown"
+    @pointermove.capture="rulerGesture.onPointerMove"
+    @pointerup.capture="rulerGesture.onPointerUp"
+    @pointercancel.capture="rulerGesture.onPointerCancel"
+    @lostpointercapture="rulerGesture.onLostPointerCapture"
+    @mousedown.capture="rulerGesture.guardLegacy"
+    @mouseup.capture="rulerGesture.guardLegacy"
+    @touchstart.capture="rulerGesture.guardLegacy"
+    @touchmove.capture="rulerGesture.guardLegacy"
+    @touchend.capture="rulerGesture.guardLegacy"
+    @click.capture="rulerGesture.guardLegacy"
+    @dblclick.capture="rulerGesture.guardLegacy"
+    @contextmenu.capture="rulerGesture.guardLegacy"
+    @wheel="onWheel"
     @mousedown="onPanStart"
     @mousemove="onPanMove"
     @mouseup="onPanEnd"
@@ -14,6 +27,7 @@
     @touchcancel="onTouchEnd"
     @dblclick.prevent="onCanvasDblClick"
   >
+    <CanvasRulerOverlay :measurements="rulerMeasurements" :settings="rulerSettings" :camera="camera" :viewport-size="viewportSize" />
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
       <div
@@ -21,7 +35,7 @@
         :key="group.id"
         class="canvas-group"
         :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
+        :class="[groupColorClass(group), nodePresentationClass(group), { 'border-select-only': !isTouchDevice, 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
         :style="[nodePosition(group), {
           '--group-content-surface': 'var(--content-canvas-group-surface)',
           '--group-content-border': 'var(--content-canvas-group-border)',
@@ -29,6 +43,11 @@
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
       >
+        <svg v-if="!isTouchDevice" class="group-border-hit" aria-hidden="true"
+          :style="{ left: `${-(group.borderWidth || 1.5)}px`, top: `${-(group.borderWidth || 1.5)}px`, width: `${group.width}px`, height: `${group.height}px` }">
+          <rect v-bind="groupBorderRect(group)" fill="none" stroke="transparent" stroke-linejoin="round"
+            :stroke-width="Math.max(12 / camera.scale, group.borderWidth || 1.5)" />
+        </svg>
         <span v-if="group.label" class="group-label">{{ group.label }}</span>
         <template v-if="isNodeSelected(group.id) && !readonly && !isNodePositionLocked(group.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, group, 'br')"></div>
@@ -657,9 +676,10 @@
       </div>
     </div>
 
-    <!-- Minimap (hidden by default on mobile; toggled via useMinimapPreference) -->
+    <!-- Minimap (device-local visibility and size) -->
     <div
       class="minimap"
+      :class="{ 'is-large': minimapSize === 'large' }"
       v-if="minimapData && minimapEnabled"
       @mousedown.stop="onMinimapDown"
       @mousemove.stop="onMinimapMove"
@@ -680,6 +700,7 @@
         />
         <rect
           class="minimap-viewport"
+          vector-effect="non-scaling-stroke"
           :x="minimapData.vpX"
           :y="minimapData.vpY"
           :width="minimapData.vpW"
@@ -827,8 +848,12 @@ import { computeResizedRect } from "../canvas/resizeMath";
 import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
+import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
+import {useRulerGesture} from '../canvas/useRulerGesture';
+import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -925,8 +950,11 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { BoardPreview },
+  components: { BoardPreview, CanvasRulerOverlay },
   props: {
+    rulerActive:{type:Boolean,default:false},
+    rulerMeasurements:{type:Array as PropType<RulerMeasurement[]>,default:()=>[]},
+    rulerSettings:{type:Object as PropType<RulerSettings>,default:()=>({...DEFAULT_RULER_SETTINGS})},
     initialData: {
       type: Object as PropType<{ nodes: any[]; edges: any[]; drawings?: Drawing[] } | null>,
       default: null,
@@ -944,7 +972,7 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
+  emits: ["ruler-exit","ruler-begin","ruler-move","ruler-finish","ruler-cancel","change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
     // Only the new add menu is localised here; the rest of this component still
     // carries hardcoded labels from before i18n existed.
@@ -962,8 +990,15 @@ export default defineComponent({
     const isMobileLayout = ref(mobileLayoutQuery?.matches ?? false);
     const onMobileLayoutChange = (e: MediaQueryListEvent) => { isMobileLayout.value = e.matches; };
     mobileLayoutQuery?.addEventListener?.('change', onMobileLayoutChange);
-    const { enabled: minimapEnabled } = useMinimapPreference();
+    const { enabled: minimapEnabled, size: minimapSize } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
+    const viewportSize = reactive({ width: 0, height: 0 });
+    let viewportObserver: ResizeObserver | undefined;
+    const measureViewport = () => {
+      viewportSize.width = viewport.value?.clientWidth ?? 0;
+      viewportSize.height = viewport.value?.clientHeight ?? 0;
+      rulerGesture.recalculate();
+    };
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
     const drawings = ref<Drawing[]>([]);
@@ -992,6 +1027,8 @@ export default defineComponent({
       y: 0,
       scale: 1,
     });
+    const rulerGesture=useRulerGesture({viewport,active:computed(()=>props.rulerActive),camera,
+      begin:point=>emit('ruler-begin',point),move:point=>emit('ruler-move',point),finish:point=>emit('ruler-finish',point),cancel:()=>emit('ruler-cancel')});
     const isPanning = ref(false);
     const panStart = reactive({ x: 0, y: 0 });
     const cameraStart = reactive({ x: 0, y: 0 });
@@ -1634,7 +1671,9 @@ export default defineComponent({
         const color = node.borderColor || (node.color ? undefined : "rgba(255,255,255,0.1)");
         const strokeColor = color || "currentColor";
         if (bs === "wavy") {
-          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='4'><path d='M0 2 Q5 0 10 2 Q15 4 20 2' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
+          // Each of the four 8px slices contains a complete wave. A 20×4
+          // strip sliced at 2 cuts the wave in half and leaves no side edges.
+          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M8 4 Q12 0 16 4 Q20 8 24 4 Q28 4 28 8 Q32 12 28 16 Q24 20 28 24 Q28 28 24 28 Q20 32 16 28 Q12 24 8 28 Q4 28 4 24 Q0 20 4 16 Q8 12 4 8 Q4 4 8 4 Z' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 8 round`;
         } else {
           style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4'><path d='M0 4 L6 0 L12 4' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
         }
@@ -2254,8 +2293,18 @@ export default defineComponent({
 
     // Find which node is under the mouse (world coords)
     const findNodeAt = (wx: number, wy: number): { node: CanvasNode; side: string } | null => {
-      for (const n of viewerNodes.value) {
-        if (wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) {
+      // Match the DOM paint order, including type partitions for equal zIndex.
+      // Sorting the data array alone would disagree with overlapping image/text nodes.
+      const painted = [...groups.value, ...textNodes.value, ...linkNodes.value, ...imageNodes.value,
+        ...templateNodes.value, ...canvasNodes.value, ...documentNodes.value];
+      const topFirst = painted.map((node, index) => ({ node, index }))
+        .sort((a, b) => (b.node.zIndex ?? 10) - (a.node.zIndex ?? 10) || b.index - a.index);
+      const tolerance = 6 / camera.scale;
+      for (const { node: n } of topFirst) {
+        const boundaryOnly = n.type === 'group' && !isTouchDevice;
+        const margin = boundaryOnly ? tolerance : 0;
+        if (wx >= n.x - margin && wx <= n.x + n.width + margin && wy >= n.y - margin && wy <= n.y + n.height + margin) {
+          if (boundaryOnly && !hitTestGroupBorder(n, wx, wy, tolerance)) continue;
           // Determine closest side
           const cx = n.x + n.width / 2;
           const cy = n.y + n.height / 2;
@@ -2939,6 +2988,7 @@ export default defineComponent({
     };
 
     const toggleAddMenu = () => {
+      if(props.rulerActive)emit('ruler-exit');
       addMenuOpen.value = !addMenuOpen.value;
     };
 
@@ -2959,6 +3009,7 @@ export default defineComponent({
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if(props.rulerActive)return;
       if (isEditableEventTarget(e.target)) return;
       if (e.key === "Escape" && addMenuOpen.value) {
         closeAddMenu();
@@ -3432,6 +3483,27 @@ export default defineComponent({
 
     // Zoom / pan handler (wheel + trackpad)
     const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey && e.target instanceof Element) {
+        const content = e.target.closest('.node-content, .node-editor');
+        // Browsers map Shift + a vertical mouse wheel to horizontal scroll.
+        const horizontalWheel = e.shiftKey && e.deltaX === 0;
+        const scrollX = horizontalWheel ? e.deltaY : e.deltaX;
+        const scrollY = horizontalWheel ? 0 : e.deltaY;
+        // Keep native scrolling (including nested code blocks and editors)
+        // until the content reaches the edge in the requested direction.
+        for (let element: Element | null = e.target; content && element; element = element.parentElement) {
+          if (element instanceof HTMLElement) {
+            const css = getComputedStyle(element);
+            const canScroll = (overflow: string, delta: number, position: number, maximum: number) =>
+              /^(auto|scroll)$/.test(overflow) &&
+              (delta < 0 ? position > 0 : delta > 0 && position < maximum - 1);
+            if (canScroll(css.overflowY, scrollY, element.scrollTop, element.scrollHeight - element.clientHeight) ||
+                canScroll(css.overflowX, scrollX, element.scrollLeft, element.scrollWidth - element.clientWidth)) return;
+          }
+          if (element === content) break;
+        }
+      }
+      e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         // Pinch-to-zoom on trackpad (or Ctrl+wheel)
         const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
@@ -4128,8 +4200,10 @@ export default defineComponent({
       const rect = el.getBoundingClientRect();
       const vb = minimapData.value!;
       const [vbX = 0, vbY = 0, vbW = 1, vbH = 1] = vb.viewBox.split(' ').map(Number);
-      const wx = vbX + (e.clientX - rect.left) / rect.width * vbW;
-      const wy = vbY + (e.clientY - rect.top) / rect.height * vbH;
+      // Account for SVG xMidYMid meet letterboxing, not only its DOM rect.
+      const scale = Math.min(rect.width / vbW, rect.height / vbH);
+      const wx = vbX + (e.clientX - rect.left - (rect.width - vbW * scale) / 2) / scale;
+      const wy = vbY + (e.clientY - rect.top - (rect.height - vbH * scale) / 2) / scale;
       return { wx, wy };
     };
 
@@ -4167,15 +4241,20 @@ export default defineComponent({
         maxX = Math.max(maxX, n.x + n.width);
         maxY = Math.max(maxY, n.y + n.height);
       }
-      const pad = 100;
-      minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-      const vw = viewport.value.clientWidth;
-      const vh = viewport.value.clientHeight;
+      const vw = viewportSize.width || viewport.value.clientWidth;
+      const vh = viewportSize.height || viewport.value.clientHeight;
       // Viewport in world coords
       const vpX = -camera.x / camera.scale;
       const vpY = -camera.y / camera.scale;
       const vpW = vw / camera.scale;
       const vpH = vh / camera.scale;
+      // Include the entire viewport so its outline never disappears outside
+      // the nodes' bounds, including when zoomed out or panned away.
+      const pad = 100;
+      minX = Math.min(minX, vpX) - pad;
+      minY = Math.min(minY, vpY) - pad;
+      maxX = Math.max(maxX, vpX + vpW) + pad;
+      maxY = Math.max(maxY, vpY + vpH) + pad;
       return {
         viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
         vpX, vpY, vpW, vpH,
@@ -4202,6 +4281,12 @@ export default defineComponent({
 
     onMounted(() => {
       loadCanvas();
+      measureViewport();
+      if (typeof ResizeObserver !== 'undefined' && viewport.value) {
+        viewportObserver = new ResizeObserver(measureViewport);
+        viewportObserver.observe(viewport.value);
+      }
+      window.addEventListener('resize', measureViewport);
       // Browser zoom on a double tap also emits resize on Android and used to
       // reset this canvas to fit-to-content. Orientation is the only layout
       // change that should intentionally reset the view.
@@ -4216,6 +4301,8 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
+      viewportObserver?.disconnect();
+      window.removeEventListener('resize', measureViewport);
       if (editSaveTimer) clearTimeout(editSaveTimer);
       unregisterEditorBack?.();
       mobileLayoutQuery?.removeEventListener?.('change', onMobileLayoutChange);
@@ -4229,7 +4316,10 @@ export default defineComponent({
     });
 
     return {
+      rulerGesture,viewportSize,
       t,
+      isTouchDevice,
+      groupBorderRect,
       camera,
       addMenuOpen,
       addMenuWrap,
@@ -4415,6 +4505,7 @@ export default defineComponent({
       Math,
       minimapData,
       minimapEnabled,
+      minimapSize,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,
@@ -4512,6 +4603,10 @@ export default defineComponent({
   background: var(--group-content-surface);
   cursor: grab;
 }
+.canvas-group.border-select-only { pointer-events: none; }
+.group-border-hit { position: absolute; overflow: visible; pointer-events: none; }
+.group-border-hit rect { pointer-events: stroke; }
+.canvas-group.border-select-only .resize-handle { pointer-events: auto; }
 .canvas-group.is-selected {
   border-color: var(--ui-focus);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-focus) 44%, transparent);
@@ -5283,6 +5378,9 @@ g:hover > .edge-midpoint-conn {
   left: 16px;
   width: 180px;
   height: 120px;
+  box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - var(--canvas-topbar-height, 44px) - 32px);
   background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
   border: 1px solid var(--ui-border);
@@ -5290,6 +5388,10 @@ g:hover > .edge-midpoint-conn {
   overflow: hidden;
   z-index: 10;
   padding: 6px;
+}
+.minimap.is-large {
+  width: 360px;
+  height: 240px;
 }
 .minimap svg {
   width: 100%;
@@ -5305,7 +5407,7 @@ g:hover > .edge-midpoint-conn {
 .minimap-viewport {
   fill: var(--ui-minimap-viewport-fill);
   stroke: var(--ui-minimap-viewport-stroke);
-  stroke-width: 3;
+  stroke-width: 2;
   cursor: grab;
 }
 

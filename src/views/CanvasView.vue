@@ -37,6 +37,14 @@
         />
         <span v-else class="topbar-title-ro">{{ title || 'Untitled' }}</span>
         <div class="topbar-right">
+          <button v-if="rulerSettings.enabled" data-testid="ruler-tool" class="btn-ghost btn-sm canvas-ruler-button" :class="{active:rulerActive}" :aria-label="t('ruler')" :title="t('ruler')" :aria-pressed="rulerActive" @click="toggleRuler">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m3 16 13-13 5 5L8 21zM6 13l2 2m1-5 3 3m0-6 2 2m1-5 3 3"/></svg>
+          </button>
+          <button v-if="role !== 'read' && diceEnabled" ref="diceTopbarRef"
+            class="canvas-topbar-dice mobile-only" :class="{ active: diceOpen }"
+            :aria-label="t('dice')" :aria-expanded="diceOpen" @click="toggleDice" @pointerdown.stop>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/></svg>
+          </button>
           <!-- Compact status, always visible -->
           <div v-if="onlineUsers.length > 1" class="online-users">
             <div
@@ -89,14 +97,17 @@
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="toggleShare(); menuOpen = false">
               {{ t('access') }}
             </button>
-            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">{{ t('plugins') }}</button>
+            <button class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">{{ role === 'owner' ? t('plugins') : t('viewSettings') }}</button>
+            <button v-if="fullscreenSupported" class="btn-ghost btn-sm canvas-fullscreen-button" :aria-label="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :title="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :aria-pressed="isFullscreen" :disabled="fullscreenBusy" @click="toggleFullscreen">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path v-if="isFullscreen" d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6"/><path v-else d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
+            </button>
             <button v-if="canViewHistory" class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
               {{ t('history') }}
             </button>
             <button class="btn-ghost btn-sm" @click="toggleChat(); menuOpen = false" :title="t('chat')">
               {{ t('chat') }}
             </button>
-            <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts; menuOpen = false" :title="t('keyboardShortcuts')">
+            <button class="btn-ghost btn-sm canvas-shortcuts-button" @click="showShortcuts = !showShortcuts; menuOpen = false" :title="t('keyboardShortcuts')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
               <span class="topbar-action-label">{{ t('shortcuts') }}</span>
             </button>
@@ -159,10 +170,10 @@
       </div>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
-      <section v-if="showPlugins && role === 'owner'" class="canvas-plugin-panel">
-        <div class="canvas-plugin-panel-head"><strong>{{ t('canvasPlugins') }}</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
-        <p v-if="!pluginItems.length" class="canvas-plugin-empty">{{ t('noPluginsForCanvas') }}</p>
-        <div v-for="plugin in pluginItems" :key="plugin.id" class="canvas-plugin-row">
+      <section v-if="showPlugins" class="canvas-plugin-panel">
+        <div class="canvas-plugin-panel-head"><strong>{{ role === 'owner' ? t('canvasPlugins') : t('viewSettings') }}</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
+        <p v-if="role === 'owner' && !pluginItems.length" class="canvas-plugin-empty">{{ t('noPluginsForCanvas') }}</p>
+        <div v-for="plugin in role === 'owner' ? pluginItems : []" :key="plugin.id" class="canvas-plugin-row">
           <div><strong>{{ plugin.name }}</strong><span>{{ plugin.description }}</span></div>
           <button
             class="plugin-toggle"
@@ -188,7 +199,15 @@
             @click="setMinimapEnabled(!minimapEnabled)"
           ><span class="plugin-toggle-label">{{ minimapEnabled ? t('pluginOn') : t('pluginOff') }}</span><span class="plugin-toggle-knob"></span></button>
         </div>
-        <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
+        <label class="canvas-minimap-size-setting">
+          <span>{{ t('minimapSize') }}</span>
+          <select :value="minimapSize" :aria-label="t('minimapSize')" @change="setMinimapSize(($event.target as HTMLSelectElement).value as 'small' | 'large')">
+            <option value="small">{{ t('minimapSmall') }}</option>
+            <option value="large">{{ t('minimapLarge') }}</option>
+          </select>
+        </label>
+        <CanvasRulerSettings v-if="rulerSettings.enabled" :settings="rulerSettings" :is-owner="role === 'owner'" :busy="rulerSettingsBusy" @save="saveRulerSettings" />
+        <div v-if="role === 'owner' && interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
           <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">{{ t('addCharacterCard') }}</button>
           <button class="btn-ghost btn-sm" @click="loadTemplateImport">{{ t('importFromTemplates') }}</button>
           <div v-if="templateImportOpen" class="canvas-template-import-list">
@@ -257,7 +276,7 @@
             <div class="toolbar-popover-title">{{ t('text') }}</div>
             <div class="toolbar-popover-label">{{ t('color') }}</div>
             <div class="toolbar-grid">
-              <button v-for="c in canvasRef?.fontColors" :key="'font-'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{ background: c }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+              <button v-for="c in canvasRef?.fontColors" :key="'font-'+c" class="tb-color" :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(canvasRef.selectedNodeId), c) }" :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
               <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
             </div>
             <div class="toolbar-popover-label">{{ t('firstLine') }}</div>
@@ -514,12 +533,12 @@
 
         <!-- Text color -->
         <button class="block-menu-item" :class="{ open: blockSection === 'fontColor' }" @click="toggleBlockSection('fontColor')">
-          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeFontColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeFontColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeFontColor(canvasRef.selectedNodeId) } : {}"></span>
+          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeFontColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeFontColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeFontColorSwatch(canvasRef.getNodeFontColor(canvasRef.selectedNodeId)) } : {}"></span>
           <span class="block-menu-label">{{ t('textColor') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'fontColor'" class="block-menu-pop">
-          <button v-for="c in canvasRef?.fontColors" :key="'bmfc'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{ background: c }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+          <button v-for="c in canvasRef?.fontColors" :key="'bmfc'+c" class="tb-color" :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(canvasRef.selectedNodeId), c) }" :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
           <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
         </div>
 
@@ -612,7 +631,7 @@
 
       <!-- Mobile node editing toolbar (above mode bar, mobile only) -->
       <MobileNodeToolbar
-        v-if="mobileMode === 'cursor' && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        v-if="mobileMode === 'cursor' && !addSheetOpen && !diceOpen && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         :canvas-ref="canvasRef"
         :role="role ?? 'read'"
         class="mobile-only"
@@ -701,7 +720,7 @@
       </div>
 
       <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
-      <MobileModebar ref="modebarRef" class="mobile-only" @add="addSheetOpen = true" />
+      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" @add="openMobileAddSheet" @mode-change="closeMobileSheets" />
 
       <!-- Mobile Add sheet -->
       <Teleport to="body">
@@ -725,6 +744,7 @@
       <!-- Share sheet: the same one text documents use (ResourceSharePanel.vue). -->
       <ResourceSharePanel
         v-if="role === 'owner'"
+        :teleport-disabled="isFullscreen"
         :open="showShare"
         :title="t('shareCanvasTitle')"
         :url="publicUrl"
@@ -943,6 +963,14 @@
         :readonly="role === 'read'"
         :is-owner="role === 'owner'"
         :remote-cursors="remoteCursorsArray"
+        :ruler-active="rulerActive"
+        :ruler-measurements="rulerMeasurements"
+        :ruler-settings="rulerSettings"
+        @ruler-begin="ruler.begin"
+        @ruler-move="ruler.move"
+        @ruler-finish="ruler.finish"
+        @ruler-cancel="ruler.cancel"
+        @ruler-exit="closeRuler"
         @change="onCanvasChange"
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
@@ -970,6 +998,9 @@ import AccessGate from '../components/AccessGate.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import {useCanvasRuler} from '../composables/useCanvasRuler';
+import CanvasRulerSettings from '../components/CanvasRulerSettings.vue';
+import type {RulerSettings} from '../canvas/ruler';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
@@ -979,6 +1010,7 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useI18n } from '../composables/useI18n';
 import { useMinimapPreference } from '../composables/useMinimapPreference';
+import { useCanvasFullscreen } from '../composables/useCanvasFullscreen';
 import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useBackHandler } from '../composables/useBackHandler';
@@ -998,7 +1030,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
+  components: { CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1037,12 +1069,14 @@ export default defineComponent({
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
     const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded, pluginItems, setEnabled: setPluginEnabled } = usePlugins();
-    const { enabled: minimapEnabled, setEnabled: setMinimapEnabled } = useMinimapPreference();
+    const { enabled: minimapEnabled, setEnabled: setMinimapEnabled, size: minimapSize, setSize: setMinimapSize } = useMinimapPreference();
+    const { supported: fullscreenSupported, active: isFullscreen, busy: fullscreenBusy, toggle: toggleFullscreen } = useCanvasFullscreen(canvasViewRef, () => showToast(t('fullscreenFailed'), 'error'));
     const showPlugins = ref(false);
     const settingPluginId = ref('');
     const diceEnabled = computed(() => isPluginEnabled('dice'));
     const interactiveTemplatesEnabled = computed(() => isPluginEnabled('interactive-templates'));
     const diceToolbarRef = ref<HTMLElement | null>(null);
+    const diceTopbarRef = ref<HTMLElement | null>(null);
     const diceOpen = ref(false);
     const diceSides = ref(20);
     const diceCount = ref(1);
@@ -1094,7 +1128,7 @@ export default defineComponent({
       }
       // Close the dice panel when clicking outside it.
       if (diceOpen.value) {
-        const insideDice = !!(target && diceToolbarRef.value?.contains(target));
+        const insideDice = !!(target && (diceToolbarRef.value?.contains(target) || diceTopbarRef.value?.contains(target)));
         if (!insideDice) {
           diceOpen.value = false;
         }
@@ -1257,7 +1291,36 @@ export default defineComponent({
       sendRoll,
       onChatMessage,
       onChatError,
+      sendRulerUpdate,sendRulerClear,getRulerActor,onRulerState,onRulerUpdate,onRulerClear,onRulerSettings,onRulerError,
     } = useCanvasSocket(resolvedId);
+
+    const ruler=useCanvasRuler({connected:wsConnected,sendUpdate:sendRulerUpdate,sendClear:sendRulerClear,getActor:getRulerActor});
+    const rulerActive=ref(false),rulerSettingsBusy=ref(false);
+    const rulerSettings=ruler.settings,rulerMeasurements=ruler.measurements;
+    onRulerState(ruler.receiveState);onRulerUpdate(ruler.receiveUpdate);onRulerClear(ruler.receiveClear);onRulerSettings(ruler.receiveSettings);
+    onRulerError(()=>{ruler.cancel();showToast(t('rulerUnavailable'),'error');});
+    function closeRuler(){rulerActive.value=false;ruler.cancel();}
+    function toggleRuler(){
+      if(rulerActive.value){closeRuler();return;}
+      if(!rulerSettings.value.enabled)return;
+      closeMobileSheets();closeNodeEditingPanels();canvasRef.value?.clearSelection();
+      if(pickingNodeForChat.value)onCancelPickNode();
+      setMobileMode('hand');canvasRef.value?.setDrawTool('select');
+      drawPanelOpen.value=false;drawMobilePopup.value=null;drawPaletteColorOpen.value=false;drawColorPickerOpen.value=false;
+      showPlugins.value=false;menuOpen.value=false;chatOpen.value=false;showShare.value=false;showHistory.value=false;
+      rulerActive.value=true;showToast(t(wsConnected.value?'rulerHint':'rulerOffline'),'info');
+    }
+    async function saveRulerSettings(value:Omit<RulerSettings,'enabled'>){
+      if(role.value!=='owner'||rulerSettingsBusy.value)return;
+      rulerSettingsBusy.value=true;const version=ruler.settingsVersion.value;
+      try{
+        const saved=await canvasApi.setRulerSettings(resolvedId.value,value);
+        if(ruler.settingsVersion.value===version)ruler.receiveSettings({settings:saved,serverTime:Date.now()});
+      }catch(error:any){showToast(error?.message||t('rulerSaveFailed'),'error');}
+      finally{rulerSettingsBusy.value=false;}
+    }
+    watch(()=>rulerSettings.value.enabled,enabled=>{if(!enabled)closeRuler();},{flush:'sync'});
+    const onRulerKeyDown=(event:KeyboardEvent)=>{if(rulerActive.value&&event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeRuler();}};
 
     const savingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
 
@@ -1381,6 +1444,7 @@ export default defineComponent({
           router.replace(`/canvas/${preferred}`).catch(() => {});
         }
         title.value = res.canvas.title;
+        if(res.canvas.rulerSettings)ruler.setInitialSettings(res.canvas.rulerSettings);
         canvasData.value = JSON.parse(res.canvas.data);
         historyAccess.value = res.canvas.historyAccess || 'owner';
         canvasFolderId.value = res.canvas.folderId ?? null;
@@ -2082,11 +2146,13 @@ export default defineComponent({
     });
 
     onMounted(() => {
+      window.addEventListener('keydown',onRulerKeyDown,true);
       window.addEventListener('resize', updateChromeMetrics);
       window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       const cached = readNativeResourceCache<any>('canvas', canvasId);
       if (cached?.value?.canvas?.data) {
         const res = cached.value;
+        if(res.canvas.rulerSettings)ruler.setInitialSettings(res.canvas.rulerSettings);
         resolvedId.value = res.canvas.id;
         slug.value = res.canvas.slug || null;
         slugInput.value = slug.value || '';
@@ -2110,6 +2176,7 @@ export default defineComponent({
       void nextTick(observeChromeMetrics);
     });
     onUnmounted(() => {
+      window.removeEventListener('keydown',onRulerKeyDown,true);
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
@@ -2123,7 +2190,9 @@ export default defineComponent({
     const drawColorPickerOpen = ref(false);
     const drawPaletteColorOpen = ref(false);
     const drawMobilePopup = ref<null | 'color' | 'width'>(null);
+    watch([showPlugins,addSheetOpen,diceOpen,drawPanelOpen,showShare,showHistory,chatOpen,showEmbedPicker,showDocPicker,templateImportOpen],values=>{if(rulerActive.value&&values.some(Boolean))closeRuler();},{flush:'sync'});
     const toggleDrawPanel = () => {
+      closeRuler();
       drawPanelOpen.value = !drawPanelOpen.value;
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
     };
@@ -2133,6 +2202,7 @@ export default defineComponent({
     // mode back to Hand - and only then leaves the canvas (main.ts). The text
     // editor and the toolbar's own sub-panels register later, so they go first.
     const closeTopCanvasLayer = (): boolean => {
+      if(rulerActive.value){closeRuler();return true;}
       if (pickingNodeForChat.value) {
         onCancelPickNode();
         return true;
@@ -2170,6 +2240,7 @@ export default defineComponent({
 
     // Sync draw panel with mobile mode changes
     watch(mobileMode, (newMode) => {
+      closeMobileSheets();
       if (newMode === 'draw') {
         drawPanelOpen.value = true;
         if (canvasRef.value?.drawTool === 'select') canvasRef.value?.setDrawTool('pen');
@@ -2179,9 +2250,47 @@ export default defineComponent({
         drawMobilePopup.value = null;
         canvasRef.value?.setDrawTool('select');
       }
-    });
+    }, { flush: 'sync' });
 
-    const toggleDice = () => { diceOpen.value = !diceOpen.value; };
+    function closeMobileSheets() {
+      closeRuler();
+      addSheetOpen.value = false;
+      diceOpen.value = false;
+    }
+
+    function openMobileAddSheet() {
+      if (role.value === 'read') return;
+      setMobileMode('hand');
+      closeMobileSheets();
+      closeNodeEditingPanels();
+      drawPanelOpen.value = false;
+      drawColorPickerOpen.value = false;
+      drawPaletteColorOpen.value = false;
+      drawMobilePopup.value = null;
+      canvasRef.value?.setDrawTool('select');
+      menuOpen.value = false;
+      showPlugins.value = false;
+      showSyncEvents.value = false;
+      showShortcuts.value = false;
+      showHistory.value = false;
+      chatOpen.value = false;
+      addSheetOpen.value = true;
+    }
+
+    const toggleDice = () => {
+      closeRuler();
+      const opening = !diceOpen.value;
+      if (opening && window.matchMedia?.('(max-width: 640px), (max-height: 500px) and (orientation: landscape)').matches) {
+        setMobileMode('hand');
+        drawPanelOpen.value = false;
+        drawMobilePopup.value = null;
+        closeNodeEditingPanels();
+        canvasRef.value?.setDrawTool('select');
+      }
+      addSheetOpen.value = false;
+      menuOpen.value = false;
+      diceOpen.value = opening;
+    };
     const rollDice = () => {
       if (!diceEnabled.value) return;
       sendRoll(diceSides.value, diceCount.value, diceModifier.value);
@@ -2192,6 +2301,7 @@ export default defineComponent({
     };
 
     return {
+      ruler,rulerActive,rulerSettings,rulerMeasurements,rulerSettingsBusy,toggleRuler,closeRuler,saveRulerSettings,
       t,
       route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
       drawColorPickerOpen, drawPaletteColorOpen, drawMobilePopup,
@@ -2221,11 +2331,13 @@ export default defineComponent({
       showShortcuts, menuOpen, addSheetOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
       showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
-      minimapEnabled, setMinimapEnabled,
+      minimapEnabled, setMinimapEnabled, minimapSize, setMinimapSize,
+      fullscreenSupported, isFullscreen, fullscreenBusy, toggleFullscreen,
       mobileMode,
       drawPanelOpen,
       toggleDrawPanel,
-      diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
+      diceToolbarRef, diceTopbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
+      openMobileAddSheet, closeMobileSheets,
       chatOpen, chatMessages, toggleChat, onChatSend, onTemplateRoll,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };
