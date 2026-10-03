@@ -107,6 +107,54 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
   });
 }
 
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+  test(`Add resources stay in one row and the trigger closes the panel at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setupMocks(page);
+    await page.goto('/canvas/smoke-canvas');
+    const modebar = page.locator('.mobile-modebar');
+    await modebar.locator('button').nth(2).click();
+    const add = modebar.locator('.mobile-modebar-add');
+    await add.click();
+    await expect(page.locator('.mobile-add-sheet')).toBeVisible();
+    await expect(modebar.locator('button').nth(2)).toHaveAttribute('aria-pressed', 'true');
+    await expect(add).toHaveAttribute('aria-expanded', 'true');
+    const items = page.locator('.mobile-add-sheet-item');
+    expect(await items.count()).toBeGreaterThanOrEqual(3);
+    const itemTops = await items.evaluateAll(elements => elements.map(element => Math.round(element.getBoundingClientRect().top)));
+    expect(new Set(itemTops).size).toBe(1);
+    const buttonAnimation = await add.evaluate(element => getComputedStyle(element).transitionProperty);
+    const itemAnimation = await items.first().evaluate(element => getComputedStyle(element).transitionProperty);
+    expect(buttonAnimation).toContain('transform');
+    expect(itemAnimation).toContain('transform');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+    await add.click({ timeout: 1000 });
+    await expect(page.locator('.mobile-add-sheet')).not.toBeVisible();
+    await expect(add).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.locator('.mobile-draw-panel')).toBeVisible();
+  });
+}
+
+test('each lower menu tap briefly labels the selected action above its button', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setupMocks(page);
+  await page.goto('/canvas/smoke-canvas');
+  const buttons = page.locator('.mobile-modebar-btn');
+  for (const [index, label] of ['Hand', 'Cursor', 'Draw', 'Add'].entries()) {
+    const button = buttons.nth(index);
+    await button.click();
+    const hint = page.locator('.mobile-modebar-tap-hint');
+    await expect(hint).toHaveText(label);
+    const [buttonBox, hintBox] = await Promise.all([button.boundingBox(), hint.boundingBox()]);
+    expect(hintBox!.y + hintBox!.height).toBeLessThanOrEqual(buttonBox!.y + 1);
+    expect(Math.abs(hintBox!.x + hintBox!.width / 2 - buttonBox!.x - buttonBox!.width / 2)).toBeLessThanOrEqual(6);
+    expect(await hint.evaluate(element => getComputedStyle(element).pointerEvents)).toBe('none');
+  }
+  await expect(page.locator('.mobile-modebar-tap-hint')).not.toBeVisible({ timeout: 2500 });
+  await buttons.nth(3).click();
+  await expect(page.locator('.mobile-add-sheet')).not.toBeVisible();
+});
+
 test('Readonly mobile canvases cannot open create or draw controls', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setupMocks(page, { readonly: true, dice: true });

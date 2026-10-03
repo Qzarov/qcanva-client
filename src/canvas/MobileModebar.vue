@@ -1,5 +1,5 @@
 <template>
-  <div class="mobile-modebar" role="toolbar" :aria-label="t('modeBar')">
+  <div class="mobile-modebar" :class="{ 'is-add-open': addOpen }" role="toolbar" :aria-label="t('modeBar')">
     <button
       class="mobile-modebar-btn"
       :class="{ active: mode === 'hand' }"
@@ -8,7 +8,7 @@
       @touchstart.passive="lp.onTouchStart(t('handMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
-      @click="handleClick('hand')"
+      @click="handleClick('hand', $event)"
     >
       <!-- Hand / pan icon -->
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -26,7 +26,7 @@
       @touchstart.passive="lp.onTouchStart(t('cursorMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
-      @click="handleClick('cursor')"
+      @click="handleClick('cursor', $event)"
     >
       <!-- Cursor / select icon -->
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -42,7 +42,7 @@
       @touchstart.passive="lp.onTouchStart(t('drawMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
-      @click="handleClick('draw')"
+      @click="handleClick('draw', $event)"
     >
       <!-- Pencil / draw icon -->
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -54,12 +54,15 @@
     <!-- Add button: action (not a mode), opens the create sheet -->
     <button
       class="mobile-modebar-btn mobile-modebar-add"
+      :class="{ active: addOpen }"
       :aria-label="t('add')"
+      :aria-expanded="addOpen"
+      aria-controls="mobile-add-sheet"
       :disabled="!canEdit"
       @touchstart.passive="lp.onTouchStart(t('add'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
       @touchend="lp.onTouchEnd()"
-      @click="handleAdd"
+      @click="handleAdd($event)"
     >
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
         <line x1="12" y1="5" x2="12" y2="19"/>
@@ -71,38 +74,54 @@
     <div v-if="lp.tooltip.visible" class="mobile-modebar-tooltip" aria-hidden="true">
       {{ lp.tooltip.text }}
     </div>
+    <div v-if="tapHint" class="mobile-modebar-tap-hint" :style="{ left: tapHint.left + 'px' }" aria-hidden="true">
+      {{ tapHint.text }}
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent } from 'vue';
+import { defineComponent, onUnmounted, ref } from 'vue';
 import { useMobileCanvasMode, type MobileCanvasMode } from '../composables/useMobileCanvasMode';
 import { useI18n } from '../composables/useI18n';
 import { useLongPressTooltip } from './useLongPressTooltip';
 
 export default defineComponent({
   name: 'MobileModebar',
-  props: { canEdit: { type: Boolean, default: true } },
+  props: { canEdit: { type: Boolean, default: true }, addOpen: { type: Boolean, default: false } },
   emits: ['add', 'mode-change'],
   setup(props, { emit }) {
     const { mode, setMode } = useMobileCanvasMode();
     const { t } = useI18n();
     const lp = useLongPressTooltip();
+    const tapHint = ref<{ text: string; left: number } | null>(null);
+    let tapHintTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function handleClick(m: MobileCanvasMode) {
+    function showTapHint(label: string, event: MouseEvent) {
+      const button = event.currentTarget as HTMLElement;
+      if (tapHintTimer !== null) clearTimeout(tapHintTimer);
+      tapHint.value = { text: label, left: button.offsetLeft + button.offsetWidth / 2 };
+      tapHintTimer = setTimeout(() => { tapHint.value = null; tapHintTimer = null; }, 1200);
+    }
+
+    onUnmounted(() => { if (tapHintTimer !== null) clearTimeout(tapHintTimer); });
+
+    function handleClick(m: MobileCanvasMode, event: MouseEvent) {
       if (lp.wasConsumed()) return;
       if (m === 'draw' && !props.canEdit) return;
       emit('mode-change');
       setMode(m);
+      showTapHint(t(m === 'hand' ? 'handMode' : m === 'cursor' ? 'cursorMode' : 'drawMode'), event);
     }
 
-    function handleAdd() {
+    function handleAdd(event: MouseEvent) {
       if (lp.wasConsumed()) return;
       if (!props.canEdit) return;
       emit('add');
+      showTapHint(t('add'), event);
     }
 
-    return { mode, handleClick, handleAdd, t, lp };
+    return { mode, handleClick, handleAdd, t, lp, tapHint };
   },
 });
 </script>

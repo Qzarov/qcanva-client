@@ -9117,17 +9117,15 @@ textarea:focus-visible {
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
   -webkit-tap-highlight-color: transparent;
 }
-.mobile-modebar-btn:active { background: var(--ui-surface-subtle); }
+.mobile-modebar-btn:active { background: var(--ui-surface-subtle); transform: scale(.94); }
 .mobile-modebar-btn.active {
   background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
   color: var(--ui-accent-strong);
 }
-/* Add button: slightly distinct (not a toggle, no active state) */
-.mobile-modebar-add { color: var(--ui-accent-strong, #6366f1); }
-.mobile-modebar-add:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, transparent); }
+/* Add is an action; its highlight signals the open panel, not a canvas mode. */
 
 /* Long-press tooltip above the modebar */
 .mobile-modebar-tooltip {
@@ -9144,6 +9142,31 @@ textarea:focus-visible {
   white-space: nowrap;
   pointer-events: none;
   z-index: 500;
+}
+.mobile-modebar-tap-hint {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 1;
+  transform: translateX(-50%);
+  max-width: min(160px, calc(100vw - 20px));
+  padding: 5px 9px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: var(--ui-glass-shadow);
+  color: var(--ui-text);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: mobile-modebar-hint-in .14s ease-out both;
+}
+@keyframes mobile-modebar-hint-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-modebar-tap-hint { animation: none; }
 }
 
 /* ===== Mobile Node Toolbar ===== */
@@ -9326,7 +9349,7 @@ textarea:focus-visible {
 .mobile-add-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 99;
   background: rgba(0, 0, 0, 0.35);
 }
 .mobile-add-sheet {
@@ -9348,15 +9371,19 @@ textarea:focus-visible {
   margin: 0 auto 12px;
 }
 .mobile-add-sheet-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  display: flex;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 .mobile-add-sheet-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  flex: 0 0 clamp(72px, 22vw, 96px);
   gap: 6px;
   min-height: 72px;
   background: var(--ui-surface-subtle);
@@ -9368,8 +9395,10 @@ textarea:focus-visible {
   font-size: 12px;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
 }
-.mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); }
+.mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); transform: scale(.94); }
+.mobile-modebar.is-add-open { z-index: 202; }
 .mobile-add-sheet-icon { display: flex; align-items: center; justify-content: center; }
 .mobile-add-sheet-icon svg { width: 22px; height: 22px; }
 .mobile-add-sheet-label { text-align: center; line-height: 1.2; }

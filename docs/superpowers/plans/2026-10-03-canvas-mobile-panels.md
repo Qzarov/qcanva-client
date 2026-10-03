@@ -15,6 +15,7 @@
 - Keep the already completed “+ closes other panels” and mobile shortcuts tasks intact.
 - Defer “move common text/image settings out of ⋯” as the document says “будем фиксить следующим заходом”.
 - Repeated taps on an active menu trigger close that menu. Tapping another menu trigger closes the first.
+- A tap on any lower mode-bar button briefly shows its translated name just above that button without intercepting further taps. Keep the long-press tooltip behavior.
 - The Android Back chain closes nested menu, then panel, then mode before leaving the canvas.
 - Check 320px and 390px mobile widths, safe-area inset, virtual keyboard, and desktop visibility; real Android acceptance is separate.
 - Do not deploy or tag in this task; report local verification and update only the completed checklist rows with ✅ and “Примечание:”.
@@ -42,14 +43,14 @@
 
 ### Task 2: One-row Add menu and matching panel feedback
 
-**Files:** `src/style.css`, `tests/mobile.smoke.spec.ts`, optionally `src/canvas/MobileModebar.vue` for active state.
+**Files:** `src/style.css`, `tests/mobile.smoke.spec.ts`, `src/canvas/MobileModebar.vue` for active state and tap hint.
 
 **Interfaces:** Existing `.mobile-add-sheet`, `.mobile-add-sheet-item`, `.mobile-draw-panel`, `.mobile-node-toolbar` selectors remain available.
 
-- [ ] Add failing browser checks for one-row resource buttons, no horizontal page overflow at 320px/390px, tappable Add trigger and matching pressed/active feedback.
-- [ ] Run the focused Playwright scenario and inspect failure.
-- [ ] Make Add a horizontally scrollable row with the existing floating panel appearance; use a common short press animation for mode and Add buttons and creation icons.
-- [ ] Rerun focused browser checks.
+- [x] Add failing browser checks for one-row resource buttons, no horizontal page overflow at 320px/390px, tappable Add trigger, matching pressed/active feedback, and a nonblocking short-lived hint above every lower button.
+- [x] Run the focused Playwright scenario and inspect failure.
+- [x] Make Add a horizontally scrollable row with the existing floating panel appearance; use a common short press animation for mode and Add buttons and creation icons. Show the translated button name above the tapped button, dismiss it automatically, and preserve long-press behavior.
+- [x] Rerun focused browser checks.
 
 ### Task 3: Compact plugin controls below the header
 

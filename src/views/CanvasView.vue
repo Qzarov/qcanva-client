@@ -720,12 +720,12 @@
       </div>
 
       <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
-      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" @add="openMobileAddSheet" @mode-change="closeMobileSheets" />
+      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" :add-open="addSheetOpen" @add="openMobileAddSheet" @mode-change="closeMobileSheets" />
 
       <!-- Mobile Add sheet -->
       <Teleport to="body">
         <div v-if="addSheetOpen" class="mobile-add-backdrop" @click="addSheetOpen = false"></div>
-        <div v-if="addSheetOpen" class="mobile-add-sheet" role="dialog" :aria-label="t('add')" @click.stop>
+        <div v-if="addSheetOpen" id="mobile-add-sheet" class="mobile-add-sheet" role="dialog" :aria-label="t('add')" @click.stop>
           <div class="mobile-add-sheet-handle"></div>
           <div class="mobile-add-sheet-grid">
             <button
