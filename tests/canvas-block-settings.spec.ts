@@ -27,7 +27,10 @@ for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'
     await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, theme);
     if (mobile) await page.locator('.mobile-modebar-btn').nth(1).click();
     await page.locator('[data-node-id="text"]').click();
-    if (mobile) await page.locator('.mobile-node-toolbar [aria-label="Text color"]').click();
+    if (mobile) {
+      await page.locator('.mobile-node-toolbar-row [aria-label="Text"]').click();
+      await page.locator('.mobile-node-toolbar [aria-label="Text color"]').click();
+    }
     else await page.getByTitle('Text settings', { exact: true }).click();
     const colors = page.locator(mobile ? '.mobile-subpanel-colors .tb-color:not(.tb-color-none)' : '.toolbar-popover .toolbar-grid .tb-color:not(.tb-color-none)');
     await expect(colors).toHaveCount(6);
@@ -36,6 +39,7 @@ for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'
     expect(backgrounds).not.toContain('rgba(0, 0, 0, 0)');
     await expect(colors.nth(3)).toHaveClass(/active/);
     await colors.first().click();
+    if (mobile) await page.locator('.mobile-node-toolbar [aria-label="Text color"]').click();
     await expect(colors.first()).toHaveClass(/active/);
     const textColor = await page.locator('[data-node-id="text"] .node-content').evaluate(el => getComputedStyle(el).color);
     expect(textColor).toBe(backgrounds[0]);

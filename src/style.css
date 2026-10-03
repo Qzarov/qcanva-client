@@ -9274,6 +9274,20 @@ textarea:focus-visible {
   width: 100%;
   margin: 0;
 }
+.mobile-settings-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 2px 0;
+}
+.mobile-settings-row + .mobile-settings-row { margin-top: 4px; }
+.mobile-settings-row > * { flex-shrink: 0; }
+.mobile-settings-row .tb-btn { min-width: 36px; min-height: 36px; }
+.mobile-settings-row .block-menu-sublabel { width: auto; flex: 0 0 48px; }
+.mobile-node-color-trigger { flex: 0 0 28px; }
+.mobile-node-color-palette { padding-top: 8px; }
 
 /* Overflow backdrop */
 .mobile-overflow-backdrop {
@@ -9701,6 +9715,11 @@ textarea:focus-visible {
   }
   .canvas-view .mobile-node-toolbar-row {
     padding: 4px 6px;
+  }
+  .canvas-view .mobile-node-toolbar-row .mobile-toolbar-btn { min-width: 36px; }
+  .canvas-view .mobile-node-subpanel {
+    max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 60px) - 80px);
+    overflow-y: auto;
   }
 
   /* Drawing tools: the same floating glass bar as the node toolbar / mode bar,

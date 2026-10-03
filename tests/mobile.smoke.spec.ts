@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 const API = 'http://localhost:3001/api/**';
 
-async function setupMocks(page: Page, options: { dice?: boolean; ruler?: boolean; readonly?: boolean } = {}) {
+async function setupMocks(page: Page, options: { dice?: boolean; ruler?: boolean; readonly?: boolean; image?: boolean } = {}) {
   await page.addInitScript(() => {
     localStorage.setItem('qcanva:theme:v1', 'light');
     localStorage.setItem('token', 'mobile-test-token');
@@ -28,7 +28,9 @@ async function setupMocks(page: Page, options: { dice?: boolean; ruler?: boolean
             title: 'Smoke Test Canvas',
             data: JSON.stringify({
               nodes: [
-                { id: 'node-1', type: 'text', text: 'Hello Node', x: 50, y: 50, width: 120, height: 60 },
+                { id: 'node-1', type: options.image ? 'image' : 'text', text: 'Hello Node', x: 50, y: 50, width: 120, height: 60,
+                  ...(options.image ? { file: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="60"%3E%3Crect width="120" height="60" fill="%238a4e00"/%3E%3C/svg%3E' } : {}),
+                },
               ],
               edges: [],
             }),
@@ -270,6 +272,79 @@ test('tapping Draw again closes and reopens its tools without changing the selec
   await expect(page.locator('.mobile-draw-panel')).not.toBeVisible();
   await page.locator('.topbar-menu-btn').click();
   await expect(page.locator('.mobile-draw-panel')).toBeVisible();
+});
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`grouped node settings fit and edit the selected object at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await setupMocks(page);
+    await page.goto('/canvas/smoke-canvas');
+    await page.locator('.mobile-modebar-btn[aria-label="Cursor"]').click();
+    const node = page.locator('[data-node-id="node-1"]');
+    await node.click();
+    const row = page.locator('.mobile-node-toolbar-row');
+    for (const label of ['Background', 'Border', 'Text', 'Layers', 'Lock', 'More']) {
+      const button = row.getByRole('button', { name: label, exact: true });
+      await expect(button).toBeVisible();
+      const box = await button.boundingBox();
+      expect(box!.x).toBeGreaterThanOrEqual(0);
+      expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
+    }
+    await row.getByRole('button', { name: 'Lock', exact: true }).click();
+    await expect(node).toHaveClass(/is-locked/);
+    await row.getByRole('button', { name: 'Unlock', exact: true }).click();
+    await expect(node).not.toHaveClass(/is-locked/);
+    await row.getByRole('button', { name: 'Layers', exact: true }).click();
+    await expect(page.locator('.mobile-node-subpanel button')).toHaveCount(4);
+    await row.getByRole('button', { name: 'More', exact: true }).click();
+    for (const label of ['Bring forward', 'Send backward', 'Bring to front', 'Send to back', 'Lock']) {
+      await expect(page.locator('.mobile-overflow-sheet').getByRole('button', { name: label, exact: true })).toHaveCount(0);
+    }
+    await row.getByRole('button', { name: 'More', exact: true }).click();
+    await row.getByRole('button', { name: 'Background', exact: true }).click();
+    const settingButtons = page.locator('.mobile-node-subpanel .mobile-settings-row button');
+    const tops = await settingButtons.evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(5);
+    await expect(page.locator('.mobile-node-color-palette')).not.toBeVisible();
+    await page.getByRole('button', { name: 'Background color', exact: true }).click();
+    await page.getByRole('button', { name: 'Background color 2', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Background color', exact: true })).toHaveClass(/ctx-color-2/);
+    await row.getByRole('button', { name: 'Border', exact: true }).click();
+    await page.getByRole('button', { name: 'Border color', exact: true }).click();
+    const palette = await page.locator('.mobile-node-subpanel').boundingBox();
+    expect(palette!.y).toBeGreaterThanOrEqual(0);
+    expect(palette!.y + palette!.height).toBeLessThanOrEqual(viewport.height);
+    await page.getByRole('button', { name: 'Border color #fb464c', exact: true }).click();
+    await row.getByRole('button', { name: 'Text', exact: true }).click();
+    const textPanel = (await page.locator('.mobile-node-subpanel').boundingBox())!;
+    for (const button of await page.locator('.mobile-node-subpanel button[aria-label^="First line:"]').all()) {
+      const box = (await button.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(textPanel.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(textPanel.x + textPanel.width);
+    }
+    await page.getByRole('button', { name: 'Body text: Center', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Body text: Center', exact: true })).toHaveClass(/active/);
+    await page.screenshot({ path: test.info().outputPath('grouped-node-settings.png') });
+  });
+}
+
+test('image controls edit title and border without showing text settings', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await setupMocks(page, { image: true });
+  await page.goto('/canvas/smoke-canvas');
+  await page.locator('.mobile-modebar-btn[aria-label="Cursor"]').click();
+  const node = page.locator('[data-node-id="node-1"]');
+  await node.click();
+  const row = page.locator('.mobile-node-toolbar-row');
+  await expect(row.getByRole('button', { name: 'Text', exact: true })).toHaveCount(0);
+  await row.getByRole('button', { name: 'Title', exact: true }).click();
+  await page.locator('.mobile-subpanel-title-input').fill('Map');
+  await expect(node.locator('.node-image-title')).toHaveText('Map');
+  await row.getByRole('button', { name: 'Border', exact: true }).click();
+  await page.getByRole('button', { name: 'Width 3px', exact: true }).click();
+  await expect(node).toHaveCSS('border-top-width', '3px');
+  await row.getByRole('button', { name: 'Lock', exact: true }).click();
+  await expect(node).toHaveClass(/is-locked/);
 });
 
 test('Readonly mobile canvases cannot open create or draw controls', async ({ page }) => {
