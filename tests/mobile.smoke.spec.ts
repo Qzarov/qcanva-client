@@ -123,7 +123,9 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     const add = modebar.locator('.mobile-modebar-add');
     await add.click();
     await expect(page.locator('.mobile-add-sheet')).toBeVisible();
-    await expect(modebar.locator('button').nth(2)).toHaveAttribute('aria-pressed', 'true');
+    await expect(modebar.locator('button').nth(2)).toHaveAttribute('aria-pressed', 'false');
+    await expect(modebar.locator('.active')).toHaveCount(1);
+    await expect(add).toHaveClass(/active/);
     await expect(add).toHaveAttribute('aria-expanded', 'true');
     const items = page.locator('.mobile-add-sheet-item');
     expect(await items.count()).toBeGreaterThanOrEqual(3);

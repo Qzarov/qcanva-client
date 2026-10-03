@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 
 import { mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { config, enableAutoUnmount } from '@vue/test-utils';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
 
@@ -18,7 +19,32 @@ const canvasRef = {
   getNodeShape: () => 'rect',
 };
 
+// Keep the real palette component while making its teleported controls queryable.
+config.global.stubs.teleport = true;
+enableAutoUnmount(afterEach);
+
 describe('MobileNodeToolbar system Back', () => {
+  it('keeps global history out of the block overflow', async () => {
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, canUndo: true, canRedo: true }, role: 'owner' }, global: { stubs: { teleport: true } } });
+    await wrapper.get('[aria-label="More"]').trigger('click');
+    const labels = wrapper.findAll('.mobile-overflow-item').map(item => item.text());
+    expect(labels).not.toContain('Undo');
+    expect(labels).not.toContain('Redo');
+    wrapper.unmount();
+  });
+
+  it('offers transparency only inside the background palette and closes after choosing it', async () => {
+    const toggleNodeTransparent = vi.fn();
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, toggleNodeTransparent }, role: 'owner' }, global: { stubs: { teleport: true } } });
+    await wrapper.get('[aria-label="Background"]').trigger('click');
+    expect(wrapper.find('[aria-label="With background"]').exists()).toBe(false);
+    await wrapper.get('[aria-label="Background color"]').trigger('click');
+    await wrapper.get('.mobile-node-color-palette [aria-label="Transparent"]').trigger('click');
+    expect(toggleNodeTransparent).toHaveBeenCalledWith('n1');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
+    expect(wrapper.find('.mobile-node-subpanel').exists()).toBe(true);
+    wrapper.unmount();
+  });
   it('shows common text settings directly instead of putting them in overflow', () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
     const labels = wrapper.findAll('.mobile-toolbar-btn').map(button => button.attributes('aria-label'));
@@ -124,6 +150,20 @@ describe('MobileNodeToolbar system Back', () => {
     for (const label of ['Background', 'Text', 'Border', 'Layers', 'Lock']) {
       expect(wrapper.get(`[aria-label="${label}"]`).attributes('disabled')).toBeDefined();
     }
+    wrapper.unmount();
+  });
+
+  it('uses the shared colour menu for a selected drawing', async () => {
+    const setSelectedDrawingColor = vi.fn();
+    const wrapper = mount(MobileNodeToolbar, { props: { role: 'owner', canvasRef: {
+      selectedNodeIds: [], selectedDrawingIds: ['d1'], selectedDrawingObj: { color: '#e03131', width: 4 },
+      setSelectedDrawingColor,
+    } } });
+    await wrapper.get('[aria-label="Color"]').trigger('click');
+    const menu = wrapper.get('.canvas-color-menu');
+    await menu.get('[aria-label="#1971c2"]').trigger('click');
+    expect(setSelectedDrawingColor).toHaveBeenCalledWith('#1971c2');
+    expect(wrapper.find('.canvas-color-menu').exists()).toBe(false);
     wrapper.unmount();
   });
 });

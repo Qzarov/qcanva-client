@@ -143,8 +143,6 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
     { key: 'bring-front', label: 'Bring to front', handler: p.handlers.bringFront, disabled: r },
     { key: 'send-back', label: 'Send to back', handler: p.handlers.sendBack, disabled: r },
     ...(p.isOwner ? [{ key: 'hide' as NodeActionKey, label: 'Hide/Show', handler: p.handlers.toggleHide, disabled: r }] : []),
-    { key: 'undo', label: 'Undo', handler: p.handlers.undo, disabled: !p.canUndo },
-    { key: 'redo', label: 'Redo', handler: p.handlers.redo, disabled: !p.canRedo },
   ];
 }
 

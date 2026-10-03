@@ -260,18 +260,16 @@
         <div v-if="activeToolbarMenu && (canvasRef?.selectedNodeId || activeToolbarMenu === 'layers' || activeToolbarMenu === 'actions')" class="toolbar-popover">
           <template v-if="activeToolbarMenu === 'fill'">
             <div class="toolbar-popover-title">{{ t('background') }}</div>
-            <div class="toolbar-grid">
-              <button v-for="c in ['1','2','3','4','5','6']" :key="'fill-'+c" class="tb-color" :class="['ctx-color-'+c, { active: canvasRef?.getNodeColor(canvasRef.selectedNodeId) === c }]" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
+            <button class="tb-color" :class="canvasRef?.getNodeColor(canvasRef.selectedNodeId) ? 'ctx-color-'+canvasRef.getNodeColor(canvasRef.selectedNodeId) : 'tb-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="nodeColorPopup === 'fill'" @click="toggleNodeColorMenu('fill', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'fill'" :anchor="colorAnchor" :label="t('backgroundColor')" @close="nodeColorPopup = null">
+              <button v-for="c in ['1','2','3','4','5','6']" :key="'fill-'+c" class="tb-color" :class="['ctx-color-'+c, { active: canvasRef?.getNodeColor(canvasRef.selectedNodeId) === c }]" :aria-label="t('backgroundColor')+' '+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)" />
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">×</button>
+              <button class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) ?? false" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
+            </CanvasColorMenu>
             <div class="toolbar-menu-row">
               <button class="toolbar-choice" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)">
                 <svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2" :fill="canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5"/></svg>
                 <span>{{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? t('solid') : t('gradient') }}</span>
-              </button>
-              <button class="toolbar-choice" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)">
-                <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 2h12v12H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 13L13 3" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>{{ t('transparent') }}</span>
               </button>
               <button class="toolbar-choice" :class="{ active: canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' }" @click="canvasRef?.toggleNodeShape(canvasRef.selectedNodeId)">
                 <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
@@ -283,10 +281,11 @@
           <template v-else-if="activeToolbarMenu === 'text'">
             <div class="toolbar-popover-title">{{ t('text') }}</div>
             <div class="toolbar-popover-label">{{ t('color') }}</div>
-            <div class="toolbar-grid">
+            <button class="tb-color" :style="{ background: canvasRef?.getNodeFontColorSwatch(canvasRef?.getNodeFontColor(canvasRef.selectedNodeId)) }" :aria-label="t('textColor')" :aria-expanded="nodeColorPopup === 'text'" @click="toggleNodeColorMenu('text', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'text'" :anchor="colorAnchor" :label="t('textColor')" @close="nodeColorPopup = null">
               <button v-for="c in canvasRef?.fontColors" :key="'font-'+c" class="tb-color" :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(canvasRef.selectedNodeId), c) }" :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">×</button>
+            </CanvasColorMenu>
             <div class="toolbar-popover-label">{{ t('firstLine') }}</div>
             <div class="toolbar-grid">
               <button v-for="a in aligns" :key="'tb-first-' + a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeFirstLineAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeFirstLineAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
@@ -312,10 +311,11 @@
               </button>
             </div>
             <div class="toolbar-popover-label">{{ t('color') }}</div>
-            <div class="toolbar-grid">
+            <button class="tb-color" :style="{ background: canvasRef?.getNodeBorderColor(canvasRef.selectedNodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :aria-expanded="nodeColorPopup === 'border'" @click="toggleNodeColorMenu('border', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'border'" :anchor="colorAnchor" :label="t('borderColor')" @close="nodeColorPopup = null">
               <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'border-color-'+c" class="tb-color" :class="{ active: canvasRef?.getNodeBorderColor(canvasRef.selectedNodeId) === c }" :style="{background: c}" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">×</button>
+            </CanvasColorMenu>
           </template>
 
           <template v-else-if="activeToolbarMenu === 'layers'">
@@ -343,14 +343,6 @@
               />
             </template>
             <div class="toolbar-menu-row">
-              <button class="toolbar-choice" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-                <span>{{ t('undo') }}</span>
-              </button>
-              <button class="toolbar-choice" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-                <span>{{ t('redo') }}</span>
-              </button>
               <button class="toolbar-choice" :class="{ active: canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked() }" @click="canvasRef?.selectedNodeId ? canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId) : canvasRef?.toggleSelectedNodesPositionLock()">
                 <svg v-if="canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 019.4-2.5"/></svg>
@@ -390,17 +382,19 @@
           <button
             class="tb-color draw-action-color-current"
             :style="{ background: canvasRef?.selectedDrawingObj?.color || '#000' }"
-            @click="drawColorPickerOpen = !drawColorPickerOpen"
+            @click="colorAnchor = $event.currentTarget as HTMLElement; drawColorPickerOpen = !drawColorPickerOpen"
+            :aria-label="t('color')"
+            :aria-expanded="drawColorPickerOpen"
             :title="t('color')"
           ></button>
-          <div v-if="drawColorPickerOpen" class="draw-action-color-pop">
+          <CanvasColorMenu :open="drawColorPickerOpen" :anchor="colorAnchor" :label="t('color')" @close="drawColorPickerOpen = false">
             <button
               v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'dsel-'+c"
               class="tb-color" :style="{ background: c }"
               :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
               @click="canvasRef?.setSelectedDrawingColor(c); drawColorPickerOpen = false"
             ></button>
-          </div>
+          </CanvasColorMenu>
         </div>
         <span class="draw-action-sep"></span>
         <input class="draw-action-width" type="range" min="1" max="20"
@@ -464,14 +458,14 @@
               @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" :title="t('width')" />
             <!-- current colour (under the size slider) → click opens palette -->
             <div class="draw-action-color">
-              <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" :title="t('color')"></button>
-              <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-left">
+              <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="colorAnchor = $event.currentTarget as HTMLElement; drawPaletteColorOpen = !drawPaletteColorOpen" :title="t('color')" :aria-label="t('color')" :aria-expanded="drawPaletteColorOpen"></button>
+              <CanvasColorMenu :open="drawPaletteColorOpen" :anchor="colorAnchor" :label="t('color')" @close="drawPaletteColorOpen = false">
                 <button
                   v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
                   class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
                   @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
                 ></button>
-              </div>
+              </CanvasColorMenu>
             </div>
           </div>
         </div>
@@ -601,16 +595,6 @@
         <div class="block-menu-divider"></div>
 
         <!-- Actions -->
-        <div class="block-menu-history">
-          <button class="block-menu-item" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
-            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-            <span class="block-menu-label">{{ t('undo') }}</span>
-          </button>
-          <button class="block-menu-item" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
-            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-            <span class="block-menu-label">{{ t('redo') }}</span>
-          </button>
-        </div>
         <button class="block-menu-item" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
           <span class="block-menu-label">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? t('unlockPosition') : t('lockPosition') }}</span>
@@ -653,8 +637,7 @@
         @click.stop
       >
         <!-- Upward popup for color or width (floats above panel) -->
-        <div v-if="drawMobilePopup === 'color'" class="mobile-draw-popup" @click.stop>
-          <div class="mobile-draw-popup-colors">
+        <CanvasColorMenu :open="drawMobilePopup === 'color'" :anchor="colorAnchor" :label="t('color')" menu-class="mobile-draw-popup-colors" @close="drawMobilePopup = null">
             <button
               v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
               :key="'mdpop-'+c"
@@ -663,9 +646,8 @@
               :class="{ active: canvasRef?.drawColor === c }"
               @click="canvasRef?.setDrawColor(c); drawMobilePopup = null"
             ></button>
-          </div>
-        </div>
-        <div v-else-if="drawMobilePopup === 'width'" class="mobile-draw-popup" @click.stop>
+        </CanvasColorMenu>
+        <div v-if="drawMobilePopup === 'width'" class="mobile-draw-popup" @click.stop>
           <div class="mobile-draw-popup-width">
             <input
               class="mobile-draw-popup-width-slider"
@@ -679,7 +661,7 @@
         </div>
         <!-- Backdrop to close draw mode popup on tap-outside -->
         <Teleport to="body">
-          <div v-if="drawMobilePopup" class="mobile-draw-popup-backdrop" @click="drawMobilePopup = null" aria-hidden="true"/>
+          <div v-if="drawMobilePopup === 'width'" class="mobile-draw-popup-backdrop" @click="drawMobilePopup = null" aria-hidden="true"/>
         </Teleport>
 
         <div class="mobile-draw-tools">
@@ -709,7 +691,8 @@
             class="mobile-draw-color-btn"
             :class="{ active: drawMobilePopup === 'color' }"
             :style="{ background: canvasRef?.drawColor || '#e03131' }"
-            @click="drawMobilePopup = drawMobilePopup === 'color' ? null : 'color'"
+            @click="colorAnchor = $event.currentTarget as HTMLElement; drawMobilePopup = drawMobilePopup === 'color' ? null : 'color'"
+            :aria-expanded="drawMobilePopup === 'color'"
             :aria-label="t('color')"
           ></button>
           <button
@@ -996,7 +979,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect, watch } from 'vue';
+import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, nextTick, watchPostEffect, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -1025,6 +1008,7 @@ import { useBackHandler } from '../composables/useBackHandler';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
+import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import BackButton from '../components/BackButton.vue';
 import ResourceSharePanel from '../components/ResourceSharePanel.vue';
 import { slugFormatIsValid } from '../sharing/slug';
@@ -1038,7 +1022,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
+  components: { CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1100,6 +1084,16 @@ export default defineComponent({
       blockSection.value = blockSection.value === s ? '' : s;
     };
     const activeToolbarMenu = ref('');
+    const nodeColorPopup = ref<'fill' | 'text' | 'border' | null>(null);
+    const colorAnchor = shallowRef<HTMLElement | null>(null);
+    const toggleNodeColorMenu = (kind: 'fill' | 'text' | 'border', event: MouseEvent) => {
+      colorAnchor.value = event.currentTarget as HTMLElement;
+      nodeColorPopup.value = nodeColorPopup.value === kind ? null : kind;
+    };
+    watch([activeToolbarMenu, () => canvasRef.value?.selectedNodeId, () => canvasRef.value?.selectedDrawingIds?.join(',')], () => {
+      nodeColorPopup.value = null;
+      drawColorPickerOpen.value = false;
+    });
     const closeNodeEditingPanels = () => {
       activeToolbarMenu.value = '';
       blockSection.value = '';
@@ -1115,6 +1109,8 @@ export default defineComponent({
     const closeToolbarOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
       const el = target as HTMLElement | null;
+      // Palettes are teleported outside their toolbar to escape clipping.
+      if (el?.closest?.('.canvas-color-menu')) return;
       if (activeToolbarMenu.value && !(target && nodeToolbarRef.value?.contains(target))) {
         activeToolbarMenu.value = '';
       }
@@ -2351,7 +2347,7 @@ export default defineComponent({
       ruler,rulerActive,rulerSettings,rulerMeasurements,rulerSettingsBusy,toggleRuler,closeRuler,saveRulerSettings,
       t,
       route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
-      drawColorPickerOpen, drawPaletteColorOpen, drawMobilePopup,
+      drawColorPickerOpen, drawPaletteColorOpen, drawMobilePopup, nodeColorPopup, colorAnchor, toggleNodeColorMenu,
       loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
       checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,

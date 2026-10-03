@@ -720,18 +720,26 @@
       <template v-if="contextMenu.kind === 'node'">
         <div class="ctx-colors">
           <span class="ctx-label">Fill</span>
+          <button class="ctx-color-btn" :class="getContextNode()?.color ? 'ctx-color-'+getContextNode()?.color : 'ctx-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="contextColorPopup === 'fill'" @click="toggleContextColorMenu('fill', $event)" />
+        </div>
+        <CanvasColorMenu :open="contextColorPopup === 'fill'" :anchor="contextColorAnchor" :label="t('backgroundColor')" @close="contextColorPopup = null">
           <button
             v-for="c in ['1','2','3','4','5','6']"
             :key="c"
             class="ctx-color-btn"
             :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
             :title="'Color ' + c"
+            :aria-label="t('backgroundColor')+' '+c"
             @click="onCtxSetColor(c)"
           ></button>
           <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
-        </div>
+          <button class="tb-btn" :class="{ active: isNodeTransparent(contextMenu.nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="isNodeTransparent(contextMenu.nodeId)" @click="toggleNodeTransparent(contextMenu.nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
+        </CanvasColorMenu>
         <div class="ctx-colors">
           <span class="ctx-label">Text</span>
+          <button class="ctx-color-btn" :style="{ background: getNodeFontColorSwatch(getContextNode()?.fontColor) }" :aria-label="t('textColor')" :aria-expanded="contextColorPopup === 'text'" @click="toggleContextColorMenu('text', $event)" />
+        </div>
+        <CanvasColorMenu :open="contextColorPopup === 'text'" :anchor="contextColorAnchor" :label="t('textColor')" @close="contextColorPopup = null">
           <button
             v-for="c in fontColors"
             :key="'ctx-font-' + c"
@@ -742,7 +750,7 @@
             @click="onCtxSetFontColor(c)"
           ></button>
           <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
-        </div>
+        </CanvasColorMenu>
         <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
         <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
         <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
@@ -763,8 +771,11 @@
       <template v-else-if="contextMenu.kind === 'drawing'">
         <div class="ctx-colors">
           <span class="ctx-label">Цвет</span>
-          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+          <button class="ctx-color-btn" :style="{ background: selectedDrawingObj?.color }" :aria-label="t('color')" :aria-expanded="contextColorPopup === 'drawing'" @click="toggleContextColorMenu('drawing', $event)" />
         </div>
+        <CanvasColorMenu :open="contextColorPopup === 'drawing'" :anchor="contextColorAnchor" :label="t('color')" @close="contextColorPopup = null">
+          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+        </CanvasColorMenu>
         <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
         <button class="ctx-item ctx-item-danger" @click="deleteSelectedDrawing(); closeContextMenu()">Удалить</button>
@@ -837,7 +848,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
+import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
+import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
 import { useTheme } from "../composables/useTheme";
@@ -950,7 +962,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { BoardPreview, CanvasRulerOverlay },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay },
   props: {
     rulerActive:{type:Boolean,default:false},
     rulerMeasurements:{type:Array as PropType<RulerMeasurement[]>,default:()=>[]},
@@ -2455,13 +2467,19 @@ export default defineComponent({
 
     // Context menu state
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "", kind: "", id: "" });
+    const contextColorPopup = ref<'fill' | 'text' | 'drawing' | null>(null);
+    const contextColorAnchor = shallowRef<HTMLElement | null>(null);
+    const toggleContextColorMenu = (kind: 'fill' | 'text' | 'drawing', event: MouseEvent) => {
+      contextColorAnchor.value = event.currentTarget as HTMLElement;
+      contextColorPopup.value = contextColorPopup.value === kind ? null : kind;
+    };
     const contextMenuStyle = computed(() => ({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
     }));
     const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
-    const closeContextMenu = () => { contextMenu.visible = false; };
+    const closeContextMenu = () => { contextMenu.visible = false; contextColorPopup.value = null; };
 
     // Clears all selection state and closes element-bound UI.
     // Does NOT close global canvas panels (history, chat, plugins, minimap).
@@ -4429,6 +4447,7 @@ export default defineComponent({
       rollTemplateAbility,
       documentSrcdoc,
       contextMenu,
+      contextColorPopup, contextColorAnchor, toggleContextColorMenu,
       contextMenuStyle,
       getContextNode,
       setNodeColor,

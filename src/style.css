@@ -9422,28 +9422,25 @@ textarea:focus-visible {
   margin: 0 auto 12px;
 }
 .mobile-add-sheet-grid {
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 8px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
 }
 .mobile-add-sheet-item {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex: 0 0 clamp(72px, 22vw, 96px);
-  gap: 6px;
-  min-height: 72px;
+  min-width: 0;
+  gap: 4px;
+  min-height: 60px;
   background: var(--ui-surface-subtle);
   border: 1px solid var(--ui-border);
   border-radius: 10px;
   cursor: pointer;
-  padding: 8px;
+  padding: 6px 2px;
   color: var(--ui-text);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s, color 0.15s, transform 0.15s;
@@ -9451,8 +9448,8 @@ textarea:focus-visible {
 .mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); transform: scale(.94); }
 .mobile-modebar.is-add-open { z-index: 202; }
 .mobile-add-sheet-icon { display: flex; align-items: center; justify-content: center; }
-.mobile-add-sheet-icon svg { width: 22px; height: 22px; }
-.mobile-add-sheet-label { text-align: center; line-height: 1.2; }
+.mobile-add-sheet-icon svg { width: 18px; height: 18px; }
+.mobile-add-sheet-label { text-align: center; line-height: 1.2; overflow-wrap: anywhere; }
 
 .mobile-draw-panel {
   position: fixed;

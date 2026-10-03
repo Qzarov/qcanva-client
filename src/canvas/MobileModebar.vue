@@ -2,8 +2,8 @@
   <div class="mobile-modebar" :class="{ 'is-add-open': addOpen }" role="toolbar" :aria-label="t('modeBar')">
     <button
       class="mobile-modebar-btn"
-      :class="{ active: mode === 'hand' }"
-      :aria-pressed="mode === 'hand'"
+      :class="{ active: !addOpen && mode === 'hand' }"
+      :aria-pressed="!addOpen && mode === 'hand'"
       :aria-label="t('handMode')"
       @touchstart.passive="lp.onTouchStart(t('handMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
@@ -20,8 +20,8 @@
     </button>
     <button
       class="mobile-modebar-btn"
-      :class="{ active: mode === 'cursor' }"
-      :aria-pressed="mode === 'cursor'"
+      :class="{ active: !addOpen && mode === 'cursor' }"
+      :aria-pressed="!addOpen && mode === 'cursor'"
       :aria-label="t('cursorMode')"
       @touchstart.passive="lp.onTouchStart(t('cursorMode'), $event)"
       @touchmove.passive="lp.onTouchMove($event)"
@@ -35,8 +35,8 @@
     </button>
     <button
       class="mobile-modebar-btn"
-      :class="{ active: mode === 'draw' }"
-      :aria-pressed="mode === 'draw'"
+      :class="{ active: !addOpen && mode === 'draw' }"
+      :aria-pressed="!addOpen && mode === 'draw'"
       :aria-label="t('drawMode')"
       :disabled="!canEdit"
       @touchstart.passive="lp.onTouchStart(t('drawMode'), $event)"
