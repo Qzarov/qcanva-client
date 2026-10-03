@@ -11,6 +11,7 @@ vi.mock('socket.io-client', () => ({
     const socket = {
       id: 'sock-1',
       emit: vi.fn(),
+      get volatile(){return this;},
       on: vi.fn((event: string, cb: Function) => {
         handlers.set(event, cb);
       }),
@@ -25,6 +26,17 @@ vi.mock('socket.io-client', () => ({
 }));
 
 describe('useCanvasSocket realtime fallback recovery', () => {
+  it('routes ruler messages through the existing socket and never buffers while offline',()=>{
+    const cs=useCanvasSocket('canvas-1');const callback=vi.fn();
+    (cs as any).onRulerState(callback);
+    const update={gestureId:1,sequence:1,start:{x:0,y:0},end:{x:300,y:400},phase:'dragging'};
+    (cs as any).sendRulerUpdate(update);cs.connect();const socket=sockets[0];
+    expect(socket.emit).not.toHaveBeenCalled();socket.trigger('connect');
+    socket.trigger('ruler-state',{measurements:[]});expect(callback).toHaveBeenCalledWith({measurements:[]});
+    (cs as any).sendRulerUpdate(update);expect(socket.emit).toHaveBeenCalledWith('ruler-update',update);
+    (cs as any).sendRulerUpdate({...update,phase:'finished'});expect(socket.emit).toHaveBeenCalledWith('ruler-update',expect.objectContaining({phase:'finished'}));
+    socket.trigger('disconnect');socket.emit.mockClear();(cs as any).sendRulerClear(1);expect(socket.emit).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.useFakeTimers();
   });

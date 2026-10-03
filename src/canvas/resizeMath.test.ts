@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeResizedRect, snapToGrid, MIN_NODE_SIZE, GRID_SIZE, type ResizeStart } from './resizeMath';
+import { computeResizedRect, snapToGrid, GRID_SIZE, type ResizeStart } from './resizeMath';
 
 const start: ResizeStart = { x: 100, y: 100, nodeX: 0, nodeY: 0, nodeW: 240, nodeH: 120 };
 const cam = { x: 0, y: 0, scale: 1 };
@@ -37,14 +37,25 @@ describe('computeResizedRect', () => {
     expect(r.y + r.height).toBe(120); // bottom preserved
   });
 
-  it('clamps to >= MIN_NODE_SIZE (then snaps to grid)', () => {
-    // drag bottom-right far up/left -> clamps to MIN_NODE_SIZE(60), then snaps -> 72
-    const clampedSnapped = snapToGrid(MIN_NODE_SIZE); // 72
+  it('allows shrinking both dimensions to one 24px grid cell, but not below it', () => {
     const r = computeResizedRect({ handle: 'br', start, pointer: { x: -1000, y: -1000 }, camera: cam, cameraStart: camStart });
-    expect(r.width).toBe(clampedSnapped);
-    expect(r.height).toBe(clampedSnapped);
-    expect(r.width).toBeGreaterThanOrEqual(MIN_NODE_SIZE);
+    expect(r).toEqual({ x: 0, y: 0, width: 24, height: 24 });
   });
+
+  for (const scale of [0.5, 2]) {
+    it.each([
+      ['br', -1000, -1000, { x: 0, y: 0, width: 24, height: 24 }],
+      ['tl', 1000, 1000, { x: 216, y: 96, width: 24, height: 24 }],
+      ['bl', 1000, -1000, { x: 216, y: 0, width: 24, height: 24 }],
+      ['tr', -1000, 1000, { x: 0, y: 96, width: 24, height: 24 }],
+      ['l', 1000, 100, { x: 216, y: 0, width: 24, height: 120 }],
+      ['r', -1000, 100, { x: 0, y: 0, width: 24, height: 120 }],
+      ['t', 100, 1000, { x: 0, y: 96, width: 240, height: 24 }],
+      ['b', 100, -1000, { x: 0, y: 0, width: 240, height: 24 }],
+    ] as const)(`%s handle respects the 24px floor at zoom ${scale}`, (handle, x, y, expected) => {
+      expect(computeResizedRect({ handle, start, pointer: { x, y }, camera: { ...cam, scale }, cameraStart: camStart })).toEqual(expected);
+    });
+  }
 
   it('accounts for camera scale (zoom)', () => {
     // scale 2 -> screen dx 96 maps to world 48 -> 240+48=288

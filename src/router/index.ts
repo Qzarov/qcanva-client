@@ -78,4 +78,12 @@ router.beforeEach((to) => {
   }
 });
 
+// A baseline reset on every navigation. Dashboard/document/canvas views set
+// their own reactive title once mounted (useDocumentTitle); every other
+// route (login, admin, ...) has none of its own, and without this reset it
+// would otherwise keep showing whatever the PREVIOUS page's tab title was.
+router.afterEach(() => {
+  document.title = 'QCanva';
+});
+
 export default router;

@@ -3,7 +3,7 @@
     <div v-if="loading" class="canvas-loading">Loading canvas...</div>
     <div v-else-if="error" class="canvas-error">
       <div class="error-modal">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="rgba(251,70,76,0.8)" stroke-width="1.5">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--ui-danger)" stroke-width="1.5">
           <circle cx="12" cy="12" r="10"/>
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
@@ -13,51 +13,20 @@
         <router-link :to="{ name: 'dashboard' }" class="error-home-btn">Go to Dashboard</router-link>
       </div>
     </div>
-    <div v-else-if="accessDenied" class="access-gate">
-      <div class="access-gate-card">
-        <div class="access-gate-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <h2 class="access-gate-title">Private canvas</h2>
-        <p class="access-gate-sub">You need permission to view this document.</p>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Have a password?</div>
-          <form class="access-gate-form" @submit.prevent="loginWithCanvasPassword">
-            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
-            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
-              {{ checkingResourcePassword ? 'Checking…' : 'Open' }}
-            </button>
-          </form>
-        </div>
-
-        <div class="access-gate-divider"><span>or</span></div>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Request access from the owner</div>
-          <div class="access-gate-request-row">
-            <select v-model="requestedRole" class="access-gate-select">
-              <option value="read">View only</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestCanvasAccess">
-              {{ accessRequestSent ? '✓ Request sent' : 'Send request' }}
-            </button>
-          </div>
-        </div>
-
-        <router-link :to="{ name: 'dashboard' }" class="access-gate-back">← Dashboard</router-link>
-      </div>
-    </div>
+    <AccessGate
+      v-else-if="accessDenied"
+      resource-type="canvas"
+      :password-access-enabled="gatePasswordAccessEnabled"
+      :checking-password="checkingResourcePassword"
+      :requesting-access="requestingAccess"
+      :access-request-sent="accessRequestSent"
+      @submit-password="loginWithCanvasPassword"
+      @request-access="requestCanvasAccess"
+    />
     <template v-else>
       <!-- Top bar -->
       <div ref="topbarRef" class="canvas-topbar">
-        <router-link :to="{ name: 'dashboard' }" class="topbar-back">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-        </router-link>
+        <BackButton :to="backTarget.to" :label="backTarget.label" />
         <input
           v-if="canManageSettings"
           class="topbar-title"
@@ -68,6 +37,9 @@
         />
         <span v-else class="topbar-title-ro">{{ title || 'Untitled' }}</span>
         <div class="topbar-right">
+          <button v-if="rulerSettings.enabled" data-testid="ruler-tool" class="btn-ghost btn-sm canvas-ruler-button" :class="{active:rulerActive}" :aria-label="t('ruler')" :title="t('ruler')" :aria-pressed="rulerActive" @click="toggleRuler">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m3 16 13-13 5 5L8 21zM6 13l2 2m1-5 3 3m0-6 2 2m1-5 3 3"/></svg>
+          </button>
           <!-- Compact status, always visible -->
           <div v-if="onlineUsers.length > 1" class="online-users">
             <div
@@ -79,7 +51,7 @@
             >{{ u.name.charAt(0).toUpperCase() }}</div>
           </div>
           <span v-if="wsConnected" class="topbar-ws-status" title="Realtime connected">
-            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="#44cf6e"/></svg>
+            <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="4" fill="var(--ui-success)"/></svg>
           </span>
           <div class="sync-menu-wrap">
             <button
@@ -88,14 +60,14 @@
               :title="syncBadgeTitle"
               @click="showSyncEvents = !showSyncEvents"
             >
-              {{ syncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+              {{ syncStatus.label }}
             </button>
             <div v-if="showSyncEvents" class="sync-events-popover">
               <div class="sync-events-head">
-                <strong>Sync</strong>
+                <strong>{{ t('syncPopoverTitle') }}</strong>
                 <span>r{{ revision }}</span>
               </div>
-              <div v-if="syncEvents.length === 0" class="sync-event-empty">No local sync events yet</div>
+              <div v-if="syncEvents.length === 0" class="sync-event-empty">{{ t('noLocalSyncEventsYet') }}</div>
               <div v-for="event in syncEvents" :key="event.id" class="sync-event-row" :class="'sync-event-' + event.status">
                 <div>
                   <strong>{{ event.label }}</strong>
@@ -107,7 +79,7 @@
           </div>
 
           <!-- Secondary actions: inline on desktop, dropdown menu on mobile -->
-          <div class="topbar-actions" :class="{ open: menuOpen }">
+          <div id="canvas-action-menu" class="topbar-actions" :class="{ open: menuOpen }">
             <input
               v-model.trim="searchQuery"
               class="canvas-search-input"
@@ -118,55 +90,84 @@
             <span v-if="searchMatches.length" class="topbar-role">{{ searchIndex + 1 }}/{{ searchMatches.length }}</span>
             <span v-if="role" class="topbar-role">{{ role }}</span>
             <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="toggleShare(); menuOpen = false">
-              Access
+              {{ t('access') }}
             </button>
-            <button v-if="role === 'owner'" class="btn-ghost btn-sm" @click="showPlugins = !showPlugins; menuOpen = false">Plugins</button>
+            <button class="btn-ghost btn-sm canvas-plugin-settings-action" @click="togglePluginSettings">{{ role === 'owner' ? t('plugins') : t('viewSettings') }}</button>
+            <button v-if="fullscreenSupported" class="btn-ghost btn-sm canvas-fullscreen-button" :aria-label="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :title="isFullscreen ? t('exitFullscreen') : t('fullscreen')" :aria-pressed="isFullscreen" :disabled="fullscreenBusy" @click="toggleFullscreen">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path v-if="isFullscreen" d="M9 3v6H3m12-6v6h6M9 21v-6H3m12 6v-6h6"/><path v-else d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/></svg>
+            </button>
             <button v-if="canViewHistory" class="btn-ghost btn-sm" @click="toggleHistory(); menuOpen = false">
-              History
+              {{ t('history') }}
             </button>
-            <button class="btn-ghost btn-sm" @click="toggleChat(); menuOpen = false" title="Чат">
-              Чат
+            <button class="btn-ghost btn-sm" @click="toggleChat(); menuOpen = false" :title="t('chat')">
+              {{ t('chat') }}
             </button>
-            <button class="btn-ghost btn-sm" @click="showShortcuts = !showShortcuts; menuOpen = false" title="Keyboard Shortcuts">
+            <button class="btn-ghost btn-sm canvas-shortcuts-button" @click="showShortcuts = !showShortcuts; menuOpen = false" :title="t('keyboardShortcuts')">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><line x1="6" y1="10" x2="6" y2="10.01"/><line x1="10" y1="10" x2="10" y2="10.01"/><line x1="14" y1="10" x2="14" y2="10.01"/><line x1="18" y1="10" x2="18" y2="10.01"/><line x1="8" y1="14" x2="16" y2="14"/></svg>
-              <span class="topbar-action-label">Shortcuts</span>
+              <span class="topbar-action-label">{{ t('shortcuts') }}</span>
             </button>
 
-            <!-- Canvas actions (mobile dropdown only — replaces the floating controls panel) -->
+            <!-- Canvas actions (mobile dropdown only — create actions moved to + sheet) -->
             <div class="topbar-canvas-actions">
               <span class="topbar-actions-sep"></span>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.addTextNodeCenter(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                <span>Add text block</span>
-              </button>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.addGroupCenter(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-                <span>Создать группу</span>
-              </button>
-              <button v-if="role !== 'read'" class="btn-ghost btn-sm" @click="canvasRef?.openImagePicker(); menuOpen = false">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-                <span>Add image</span>
-              </button>
               <button class="btn-ghost btn-sm" @click="canvasRef?.resetView(); menuOpen = false">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                <span>Reset view</span>
+                <span>{{ t('resetView') }}</span>
               </button>
               <button class="btn-ghost btn-sm" @click="canvasRef?.onExportCanvas(); menuOpen = false">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <span>Export .canvas</span>
+                <span>{{ t('exportCanvas') }}</span>
+              </button>
+              <button class="btn-ghost btn-sm" @click="copyPublicLink(); menuOpen = false">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>{{ t('copyLink') }}</span>
               </button>
             </div>
           </div>
 
+          <!-- Undo / Redo (mobile header only — desktop uses keyboard / controls panel) -->
+          <button
+            v-if="role !== 'read'"
+            class="canvas-topbar-undo mobile-only"
+            :disabled="!canvasRef?.canUndo"
+            :title="t('undo')"
+            :aria-label="t('undo')"
+            @click="canvasRef?.undo()"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
+          </button>
+          <button
+            v-if="role !== 'read'"
+            class="canvas-topbar-redo mobile-only"
+            :disabled="!canvasRef?.canRedo"
+            :title="t('redo')"
+            :aria-label="t('redo')"
+            @click="canvasRef?.redo()"
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
+          </button>
+
+          <AccountMenu v-if="currentUser" />
+          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">{{ t('login') }}</router-link>
+
           <!-- Overflow menu toggle (mobile only) -->
-          <button class="topbar-menu-btn btn-ghost btn-sm" @click="menuOpen = !menuOpen" :title="menuOpen ? 'Close menu' : 'Menu'">
+          <button class="topbar-menu-btn" @click="toggleCanvasMenu" :title="menuOpen ? 'Close menu' : 'Menu'" :aria-expanded="menuOpen" aria-controls="canvas-action-menu">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
           </button>
-          <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge topbar-user" :title="currentUser.email || currentUser.name">
-            <span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span>
-          </router-link>
-          <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm topbar-login">Войти</router-link>
         </div>
+      </div>
+
+      <!-- Compact plugin actions on phones; canvas tools stay out of the crowded header. -->
+      <div v-if="!menuOpen" class="mobile-plugin-bar mobile-only" role="toolbar" :aria-label="t('plugins')">
+        <button v-if="rulerSettings.enabled" data-testid="mobile-plugin-ruler" class="mobile-plugin-btn" :class="{ active: rulerActive }" :title="t('ruler')" :aria-label="t('ruler')" :aria-pressed="rulerActive" @click="toggleRuler">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m3 16 13-13 5 5L8 21zM6 13l2 2m1-5 3 3m0-6 2 2m1-5 3 3"/></svg>
+        </button>
+        <button v-if="role !== 'read' && diceEnabled" ref="diceTopbarRef" data-testid="mobile-plugin-dice" class="mobile-plugin-btn" :class="{ active: diceOpen }" :title="t('dice')" :aria-label="t('dice')" :aria-expanded="diceOpen" @click="toggleDice" @pointerdown.stop>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/></svg>
+        </button>
+        <button data-testid="mobile-plugin-settings" class="mobile-plugin-btn" :class="{ active: showPlugins }" :title="role === 'owner' ? t('plugins') : t('viewSettings')" :aria-label="role === 'owner' ? t('plugins') : t('viewSettings')" :aria-expanded="showPlugins" @click="togglePluginSettings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-2.87 2.87-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1.2 1.6V21H10.2v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06-2.87-2.87.06-.06A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 13.8H3v-3.6h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87L4.2 7.07 7.07 4.2l.06.06A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10.2 3H13.8A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06 2.87 2.87-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1.2h.1v3.6H21A1.7 1.7 0 0 0 19.4 15z"/></svg>
+        </button>
       </div>
 
       <!-- Tap-away backdrop to close the mobile overflow menu -->
@@ -177,28 +178,49 @@
       </div>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
 
-      <section v-if="showPlugins && role === 'owner'" class="canvas-plugin-panel">
-        <div class="canvas-plugin-panel-head"><strong>Плагины канваса</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
-        <p v-if="!pluginItems.length" class="canvas-plugin-empty">Для этого канваса пока нет доступных плагинов.</p>
-        <div v-for="plugin in pluginItems" :key="plugin.id" class="canvas-plugin-row">
+      <section v-if="showPlugins" class="canvas-plugin-panel">
+        <div class="canvas-plugin-panel-head"><strong>{{ role === 'owner' ? t('canvasPlugins') : t('viewSettings') }}</strong><button class="btn-ghost btn-sm" @click="showPlugins = false">×</button></div>
+        <p v-if="role === 'owner' && !pluginItems.length" class="canvas-plugin-empty">{{ t('noPluginsForCanvas') }}</p>
+        <div v-for="plugin in role === 'owner' ? pluginItems : []" :key="plugin.id" class="canvas-plugin-row">
           <div><strong>{{ plugin.name }}</strong><span>{{ plugin.description }}</span></div>
           <button
             class="plugin-toggle"
             :class="{ on: plugin.enabled, loading: settingPluginId === plugin.id }"
             role="switch"
             :aria-checked="plugin.enabled"
-            :aria-label="`${plugin.name}: ${plugin.enabled ? 'включён' : 'выключен'}`"
-            :title="plugin.enabled ? 'Выключить плагин' : 'Включить плагин'"
+            :aria-label="`${plugin.name}: ${plugin.enabled ? t('pluginEnabled') : t('pluginDisabled')}`"
+            :title="plugin.enabled ? t('disablePlugin') : t('enablePlugin')"
             :disabled="settingPluginId === plugin.id"
             @click="setCanvasPlugin(plugin.id, !plugin.enabled)"
-          ><span class="plugin-toggle-label">{{ plugin.enabled ? 'Вкл' : 'Выкл' }}</span><span class="plugin-toggle-knob"></span></button>
+          ><span class="plugin-toggle-label">{{ plugin.enabled ? t('pluginOn') : t('pluginOff') }}</span><span class="plugin-toggle-knob"></span></button>
         </div>
-        <div v-if="interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
-          <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">Добавить карточку персонажа</button>
-          <button class="btn-ghost btn-sm" @click="loadTemplateImport">Импортировать из шаблонов</button>
+        <!-- Minimap preference — local per-device, not per-canvas; always visible in settings -->
+        <div class="canvas-plugin-row canvas-plugin-row-minimap">
+          <div><strong>{{ t('minimap') }}</strong></div>
+          <button
+            class="plugin-toggle"
+            :class="{ on: minimapEnabled }"
+            role="switch"
+            :aria-checked="minimapEnabled"
+            :aria-label="`${t('minimap')}: ${minimapEnabled ? t('pluginEnabled') : t('pluginDisabled')}`"
+            :title="minimapEnabled ? t('disablePlugin') : t('enablePlugin')"
+            @click="setMinimapEnabled(!minimapEnabled)"
+          ><span class="plugin-toggle-label">{{ minimapEnabled ? t('pluginOn') : t('pluginOff') }}</span><span class="plugin-toggle-knob"></span></button>
+        </div>
+        <label class="canvas-minimap-size-setting">
+          <span>{{ t('minimapSize') }}</span>
+          <select :value="minimapSize" :aria-label="t('minimapSize')" @change="setMinimapSize(($event.target as HTMLSelectElement).value as 'small' | 'large')">
+            <option value="small">{{ t('minimapSmall') }}</option>
+            <option value="large">{{ t('minimapLarge') }}</option>
+          </select>
+        </label>
+        <CanvasRulerSettings v-if="rulerSettings.enabled" :settings="rulerSettings" :is-owner="role === 'owner'" :busy="rulerSettingsBusy" @save="saveRulerSettings" />
+        <div v-if="role === 'owner' && interactiveTemplatesEnabled" class="canvas-plugin-template-actions">
+          <button class="btn-primary btn-sm" @click="canvasRef?.addDndCharacterTemplate(); showPlugins = false">{{ t('addCharacterCard') }}</button>
+          <button class="btn-ghost btn-sm" @click="loadTemplateImport">{{ t('importFromTemplates') }}</button>
           <div v-if="templateImportOpen" class="canvas-template-import-list">
-            <span v-if="templateImportLoading">Загружаем шаблоны…</span>
-            <span v-else-if="!templateImportItems.length">В дашборде пока нет шаблонов.</span>
+            <span v-if="templateImportLoading">{{ t('loadingTemplates') }}</span>
+            <span v-else-if="!templateImportItems.length">{{ t('noTemplatesInDashboard') }}</span>
             <button v-for="template in templateImportItems" :key="template.id" class="btn-ghost btn-sm" @click="importTemplateToCanvas(template)">{{ template.title }}</button>
           </div>
         </div>
@@ -208,144 +230,143 @@
       <div
         v-if="canvasRef?.selectedNodeIds?.length && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         ref="nodeToolbarRef"
-        class="node-toolbar"
+        class="node-toolbar desktop-only"
         @pointerdown.stop
         @click.stop
       >
-        <div class="node-toolbar-tabs">
+        <div class="node-toolbar-tabs" :class="{ 'text-node-toolbar-tabs': canvasRef?.selectedNodeId && canvasRef?.isTextNode(canvasRef.selectedNodeId) }">
           <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'fill' }" @click="toggleToolbarMenu('fill')" title="Background settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 15l5-5 4 4 2-2 5 5"/></svg>
-            <span>Фон</span>
+            <span>{{ t('background') }}</span>
           </button>
           <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'text' }" @click="toggleToolbarMenu('text')" title="Text settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/></svg>
-            <span>Текст</span>
+            <span>{{ t('text') }}</span>
           </button>
           <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'border' }" @click="toggleToolbarMenu('border')" title="Border settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" rx="2"/><path d="M9 5v14M15 5v14M5 9h14M5 15h14"/></svg>
-            <span>Рамка</span>
+            <span>{{ t('border') }}</span>
           </button>
           <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'layers' }" @click="toggleToolbarMenu('layers')" title="Layer settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
-            <span>Слои</span>
+            <span>{{ t('layers') }}</span>
           </button>
-          <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'actions' }" @click="toggleToolbarMenu('actions')" title="Node actions">
+          <button v-if="!canvasRef?.selectedNodeId || !canvasRef?.isTextNode(canvasRef.selectedNodeId)" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'actions' }" @click="toggleToolbarMenu('actions')" title="Node actions">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
-            <span>Действия</span>
+            <span>{{ t('nodeActions') }}</span>
           </button>
+          <template v-if="canvasRef?.selectedNodeId && canvasRef?.isTextNode(canvasRef.selectedNodeId)">
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.openTextEditor(canvasRef.selectedNodeId)">{{ t('toolbarEdit') }}</button>
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? t('toolbarUnlock') : t('toolbarLock') }}</button>
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.duplicateSelection()">{{ t('duplicate') }}</button>
+            <button v-if="role === 'owner'" class="toolbar-tab" @click="canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId)">{{ canvasRef?.isNodeHidden(canvasRef.selectedNodeId) ? t('show') : t('hide') }}</button>
+            <button class="toolbar-tab toolbar-choice-danger" :disabled="role === 'read'" @click="canvasRef?.deleteSelection()">{{ t('delete') }}</button>
+          </template>
         </div>
 
         <div v-if="activeToolbarMenu && (canvasRef?.selectedNodeId || activeToolbarMenu === 'layers' || activeToolbarMenu === 'actions')" class="toolbar-popover">
           <template v-if="activeToolbarMenu === 'fill'">
-            <div class="toolbar-popover-title">Фон</div>
-            <div class="toolbar-grid">
-              <button v-for="c in ['1','2','3','4','5','6']" :key="'fill-'+c" class="tb-color" :class="['ctx-color-'+c, { active: canvasRef?.getNodeColor(canvasRef.selectedNodeId) === c }]" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
+            <div class="toolbar-popover-title">{{ t('background') }}</div>
+            <button class="tb-color" :class="canvasRef?.getNodeColor(canvasRef.selectedNodeId) ? 'ctx-color-'+canvasRef.getNodeColor(canvasRef.selectedNodeId) : 'tb-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="nodeColorPopup === 'fill'" @click="toggleNodeColorMenu('fill', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'fill'" :anchor="colorAnchor" :label="t('backgroundColor')" @close="nodeColorPopup = null">
+              <button v-for="c in ['1','2','3','4','5','6']" :key="'fill-'+c" class="tb-color" :class="['ctx-color-'+c, { active: canvasRef?.getNodeColor(canvasRef.selectedNodeId) === c }]" :aria-label="t('backgroundColor')+' '+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)" />
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">×</button>
+              <button class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) ?? false" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
+            </CanvasColorMenu>
             <div class="toolbar-menu-row">
               <button class="toolbar-choice" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)">
                 <svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2" :fill="canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>{{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'Сплошная' : 'Градиент' }}</span>
-              </button>
-              <button class="toolbar-choice" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)">
-                <svg width="16" height="16" viewBox="0 0 16 16"><path d="M2 2h12v12H2z" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3 13L13 3" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>Прозрачная</span>
+                <span>{{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? t('solid') : t('gradient') }}</span>
               </button>
               <button class="toolbar-choice" :class="{ active: canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' }" @click="canvasRef?.toggleNodeShape(canvasRef.selectedNodeId)">
                 <svg width="16" height="16" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
-                <span>Круглая</span>
+                <span>{{ t('round') }}</span>
               </button>
             </div>
           </template>
 
           <template v-else-if="activeToolbarMenu === 'text'">
-            <div class="toolbar-popover-title">Текст</div>
-            <div class="toolbar-popover-label">Цвет</div>
-            <div class="toolbar-grid">
-              <button v-for="c in canvasRef?.fontColors" :key="'font-'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{ background: c }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
-            <div class="toolbar-popover-label">Первая строка</div>
+            <div class="toolbar-popover-title">{{ t('text') }}</div>
+            <div class="toolbar-popover-label">{{ t('color') }}</div>
+            <button class="tb-color" :style="{ background: canvasRef?.getNodeFontColorSwatch(canvasRef?.getNodeFontColor(canvasRef.selectedNodeId)) }" :aria-label="t('textColor')" :aria-expanded="nodeColorPopup === 'text'" @click="toggleNodeColorMenu('text', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'text'" :anchor="colorAnchor" :label="t('textColor')" @close="nodeColorPopup = null">
+              <button v-for="c in canvasRef?.fontColors" :key="'font-'+c" class="tb-color" :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(canvasRef.selectedNodeId), c) }" :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">×</button>
+            </CanvasColorMenu>
+            <div class="toolbar-popover-label">{{ t('firstLine') }}</div>
             <div class="toolbar-grid">
               <button v-for="a in aligns" :key="'tb-first-' + a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeFirstLineAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeFirstLineAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
             </div>
-            <div class="toolbar-popover-label">Основной текст</div>
+            <div class="toolbar-popover-label">{{ t('bodyText') }}</div>
             <div class="toolbar-grid">
               <button v-for="a in aligns" :key="'tb-body-' + a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
             </div>
           </template>
 
           <template v-else-if="activeToolbarMenu === 'border'">
-            <div class="toolbar-popover-title">Рамка</div>
-            <div class="toolbar-popover-label">Стиль</div>
+            <div class="toolbar-popover-title">{{ t('border') }}</div>
+            <div class="toolbar-popover-label">{{ t('style') }}</div>
             <div class="toolbar-grid">
               <button v-for="bs in canvasRef?.borderStyles" :key="'border-'+bs.value" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderStyle(canvasRef.selectedNodeId) === bs.value }" @click="canvasRef?.setNodeBorderStyle(canvasRef.selectedNodeId, bs.value)" :title="bs.label">
                 <svg width="24" height="10" viewBox="0 0 24 10" v-html="bs.svg"></svg>
               </button>
             </div>
-            <div class="toolbar-popover-label">Толщина</div>
+            <div class="toolbar-popover-label">{{ t('width') }}</div>
             <div class="toolbar-grid">
               <button v-for="bw in [1,2,3,4]" :key="'width-'+bw" class="tb-btn" :class="{ active: canvasRef?.getNodeBorderWidth(canvasRef.selectedNodeId) === bw }" @click="canvasRef?.setNodeBorderWidth(canvasRef.selectedNodeId, bw)" :title="bw+'px'">
                 <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
               </button>
             </div>
-            <div class="toolbar-popover-label">Цвет</div>
-            <div class="toolbar-grid">
+            <div class="toolbar-popover-label">{{ t('color') }}</div>
+            <button class="tb-color" :style="{ background: canvasRef?.getNodeBorderColor(canvasRef.selectedNodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :aria-expanded="nodeColorPopup === 'border'" @click="toggleNodeColorMenu('border', $event)" />
+            <CanvasColorMenu :open="nodeColorPopup === 'border'" :anchor="colorAnchor" :label="t('borderColor')" @close="nodeColorPopup = null">
               <button v-for="c in ['#fb464c','#e9973f','#e0de71','#44cf6e','#53dfdd','#a882ff','#ffffff']" :key="'border-color-'+c" class="tb-color" :class="{ active: canvasRef?.getNodeBorderColor(canvasRef.selectedNodeId) === c }" :style="{background: c}" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, c)"></button>
-              <button class="tb-color tb-color-none" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">x</button>
-            </div>
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="canvasRef?.setNodeBorderColor(canvasRef.selectedNodeId, undefined)">×</button>
+            </CanvasColorMenu>
           </template>
 
           <template v-else-if="activeToolbarMenu === 'layers'">
-            <div class="toolbar-popover-title">Слои</div>
+            <div class="toolbar-popover-title">{{ t('layers') }}</div>
             <div class="toolbar-menu-row">
-              <button class="toolbar-choice" @click="canvasRef?.bringSelectionForward()"><span>Слой выше</span></button>
-              <button class="toolbar-choice" @click="canvasRef?.sendSelectionBackward()"><span>Слой ниже</span></button>
-              <button class="toolbar-choice" @click="canvasRef?.bringSelectionToFront()"><span>На передний план</span></button>
-              <button class="toolbar-choice" @click="canvasRef?.sendSelectionToBack()"><span>На задний план</span></button>
+              <button class="toolbar-choice" @click="canvasRef?.bringSelectionForward()"><span>{{ t('layerUp') }}</span></button>
+              <button class="toolbar-choice" @click="canvasRef?.sendSelectionBackward()"><span>{{ t('layerDown') }}</span></button>
+              <button class="toolbar-choice" @click="canvasRef?.bringSelectionToFront()"><span>{{ t('bringToFront') }}</span></button>
+              <button class="toolbar-choice" @click="canvasRef?.sendSelectionToBack()"><span>{{ t('sendToBack') }}</span></button>
             </div>
           </template>
 
           <template v-else-if="activeToolbarMenu === 'actions'">
-            <div class="toolbar-popover-title">Действия</div>
-            <div v-if="!canvasRef?.selectedNodeId" class="toolbar-popover-label">Выбрано объектов: {{ canvasRef?.selectedNodeIds?.length }}</div>
+            <div class="toolbar-popover-title">{{ t('nodeActions') }}</div>
+            <div v-if="!canvasRef?.selectedNodeId" class="toolbar-popover-label">{{ t('selectedObjects') }}: {{ canvasRef?.selectedNodeIds?.length }}</div>
             <template v-if="canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId)">
-              <div class="toolbar-popover-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения' }}</div>
+              <div class="toolbar-popover-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? t('groupName') : t('imageName') }}</div>
               <input
                 class="toolbar-text-input"
                 :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
-                :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения'"
+                :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? t('groupName') : t('imageName')"
                 :disabled="role === 'read'"
                 @input="updateSelectedNodeTitle"
                 @keydown.stop
               />
             </template>
             <div class="toolbar-menu-row">
-              <button class="toolbar-choice" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-                <span>Назад</span>
-              </button>
-              <button class="toolbar-choice" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-                <span>Вперед</span>
-              </button>
               <button class="toolbar-choice" :class="{ active: canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked() }" @click="canvasRef?.selectedNodeId ? canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId) : canvasRef?.toggleSelectedNodesPositionLock()">
                 <svg v-if="canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 019.4-2.5"/></svg>
-                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
+                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesPositionLocked()) ? t('unlockPosition') : t('lockPosition') }}</span>
               </button>
               <button class="toolbar-choice" @click="canvasRef?.duplicateSelection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-                <span>Дублировать</span>
+                <span>{{ t('duplicate') }}</span>
               </button>
               <button v-if="role === 'owner'" class="toolbar-choice" @click="canvasRef?.selectedNodeId ? canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId) : canvasRef?.toggleSelectedNodesHidden()">
                 <svg v-if="canvasRef?.selectedNodeId ? canvasRef?.isNodeHidden(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesHidden()" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
                 <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
-                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodeHidden(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesHidden()) ? 'Показать' : 'Скрыть' }}</span>
+                <span>{{ (canvasRef?.selectedNodeId ? canvasRef?.isNodeHidden(canvasRef.selectedNodeId) : canvasRef?.areSelectedNodesHidden()) ? t('show') : t('hide') }}</span>
               </button>
               <button v-if="role !== 'read'" class="toolbar-choice toolbar-choice-danger" @click="canvasRef?.deleteSelection()">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-                <span>Удалить</span>
+                <span>{{ t('delete') }}</span>
               </button>
             </div>
           </template>
@@ -353,10 +374,10 @@
         </div>
       </div>
 
-      <!-- Floating actions toolbar for a selected drawing -->
+      <!-- Floating actions toolbar for a selected drawing (desktop only; mobile uses MobileNodeToolbar) -->
       <div
-        v-if="role !== 'read' && canvasRef?.selectedDrawingId && canvasRef?.selectedDrawingScreenRect"
-        class="drawing-actions-toolbar"
+        v-if="role !== 'read' && canvasRef?.selectedDrawingIds?.length === 1 && canvasRef?.selectedDrawingScreenRect"
+        class="drawing-actions-toolbar desktop-only"
         :style="{
           left: canvasRef.selectedDrawingScreenRect.left + 'px',
           top: Math.max(8, canvasRef.selectedDrawingScreenRect.top - 52) + 'px'
@@ -368,31 +389,33 @@
           <button
             class="tb-color draw-action-color-current"
             :style="{ background: canvasRef?.selectedDrawingObj?.color || '#000' }"
-            @click="drawColorPickerOpen = !drawColorPickerOpen"
-            title="Цвет"
+            @click="colorAnchor = $event.currentTarget as HTMLElement; drawColorPickerOpen = !drawColorPickerOpen"
+            :aria-label="t('color')"
+            :aria-expanded="drawColorPickerOpen"
+            :title="t('color')"
           ></button>
-          <div v-if="drawColorPickerOpen" class="draw-action-color-pop">
+          <CanvasColorMenu :open="drawColorPickerOpen" :anchor="colorAnchor" :label="t('color')" @close="drawColorPickerOpen = false">
             <button
               v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'dsel-'+c"
               class="tb-color" :style="{ background: c }"
               :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
               @click="canvasRef?.setSelectedDrawingColor(c); drawColorPickerOpen = false"
             ></button>
-          </div>
+          </CanvasColorMenu>
         </div>
         <span class="draw-action-sep"></span>
         <input class="draw-action-width" type="range" min="1" max="20"
           :value="canvasRef?.selectedDrawingObj?.width ?? 4"
           @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))"
-          title="Толщина" />
+          :title="t('width')" />
         <span class="draw-action-sep"></span>
-        <button class="toolbar-choice" @click="canvasRef?.duplicateSelectedDrawing()" title="Дублировать">
+        <button class="toolbar-choice" @click="canvasRef?.duplicateSelectedDrawing()" :title="t('duplicate')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
         </button>
-        <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" title="Удалить">
+        <button class="toolbar-choice" @click="canvasRef?.deleteSelectedDrawing()" :title="t('delete')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
         </button>
-        <button v-if="role === 'owner'" class="toolbar-choice" @click="canvasRef?.toggleSelectedDrawingHidden()" :title="canvasRef?.isSelectedDrawingHidden() ? 'Показать' : 'Скрыть'">
+        <button v-if="role === 'owner'" class="toolbar-choice" @click="canvasRef?.toggleSelectedDrawingHidden()" :title="canvasRef?.isSelectedDrawingHidden() ? t('show') : t('hide')">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><line v-if="canvasRef?.isSelectedDrawingHidden()" x1="2" y1="2" x2="22" y2="22"/></svg>
         </button>
       </div>
@@ -403,61 +426,19 @@
           class="draw-toolbar-toggle"
           :class="{ active: drawPanelOpen || (canvasRef && canvasRef.drawTool !== 'select') }"
           @click="toggleDrawPanel"
-          title="Инструменты рисования"
+          :title="t('drawingTools')"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
         </button>
-        <div v-if="drawPanelOpen" class="draw-toolbar-panel draw-panel-3col">
-          <div class="draw-panel-left">
-            <div class="draw-tools-grid">
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'select' }" @click="canvasRef?.setDrawTool('select')" title="Выбор">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 17 2.51-7.42L20 10.09 3 3z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" title="Перо">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'highlighter' }" @click="canvasRef?.setDrawTool('highlighter')" title="Маркер">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 12L12 2l-3 3 10 10 3-3z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'rect' }" @click="canvasRef?.setDrawTool('rect')" title="Прямоугольник">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'ellipse' }" @click="canvasRef?.setDrawTool('ellipse')" title="Эллипс">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'line' }" @click="canvasRef?.setDrawTool('line')" title="Линия">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'arrow' }" @click="canvasRef?.setDrawTool('arrow')" title="Стрелка">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" title="Ластик">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
-            </button>
-            </div>
-          </div>
-          <span class="draw-panel-vsep"></span>
-          <div class="draw-panel-right">
-            <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" title="Толщина" />
-            <!-- current colour (under the size slider) → click opens palette -->
-            <div class="draw-action-color">
-              <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="drawPaletteColorOpen = !drawPaletteColorOpen" title="Цвет"></button>
-              <div v-if="drawPaletteColorOpen" class="draw-action-color-pop draw-action-color-pop-left">
-                <button
-                  v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
-                  class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
-                  @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
-                ></button>
-              </div>
-            </div>
-          </div>
+        <div v-if="drawPanelOpen" class="draw-toolbar-panel">
+          <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'select'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawDesktopPopup" include-select
+            @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
         </div>
       </div>
 
       <!-- Dice toolbar — left edge, below the draw toolbar -->
       <div v-if="role !== 'read' && diceEnabled" ref="diceToolbarRef" class="dice-toolbar" @pointerdown.stop @click.stop>
-        <button class="draw-toolbar-toggle" :class="{ active: diceOpen }" @click="toggleDice" title="Кубики">
+        <button class="draw-toolbar-toggle" :class="{ active: diceOpen }" @click="toggleDice" :title="t('dice')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2 21 7.2v9.6L12 22 3 16.8V7.2z"/><path d="M12 2 6.4 10.5 12 13.5 17.6 10.5z"/><path d="M6.4 10.5 12 22 17.6 10.5"/><text x="12" y="12.2" font-size="5.2" text-anchor="middle" fill="currentColor" stroke="none">20</text></svg>
         </button>
         <div v-if="diceOpen" class="dice-panel">
@@ -465,18 +446,18 @@
             <button v-for="s in [4,6,8,10,12,20,100]" :key="s" class="dice-die" :class="{ active: diceSides === s }" @click="diceSides = s">d{{ s }}</button>
           </div>
           <div class="dice-controls">
-            <label>Кол-во</label>
+            <label>{{ t('diceCount') }}</label>
             <button class="dice-step" @click="diceCount = Math.max(1, diceCount - 1)">−</button>
             <span class="dice-val">{{ diceCount }}</span>
             <button class="dice-step" @click="diceCount = Math.min(10, diceCount + 1)">+</button>
           </div>
           <div class="dice-controls">
-            <label>Мод.</label>
+            <label>{{ t('diceModifier') }}</label>
             <button class="dice-step" @click="diceModifier = Math.max(-100, diceModifier - 1)">−</button>
             <span class="dice-val">{{ diceModifier > 0 ? '+' + diceModifier : diceModifier }}</span>
             <button class="dice-step" @click="diceModifier = Math.min(100, diceModifier + 1)">+</button>
           </div>
-          <button class="dice-roll-btn" @click="rollDice">Бросить {{ diceCount }}d{{ diceSides }}{{ diceModifier > 0 ? '+' + diceModifier : (diceModifier < 0 ? diceModifier : '') }}</button>
+          <button class="dice-roll-btn" @click="rollDice">{{ t('rollDice') }} {{ diceCount }}d{{ diceSides }}{{ diceModifier > 0 ? '+' + diceModifier : (diceModifier < 0 ? diceModifier : '') }}</button>
         </div>
       </div>
 
@@ -489,27 +470,27 @@
         <!-- Fill (background) color -->
         <button class="block-menu-item" :class="{ open: blockSection === 'fill' }" @click="toggleBlockSection('fill')">
           <span class="block-menu-swatch" :class="canvasRef.getNodeColor(canvasRef.selectedNodeId) ? 'ctx-color-' + canvasRef.getNodeColor(canvasRef.selectedNodeId) : 'swatch-empty'"></span>
-          <span class="block-menu-label">Цвет фона</span>
+          <span class="block-menu-label">{{ t('backgroundColor') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'fill'" class="block-menu-pop">
           <button v-for="c in ['1','2','3','4','5','6']" :key="'bf'+c" class="tb-color" :class="'ctx-color-'+c" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, c)"></button>
           <button class="tb-color tb-color-none" @click="canvasRef?.setNodeColor(canvasRef.selectedNodeId, undefined)">x</button>
           <button class="block-menu-toggle" :class="{ active: canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' }" @click="canvasRef?.toggleNodeFillStyle(canvasRef.selectedNodeId)">
-            {{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? 'Сплошная' : 'Градиент' }}
+            {{ canvasRef?.getNodeFillStyle(canvasRef.selectedNodeId) === 'solid' ? t('solid') : t('gradient') }}
           </button>
           <button class="block-menu-toggle" :class="{ active: canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) }" @click="canvasRef?.toggleNodeTransparent(canvasRef.selectedNodeId)">
-            {{ canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) ? 'Прозрачная' : 'С фоном' }}
+            {{ canvasRef?.isNodeTransparent(canvasRef.selectedNodeId) ? t('transparent') : t('withBackground') }}
           </button>
           <button class="block-menu-toggle" :class="{ active: canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' }" @click="canvasRef?.toggleNodeShape(canvasRef.selectedNodeId)">
-            {{ canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' ? 'Круглая' : 'Прямоугольная' }}
+            {{ canvasRef?.getNodeShape(canvasRef.selectedNodeId) === 'round' ? t('round') : t('rectangular') }}
           </button>
         </div>
 
         <!-- Border color -->
         <button class="block-menu-item" :class="{ open: blockSection === 'borderColor' }" @click="toggleBlockSection('borderColor')">
           <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeBorderColor(canvasRef.selectedNodeId) } : {}"></span>
-          <span class="block-menu-label">Цвет рамки</span>
+          <span class="block-menu-label">{{ t('borderColor') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'borderColor'" class="block-menu-pop">
@@ -519,18 +500,18 @@
 
         <!-- Text color -->
         <button class="block-menu-item" :class="{ open: blockSection === 'fontColor' }" @click="toggleBlockSection('fontColor')">
-          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeFontColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeFontColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeFontColor(canvasRef.selectedNodeId) } : {}"></span>
-          <span class="block-menu-label">Цвет текста</span>
+          <span class="block-menu-swatch" :class="{ 'swatch-empty': !canvasRef.getNodeFontColor(canvasRef.selectedNodeId) }" :style="canvasRef.getNodeFontColor(canvasRef.selectedNodeId) ? { background: canvasRef.getNodeFontColorSwatch(canvasRef.getNodeFontColor(canvasRef.selectedNodeId)) } : {}"></span>
+          <span class="block-menu-label">{{ t('textColor') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'fontColor'" class="block-menu-pop">
-          <button v-for="c in canvasRef?.fontColors" :key="'bmfc'+c" class="tb-color" :class="{ active: canvasRef?.getNodeFontColor(canvasRef.selectedNodeId) === c }" :style="{ background: c }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
+          <button v-for="c in canvasRef?.fontColors" :key="'bmfc'+c" class="tb-color" :class="{ active: canvasRef?.isNodeFontColorActive(canvasRef.getNodeFontColor(canvasRef.selectedNodeId), c) }" :style="{ background: canvasRef?.getNodeFontColorSwatch(c) }" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, c)"></button>
           <button class="tb-color tb-color-none" @click="canvasRef?.setNodeFontColor(canvasRef.selectedNodeId, undefined)">x</button>
         </div>
 
         <!-- Border style & width -->
         <button class="block-menu-item" :class="{ open: blockSection === 'border' }" @click="toggleBlockSection('border')">
-          <span class="block-menu-label">Рамка</span>
+          <span class="block-menu-label">{{ t('border') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'border'" class="block-menu-pop block-menu-pop-wrap">
@@ -545,14 +526,14 @@
 
         <!-- Text alignment -->
         <button class="block-menu-item" :class="{ open: blockSection === 'align' }" @click="toggleBlockSection('align')">
-          <span class="block-menu-label">Выравнивание</span>
+          <span class="block-menu-label">{{ t('alignment') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'align'" class="block-menu-pop block-menu-pop-wrap">
-          <span class="block-menu-sublabel">1-я строка</span>
+          <span class="block-menu-sublabel">{{ t('firstLineShort') }}</span>
           <button v-for="a in aligns" :key="'bmf-'+a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeFirstLineAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeFirstLineAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
           <span class="tb-sep"></span>
-          <span class="block-menu-sublabel">Текст</span>
+          <span class="block-menu-sublabel">{{ t('text') }}</span>
           <button v-for="a in aligns" :key="'bma-'+a.v" class="tb-btn" :class="{ active: canvasRef?.getNodeAlign(canvasRef.selectedNodeId) === a.v }" @click="canvasRef?.setNodeAlign(canvasRef.selectedNodeId, a.v)" :title="a.l" v-html="a.icon"></button>
         </div>
 
@@ -562,14 +543,14 @@
           :class="{ open: blockSection === 'imageTitle' }"
           @click="toggleBlockSection('imageTitle')"
         >
-          <span class="block-menu-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения' }}</span>
+          <span class="block-menu-label">{{ canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? t('groupName') : t('imageName') }}</span>
           <svg class="block-menu-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div v-if="blockSection === 'imageTitle' && (canvasRef?.isImageNode(canvasRef.selectedNodeId) || canvasRef?.isGroupNode(canvasRef.selectedNodeId))" class="block-menu-pop">
           <input
             class="block-menu-text-input"
             :value="canvasRef?.getNodeTitle(canvasRef.selectedNodeId)"
-            :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? 'Название группы' : 'Название изображения'"
+            :placeholder="canvasRef?.isGroupNode(canvasRef.selectedNodeId) ? t('groupName') : t('imageName')"
             :disabled="role === 'read'"
             @input="updateSelectedNodeTitle"
             @keydown.stop
@@ -579,143 +560,124 @@
         <div class="block-menu-divider"></div>
 
         <!-- Actions -->
-        <div class="block-menu-history">
-          <button class="block-menu-item" :disabled="!canvasRef?.canUndo" @click="canvasRef?.undo()">
-            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-            <span class="block-menu-label">Назад</span>
-          </button>
-          <button class="block-menu-item" :disabled="!canvasRef?.canRedo" @click="canvasRef?.redo()">
-            <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-            <span class="block-menu-label">Вперед</span>
-          </button>
-        </div>
         <button class="block-menu-item" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-          <span class="block-menu-label">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? 'Разблокировать позицию' : 'Заблокировать позицию' }}</span>
+          <span class="block-menu-label">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? t('unlockPosition') : t('lockPosition') }}</span>
         </button>
         <button class="block-menu-item" @click="canvasRef?.bringSelectionForward()">
-          <span class="block-menu-label">Слой выше</span>
+          <span class="block-menu-label">{{ t('layerUp') }}</span>
         </button>
         <button class="block-menu-item" @click="canvasRef?.sendSelectionBackward()">
-          <span class="block-menu-label">Слой ниже</span>
+          <span class="block-menu-label">{{ t('layerDown') }}</span>
         </button>
         <button class="block-menu-item" @click="canvasRef?.bringSelectionToFront()">
-          <span class="block-menu-label">На передний план</span>
+          <span class="block-menu-label">{{ t('bringToFront') }}</span>
         </button>
         <button class="block-menu-item" @click="canvasRef?.sendSelectionToBack()">
-          <span class="block-menu-label">На задний план</span>
+          <span class="block-menu-label">{{ t('sendToBack') }}</span>
         </button>
         <button class="block-menu-item" @click="canvasRef?.duplicateSelection()">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-          <span class="block-menu-label">Дублировать</span>
+          <span class="block-menu-label">{{ t('duplicate') }}</span>
         </button>
         <button v-if="role !== 'read'" class="block-menu-item block-menu-danger" @click="canvasRef?.deleteSelection()">
           <svg class="block-menu-ico" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
-          <span class="block-menu-label">Удалить</span>
+          <span class="block-menu-label">{{ t('delete') }}</span>
         </button>
       </div>
 
-      <!-- Access panel -->
-      <div v-if="showShare" class="share-panel">
-        <div class="share-panel-header">
-          <h3>Access</h3>
-          <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
-        </div>
+      <!-- Mobile node editing toolbar (above mode bar, mobile only) -->
+      <MobileNodeToolbar
+        v-if="mobileMode === 'cursor' && !addSheetOpen && !diceOpen && !menuOpen && !showPlugins && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
+        :canvas-ref="canvasRef"
+        :role="role ?? 'read'"
+        class="mobile-only"
+      />
 
-        <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">Link</div>
-          <div class="slug-row">
-            <span class="slug-prefix">/canvas/</span>
-            <input
-              v-model="slugInput"
-              class="slug-input"
-              placeholder="my-canvas"
-              spellcheck="false"
-              autocapitalize="off"
-              autocomplete="off"
-              @keydown.enter="saveSlug"
-            />
-            <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
-          </div>
-          <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">Who can view</div>
-          <select class="share-visibility-select" :value="visibility" @change="setVisibility(($event.target as HTMLSelectElement).value as any)">
-            <option value="private">Private — only invited people</option>
-            <option value="authenticated">Auth only — any logged-in user</option>
-            <option value="public">Public — anyone with the link</option>
-          </select>
-          <label class="share-checkbox">
-            <input type="checkbox" :checked="allowPublicEdit" @change="togglePublicEdit" />
-            <span>Allow public editing</span>
-          </label>
-          <label class="share-checkbox">
-            <input
-              type="checkbox"
-              :checked="listedInPublic"
-              :disabled="visibility !== 'public'"
-              @change="togglePublicListing"
-            />
-            <span>Show in Public</span>
-          </label>
-        </div>
-
-        <div class="share-section">
-          <div class="share-section-title">Invite people</div>
-          <div class="share-form">
-            <input v-model="shareEmail" placeholder="Email" type="email" />
-            <select v-model="shareRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button @click="doShare">Invite</button>
-          </div>
-          <div v-if="permissions.length" class="share-list">
-            <div v-for="p in permissions" :key="p.id" class="share-item">
-              <span>{{ p.user?.email || p.userId }}</span>
-              <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
-              <button @click="doRevoke(p.userId)">×</button>
-            </div>
-          </div>
-        </div>
-
-        <div v-if="role === 'owner'" class="share-section">
-          <div class="share-section-title">Password access</div>
-          <label class="share-checkbox">
-            <input type="checkbox" v-model="passwordAccessEnabled" />
-            <span>Enable password access</span>
-          </label>
-          <div v-if="passwordAccessEnabled" class="share-form">
-            <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
-            <select v-model="passwordAccessRole">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button @click="savePasswordAccess">Save</button>
-          </div>
-        </div>
+      <!-- Mobile draw panel: appears above modebar when draw mode active -->
+      <div
+        v-if="mobileMode === 'draw' && drawPanelOpen && !addSheetOpen && !diceOpen && !menuOpen && !showPlugins && role !== 'read'"
+        class="mobile-draw-panel mobile-only"
+        @pointerdown.stop
+        @click.stop
+      >
+        <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
+          @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
       </div>
+
+      <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
+      <MobileModebar ref="modebarRef" class="mobile-only" :can-edit="role !== 'read'" :add-open="addSheetOpen" @add="openMobileAddSheet" @mode-change="onMobileModeChange" />
+
+      <!-- Mobile Add sheet -->
+      <Teleport to="body">
+        <div v-if="addSheetOpen" class="mobile-add-backdrop" @click="addSheetOpen = false"></div>
+        <div v-if="addSheetOpen" id="mobile-add-sheet" class="mobile-add-sheet" role="dialog" :aria-label="t('add')" @click.stop>
+          <div class="mobile-add-sheet-handle"></div>
+          <div class="mobile-add-sheet-grid">
+            <button
+              v-for="entry in canvasRef?.addMenuEntries"
+              :key="entry.key"
+              class="mobile-add-sheet-item"
+              @click="canvasRef?.runAddMenuEntry(entry.key); addSheetOpen = false"
+            >
+              <span class="mobile-add-sheet-icon" v-html="entry.icon"></span>
+              <span class="mobile-add-sheet-label">{{ entry.label }}</span>
+            </button>
+          </div>
+        </div>
+      </Teleport>
+
+      <!-- Share sheet: the same one text documents use (ResourceSharePanel.vue). -->
+      <ResourceSharePanel
+        v-if="role === 'owner'"
+        :teleport-disabled="isFullscreen"
+        :open="showShare"
+        :title="t('shareCanvasTitle')"
+        :url="publicUrl"
+        :copy-link="copyPublicLink"
+        slug-prefix="/canvas/"
+        slug-placeholder="my-canvas"
+        :slug-error="slugError"
+        :saving-slug="savingSlug"
+        :visibility="visibility"
+        :allow-public-edit="allowPublicEdit"
+        :listed-in-public="listedInPublic"
+        :permissions="permissions"
+        glass
+        v-model:slug="slugInput"
+        v-model:share-email="shareEmail"
+        v-model:share-role="shareRole"
+        v-model:password-access-enabled="passwordAccessEnabled"
+        v-model:password-access-password="passwordAccessPassword"
+        v-model:password-access-role="passwordAccessRole"
+        @close="showShare = false"
+        @update:visibility="setVisibility"
+        @update:allow-public-edit="setAllowPublicEdit"
+        @update:listed-in-public="setListedInPublic"
+        @save-password="savePasswordAccess"
+        @save-slug="saveSlug"
+        @invite="doShare"
+        @revoke="doRevoke"
+      />
 
       <!-- History panel -->
       <div v-if="showHistory" class="history-panel">
         <div class="history-panel-header">
-          <h3>History</h3>
+          <h3>{{ t('history') }}</h3>
           <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
         </div>
         <!-- History access control (owner/admin) -->
         <div v-if="canManageSettings || isAdmin()" class="history-access-control">
-          <label>Who can view history:</label>
+          <label>{{ t('whoCanViewHistory') }}</label>
           <select :value="historyAccess" @change="changeHistoryAccess(($event.target as HTMLSelectElement).value)">
-            <option value="owner">Owner only</option>
-            <option value="editors">Editors</option>
-            <option value="viewers">All viewers</option>
+            <option value="owner">{{ t('historyOwnerOnly') }}</option>
+            <option value="editors">{{ t('historyEditorsOption') }}</option>
+            <option value="viewers">{{ t('historyAllViewers') }}</option>
           </select>
         </div>
-        <div v-if="historyLoading && historyItems.length === 0" class="history-loading">Loading...</div>
+        <div v-if="historyLoading && historyItems.length === 0" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else-if="historyError" class="history-error">{{ historyError }}</div>
-        <div v-else-if="historyItems.length === 0" class="history-empty">No history yet</div>
+        <div v-else-if="historyItems.length === 0" class="history-empty">{{ t('noHistoryYet') }}</div>
         <div v-else class="history-split">
           <div class="history-list">
             <button
@@ -734,44 +696,44 @@
               <div class="history-item-date">{{ formatHistoryDate(item.createdAt) }}</div>
             </button>
             <button v-if="hasMoreHistory" class="btn-ghost btn-sm history-load-more" @click="loadMoreHistory" :disabled="historyLoading">
-              Load more
+              {{ t('loadMore') }}
             </button>
           </div>
           <div class="history-preview">
-            <div v-if="historySnapshotLoading" class="history-empty">Loading revision...</div>
+            <div v-if="historySnapshotLoading" class="history-empty">{{ t('loadingRevision') }}</div>
             <div v-else-if="historySnapshotError" class="history-error">{{ historySnapshotError }}</div>
-            <div v-else-if="!selectedHistoryItem" class="history-empty">Select a revision</div>
+            <div v-else-if="!selectedHistoryItem" class="history-empty">{{ t('selectARevision') }}</div>
             <template v-else>
               <div class="history-preview-head">
-                <strong>Revision {{ selectedHistoryItem.revision }}</strong>
+                <strong>{{ t('revisionLabel') }} {{ selectedHistoryItem.revision }}</strong>
                 <span>{{ formatHistoryDate(selectedHistoryItem.createdAt) }}</span>
               </div>
               <div class="history-preview-row">
-                <span>Operation</span>
+                <span>{{ t('operationLabel') }}</span>
                 <strong>{{ opLabel(selectedHistoryItem.type) }}</strong>
               </div>
               <div class="history-preview-row">
-                <span>Author</span>
-                <strong>{{ selectedHistoryItem.userName || 'Guest' }}</strong>
+                <span>{{ t('authorLabel') }}</span>
+                <strong>{{ selectedHistoryItem.userName || t('guestLabel') }}</strong>
               </div>
               <div class="history-preview-grid">
                 <div>
-                  <span>Nodes</span>
+                  <span>{{ t('nodesLabel') }}</span>
                   <strong>{{ selectedHistorySummary.nodes }}</strong>
                 </div>
                 <div>
-                  <span>Edges</span>
+                  <span>{{ t('edgesLabel') }}</span>
                   <strong>{{ selectedHistorySummary.edges }}</strong>
                 </div>
               </div>
-              <div class="history-preview-detail">{{ opDetail(selectedHistoryItem) || 'Full canvas snapshot' }}</div>
+              <div class="history-preview-detail">{{ opDetail(selectedHistoryItem) || t('fullCanvasSnapshot') }}</div>
               <button
                 v-if="role !== 'read'"
                 class="btn-primary btn-sm history-restore-btn"
                 :disabled="restoringHistory || !selectedHistorySnapshot"
                 @click="restoreSelectedHistorySnapshot"
               >
-                {{ restoringHistory ? 'Restoring...' : 'Restore revision' }}
+                {{ restoringHistory ? t('restoringEllipsis') : t('restoreRevision') }}
               </button>
             </template>
           </div>
@@ -781,28 +743,28 @@
       <!-- Embed document picker -->
       <div v-if="showDocPicker" class="embed-picker-panel">
         <div class="history-panel-header">
-          <h3>Вставить документ</h3>
+          <h3>{{ t('insertDocument') }}</h3>
           <button class="btn-ghost btn-sm" @click="showDocPicker = false">×</button>
         </div>
         <div class="doc-picker-tabs">
-          <button :class="{ active: docKindFilter === 'all' }" @click="docKindFilter = 'all'">Все</button>
+          <button :class="{ active: docKindFilter === 'all' }" @click="docKindFilter = 'all'">{{ t('all') }}</button>
           <button :class="{ active: docKindFilter === 'html' }" @click="docKindFilter = 'html'">HTML</button>
-          <button :class="{ active: docKindFilter === 'text' }" @click="docKindFilter = 'text'">Текстовые</button>
+          <button :class="{ active: docKindFilter === 'text' }" @click="docKindFilter = 'text'">{{ t('textDocsFilter') }}</button>
         </div>
         <input
           v-model.trim="docSearch"
           class="embed-search-input"
-          placeholder="Поиск документов..."
+          :placeholder="t('searchDocuments')"
         />
         <button
           class="doc-picker-new"
           :disabled="creatingDocument"
-          title="Создать новый текстовый документ и добавить его на канвас"
+          :title="t('newTextDocHint')"
           @click="createAndEmbedDocument"
         >
-          {{ creatingDocument ? 'Создаём...' : '+ Новый документ' }}
+          {{ creatingDocument ? t('creating') : t('newDocumentBtn') }}
         </button>
-        <div v-if="docLoading" class="history-loading">Loading...</div>
+        <div v-if="docLoading" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else class="embed-canvas-list">
           <div
             v-for="d in filteredEmbedDocuments"
@@ -810,25 +772,25 @@
             class="embed-canvas-item"
             @click="doEmbedDocument(d.kind, d.id)"
           >
-            <span class="embed-canvas-title">{{ d.title || 'Untitled' }}</span>
+            <span class="embed-canvas-title">{{ d.title || t('untitled') }}</span>
             <span class="doc-kind-badge">{{ d.kind === 'text' ? 'DOC' : 'HTML' }}</span>
           </div>
-          <div v-if="filteredEmbedDocuments.length === 0" class="history-empty">Документы не найдены</div>
+          <div v-if="filteredEmbedDocuments.length === 0" class="history-empty">{{ t('documentsNotFound') }}</div>
         </div>
       </div>
 
       <!-- Embed canvas picker -->
       <div v-if="showEmbedPicker" class="embed-picker-panel">
         <div class="history-panel-header">
-          <h3>Embed Canvas</h3>
+          <h3>{{ t('embedCanvasTitle') }}</h3>
           <button class="btn-ghost btn-sm" @click="showEmbedPicker = false">×</button>
         </div>
         <input
           v-model.trim="embedSearch"
           class="embed-search-input"
-          placeholder="Search canvases..."
+          :placeholder="t('searchCanvasesPlaceholder')"
         />
-        <div v-if="embedLoading" class="history-loading">Loading...</div>
+        <div v-if="embedLoading" class="history-loading">{{ t('loadingDots') }}</div>
         <div v-else class="embed-canvas-list">
           <div
             v-for="c in filteredEmbedCanvases"
@@ -836,47 +798,47 @@
             class="embed-canvas-item"
             @click="doEmbed(c.id)"
           >
-            <span class="embed-canvas-title">{{ c.title || 'Untitled' }}</span>
+            <span class="embed-canvas-title">{{ c.title || t('untitled') }}</span>
             <span class="embed-canvas-owner">{{ c.ownerName || c.ownerEmail || '' }}</span>
           </div>
-          <div v-if="filteredEmbedCanvases.length === 0" class="history-empty">No canvases found</div>
+          <div v-if="filteredEmbedCanvases.length === 0" class="history-empty">{{ t('noCanvasesFound') }}</div>
         </div>
       </div>
 
       <!-- Chat drawer -->
       <div v-if="chatOpen" class="chat-drawer">
-        <div class="chat-drawer-head"><span>Чат</span><button class="chat-drawer-close" @click="chatOpen = false">×</button></div>
+        <div class="chat-drawer-head"><span>{{ t('chat') }}</span><button class="chat-drawer-close" @click="chatOpen = false">×</button></div>
         <ChatPanel :messages="chatMessages" :can-post="role !== 'read'" :attached-node="attachedNode" :can-attach="!!canvasRef?.selectedNodeId" @send="onChatSend" @attach-node="onAttachNode" @clear-node="onClearNode" @jump-node="onJumpNode" />
       </div>
 
       <!-- Pick-a-node hint: shown while choosing a node to attach to a chat message -->
       <div v-if="pickingNodeForChat" class="chat-pick-hint">
-        <span class="chat-pick-hint-text">Коснитесь ноды, чтобы прикрепить её к сообщению</span>
-        <button class="chat-pick-cancel" @click="onCancelPickNode">Отмена</button>
+        <span class="chat-pick-hint-text">{{ t('tapNodeToAttach') }}</span>
+        <button class="chat-pick-cancel" @click="onCancelPickNode">{{ t('cancel') }}</button>
       </div>
 
       <!-- Keyboard Shortcuts dialog -->
       <div v-if="showShortcuts" class="shortcuts-backdrop" @click.self="showShortcuts = false">
         <div class="shortcuts-panel">
           <div class="shortcuts-header">
-            <h3>Keyboard Shortcuts</h3>
+            <h3>{{ t('keyboardShortcuts') }}</h3>
             <button class="btn-ghost btn-sm" @click="showShortcuts = false">&times;</button>
           </div>
           <div class="shortcuts-grid">
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>Undo</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>Redo</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>Copy selected</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>V</kbd><span>Paste</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>D</kbd><span>Duplicate</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>A</kbd><span>Select all</span></div>
-            <div class="shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>Delete selected</span></div>
-            <div class="shortcut-row"><kbd>Escape</kbd><span>Deselect all</span></div>
-            <div class="shortcut-row"><kbd>Double-click</kbd><span>Edit node text</span></div>
-            <div class="shortcut-row"><kbd>Shift</kbd>+Click<span>Multi-select</span></div>
-            <div class="shortcut-row"><kbd>Ctrl</kbd>+Scroll<span>Zoom in/out</span></div>
-            <div class="shortcut-row"><kbd>Middle mouse</kbd><span>Pan canvas</span></div>
-            <div class="shortcut-row"><kbd>Right-click</kbd><span>Context menu</span></div>
-            <div class="shortcut-row"><kbd>Drag from edge</kbd><span>Create connection</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Z</kbd><span>{{ t('scUndo') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd><span>{{ t('scRedo') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>C</kbd><span>{{ t('scCopySelected') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>V</kbd><span>{{ t('scPaste') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>D</kbd><span>{{ t('scDuplicate') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+<kbd>A</kbd><span>{{ t('scSelectAll') }}</span></div>
+            <div class="shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>{{ t('scDeleteSelected') }}</span></div>
+            <div class="shortcut-row"><kbd>Escape</kbd><span>{{ t('scDeselectAll') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdDoubleClick') }}</kbd><span>{{ t('scEditNodeText') }}</span></div>
+            <div class="shortcut-row"><kbd>Shift</kbd>+{{ t('kbdClick') }}<span>{{ t('scMultiSelect') }}</span></div>
+            <div class="shortcut-row"><kbd>Ctrl</kbd>+{{ t('kbdScroll') }}<span>{{ t('scZoom') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdMiddleMouse') }}</kbd><span>{{ t('scPanCanvas') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdRightClick') }}</kbd><span>{{ t('scContextMenu') }}</span></div>
+            <div class="shortcut-row"><kbd>{{ t('kbdDragFromEdge') }}</kbd><span>{{ t('scCreateConnection') }}</span></div>
           </div>
         </div>
       </div>
@@ -887,6 +849,14 @@
         :readonly="role === 'read'"
         :is-owner="role === 'owner'"
         :remote-cursors="remoteCursorsArray"
+        :ruler-active="rulerActive"
+        :ruler-measurements="rulerMeasurements"
+        :ruler-settings="rulerSettings"
+        @ruler-begin="ruler.begin"
+        @ruler-move="ruler.move"
+        @ruler-finish="ruler.finish"
+        @ruler-cancel="ruler.cancel"
+        @ruler-exit="closeRuler"
         @change="onCanvasChange"
         @op="onCanvasOp"
         @cursor-move="onCursorMove"
@@ -904,20 +874,41 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted, nextTick, watchPostEffect } from 'vue';
+import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, nextTick, watchPostEffect, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
 import ChatPanel from '../components/ChatPanel.vue';
+import AccountMenu from '../components/AccountMenu.vue';
+import AccessGate from '../components/AccessGate.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import {useCanvasRuler} from '../composables/useCanvasRuler';
+import CanvasRulerSettings from '../components/CanvasRulerSettings.vue';
+import type {RulerSettings} from '../canvas/ruler';
+import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { usePlugins } from '../composables/usePlugins';
 import { useChatNodeAttach } from '../composables/useChatNodeAttach';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
-import { CANVAS_ORIGIN_QUERY } from '../composables/useResourceBackTarget';
+import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
+import { useI18n } from '../composables/useI18n';
+import { useMinimapPreference } from '../composables/useMinimapPreference';
+import { useCanvasFullscreen } from '../composables/useCanvasFullscreen';
+import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
+import { markResourceOpened } from '../composables/useRecentResource';
+import { useBackHandler } from '../composables/useBackHandler';
 import CanvasLoader from '../components/CanvasLoader.vue';
+import MobileModebar from '../canvas/MobileModebar.vue';
+import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
+import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
+import CanvasDrawingPanel from '../canvas/CanvasDrawingPanel.vue';
+import BackButton from '../components/BackButton.vue';
+import ResourceSharePanel from '../components/ResourceSharePanel.vue';
+import { slugFormatIsValid } from '../sharing/slug';
+import { getPublicOrigin } from '../api/public-origin';
 
 interface CanvasChangePayload {
   nodes: any[];
@@ -927,7 +918,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { CanvasLoader, ChatPanel },
+  components: { CanvasDrawingPanel, CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -941,31 +932,64 @@ export default defineComponent({
     const slugInput = ref('');
     const savingSlug = ref(false);
 
+    const publicUrl = computed(() => {
+      const publicId = slug.value || resolvedId.value;
+      return `${getPublicOrigin()}/canvas/${encodeURIComponent(publicId)}`;
+    });
+
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
+    const { t } = useI18n();
+
+    const copyPublicLink = async () => {
+      try {
+        await navigator.clipboard.writeText(publicUrl.value);
+        showToast(t('copied'), 'success');
+      } catch {
+        showToast(t('copyLinkFailed'), 'error');
+      }
+    };
+    const { mode: mobileMode, setMode: setMobileMode, resetMode: resetMobileMode } = useMobileCanvasMode();
+    // Every canvas opens in Hand mode (pan only), whatever mode the last one was left in.
+    resetMobileMode();
     const canvasViewRef = ref<HTMLElement | null>(null);
     const topbarRef = ref<HTMLElement | null>(null);
     const nodeToolbarRef = ref<HTMLElement | null>(null);
     const drawToolbarRef = ref<HTMLElement | null>(null);
     const { isEnabled: isPluginEnabled, ensureLoaded: ensurePluginsLoaded, pluginItems, setEnabled: setPluginEnabled } = usePlugins();
+    const { enabled: minimapEnabled, setEnabled: setMinimapEnabled, size: minimapSize, setSize: setMinimapSize } = useMinimapPreference();
+    const { supported: fullscreenSupported, active: isFullscreen, busy: fullscreenBusy, toggle: toggleFullscreen } = useCanvasFullscreen(canvasViewRef, () => showToast(t('fullscreenFailed'), 'error'));
     const showPlugins = ref(false);
     const settingPluginId = ref('');
     const diceEnabled = computed(() => isPluginEnabled('dice'));
     const interactiveTemplatesEnabled = computed(() => isPluginEnabled('interactive-templates'));
     const diceToolbarRef = ref<HTMLElement | null>(null);
+    const diceTopbarRef = ref<HTMLElement | null>(null);
     const diceOpen = ref(false);
     const diceSides = ref(20);
     const diceCount = ref(1);
     const diceModifier = ref(0);
     const canvasRef = ref<any>(null);
+    const modebarRef = ref<{ $el?: HTMLElement } | null>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
+    const addSheetOpen = ref(false);
     // Which expandable section of the mobile block menu is open ('' = none)
     const blockSection = ref('');
     const toggleBlockSection = (s: string) => {
       blockSection.value = blockSection.value === s ? '' : s;
     };
     const activeToolbarMenu = ref('');
+    const nodeColorPopup = ref<'fill' | 'text' | 'border' | null>(null);
+    const colorAnchor = shallowRef<HTMLElement | null>(null);
+    const toggleNodeColorMenu = (kind: 'fill' | 'text' | 'border', event: MouseEvent) => {
+      colorAnchor.value = event.currentTarget as HTMLElement;
+      nodeColorPopup.value = nodeColorPopup.value === kind ? null : kind;
+    };
+    watch([activeToolbarMenu, () => canvasRef.value?.selectedNodeId, () => canvasRef.value?.selectedDrawingIds?.join(',')], () => {
+      nodeColorPopup.value = null;
+      drawColorPickerOpen.value = false;
+    });
     const closeNodeEditingPanels = () => {
       activeToolbarMenu.value = '';
       blockSection.value = '';
@@ -981,17 +1005,20 @@ export default defineComponent({
     const closeToolbarOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
       const el = target as HTMLElement | null;
+      // Palettes are teleported outside their toolbar to escape clipping.
+      if (el?.closest?.('.canvas-color-menu')) return;
       if (activeToolbarMenu.value && !(target && nodeToolbarRef.value?.contains(target))) {
         activeToolbarMenu.value = '';
       }
       // Close the drawing panel on any click outside it. The draw overlay is tied to the
       // active tool (not the panel), so closing the panel never interrupts a stroke. Only
       // reset to the select tool when the click is NOT on the drawing surface.
-      if (drawPanelOpen.value) {
+      if (drawPanelOpen.value && mobileMode.value !== 'draw') {
         const insidePanel = !!(target && drawToolbarRef.value?.contains(target));
         if (!insidePanel) {
           drawPanelOpen.value = false;
-          drawPaletteColorOpen.value = false;
+          drawDesktopPopup.value = null;
+          drawMobilePopup.value = null;
           if (!el?.closest?.('.draw-capture')) canvasRef.value?.setDrawTool('select');
         }
       }
@@ -1001,7 +1028,7 @@ export default defineComponent({
       }
       // Close the dice panel when clicking outside it.
       if (diceOpen.value) {
-        const insideDice = !!(target && diceToolbarRef.value?.contains(target));
+        const insideDice = !!(target && (diceToolbarRef.value?.contains(target) || diceTopbarRef.value?.contains(target)));
         if (!insideDice) {
           diceOpen.value = false;
         }
@@ -1019,12 +1046,12 @@ export default defineComponent({
     const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
     const error = ref('');
     const accessDenied = ref(false);
+    const gatePasswordAccessEnabled = ref<boolean | undefined>(undefined);
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
-    const requestedRole = ref<'read' | 'edit'>('read');
-    const resourcePassword = ref('');
     const checkingResourcePassword = ref(false);
     const title = ref('');
+    useDocumentTitle(title);
     const canvasData = ref<any>(null);
     const role = ref('');
     const isPublic = ref(false);
@@ -1046,14 +1073,13 @@ export default defineComponent({
     const saving = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
-    const shareRole = ref('read');
+    const shareRole = ref<'read' | 'edit'>('read');
     const permissions = ref<any[]>([]);
     const passwordAccessEnabled = ref(false);
     const passwordAccessPassword = ref('');
     const passwordAccessRole = ref<'read' | 'edit'>('read');
     const canManageSettings = computed(() => isAuthenticated() && (role.value === 'owner' || role.value === 'edit'));
     const currentUser = computed(() => getCurrentUser());
-    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
 
     let saveTimeout: ReturnType<typeof setTimeout> | null = null;
     let noticeTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -1061,16 +1087,34 @@ export default defineComponent({
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     let chromeResizeObserver: ResizeObserver | null = null;
 
+    /**
+     * SYNC STATUS: one of Synced / Saving… / Offline / Sync failed, never a
+     * pending-ops counter (it ticked on every drawn op). When "Saving…" may
+     * appear and for how long is useCalmSaving's job (useCalmSyncStatus.ts,
+     * shared with the document editors); `savingVisible` is set up below,
+     * next to `pendingOpsCount`. A resync after a rejected op is real
+     * ongoing work, so it reads as "Saving…" straight away; a conflict is
+     * "Sync failed" until the resync/ack clears syncIssue. The count and
+     * revision stay in the badge's tooltip and its sync-events popover.
+     */
+    const SYNC_STATUS_LABEL_KEYS = {
+      synced: 'syncSynced',
+      saving: 'syncSaving',
+      offline: 'syncOffline',
+      failed: 'syncFailed',
+    } as const;
     const syncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
-      if (isResyncing.value) return { kind: 'resyncing', label: 'Resyncing' };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
-      if (wsConnected.value) return { kind: 'synced', label: 'Synced' };
-      return { kind: 'offline', label: 'Offline' };
+      const kind = resolveSyncStatus({
+        failed: !!syncIssue.value,
+        offline: !wsConnected.value,
+        saving: isResyncing.value || savingVisible.value,
+      });
+      return { kind, label: t(SYNC_STATUS_LABEL_KEYS[kind]) };
     });
 
     const syncBadgeTitle = computed(() => {
-      const parts = [`Revision ${revision.value}`, `${pendingOpsCount.value} pending`];
+      const parts = [syncStatus.value.label, `r${revision.value}`];
+      if (pendingOpsCount.value > 0) parts.push(t('syncPendingChanges').replace('{count}', String(pendingOpsCount.value)));
       if (latestSyncReason.value) parts.push(latestSyncReason.value);
       return parts.join(' · ');
     });
@@ -1097,7 +1141,18 @@ export default defineComponent({
       const root = canvasViewRef.value;
       if (!root) return;
       root.style.setProperty('--canvas-topbar-height', `${topbarRef.value?.offsetHeight || 44}px`);
-      root.style.setProperty('--canvas-toolbar-height', '0px');
+      // Include mobile bottom bars in the toolbar-height offset so minimap/notices clear them.
+      // Measured from the screen's bottom edge to the mode bar's top - its height plus the
+      // gap it floats at (Liquid Glass capsule) - so everything stacked above clears both.
+      const modebarEl = modebarRef.value?.$el as HTMLElement | undefined;
+      const modebarRect = modebarEl?.getBoundingClientRect();
+      const modebarSpace = modebarEl && modebarEl.offsetHeight > 0 && modebarRect
+        ? Math.max(modebarEl.offsetHeight, Math.round(window.innerHeight - modebarRect.top))
+        : 0;
+      root.style.setProperty('--canvas-toolbar-height', `${modebarSpace}px`);
+      // Mirror onto :root so the add panel - Teleported to <body>, outside
+      // .canvas-view - can float just above the mode bar like the draw panel.
+      document.documentElement.style.setProperty('--canvas-toolbar-height', `${modebarSpace}px`);
     }
 
     function observeChromeMetrics() {
@@ -1110,6 +1165,8 @@ export default defineComponent({
       chromeResizeObserver = new ResizeObserver(updateChromeMetrics);
       if (topbarRef.value) chromeResizeObserver.observe(topbarRef.value);
       if (nodeToolbarRef.value) chromeResizeObserver.observe(nodeToolbarRef.value);
+      const modebarEl = modebarRef.value?.$el as HTMLElement | undefined;
+      if (modebarEl) chromeResizeObserver.observe(modebarEl);
       updateChromeMetrics();
     }
 
@@ -1134,7 +1191,38 @@ export default defineComponent({
       sendRoll,
       onChatMessage,
       onChatError,
+      sendRulerUpdate,sendRulerClear,getRulerActor,onRulerState,onRulerUpdate,onRulerClear,onRulerSettings,onRulerError,
     } = useCanvasSocket(resolvedId);
+
+    const ruler=useCanvasRuler({connected:wsConnected,sendUpdate:sendRulerUpdate,sendClear:sendRulerClear,getActor:getRulerActor});
+    const rulerActive=ref(false),rulerSettingsBusy=ref(false);
+    const rulerSettings=ruler.settings,rulerMeasurements=ruler.measurements;
+    onRulerState(ruler.receiveState);onRulerUpdate(ruler.receiveUpdate);onRulerClear(ruler.receiveClear);onRulerSettings(ruler.receiveSettings);
+    onRulerError(()=>{ruler.cancel();showToast(t('rulerUnavailable'),'error');});
+    function closeRuler(){rulerActive.value=false;ruler.cancel();}
+    function toggleRuler(){
+      if(rulerActive.value){closeRuler();return;}
+      if(!rulerSettings.value.enabled)return;
+      closeMobileSheets();closeNodeEditingPanels();canvasRef.value?.clearSelection();
+      if(pickingNodeForChat.value)onCancelPickNode();
+      setMobileMode('hand');canvasRef.value?.setDrawTool('select');
+      drawPanelOpen.value=false;drawMobilePopup.value=null;drawDesktopPopup.value=null;drawColorPickerOpen.value=false;
+      showPlugins.value=false;menuOpen.value=false;chatOpen.value=false;showShare.value=false;showHistory.value=false;
+      rulerActive.value=true;showToast(t(wsConnected.value?'rulerHint':'rulerOffline'),'info');
+    }
+    async function saveRulerSettings(value:Omit<RulerSettings,'enabled'>){
+      if(role.value!=='owner'||rulerSettingsBusy.value)return;
+      rulerSettingsBusy.value=true;const version=ruler.settingsVersion.value;
+      try{
+        const saved=await canvasApi.setRulerSettings(resolvedId.value,value);
+        if(ruler.settingsVersion.value===version)ruler.receiveSettings({settings:saved,serverTime:Date.now()});
+      }catch(error:any){showToast(error?.message||t('rulerSaveFailed'),'error');}
+      finally{rulerSettingsBusy.value=false;}
+    }
+    watch(()=>rulerSettings.value.enabled,enabled=>{if(!enabled)closeRuler();},{flush:'sync'});
+    const onRulerKeyDown=(event:KeyboardEvent)=>{if(rulerActive.value&&event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeRuler();}};
+
+    const savingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
 
     const otherUsers = computed(() => {
       return onlineUsers.value.filter((_u) => {
@@ -1206,7 +1294,7 @@ export default defineComponent({
       if (!templateImportOpen.value || templateImportItems.value.length) return;
       templateImportLoading.value = true;
       try { templateImportItems.value = (await interactiveTemplates.list()).templates; }
-      catch (error: any) { showToast(error?.message || 'Не удалось загрузить шаблоны', 'error'); }
+      catch (error: any) { showToast(error?.message || t('failedLoadTemplates'), 'error'); }
       finally { templateImportLoading.value = false; }
     };
     const importTemplateToCanvas = (template: InteractiveTemplate) => {
@@ -1217,7 +1305,7 @@ export default defineComponent({
       }
       templateImportOpen.value = false;
       showPlugins.value = false;
-      showToast(template.templateType === 'trello-board' ? 'Доска добавлена на канвас' : 'Карточка добавлена на канвас', 'success');
+      showToast(template.templateType === 'trello-board' ? t('boardAddedToCanvas') : t('cardAddedToCanvas'), 'success');
     };
 
     const onTemplateRoll = (payload: { nodeId: string; label: string; modifier: number }) => {
@@ -1233,7 +1321,7 @@ export default defineComponent({
       try {
         await setPluginEnabled('canvas', resolvedId.value, pluginId, enabled);
       } catch (error: any) {
-        showToast(error?.message || 'Не удалось обновить плагин', 'error');
+        showToast(error?.message || t('failedUpdatePlugin'), 'error');
       } finally {
         settingPluginId.value = '';
       }
@@ -1247,6 +1335,7 @@ export default defineComponent({
         // Canonicalize to the real id (the URL may have been a slug) so the WS
         // room and all mutations use it.
         resolvedId.value = res.canvas.id;
+        markResourceOpened('canvas', res.canvas.id);
         slug.value = res.canvas.slug || null;
         slugInput.value = slug.value || '';
         // Prettify the address bar: prefer the slug when present.
@@ -1255,8 +1344,10 @@ export default defineComponent({
           router.replace(`/canvas/${preferred}`).catch(() => {});
         }
         title.value = res.canvas.title;
+        if(res.canvas.rulerSettings)ruler.setInitialSettings(res.canvas.rulerSettings);
         canvasData.value = JSON.parse(res.canvas.data);
         historyAccess.value = res.canvas.historyAccess || 'owner';
+        canvasFolderId.value = res.canvas.folderId ?? null;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
@@ -1334,11 +1425,12 @@ export default defineComponent({
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 403 || e.status === 401)) {
           accessDenied.value = true;
+          gatePasswordAccessEnabled.value = (e as ApiError).body?.passwordAccessEnabled;
           loading.value = false;
           return;
         }
         if (canvasData.value) {
-          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          cacheStatus.value = { kind: 'error', text: t('failedRefreshCached') };
           return;
         }
         console.warn('Canvas is not available, redirecting to dashboard', e);
@@ -1347,14 +1439,14 @@ export default defineComponent({
       }
       loading.value = false;
       if (cacheStatus.value?.kind === 'refreshing') {
-        cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+        cacheStatus.value = { kind: 'success', text: t('documentUpdated') };
         cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
       }
     };
 
-    const requestCanvasAccess = async () => {
+    const requestCanvasAccess = async (requestedRole: 'read' | 'edit') => {
       if (!isAuthenticated()) {
-        await router.push(`/login?redirect=/canvas/${canvasId}`);
+        showToast(t('accessGateLoginRequired'), 'error');
         return;
       }
       requestingAccess.value = true;
@@ -1362,30 +1454,30 @@ export default defineComponent({
         await accessRequests.create({
           resourceType: 'canvas',
           resourceId: canvasId,
-          requestedRole: requestedRole.value,
+          requestedRole,
         });
         accessRequestSent.value = true;
-        showToast('Access request sent', 'success');
+        showToast(t('accessGateRequestSentToast'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to request access', 'error');
+        showToast(e.message || t('accessGateRequestFailed'), 'error');
       } finally {
         requestingAccess.value = false;
       }
     };
 
-    const loginWithCanvasPassword = async () => {
+    const loginWithCanvasPassword = async (password: string) => {
       checkingResourcePassword.value = true;
       try {
         const res = await auth.resourcePasswordLogin({
           resourceType: 'canvas',
           resourceId: canvasId,
-          password: resourcePassword.value,
+          password,
         });
         setToken(res.token, res.user?.role, res.user?.accessMode || 'resource-password');
         accessDenied.value = false;
         await load();
       } catch (e: any) {
-        showToast(e.message || 'Invalid password', 'error');
+        showToast(e.message || t('accessGateInvalidPassword'), 'error');
       } finally {
         checkingResourcePassword.value = false;
       }
@@ -1399,8 +1491,11 @@ export default defineComponent({
         const res = await canvasApi.resync(resolvedId.value, revision.value);
         const parsed = JSON.parse(res.canvas.data);
         isApplyingRemote = true;
+        // applyRemoteData only - not also `canvasData.value = parsed`: that
+        // re-fired CanvasLoader's initial-data watcher, which re-applied the
+        // same data in the server's node order (reshuffling and repainting
+        // every image) and re-fitted the camera, mid-collaboration.
         canvasRef.value?.applyRemoteData(parsed);
-        canvasData.value = parsed;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         clearPendingOps();
@@ -1481,8 +1576,13 @@ export default defineComponent({
       }
     };
 
+    // The server's answer to the last slug save, shown inline by the share sheet.
+    const slugError = ref('');
+    watch(slugInput, () => { slugError.value = ''; });
+
     const saveSlug = async () => {
-      if (role.value !== 'owner') return;
+      if (role.value !== 'owner' || !slugFormatIsValid(slugInput.value)) return;
+      slugError.value = '';
       const next = slugInput.value.trim().toLowerCase();
       if ((next || null) === (slug.value || null)) return; // unchanged
       savingSlug.value = true;
@@ -1494,16 +1594,17 @@ export default defineComponent({
         const preferred = slug.value || resolvedId.value;
         if (route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
       } catch (err: any) {
-        showToast(err.message || 'Failed to update link', 'error');
-        slugInput.value = slug.value || '';
+        // Keep what was typed so the inline error explains THIS value.
+        slugError.value = err.message || t('linkSaveFailed');
+        showToast(err.message || t('linkSaveFailed'), 'error');
       } finally {
         savingSlug.value = false;
       }
     };
 
-    const togglePublicEdit = async (e: Event) => {
+    const setAllowPublicEdit = async (value: boolean) => {
       if (!canManageSettings.value) return;
-      allowPublicEdit.value = (e.target as HTMLInputElement).checked;
+      allowPublicEdit.value = value;
       try {
         await canvasApi.update(resolvedId.value, { allowPublicEdit: allowPublicEdit.value });
         showToast(allowPublicEdit.value ? 'Public edit enabled' : 'Public edit disabled', 'success');
@@ -1513,10 +1614,10 @@ export default defineComponent({
       }
     };
 
-    const togglePublicListing = async (e: Event) => {
+    const setListedInPublic = async (value: boolean) => {
       if (!canManageSettings.value) return;
       const previous = listedInPublic.value;
-      listedInPublic.value = (e.target as HTMLInputElement).checked;
+      listedInPublic.value = value;
       try {
         await canvasApi.update(resolvedId.value, { listedInPublic: listedInPublic.value });
         showToast(listedInPublic.value ? 'Shown in Public' : 'Hidden from Public', 'success');
@@ -1729,19 +1830,20 @@ export default defineComponent({
       }
     };
 
-    const opLabels: Record<string, string> = {
-      'nodes-move': 'Moved nodes',
-      'node-resize': 'Resized node',
-      'node-add': 'Added node',
-      'node-delete': 'Deleted nodes',
-      'node-update': 'Updated node',
-      'edge-add': 'Added edge',
-      'edge-delete': 'Deleted edge',
-      'edge-update': 'Updated edge',
-      'canvas-restore': 'Restored canvas',
+    const opLabel = (type: string) => {
+      const opLabels: Record<string, string> = {
+        'nodes-move': t('opNodesMove'),
+        'node-resize': t('opNodeResize'),
+        'node-add': t('opNodeAdd'),
+        'node-delete': t('opNodeDelete'),
+        'node-update': t('opNodeUpdate'),
+        'edge-add': t('opEdgeAdd'),
+        'edge-delete': t('opEdgeDelete'),
+        'edge-update': t('opEdgeUpdate'),
+        'canvas-restore': t('opCanvasRestore'),
+      };
+      return opLabels[type] || type;
     };
-
-    const opLabel = (type: string) => opLabels[type] || type;
 
     const opCategory = (type: string) => {
       if (type.includes('add')) return 'add';
@@ -1754,11 +1856,11 @@ export default defineComponent({
         const payload = typeof item.payload === 'string' ? JSON.parse(item.payload) : item.payload;
         switch (item.type) {
           case 'node-add': return payload.node?.text?.slice(0, 60) || payload.node?.type || '';
-          case 'node-delete': return `${payload.ids?.length || 1} node(s)`;
-          case 'nodes-move': return `${payload.moves?.length || 1} node(s)`;
+          case 'node-delete': return `${payload.ids?.length || 1} ${t('nodeUnit')}`;
+          case 'nodes-move': return `${payload.moves?.length || 1} ${t('nodeUnit')}`;
           case 'node-update': return Object.keys(payload.changes || {}).join(', ');
           case 'edge-add': return `${payload.edge?.fromNode?.slice(0, 8)} → ${payload.edge?.toNode?.slice(0, 8)}`;
-          case 'canvas-restore': return `from revision ${payload.restoredFromRevision}`;
+          case 'canvas-restore': return `${t('fromRevision')} ${payload.restoredFromRevision}`;
           default: return '';
         }
       } catch {
@@ -1842,7 +1944,7 @@ export default defineComponent({
         }
         embedDocuments.value = collected;
       } catch (err: any) {
-        showToast(err?.message || 'Не удалось загрузить документы', 'error');
+        showToast(err?.message || t('failedLoadDocuments'), 'error');
       } finally {
         docLoading.value = false;
       }
@@ -1878,6 +1980,10 @@ export default defineComponent({
       await persistCurrentSnapshot();
     };
 
+    /** Folder the canvas itself lives in, so a document created here joins it. */
+    const canvasFolderId = ref<string | null>(null);
+    const { backTarget } = useResourceBackTarget();
+
     const creatingDocument = ref(false);
 
     const createAndEmbedDocument = async () => {
@@ -1888,8 +1994,15 @@ export default defineComponent({
       }
       creatingDocument.value = true;
       try {
-        const doc = await textDocumentsApi.create({ title: 'Untitled document' });
-        if (!doc?.id) throw new Error('Не удалось создать документ');
+        // Only the owner's folder is a valid destination: folderId on a canvas
+        // always belongs to that canvas's owner, and a document may only be
+        // filed into a folder its own owner holds.
+        const folderId = role.value === 'owner' ? canvasFolderId.value : null;
+        const doc = await textDocumentsApi.create({
+          title: 'Untitled document',
+          ...(folderId ? { folderId } : {}),
+        });
+        if (!doc?.id) throw new Error(t('failedCreateDocument'));
         embedDocuments.value = [
           { id: doc.id, title: doc.title || 'Untitled document', kind: 'text' },
           ...embedDocuments.value,
@@ -1899,7 +2012,7 @@ export default defineComponent({
         await flushCanvasChanges();
         router.push(documentRoute('text', doc.id));
       } catch (err: any) {
-        showToast(err?.message || 'Не удалось создать документ', 'error');
+        showToast(err?.message || t('failedCreateDocument'), 'error');
       } finally {
         creatingDocument.value = false;
       }
@@ -1919,7 +2032,11 @@ export default defineComponent({
       router.push('/canvas/' + targetCanvasId);
     };
     const onOpenBoard = (boardId: string) => {
-      router.push({ name: 'interactive-template', params: { id: boardId } });
+      router.push({
+        name: 'interactive-template',
+        params: { id: boardId },
+        query: { [CANVAS_ORIGIN_QUERY]: resolvedId.value },
+      });
     };
 
     watchPostEffect(() => {
@@ -1929,17 +2046,20 @@ export default defineComponent({
     });
 
     onMounted(() => {
+      window.addEventListener('keydown',onRulerKeyDown,true);
       window.addEventListener('resize', updateChromeMetrics);
       window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       const cached = readNativeResourceCache<any>('canvas', canvasId);
       if (cached?.value?.canvas?.data) {
         const res = cached.value;
+        if(res.canvas.rulerSettings)ruler.setInitialSettings(res.canvas.rulerSettings);
         resolvedId.value = res.canvas.id;
         slug.value = res.canvas.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.canvas.title;
         canvasData.value = JSON.parse(res.canvas.data);
         historyAccess.value = res.canvas.historyAccess || 'owner';
+        canvasFolderId.value = res.canvas.folderId ?? null;
         revision.value = res.canvas.revision ?? 0;
         setRevision(revision.value);
         role.value = res.role;
@@ -1950,34 +2070,167 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         loading.value = false;
-        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: t('refreshingSaved') };
       }
       void load();
       void nextTick(observeChromeMetrics);
     });
     onUnmounted(() => {
+      window.removeEventListener('keydown',onRulerKeyDown,true);
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
       window.removeEventListener('resize', updateChromeMetrics);
       window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
+      document.documentElement.style.removeProperty('--canvas-toolbar-height');
     });
-
-    const drawToolLabel = (t: string) => ({
-      select: 'Выбор', pen: 'Перо', highlighter: 'Маркер', rect: 'Прям.',
-      ellipse: 'Эллипс', line: 'Линия', arrow: 'Стрелка', eraser: 'Ластик',
-    } as Record<string, string>)[t] || t;
 
     const drawPanelOpen = ref(false);
     const drawColorPickerOpen = ref(false);
-    const drawPaletteColorOpen = ref(false);
+    const drawMobilePopup = ref<null | 'tools' | 'color' | 'width'>(null);
+    const drawDesktopPopup = ref<null | 'tools' | 'color' | 'width'>(null);
+    watch(drawPanelOpen, open => { if (!open) { drawDesktopPopup.value = null; drawMobilePopup.value = null; } });
+    watch([showPlugins,addSheetOpen,diceOpen,drawPanelOpen,showShare,showHistory,chatOpen,showEmbedPicker,showDocPicker,templateImportOpen],values=>{if(rulerActive.value&&values.some(Boolean))closeRuler();},{flush:'sync'});
     const toggleDrawPanel = () => {
+      closeRuler();
       drawPanelOpen.value = !drawPanelOpen.value;
       if (!drawPanelOpen.value) canvasRef.value?.setDrawTool('select');
     };
 
-    const toggleDice = () => { diceOpen.value = !diceOpen.value; };
+    // Android system Back on the canvas peels one layer per press: open sheets
+    // and panels, then the selected element's edit toolbar, then Cursor/Draw
+    // mode back to Hand - and only then leaves the canvas (main.ts). The text
+    // editor and the toolbar's own sub-panels register later, so they go first.
+    const closeTopCanvasLayer = (): boolean => {
+      if(rulerActive.value){closeRuler();return true;}
+      if (pickingNodeForChat.value) {
+        onCancelPickNode();
+        return true;
+      }
+      const openPanel = [
+        showEmbedPicker, showDocPicker, templateImportOpen, showShortcuts, showPlugins,
+        addSheetOpen, menuOpen, diceOpen, showSyncEvents, showShare, showHistory, chatOpen,
+      ].find((panel) => panel.value);
+      if (openPanel) {
+        openPanel.value = false;
+        return true;
+      }
+      if (drawMobilePopup.value || drawDesktopPopup.value || drawColorPickerOpen.value) {
+        drawDesktopPopup.value = null;
+        drawMobilePopup.value = null;
+        drawColorPickerOpen.value = false;
+        return true;
+      }
+      if (activeToolbarMenu.value || blockSection.value) {
+        closeNodeEditingPanels();
+        return true;
+      }
+      const canvas = canvasRef.value;
+      if (canvas?.selectedNodeIds?.length || canvas?.selectedEdgeId || canvas?.selectedDrawingIds?.length) {
+        canvas.clearSelection();
+        return true;
+      }
+      if (mobileMode.value !== 'hand') {
+        setMobileMode('hand');
+        return true;
+      }
+      return false;
+    };
+    useBackHandler(closeTopCanvasLayer);
+
+    // Sync draw panel with mobile mode changes
+    watch(mobileMode, (newMode) => {
+      closeMobileSheets();
+      if (newMode === 'draw') {
+        drawPanelOpen.value = true;
+        if (canvasRef.value?.drawTool === 'select') canvasRef.value?.setDrawTool('pen');
+      } else {
+        drawPanelOpen.value = false;
+        drawDesktopPopup.value = null;
+        drawMobilePopup.value = null;
+        canvasRef.value?.setDrawTool('select');
+      }
+    }, { flush: 'sync' });
+
+    function closeMobileSheets() {
+      closeRuler();
+      addSheetOpen.value = false;
+      diceOpen.value = false;
+    }
+
+    function onMobileModeChange(nextMode: 'hand' | 'cursor' | 'draw') {
+      const drawToolsVisible = mobileMode.value === 'draw' && drawPanelOpen.value && !addSheetOpen.value && !diceOpen.value;
+      closeMobileSheets();
+      if (nextMode === 'draw' && mobileMode.value === 'draw') {
+        drawPanelOpen.value = !drawToolsVisible;
+        drawMobilePopup.value = null;
+        drawDesktopPopup.value = null;
+      }
+    }
+
+    function togglePluginSettings() {
+      const opening = !showPlugins.value;
+      if (opening) {
+        closeMobileSheets();
+        closeNodeEditingPanels();
+        drawMobilePopup.value = null;
+        menuOpen.value = false;
+        showSyncEvents.value = false;
+      }
+      showPlugins.value = opening;
+    }
+
+    function toggleCanvasMenu() {
+      const opening = !menuOpen.value;
+      if (opening) {
+        closeMobileSheets();
+        closeNodeEditingPanels();
+        drawMobilePopup.value = null;
+        showPlugins.value = false;
+        showSyncEvents.value = false;
+        showShortcuts.value = false;
+        showHistory.value = false;
+        chatOpen.value = false;
+      }
+      menuOpen.value = opening;
+    }
+
+    function openMobileAddSheet() {
+      if (role.value === 'read') return;
+      if (addSheetOpen.value) {
+        addSheetOpen.value = false;
+        return;
+      }
+      closeMobileSheets();
+      closeNodeEditingPanels();
+      drawColorPickerOpen.value = false;
+      drawDesktopPopup.value = null;
+      drawMobilePopup.value = null;
+      menuOpen.value = false;
+      showPlugins.value = false;
+      showSyncEvents.value = false;
+      showShortcuts.value = false;
+      showHistory.value = false;
+      chatOpen.value = false;
+      addSheetOpen.value = true;
+    }
+
+    const toggleDice = () => {
+      closeRuler();
+      const opening = !diceOpen.value;
+      if (opening && window.matchMedia?.('(max-width: 640px), (max-height: 500px) and (orientation: landscape)').matches) {
+        drawMobilePopup.value = null;
+        closeNodeEditingPanels();
+        showPlugins.value = false;
+        showSyncEvents.value = false;
+        showHistory.value = false;
+        chatOpen.value = false;
+      }
+      addSheetOpen.value = false;
+      menuOpen.value = false;
+      diceOpen.value = opening;
+    };
     const rollDice = () => {
       if (!diceEnabled.value) return;
       sendRoll(diceSides.value, diceCount.value, diceModifier.value);
@@ -1988,19 +2241,22 @@ export default defineComponent({
     };
 
     return {
-      route, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, aligns,
-      drawColorPickerOpen, drawPaletteColorOpen,
-      loading, error, accessDenied, cacheStatus, requestingAccess, accessRequestSent, requestedRole,
-      resourcePassword, checkingResourcePassword,
+      ruler,rulerActive,rulerSettings,rulerMeasurements,rulerSettingsBusy,toggleRuler,closeRuler,saveRulerSettings,
+      t,
+      route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
+      drawColorPickerOpen, drawMobilePopup, drawDesktopPopup, nodeColorPopup, colorAnchor, toggleNodeColorMenu,
+      loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
+      checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, toggleShare, shareEmail, shareRole, permissions,
+      publicUrl, copyPublicLink,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       slug, slugInput, savingSlug, saveSlug,
-      allowPublicEdit, listedInPublic, canManageSettings, togglePublicEdit, togglePublicListing,
+      allowPublicEdit, listedInPublic, canManageSettings, setAllowPublicEdit, setListedInPublic, slugError,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
-      isAuthenticated, isAdmin, currentUser, userLabel, canViewHistory,
+      isAuthenticated, isAdmin, currentUser, canViewHistory,
       wsConnected, onlineUsers, otherUsers, remoteCursorsArray, revision, isResyncing, pendingOpsCount,
       showHistory, historyItems, historyLoading, historyError, historyAccess, hasMoreHistory,
       selectedHistoryItem, selectedHistorySnapshot, selectedHistorySummary,
@@ -2011,14 +2267,17 @@ export default defineComponent({
       openEmbedPicker, doEmbed, onOpenCanvas, onOpenBoard,
       showDocPicker, docSearch, docKindFilter, docLoading, filteredEmbedDocuments,
       openDocPicker, doEmbedDocument, onOpenDocument,
-      creatingDocument, createAndEmbedDocument,
-      showShortcuts, menuOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
+      creatingDocument, createAndEmbedDocument, canvasFolderId,
+      showShortcuts, menuOpen, toggleCanvasMenu, addSheetOpen, blockSection, toggleBlockSection, requestCanvasAccess, loginWithCanvasPassword, notifyReadOnlyEditAttempt,
       activeToolbarMenu, toggleToolbarMenu, updateSelectedNodeTitle, closeNodeEditingPanels,
-      showPlugins, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
-      drawToolLabel,
+      showPlugins, togglePluginSettings, pluginItems, settingPluginId, setCanvasPlugin, interactiveTemplatesEnabled, templateImportOpen, templateImportLoading, templateImportItems, loadTemplateImport, importTemplateToCanvas,
+      minimapEnabled, setMinimapEnabled, minimapSize, setMinimapSize,
+      fullscreenSupported, isFullscreen, fullscreenBusy, toggleFullscreen,
+      mobileMode,
       drawPanelOpen,
       toggleDrawPanel,
-      diceToolbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
+      diceToolbarRef, diceTopbarRef, diceOpen, diceSides, diceCount, diceModifier, toggleDice, rollDice, diceEnabled,
+      openMobileAddSheet, closeMobileSheets, onMobileModeChange,
       chatOpen, chatMessages, toggleChat, onChatSend, onTemplateRoll,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
     };

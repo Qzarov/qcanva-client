@@ -98,4 +98,27 @@ describe('BoardPreview', () => {
 
     expect(wrapper.text()).toContain('Обновлено коллегой');
   });
+
+  it('keeps authored label rendering fixed when the application theme changes', async () => {
+    const wrapper = mount(BoardPreview, { props: { boardId: 'board-1' }, attachTo: document.body });
+    await flushPromises();
+    const label = wrapper.get('.board-preview__labels span').element as HTMLElement;
+
+    document.documentElement.dataset.theme = 'dark';
+    const dark = {
+      surface: label.style.getPropertyValue('--label-content-surface'),
+      text: label.style.getPropertyValue('--label-content-text'),
+    };
+    document.documentElement.dataset.theme = 'light';
+    const light = {
+      surface: label.style.getPropertyValue('--label-content-surface'),
+      text: label.style.getPropertyValue('--label-content-text'),
+    };
+
+    expect(light).toEqual(dark);
+    expect(light).toEqual({
+      surface: 'var(--content-board-label-preview-surface)',
+      text: 'var(--content-board-label-text)',
+    });
+  });
 });

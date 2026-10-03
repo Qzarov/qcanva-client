@@ -229,7 +229,7 @@ export type ResourceTagSummary = ResourceTag & {
 /** Keep in step with MAX_DESCRIPTION_LENGTH on the server. */
 export const MAX_DESCRIPTION_LENGTH = 2000;
 
-export type ResourceType = 'canvas' | 'html-document' | 'text-document';
+export type ResourceType = 'canvas' | 'html-document' | 'text-document' | 'interactive-template';
 export type ResourceFolderRole = 'owner' | 'read' | 'edit';
 
 export type ResourceFolderSummary = {
@@ -241,16 +241,19 @@ export type ResourceFolderSummary = {
   canvasCount: number;
   htmlDocumentCount: number;
   textDocumentCount?: number;
+  interactiveTemplateCount?: number;
   sortOrder?: number;
   updatedAt?: string;
   createdAt?: string;
   canvases?: any[];
   htmlDocuments?: any[];
   textDocuments?: any[];
+  interactiveTemplates?: any[];
   items?: {
     canvases: any[];
     htmlDocuments: any[];
     textDocuments?: any[];
+    interactiveTemplates?: any[];
   };
 };
 
@@ -278,6 +281,7 @@ export const resourceFolders = {
 
 // Canvas
 export const canvas = {
+  setRulerSettings:(id:string,settings:Omit<import('../canvas/ruler').RulerSettings,'enabled'>)=>request<import('../canvas/ruler').RulerSettings>(`/canvas/${id}/ruler-settings`,{method:'PUT',body:JSON.stringify(settings)}),
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string, folderId?: string | null, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folderId, tags }) }),
@@ -398,6 +402,8 @@ export type InteractiveTemplate = {
   updatedAt: string;
   revision?: number;
   role?: 'owner' | 'read' | 'edit';
+  ownerId?: string;
+  folderId?: string | null;
 };
 
 export const interactiveTemplates = {
@@ -415,6 +421,34 @@ export const interactiveTemplates = {
     request<any>(`/interactive-templates/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/interactive-templates/${id}/share`),
 };
+
+/** One document the `@`-mention picker can offer. Already access-filtered server-side. */
+export type MentionSearchResult = { id: string; title: string };
+
+/**
+ * One resolved mention target, from `GET /text-documents/:id/mentions`. `title`
+ * is present regardless of `accessible` (the whole point of the endpoint, per
+ * §7.3 of the design spec); the body of an inaccessible target is never sent.
+ *
+ * `title` is `null` only when `deleted` is `true` (there is no current title
+ * to show - mirrors the server's own `TextDocumentMentionResolution` comment
+ * in canvas-server-back). Modeled as a discriminated union on `deleted`
+ * rather than a flat `title: string | null` so a consumer that has already
+ * checked `deleted` gets `title` narrowed to `string`, not just documentation
+ * of the invariant.
+ */
+export type MentionResolution =
+  | { id: string; title: string; accessible: boolean; deleted: false }
+  | { id: string; title: null; accessible: boolean; deleted: true };
+
+/**
+ * One source document linking to the one whose backlinks were fetched, from
+ * `GET /text-documents/:id/backlinks`. No `deleted` field: a document that
+ * links to this one cannot itself be soft-deleted (see the endpoint's own
+ * doc comment), and no body/preview - resolution is title-only, exactly like
+ * `MentionResolution` above and for the same disclosure reasoning (§7.3).
+ */
+export type BacklinkItem = { id: string; title: string; accessible: boolean };
 
 export const textDocuments = {
   list: () => request<{ documents: any[] }>('/text-documents'),
@@ -445,6 +479,22 @@ export const textDocuments = {
   revoke: (id: string, userId: string) =>
     request<any>(`/text-documents/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/text-documents/${id}/permissions`),
+  /** Powers the `@`-mention picker. Server-side filtered to what the caller can read (R2). */
+  search: (query: string, limit = 20) =>
+    request<{ items: MentionSearchResult[] }>(`/text-documents/search?query=${encodeURIComponent(query)}&limit=${limit}`),
+  /** Current title/accessible/deleted for every mention target in one document. */
+  mentions: (id: string) =>
+    request<{ items: MentionResolution[] }>(`/text-documents/${id}/mentions`, { skipAuthRedirect: true }),
+  /**
+   * Documents that mention this one. Ordered by source recency then id,
+   * capped at 100 server-side. Only ever called once `get()` has confirmed
+   * the caller can read the TARGET document (ruling: backlinks are not a
+   * side channel around the read check) - `skipAuthRedirect` matches
+   * `mentions` above for the same reason, not because this is reachable
+   * without access.
+   */
+  backlinks: (id: string) =>
+    request<{ items: BacklinkItem[] }>(`/text-documents/${id}/backlinks`, { skipAuthRedirect: true }),
 };
 
 export const accessRequests = {

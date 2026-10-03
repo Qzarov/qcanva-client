@@ -1,9 +1,22 @@
 <template>
   <div
     class="canvas-viewport"
-    :class="{ 'is-manipulating': isManipulatingNode }"
+    :class="{ 'is-manipulating': isManipulatingNode, 'is-measuring': rulerActive }"
     ref="viewport"
-    @wheel.prevent="onWheel"
+    @pointerdown.capture="rulerGesture.onPointerDown"
+    @pointermove.capture="rulerGesture.onPointerMove"
+    @pointerup.capture="rulerGesture.onPointerUp"
+    @pointercancel.capture="rulerGesture.onPointerCancel"
+    @lostpointercapture="rulerGesture.onLostPointerCapture"
+    @mousedown.capture="rulerGesture.guardLegacy"
+    @mouseup.capture="rulerGesture.guardLegacy"
+    @touchstart.capture="rulerGesture.guardLegacy"
+    @touchmove.capture="rulerGesture.guardLegacy"
+    @touchend.capture="rulerGesture.guardLegacy"
+    @click.capture="rulerGesture.guardLegacy"
+    @dblclick.capture="rulerGesture.guardLegacy"
+    @contextmenu.capture="rulerGesture.guardLegacy"
+    @wheel="onWheel"
     @mousedown="onPanStart"
     @mousemove="onPanMove"
     @mouseup="onPanEnd"
@@ -14,6 +27,7 @@
     @touchcancel="onTouchEnd"
     @dblclick.prevent="onCanvasDblClick"
   >
+    <CanvasRulerOverlay :measurements="rulerMeasurements" :settings="rulerSettings" :camera="camera" :viewport-size="viewportSize" />
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
       <div
@@ -21,11 +35,19 @@
         :key="group.id"
         class="canvas-group"
         :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
-        :style="nodePosition(group)"
+        :class="[groupColorClass(group), nodePresentationClass(group), { 'border-select-only': !isTouchDevice, 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
+        :style="[nodePosition(group), {
+          '--group-content-surface': 'var(--content-canvas-group-surface)',
+          '--group-content-border': 'var(--content-canvas-group-border)',
+        }]"
         @mousedown.stop="onNodeDragStart($event, group)"
         @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
       >
+        <svg v-if="!isTouchDevice" class="group-border-hit" aria-hidden="true"
+          :style="{ left: `${-(group.borderWidth || 1.5)}px`, top: `${-(group.borderWidth || 1.5)}px`, width: `${group.width}px`, height: `${group.height}px` }">
+          <rect v-bind="groupBorderRect(group)" fill="none" stroke="transparent" stroke-linejoin="round"
+            :stroke-width="Math.max(12 / camera.scale, group.borderWidth || 1.5)" />
+        </svg>
         <span v-if="group.label" class="group-label">{{ group.label }}</span>
         <template v-if="isNodeSelected(group.id) && !readonly && !isNodePositionLocked(group.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, group, 'br')"></div>
@@ -50,7 +72,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="0 0, 8 3, 0 6" fill="rgba(255,255,255,0.35)" />
+            <polygon points="0 0, 8 3, 0 6" fill="var(--content-canvas-edge-arrow)" />
           </marker>
           <marker
             id="arrowhead-start"
@@ -60,7 +82,7 @@
             refY="3"
             orient="auto"
           >
-            <polygon points="8 0, 0 3, 8 6" fill="rgba(255,255,255,0.35)" />
+            <polygon points="8 0, 0 3, 8 6" fill="var(--content-canvas-edge-arrow)" />
           </marker>
           <template v-for="color in edgeColors" :key="color">
             <marker
@@ -100,7 +122,7 @@
               class="edge-line"
               :class="{ 'edge-selected': selectedEdgeId === edge.id }"
               :style="{
-                stroke: edge.color || undefined,
+                stroke: edge.color || 'var(--content-canvas-edge)',
                 strokeWidth: edge.thickness,
                 strokeDasharray: edge.dashArray || undefined,
               }"
@@ -216,9 +238,12 @@
       >
         <!-- Edit mode -->
         <textarea
-          v-if="editingNodeId === node.id"
+          v-if="editingNodeId === node.id && !isMobileLayout"
           class="node-editor"
-          :style="{ color: node.fontColor || undefined }"
+          :style="{
+            backgroundColor: 'var(--content-canvas-editor-surface)',
+            color: resolveNodeFontColor(node.fontColor) || 'var(--content-canvas-editor-text)',
+          }"
           :value="node.text"
           @input="onEditInput($event, node)"
           @blur="onEditEnd"
@@ -233,7 +258,7 @@
           ref="editorRefs"
         ></textarea>
         <!-- View mode -->
-        <div v-else class="node-content" :style="{ color: node.fontColor || undefined }">
+        <div v-else class="node-content" :style="{ color: resolveNodeFontColor(node.fontColor) || undefined }">
           <div
             class="node-first-line"
             :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
@@ -246,17 +271,6 @@
             v-html="renderMarkdown(getNodeRestText(node.text || ''))"
           ></div>
         </div>
-        <button
-          v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !readonly"
-          class="node-edit-trigger"
-          type="button"
-          title="Edit text"
-          @touchstart.stop
-          @mousedown.stop
-          @click.stop="onNodeDblClick(node)"
-        >
-          Edit
-        </button>
         <!-- Resize handles (visible when selected) -->
         <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
@@ -274,6 +288,44 @@
         <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
         <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
       </div>
+
+      <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
+      <Teleport to="body">
+        <div
+          v-if="fullscreenEditingNode"
+          class="node-fullscreen-editor"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="t('editText')"
+        >
+          <header class="node-fullscreen-editor-header">
+            <button
+              class="node-fullscreen-editor-back"
+              type="button"
+              :aria-label="t('backToCanvas')"
+              :title="t('backToCanvas')"
+              @click="closeTextEditor"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="19" y1="12" x2="5" y2="12"/>
+                <polyline points="12 19 5 12 12 5"/>
+              </svg>
+            </button>
+            <span class="node-fullscreen-editor-title">{{ t('editText') }}</span>
+          </header>
+          <div class="node-fullscreen-editor-card">
+            <textarea
+              ref="fullscreenEditorRef"
+              class="node-editor node-fullscreen-editor-input"
+              :style="{ color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || undefined }"
+              :value="fullscreenEditingNode.text"
+              @input="onEditInput($event, fullscreenEditingNode)"
+              @keydown.stop
+              @keyup.stop
+            ></textarea>
+          </div>
+        </div>
+      </Teleport>
 
       <!-- Link nodes -->
       <div
@@ -434,7 +486,7 @@
           <iframe
             v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
             :class="['doc-frame', node.documentKind === 'text' ? 'doc-frame-text' : 'doc-frame-html']"
-            :srcdoc="documentData(node).srcdoc"
+            :srcdoc="documentSrcdoc(node)"
             sandbox=""
             loading="lazy"
             tabindex="-1"
@@ -551,12 +603,12 @@
             <rect
               :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
               :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="rgba(77,171,247,0.12)" stroke="none"
+              rx="4" fill="color-mix(in srgb, var(--ui-focus) 12%, transparent)" stroke="none"
             />
             <rect
               :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
               :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="none" stroke="#4dabf7" stroke-width="2"
+              rx="4" fill="none" stroke="var(--ui-focus)" stroke-width="2"
               stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
               class="drawing-selection-outline"
             />
@@ -615,7 +667,7 @@
         v-for="cursor in remoteCursors"
         :key="'cursor-' + cursor.socketId"
         class="remote-cursor"
-        :style="{ left: cursor.x + 'px', top: cursor.y + 'px' }"
+        :style="{ transform: `translate(${cursor.x}px, ${cursor.y}px)` }"
       >
         <svg width="16" height="20" viewBox="0 0 16 20" :fill="cursor.color">
           <path d="M0 0 L16 12 L8 12 L4 20 Z"/>
@@ -624,10 +676,11 @@
       </div>
     </div>
 
-    <!-- Minimap -->
+    <!-- Minimap (device-local visibility and size) -->
     <div
       class="minimap"
-      v-if="minimapData"
+      :class="{ 'is-large': minimapSize === 'large' }"
+      v-if="minimapData && minimapEnabled"
       @mousedown.stop="onMinimapDown"
       @mousemove.stop="onMinimapMove"
       @mouseup.stop="onMinimapUp"
@@ -637,23 +690,22 @@
         <rect
           v-for="node in viewerNodes"
           :key="'mm-' + node.id"
+          class="minimap-node"
+          :class="{ 'is-group': node.type === 'group' }"
           :x="node.x"
           :y="node.y"
           :width="node.width"
           :height="node.height"
-          :fill="node.type === 'group' ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.3)'"
           rx="2"
         />
         <rect
+          class="minimap-viewport"
+          vector-effect="non-scaling-stroke"
           :x="minimapData.vpX"
           :y="minimapData.vpY"
           :width="minimapData.vpW"
           :height="minimapData.vpH"
-          fill="rgba(124,138,255,0.08)"
-          stroke="rgba(124,138,255,0.6)"
-          stroke-width="3"
           rx="2"
-          style="cursor: grab"
         />
       </svg>
     </div>
@@ -668,29 +720,37 @@
       <template v-if="contextMenu.kind === 'node'">
         <div class="ctx-colors">
           <span class="ctx-label">Fill</span>
+          <button class="ctx-color-btn" :class="getContextNode()?.color ? 'ctx-color-'+getContextNode()?.color : 'ctx-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="contextColorPopup === 'fill'" @click="toggleContextColorMenu('fill', $event)" />
+        </div>
+        <CanvasColorMenu :open="contextColorPopup === 'fill'" :anchor="contextColorAnchor" :label="t('backgroundColor')" @close="contextColorPopup = null">
           <button
             v-for="c in ['1','2','3','4','5','6']"
             :key="c"
             class="ctx-color-btn"
             :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
             :title="'Color ' + c"
+            :aria-label="t('backgroundColor')+' '+c"
             @click="onCtxSetColor(c)"
           ></button>
           <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
-        </div>
+          <button class="tb-btn" :class="{ active: isNodeTransparent(contextMenu.nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="isNodeTransparent(contextMenu.nodeId)" @click="toggleNodeTransparent(contextMenu.nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
+        </CanvasColorMenu>
         <div class="ctx-colors">
           <span class="ctx-label">Text</span>
+          <button class="ctx-color-btn" :style="{ background: getNodeFontColorSwatch(getContextNode()?.fontColor) }" :aria-label="t('textColor')" :aria-expanded="contextColorPopup === 'text'" @click="toggleContextColorMenu('text', $event)" />
+        </div>
+        <CanvasColorMenu :open="contextColorPopup === 'text'" :anchor="contextColorAnchor" :label="t('textColor')" @close="contextColorPopup = null">
           <button
             v-for="c in fontColors"
             :key="'ctx-font-' + c"
             class="ctx-color-btn"
-            :class="{ active: getContextNode()?.fontColor === c }"
-            :style="{ background: c }"
+            :class="{ active: isNodeFontColorActive(getContextNode()?.fontColor, c) }"
+            :style="{ background: getNodeFontColorSwatch(c) }"
             :title="'Text ' + c"
             @click="onCtxSetFontColor(c)"
           ></button>
           <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
-        </div>
+        </CanvasColorMenu>
         <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
         <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
         <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
@@ -711,8 +771,11 @@
       <template v-else-if="contextMenu.kind === 'drawing'">
         <div class="ctx-colors">
           <span class="ctx-label">Цвет</span>
-          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+          <button class="ctx-color-btn" :style="{ background: selectedDrawingObj?.color }" :aria-label="t('color')" :aria-expanded="contextColorPopup === 'drawing'" @click="toggleContextColorMenu('drawing', $event)" />
         </div>
+        <CanvasColorMenu :open="contextColorPopup === 'drawing'" :anchor="contextColorAnchor" :label="t('color')" @close="contextColorPopup = null">
+          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+        </CanvasColorMenu>
         <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
         <button class="ctx-item ctx-item-danger" @click="deleteSelectedDrawing(); closeContextMenu()">Удалить</button>
@@ -785,14 +848,24 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
+import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
+import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
+import { useTheme } from "../composables/useTheme";
+import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
+import { useMinimapPreference } from "../composables/useMinimapPreference";
+import { registerBackHandler } from "../composables/useBackHandler";
 import { computeResizedRect } from "../canvas/resizeMath";
+import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
 import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
+import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
+import {useRulerGesture} from '../canvas/useRulerGesture';
+import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -845,9 +918,10 @@ interface CanvasEdge {
   hidden?: boolean;
 }
 
-type NodeUpdateChanges = Omit<Partial<CanvasNode>, 'color' | 'borderColor'> & {
+type NodeUpdateChanges = Omit<Partial<CanvasNode>, 'color' | 'borderColor' | 'fontColor'> & {
   color?: string | null;
   borderColor?: string | null;
+  fontColor?: string | null;
 };
 
 type CanvasOp =
@@ -888,7 +962,11 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay },
   props: {
+    rulerActive:{type:Boolean,default:false},
+    rulerMeasurements:{type:Array as PropType<RulerMeasurement[]>,default:()=>[]},
+    rulerSettings:{type:Object as PropType<RulerSettings>,default:()=>({...DEFAULT_RULER_SETTINGS})},
     initialData: {
       type: Object as PropType<{ nodes: any[]; edges: any[]; drawings?: Drawing[] } | null>,
       default: null,
@@ -906,12 +984,33 @@ export default defineComponent({
       default: () => [],
     },
   },
-  emits: ["change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
+  emits: ["ruler-exit","ruler-begin","ruler-move","ruler-finish","ruler-cancel","change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
   setup(props, { emit }) {
     // Only the new add menu is localised here; the rest of this component still
     // carries hardcoded labels from before i18n existed.
     const { t } = useI18n();
+    const { effectiveTheme } = useTheme();
+    const { mode: mobileInteractionMode } = useMobileCanvasMode();
+    const isTouchDevice = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const isHandMode = computed(() => isTouchDevice && mobileInteractionMode.value === 'hand');
+    // Phone layout - the same breakpoint that shows .mobile-only UI (style.css).
+    // There a text card is never edited inline: only the bottom toolbar's
+    // "edit text" action opens it, in a full-screen editor.
+    const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 640px), (max-height: 500px) and (orientation: landscape)')
+      : null;
+    const isMobileLayout = ref(mobileLayoutQuery?.matches ?? false);
+    const onMobileLayoutChange = (e: MediaQueryListEvent) => { isMobileLayout.value = e.matches; };
+    mobileLayoutQuery?.addEventListener?.('change', onMobileLayoutChange);
+    const { enabled: minimapEnabled, size: minimapSize } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
+    const viewportSize = reactive({ width: 0, height: 0 });
+    let viewportObserver: ResizeObserver | undefined;
+    const measureViewport = () => {
+      viewportSize.width = viewport.value?.clientWidth ?? 0;
+      viewportSize.height = viewport.value?.clientHeight ?? 0;
+      rulerGesture.recalculate();
+    };
     const nodes = ref<CanvasNode[]>([]);
     const edges = ref<CanvasEdge[]>([]);
     const drawings = ref<Drawing[]>([]);
@@ -929,7 +1028,7 @@ export default defineComponent({
     const setDrawWidth = (w: number) => { drawWidth.value = w; };
 
     // Drawing selection + drag state
-    const selectedDrawingId = ref<string | null>(null);
+    const selectedDrawingIds = ref<string[]>([]);
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
@@ -940,6 +1039,8 @@ export default defineComponent({
       y: 0,
       scale: 1,
     });
+    const rulerGesture=useRulerGesture({viewport,active:computed(()=>props.rulerActive),camera,
+      begin:point=>emit('ruler-begin',point),move:point=>emit('ruler-move',point),finish:point=>emit('ruler-finish',point),cancel:()=>emit('ruler-cancel')});
     const isPanning = ref(false);
     const panStart = reactive({ x: 0, y: 0 });
     const cameraStart = reactive({ x: 0, y: 0 });
@@ -954,6 +1055,7 @@ export default defineComponent({
     let touchStartY = 0;
     let touchMoved = false;
     let touchNodeId: string | null = null; // node under the active single-finger touch
+    let touchDrawingId: string | null = null; // drawing under the active single-finger touch
     let touchDragging = false; // an actual node drag is in progress
     let touchResizing = false; // a resize via a touch on a resize handle is in progress
     let touchConnecting = false; // a connection drag via a touch on a connection point is in progress
@@ -1066,6 +1168,29 @@ export default defineComponent({
         edges.value = newData.edges || [];
         drawings.value = newData.drawings || [];
         nextTick(() => fitToContent());
+      }
+    });
+
+    // Entering Hand mode: clear all selection and cancel any in-progress interaction.
+    watch(mobileInteractionMode, (newMode) => {
+      if (!isTouchDevice) return;
+      if (newMode === 'hand') {
+        selectedNodeIds.value = [];
+        selectedEdgeId.value = null;
+        selectedDrawingIds.value = [];
+        if (editingNodeId.value) onEditEnd();
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchResizing = false;
+        touchConnecting = false;
+        connDragging.value = false;
+        connFromEdge.value = '';
+        isPanning.value = false;
+        resizeNodeId.value = null;
+        stopAutoPan();
+        drawMoveStart = null;
+        drawMoveOrigin = null;
+        drawMovePreview.value = null;
       }
     });
 
@@ -1218,19 +1343,31 @@ export default defineComponent({
       !stripHtmlToText(html) && !/<(img|svg|video|canvas|iframe|table|hr)\b/i.test(html);
 
     /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
-    const wrapDocumentFragment = (html: string) =>
+    const wrapDocumentFragment = (html: string, theme: 'light' | 'dark') => {
+      const palette = theme === 'light'
+        ? {
+            surface: '#ffffff', text: '#172019', muted: '#536156', link: '#0b626b',
+            border: 'rgba(23,32,25,0.16)', code: '#f6f8fa',
+          }
+        : {
+            surface: '#191b20', text: '#f8fafc', muted: 'rgba(248,250,252,0.7)', link: '#7dd3fc',
+            border: 'rgba(255,255,255,0.16)', code: 'rgba(255,255,255,0.06)',
+          };
+      return (
       '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      "html,body{margin:0;padding:12px 14px;background:#191b20;color:#f8fafc;" +
+      `html,body{margin:0;padding:12px 14px;background:${palette.surface};color:${palette.text};` +
       "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
       "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
       "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}" +
-      "blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid rgba(255,255,255,0.2);color:rgba(248,250,252,0.7)}" +
-      "a{color:#7dd3fc}" +
-      "img{max-width:100%;height:auto}hr{border:0;border-top:1px solid rgba(255,255,255,0.12);margin:1em 0}" +
-      "table{border-collapse:collapse;max-width:100%}td,th{border:1px solid rgba(255,255,255,0.16);padding:4px 6px}" +
-      "pre{background:rgba(255,255,255,0.06);padding:8px;border-radius:4px;overflow:auto}" +
+      `blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid ${palette.border};color:${palette.muted}}` +
+      `a{color:${palette.link}}` +
+      `img{max-width:100%;height:auto}hr{border:0;border-top:1px solid ${palette.border};margin:1em 0}` +
+      `table{border-collapse:collapse;max-width:100%}td,th{border:1px solid ${palette.border};padding:4px 6px}` +
+      `pre{background:${palette.code};padding:8px;border-radius:4px;overflow:auto}` +
       "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
-      "</style></head><body>" + html + "</body></html>";
+      "</style></head><body>" + html + "</body></html>"
+      );
+    };
 
     const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
       const key = documentCacheKey(kind, id);
@@ -1252,7 +1389,8 @@ export default defineComponent({
         embeddedDocumentCache[key] = {
           title,
           // HTML documents are stored as complete documents; text documents come back as a fragment.
-          srcdoc: kind === "html" ? html : wrapDocumentFragment(html),
+          // Keep text fragments raw so their iframe palette reacts to a live theme switch.
+          srcdoc: html,
           excerpt: stripHtmlToText(html).slice(0, 400),
           loading: false,
           error: false,
@@ -1279,6 +1417,13 @@ export default defineComponent({
         loadEmbeddedDocument(documentNodeKind(node), node.documentId);
       }
       return embeddedDocumentCache[key] || EMPTY_DOCUMENT_ENTRY;
+    };
+
+    const documentSrcdoc = (node: CanvasNode) => {
+      const entry = documentData(node);
+      return documentNodeKind(node) === 'html'
+        ? entry.srcdoc
+        : wrapDocumentFragment(entry.srcdoc, effectiveTheme.value);
     };
 
     /** Below this size an iframe is unreadable, so fall back to a plain-text excerpt. */
@@ -1538,7 +1683,9 @@ export default defineComponent({
         const color = node.borderColor || (node.color ? undefined : "rgba(255,255,255,0.1)");
         const strokeColor = color || "currentColor";
         if (bs === "wavy") {
-          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='20' height='4'><path d='M0 2 Q5 0 10 2 Q15 4 20 2' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
+          // Each of the four 8px slices contains a complete wave. A 20×4
+          // strip sliced at 2 cuts the wave in half and leaves no side edges.
+          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M8 4 Q12 0 16 4 Q20 8 24 4 Q28 4 28 8 Q32 12 28 16 Q24 20 28 24 Q28 28 24 28 Q20 32 16 28 Q12 24 8 28 Q4 28 4 24 Q0 20 4 16 Q8 12 4 8 Q4 4 8 4 Z' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 8 round`;
         } else {
           style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4'><path d='M0 4 L6 0 L12 4' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
         }
@@ -1677,6 +1824,7 @@ export default defineComponent({
     // Editing state
     const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
+    const fullscreenEditorRef = ref<HTMLTextAreaElement | null>(null);
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
@@ -1701,6 +1849,7 @@ export default defineComponent({
     // Node drag handlers
     // Store initial positions of all dragged nodes for multi-drag
     const dragNodesInitial = ref<Map<string, { x: number; y: number }>>(new Map());
+    const dragDrawingsInitial = ref<Map<string, Drawing>>(new Map());
 
     // The selection may also contain locked blocks (for example, after marquee
     // selection around a group). Only nodes recorded at drag start are movable;
@@ -1745,7 +1894,7 @@ export default defineComponent({
     };
 
     const updateActiveDragFromPointer = () => {
-      if (dragNodeId.value) {
+      if (dragNodeId.value || dragDrawingsInitial.value.size > 0) {
         const dx = (lastPointer.x - dragMouseStart.x - camera.x + dragCameraStart.x) / camera.scale;
         const dy = (lastPointer.y - dragMouseStart.y - camera.y + dragCameraStart.y) / camera.scale;
         for (const [id, init] of dragNodesInitial.value) {
@@ -1754,6 +1903,11 @@ export default defineComponent({
             node.x = snap(init.x + dx);
             node.y = snap(init.y + dy);
           }
+        }
+        for (const [id, init] of dragDrawingsInitial.value) {
+          const moved = translateDrawing(init, dx, dy);
+          const idx = drawings.value.findIndex((d) => d.id === id);
+          if (idx >= 0) drawings.value.splice(idx, 1, moved);
         }
       }
 
@@ -1814,7 +1968,7 @@ export default defineComponent({
         return;
       }
       if (resizeNodeId.value) return;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       if (node.positionLocked) {
         // A locked block can't be moved, so a drag starting on it should behave
         // like a drag on empty canvas — begin a marquee selection. A plain click
@@ -1872,16 +2026,33 @@ export default defineComponent({
       startAutoPan();
     };
 
-    // Double-click to edit text
-    const onNodeDblClick = (node: CanvasNode) => {
-      if (node.type !== "text") return;
+    const focusTextEditor = () => {
+      const textarea = isMobileLayout.value ? fullscreenEditorRef.value : editorRefs.value?.[0];
+      textarea?.focus();
+    };
+
+    const startTextEditing = (node: CanvasNode) => {
       emit('node-edit-start', node.id);
       editingNodeId.value = node.id;
-      nextTick(() => {
-        const textarea = editorRefs.value?.[0];
-        if (textarea) textarea.focus();
-      });
+      nextTick(focusTextEditor);
     };
+
+    // Double-click to edit text. Not on the phone layout, where a tap on a
+    // moving canvas is too easy to misfire - there editing is explicit only.
+    const onNodeDblClick = (node: CanvasNode) => {
+      if (node.type !== "text" || isMobileLayout.value) return;
+      startTextEditing(node);
+    };
+
+    // The bottom toolbar's "edit text" action.
+    const openTextEditor = (id: string | null | undefined) => {
+      const node = nodes.value.find((n) => n.id === id);
+      if (!node || node.type !== "text" || props.readonly) return;
+      startTextEditing(node);
+    };
+
+    const isTextNode = (id: string | null | undefined): boolean =>
+      nodes.value.some((n) => n.id === id && n.type === "text");
 
     let editSaveTimer: ReturnType<typeof setTimeout> | null = null;
     const lastEmittedText = new Map<string, string | undefined>();
@@ -1916,6 +2087,32 @@ export default defineComponent({
       scheduleChange();
     };
 
+    const fullscreenEditingNode = computed<CanvasNode | null>(() => {
+      if (!isMobileLayout.value || !editingNodeId.value) return null;
+      return nodes.value.find((n) => n.id === editingNodeId.value && n.type === "text") ?? null;
+    });
+
+    const closeTextEditor = () => {
+      fullscreenEditorRef.value?.blur();
+      onEditEnd();
+    };
+
+    // While the full-screen editor is open, Android's system Back closes it and
+    // returns to the canvas. Registered on open (not on mount) so it is the most
+    // recent handler and wins over the view's own ones.
+    let unregisterEditorBack: (() => void) | null = null;
+    watch(() => !!fullscreenEditingNode.value, (open) => {
+      if (open && !unregisterEditorBack) {
+        unregisterEditorBack = registerBackHandler(() => {
+          closeTextEditor();
+          return true;
+        });
+      } else if (!open && unregisterEditorBack) {
+        unregisterEditorBack();
+        unregisterEditorBack = null;
+      }
+    });
+
     // Resize handlers
     const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
       updateLastPointer(e);
@@ -1948,7 +2145,7 @@ export default defineComponent({
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
       selectedNodeIds.value = [];
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
     };
 
     const onDeleteEdge = () => {
@@ -2108,8 +2305,18 @@ export default defineComponent({
 
     // Find which node is under the mouse (world coords)
     const findNodeAt = (wx: number, wy: number): { node: CanvasNode; side: string } | null => {
-      for (const n of viewerNodes.value) {
-        if (wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) {
+      // Match the DOM paint order, including type partitions for equal zIndex.
+      // Sorting the data array alone would disagree with overlapping image/text nodes.
+      const painted = [...groups.value, ...textNodes.value, ...linkNodes.value, ...imageNodes.value,
+        ...templateNodes.value, ...canvasNodes.value, ...documentNodes.value];
+      const topFirst = painted.map((node, index) => ({ node, index }))
+        .sort((a, b) => (b.node.zIndex ?? 10) - (a.node.zIndex ?? 10) || b.index - a.index);
+      const tolerance = 6 / camera.scale;
+      for (const { node: n } of topFirst) {
+        const boundaryOnly = n.type === 'group' && !isTouchDevice;
+        const margin = boundaryOnly ? tolerance : 0;
+        if (wx >= n.x - margin && wx <= n.x + n.width + margin && wy >= n.y - margin && wy <= n.y + n.height + margin) {
+          if (boundaryOnly && !hitTestGroupBorder(n, wx, wy, tolerance)) continue;
           // Determine closest side
           const cx = n.x + n.width / 2;
           const cy = n.y + n.height / 2;
@@ -2151,10 +2358,7 @@ export default defineComponent({
       emitOp({ type: 'node-add', node: { ...newNode } });
       selectedNodeIds.value = [newNode.id];
       editingNodeId.value = newNode.id;
-      nextTick(() => {
-        const textarea = editorRefs.value?.[0];
-        if (textarea) textarea.focus();
-      });
+      nextTick(focusTextEditor);
     };
 
     const onCanvasDblClick = (e: MouseEvent) => {
@@ -2263,13 +2467,41 @@ export default defineComponent({
 
     // Context menu state
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "", kind: "", id: "" });
+    const contextColorPopup = ref<'fill' | 'text' | 'drawing' | null>(null);
+    const contextColorAnchor = shallowRef<HTMLElement | null>(null);
+    const toggleContextColorMenu = (kind: 'fill' | 'text' | 'drawing', event: MouseEvent) => {
+      contextColorAnchor.value = event.currentTarget as HTMLElement;
+      contextColorPopup.value = contextColorPopup.value === kind ? null : kind;
+    };
     const contextMenuStyle = computed(() => ({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
     }));
     const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
-    const closeContextMenu = () => { contextMenu.visible = false; };
+    const closeContextMenu = () => { contextMenu.visible = false; contextColorPopup.value = null; };
+
+    // Clears all selection state and closes element-bound UI.
+    // Does NOT close global canvas panels (history, chat, plugins, minimap).
+    const clearSelection = () => {
+      selectedNodeIds.value = [];
+      selectedDrawingIds.value = [];
+      selectedEdgeId.value = null;
+      if (editingNodeId.value) onEditEnd();
+      closeContextMenu();
+    };
+
+    // Commits a marquee selection box (in world coordinates) to selectedNodeIds + selectedDrawingIds.
+    const commitMarqueeSelection = (x1: number, y1: number, x2: number, y2: number) => {
+      if (x2 - x1 <= 5 && y2 - y1 <= 5) return;
+      selectedNodeIds.value = viewerNodes.value.filter((n) =>
+        n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
+      ).map((n) => n.id);
+      selectedDrawingIds.value = drawings.value.filter((d) => {
+        const b = drawingBounds(d);
+        return b.x + b.w > x1 && b.x < x2 && b.y + b.h > y1 && b.y < y2;
+      }).map((d) => d.id);
+    };
 
     const positionContextMenu = (e: MouseEvent) => {
       const rect = viewport.value!.getBoundingClientRect();
@@ -2299,7 +2531,7 @@ export default defineComponent({
 
     const onDrawingContextMenu = (e: MouseEvent, d: { id: string }) => {
       e.preventDefault(); e.stopPropagation();
-      selectedDrawingId.value = d.id;
+      selectedDrawingIds.value = [d.id];
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       positionContextMenu(e);
@@ -2361,7 +2593,48 @@ export default defineComponent({
       { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
     ];
 
-    const fontColors = ['#000000', '#ffffff', '#d7dce8', '#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff'];
+    const fontColors = ['1', '2', '3', '4', '5', '6'];
+
+    const HEX_TO_FONT_COLOR_KEY: Record<string, string> = {
+      '#fb464c': '1',
+      '#e9973f': '2',
+      '#e0de71': '3',
+      '#44cf6e': '4',
+      '#53dfdd': '5',
+      '#a882ff': '6',
+    };
+
+    const normalizeFontColorKey = (color: string | undefined): string | undefined => {
+      if (!color) return undefined;
+      if (['1', '2', '3', '4', '5', '6'].includes(color)) return color;
+      return HEX_TO_FONT_COLOR_KEY[color.toLowerCase()];
+    };
+
+    const resolveNodeFontColor = (color: string | undefined): string | undefined => {
+      if (!color) return undefined;
+      const key = normalizeFontColorKey(color);
+      if (key) {
+        return `var(--content-canvas-node-text-${key})`;
+      }
+      const lower = color.toLowerCase();
+      // Legacy dark-palette neutrals rewrite to default themed text
+      if (lower === '#ffffff' || lower === '#000000' || lower === '#d7dce8') {
+        return undefined;
+      }
+      return color;
+    };
+
+    const getNodeFontColorSwatch = (colorKey: string | undefined): string => {
+      if (!colorKey) return '';
+      const key = normalizeFontColorKey(colorKey);
+      if (key) return `var(--content-canvas-node-text-${key})`;
+      return colorKey;
+    };
+
+    const isNodeFontColorActive = (nodeColor: string | undefined, paletteKey: string): boolean => {
+      if (!nodeColor) return false;
+      return normalizeFontColorKey(nodeColor) === paletteKey;
+    };
 
     const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
       const node = nodes.value.find((n) => n.id === nodeId);
@@ -2430,7 +2703,9 @@ export default defineComponent({
       const node = nodes.value.find((n) => n.id === nodeId);
       if (!node) return;
       pushUndo();
-      updateNode(node, { fontColor });
+      node.fontColor = fontColor;
+      // Explicitly send null on reset so JSON doesn't drop undefined
+      emitOp({ type: 'node-update', id: nodeId, changes: { fontColor: fontColor ?? null } });
     };
 
     const isNodeTransparent = (nodeId: string | null | undefined): boolean => {
@@ -2677,7 +2952,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       scheduleChange(true);
     };
 
@@ -2690,7 +2965,7 @@ export default defineComponent({
       drawings.value = JSON.parse(snap.drawings);
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       scheduleChange(true);
     };
 
@@ -2731,6 +3006,7 @@ export default defineComponent({
     };
 
     const toggleAddMenu = () => {
+      if(props.rulerActive)emit('ruler-exit');
       addMenuOpen.value = !addMenuOpen.value;
     };
 
@@ -2751,6 +3027,7 @@ export default defineComponent({
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if(props.rulerActive)return;
       if (isEditableEventTarget(e.target)) return;
       if (e.key === "Escape" && addMenuOpen.value) {
         closeAddMenu();
@@ -2823,9 +3100,7 @@ export default defineComponent({
       }
       // Escape — deselect
       if (e.key === "Escape") {
-        selectedNodeIds.value = [];
-        selectedEdgeId.value = null;
-        selectedDrawingId.value = null;
+        clearSelection();
         return;
       }
       if (editingNodeId.value || editingEdgeId.value) return;
@@ -2846,7 +3121,7 @@ export default defineComponent({
           emitOp({ type: 'node-delete', ids });
           selectedNodeIds.value = [];
           e.preventDefault();
-        } else if (selectedDrawingId.value) {
+        } else if (selectedDrawingIds.value.length > 0) {
           e.preventDefault();
           deleteSelectedDrawing();
         }
@@ -2943,7 +3218,7 @@ export default defineComponent({
     };
 
     // Drawing selection computeds
-    const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingId.value) || null);
+    const selectedDrawingObj = computed(() => drawings.value.find((d) => d.id === selectedDrawingIds.value[0]) || null);
     const isDraggingDrawing = computed(() => drawMovePreview.value !== null);
     const shownDrawing = (d: Drawing): Drawing =>
       (drawMovePreview.value && drawMovePreview.value.id === d.id ? drawMovePreview.value : d);
@@ -2966,9 +3241,11 @@ export default defineComponent({
 
     // Drawing pointer handlers (select + drag)
     const onDrawingPointerDown = (d: Drawing, e: PointerEvent) => {
+      if (isTouchDevice) return; // on touch, drawing tap/drag is owned by onTouchStart
       if (drawTool.value !== "select") return;
+      if (isHandMode.value) return;
       e.stopPropagation();
-      selectedDrawingId.value = d.id;
+      selectedDrawingIds.value = [d.id];
       selectedNodeIds.value = [];
       selectedEdgeId.value = null;
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -3000,20 +3277,34 @@ export default defineComponent({
       emitOp({ type: "draw-update", id: origin.id, changes } as CanvasOp);
     };
 
+    const commitDrawingDrags = () => {
+      for (const [id] of dragDrawingsInitial.value) {
+        const moved = drawings.value.find((d) => d.id === id);
+        if (!moved) continue;
+        const changes =
+          (moved.tool === "pen" || moved.tool === "highlighter")
+            ? { points: moved.points }
+            : (moved.tool === "line" || moved.tool === "arrow")
+              ? { x1: moved.x1, y1: moved.y1, x2: moved.x2, y2: moved.y2 }
+              : { x: moved.x, y: moved.y };
+        emitOp({ type: "draw-update", id, changes } as CanvasOp);
+      }
+    };
+
     // Drawing action methods
     const setSelectedDrawingColor = (color: string) => {
-      const d = selectedDrawingObj.value;
-      if (!d) return;
+      const ids = selectedDrawingIds.value;
+      if (!ids.length) return;
       pushUndo();
-      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, color } : x));
-      emitOp({ type: "draw-update", id: d.id, changes: { color } } as CanvasOp);
+      drawings.value = drawings.value.map((x) => (ids.includes(x.id) ? { ...x, color } : x));
+      ids.forEach((id) => emitOp({ type: "draw-update", id, changes: { color } } as CanvasOp));
     };
     const setSelectedDrawingWidth = (width: number) => {
-      const d = selectedDrawingObj.value;
-      if (!d) return;
+      const ids = selectedDrawingIds.value;
+      if (!ids.length) return;
       pushUndo();
-      drawings.value = drawings.value.map((x) => (x.id === d.id ? { ...x, width } : x));
-      emitOp({ type: "draw-update", id: d.id, changes: { width } } as CanvasOp);
+      drawings.value = drawings.value.map((x) => (ids.includes(x.id) ? { ...x, width } : x));
+      ids.forEach((id) => emitOp({ type: "draw-update", id, changes: { width } } as CanvasOp));
     };
     const duplicateSelectedDrawing = () => {
       const d = selectedDrawingObj.value;
@@ -3021,7 +3312,7 @@ export default defineComponent({
       const copy: Drawing = { ...translateDrawing(d, 16, 16), id: genId(), createdAt: new Date().toISOString() };
       pushUndo();
       drawings.value = [...drawings.value, copy];
-      selectedDrawingId.value = copy.id;
+      selectedDrawingIds.value = [copy.id];
       emitOp({ type: "draw-add", drawing: copy } as CanvasOp);
     };
     const deleteSelectedDrawing = () => {
@@ -3029,7 +3320,7 @@ export default defineComponent({
       if (!d) return;
       const id = d.id;
       pushUndo();
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       drawings.value = drawings.value.filter((x) => x.id !== id);
       emitOp({ type: "draw-remove", id } as CanvasOp);
     };
@@ -3074,8 +3365,9 @@ export default defineComponent({
 
     // Clear stale selection when peer removes the selected drawing
     watch(drawings, () => {
-      if (selectedDrawingId.value && !drawings.value.some((d) => d.id === selectedDrawingId.value)) {
-        selectedDrawingId.value = null;
+      if (selectedDrawingIds.value.length > 0) {
+        const live = new Set(drawings.value.map((d) => d.id));
+        selectedDrawingIds.value = selectedDrawingIds.value.filter((id) => live.has(id));
       }
     });
 
@@ -3086,7 +3378,7 @@ export default defineComponent({
         selectedNodeIds.value = [];
       }
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       if (editingNodeId.value) editingNodeId.value = null;
       if (contextMenu.visible) closeContextMenu();
 
@@ -3182,13 +3474,7 @@ export default defineComponent({
         const y1 = Math.min(selBox.startY, selBox.curY);
         const x2 = Math.max(selBox.startX, selBox.curX);
         const y2 = Math.max(selBox.startY, selBox.curY);
-        // Only select if box is bigger than a tiny drag (avoid deselect on click)
-        if (x2 - x1 > 5 || y2 - y1 > 5) {
-          const hits = viewerNodes.value.filter((n) =>
-            n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
-          ).map((n) => n.id);
-          selectedNodeIds.value = hits;
-        }
+        commitMarqueeSelection(x1, y1, x2, y2);
         selBox.active = false;
       }
       isPanning.value = false;
@@ -3215,6 +3501,27 @@ export default defineComponent({
 
     // Zoom / pan handler (wheel + trackpad)
     const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey && e.target instanceof Element) {
+        const content = e.target.closest('.node-content, .node-editor');
+        // Browsers map Shift + a vertical mouse wheel to horizontal scroll.
+        const horizontalWheel = e.shiftKey && e.deltaX === 0;
+        const scrollX = horizontalWheel ? e.deltaY : e.deltaX;
+        const scrollY = horizontalWheel ? 0 : e.deltaY;
+        // Keep native scrolling (including nested code blocks and editors)
+        // until the content reaches the edge in the requested direction.
+        for (let element: Element | null = e.target; content && element; element = element.parentElement) {
+          if (element instanceof HTMLElement) {
+            const css = getComputedStyle(element);
+            const canScroll = (overflow: string, delta: number, position: number, maximum: number) =>
+              /^(auto|scroll)$/.test(overflow) &&
+              (delta < 0 ? position > 0 : delta > 0 && position < maximum - 1);
+            if (canScroll(css.overflowY, scrollY, element.scrollTop, element.scrollHeight - element.clientHeight) ||
+                canScroll(css.overflowX, scrollX, element.scrollLeft, element.scrollWidth - element.clientWidth)) return;
+          }
+          if (element === content) break;
+        }
+      }
+      e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
         // Pinch-to-zoom on trackpad (or Ctrl+wheel)
         const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
@@ -3274,6 +3581,16 @@ export default defineComponent({
         touchResizing = false;
         if (contextMenu.visible) closeContextMenu();
 
+        // Hand mode: read-only pan — skip ALL node/resize/connect interaction.
+        if (isTouchDevice && mobileInteractionMode.value === 'hand') {
+          isPanning.value = true;
+          panStart.x = t.clientX;
+          panStart.y = t.clientY;
+          cameraStart.x = camera.x;
+          cameraStart.y = camera.y;
+          return;
+        }
+
         // Did we start on a resize handle? (touch-resize for mobile)
         const handleEl = (e.target as HTMLElement | null)?.closest('.resize-handle') as HTMLElement | null;
         const handleNodeEl = handleEl?.closest('[data-node-id]') as HTMLElement | null;
@@ -3314,14 +3631,16 @@ export default defineComponent({
         const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
 
         if (touchNodeId && !props.readonly) {
-          // Select immediately (so the style toolbar appears) and prime a drag.
+          // Select immediately (so the style toolbar appears).
           if (!selectedNodeIds.value.includes(touchNodeId)) {
+            selectedDrawingIds.value = [];
             selectedNodeIds.value = [touchNodeId];
           }
           selectedEdgeId.value = null;
           if (touchNode?.positionLocked) {
             return;
           }
+          // Cursor mode: prime a node drag as usual.
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           dragMouseStart.x = t.clientX;
@@ -3330,18 +3649,60 @@ export default defineComponent({
           dragCameraStart.y = camera.y;
         } else if (touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
+          selectedDrawingIds.value = [];
           selectedNodeIds.value = [touchNodeId];
         } else {
-          // Empty canvas → pan
-          isPanning.value = true;
-          panStart.x = t.clientX;
-          panStart.y = t.clientY;
-          cameraStart.x = camera.x;
-          cameraStart.y = camera.y;
+          // Empty canvas — route by mobile interaction mode
+          if (isTouchDevice && mobileInteractionMode.value === 'cursor') {
+            const rect = viewport.value!.getBoundingClientRect();
+            const wx = (t.clientX - rect.left - camera.x) / camera.scale;
+            const wy = (t.clientY - rect.top - camera.y) / camera.scale;
+
+            // Check for drawing hit before starting marquee (fixes blink + marquee-during-drag)
+            if (!props.readonly) {
+              const tol = 12 / camera.scale;
+              const hitD = [...drawings.value].reverse().find((d) => hitTestDrawing(d, wx, wy, tol));
+              if (hitD) {
+                if (!selectedDrawingIds.value.includes(hitD.id)) {
+                  selectedDrawingIds.value = [hitD.id];
+                  selectedNodeIds.value = [];
+                  selectedEdgeId.value = null;
+                }
+                touchDrawingId = hitD.id;
+                lastPointer.x = t.clientX;
+                lastPointer.y = t.clientY;
+                dragMouseStart.x = t.clientX;
+                dragMouseStart.y = t.clientY;
+                dragCameraStart.x = camera.x;
+                dragCameraStart.y = camera.y;
+                return;
+              }
+            }
+
+            // Cursor mode: 1 finger on empty canvas → marquee selection, not pan
+            selBox.active = true;
+            selBox.startX = wx;
+            selBox.startY = wy;
+            selBox.curX = wx;
+            selBox.curY = wy;
+          } else if (isTouchDevice && mobileInteractionMode.value === 'draw') {
+            // Draw mode: pointer events on .draw-capture handle the stroke — don't pan
+          } else {
+            // Desktop or fallback: pan viewport
+            isPanning.value = true;
+            panStart.x = t.clientX;
+            panStart.y = t.clientY;
+            cameraStart.x = camera.x;
+            cameraStart.y = camera.y;
+          }
         }
       } else if (e.touches.length === 2) {
-        // Second finger down → abandon any single-finger drag/pan/resize/connect, go to pinch
+        // Second finger down → cancel any single-finger operation, start pinch/pan
+        selBox.active = false; // cancel marquee without committing
+        onDrawPointerCancel(); // cancel any in-progress draw stroke
         touchNodeId = null;
+        touchDrawingId = null;
+        dragDrawingsInitial.value = new Map();
         touchDragging = false;
         touchResizing = false;
         touchConnecting = false;
@@ -3394,7 +3755,7 @@ export default defineComponent({
         if (activeTouchNode?.positionLocked) return;
 
         if (touchNodeId && !props.readonly) {
-          // Begin the actual node drag the first time we cross the threshold
+          // Cursor mode: drag the node once the threshold is crossed.
           if (!touchDragging) {
             touchDragging = true;
             pushUndo();
@@ -3404,13 +3765,43 @@ export default defineComponent({
               const n = nodes.value.find((nd) => nd.id === id);
               if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
             }
+            // Capture selected drawings for mixed node+drawing move (Bug 2)
+            dragDrawingsInitial.value = new Map();
+            for (const id of selectedDrawingIds.value) {
+              const d = drawings.value.find((x) => x.id === id);
+              if (d) dragDrawingsInitial.value.set(id, { ...d });
+            }
             startAutoPan();
+          }
+          lastPointer.x = t.clientX;
+          lastPointer.y = t.clientY;
+          updateActiveDragFromPointer();
+        } else if (touchDrawingId) {
+          // Drawing drag once threshold is crossed.
+          if (!touchDragging) {
+            touchDragging = true;
+            pushUndo();
+            dragDrawingsInitial.value = new Map();
+            for (const id of selectedDrawingIds.value) {
+              const d = drawings.value.find((x) => x.id === id);
+              if (d) dragDrawingsInitial.value.set(id, { ...d });
+            }
+            // Capture selected nodes for mixed drawing+node move
+            dragNodesInitial.value = new Map();
+            for (const id of selectedNodeIds.value) {
+              const n = nodes.value.find((nd) => nd.id === id);
+              if (n && !n.positionLocked) dragNodesInitial.value.set(id, { x: n.x, y: n.y });
+            }
           }
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
         } else if (touchNodeId && props.readonly) {
           emit('readonly-action');
+        } else if (selBox.active) {
+          const rect = viewport.value!.getBoundingClientRect();
+          selBox.curX = (t.clientX - rect.left - camera.x) / camera.scale;
+          selBox.curY = (t.clientY - rect.top - camera.y) / camera.scale;
         } else if (isPanning.value) {
           camera.x = cameraStart.x + (t.clientX - panStart.x);
           camera.y = cameraStart.y + (t.clientY - panStart.y);
@@ -3486,6 +3877,54 @@ export default defineComponent({
         return;
       }
 
+      // Finalize a drawing touch (tap or drag)
+      if (touchDrawingId) {
+        if (touchDragging && dragDrawingsInitial.value.size > 0) {
+          commitDrawingDrags();
+          if (dragNodesInitial.value.size > 0) {
+            const moves = getDraggedMoves();
+            if (moves.length) emitOp({ type: 'nodes-move', moves });
+          }
+        }
+        dragDrawingsInitial.value = new Map();
+        dragNodesInitial.value = new Map();
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchDrawingId = null;
+        touchNodeId = null;
+        isPanning.value = false;
+        lastTouchDist.value = 0;
+        return;
+      }
+
+      // Hand mode: pan only — no tap-select, no double-tap edit, no create-on-tap.
+      if (isTouchDevice && mobileInteractionMode.value === 'hand') {
+        dragNodeId.value = null;
+        touchDragging = false;
+        touchNodeId = null;
+        isPanning.value = false;
+        lastTouchDist.value = 0;
+        return;
+      }
+
+      // Finalize touch marquee (Cursor mode, empty-canvas drag)
+      if (selBox.active) {
+        const x1 = Math.min(selBox.startX, selBox.curX);
+        const y1 = Math.min(selBox.startY, selBox.curY);
+        const x2 = Math.max(selBox.startX, selBox.curX);
+        const y2 = Math.max(selBox.startY, selBox.curY);
+        if (x2 - x1 <= 5 && y2 - y1 <= 5) {
+          // Tap on empty canvas (point-size selBox) → clear all selection
+          clearSelection();
+        } else {
+          commitMarqueeSelection(x1, y1, x2, y2);
+        }
+        selBox.active = false;
+        isPanning.value = false;
+        touchNodeId = null;
+        return;
+      }
+
       const now = performance.now();
 
       if (!touchMoved && touchNodeId) {
@@ -3518,11 +3957,8 @@ export default defineComponent({
         } else if (isDouble && props.readonly) {
           emit('readonly-action');
         } else {
-          // Single tap on blank space → deselect / close
-          if (editingNodeId.value) onEditEnd();
-          selectedNodeIds.value = [];
-          selectedEdgeId.value = null;
-          closeContextMenu();
+          // Single tap on blank space → clear all selection
+          clearSelection();
           lastTapTime = now;
           lastTapTarget = "__empty__";
         }
@@ -3532,8 +3968,10 @@ export default defineComponent({
       if (touchDragging && dragNodeId.value) {
         const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
+        commitDrawingDrags(); // emit ops for any drawings that moved with the nodes
       }
 
+      dragDrawingsInitial.value = new Map();
       dragNodeId.value = null;
       touchDragging = false;
       touchNodeId = null;
@@ -3762,7 +4200,7 @@ export default defineComponent({
       if (!node || !viewport.value) return;
       selectedNodeIds.value = [nodeId];
       selectedEdgeId.value = null;
-      selectedDrawingId.value = null;
+      selectedDrawingIds.value = [];
       const centerX = node.x + node.width / 2;
       const centerY = node.y + node.height / 2;
       camera.x = viewport.value.clientWidth / 2 - centerX * camera.scale;
@@ -3780,8 +4218,10 @@ export default defineComponent({
       const rect = el.getBoundingClientRect();
       const vb = minimapData.value!;
       const [vbX = 0, vbY = 0, vbW = 1, vbH = 1] = vb.viewBox.split(' ').map(Number);
-      const wx = vbX + (e.clientX - rect.left) / rect.width * vbW;
-      const wy = vbY + (e.clientY - rect.top) / rect.height * vbH;
+      // Account for SVG xMidYMid meet letterboxing, not only its DOM rect.
+      const scale = Math.min(rect.width / vbW, rect.height / vbH);
+      const wx = vbX + (e.clientX - rect.left - (rect.width - vbW * scale) / 2) / scale;
+      const wy = vbY + (e.clientY - rect.top - (rect.height - vbH * scale) / 2) / scale;
       return { wx, wy };
     };
 
@@ -3819,25 +4259,32 @@ export default defineComponent({
         maxX = Math.max(maxX, n.x + n.width);
         maxY = Math.max(maxY, n.y + n.height);
       }
-      const pad = 100;
-      minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-      const vw = viewport.value.clientWidth;
-      const vh = viewport.value.clientHeight;
+      const vw = viewportSize.width || viewport.value.clientWidth;
+      const vh = viewportSize.height || viewport.value.clientHeight;
       // Viewport in world coords
       const vpX = -camera.x / camera.scale;
       const vpY = -camera.y / camera.scale;
       const vpW = vw / camera.scale;
       const vpH = vh / camera.scale;
+      // Include the entire viewport so its outline never disappears outside
+      // the nodes' bounds, including when zoomed out or panned away.
+      const pad = 100;
+      minX = Math.min(minX, vpX) - pad;
+      minY = Math.min(minY, vpY) - pad;
+      maxX = Math.max(maxX, vpX + vpW) + pad;
+      maxY = Math.max(maxY, vpY + vpH) + pad;
       return {
         viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
         vpX, vpY, vpW, vpH,
       };
     });
 
-    // Apply remote canvas data without triggering change event
+    // Apply remote canvas data without triggering change event. In THIS
+    // client's element order (see keepLocalOrder): a collaborator's snapshot
+    // taken verbatim reshuffled the DOM and repainted every image.
     const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => {
-      nodes.value = data.nodes;
-      edges.value = data.edges;
+      nodes.value = keepLocalOrder(nodes.value, data.nodes || []);
+      edges.value = keepLocalOrder(edges.value, data.edges || []);
       drawings.value = data.drawings || [];
     };
 
@@ -3852,6 +4299,12 @@ export default defineComponent({
 
     onMounted(() => {
       loadCanvas();
+      measureViewport();
+      if (typeof ResizeObserver !== 'undefined' && viewport.value) {
+        viewportObserver = new ResizeObserver(measureViewport);
+        viewportObserver.observe(viewport.value);
+      }
+      window.addEventListener('resize', measureViewport);
       // Browser zoom on a double tap also emits resize on Android and used to
       // reset this canvas to fit-to-content. Orientation is the only layout
       // change that should intentionally reset the view.
@@ -3866,7 +4319,11 @@ export default defineComponent({
     });
 
     onUnmounted(() => {
+      viewportObserver?.disconnect();
+      window.removeEventListener('resize', measureViewport);
       if (editSaveTimer) clearTimeout(editSaveTimer);
+      unregisterEditorBack?.();
+      mobileLayoutQuery?.removeEventListener?.('change', onMobileLayoutChange);
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
       stopAutoPan();
       window.removeEventListener("orientationchange", onOrientationChange);
@@ -3877,7 +4334,11 @@ export default defineComponent({
     });
 
     return {
+      rulerGesture,viewportSize,
       t,
+      isTouchDevice,
+      groupBorderRect,
+      camera,
       addMenuOpen,
       addMenuWrap,
       addMenuEntries,
@@ -3922,6 +4383,12 @@ export default defineComponent({
       selBox,
       editingNodeId,
       editorRefs,
+      fullscreenEditorRef,
+      fullscreenEditingNode,
+      isMobileLayout,
+      openTextEditor,
+      closeTextEditor,
+      isTextNode,
       dragNodeId,
       isManipulatingNode,
       onNodeDragStart,
@@ -3978,7 +4445,9 @@ export default defineComponent({
       formatDndModifier,
       dndSavingThrow,
       rollTemplateAbility,
+      documentSrcdoc,
       contextMenu,
+      contextColorPopup, contextColorAnchor, toggleContextColorMenu,
       contextMenuStyle,
       getContextNode,
       setNodeColor,
@@ -3999,6 +4468,9 @@ export default defineComponent({
       setNodeBorderColor,
       getNodeFontColor,
       setNodeFontColor,
+      getNodeFontColorSwatch,
+      isNodeFontColorActive,
+      resolveNodeFontColor,
       isNodeTransparent,
       toggleNodeTransparent,
       getNodeShape,
@@ -4051,6 +4523,8 @@ export default defineComponent({
       strokeToPath,
       Math,
       minimapData,
+      minimapEnabled,
+      minimapSize,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,
@@ -4086,8 +4560,9 @@ export default defineComponent({
       setNodeTitle,
       flashNodeId,
       imageInput,
-      selectedDrawingId,
+      selectedDrawingIds,
       selectedDrawingObj,
+      clearSelection,
       isDraggingDrawing,
       selectedBounds,
       selectedDrawingScreenRect,
@@ -4120,8 +4595,8 @@ export default defineComponent({
   height: 100%;
   overflow: hidden;
   touch-action: none;
-  background-color: #1e1e1e;
-  background-image: radial-gradient(circle, #333 1px, transparent 1px);
+  background-color: var(--ui-canvas);
+  background-image: radial-gradient(circle, var(--ui-border) 1px, transparent 1px);
   background-size: 24px 24px;
   cursor: grab;
   position: relative;
@@ -4143,13 +4618,17 @@ export default defineComponent({
 .canvas-group {
   position: absolute;
   border-radius: 12px;
-  border: 1.5px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid var(--group-content-border);
+  background: var(--group-content-surface);
   cursor: grab;
 }
+.canvas-group.border-select-only { pointer-events: none; }
+.group-border-hit { position: absolute; overflow: visible; pointer-events: none; }
+.group-border-hit rect { pointer-events: stroke; }
+.canvas-group.border-select-only .resize-handle { pointer-events: auto; }
 .canvas-group.is-selected {
-  border-color: rgba(124, 138, 255, 0.7);
-  box-shadow: 0 0 0 1px rgba(124, 138, 255, 0.35);
+  border-color: var(--ui-focus);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ui-focus) 44%, transparent);
 }
 .canvas-group.is-dragging {
   cursor: grabbing;
@@ -4160,7 +4639,7 @@ export default defineComponent({
   left: 10px;
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--content-canvas-group-label);
   white-space: nowrap;
 }
 
@@ -4185,7 +4664,7 @@ export default defineComponent({
   bottom: calc(100% + 6px);
   left: 0;
   width: 100%;
-  color: rgba(255,255,255,0.82);
+  color: var(--content-canvas-image-title);
   font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
@@ -4199,35 +4678,35 @@ export default defineComponent({
 .canvas-node.canvas-node-template {
   padding: 0;
   overflow: visible;
-  background: #171a19;
-  border: 1px solid #3b4940;
+  background: var(--content-interactive-surface);
+  border: 1px solid var(--content-interactive-border-strong);
   border-radius: 10px;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
-  color: var(--dark-text-primary, #f0f6f1);
+  box-shadow: var(--content-interactive-shadow);
+  color: var(--content-interactive-text);
   user-select: none;
 }
-.dnd-sheet { position: relative; box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 42px 18px 18px; background: #171a19; color: #edf5ef; font-size: 14px; user-select: none; }.dnd-sheet.is-interacting { border-color: color-mix(in srgb, var(--color-brands, #00ff00) 72%, #fff); user-select: text; }.dnd-sheet-content[inert] { opacity: .72; pointer-events: none; }
-.dnd-mode-toggle { position: absolute; z-index: 2; top: 10px; right: 12px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid #4a5b50; border-radius: 5px; color: #aab7ae; background: #111513; font-size: 14px; cursor: pointer; }.dnd-mode-toggle:hover, .dnd-mode-toggle:focus-visible { border-color: var(--color-brands, #00ff00); color: #d8ffe1; outline: none; }.dnd-mode-toggle.active { border-color: #4ea963; color: #d9ffe3; background: #1d3924; }
+.dnd-sheet { position: relative; box-sizing: border-box; min-width: 720px; min-height: 480px; padding: 42px 18px 18px; background: var(--content-interactive-surface); color: var(--content-interactive-text); font-size: 14px; user-select: none; }.dnd-sheet.is-interacting { border-color: var(--content-interactive-accent); user-select: text; }.dnd-sheet-content[inert] { opacity: .72; pointer-events: none; }
+.dnd-mode-toggle { position: absolute; z-index: 2; top: 10px; right: 12px; display: grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-text-muted); background: var(--content-interactive-surface-subtle); font-size: 14px; cursor: pointer; }.dnd-mode-toggle:hover, .dnd-mode-toggle:focus-visible { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); outline: none; }.dnd-mode-toggle.active { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); }
 .dnd-sheet.is-compact { min-width: 0; min-height: 0; padding: 12px; }.dnd-sheet.is-compact .dnd-combat-row { margin: 10px 0; }.dnd-sheet.is-compact .dnd-card-abilities article > input, .dnd-sheet.is-compact .dnd-card-abilities label { display: none; }
-.dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: #222825; border: 1px solid #3b4940; border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--color-brands, #00ff00); box-shadow: 0 0 0 2px #00ff0030; }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
-.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #354039; }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid #435248; border-radius: 50%; background: #263329; color: #77ee9a; font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid #5c7665; border-radius: 50%; color: #d8f9df; background: #1d3924; font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: #aab7ae; font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: #aab7ae; }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid #435248; border-radius: 6px; color: #bceac8; background: transparent; cursor: pointer; }
-.dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: #aab7ae; font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid #435248; border-radius: 5px; color: #bceac8; background: transparent; cursor: pointer; }.dnd-combat-row b { color: #77857c; }.dnd-temp input { width: 42px; }
-.dnd-card-abilities { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }.dnd-card-abilities article { display: grid; gap: 5px; min-width: 0; padding: 7px; border: 1px solid #354039; border-radius: 7px; background: #1e2421; }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: #2a362e; }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: #aab7ae; font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: #77ee9a; font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }
-.dnd-full-content { margin-top: 16px; border-top: 1px solid #354039; }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: #aab7ae; background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: #3f874f; color: #baf5c7; background: #1d3924; }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: #aab7ae; font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: #94a299; font-size: 12px; }
-.dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid #354039; border-radius: 6px; background: #1b211e; }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: #aab7ae; font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid #435248; border-radius: 5px; color: #c0edca; background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: #5bbc70; background: #1d3924; }
+.dnd-sheet input, .dnd-sheet textarea { box-sizing: border-box; color: inherit; background: var(--content-interactive-input); border: 1px solid var(--content-interactive-border); border-radius: 5px; outline: none; }.dnd-sheet input:focus, .dnd-sheet textarea:focus { border-color: var(--content-interactive-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--content-interactive-accent) 22%, transparent); }.dnd-sheet input:read-only, .dnd-sheet textarea:read-only { border-color: transparent; background: transparent; }
+.dnd-sheet-head { display: flex; align-items: center; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--content-interactive-border); }.dnd-portrait-wrap { position: relative; flex: 0 0 56px; }.dnd-portrait { display: grid; place-items: center; width: 56px; height: 56px; overflow: hidden; border: 1px solid var(--content-interactive-border-strong); border-radius: 50%; background: var(--content-interactive-accent-soft); color: var(--content-interactive-accent); font-size: 22px; font-weight: 700; }.dnd-portrait img { width: 100%; height: 100%; object-fit: cover; }.dnd-portrait-actions { position: absolute; right: -5px; bottom: -5px; display: flex; gap: 2px; }.dnd-portrait-actions button { display: grid; place-items: center; width: 19px; height: 19px; padding: 0; border: 1px solid var(--content-interactive-border-strong); border-radius: 50%; color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); font-size: 11px; cursor: pointer; }.dnd-identity { display: grid; min-width: 0; flex: 1; gap: 4px; }.dnd-identity > input { width: 100%; padding: 2px 0; font-size: 22px; font-weight: 700; }.dnd-identity span { color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-identity span input { width: min(130px, 32%); padding: 2px; font-size: inherit; }.dnd-level { display: flex; align-items: center; gap: 4px; color: var(--content-interactive-text-muted); }.dnd-level input { width: 44px; padding: 5px; text-align: center; }.dnd-collapse { width: 32px; height: 30px; border: 1px solid var(--content-interactive-border-strong); border-radius: 6px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }
+.dnd-combat-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }.dnd-combat-row label { display: flex; align-items: center; gap: 5px; color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-combat-row input { width: 48px; padding: 5px; font-weight: 700; text-align: center; }.dnd-combat-row label:nth-child(3) input { width: 44px; }.dnd-combat-row button { width: 22px; height: 22px; border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }.dnd-combat-row b { color: var(--content-interactive-text-muted); }.dnd-temp input { width: 42px; }
+.dnd-card-abilities { display: grid; grid-template-columns: repeat(auto-fit, minmax(88px, 1fr)); gap: 8px; }.dnd-sheet.is-compact .dnd-card-abilities { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }.dnd-card-abilities article { display: grid; gap: 5px; min-width: 0; padding: 7px; border: 1px solid var(--content-interactive-border); border-radius: 7px; background: var(--content-interactive-surface-subtle); }.dnd-card-abilities button { min-width: 0; padding: 5px 2px; border: 0; border-radius: 5px; color: inherit; background: transparent; cursor: pointer; }.dnd-card-abilities button:hover { background: var(--content-interactive-accent-soft); }.dnd-card-abilities span, .dnd-card-abilities strong, .dnd-card-abilities em { display: block; }.dnd-card-abilities span { color: var(--content-interactive-text-muted); font-size: 10px; }.dnd-card-abilities strong { font-size: 17px; line-height: 1.1; }.dnd-card-abilities em { color: var(--content-interactive-accent); font-size: 12px; font-style: normal; }.dnd-card-abilities > article > input { width: 100%; padding: 3px; text-align: center; }.dnd-card-abilities label { display: flex; gap: 3px; align-items: center; color: var(--content-interactive-text-muted); font-size: 10px; white-space: nowrap; }
+.dnd-full-content { margin-top: 16px; border-top: 1px solid var(--content-interactive-border); }.dnd-tabs { display: flex; gap: 5px; padding: 10px 0; overflow-x: auto; }.dnd-tabs button { padding: 6px 8px; border: 1px solid transparent; border-radius: 5px; color: var(--content-interactive-text-muted); background: transparent; white-space: nowrap; cursor: pointer; }.dnd-tabs button.active { border-color: var(--content-interactive-accent); color: var(--content-interactive-accent-strong); background: var(--content-interactive-accent-soft); }.dnd-tab-panel { min-height: 112px; }.dnd-tab-panel textarea { width: 100%; min-height: 96px; padding: 8px; resize: vertical; }.dnd-tab-panel > label { display: grid; gap: 4px; margin-bottom: 7px; color: var(--content-interactive-text-muted); font-size: 12px; }.dnd-tab-panel > label textarea { min-height: 48px; }.dnd-tab-panel p { color: var(--content-interactive-text-muted); font-size: 12px; }
+.dnd-list { display: grid; gap: 7px; }.dnd-list-row { display: grid; grid-template-columns: minmax(110px, 1.2fr) auto minmax(120px, 1fr) auto; align-items: center; gap: 6px; padding: 7px; border: 1px solid var(--content-interactive-border); border-radius: 6px; background: var(--content-interactive-surface-subtle); }.dnd-list-row input { min-width: 0; padding: 5px; font-size: 12px; }.dnd-list-row input[type="number"] { width: 48px; }.dnd-list-row label { display: flex; gap: 3px; align-items: center; color: var(--content-interactive-text-muted); font-size: 10px; white-space: nowrap; }.dnd-list-remove, .dnd-list-add { border: 1px solid var(--content-interactive-border-strong); border-radius: 5px; color: var(--content-interactive-accent-strong); background: transparent; cursor: pointer; }.dnd-list-remove { width: 25px; height: 25px; }.dnd-list-add { justify-self: start; padding: 6px 9px; }.dnd-list-add:hover, .dnd-list-remove:hover { border-color: var(--content-interactive-accent); background: var(--content-interactive-accent-soft); }
 /* Group colors */
-.group-color-1 { border-color: rgba(251,70,76,0.45); background: rgba(251,70,76,0.06); }
-.group-color-1 .group-label { color: #fb464c; }
-.group-color-2 { border-color: rgba(233,151,63,0.45); background: rgba(233,151,63,0.06); }
-.group-color-2 .group-label { color: #e9973f; }
-.group-color-3 { border-color: rgba(224,222,113,0.45); background: rgba(224,222,113,0.06); }
-.group-color-3 .group-label { color: #e0de71; }
-.group-color-4 { border-color: rgba(68,207,110,0.45); background: rgba(68,207,110,0.06); }
-.group-color-4 .group-label { color: #44cf6e; }
-.group-color-5 { border-color: rgba(83,223,221,0.45); background: rgba(83,223,221,0.06); }
-.group-color-5 .group-label { color: #53dfdd; }
-.group-color-6 { border-color: rgba(168,130,255,0.45); background: rgba(168,130,255,0.06); }
-.group-color-6 .group-label { color: #a882ff; }
+.group-color-1 { border-color: var(--content-canvas-group-1-border); background: var(--content-canvas-group-1-surface); }
+.group-color-1 .group-label { color: var(--content-canvas-group-1-label); }
+.group-color-2 { border-color: var(--content-canvas-group-2-border); background: var(--content-canvas-group-2-surface); }
+.group-color-2 .group-label { color: var(--content-canvas-group-2-label); }
+.group-color-3 { border-color: var(--content-canvas-group-3-border); background: var(--content-canvas-group-3-surface); }
+.group-color-3 .group-label { color: var(--content-canvas-group-3-label); }
+.group-color-4 { border-color: var(--content-canvas-group-4-border); background: var(--content-canvas-group-4-surface); }
+.group-color-4 .group-label { color: var(--content-canvas-group-4-label); }
+.group-color-5 { border-color: var(--content-canvas-group-5-border); background: var(--content-canvas-group-5-surface); }
+.group-color-5 .group-label { color: var(--content-canvas-group-5-label); }
+.group-color-6 { border-color: var(--content-canvas-group-6-border); background: var(--content-canvas-group-6-surface); }
+.group-color-6 .group-label { color: var(--content-canvas-group-6-label); }
 
 /* ===== Edges (SVG) ===== */
 .canvas-edges {
@@ -4268,23 +4747,23 @@ export default defineComponent({
 }
 .edge-line {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.25);
+  stroke: var(--content-canvas-edge);
   stroke-width: 2;
   pointer-events: none;
   transition: stroke 0.15s ease;
 }
 .edge-line.edge-selected {
-  stroke: rgba(124, 138, 255, 0.8);
+  stroke: var(--ui-focus);
   stroke-width: 2.5;
 }
 .edge-line.edge-temp {
-  stroke: rgba(124, 138, 255, 0.5);
+  stroke: color-mix(in srgb, var(--ui-focus) 50%, transparent);
   stroke-width: 2;
   stroke-dasharray: 6 4;
 }
 .edge-midpoint-conn {
-  fill: rgba(124, 138, 255, 0.5);
-  stroke: rgba(124, 138, 255, 0.8);
+  fill: color-mix(in srgb, var(--ui-focus) 50%, transparent);
+  stroke: var(--ui-focus);
   stroke-width: 1.5;
   cursor: crosshair;
   opacity: 0;
@@ -4295,12 +4774,12 @@ g:hover > .edge-midpoint-conn {
   opacity: 1;
 }
 .edge-label-bg {
-  fill: rgba(30, 30, 30, 0.85);
-  stroke: rgba(255, 255, 255, 0.12);
+  fill: var(--content-canvas-edge-label-surface);
+  stroke: var(--content-canvas-edge-label-border);
   stroke-width: 1;
 }
 .edge-label {
-  fill: rgba(255, 255, 255, 0.75);
+  fill: var(--content-canvas-edge-label-text);
   font-size: 12px;
   text-anchor: middle;
   dominant-baseline: auto;
@@ -4319,11 +4798,11 @@ g:hover > .edge-midpoint-conn {
 .edge-action-btn {
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  border: 1px solid var(--ui-border);
   border-radius: 6px;
-  background: rgba(30, 30, 30, 0.95);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -4332,13 +4811,13 @@ g:hover > .edge-midpoint-conn {
   transition: background 0.12s, color 0.12s;
 }
 .edge-action-btn:hover {
-  background: rgba(60, 60, 60, 0.95);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .edge-delete-btn:hover {
-  background: rgba(251, 70, 76, 0.3);
-  border-color: rgba(251, 70, 76, 0.5);
-  color: #fb464c;
+  background: var(--ui-danger-soft);
+  border-color: color-mix(in srgb, var(--ui-danger) 50%, transparent);
+  color: var(--ui-danger-foreground);
 }
 
 /* ===== Edge label editor (DOM overlay) ===== */
@@ -4350,25 +4829,25 @@ g:hover > .edge-midpoint-conn {
 .edge-label-input {
   width: 140px;
   padding: 4px 10px;
-  border: 1.5px solid rgba(124, 138, 255, 0.6);
+  border: 1.5px solid var(--ui-focus);
   border-radius: 6px;
-  background: rgba(30, 30, 30, 0.95);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(8px);
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--ui-text);
   font-size: 12px;
   text-align: center;
   outline: none;
 }
 .edge-label-input::placeholder {
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--ui-text-secondary);
 }
 
 
 /* ===== Selection box ===== */
 .selection-box {
   position: absolute;
-  border: 1.5px solid rgba(124, 138, 255, 0.6);
-  background: rgba(124, 138, 255, 0.08);
+  border: 1.5px solid var(--ui-focus);
+  background: color-mix(in srgb, var(--ui-focus) 8%, transparent);
   border-radius: 2px;
   pointer-events: none;
   z-index: 5;
@@ -4378,16 +4857,16 @@ g:hover > .edge-midpoint-conn {
 .context-menu {
   position: absolute;
   z-index: 200;
-  background: rgba(30, 30, 30, 0.97);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 6px;
   min-width: 140px;
   max-width: min(260px, calc(100vw - 24px));
   max-height: min(420px, calc(100dvh - 24px));
   overflow: auto;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--ui-shadow);
 }
 .ctx-colors {
   display: flex;
@@ -4395,13 +4874,13 @@ g:hover > .edge-midpoint-conn {
   flex-wrap: wrap;
   gap: 4px;
   padding: 4px 4px 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid var(--ui-border);
   margin-bottom: 4px;
 }
 .ctx-label {
   min-width: 28px;
   flex: 0 0 28px;
-  color: rgba(255, 255, 255, 0.48);
+  color: var(--ui-text-secondary);
   font-size: 10px;
   text-transform: uppercase;
 }
@@ -4415,7 +4894,7 @@ g:hover > .edge-midpoint-conn {
   transition: transform 0.1s;
 }
 .ctx-color-btn.active {
-  border-color: rgba(255, 255, 255, 0.72);
+  border-color: var(--ui-text);
 }
 .ctx-color-btn:hover { transform: scale(1.2); }
 .ctx-color-1 { background: #fb464c; }
@@ -4424,35 +4903,36 @@ g:hover > .edge-midpoint-conn {
 .ctx-color-4 { background: #44cf6e; }
 .ctx-color-5 { background: #53dfdd; }
 .ctx-color-6 { background: #a882ff; }
-.ctx-color-none { background: #444; font-size: 10px; color: #aaa; display: flex; align-items: center; justify-content: center; }
+.ctx-color-none { background: var(--ui-surface-subtle); font-size: 10px; color: var(--ui-text-secondary); display: flex; align-items: center; justify-content: center; }
 .ctx-item {
   display: block;
   width: 100%;
   padding: 6px 10px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   text-align: left;
   cursor: pointer;
   border-radius: 4px;
 }
-.ctx-item:hover { background: rgba(255, 255, 255, 0.08); }
-.ctx-item-danger:hover { background: rgba(251, 70, 76, 0.2); color: #fb464c; }
+.ctx-item:hover { background: var(--ui-surface-subtle); }
+.ctx-item-danger:hover { background: var(--ui-danger-soft); color: var(--ui-danger-foreground); }
 
 /* Arrowhead color */
-#arrowhead polygon {
-  fill: rgba(255, 255, 255, 0.25);
+#arrowhead polygon,
+#arrowhead-start polygon {
+  fill: var(--content-canvas-edge-arrow);
 }
 
 /* ===== Nodes ===== */
 .canvas-node {
   position: absolute;
-  background: #262626;
-  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  background: var(--content-canvas-node-surface);
+  border: 1.5px solid var(--content-canvas-node-border);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--content-canvas-node-shadow);
   transition: box-shadow 0.15s ease, left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
 }
 /* During local drag/resize the node must track the cursor 1:1 — no position/size easing.
@@ -4461,15 +4941,15 @@ g:hover > .edge-midpoint-conn {
   transition: box-shadow 0.15s ease;
 }
 .canvas-node:hover {
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
-  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: var(--content-canvas-node-shadow);
+  border-color: var(--content-canvas-node-border-hover);
 }
 .canvas-node.is-selected {
-  border-color: rgba(124, 138, 255, 0.6);
+  border-color: var(--content-canvas-selection);
 }
 .canvas-node.is-dragging {
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
-  border-color: rgba(124, 138, 255, 0.5);
+  box-shadow: var(--content-canvas-node-shadow);
+  border-color: var(--content-canvas-selection);
   z-index: 100;
   cursor: grabbing;
 }
@@ -4493,8 +4973,8 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(10, 10, 10, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
   font-size: 10px;
   pointer-events: none;
 }
@@ -4522,10 +5002,10 @@ g:hover > .edge-midpoint-conn {
   height: 100%;
   box-sizing: border-box;
   padding: 12px 16px;
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--content-canvas-editor-surface);
   border: none;
   outline: none;
-  color: rgba(255, 255, 255, 0.9);
+  color: var(--content-canvas-editor-text);
   font-family: "JetBrains Mono", "Fira Code", monospace;
   font-size: 13px;
   line-height: 1.6;
@@ -4533,36 +5013,133 @@ g:hover > .edge-midpoint-conn {
   display: block;
 }
 
-/* Double-tap is fine with a mouse but unreliable on a moving canvas. The
-   explicit action is shown for a selected text card on touch screens below. */
-.node-edit-trigger {
-  display: none;
-  position: absolute;
-  right: 12px;
-  bottom: 12px;
-  z-index: 18;
-  min-width: 58px;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid rgba(124, 138, 255, 0.8);
+/* Phone layout: full-screen text editor, opened from the bottom toolbar.
+   Sits above the canvas chrome (mode bar, toolbars) but below toasts.
+   QCanva Liquid Glass (same recipe as the D&D sheet): a dense frosted backdrop
+   the canvas only shows through as a blur, a glass header and a glass card
+   around the text. */
+.node-fullscreen-editor {
+  /* The shared glass recipe (--ui-glass-*, style.css); only the full-screen
+     backdrop - denser than any floating panel - and the button are its own. */
+  --nfe-backdrop: rgba(10, 14, 11, 0.86);
+  --nfe-glass-bg: var(--ui-glass-bg);
+  --nfe-glass-border: var(--ui-glass-border);
+  --nfe-glass-highlight: var(--ui-glass-highlight);
+  --nfe-glass-sheen: var(--ui-glass-sheen);
+  --nfe-glass-tint: var(--ui-glass-tint);
+  --nfe-glass-shadow: var(--ui-glass-shadow);
+  --nfe-button-bg: rgba(255, 255, 255, 0.06);
+  --nfe-focus-glow: var(--ui-glass-focus-glow);
+
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  background: var(--nfe-backdrop);
+  backdrop-filter: blur(calc(var(--ui-glass-blur) + 6px)) saturate(1.2);
+  -webkit-backdrop-filter: blur(calc(var(--ui-glass-blur) + 6px)) saturate(1.2);
+  color: var(--ui-text);
+}
+
+:root[data-theme='light'] .node-fullscreen-editor {
+  --nfe-backdrop: rgba(240, 246, 241, 0.88);
+  --nfe-button-bg: rgba(20, 91, 37, 0.06);
+}
+
+.node-fullscreen-editor-header {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-height: 56px;
+  padding: env(safe-area-inset-top, 0px) 12px 0;
+  border-bottom: 1px solid var(--nfe-glass-border);
+  background: var(--nfe-glass-tint), var(--nfe-glass-bg);
+  box-shadow: inset 0 -1px 0 var(--nfe-glass-highlight), var(--nfe-glass-shadow);
+}
+
+.node-fullscreen-editor-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--nfe-glass-border);
   border-radius: 999px;
-  background: rgba(20, 23, 38, 0.96);
-  color: #fff;
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
+  background: var(--nfe-button-bg);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight);
+  color: inherit;
   cursor: pointer;
   touch-action: manipulation;
+}
+
+.node-fullscreen-editor-back:active {
+  background: var(--nfe-focus-glow);
+}
+
+.node-fullscreen-editor-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Glass card around the text. The textarea itself is transparent - a
+   textarea cannot carry the ::before sheen. */
+.node-fullscreen-editor-card {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  margin: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--nfe-glass-border);
+  border-radius: 20px;
+  background: var(--nfe-glass-tint), var(--nfe-glass-bg);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight), var(--nfe-glass-shadow);
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.node-fullscreen-editor-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, var(--nfe-glass-sheen), transparent 42%);
+}
+
+.node-fullscreen-editor-card:focus-within {
+  border-color: var(--ui-focus);
+  box-shadow: inset 0 1px 0 var(--nfe-glass-highlight), 0 0 0 3px var(--nfe-focus-glow), var(--nfe-glass-shadow);
+}
+
+.node-editor.node-fullscreen-editor-input {
+  position: relative;
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  padding: 16px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 16px;
 }
 
 /* ===== Resize handles ===== */
 .resize-handle {
   position: absolute;
-  background: rgba(124, 138, 255, 0.8);
-  border: 1.5px solid rgba(124, 138, 255, 1);
+  background: var(--content-canvas-selection);
+  border: 1.5px solid var(--content-canvas-selection);
   border-radius: 2px;
   z-index: 10;
   touch-action: none;
+}
+.canvas-group .resize-handle {
+  background: var(--ui-focus);
+  border-color: var(--ui-focus);
 }
 /* Corners */
 .resize-handle-br { width: 14px; height: 14px; bottom: -7px; right: -7px; cursor: nwse-resize; border-radius: 50%; }
@@ -4618,8 +5195,8 @@ g:hover > .edge-midpoint-conn {
   width: 22px;
   height: 22px;
   border-radius: 50%;
-  background: rgba(124, 138, 255, 0.7);
-  border: 2px solid rgba(124, 138, 255, 1);
+  background: var(--content-canvas-selection);
+  border: 2px solid var(--content-canvas-selection);
   opacity: 0;
   transition: opacity 0.15s ease;
   cursor: crosshair;
@@ -4647,12 +5224,12 @@ g:hover > .edge-midpoint-conn {
 
 /* Node colors */
 /* Gradient fill (default) */
-.node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), #262626 60%); }
-.node-color-2 { border-color: rgba(233,151,63,0.6); background: linear-gradient(135deg, rgba(233,151,63,0.12), #262626 60%); }
-.node-color-3 { border-color: rgba(224,222,113,0.6); background: linear-gradient(135deg, rgba(224,222,113,0.12), #262626 60%); }
-.node-color-4 { border-color: rgba(68,207,110,0.6); background: linear-gradient(135deg, rgba(68,207,110,0.12), #262626 60%); }
-.node-color-5 { border-color: rgba(83,223,221,0.6); background: linear-gradient(135deg, rgba(83,223,221,0.12), #262626 60%); }
-.node-color-6 { border-color: rgba(168,130,255,0.6); background: linear-gradient(135deg, rgba(168,130,255,0.12), #262626 60%); }
+.node-color-1 { border-color: rgba(251,70,76,0.6); background: linear-gradient(135deg, rgba(251,70,76,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-2 { border-color: rgba(233,151,63,0.6); background: linear-gradient(135deg, rgba(233,151,63,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-3 { border-color: rgba(224,222,113,0.6); background: linear-gradient(135deg, rgba(224,222,113,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-4 { border-color: rgba(68,207,110,0.6); background: linear-gradient(135deg, rgba(68,207,110,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-5 { border-color: rgba(83,223,221,0.6); background: linear-gradient(135deg, rgba(83,223,221,0.12), var(--content-canvas-node-surface) 60%); }
+.node-color-6 { border-color: rgba(168,130,255,0.6); background: linear-gradient(135deg, rgba(168,130,255,0.12), var(--content-canvas-node-surface) 60%); }
 /* Solid fill */
 .node-color-1-solid { border-color: rgba(251,70,76,0.8); background: rgba(251,70,76,0.25); }
 .node-color-2-solid { border-color: rgba(233,151,63,0.8); background: rgba(233,151,63,0.25); }
@@ -4664,7 +5241,7 @@ g:hover > .edge-midpoint-conn {
 /* ===== Node content (markdown) ===== */
 .node-content {
   padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--content-canvas-node-text);
   font-size: 14px;
   line-height: 1.6;
   overflow-y: auto;
@@ -4676,19 +5253,20 @@ g:hover > .edge-midpoint-conn {
   font-size: 22px;
   margin: 0 0 8px 0;
   font-weight: 700;
-  color: #fff;
+  color: inherit;
 }
 .node-content h2 {
   font-size: 18px;
   margin: 0 0 6px 0;
   font-weight: 600;
-  color: #fff;
+  color: inherit;
 }
 .node-content h3 {
   font-size: 15px;
   margin: 0 0 4px 0;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
+  color: inherit;
+  opacity: 0.9;
 }
 .node-content p {
   margin: 0 0 8px 0;
@@ -4714,25 +5292,27 @@ g:hover > .edge-midpoint-conn {
   margin-bottom: 2px;
 }
 .node-content strong {
-  color: #fff;
+  color: inherit;
   font-weight: 600;
 }
 .node-content a {
-  color: #7c8aff;
+  color: var(--content-canvas-link);
   text-decoration: none;
 }
 .node-content a:hover {
   text-decoration: underline;
 }
 .node-content code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--content-canvas-code-bg);
+  color: var(--content-canvas-node-text);
   padding: 1px 5px;
   border-radius: 3px;
   font-size: 13px;
   font-family: "JetBrains Mono", "Fira Code", monospace;
 }
 .node-content pre {
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--content-canvas-code-bg);
+  color: var(--content-canvas-node-text);
   border-radius: 6px;
   padding: 10px 12px;
   overflow-x: auto;
@@ -4741,17 +5321,18 @@ g:hover > .edge-midpoint-conn {
 .node-content pre code {
   background: none;
   padding: 0;
+  color: inherit;
 }
 .node-content blockquote {
-  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  border-left: 3px solid var(--content-canvas-node-border);
   margin: 8px 0;
   padding: 4px 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--content-canvas-node-text-muted);
 }
 /* Callouts */
 .node-content .callout {
   border-left: 3px solid;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--content-canvas-code-bg);
   border-radius: 4px;
   margin: 8px 0;
   padding: 8px 12px;
@@ -4762,7 +5343,7 @@ g:hover > .edge-midpoint-conn {
   margin-bottom: 4px;
 }
 .node-content .callout-body {
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--content-canvas-callout-text);
   font-size: 13px;
 }
 .node-content .callout-body p { margin: 0; }
@@ -4774,17 +5355,17 @@ g:hover > .edge-midpoint-conn {
 }
 .node-content th,
 .node-content td {
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--content-canvas-node-border);
   padding: 6px 10px;
   text-align: left;
 }
 .node-content th {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--content-canvas-code-bg);
   font-weight: 600;
 }
 .node-content hr {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid var(--content-canvas-node-border);
   margin: 12px 0;
 }
 
@@ -4795,14 +5376,14 @@ g:hover > .edge-midpoint-conn {
 }
 .node-link-header {
   padding: 12px 16px;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .node-link-header a {
-  color: #7c8aff;
+  color: var(--content-canvas-link);
   text-decoration: none;
 }
 .node-link-header a:hover {
@@ -4816,18 +5397,37 @@ g:hover > .edge-midpoint-conn {
   left: 16px;
   width: 180px;
   height: 120px;
-  background: rgba(30, 30, 30, 0.85);
+  box-sizing: border-box;
+  max-width: calc(100% - 32px);
+  max-height: calc(100% - var(--canvas-topbar-height, 44px) - 32px);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   overflow: hidden;
   z-index: 10;
   padding: 6px;
 }
+.minimap.is-large {
+  width: 360px;
+  height: 240px;
+}
 .minimap svg {
   width: 100%;
   height: 100%;
   cursor: crosshair;
+}
+.minimap-node {
+  fill: var(--ui-minimap-node);
+}
+.minimap-node.is-group {
+  fill: var(--ui-minimap-group);
+}
+.minimap-viewport {
+  fill: var(--ui-minimap-viewport-fill);
+  stroke: var(--ui-minimap-viewport-stroke);
+  stroke-width: 2;
+  cursor: grab;
 }
 
 /* ===== Controls ===== */
@@ -4838,9 +5438,9 @@ g:hover > .edge-midpoint-conn {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: rgba(30, 30, 30, 0.9);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
   padding: 4px 8px;
   z-index: 10;
@@ -4854,11 +5454,11 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
   gap: 9px;
   padding: 10px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--ui-border);
   border-radius: 9px;
-  background: rgba(30, 30, 30, 0.94);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
-  color: #f5f7f5;
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+  color: var(--ui-text);
   font-size: 13px;
   transform: translateX(-50%);
   pointer-events: none;
@@ -4866,8 +5466,8 @@ g:hover > .edge-midpoint-conn {
 .image-upload-spinner {
   width: 14px;
   height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.28);
-  border-top-color: #6ee89d;
+  border: 2px solid var(--ui-border);
+  border-top-color: var(--ui-success);
   border-radius: 50%;
   animation: image-upload-spin .75s linear infinite;
 }
@@ -4877,7 +5477,7 @@ g:hover > .edge-midpoint-conn {
   height: 28px;
   border: none;
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
   font-size: 16px;
   cursor: pointer;
   border-radius: 4px;
@@ -4887,8 +5487,8 @@ g:hover > .edge-midpoint-conn {
   padding: 0;
 }
 .canvas-controls button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .canvas-controls button:disabled {
   opacity: 0.35;
@@ -4896,7 +5496,7 @@ g:hover > .edge-midpoint-conn {
 }
 .canvas-controls button:disabled:hover {
   background: transparent;
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--ui-text-secondary);
 }
 .ctrl-add-wrap {
   position: relative;
@@ -4904,8 +5504,8 @@ g:hover > .edge-midpoint-conn {
   align-items: center;
 }
 .ctrl-add-trigger.active {
-  background: rgba(255, 255, 255, 0.16);
-  color: #fff;
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
 }
 /* The toolbar sits at the bottom of the canvas, so the menu opens upward. */
 .ctrl-add-menu {
@@ -4914,11 +5514,11 @@ g:hover > .edge-midpoint-conn {
   right: 0;
   min-width: 190px;
   padding: 5px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
-  background: rgba(30, 30, 30, 0.97);
+  background: var(--ui-surface-elevated);
   backdrop-filter: blur(12px);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--ui-shadow);
   z-index: 40;
 }
 .canvas-controls .ctrl-add-menu-item {
@@ -4930,14 +5530,14 @@ g:hover > .edge-midpoint-conn {
   height: auto;
   padding: 8px 10px;
   border-radius: 6px;
-  color: rgba(255, 255, 255, 0.82);
+  color: var(--ui-text-secondary);
   font-size: 13px;
   text-align: left;
   white-space: nowrap;
 }
 .canvas-controls .ctrl-add-menu-item:hover {
-  background: rgba(255, 255, 255, 0.09);
-  color: #fff;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
 }
 .ctrl-add-menu-icon {
   display: inline-flex;
@@ -4950,12 +5550,12 @@ g:hover > .edge-midpoint-conn {
 .controls-divider {
   width: 1px;
   height: 18px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--ui-border);
   margin: 0 2px;
 }
 .zoom-level {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--ui-text-secondary);
   min-width: 40px;
   text-align: center;
 }
@@ -4968,19 +5568,27 @@ g:hover > .edge-midpoint-conn {
   background: transparent;
 }
 .node-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: color-mix(in srgb, var(--ui-text) 15%, transparent);
   border-radius: 2px;
 }
 
 /* ===== Remote cursors ===== */
+/* Moved by transform on its own compositor layer, never by left/top: the
+   cursor lives inside .canvas-world, and a left/top change there repainted
+   the layer holding the canvas's images on every cursor move of every
+   collaborator (measured: 54 repaints of that layer for one cursor sweep) -
+   with many large images that re-raster is what made them blink. */
 .remote-cursor {
   position: absolute;
+  left: 0;
+  top: 0;
   pointer-events: none;
   z-index: 100;
-  transition: left 0.1s linear, top 0.1s linear;
+  will-change: transform;
+  transition: transform 0.1s linear;
 }
 .remote-cursor svg {
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.5));
+  filter: drop-shadow(0 1px 2px var(--ui-overlay));
 }
 .remote-cursor-name {
   position: absolute;
@@ -4996,12 +5604,6 @@ g:hover > .edge-midpoint-conn {
 }
 
 @media (max-width: 640px) {
-  .node-edit-trigger {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
   .canvas-viewport {
     touch-action: none;
   }
@@ -5039,8 +5641,10 @@ g:hover > .edge-midpoint-conn {
   }
 
   .minimap {
-    left: 8px;
-    bottom: calc(var(--canvas-toolbar-height, 0px) + 12px + env(safe-area-inset-bottom));
+    left: auto;
+    right: 8px;
+    bottom: auto;
+    top: calc(var(--canvas-topbar-height, 52px) + 8px);
     width: 132px;
     height: 88px;
   }
@@ -5083,8 +5687,8 @@ g:hover > .edge-midpoint-conn {
 .canvas-node.is-flash,
 .canvas-group.is-flash { animation: node-flash 1.4s ease; }
 @keyframes node-flash {
-  0%, 100% { box-shadow: 0 2px 12px rgba(0,0,0,0.4); }
-  30% { box-shadow: 0 0 0 3px #4dabf7, 0 0 18px 4px rgba(77,171,247,0.7); }
+  0%, 100% { box-shadow: var(--ui-shadow); }
+  30% { box-shadow: 0 0 0 3px var(--ui-focus), 0 0 18px 4px color-mix(in srgb, var(--ui-focus) 70%, transparent); }
 }
 
 /* Hidden object dim — owner-only; non-owners don't render hidden objects at all */
@@ -5101,8 +5705,8 @@ g:hover > .edge-midpoint-conn {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #888;
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.3);
+  background: var(--ui-text-muted);
+  box-shadow: 0 0 0 2px var(--ui-surface-elevated);
   z-index: 30;
 }
 </style>

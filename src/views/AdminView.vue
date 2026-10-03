@@ -4,6 +4,7 @@
       <h1>Admin — Users</h1>
       <div class="dash-actions">
         <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Back to Dashboard</router-link>
+        <AccountMenu />
       </div>
     </header>
 
@@ -96,6 +97,7 @@
 import { defineComponent, ref, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
+import AccountMenu from '../components/AccountMenu.vue';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 function getToken() { return localStorage.getItem('token'); }
@@ -115,6 +117,7 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
 }
 
 export default defineComponent({
+  components: { AccountMenu },
   setup() {
     const { show: showToast } = useToast();
     const users = ref<any[]>([]);

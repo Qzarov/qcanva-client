@@ -1,5 +1,6 @@
 <template>
   <div class="auth-page">
+    <ThemeMenu class="public-theme-control" />
     <div class="auth-card">
       <h1>Canvas<span class="brand">.</span></h1>
       <form @submit.prevent="onSubmit">
@@ -19,8 +20,10 @@
 import { defineComponent, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { auth, setToken } from '../api/client';
+import ThemeMenu from '../components/ThemeMenu.vue';
 
 export default defineComponent({
+  components: { ThemeMenu },
   setup() {
     const router = useRouter();
     const name = ref('');
@@ -47,3 +50,7 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.public-theme-control { position: fixed; z-index: 20; top: 20px; right: 20px; }
+</style>

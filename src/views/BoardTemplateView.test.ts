@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount } from '@vue/test-utils';
-import { computed, ref } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { interactiveTemplates } from '../api/client';
+import { useI18n } from '../composables/useI18n';
 import BoardTemplateView from './BoardTemplateView.vue';
 
 const connect = vi.fn();
@@ -18,15 +19,23 @@ const socketState = {
   pendingCount: ref(0),
   syncStatus: ref<any>('idle'),
 };
-const routeState = vi.hoisted(() => ({ params: null as { id: string } | null }));
+const routeState = vi.hoisted(() => ({
+  params: null as { id: string } | null,
+  query: {} as Record<string, unknown>,
+}));
 
-vi.mock('vue-router', async () => {
-  const vue = await vi.importActual<typeof import('vue')>('vue');
+vi.mock('vue-router', () => {
   return {
-    useRoute: () => {
-      routeState.params = vue.reactive({ id: 'template-1' });
-      return { params: routeState.params };
-    },
+    // Stable WITHIN a test, fresh BETWEEN tests — the way the real `useRoute`
+    // behaves. This used to build a new reactive `params` on every call, so it
+    // only worked while something happened to call `useRoute()` exactly once:
+    // a second caller replaced the object the component was already watching,
+    // and a later `routeState.params.id = ...` mutated an object nobody was
+    // subscribed to. Sharing one object forever is the opposite trap, because
+    // these tests never unmount: components from earlier tests keep watching
+    // it and answer a route change by consuming this test's queued mock
+    // values. `beforeEach` therefore hands out a fresh object per test.
+    useRoute: () => ({ params: routeState.params, query: routeState.query }),
   };
 });
 
@@ -52,6 +61,10 @@ vi.mock('../composables/useBoardSocket', () => ({
   }),
 }));
 
+vi.mock('../components/AccountMenu.vue', () => ({
+  default: { name: 'AccountMenu', template: '<div />' },
+}));
+
 describe('BoardTemplateView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -61,7 +74,69 @@ describe('BoardTemplateView', () => {
     socketState.revision.value = 0;
     socketState.pendingCount.value = 0;
     socketState.syncStatus.value = 'idle';
+    routeState.query = {};
+    routeState.params = reactive({ id: 'template-1' });
     vi.mocked(interactiveTemplates.permissions).mockResolvedValue([]);
+  });
+
+  it('returns to the originating canvas from the Back button', async () => {
+    routeState.query = { fromCanvas: 'canvas-77' };
+    vi.mocked(interactiveTemplates.get).mockResolvedValue({
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+    });
+    requestSnapshot.mockResolvedValue(null);
+
+    const wrapper = mount(BoardTemplateView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+
+    const back = wrapper.getComponent({ name: 'RouterLink' });
+    expect(back.props('to')).toBe('/canvas/canvas-77');
+    // The label follows the chosen locale. It used to be a hardcoded Russian
+    // string for every user, which is what these assertions were pinning.
+    const { t, setLocale } = useI18n();
+    expect(back.text()).toBe(`← ${t('backToCanvas')}`);
+    setLocale('ru');
+    await flushPromises();
+    expect(back.text()).toBe('← Назад к канвасу');
+    setLocale('en');
+    await flushPromises();
+    expect(back.text()).toBe('← Back to canvas');
+  });
+
+  it('returns to the dashboard Recent view from the Back button, regardless of the template\'s own folder', async () => {
+    vi.mocked(interactiveTemplates.get).mockResolvedValue({
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', folderId: 'folder-4', data: {}, createdAt: '', updatedAt: '',
+    });
+    requestSnapshot.mockResolvedValue(null);
+
+    const wrapper = mount(BoardTemplateView, {
+      global: {
+        stubs: {
+          RouterLink: {
+            name: 'RouterLink',
+            props: ['to'],
+            template: '<a><slot /></a>',
+          },
+        },
+      },
+    });
+    await flushPromises();
+
+    const back = wrapper.getComponent({ name: 'RouterLink' });
+    expect(back.props('to')).toEqual({ name: 'dashboard' });
+    // Locale-following is proved in the test above; asserting through `t`
+    // here keeps this case from re-pinning one language.
+    expect(back.text()).toBe(`← ${useI18n().t('back')}`);
   });
 
   it('loads and connects the collaborative editor for a board template', async () => {

@@ -1,5 +1,6 @@
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
+import type {RulerActor,RulerState,RulerMeasurement,RulerSettings,RulerUpdate} from '../canvas/ruler';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
 const PENDING_OP_TIMEOUT_MS = 10000;
@@ -68,6 +69,11 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   let onAckCb: ((ack: { clientOpId: string; revision: number }) => void) | null = null;
   let onChatMessageCb: ((m: any) => void) | null = null;
   let onChatErrorCb: ((e: any) => void) | null = null;
+  let rulerStateCb:((state:RulerState)=>void)|undefined;
+  let rulerUpdateCb:((value:RulerMeasurement)=>void)|undefined;
+  let rulerClearCb:((value:{socketId:string;gestureId:number})=>void)|undefined;
+  let rulerSettingsCb:((value:{settings:RulerSettings;serverTime:number})=>void)|undefined;
+  let rulerErrorCb:((value:{reason:string})=>void)|undefined;
 
   const genClientOpId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -114,6 +120,11 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
       connected.value = false;
       clearPendingOps();
     });
+    s.on('ruler-state',(value:RulerState)=>rulerStateCb?.(value));
+    s.on('ruler-update',(value:RulerMeasurement)=>rulerUpdateCb?.(value));
+    s.on('ruler-clear',(value:{socketId:string;gestureId:number})=>rulerClearCb?.(value));
+    s.on('ruler-settings',(value:{settings:RulerSettings;serverTime:number})=>rulerSettingsCb?.(value));
+    s.on('ruler-error',(value:{reason:string})=>rulerErrorCb?.(value));
 
     s.on('canvas-room-state', (data: { revision: number }) => {
       currentRevision.value = data.revision ?? currentRevision.value;
@@ -272,6 +283,19 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     socket.value?.emit('cursor-move', { x, y });
   }
 
+  function sendRulerUpdate(update:RulerUpdate) {
+    if(!connected.value||!socket.value)return;
+    if(update.phase==='dragging')socket.value.volatile.emit('ruler-update',update);
+    else socket.value.emit('ruler-update',update);
+  }
+  function sendRulerClear(gestureId:number) {
+    if(connected.value)socket.value?.emit('ruler-clear',{gestureId});
+  }
+  function getRulerActor():RulerActor {
+    const self=onlineUsers.value.find(user=>user.socketId===socket.value?.id);
+    return {socketId:socket.value?.id??'local',userId:self?.id??'',userName:self?.name??'',color:self?.color??'#a882ff'};
+  }
+
   function onRemoteCanvasUpdate(cb: (data: string, revision: number) => void) {
     onRemoteUpdate = cb;
   }
@@ -323,6 +347,12 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   onUnmounted(disconnect);
 
   return {
+    sendRulerUpdate,sendRulerClear,getRulerActor,
+    onRulerState:(cb:typeof rulerStateCb)=>{rulerStateCb=cb;},
+    onRulerUpdate:(cb:typeof rulerUpdateCb)=>{rulerUpdateCb=cb;},
+    onRulerClear:(cb:typeof rulerClearCb)=>{rulerClearCb=cb;},
+    onRulerSettings:(cb:typeof rulerSettingsCb)=>{rulerSettingsCb=cb;},
+    onRulerError:(cb:typeof rulerErrorCb)=>{rulerErrorCb=cb;},
     connected,
     onlineUsers,
     remoteCursors,

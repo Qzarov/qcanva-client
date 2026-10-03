@@ -1,0 +1,324 @@
+diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
+index be31c0d..14a501d 100644
+--- a/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
++++ b/node_modules/@tiptap/extension-drag-handle/dist/index.cjs
+@@ -93,6 +93,35 @@ function removeNode(node) {
+     (_a = node.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(node);
+ }
+ 
++// PATCHED (QCanva): dragging a HEADING takes its whole SECTION - itself,
++// every following block, and any nested lower-level headings, up to (not
++// including) the next heading whose level is <= its own. Mirrors
++// src/text-documents/collapsible-heading.ts's `foldEnd`/`foldedBlocks`
++// EXACTLY - same rule, independent of collapsed state and of the Outline
++// panel's own sidebar-only fold - duplicated here rather than imported,
++// since a patch-package vendor file cannot reach into the app's own
++// source. Keep both in sync if this rule ever changes.
++function headingSectionEnd(doc, headingFrom, headingNode) {
++    const clampLevel = (value) => Math.min(6, Math.max(1, Math.round(Number(value) || 1)));
++    const level = clampLevel(headingNode.attrs.level);
++    const blocks = [];
++    doc.forEach((node, offset) => {
++        blocks.push({ node, from: offset, to: offset + node.nodeSize });
++    });
++    const index = blocks.findIndex(block => block.from === headingFrom);
++    if (index === -1) {
++        return headingFrom + headingNode.nodeSize;
++    }
++    let end = blocks[index].to;
++    for (let i = index + 1; i < blocks.length; i += 1) {
++        const candidate = blocks[i];
++        if (candidate.node.type.name === 'heading' && clampLevel(candidate.node.attrs.level) <= level) {
++            break;
++        }
++        end = candidate.to;
++    }
++    return end;
++}
+ function getDragHandleRanges(event, editor) {
+     const { doc } = editor.view.state;
+     const result = findElementNextToCoords({
+@@ -114,7 +143,19 @@ function getDragHandleRanges(event, editor) {
+         return [];
+     }
+     const $from = doc.resolve(result.pos);
+-    const $to = doc.resolve(result.pos + 1);
++    // PATCHED (QCanva): everything except a heading keeps the original
++    // single-block range ($from to $from + 1, normalized up to the whole
++    // top-level block by getSelectionRanges' own depth-0 NodeRange). A
++    // heading extends `$to` to headingSectionEnd instead.
++    let toPos = result.pos + 1;
++    if ($from.depth >= 1) {
++        const topLevelFrom = $from.before(1);
++        const topLevelNode = doc.nodeAt(topLevelFrom);
++        if (topLevelNode && topLevelNode.type.name === 'heading') {
++            toPos = headingSectionEnd(doc, topLevelFrom, topLevelNode);
++        }
++    }
++    const $to = doc.resolve(toPos);
+     return extensionNodeRange.getSelectionRanges($from, $to, 0);
+ }
+ function dragHandler(event, editor) {
+@@ -218,6 +259,20 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+     let currentNode = null;
+     let currentNodePos = -1;
+     let currentNodeRelPos;
++    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
++    // handle visible a little longer than an instant mouseleave would.
++    // 350ms (this constant's original value) still felt too eager in
++    // practice; 800ms is the "comfortable, not sluggish" middle of the
++    // 700-900ms range asked for after living with the shorter one.
++    // TODO: neither DragHandleOptions (drag-handle.ts) nor
++    // DragHandlePluginProps (drag-handle-plugin.ts) expose a hide-delay
++    // config, and tippyOptions.delay is a no-op here since the popup is
++    // created with trigger: 'manual' (tippy's own delay only applies to
++    // trigger-driven show/hide). Re-check on every @tiptap/extension-drag-handle
++    // upgrade whether a public option has been added upstream that could
++    // replace this patch.
++    let hideTimeoutId = null;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
+     element.addEventListener('dragstart', e => {
+         // Push this to the end of the event cue
+         // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
+@@ -378,6 +433,14 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 // TODO: Kills even on hot reload
+                 destroy() {
+                     popup === null || popup === void 0 ? void 0 : popup.destroy();
++                    // See index.js for why this reset is required.
++                    popup = null;
++                    // A pending delayed hide (see mouseleave below) firing after the
++                    // view is gone would touch a destroyed popup/editor.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     if (element) {
+                         removeNode(wrapper);
+                     }
+@@ -388,7 +451,16 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+             handleDOMEvents: {
+                 keydown(view) {
+                     if (popup && popup.state.isVisible && view.hasFocus()) {
++                        // Deliberately immediate - see index.js for why.
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                            hideTimeoutId = null;
++                        }
+                         popup.hide();
++                        // See index.js for why this reset is required.
++                        currentNode = null;
++                        currentNodePos = -1;
++                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
+                         return false;
+                     }
+                     return false;
+@@ -398,16 +470,30 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                     if (locked) {
+                         return false;
+                     }
+-                    // If e.target is not inside the wrapper, hide.
++                    // If e.target is not inside the wrapper, hide - after a short
++                    // grace period. See index.js for the full reasoning.
+                     if (e.target && !wrapper.contains(e.relatedTarget)) {
+-                        popup === null || popup === void 0 ? void 0 : popup.hide();
+-                        currentNode = null;
+-                        currentNodePos = -1;
+-                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                        }
++                        hideTimeoutId = setTimeout(() => {
++                            hideTimeoutId = null;
++                            popup === null || popup === void 0 ? void 0 : popup.hide();
++                            currentNode = null;
++                            currentNodePos = -1;
++                            onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        }, DRAG_HANDLE_HIDE_DELAY_MS);
+                     }
+                     return false;
+                 },
+                 mousemove(view, e) {
++                    // A pending delayed hide is stale the instant the mouse is
++                    // back inside the editor - see index.js for the full
++                    // reasoning.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     // Do not continue if popup is not initialized or open.
+                     if (!element || !popup || locked) {
+                         return false;
+diff --git a/node_modules/@tiptap/extension-drag-handle/dist/index.js b/node_modules/@tiptap/extension-drag-handle/dist/index.js
+index 2fdae1d..3bc18b7 100644
+--- a/node_modules/@tiptap/extension-drag-handle/dist/index.js
++++ b/node_modules/@tiptap/extension-drag-handle/dist/index.js
+@@ -85,6 +85,35 @@ function removeNode(node) {
+     (_a = node.parentNode) === null || _a === void 0 ? void 0 : _a.removeChild(node);
+ }
+ 
++// PATCHED (QCanva): dragging a HEADING takes its whole SECTION - itself,
++// every following block, and any nested lower-level headings, up to (not
++// including) the next heading whose level is <= its own. Mirrors
++// src/text-documents/collapsible-heading.ts's `foldEnd`/`foldedBlocks`
++// EXACTLY - same rule, independent of collapsed state and of the Outline
++// panel's own sidebar-only fold - duplicated here rather than imported,
++// since a patch-package vendor file cannot reach into the app's own
++// source. Keep both in sync if this rule ever changes.
++function headingSectionEnd(doc, headingFrom, headingNode) {
++    const clampLevel = (value) => Math.min(6, Math.max(1, Math.round(Number(value) || 1)));
++    const level = clampLevel(headingNode.attrs.level);
++    const blocks = [];
++    doc.forEach((node, offset) => {
++        blocks.push({ node, from: offset, to: offset + node.nodeSize });
++    });
++    const index = blocks.findIndex(block => block.from === headingFrom);
++    if (index === -1) {
++        return headingFrom + headingNode.nodeSize;
++    }
++    let end = blocks[index].to;
++    for (let i = index + 1; i < blocks.length; i += 1) {
++        const candidate = blocks[i];
++        if (candidate.node.type.name === 'heading' && clampLevel(candidate.node.attrs.level) <= level) {
++            break;
++        }
++        end = candidate.to;
++    }
++    return end;
++}
+ function getDragHandleRanges(event, editor) {
+     const { doc } = editor.view.state;
+     const result = findElementNextToCoords({
+@@ -106,7 +135,19 @@ function getDragHandleRanges(event, editor) {
+         return [];
+     }
+     const $from = doc.resolve(result.pos);
+-    const $to = doc.resolve(result.pos + 1);
++    // PATCHED (QCanva): everything except a heading keeps the original
++    // single-block range ($from to $from + 1, normalized up to the whole
++    // top-level block by getSelectionRanges' own depth-0 NodeRange). A
++    // heading extends `$to` to headingSectionEnd instead.
++    let toPos = result.pos + 1;
++    if ($from.depth >= 1) {
++        const topLevelFrom = $from.before(1);
++        const topLevelNode = doc.nodeAt(topLevelFrom);
++        if (topLevelNode && topLevelNode.type.name === 'heading') {
++            toPos = headingSectionEnd(doc, topLevelFrom, topLevelNode);
++        }
++    }
++    const $to = doc.resolve(toPos);
+     return getSelectionRanges($from, $to, 0);
+ }
+ function dragHandler(event, editor) {
+@@ -210,6 +251,20 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+     let currentNode = null;
+     let currentNodePos = -1;
+     let currentNodeRelPos;
++    // See mouseleave/mousemove/keydown/destroy below - patched in to keep the
++    // handle visible a little longer than an instant mouseleave would.
++    // 350ms (this constant's original value) still felt too eager in
++    // practice; 800ms is the "comfortable, not sluggish" middle of the
++    // 700-900ms range asked for after living with the shorter one.
++    // TODO: neither DragHandleOptions (drag-handle.ts) nor
++    // DragHandlePluginProps (drag-handle-plugin.ts) expose a hide-delay
++    // config, and tippyOptions.delay is a no-op here since the popup is
++    // created with trigger: 'manual' (tippy's own delay only applies to
++    // trigger-driven show/hide). Re-check on every @tiptap/extension-drag-handle
++    // upgrade whether a public option has been added upstream that could
++    // replace this patch.
++    let hideTimeoutId = null;
++    const DRAG_HANDLE_HIDE_DELAY_MS = 800;
+     element.addEventListener('dragstart', e => {
+         // Push this to the end of the event cue
+         // Fixes bug where incorrect drag pos is returned if drag handle has position: absolute
+@@ -370,6 +425,18 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                 // TODO: Kills even on hot reload
+                 destroy() {
+                     popup === null || popup === void 0 ? void 0 : popup.destroy();
++                    // Without this, a later view() re-mount on the same plugin instance
++                    // sees a non-null `popup` still pointing at the just-destroyed tippy
++                    // instance, so `if (!popup)` in update() never creates a fresh one -
++                    // every setProps()/show() call after that silently no-ops on the dead
++                    // instance, and the drag handle freezes wherever it last rendered.
++                    popup = null;
++                    // A pending delayed hide (see mouseleave below) firing after the
++                    // view is gone would touch a destroyed popup/editor.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     if (element) {
+                         removeNode(wrapper);
+                     }
+@@ -380,7 +447,24 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+             handleDOMEvents: {
+                 keydown(view) {
+                     if (popup && popup.state.isVisible && view.hasFocus()) {
++                        // Deliberately immediate, not the delayed hide mouseleave
++                        // uses below: starting to type is a definite signal, not
++                        // an ambient "mouse is somewhere near the edge" one, and
++                        // a stale pending hide must not fire later and null out
++                        // onNodeChange again after this one already did.
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                            hideTimeoutId = null;
++                        }
+                         popup.hide();
++                        // Mirror mouseleave/hideDragHandle: without resetting
++                        // these, mousemove's `outerNode !== currentNode` guard
++                        // never fires again for the same still-hovered block,
++                        // so the handle stays hidden until the mouse reaches a
++                        // genuinely different node.
++                        currentNode = null;
++                        currentNodePos = -1;
++                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
+                         return false;
+                     }
+                     return false;
+@@ -390,16 +474,42 @@ const DragHandlePlugin = ({ pluginKey = dragHandlePluginDefaultKey, element, edi
+                     if (locked) {
+                         return false;
+                     }
+-                    // If e.target is not inside the wrapper, hide.
++                    // If e.target is not inside the wrapper, hide - but not
++                    // instantly: the handle floats to the left of the actual
++                    // text content, outside the editor's own DOM bounding box,
++                    // so moving the mouse FROM the text TOWARD the handle itself
++                    // crosses this "leave" trigger before mousemove ever reports
++                    // reaching the handle - hiding immediately made the handle
++                    // disappear the moment someone tried to grab it. A short
++                    // grace period (cleared by mousemove below the instant the
++                    // mouse re-enters the editor, over the handle or not) covers
++                    // exactly that gap without meaningfully delaying a hide the
++                    // mouse actually left for good.
+                     if (e.target && !wrapper.contains(e.relatedTarget)) {
+-                        popup === null || popup === void 0 ? void 0 : popup.hide();
+-                        currentNode = null;
+-                        currentNodePos = -1;
+-                        onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        if (hideTimeoutId) {
++                            clearTimeout(hideTimeoutId);
++                        }
++                        hideTimeoutId = setTimeout(() => {
++                            hideTimeoutId = null;
++                            popup === null || popup === void 0 ? void 0 : popup.hide();
++                            currentNode = null;
++                            currentNodePos = -1;
++                            onNodeChange === null || onNodeChange === void 0 ? void 0 : onNodeChange({ editor, node: null, pos: -1 });
++                        }, DRAG_HANDLE_HIDE_DELAY_MS);
+                     }
+                     return false;
+                 },
+                 mousemove(view, e) {
++                    // A pending delayed hide from a moment-ago mouseleave is
++                    // stale the instant the mouse is back inside the editor,
++                    // over the handle's own gap or not - cancel it here rather
++                    // than only in the `outerNode !== currentNode` branch below,
++                    // so lingering over the SAME still-hovered block after a
++                    // brief mouseleave does not still hide out from under it.
++                    if (hideTimeoutId) {
++                        clearTimeout(hideTimeoutId);
++                        hideTimeoutId = null;
++                    }
+                     // Do not continue if popup is not initialized or open.
+                     if (!element || !popup || locked) {
+                         return false;

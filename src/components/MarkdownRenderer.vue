@@ -29,8 +29,9 @@ export default defineComponent({
 <style scoped>
 .markdown-container {
   padding: 10px;
-  background: #f4f4f4;
+  background: var(--ui-surface-subtle);
   border-radius: 8px;
-  font-family: "Arial", sans-serif;
+  color: var(--ui-text);
+  font-family: inherit;
 }
 </style>

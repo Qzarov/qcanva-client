@@ -1,5 +1,9 @@
 # QCanva: подготовка релиза в Google Play
 
+Сборка `.aab`/`.apk` в CI запускается пушем тега `v*` — см.
+[`docs/release-tagging.md`](./release-tagging.md). Этот файл — про то, что
+делать с уже собранным бандлом дальше, в Play Console.
+
 ## Техническая конфигурация
 
 - application id: `pro.qzarov.qcanva`

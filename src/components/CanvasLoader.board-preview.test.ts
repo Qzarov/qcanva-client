@@ -1,15 +1,25 @@
 // @vitest-environment jsdom
 
 import { flushPromises, mount } from '@vue/test-utils';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import CanvasLoader from './CanvasLoader.vue';
 
-vi.mock('../api/client', () => ({ uploadImage: vi.fn() }));
+const snapshotMock = vi.hoisted(() => vi.fn());
+
+vi.mock('../api/client', () => ({
+  uploadImage: vi.fn(),
+  interactiveTemplates: { snapshot: snapshotMock },
+}));
 
 const VIEWPORT = 1000;
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => VIEWPORT });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => VIEWPORT });
+});
+
+beforeEach(() => {
+  snapshotMock.mockReset();
+  snapshotMock.mockRejectedValue(new Error('board unavailable'));
 });
 
 function touchEvent(type: string, target: Element, points: Array<{ x: number; y: number }>) {
@@ -46,6 +56,26 @@ function mountPreviewCanvas() {
 }
 
 describe('CanvasLoader board preview gestures', () => {
+  it('renders the real board preview component instead of an unresolved custom element', async () => {
+    const wrapper = mount(CanvasLoader, {
+      props: {
+        initialData: {
+          nodes: [{
+            id: 'preview', type: 'template', templateId: 'trello-board-preview',
+            templateData: { boardId: 'board-1' }, x: 0, y: 0, width: 720, height: 380,
+          }],
+          edges: [],
+        },
+        readonly: false,
+      },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('boardpreview').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="board-preview"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Доска недоступна');
+  });
+
   it('opens a board after an ordinary mouse click but not after a meaningful drag', async () => {
     const wrapper = mountPreviewCanvas();
     await flushPromises();

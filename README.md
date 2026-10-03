@@ -54,6 +54,37 @@ npm run dev
 npm run build
 ```
 
+## Production deploy
+
+На сервере сайт лежит в `/var/www/qcanva.qzarov.pro/` (оба домена,
+`qcanva.qzarov.pro` и `canvas.qzarov.pro`, отдаются из него):
+
+```text
+/var/www/qcanva.qzarov.pro/
+├── front/
+│   ├── repo/            # git-копия этого репозитория (ветка dev)
+│   ├── releases/        # собранные релизы
+│   ├── dist -> releases/<текущий>        # отсюда отдаёт nginx
+│   └── dist.previous -> releases/<прошлый>
+└── back/                # canvas-server-back (pm2-процесс canvas-back)
+```
+
+Запускайте из `front/repo`:
+
+```bash
+cd /var/www/qcanva.qzarov.pro/front/repo
+bash scripts/deploy-production.sh
+```
+
+Скрипт обновляет `dev`, сверяет схему документа с бэкендом (`../../back`,
+см. `scripts/check-schema-contract.sh`), запускает тесты и сборку, затем
+атомарно переключает `front/dist` на новый release. Хранятся только активная
+и одна предыдущая сборки. Для отката:
+
+```bash
+bash scripts/deploy-production.sh rollback
+```
+
 ## Android
 
 Android-приложение собрано на Capacitor и использует тот же Vue-код, что и веб-версия. Для синхронизации веб-ресурсов с нативным проектом:
@@ -64,6 +95,14 @@ npm run android:open
 ```
 
 В Android Studio выберите устройство или эмулятор и запустите `app`. Для debug APK можно выполнить `npm run android:build:debug`; он будет лежать в `android/app/build/outputs/apk/debug/`. Нужны Android Studio (Android SDK) и JDK 21. Перед каждым нативным релизом запускайте `npm run android:sync`: production API уже задан как `https://canvas.qzarov.pro/api` в `.env.production`.
+
+## Лицензия
+
+Copyright (C) 2025–2026 Yaroslav Paroshin (Qzarov).
+
+QCanva client распространяется под лицензией **GNU Affero General Public License v3.0** (`AGPL-3.0-only`), полный текст — в файле [`LICENSE`](LICENSE).
+
+Коротко: код можно свободно использовать, изучать, изменять и распространять. Если вы запускаете изменённую версию как сетевой сервис (сайт, SaaS), вы обязаны предоставить её пользователям исходный код своих изменений на тех же условиях.
 
 ## Changelog
 

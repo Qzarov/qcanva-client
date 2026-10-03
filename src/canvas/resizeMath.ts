@@ -1,7 +1,7 @@
 // Pure geometry for node resizing — shared by mouse and touch resize paths,
 // and unit-testable in isolation from the canvas component.
 
-export const MIN_NODE_SIZE = 60;
+export const MIN_NODE_SIZE = 24;
 export const GRID_SIZE = 24;
 
 /** Snap a value to the canvas grid. */

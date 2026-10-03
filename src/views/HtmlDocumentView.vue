@@ -1,73 +1,42 @@
 <template>
   <div class="html-editor-page">
     <div v-if="loading" class="canvas-loading">Loading document...</div>
-    <div v-else-if="accessDenied" class="access-gate">
-      <div class="access-gate-card">
-        <div class="access-gate-icon">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="11" width="18" height="11" rx="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-        </div>
-        <h2 class="access-gate-title">Private document</h2>
-        <p class="access-gate-sub">You need permission to view this document.</p>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Have a password?</div>
-          <form class="access-gate-form" @submit.prevent="loginWithHtmlPassword">
-            <input v-model="resourcePassword" type="password" placeholder="Enter password" class="access-gate-input" />
-            <button class="access-gate-btn access-gate-btn-primary" :disabled="checkingResourcePassword || !resourcePassword">
-              {{ checkingResourcePassword ? 'Checking…' : 'Open' }}
-            </button>
-          </form>
-        </div>
-
-        <div class="access-gate-divider"><span>or</span></div>
-
-        <div class="access-gate-section">
-          <div class="access-gate-label">Request access from the owner</div>
-          <div class="access-gate-request-row">
-            <select v-model="requestedRole" class="access-gate-select">
-              <option value="read">View only</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button class="access-gate-btn access-gate-btn-secondary" :disabled="requestingAccess || accessRequestSent" @click="requestHtmlAccess">
-              {{ accessRequestSent ? '✓ Request sent' : 'Send request' }}
-            </button>
-          </div>
-        </div>
-
-        <router-link :to="backTarget.to" class="access-gate-back">{{ backTarget.label }}</router-link>
-      </div>
-    </div>
+    <AccessGate
+      v-else-if="accessDenied"
+      resource-type="html-document"
+      :password-access-enabled="gatePasswordAccessEnabled"
+      :checking-password="checkingResourcePassword"
+      :requesting-access="requestingAccess"
+      :access-request-sent="accessRequestSent"
+      @submit-password="loginWithHtmlPassword"
+      @request-access="requestHtmlAccess"
+    />
     <template v-else>
     <header class="html-editor-bar">
-      <router-link :to="backTarget.to" class="btn-ghost">{{ backTarget.label }}</router-link>
+      <BackButton :to="backTarget.to" :label="backTarget.label" />
       <input v-if="canEditContent" v-model="title" class="html-title-input" />
       <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
-      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">Access</button>
+      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">{{ t('access') }}</button>
       <div class="html-mode-tabs">
-        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">Preview</button>
-        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">Source</button>
+        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">{{ t('previewTab') }}</button>
+        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">{{ t('sourceTab') }}</button>
       </div>
       <div class="html-export-wrap html-desktop-action">
-        <button class="btn-ghost" @click.stop="showExportMenu = !showExportMenu">Download</button>
+        <button class="btn-ghost" @click.stop="showExportMenu = !showExportMenu">{{ t('downloadBtn') }}</button>
         <div v-if="showExportMenu" class="mobile-action-popover html-export-menu" @click.stop>
-          <button class="card-menu-item" @click="downloadDocument(); showExportMenu = false">Export HTML</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">Export PDF</button>
+          <button class="card-menu-item" @click="downloadDocument(); showExportMenu = false">{{ t('exportHtml') }}</button>
+          <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">{{ t('exportPdf') }}</button>
         </div>
       </div>
-      <button class="btn-ghost html-desktop-action" @click="toggleHistory">History</button>
+      <button class="btn-ghost html-desktop-action" @click="toggleHistory">{{ t('history') }}</button>
       <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
-        <button class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" @click="showSyncEvents = !showSyncEvents">
-          {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
-        </button>
+        <button type="button" class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" :title="htmlSyncTitle" @click="showSyncEvents = !showSyncEvents">{{ htmlSyncStatus.label }}</button>
         <div v-if="showSyncEvents" class="html-sync-popover">
           <div class="html-sync-head">
-            <strong>Sync</strong>
+            <strong>{{ t('syncPopoverTitle') }}</strong>
             <span>r{{ revision }}</span>
           </div>
-          <div v-if="syncEvents.length === 0" class="html-sync-empty">No local sync events yet</div>
+          <div v-if="syncEvents.length === 0" class="html-sync-empty">{{ t('noLocalSyncEventsYet') }}</div>
           <div v-for="event in syncEvents" :key="event.id" class="html-sync-event" :class="'html-sync-event-' + event.status">
             <div>
               <strong>{{ event.label }}</strong>
@@ -78,34 +47,43 @@
         </div>
       </div>
       <div class="html-mobile-actions">
-        <button class="btn-ghost html-actions-trigger" aria-label="Document actions" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
+        <button class="btn-ghost html-actions-trigger" :aria-label="t('documentActionsAria')" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
         <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
-          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">Preview</button>
-          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">Source</button>
-          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">Access</button>
-          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">Export HTML</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">Export PDF</button>
-          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">History</button>
+          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">{{ t('previewTab') }}</button>
+          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">{{ t('sourceTab') }}</button>
+          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">{{ t('access') }}</button>
+          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">{{ t('exportHtml') }}</button>
+          <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">{{ t('exportPdf') }}</button>
+          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">{{ t('history') }}</button>
           <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
-            {{ htmlSyncStatus.label }}<template v-if="pendingOpsCount"> · {{ pendingOpsCount }}</template>
+            {{ htmlSyncStatus.label }}
           </button>
         </div>
       </div>
       <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
-        {{ saving ? 'Saving...' : 'Save' }}
+        {{ saving ? t('savingEllipsis') : t('save') }}
       </button>
-      <router-link v-if="currentUser" :to="{ name: 'dashboard' }" class="current-user-badge html-user-badge" :title="currentUser.email || currentUser.name"><span class="current-user-icon">{{ userLabel.slice(0, 1).toUpperCase() }}</span><span>{{ userLabel }}</span></router-link>
-      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">Войти</router-link>
+      <AccountMenu v-if="currentUser" :show-plugins="false" />
+      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
     </header>
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
       <div class="share-panel-header">
-        <h3>Access</h3>
+        <h3>{{ t('access') }}</h3>
         <button class="btn-ghost btn-sm" @click="showShare = false">×</button>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Link</div>
+        <!-- Copying the link is what people open this for: first. -->
+        <template v-if="visibility === 'public'">
+          <div class="share-section-title">{{ t('publicDocumentLink') }}</div>
+          <div class="slug-row" data-share-copy-row>
+            <input :value="publicUrl" class="slug-input" readonly :aria-label="t('publicDocumentLink')" />
+            <button class="btn-ghost btn-sm" @click="copyPublicLink">{{ t('copyBtn') }}</button>
+          </div>
+          <div class="slug-hint">{{ t('publicLinkHint') }}</div>
+        </template>
+        <div class="share-section-title">{{ t('shareLinkSection') }}</div>
         <div class="slug-row">
           <span class="slug-prefix">/html/</span>
           <input
@@ -117,29 +95,21 @@
             autocomplete="off"
             @keydown.enter="saveSlug"
           />
-          <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">Save</button>
+          <button class="btn-ghost btn-sm" :disabled="savingSlug" @click="saveSlug">{{ t('save') }}</button>
         </div>
-        <div class="slug-hint">Lowercase letters, digits and hyphens. Leave empty to use the id.</div>
-        <template v-if="visibility === 'public'">
-          <div class="share-section-title">Public document link</div>
-          <div class="slug-row">
-            <input :value="publicUrl" class="slug-input" readonly aria-label="Public document link" />
-            <button class="btn-ghost btn-sm" @click="copyPublicLink">Copy</button>
-          </div>
-          <div class="slug-hint">Use this link for people, search engines, and AI assistants. It returns the document HTML directly.</div>
-        </template>
+        <div class="slug-hint">{{ t('slugHint') }}</div>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Who can view</div>
+        <div class="share-section-title">{{ t('whoCanView') }}</div>
         <select class="share-visibility-select" v-model="visibility" @change="saveAccessSettings">
-          <option value="private">Private — only invited people</option>
-          <option value="authenticated">Auth only — any logged-in user</option>
-          <option value="public">Public — anyone with the link</option>
+          <option value="private">{{ t('visibilityPrivate') }}</option>
+          <option value="authenticated">{{ t('visibilityAuthOnly') }}</option>
+          <option value="public">{{ t('visibilityPublic') }}</option>
         </select>
         <label class="share-checkbox">
           <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
-          <span>Allow public editing</span>
+          <span>{{ t('allowPublicEditing') }}</span>
         </label>
         <label class="share-checkbox">
           <input
@@ -148,52 +118,52 @@
             :disabled="visibility !== 'public'"
             @change="saveAccessSettings"
           />
-          <span>Show in Public</span>
+          <span>{{ t('showInPublic') }}</span>
         </label>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Invite people</div>
+        <div class="share-section-title">{{ t('invitePeople') }}</div>
         <div class="share-form">
-          <input v-model.trim="shareEmail" placeholder="Email" type="email" />
+          <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
           <select v-model="shareRole">
-            <option value="read">Can view</option>
-            <option value="edit">Can edit</option>
+            <option value="read">{{ t('canView') }}</option>
+            <option value="edit">{{ t('canEdit') }}</option>
           </select>
-          <button @click="doShare">Invite</button>
+          <button @click="doShare">{{ t('inviteBtn') }}</button>
         </div>
         <div v-if="permissions.length" class="share-list">
           <div v-for="p in permissions" :key="p.id" class="share-item">
             <span>{{ p.user?.email || p.userId }}</span>
-            <span class="share-item-role">{{ p.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+            <span class="share-item-role">{{ p.role === 'edit' ? t('canEdit') : t('canView') }}</span>
             <button @click="doRevoke(p.userId)">×</button>
           </div>
         </div>
       </div>
 
       <div class="share-section">
-        <div class="share-section-title">Password access</div>
+        <div class="share-section-title">{{ t('passwordAccessSection') }}</div>
         <label class="share-checkbox">
           <input type="checkbox" v-model="passwordAccessEnabled" />
-          <span>Enable password access</span>
+          <span>{{ t('enablePasswordAccess') }}</span>
         </label>
         <div v-if="passwordAccessEnabled" class="share-form">
-          <input v-model="passwordAccessPassword" type="password" placeholder="New password" />
+          <input v-model="passwordAccessPassword" type="password" :placeholder="t('newPasswordPlaceholder')" />
           <select v-model="passwordAccessRole">
-            <option value="read">Can view</option>
-            <option value="edit">Can edit</option>
+            <option value="read">{{ t('canView') }}</option>
+            <option value="edit">{{ t('canEdit') }}</option>
           </select>
-          <button @click="savePasswordAccess">Save</button>
+          <button @click="savePasswordAccess">{{ t('save') }}</button>
         </div>
       </div>
     </section>
     <section v-if="showHistory" class="html-history-panel">
       <div class="html-history-list">
         <div class="html-history-head">
-          <strong>History</strong>
+          <strong>{{ t('history') }}</strong>
           <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
         </div>
-        <div v-if="historyLoading" class="html-history-empty">Loading...</div>
+        <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
         <button
           v-for="entry in historyItems"
           :key="entry.id"
@@ -201,21 +171,21 @@
           :class="{ active: selectedHistory?.id === entry.id }"
           @click="openHistoryEntry(entry)"
         >
-          <span>Revision {{ entry.revision }}</span>
+          <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
           <small>{{ entry.type }} · {{ new Date(entry.createdAt).toLocaleString() }}</small>
         </button>
-        <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">No history yet</div>
+        <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
       </div>
       <div class="html-history-preview">
-        <div v-if="!selectedHistory" class="html-history-empty">Select a revision</div>
+        <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
         <template v-else>
           <div class="html-history-preview-head">
             <div>
-              <strong>Revision {{ selectedHistory.revision }}</strong>
+              <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
               <small>{{ selectedHistory.type }}</small>
             </div>
             <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-              {{ restoringHistory ? 'Restoring...' : 'Restore' }}
+              {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
             </button>
           </div>
           <iframe
@@ -268,7 +238,11 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } 
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
+import { getPublicOrigin } from '../api/public-origin';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
+import AccountMenu from '../components/AccountMenu.vue';
+import AccessGate from '../components/AccessGate.vue';
 import { useHtmlSocket, type HtmlReject } from '../composables/useHtmlSocket';
 import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
@@ -279,12 +253,17 @@ import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
+import { useI18n } from '../composables/useI18n';
+import { markResourceOpened } from '../composables/useRecentResource';
+import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
+import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { HtmlVisualEditor },
+  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate },
   setup() {
     const route = useRoute();
     const router = useRouter();
+    const folderId = ref<string | null>(null);
     const { backTarget } = useResourceBackTarget();
     // The URL param may be a UUID id or a human-readable slug. `resolvedId`
     // holds the real document id after load (used for the WS room + mutations).
@@ -295,7 +274,9 @@ export default defineComponent({
     const savingSlug = ref(false);
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
+    const { t } = useI18n();
     const title = ref('');
+    useDocumentTitle(title);
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
     const revision = ref(0);
@@ -309,14 +290,13 @@ export default defineComponent({
     const hydratedFromCache = ref(false);
     let cacheStatusTimeout: ReturnType<typeof setTimeout> | null = null;
     const accessDenied = ref(false);
-    const requestedRole = ref<'read' | 'edit'>('read');
+    const gatePasswordAccessEnabled = ref<boolean | undefined>(undefined);
     const requestingAccess = ref(false);
     const accessRequestSent = ref(false);
     const showShare = ref(false);
     const shareEmail = ref('');
     const shareRole = ref<'read' | 'edit'>('read');
     const permissions = ref<any[]>([]);
-    const resourcePassword = ref('');
     const checkingResourcePassword = ref(false);
     const passwordAccessEnabled = ref(false);
     const passwordAccessPassword = ref('');
@@ -340,19 +320,38 @@ export default defineComponent({
     let htmlSocketInitialized = false;
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
     const currentUser = computed(() => getCurrentUser());
-    const userLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Пользователь');
+    // getPublicOrigin(), not window.location.origin: see its own comment -
+    // inside the packaged Android app that would be Capacitor's internal
+    // WebView origin (localhost), not the real public site.
     const publicUrl = computed(() => {
       const publicId = slug.value || resolvedId.value;
-      return `${window.location.origin}/html/${encodeURIComponent(publicId)}`;
+      return `${getPublicOrigin()}/html/${encodeURIComponent(publicId)}`;
     });
     const isDirty = computed(() => title.value !== savedSnapshot.value.title || html.value !== savedSnapshot.value.html);
+    /**
+     * Sync badge: the shared calm states (useCalmSyncStatus.ts - no pending
+     * count on screen, "Saving…" only for a save that is actually slow),
+     * plus "Unsaved": this editor saves on the Save button only, so edits not
+     * yet saved are a steady state worth showing, not flicker.
+     * `htmlSavingVisible` is set up below, next to `pendingOpsCount`.
+     */
+    const HTML_SYNC_LABEL_KEYS = {
+      synced: 'syncSynced',
+      saving: 'syncSaving',
+      offline: 'syncOffline',
+      failed: 'syncFailed',
+      dirty: 'syncUnsaved',
+    } as const;
     const htmlSyncStatus = computed(() => {
-      if (syncIssue.value) return { kind: 'conflict', label: 'Conflict' };
-      if (saving.value || pendingOpsCount.value > 0) return { kind: 'saving', label: 'Saving' };
-      if (isDirty.value) return { kind: 'dirty', label: 'Unsaved' };
-      if (htmlWsConnected.value) return { kind: 'synced', label: 'Synced' };
-      return { kind: 'offline', label: 'Offline' };
+      const base = resolveSyncStatus({ failed: !!syncIssue.value, offline: !htmlWsConnected.value, saving: htmlSavingVisible.value });
+      const kind = base === 'synced' && isDirty.value ? 'dirty' : base;
+      return { kind, label: t(HTML_SYNC_LABEL_KEYS[kind]) };
     });
+    const htmlSyncTitle = computed(() =>
+      pendingOpsCount.value > 0
+        ? `${htmlSyncStatus.value.label} · ${t('syncPendingChanges').replace('{count}', String(pendingOpsCount.value))}`
+        : htmlSyncStatus.value.label,
+    );
 
     const {
       connected: htmlWsConnected,
@@ -366,6 +365,7 @@ export default defineComponent({
       setRevision,
       clearPendingOps,
     } = useHtmlSocket(resolvedId);
+    const htmlSavingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
 
     async function load() {
       try {
@@ -375,9 +375,11 @@ export default defineComponent({
         writeNativeResourceCache('html', [id, res.document.id, res.document.slug || ''], res);
         // Canonicalize to the real id (URL may have been a slug).
         resolvedId.value = res.document.id;
+        markResourceOpened('html-document', res.document.id);
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;
+        folderId.value = res.document.folderId || null;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
         revision.value = res.document.revision ?? 0;
@@ -424,6 +426,7 @@ export default defineComponent({
       } catch (e: any) {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           accessDenied.value = true;
+          gatePasswordAccessEnabled.value = (e as ApiError).body?.passwordAccessEnabled;
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
@@ -431,14 +434,14 @@ export default defineComponent({
           return;
         }
         if (hydratedFromCache.value) {
-          cacheStatus.value = { kind: 'error', text: 'Не удалось обновить. Показана сохранённая версия.' };
+          cacheStatus.value = { kind: 'error', text: t('failedRefreshCached') };
           return;
         }
         throw e;
       } finally {
         loading.value = false;
         if (cacheStatus.value?.kind === 'refreshing') {
-          cacheStatus.value = { kind: 'success', text: 'Документ обновлён' };
+          cacheStatus.value = { kind: 'success', text: t('documentUpdated') };
           cacheStatusTimeout = setTimeout(() => { cacheStatus.value = null; }, 3000);
         }
       }
@@ -765,9 +768,9 @@ export default defineComponent({
       await loadPermissions();
     }
 
-    async function requestHtmlAccess() {
+    async function requestHtmlAccess(requestedRole: 'read' | 'edit') {
       if (!isAuthenticated()) {
-        await router.push(`/login?redirect=/edit/html/${id}`);
+        showToast(t('accessGateLoginRequired'), 'error');
         return;
       }
       requestingAccess.value = true;
@@ -775,30 +778,30 @@ export default defineComponent({
         await accessRequests.create({
           resourceType: 'html-document',
           resourceId: id,
-          requestedRole: requestedRole.value,
+          requestedRole,
         });
         accessRequestSent.value = true;
-        showToast('Access request sent', 'success');
+        showToast(t('accessGateRequestSentToast'), 'success');
       } catch (e: any) {
-        showToast(e.message || 'Failed to request access', 'error');
+        showToast(e.message || t('accessGateRequestFailed'), 'error');
       } finally {
         requestingAccess.value = false;
       }
     }
 
-    async function loginWithHtmlPassword() {
+    async function loginWithHtmlPassword(password: string) {
       checkingResourcePassword.value = true;
       try {
         const res = await auth.resourcePasswordLogin({
           resourceType: 'html-document',
           resourceId: id,
-          password: resourcePassword.value,
+          password,
         });
         setToken(res.token, res.user?.role, res.user?.accessMode || 'resource-password');
         accessDenied.value = false;
         await load();
       } catch (e: any) {
-        showToast(e.message || 'Invalid password', 'error');
+        showToast(e.message || t('accessGateInvalidPassword'), 'error');
       } finally {
         checkingResourcePassword.value = false;
       }
@@ -812,6 +815,7 @@ export default defineComponent({
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;
+        folderId.value = res.document.folderId || null;
         html.value = res.document.html;
         savedSnapshot.value = { title: title.value, html: html.value };
         revision.value = res.document.revision ?? 0;
@@ -824,7 +828,7 @@ export default defineComponent({
         role.value = res.role;
         hydratedFromCache.value = true;
         loading.value = false;
-        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: 'Обновляем сохранённую версию…' };
+        if (cached.stale) cacheStatus.value = { kind: 'refreshing', text: t('refreshingSaved') };
       }
       void load();
       window.addEventListener('keydown', onEditorKeydown);
@@ -834,12 +838,13 @@ export default defineComponent({
       window.removeEventListener('keydown', onEditorKeydown);
     });
     return {
+      t,
       backTarget,
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, userLabel, route, loading, accessDenied, cacheStatus, isDirty,
-      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
+      revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus, htmlSyncTitle,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
-      requestedRole, requestingAccess, accessRequestSent, showShare, shareEmail,
-      shareRole, permissions, resourcePassword, checkingResourcePassword,
+      requestingAccess, accessRequestSent, showShare, shareEmail,
+      shareRole, permissions, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       showHistory, showHtmlActions, showExportMenu, historyLoading, historyItems, selectedHistory, restoringHistory,
       save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,

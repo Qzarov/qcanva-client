@@ -6,7 +6,7 @@
         <section v-for="column in visibleColumns" :key="column.id" class="board-preview__column" data-testid="preview-column">
           <header><strong>{{ column.title }}</strong><span>{{ cardsForColumn(column.id).length }}</span></header>
           <article v-for="card in cardsForColumn(column.id)" :key="card.id" class="board-preview__card" data-testid="preview-card">
-            <div v-if="labelsForCard(card).length" class="board-preview__labels"><span v-for="label in labelsForCard(card)" :key="label.id" :style="{ '--label-color': label.color }">{{ label.title }}</span></div>
+            <div v-if="labelsForCard(card).length" class="board-preview__labels"><span v-for="label in labelsForCard(card)" :key="label.id" :style="{ '--label-color': label.color, '--label-content-surface': 'var(--content-board-label-preview-surface)', '--label-content-text': 'var(--content-board-label-text)' }">{{ label.title }}</span></div>
             <strong>{{ card.title || 'Без названия' }}</strong>
             <footer v-if="card.dueAt || card.checklist.length"><span v-if="card.dueAt">{{ formatDueDate(card.dueAt) }}</span><span v-if="card.checklist.length">✓ {{ completedChecklistCount(card) }}/{{ card.checklist.length }}</span></footer>
           </article>
@@ -63,22 +63,22 @@ onUnmounted(() => { if (connected) disconnect(); });
 </script>
 
 <style scoped>
-.board-preview { display:grid; width:100%; height:100%; min-width:0; min-height:0; padding:12px; border:1px solid #34423a; border-radius:12px; background:#171d1a; color:#edf5ef; cursor:pointer; overflow:hidden; }
-.board-preview:hover { border-color:#5b7564; }
+.board-preview { display:grid; width:100%; height:100%; min-width:0; min-height:0; padding:12px; border:1px solid var(--ui-border); border-radius:12px; background:var(--ui-surface); color:var(--ui-text); cursor:pointer; overflow:hidden; }
+.board-preview:hover { border-color:var(--ui-focus); }
 .board-preview__header { display:flex; justify-content:space-between; align-items:center; gap:10px; min-width:0; padding:0 2px 10px; }
 .board-preview__header strong { overflow:hidden; font-size:14px; text-overflow:ellipsis; white-space:nowrap; }
-.board-preview__header span { flex:none; color:#8dac96; font-size:10px; }
+.board-preview__header span { flex:none; color:var(--ui-text-secondary); font-size:10px; }
 .board-preview__columns { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:8px; min-height:0; }
-.board-preview__column { display:grid; align-content:start; gap:6px; min-width:0; padding:8px; border:1px solid #2d3932; border-radius:8px; background:#111714; overflow:hidden; }
-.board-preview__column > header { display:flex; justify-content:space-between; gap:6px; color:#b9c9bd; font-size:11px; }
+.board-preview__column { display:grid; align-content:start; gap:6px; min-width:0; padding:8px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface-subtle); overflow:hidden; }
+.board-preview__column > header { display:flex; justify-content:space-between; gap:6px; color:var(--ui-text-secondary); font-size:11px; }
 .board-preview__column > header strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.board-preview__column > header span { color:#77877d; }
-.board-preview__card { display:grid; gap:5px; min-width:0; padding:7px; border:1px solid #334038; border-radius:6px; background:#202824; box-shadow:0 1px 3px #0004; }
+.board-preview__column > header span { color:var(--ui-text-secondary); }
+.board-preview__card { display:grid; gap:5px; min-width:0; padding:7px; border:1px solid var(--ui-border); border-radius:6px; background:var(--ui-surface-elevated); box-shadow:0 1px 3px color-mix(in srgb, var(--ui-text) 18%, transparent); }
 .board-preview__card > strong { overflow:hidden; font-size:11px; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
 .board-preview__labels { display:flex; gap:3px; overflow:hidden; }
-.board-preview__labels span { max-width:100%; overflow:hidden; padding:1px 4px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 35%, #172019); color:#f4fff6; font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
-.board-preview__card footer { display:flex; justify-content:space-between; gap:4px; color:#9eafa3; font-size:9px; }
-.board-preview__empty { margin:10px 0; color:#718076; font-size:10px; text-align:center; }
-.board-preview__state { align-self:center; justify-self:center; margin:0; color:#9eafa3; font-size:12px; }
+.board-preview__labels span { max-width:100%; overflow:hidden; padding:1px 4px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 35%, var(--label-content-surface)); color:var(--label-content-text); font-size:8px; text-overflow:ellipsis; white-space:nowrap; }
+.board-preview__card footer { display:flex; justify-content:space-between; gap:4px; color:var(--ui-text-secondary); font-size:9px; }
+.board-preview__empty { margin:10px 0; color:var(--ui-text-secondary); font-size:10px; text-align:center; }
+.board-preview__state { align-self:center; justify-self:center; margin:0; color:var(--ui-text-secondary); font-size:12px; }
 .board-preview--unavailable { border-style:dashed; }
 </style>

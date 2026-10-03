@@ -16,6 +16,8 @@ dist-ssr
 !.env.example
 !.env.production
 .worktrees/
+playwright-report/
+test-results/
 
 # Android upload key material — never commit these files.
 android/keystore.properties

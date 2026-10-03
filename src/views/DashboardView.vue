@@ -1,6 +1,38 @@
 <template>
-  <div class="app-layout" @click="closeCardMenu">
-    <header class="app-header">
+  <div
+    class="app-layout dashboard-view"
+    @click.capture="onAppClickCapture"
+    @keydown.capture="onAppKeydownCapture"
+    @click="closeCardMenu"
+  >
+    <div
+      class="dashboard-app-shell"
+      :class="{
+        'sidebar-collapsed': isLoggedIn && sidebarWidthState === 'collapsed',
+        'dashboard-app-shell-public': !isLoggedIn,
+      }"
+    >
+      <DashboardSidebar
+        v-if="isLoggedIn"
+        :active-section="activeSection"
+        :feed-section="isHomeFeed ? activeFeedSection : null"
+        :width-state="sidebarWidthState"
+        :mobile-open="mobileSidebarOpen"
+        :folders="sidebarFolders"
+        @select="onSidebarSelect"
+        @toggle-width="toggleSidebarWidth"
+        @close-mobile="closeMobileSidebar"
+        @create-folder="openCreateGroupModal"
+        @toggle-folder="toggleTreeExpanded"
+        @folder-drag-start="onSidebarFolderDragStart"
+        @folder-drag-end="onFolderDragEnd"
+        @folder-drag-enter="onSidebarFolderDragEnter"
+        @folder-drag-over="onSidebarFolderDragOver"
+        @folder-drag-leave="onSidebarFolderDragLeave"
+        @folder-drop="onSidebarFolderDrop"
+      />
+      <div class="dashboard-central-shell">
+    <header v-if="!isLoggedIn" class="app-header app-header-public">
       <div class="app-header-inner">
         <div class="dashboard-brand">
           <img src="/qcanva-logo.png" alt="QCanva" />
@@ -10,41 +42,33 @@
           </div>
         </div>
         <div class="header-user-slot">
-          <LanguageToggle />
-          <template v-if="isLoggedIn">
-          <div class="user-menu">
-            <button class="current-user-badge" :title="currentUserLabel" @click.stop="toggleUserMenu">
-              <span class="current-user-icon">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M20 21a8 8 0 0 0-16 0" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-              </span>
-              <span>{{ currentUserLabel }}</span>
-            </button>
-            <div v-if="openControlMenu === 'user'" class="mobile-action-popover user-popover" @click.stop>
-              <router-link to="/plugins" class="card-menu-item">
-                <span class="menu-icon">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15.5 7.5V5a2 2 0 0 0-2-2h-1a2 2 0 0 1-4 0h-1a2 2 0 0 0-2 2v3H2.5a2 2 0 0 0 0 4H4v3a2 2 0 0 0 2 2h3a2 2 0 0 1 4 0h3a2 2 0 0 0 2-2v-3h2.5a2 2 0 0 0 0-4z"/></svg>
-                </span>
-                <span>{{ t('plugins') }}</span>
-              </router-link>
-              <router-link to="/html-settings" class="card-menu-item">
-                <span class="menu-icon">⚙</span>
-                <span>{{ t('settings') }}</span>
-              </router-link>
-              <button class="card-menu-item" @click="logout">
-                <span class="menu-icon">↪</span>
-                <span>{{ t('signOut') }}</span>
-              </button>
-            </div>
-          </div>
-          </template>
-          <template v-else>
+          <template v-if="!isLoggedIn">
+            <LanguageToggle />
             <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
             <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
           </template>
         </div>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
+      </div>
+    </header>
+    <header v-else class="app-header dashboard-auth-header">
+      <div class="app-header-inner">
+        <button
+          type="button"
+          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
+          :aria-label="t('openNavigation')"
+          data-mobile-sidebar-open
+          @click.stop="openMobileSidebar"
+        ><Menu :size="20" aria-hidden="true" /></button>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
       </div>
     </header>
 
@@ -57,18 +81,21 @@
       @touchcancel="resetDashboardPull"
     >
     <div class="dashboard-shell">
-    <section v-if="isLoggedIn" class="resource-control-panel">
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'recent'"
+      class="resource-control-panel"
+    >
       <div class="dash-actions-secondary">
         <button class="btn-ghost" @click.stop="openTagManager">
-          <span class="menu-icon">#</span>
+          <Tags class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('manageTags') }}</span>
         </button>
         <button class="btn-ghost" @click.stop="importFile()">
-          <span class="menu-icon">⇧</span>
+          <Upload class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('import') }}</span>
         </button>
         <router-link v-if="admin" to="/admin" class="btn-ghost">
-          <span class="menu-icon">◎</span>
+          <ShieldCheck class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('admin') }}</span>
         </router-link>
       </div>
@@ -77,34 +104,45 @@
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
             <button class="btn-primary" @click.stop="toggleNewMenu">
-              <span class="menu-icon">+</span>
+              <Plus class="menu-icon" :size="17" aria-hidden="true" />
               <span>{{ t('new') }}</span>
             </button>
             <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
+              <label v-if="isLoggedIn && folderOptions.length" class="dashboard-new-destination">
+                <span>{{ t('createIn') }}</span>
+                <select v-model="newItemFolderId" data-new-item-folder>
+                  <option value="">{{ t('createInUnsorted') }}</option>
+                  <option
+                    v-for="option in newItemFolderOptions"
+                    :key="option.id"
+                    :value="option.id"
+                  >{{ '\u00a0\u00a0'.repeat(option.depth) }}{{ option.name }}</option>
+                </select>
+              </label>
               <button class="card-menu-item" @click="createCanvas">
-                <span class="menu-icon">▦</span>
+                <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('newCanvas') }}</span>
               </button>
               <button class="card-menu-item" @click="createHtmlDocument">
-                <span class="menu-icon">▤</span>
+                <FileCode2 class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('htmlDocument') }}</span>
               </button>
               <button class="card-menu-item" @click="createTextDocument">
-                <span class="menu-icon">¶</span>
+                <FileText class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('document') }}</span>
               </button>
               <button class="card-menu-item" @click="openInteractiveTemplatePicker">
-                <span class="menu-icon">⚄</span>
+                <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('interactiveTemplate') }}</span>
               </button>
               <button class="card-menu-item" @click="openCreateGroupModal">
-                <span class="menu-icon">□</span>
+                <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('group') }}</span>
               </button>
             </div>
           </div>
-      <input v-model.trim="searchQuery" class="dash-search" :placeholder="t('search')" />
-      <select v-model="sortMode" class="dash-sort-select">
+      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
+      <select v-model="sortMode" class="dash-sort-select dash-sort-select-desktop">
         <option value="updated-desc">{{ t('newest') }}</option>
         <option value="updated-asc">{{ t('oldest') }}</option>
         <option value="title-asc">{{ t('titleAsc') }}</option>
@@ -115,41 +153,175 @@
         <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
         <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
         <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
+        <button :class="{ active: contentFilter === 'interactive-template' }" @click.stop="contentFilter = 'interactive-template'">{{ t('templatesFilter') }}</button>
       </div>
-      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list">
-        <button class="tag-filter" :class="{ active: selectedTag === '' }" @click.stop="selectedTag = ''">{{ t('all') }}</button>
+      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
+        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
         <button
           v-for="tag in allTagNames"
           :key="tag"
           class="tag-filter"
-          :class="{ active: selectedTag === tag }"
-          @click.stop="selectedTag = tag"
+          :class="{ active: isTagSelected(tag) }"
+          @click.stop="toggleSelectedTag(tag)"
         >#{{ tag }}</button>
         <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
       </div>
+      <!-- Mobile: shows as many tags as actually fit in one line (selected
+           tags first), plus a "+N" for the rest - never a horizontal
+           scroll, never a hardcoded chip count. See src/dashboard/tag-fit.ts
+           for the actual fit math; recomputeMobileTagFit measures real
+           pixel widths off the hidden row below and feeds them in, re-run
+           on resize and whenever the tag list/selection changes. -->
+      <div v-if="allTagNames.length" ref="tagFilterMobileEl" class="tag-filter-list-mobile">
+        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
+        <button
+          v-for="tag in visibleMobileTags"
+          :key="tag"
+          class="tag-filter"
+          :class="{ active: isTagSelected(tag) }"
+          @click.stop="toggleSelectedTag(tag)"
+        >#{{ tag }}</button>
+        <button
+          v-if="mobileTagOverflowCount > 0"
+          type="button"
+          class="tag-filter tag-filter-more"
+          @click.stop="openTagSheet"
+        >+{{ mobileTagOverflowCount }}</button>
+        <button
+          v-if="selectedTags.length"
+          type="button"
+          class="tag-filter tag-filter-clear"
+          :title="t('clearTagFilter')"
+          :aria-label="t('clearTagFilter')"
+          @click.stop="clearSelectedTags"
+        ><X :size="13" aria-hidden="true" /></button>
+      </div>
+      <!-- Measurement-only twin of the row above: renders every possible
+           chip (off-screen, never interactive) purely so recomputeMobileTagFit
+           can read real widths for chips the visible row above isn't
+           currently rendering - the classic "shadow measurement row"
+           pattern this kind of single-line-plus-overflow layout needs,
+           since you can't measure a chip's width without laying it out
+           somewhere first. -->
+      <div v-if="allTagNames.length" ref="tagMeasureEl" class="tag-filter-list-mobile tag-filter-measure" aria-hidden="true">
+        <button ref="tagMeasureAllEl" class="tag-filter">{{ t('all') }}</button>
+        <button v-for="tag in tagsInPriorityOrder" :key="`measure-${tag}`" class="tag-filter">#{{ tag }}</button>
+        <button ref="tagMeasureMoreEl" class="tag-filter tag-filter-more">+{{ tagsInPriorityOrder.length }}</button>
+        <button ref="tagMeasureClearEl" class="tag-filter tag-filter-clear"><X :size="13" aria-hidden="true" /></button>
+      </div>
     </div>
 
+    <!-- Floating (style.css), never in the page flow: the list must not
+         shift down and back up around a refresh or an action's result. -->
     <div v-if="isRefreshing && !loading" class="dashboard-refresh-status" role="status" aria-live="polite">
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section v-if="recentResources.length" class="dash-section dashboard-recents">
-      <div class="dash-section-head">
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'recent'"
+      id="feed-recent"
+      class="dash-section dashboard-recents dashboard-feed-section"
+      data-dashboard-view="recent"
+      data-feed-section="recent"
+    >
+      <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recents-nav" aria-label="Прокрутка недавних ресурсов">
-          <button class="dashboard-recents-nav-button" type="button" aria-label="Предыдущий элемент" title="Предыдущий элемент" @click="scrollRecentResources(-1)">‹</button>
-          <button class="dashboard-recents-nav-button" type="button" aria-label="Следующий элемент" title="Следующий элемент" @click="scrollRecentResources(1)">›</button>
+        <div class="dashboard-recent-head-controls">
+          <div class="control-menu dash-sort-menu-mobile">
+            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+              <ArrowUpDown :size="15" aria-hidden="true" />
+            </button>
+            <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('newest') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('oldest') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('titleAsc') }}</span>
+              </button>
+              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                <span>{{ t('titleDesc') }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('recentResources')">
+            <button
+              type="button"
+              :class="{ active: recentViewMode === 'grid' }"
+              :aria-label="t('gridView')"
+              :title="t('gridView')"
+              :aria-pressed="recentViewMode === 'grid'"
+              data-recent-view="grid"
+              @click="setRecentViewMode('grid')"
+            ><LayoutGridIcon :size="17" aria-hidden="true" /></button>
+            <button
+              type="button"
+              :class="{ active: recentViewMode === 'list' }"
+              :aria-label="t('listView')"
+              :title="t('listView')"
+              :aria-pressed="recentViewMode === 'list'"
+              data-recent-view="list"
+              @click="setRecentViewMode('list')"
+            ><ListIcon :size="17" aria-hidden="true" /></button>
+          </div>
         </div>
       </div>
-      <div class="dashboard-recents-strip-wrap">
-        <div ref="recentResourcesStrip" class="dashboard-recents-strip" aria-label="Недавно открытые ресурсы">
-          <button v-for="item in recentResources" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-            <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
-            <span class="dashboard-recent-title">{{ item.title || 'Без названия' }}</span>
-            <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
-          </button>
-        </div>
-        <span v-if="hasRecentOverflow" class="dashboard-recents-swipe-hint" aria-hidden="true">›</span>
+      <div
+        v-if="visibleRecent.length"
+        class="dashboard-recents-layout"
+        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
+        :aria-label="t('recentResources')"
+        data-recent-layout
+      >
+        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
+          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
+          <span
+            v-if="recentFolderPath(item)"
+            class="dashboard-recent-path"
+            :title="recentFolderPath(item)"
+            data-recent-folder-path
+          ><Folder :size="12" aria-hidden="true" />{{ recentFolderPath(item) }}</span>
+          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
+          <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
+        </button>
+      </div>
+      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">{{ t('noRecentMatches') }}</div>
+      <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
+      <button
+        v-if="recentShowAllAvailable"
+        type="button"
+        class="dashboard-recent-show-all"
+        @click="toggleRecentExpanded"
+      >
+        <span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span>
+        <ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" />
+        <ChevronUp v-else :size="15" aria-hidden="true" />
+      </button>
+
+      <div v-if="recentFolderTiles.length" id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
+        <h2>{{ t('folders') }}</h2>
+      </div>
+      <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
+        <button
+          v-for="folder in recentFolderTiles"
+          :key="'recent-folder-' + folder.id"
+          type="button"
+          class="subfolder-card"
+          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
+          :data-recent-folder-tile="folder.id"
+          @click="selectFolder(folder.id)"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true">▤</span>
+          <span class="subfolder-card-name">{{ folder.name }}</span>
+          <span class="subfolder-card-count">{{ folder.displayCount }}</span>
+        </button>
       </div>
     </section>
     <div
@@ -160,17 +332,24 @@
       aria-live="polite"
     >
       <span class="dashboard-pull-icon" aria-hidden="true">{{ isRefreshing ? '↻' : '↓' }}</span>
-      <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? 'Отпустите, чтобы обновить' : 'Потяните, чтобы обновить' }}</span>
+      <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? t('releaseToRefresh') : t('pullToRefresh') }}</span>
     </div>
 
-    <div v-if="feedback.message" class="dashboard-toast" :class="`dashboard-toast-${feedback.type}`">
+    <div
+      v-if="feedback.message"
+      class="dashboard-toast"
+      :class="`dashboard-toast-${feedback.type}`"
+      :role="feedback.type === 'error' ? 'alert' : 'status'"
+      aria-live="polite"
+      data-dashboard-toast
+    >
       {{ feedback.message }}
     </div>
 
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && incomingRequests.length" class="dash-section access-requests-section">
+      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
         <div class="dash-section-head">
           <h2>{{ t('accessRequests') }}</h2>
           <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
@@ -191,62 +370,11 @@
         </div>
       </div>
 
-      <div v-if="isLoggedIn && folderSummaries.length" class="dashboard-workspace">
-        <aside class="dashboard-folder-nav" aria-label="Groups">
-          <div class="dashboard-folder-nav-head">
-            <h2>{{ t('groups') }}</h2>
-            <div class="folder-nav-head-actions">
-              <button
-                class="btn-ghost btn-sm folder-create-button"
-                type="button"
-                title="Создать новую группу"
-                aria-label="Создать новую группу"
-                @click.stop="openCreateGroupModal"
-                :disabled="isBusy"
-              >+</button>
-              <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-            </div>
-          </div>
-          <div class="folder-manager-list">
-            <button
-              v-for="folder in folderSummaries"
-              :key="folder.id"
-              class="folder-nav-item"
-              :class="{ active: selectedFolderId === folder.id, 'folder-drop-active': canDropToFolder(folder) && dragTargetFolder === folder.id, 'folder-reorder-target': folderDragOverId === folder.id }"
-              :data-folder-id="folder.id"
-              :style="{ paddingLeft: 9 + (folder.depth || 0) * 14 + 'px' }"
-              :draggable="folder.role === 'owner' && !isTechnicalFolder(folder)"
-              @click.stop="selectFolder(folder.id)"
-              @dragstart.stop="onFolderDragStart($event, folder)"
-              @dragend="onFolderDragEnd"
-              @dragenter.prevent="onFolderDragEnter($event, folder)"
-              @dragover.prevent="onFolderDragOverEvent($event, folder)"
-              @dragleave="onFolderDragLeave(folder)"
-              @drop.prevent="onFolderDrop($event, folder)"
-            >
-              <span
-                v-if="folder.hasChildren"
-                class="folder-nav-twisty"
-                :class="{ collapsed: !isTreeExpanded(folder.id) }"
-                role="button"
-                :aria-label="isTreeExpanded(folder.id) ? t('collapseSubfolders') : t('expandSubfolders')"
-                @click.stop="toggleTreeExpanded(folder.id)"
-              >▾</span>
-              <span v-else class="folder-nav-twisty-spacer"></span>
-              <span class="folder-nav-name">{{ folder.name }}</span>
-              <span class="folder-nav-meta">
-                <span
-                  v-if="isTechnicalFolder(folder)"
-                  class="folder-technical-icon"
-                  title="System folder for resources that have not been assigned to a group"
-                  aria-label="System folder"
-                >⚙</span>
-                <span class="folder-nav-count">{{ folder.items.length }}</span>
-              </span>
-            </button>
-          </div>
-        </aside>
-        <section v-if="activeFolder" class="dashboard-folder-content">
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
+        class="dashboard-folder-content"
+        data-dashboard-view="folder"
+      >
           <div
             :key="activeFolder.id"
             class="folder-manager-row"
@@ -254,17 +382,67 @@
               <div class="folder-manager-top">
               <div class="folder-manager-main">
                 <button
-                  v-if="activeFolder.parentId"
                   type="button"
-                  class="folder-up-button"
-                  :title="t('upOneLevel')"
-                  :aria-label="t('upOneLevel')"
-                  @click.stop="selectFolder(activeFolder.parentId)"
-                >←</button>
+                  class="folder-back-button"
+                  :title="t('back')"
+                  :aria-label="t('back')"
+                  data-folder-back-button
+                  @click.stop="goToParentFolder"
+                ><ArrowLeft :size="16" aria-hidden="true" /></button>
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
                   <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
                 </span>
+              </div>
+              <!-- Sort button in folder header -->
+              <div class="control-menu dash-sort-menu-mobile folder-header-sort">
+                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+                  <ArrowUpDown :size="15" aria-hidden="true" />
+                </button>
+                <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                    <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('newest') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                    <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('oldest') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                    <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('titleAsc') }}</span>
+                  </button>
+                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                    <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                    <span>{{ t('titleDesc') }}</span>
+                  </button>
+                </div>
+              </div>
+              <!-- Веб: «+» слева от «⋯» — что создать прямо в этой папке. На мобильном скрыт:
+                   там создаёт плавающая «+», она сама подставляет открытую папку. -->
+              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
+                <button
+                  class="folder-manager-trigger folder-create-trigger"
+                  data-folder-create-menu
+                  @click.stop="toggleFolderCreateMenu(activeFolder.id)"
+                  :title="t('new')"
+                  :aria-label="t('new')"
+                  :disabled="isBusy"
+                ><Plus :size="17" aria-hidden="true" /></button>
+                <div v-if="openControlMenu === 'folder-new:' + activeFolder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">
+                    <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('newCanvas') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">
+                    <FileCode2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('htmlDocument') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">
+                    <FileText class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('document') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="interactive-template" @click="openInteractiveTemplatePicker(activeFolder.id)" :disabled="isBusy">
+                    <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('interactiveTemplate') }}</span>
+                  </button>
+                </div>
               </div>
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button
@@ -289,16 +467,19 @@
                   >{{ t('addFolder') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    data-action="move-folder-parent"
+                    @click="openFolderParentModal(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('moveFolderInto') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
                     class="card-menu-item danger"
                     @click="deleteFolder(activeFolder)"
                     :disabled="isBusy"
                   >{{ t('delete') }}</button>
                 </div>
               </div>
-              </div>
-              <div v-if="canScrollFolderUp || canScrollFolderDown" class="folder-scroll-controls" aria-label="Прокрутка элементов группы">
-                <button v-if="canScrollFolderUp" type="button" class="btn-ghost btn-sm" title="Прокрутить вверх" aria-label="Прокрутить вверх" @click.stop="scrollActiveFolder(-1)">↑</button>
-                <button v-if="canScrollFolderDown" type="button" class="btn-ghost btn-sm" title="Прокрутить вниз" aria-label="Прокрутить вниз" @click.stop="scrollActiveFolder(1)">↓</button>
               </div>
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
                 <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
@@ -333,12 +514,17 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span>{{ item.title || t('untitled') }}</div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
                     <div class="card-meta">
-                      <span class="badge badge-owner">{{ t('owner') }}</span>
+                      <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                       <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -347,16 +533,11 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
                     </div>
                   </div>
                   <article
@@ -372,11 +553,16 @@
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
                       @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -385,16 +571,33 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
+                    </div>
+                  </article>
+                  <article
+                    v-else-if="item.type === 'interactive-template'"
+                    class="canvas-card html-doc-card interactive-template-card"
+                    :data-folder-resource="`interactive-template:${item.id}`"
+                    @click="openInteractiveTemplate(item.id)"
+                  >
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span><span class="card-title-text">{{ item.title }}</span></div>
+                    <div class="card-meta">
+                      <span class="badge" :class="item.role === 'owner' ? 'badge-owner' : 'badge-shared'">{{ interactiveTemplateTypeLabel(item.templateType) }}</span>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ item.role === 'owner' ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
+                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
                     </div>
                   </article>
                   <article
@@ -410,11 +613,16 @@
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
                       @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
+                    <div class="card-meta-mobile">
+                      <span>{{ folderItemTypeLabel(item.type) }}</span>
+                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                    </div>
+                    <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
                       <span
                         v-for="tag in item.tags"
@@ -423,16 +631,11 @@
                         :style="{ '--tag-color': tag.color }"
                       >#{{ tag.name }}</span>
                     </div>
-                    <button class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
                     <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button>
                       <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-                      <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
-                      <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-                      <button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button>
-                      <button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
                     </div>
                   </article>
                   </template>
@@ -440,23 +643,19 @@
               </div>
           </div>
         </section>
-      </div>
 
-      <section v-if="isLoggedIn && interactiveTemplateItems.length" class="dash-section">
-        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid">
-          <article v-for="item in interactiveTemplateItems" :key="item.id" class="canvas-card html-doc-card interactive-template-card" @click="openInteractiveTemplate(item.id)">
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
-            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" @click.stop="deleteInteractiveTemplate(item)" title="Удалить шаблон" :disabled="isBusy">×</button>
-          </article>
-        </div>
-      </section>
-
-      <div v-if="sharedFiltered.length" class="dash-section">
+      <div
+        v-if="isLoggedIn && (activeSection.kind === 'shared' || (isHomeFeed && sharedFiltered.length))"
+        :id="isHomeFeed ? 'feed-shared' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'shared'"
+        :data-feed-section="isHomeFeed ? 'shared' : undefined"
+        data-section="shared"
+      >
         <h2>{{ t('sharedWithMe') }}</h2>
         <div class="dash-grid">
-          <template v-for="item in sharedFiltered" :key="'shared-' + item.type + '-' + item.id">
+          <template v-for="item in feedItems(sharedFiltered)" :key="'shared-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -478,17 +677,14 @@
               >#{{ tag.name }}</span>
             </div>
             <button
-              v-if="item.role === 'edit'"
               class="card-manage"
-              @click.stop="toggleCardMenu(item.id, $event)"
+              :data-menu-trigger="`shared:${item.type}:${item.id}`"
+              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
               title="Canvas actions"
               :disabled="isBusy"
             >⋯</button>
-            <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button>
-              <button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button>
-              <button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
             </div>
           </div>
           <article
@@ -505,9 +701,13 @@
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           <article
-            v-else
+            v-else-if="item.type === 'text-document'"
             class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
@@ -520,15 +720,106 @@
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           </template>
         </div>
+        <div v-if="!sharedFiltered.length" class="dash-empty">{{ t('noSharedResources') }}</div>
+        <button
+          v-if="isHomeFeed && sharedFiltered.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'shared' })"
+        >{{ t('showAll') }} {{ sharedFiltered.length }}</button>
       </div>
 
-      <div v-if="publicFiltered.length" class="dash-section">
-        <h2>{{ t('public') }}</h2>
+      <section
+        v-if="isLoggedIn && (activeSection.kind === 'interactive' || (isHomeFeed && visibleInteractiveTemplateItems.length))"
+        :id="isHomeFeed ? 'feed-interactive' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'interactive'"
+        :data-feed-section="isHomeFeed ? 'interactive' : undefined"
+        data-section="interactive-templates"
+      >
+        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
-          <template v-for="item in publicFiltered" :key="'public-' + item.type + '-' + item.id">
+          <article v-for="item in feedItems(visibleInteractiveTemplateItems)" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
+            <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
+          </article>
+        </div>
+        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">{{ t('noInteractiveTemplates') }}</div>
+        <button
+          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'interactive' })"
+        >{{ t('showAll') }} {{ visibleInteractiveTemplateItems.length }}</button>
+      </section>
+
+      <div
+        v-if="activeSection.kind === 'public' || (isHomeFeed && publicFiltered.length)"
+        :id="isHomeFeed ? 'feed-public' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'public'"
+        :data-feed-section="isHomeFeed ? 'public' : undefined"
+        data-section="public"
+      >
+        <!-- Heading row like Recents': title, Mine/Others, and the phone sort
+             control (it used to sit in the toolbar, a row above the title). -->
+        <div class="dash-section-head dashboard-public-head">
+          <h2>{{ t('public') }}</h2>
+          <div class="dashboard-public-head-controls">
+            <div v-if="isLoggedIn" class="dashboard-public-owner-filter" role="group" :aria-label="t('publicOwnerFilter')">
+              <button
+                v-for="option in PUBLIC_OWNER_FILTERS"
+                :key="option"
+                type="button"
+                :class="{ active: publicOwnerFilter === option }"
+                :aria-pressed="publicOwnerFilter === option"
+                :data-public-owner-filter="option"
+                @click.stop="publicOwnerFilter = option"
+              >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
+            </div>
+            <div class="control-menu dash-sort-menu-mobile">
+              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+                <ArrowUpDown :size="15" aria-hidden="true" />
+              </button>
+              <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
+                  <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('newest') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
+                  <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('oldest') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
+                  <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('titleAsc') }}</span>
+                </button>
+                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
+                  <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
+                  <span>{{ t('titleDesc') }}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="dash-grid">
+          <template v-for="item in feedItems(publicFiltered)" :key="'public-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -550,6 +841,10 @@
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </div>
           <article
             v-else-if="item.type === 'html-document'"
@@ -570,9 +865,13 @@
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           <article
-            v-else
+            v-else-if="item.type === 'text-document'"
             class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
@@ -590,25 +889,80 @@
                 :style="{ '--tag-color': tag.color }"
               >#{{ tag.name }}</span>
             </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
           </article>
           </template>
         </div>
+        <div v-if="!publicFiltered.length" class="dash-empty">{{ t('noPublicResources') }}</div>
+        <button
+          v-if="isHomeFeed && publicFiltered.length > FEED_LIMIT"
+          type="button"
+          class="dashboard-recent-show-all"
+          data-feed-show-all
+          @click="selectDashboardSection({ kind: 'public' })"
+        >{{ t('showAll') }} {{ publicFiltered.length }}</button>
       </div>
 
-      <div v-if="isLoggedIn && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
+      <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
         No resources yet. Create your first one!
-      </div>
-      <div v-else-if="!isLoggedIn && !publicFiltered.length" class="dash-empty">
-        No public resources yet.
       </div>
     </template>
     </div>
     </main>
+      <button
+        v-if="isLoggedIn"
+        type="button"
+        class="dashboard-fab"
+        :aria-label="t('new')"
+        :title="t('new')"
+        @click.stop="toggleNewMenu"
+      ><Plus :size="24" aria-hidden="true" /></button>
+      </div>
+    </div>
+
+    <!-- Mobile tag multi-select: replaces the old popover-that-quietly-
+         appears-at-the-bottom with a proper sheet - visible backdrop, stays
+         open across multiple taps, and only ever commits to selectedTags on
+         Apply (see openTagSheet/applyTagSheet). -->
+    <div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
+      <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
+        <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
+        <div class="dashboard-modal-head">
+          <div>
+            <h3>{{ t('filterByTags') }}</h3>
+            <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
+          </div>
+          <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
+            <X :size="16" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-tag-sheet-list">
+          <button
+            v-for="tag in allTagNames"
+            :key="tag"
+            type="button"
+            class="dashboard-tag-sheet-item"
+            :class="{ active: tagSheetDraft.includes(tag) }"
+            @click="toggleDraftTag(tag)"
+          >
+            <span>#{{ tag }}</span>
+            <Check v-if="tagSheetDraft.includes(tag)" :size="14" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
+          <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
+          <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? 'Move to group' : 'Create group' }}</h3>
+          <h3>{{ folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
@@ -636,7 +990,7 @@
             <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
           </button>
         </div>
-        <div class="dashboard-modal-actions">
+        <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
             {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? t('move') : t('create')) }}
@@ -688,6 +1042,43 @@
             @click="saveSubfolderModal"
             :disabled="isBusy || !subfolderModal.value.trim()"
           >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
+          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+        </div>
+        <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
+        <div v-if="folderParentOptions.length" class="folder-parent-list">
+          <button
+            v-for="option in folderParentOptions"
+            :key="option.id"
+            class="folder-parent-option folder-destination"
+            :class="{ active: folderParentModal.targetId === option.id }"
+            :style="{ paddingLeft: 12 + option.depth * 16 + 'px' }"
+            :data-folder-parent-option="option.id"
+            @click="folderParentModal.targetId = option.id"
+          >
+            <span class="folder-destination-name">
+              <span v-if="option.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ option.id === 'root' ? t('moveFolderToRoot') : option.name }}
+            </span>
+            <span v-if="option.id !== 'root'" class="folder-destination-path">{{ option.path || t('inRoot') }}</span>
+          </button>
+        </div>
+        <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
+        <div class="dashboard-modal-actions dashboard-modal-actions-row">
+          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button
+            class="btn-primary"
+            data-folder-parent-save
+            @click="saveFolderParentModal"
+            :disabled="isBusy || !folderParentModal.targetId"
+          >{{ actionLabel('move-folder-parent', t('move')) }}</button>
         </div>
       </div>
     </div>
@@ -878,13 +1269,29 @@
 </template>
 
 <script lang="ts">
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
+import { App as CapacitorApp } from '@capacitor/app';
+import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, clearToken, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
-import { usePlugins } from '../composables/usePlugins';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import { useBackHandler } from '../composables/useBackHandler';
+import { useDocumentTitle } from '../composables/useDocumentTitle';
+import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
+import {
+  readSidebarWidthState,
+  writeSidebarWidthState,
+  type DashboardFolderNavItem,
+  type DashboardSection,
+  type SidebarWidthState,
+} from '../dashboard/navigation';
+import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
+import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
+import { formatRelativeDate } from '../dashboard/relative-date';
+import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -905,6 +1312,7 @@ type CanvasRecord = {
   allowPublicEdit?: boolean;
   ownerName?: string;
   ownerEmail?: string;
+  ownerId?: string;
 };
 type HtmlDocumentRecord = {
   type: 'html-document';
@@ -934,7 +1342,15 @@ type TextDocumentRecord = {
   pinned?: boolean;
   tags: CanvasTag[];
 };
-type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord;
+type InteractiveTemplateRecord = InteractiveTemplate & {
+  type: 'interactive-template';
+  ownerId?: string;
+  folderId?: string | null;
+  tags: CanvasTag[];
+  pinned?: false;
+  description?: null;
+};
+type FolderItem = CanvasRecord | HtmlDocumentRecord | TextDocumentRecord | InteractiveTemplateRecord;
 type FolderSummary = Omit<ResourceFolderSummary, 'items'> & {
   items: FolderItem[];
   /** Nesting level in the sidebar tree; set while ordering the flat list. */
@@ -960,9 +1376,12 @@ type DashboardCacheState = {
 };
 
 type DashboardCache = { savedAt: number; state: DashboardCacheState };
-type RecentResourceType = FolderItem['type'] | 'interactive-template';
-type RecentResource = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
-type RecentResourceItem = FolderItem | (InteractiveTemplate & { type: 'interactive-template' });
+type RecentResourceType = FolderItem['type'];
+/** The raw open-history store: just enough to look the item up again later. */
+type RecentHistoryEntry = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
+/** recentResources' joined shape - the history entry plus what filtering needs. */
+type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string };
+type RecentResourceItem = FolderItem;
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
@@ -971,11 +1390,34 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { LanguageToggle },
+  components: {
+    DashboardSidebar,
+    LanguageToggle,
+    ArrowLeft,
+    ArrowUpDown,
+    Check,
+    ChevronDown,
+    ChevronUp,
+    X,
+    FileCode2,
+    FilePlus2,
+    FileText,
+    Folder,
+    FolderInput,
+    FolderPlus,
+    LayoutGridIcon,
+    LayoutTemplate,
+    ListIcon,
+    Menu,
+    Plus,
+    ShieldCheck,
+    Tags,
+    Upload,
+  },
   setup() {
     const router = useRouter();
     const { t, locale } = useI18n();
-    const { reset: resetPlugins } = usePlugins();
+    useDocumentTitle(computed(() => t('home')));
     const admin = isAdmin();
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
@@ -990,6 +1432,16 @@ export default defineComponent({
     const unfiledCanvases = ref<CanvasRecord[]>([]);
     const unfiledHtmlDocuments = ref<HtmlDocumentRecord[]>([]);
     const unfiledTextDocuments = ref<TextDocumentRecord[]>([]);
+    /**
+     * The full, unfiltered list each is filtered down FROM (see load()) -
+     * unlike canvases, a foldered HTML/text document has no other source
+     * with real tags: /resource-folders' nested items carry no tags for
+     * html documents at all, so dashboardItemsByKey needs this to enrich
+     * them for tag filtering. Not used for anything else - the filtered
+     * unfiled/shared refs above remain what's actually rendered.
+     */
+    const allHtmlDocumentsRaw = ref<HtmlDocumentRecord[]>([]);
+    const allTextDocumentsRaw = ref<TextDocumentRecord[]>([]);
     const interactiveTemplateItems = ref<InteractiveTemplate[]>([]);
     const templatePickerOpen = ref(false);
     const sharedResourceTags = ref<ResourceTag[]>([]);
@@ -1000,11 +1452,36 @@ export default defineComponent({
     const isNativeDashboard = Capacitor.isNativePlatform();
     let dashboardPullStartY: number | null = null;
     const searchQuery = ref('');
-    const selectedTag = ref('');
-    const contentFilter = ref<'all' | 'canvas' | 'html-document' | 'text-document'>('all');
+    /**
+     * Multi-select, AND semantics: an item must carry every tag in this list
+     * to match (see matchesFolderItem). One shared array backs the desktop
+     * tag bar, the mobile compact bar and the tag bottom sheet - there is no
+     * separate per-surface selection state.
+     */
+    const selectedTags = ref<string[]>([]);
+    const contentFilter = ref<'all' | FolderItem['type']>('all');
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
+    const activeSection = ref<DashboardSection>({ kind: isLoggedIn ? 'recent' : 'public' });
+    const storage = () => {
+      try {
+        return typeof window === 'undefined' ? null : window.localStorage;
+      } catch {
+        return null;
+      }
+    };
+    const sidebarWidthState = ref<SidebarWidthState>(readSidebarWidthState(storage()));
+    const recentViewMode = ref<RecentViewMode>(readRecentViewMode(storage()));
+    const setRecentViewMode = (mode: RecentViewMode) => {
+      recentViewMode.value = mode;
+      writeRecentViewMode(storage(), mode);
+    };
+    const mobileSidebarOpen = ref(false);
+    const mobileSidebarOpener = ref<HTMLElement | null>(null);
+    let previousBodyOverflow: string | null = null;
+    const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
+    let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -1030,7 +1507,8 @@ export default defineComponent({
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
     const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
     const currentUser = computed(() => getCurrentUser());
-    const currentUserLabel = computed(() => currentUser.value?.name || currentUser.value?.email || 'Signed in');
+    const isOwnedResource = (item: { ownerId?: string }) =>
+      !item.ownerId || item.ownerId === currentUser.value?.id;
 
     const dashboardCacheKey = () => `qcanva:dashboard:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
     const lastFolderKey = () => `qcanva:dashboard:folder:v1:${currentUser.value?.id || currentUser.value?.email || 'public'}`;
@@ -1052,14 +1530,20 @@ export default defineComponent({
         // Ignore: remembering the folder is a convenience, not a requirement.
       }
     };
-    const recentResourceHistory = ref<RecentResource[]>([]);
-    const recentResourcesStrip = ref<HTMLElement | null>(null);
+    const recentResourceHistory = ref<RecentHistoryEntry[]>([]);
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
-    const hasRecentOverflow = ref(false);
-    const canScrollFolderUp = ref(false);
-    const canScrollFolderDown = ref(false);
+    // MOBILE TAG FIT (front task). Refs into the visible row and its hidden
+    // measurement twin - see the template's own comment on why a hidden row
+    // exists at all - plus how many of tagsInPriorityOrder actually fit,
+    // computed by recomputeMobileTagFit below.
+    const tagFilterMobileEl = ref<HTMLElement | null>(null);
+    const tagMeasureEl = ref<HTMLElement | null>(null);
+    const tagMeasureAllEl = ref<HTMLElement | null>(null);
+    const tagMeasureMoreEl = ref<HTMLElement | null>(null);
+    const tagMeasureClearEl = ref<HTMLElement | null>(null);
+    const mobileVisibleTagCount = ref(0);
     const loadRecentResources = async () => {
       if (!isLoggedIn) {
         recentResourceHistory.value = [];
@@ -1214,45 +1698,63 @@ export default defineComponent({
       tags: normalizeTags(doc.tags),
     });
 
+    const normalizeInteractiveTemplate = (template: any): InteractiveTemplateRecord => ({
+      ...template,
+      type: 'interactive-template',
+      folderId: template.folderId || null,
+      tags: normalizeTags(template.tags),
+      pinned: false,
+    });
+
     const normalizeResourceFolder = (folder: ResourceFolderSummary): ResourceFolderSummary => {
       const canvases = folder.items?.canvases || folder.canvases || [];
       const htmlDocuments = folder.items?.htmlDocuments || folder.htmlDocuments || [];
       const docs = folder.items?.textDocuments || folder.textDocuments || [];
+      const templates = folder.items?.interactiveTemplates || folder.interactiveTemplates || [];
       return {
         ...folder,
         canvasCount: folder.canvasCount ?? canvases.length,
         htmlDocumentCount: folder.htmlDocumentCount ?? htmlDocuments.length,
         textDocumentCount: folder.textDocumentCount ?? docs.length,
+        interactiveTemplateCount: folder.interactiveTemplateCount ?? templates.length,
         items: {
           canvases,
           htmlDocuments,
           textDocuments: docs,
+          interactiveTemplates: templates,
         },
       };
     };
+
+    /** OR semantics: an item matches if it carries any one of the selected tags. */
+    const matchesSelectedTags = (tags: CanvasTag[]) =>
+      selectedTags.value.length === 0 || selectedTags.value.some((selected) => tags.some((tag) => tag.name === selected));
 
     const matchesCanvas = (c: CanvasRecord) => {
       if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || c.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(c.tags);
     };
 
-    const matchesFolderItem = (item: FolderItem, folderName: string) => {
+    /**
+     * Reused for both a folder's own contents and Recent (see
+     * filteredRecentResources/recentFolderTiles below) - the `type`/`title`/
+     * `tags` shape is all either needs, so the parameter is intentionally
+     * narrower than the full FolderItem union.
+     */
+    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) => {
       if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(item.tags);
     };
 
     const matchesPublicItem = (item: FolderItem) => {
       if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      const matchesTag = !selectedTag.value || item.tags.some((tag) => tag.name === selectedTag.value);
-      return matchesQuery && matchesTag;
+      return matchesQuery && matchesSelectedTags(item.tags);
     };
 
     const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
@@ -1267,60 +1769,148 @@ export default defineComponent({
       return sortMode.value === 'updated-asc' ? result : -result;
     });
 
+    const placedResourceKeys = computed(() => new Set(
+      [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) => [
+        ...(folder.items?.canvases || folder.canvases || []).map((item: any) => `canvas:${item.id}`),
+        ...(folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item: any) => `html-document:${item.id}`),
+        ...(folder.items?.textDocuments || folder.textDocuments || []).map((item: any) => `text-document:${item.id}`),
+        ...(folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item: any) => `interactive-template:${item.id}`),
+      ]),
+    ));
+    const interactiveTemplateRecords = computed<InteractiveTemplateRecord[]>(() =>
+      interactiveTemplateItems.value.map(normalizeInteractiveTemplate),
+    );
+    const unfiledInteractiveTemplateItems = computed(() =>
+      interactiveTemplateRecords.value.filter(
+        (item) => !placedResourceKeys.value.has(`interactive-template:${item.id}`),
+      ),
+    );
+    // Раздел показывает все шаблоны, в том числе разложенные по папкам: шаблон в папке
+    // остаётся и в папке, и в своём разделе (то же у «Доступные мне» и «Публичные»).
+    const visibleInteractiveTemplateItems = computed(() => sortFolderItems(
+      interactiveTemplateRecords.value.filter((item) => matchesFolderItem(item, t('interactiveTemplate'))),
+    ) as InteractiveTemplateRecord[]);
+
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
         .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
     ));
-    const publicFiltered = computed(() => sortFolderItems(
-      [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value]
-        .filter(matchesPublicItem),
-    ));
+    // Public lists every public resource, wherever it is filed: unlike
+    // Shared (whose foldered items already show in their folder), a public
+    // doc of mine inside one of my folders simply vanished from Public.
+    const PUBLIC_OWNER_FILTERS = ['all', 'mine', 'others'] as const;
+    const PUBLIC_OWNER_FILTER_LABELS = { all: 'all', mine: 'publicMine', others: 'publicOthers' } as const;
+    const publicOwnerFilter = ref<(typeof PUBLIC_OWNER_FILTERS)[number]>('all');
+    const matchesPublicOwner = (item: { ownerId?: string | null }) => {
+      if (publicOwnerFilter.value === 'all') return true;
+      const mine = !!currentUser.value?.id && item.ownerId === currentUser.value.id;
+      return publicOwnerFilter.value === 'mine' ? mine : !mine;
+    };
+    // The server's public lists only look at the latest 100 updated
+    // resources (of everyone), so an older public doc of MINE could be
+    // missing. Mine are already loaded in full (own lists, foldered ones
+    // included), so they are added here - by the same rules the server uses
+    // (explicit visibility, else the legacy isPublic / shared flag; and not
+    // opted out of Public) - without duplicating any the server did return.
+    const isOwnPublic = (item: any, legacyPublic: boolean) => {
+      if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
+      if (item.listedInPublic === false) return false;
+      if (item.visibility === 'public') return true;
+      if (item.visibility === 'authenticated') return false;
+      return legacyPublic;
+    };
+    const ownPublicResources = computed(() => [
+      ...own.value.filter((c: any) => isOwnPublic(c, !!c.isPublic)).map((c: any) => normalizeCanvas(c, false)),
+      ...allHtmlDocumentsRaw.value.filter((d: any) => isOwnPublic(d, !!d.shared)),
+      ...allTextDocumentsRaw.value.filter((d: any) => isOwnPublic(d, false)),
+    ]);
+    const publicFiltered = computed(() => {
+      const listed = [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value];
+      const seen = new Set(listed.map((item) => `${item.type}:${item.id}`));
+      const extra = ownPublicResources.value.filter((item) => !seen.has(`${item.type}:${item.id}`));
+      return sortFolderItems(
+        [...listed, ...extra]
+          .filter(matchesPublicItem)
+          .filter(matchesPublicOwner),
+      );
+    });
 
+    /**
+     * Every resource the user can see and filter, folder-nested or not, goes
+     * through dashboardItemsByKey (see below) - it's already the complete,
+     * tag-enriched set built for Recent/folder counters, so it's the right
+     * single source here too instead of re-deriving from six separate lists.
+     * The previous version of this computed looped `allResourceFolders`
+     * directly, reading `folder.items?.canvases` - but the raw
+     * ownResourceFolders/sharedResourceFolders refs are the flat API shape
+     * (`folder.canvases`, not `folder.items.canvases`), so that branch always
+     * read `undefined` and silently contributed nothing: a tag used only on
+     * a resource inside a folder never appeared in the Tag Filter UI at all.
+     */
     const allTagNames = computed(() => {
       const names = new Set<string>();
-      const addTags = (tags: CanvasTag[], type: FolderItem['type']) => {
-        if (contentFilter.value !== 'all' && contentFilter.value !== type) return;
-        for (const tag of tags) names.add(tag.name);
-      };
-      for (const list of [own.value, shared.value, publicCanvases.value]) {
-        for (const canvas of list) {
-          addTags(canvas.tags, 'canvas');
-        }
-      }
-      for (const document of unfiledHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of sharedHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of publicHtmlDocuments.value) {
-        addTags(document.tags, 'html-document');
-      }
-      for (const document of unfiledTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of sharedTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const document of publicTextDocuments.value) {
-        addTags(document.tags, 'text-document');
-      }
-      for (const folder of allResourceFolders.value) {
-        for (const canvas of folder.items?.canvases || []) {
-          addTags(normalizeTags(canvas.tags), 'canvas');
-        }
-        for (const document of folder.items?.htmlDocuments || []) {
-          addTags(normalizeTags(document.tags), 'html-document');
-        }
-        for (const document of folder.items?.textDocuments || []) {
-          addTags(normalizeTags(document.tags), 'text-document');
-        }
+      for (const item of dashboardItemsByKey.value.values()) {
+        if (contentFilter.value !== 'all' && contentFilter.value !== item.type) continue;
+        for (const tag of item.tags || []) names.add(tag.name);
       }
       return Array.from(names).sort();
     });
 
+    const isTagSelected = (tag: string) => selectedTags.value.includes(tag);
+    const toggleSelectedTag = (tag: string) => {
+      selectedTags.value = isTagSelected(tag) ? selectedTags.value.filter((t) => t !== tag) : [...selectedTags.value, tag];
+    };
+    const clearSelectedTags = () => {
+      selectedTags.value = [];
+    };
+
+    // MOBILE TAG FIT (front task). Selected tags first (they're what the
+    // user is actively filtering by, so they stay visible even once the
+    // full list no longer fits), then everything else in the same order
+    // allTagNames already sorts them in.
+    const tagsInPriorityOrder = computed(() => {
+      const selected = allTagNames.value.filter((tag) => isTagSelected(tag));
+      const unselected = allTagNames.value.filter((tag) => !isTagSelected(tag));
+      return [...selected, ...unselected];
+    });
+    const visibleMobileTags = computed(() => tagsInPriorityOrder.value.slice(0, mobileVisibleTagCount.value));
+    const mobileTagOverflowCount = computed(() => tagsInPriorityOrder.value.length - visibleMobileTags.value.length);
+
+    /**
+     * Measures the hidden twin row's real chip widths and feeds them into
+     * computeVisibleTagFitCount (see src/dashboard/tag-fit.ts for the pure
+     * "how many fit" math this wraps). Re-run from the same resize
+     * listener/data watcher the desktop tag row's own overflow arrow
+     * already uses (refreshOverflowIndicators below), not a second
+     * parallel mechanism.
+     */
+    function recomputeMobileTagFit() {
+      const container = tagFilterMobileEl.value;
+      const measure = tagMeasureEl.value;
+      if (!container || !measure) {
+        mobileVisibleTagCount.value = tagsInPriorityOrder.value.length;
+        return;
+      }
+      const chipEls = Array.from(measure.querySelectorAll<HTMLElement>(':scope > .tag-filter'));
+      // Children, in DOM order: [All, ...one per tag, +N, clear]. Only the
+      // per-tag slice in the middle has a variable count.
+      const chipWidths = chipEls.slice(1, 1 + tagsInPriorityOrder.value.length).map((el) => el.getBoundingClientRect().width);
+      const allChipWidth = tagMeasureAllEl.value?.getBoundingClientRect().width ?? 0;
+      const clearChipWidth = selectedTags.value.length ? (tagMeasureClearEl.value?.getBoundingClientRect().width ?? 0) : 0;
+      const moreChipWidth = tagMeasureMoreEl.value?.getBoundingClientRect().width ?? 0;
+      const gap = parseFloat(getComputedStyle(container).columnGap || '0') || 0;
+      const reserved = allChipWidth + (clearChipWidth ? clearChipWidth + gap : 0);
+      mobileVisibleTagCount.value = computeVisibleTagFitCount(
+        container.clientWidth,
+        reserved,
+        chipWidths,
+        gap,
+        moreChipWidth + gap,
+      );
+    }
+
     watch(contentFilter, () => {
-      if (selectedTag.value && !allTagNames.value.includes(selectedTag.value)) selectedTag.value = '';
+      selectedTags.value = selectedTags.value.filter((tag) => allTagNames.value.includes(tag));
     });
 
     const tagSuggestions = computed(() => {
@@ -1353,6 +1943,13 @@ export default defineComponent({
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
+    // Where a resource lives, for the Recent tiles ("Work / Plans").
+    const folderPathById = computed(() => folderPaths(allResourceFolders.value));
+    const folderIdByKey = computed(() => folderIdByResourceKey(allResourceFolders.value));
+    const recentFolderPath = (item: { type: string; id: string }) => {
+      const folderId = folderIdByKey.value.get(`${item.type}:${item.id}`);
+      return folderId ? folderPathById.value.get(folderId) || '' : '';
+    };
     /**
      * Destinations for the move dialog, in tree order. Each carries its depth and
      * the path to its parent, so picking a nested folder is unambiguous.
@@ -1431,7 +2028,7 @@ export default defineComponent({
         for (const node of nodes.slice().sort(bySortOrder)) {
           const children = childrenOf.get(node.id) || [];
           if (!hidden) {
-            ordered.push({ ...node, depth, hasChildren: children.length > 0 });
+            ordered.push({ ...node, depth, hasChildren: Boolean(node.hasChildren || children.length) });
           }
           walk(children, depth + 1, hidden || !isTreeExpanded(node.id));
         }
@@ -1440,24 +2037,58 @@ export default defineComponent({
       return ordered;
     };
 
-    const folderSummaries = computed<FolderSummary[]>(() => {
-      const folders = allResourceFolders.value
-      .map((folder) => {
+    const allFolderSummaries = computed<FolderSummary[]>(() => {
+      const parentIds = new Set(
+        allResourceFolders.value
+          .map((folder) => folder.parentId ?? null)
+          .filter((parentId): parentId is string => Boolean(parentId)),
+      );
+      return allResourceFolders.value.map((folder) => {
         const canvases = (folder.items?.canvases || folder.canvases || []).map((item) => normalizeCanvas({ ...item, folder: folder.name, folderId: folder.id }, true));
         const htmlDocs = (folder.items?.htmlDocuments || folder.htmlDocuments || []).map((item) => normalizeHtmlDocument({ ...item, folderId: folder.id }));
         const docs = (folder.items?.textDocuments || folder.textDocuments || []).map((item) => normalizeTextDocument({ ...item, folderId: folder.id }));
-        const items = sortFolderItems([...canvases, ...htmlDocs, ...docs].filter((item) => matchesFolderItem(item, folder.name)));
+        const templates = (folder.items?.interactiveTemplates || folder.interactiveTemplates || []).map((item) => normalizeInteractiveTemplate({ ...item, folderId: folder.id }));
         return {
           ...folder,
-          items,
+          items: sortFolderItems([...canvases, ...htmlDocs, ...docs, ...templates]),
           canvasCount: canvases.length,
           htmlDocumentCount: htmlDocs.length,
           textDocumentCount: docs.length,
+          interactiveTemplateCount: templates.length,
+          hasChildren: parentIds.has(folder.id),
         };
-      })
+      });
+    });
+
+    const legacyInboxSourceItems = computed<FolderItem[]>(() => [
+      ...unfiledCanvases.value,
+      ...unfiledHtmlDocuments.value,
+      ...unfiledTextDocuments.value,
+    ]);
+
+    const buildLegacyInboxFolder = (items: FolderItem[]): FolderSummary => ({
+      id: 'legacy-resource-inbox',
+      name: 'Inbox',
+      role: 'owner',
+      sortOrder: Number.MAX_SAFE_INTEGER,
+      canvasCount: unfiledCanvases.value.length,
+      htmlDocumentCount: unfiledHtmlDocuments.value.length,
+      textDocumentCount: unfiledTextDocuments.value.length,
+      interactiveTemplateCount: 0,
+      items,
+    });
+
+    const folderSummaries = computed<FolderSummary[]>(() => {
+      const folders = allFolderSummaries.value
+      .map((folder) => ({
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      }))
       .filter((folder) => {
-        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTag.value);
-        return folder.items.length || (!hasActiveFilter && folder.role === 'owner' && !isTechnicalFolder(folder as FolderSummary));
+        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTags.value.length);
+        const isDefaultFolder = folder.name.toLowerCase() === 'default';
+        return folder.items.length
+          || (!hasActiveFilter && folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -1480,6 +2111,7 @@ export default defineComponent({
             canvasCount: 0,
             htmlDocumentCount: 0,
             textDocumentCount: 0,
+            interactiveTemplateCount: 0,
           } satisfies FolderRow;
           kept.set(parent.id, ancestor);
           folders.push(ancestor);
@@ -1487,28 +2119,42 @@ export default defineComponent({
         }
       }
 
-      const fallbackSourceItems = [...unfiledCanvases.value, ...unfiledHtmlDocuments.value, ...unfiledTextDocuments.value];
+      const fallbackSourceItems = legacyInboxSourceItems.value;
       const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
       if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
-        folders.push({
-          id: 'legacy-resource-inbox',
-          name: 'Inbox',
-          role: 'owner',
-          sortOrder: Number.MAX_SAFE_INTEGER,
-          canvasCount: unfiledCanvases.value.length,
-          htmlDocumentCount: unfiledHtmlDocuments.value.length,
-          textDocumentCount: unfiledTextDocuments.value.length,
-          items: fallbackItems,
-        });
+        folders.push(buildLegacyInboxFolder(fallbackItems));
       }
       return buildFolderTree(folders);
     });
-    const activeFolder = computed(() =>
-      folderSummaries.value.find((folder) => folder.id === selectedFolderId.value) || null,
-    );
+    const activeFolder = computed(() => {
+      const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
+      if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
+        return buildLegacyInboxFolder(
+          sortFolderItems(legacyInboxSourceItems.value.filter((item) => matchesFolderItem(item, 'Inbox'))),
+        );
+      }
+      if (!folder) return null;
+      return {
+        ...folder,
+        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
+      };
+    });
+    const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: folder.parentId || null,
+      depth: folder.depth || 0,
+      role: folder.role,
+      technical: isTechnicalFolder(folder),
+      expanded: isTreeExpanded(folder.id),
+      hasChildren: Boolean(folder.hasChildren),
+      draggable: canReorderFolder(folder),
+      dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
+      reorderTarget: folderDragOverId.value === folder.id,
+    })));
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
-      ...folderSummaries.value.flatMap((folder) => folder.items),
+      ...allFolderSummaries.value.flatMap((folder) => folder.items),
       ...own.value,
       ...shared.value,
       ...sharedHtmlDocuments.value,
@@ -1519,18 +2165,172 @@ export default defineComponent({
       ...unfiledCanvases.value,
       ...unfiledHtmlDocuments.value,
       ...unfiledTextDocuments.value,
+      ...unfiledInteractiveTemplateItems.value,
     ]);
     const allRecentResourceItems = computed<RecentResourceItem[]>(() => [
       ...allDashboardResources.value,
-      ...interactiveTemplateItems.value.map((item) => ({ ...item, type: 'interactive-template' as const })),
     ]);
+    /**
+     * allDashboardResources includes each folder's own items AND the same
+     * canvases/documents again from own/shared/unfiled/public. /resource-
+     * folders now returns tags on its nested canvases/htmlDocuments too (a
+     * backend fix - it used to omit them, matching only its textDocuments),
+     * but this enrichment stays regardless: it's what keeps the client
+     * correct against an OLDER backend still running that gap (compatibility
+     * during a rolling/independent frontend-backend deploy is exactly the
+     * case where the two are out of sync), and it's free - own/shared/
+     * allHtmlDocumentsRaw/allTextDocumentsRaw are already loaded for other
+     * reasons. Building the lookup keeps whichever copy came LAST for a
+     * given id, so listing the tag-complete sources after
+     * allRecentResourceItems means anything resolved through this map has
+     * its real tags, wherever it came from - own/shared cover every canvas
+     * regardless of folder, allHtmlDocumentsRaw/allTextDocumentsRaw do the
+     * same for HTML/text documents.
+     */
+    const dashboardItemsByKey = computed(() => new Map(
+      [...allRecentResourceItems.value, ...allHtmlDocumentsRaw.value, ...allTextDocumentsRaw.value]
+        .map((item) => [`${item.type}:${item.id}`, item] as const),
+    ));
     const recentResources = computed<RecentResource[]>(() => {
-      const available = new Map(allRecentResourceItems.value.map((item) => [`${item.type}:${item.id}`, item]));
       return [...recentResourceHistory.value].sort((a, b) => b.openedAt - a.openedAt).flatMap((recent) => {
-        const item = available.get(`${recent.type}:${recent.id}`);
-        return item ? [{ ...recent, title: item.title || recent.title, routeId: ('slug' in item && item.slug) || item.id }] : [];
+        const item = dashboardItemsByKey.value.get(`${recent.type}:${recent.id}`);
+        if (!item) return [];
+        return [{
+          ...recent,
+          title: item.title || recent.title,
+          routeId: ('slug' in item && item.slug) || item.id,
+          tags: item.tags || [],
+          folder: ('folder' in item && item.folder) || '',
+        }];
       });
     });
+
+    /**
+     * Recent, same as a folder's own contents, run through contentFilter +
+     * selectedTags + searchQuery via matchesFolderItem - previously Recent
+     * ignored all three entirely, which was the whole "filters don't affect
+     * Recent" bug: there was no filtering step here at all, not a broken one.
+     */
+    const filteredRecentResources = computed(() =>
+      recentResources.value.filter((item) => matchesFolderItem(item, item.folder)),
+    );
+
+    /**
+     * sortMode is shared with folders/public via sortFolderItems, but Recent
+     * items have no `updatedAt`/`pinned` - "when opened" is Recent's own
+     * notion of recency, so updated-desc/-asc sort by openedAt instead.
+     */
+    const sortedRecentResources = computed(() => [...filteredRecentResources.value].sort((a, b) => {
+      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
+        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
+        return sortMode.value === 'title-asc' ? result : -result;
+      }
+      return sortMode.value === 'updated-asc' ? a.openedAt - b.openedAt : b.openedAt - a.openedAt;
+    }));
+
+    const RECENT_COLLAPSED_LIMIT = 4;
+    const recentExpanded = ref(false);
+    const recentTotal = computed(() => sortedRecentResources.value.length);
+    const visibleRecent = computed(() =>
+      recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, RECENT_COLLAPSED_LIMIT),
+    );
+    const recentShowAllAvailable = computed(() => recentTotal.value > RECENT_COLLAPSED_LIMIT);
+
+    /**
+     * HOME AS ONE FEED. Shared / Interactive / Public render on Home too,
+     * below Recent and Folders, as the SAME blocks their own sections use,
+     * capped at FEED_LIMIT cards with "Show all N" opening the full section.
+     * Empty ones are left out of the feed. The sticky bar above lists the
+     * sections present, scrolls to one on click, and marks the one in view.
+     */
+    const FEED_LIMIT = 4;
+    const FEED_SECTION_LABELS = {
+      recent: 'recents',
+      folders: 'folders',
+      shared: 'sharedWithMe',
+      interactive: 'interactiveTemplate',
+      public: 'public',
+    } as const;
+    type FeedSection = keyof typeof FEED_SECTION_LABELS;
+    const isHomeFeed = computed(() => isLoggedIn && activeSection.value.kind === 'recent');
+    const feedItems = <T,>(items: T[]): T[] => (isHomeFeed.value ? items.slice(0, FEED_LIMIT) : items);
+    const feedNavSections = computed<FeedSection[]>(() => {
+      if (!isHomeFeed.value) return [];
+      const sections: FeedSection[] = ['recent'];
+      if (recentFolderTiles.value.length) sections.push('folders');
+      if (sharedFiltered.value.length) sections.push('shared');
+      if (visibleInteractiveTemplateItems.value.length) sections.push('interactive');
+      if (publicFiltered.value.length) sections.push('public');
+      return sections;
+    });
+    const activeFeedSection = ref<FeedSection>('recent');
+    // The section last jumped to from the bar. It stays current while it's
+    // in view, until the user scrolls by hand: near the end of a short feed
+    // the section jumped to may never reach the bar.
+    let feedJumpTarget: FeedSection | null = null;
+    const scrollToFeedSection = (section: FeedSection) => {
+      activeFeedSection.value = section;
+      feedJumpTarget = section;
+      document.getElementById(`feed-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    /**
+     * Scroll-spy: the current section is the last one whose top has passed
+     * under the sticky bar - except at the very end of the feed, where the
+     * last sections can never reach the bar, so the last one in view wins
+     * (otherwise jumping to Public highlighted whatever sat above it).
+     */
+    let feedScroller: HTMLElement | null = null;
+    let feedSpyFrame = 0;
+    const updateActiveFeedSection = () => {
+      feedSpyFrame = 0;
+      const sections = feedNavSections.value;
+      if (!feedScroller || !sections.length) return;
+      const box = feedScroller.getBoundingClientRect();
+      // Горизонтальной полосы разделов больше нет — отсчёт от верха ленты.
+      const barBottom = box.top;
+      const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
+      if (feedJumpTarget) {
+        const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
+        if (rect && rect.bottom > barBottom && rect.top < box.bottom) {
+          activeFeedSection.value = feedJumpTarget;
+          return;
+        }
+        feedJumpTarget = null;
+      }
+      let current: FeedSection = sections[0]!;
+      for (const section of sections) {
+        const top = document.getElementById(`feed-${section}`)?.getBoundingClientRect().top;
+        if (top === undefined) continue;
+        if (top <= barBottom + 24 || (atEnd && top < box.bottom)) current = section;
+      }
+      activeFeedSection.value = current;
+    };
+    const onFeedManualScroll = () => { feedJumpTarget = null; };
+    const onFeedScroll = () => {
+      if (!feedSpyFrame) feedSpyFrame = requestAnimationFrame(updateActiveFeedSection);
+    };
+    // Set up once mounted: the scroll container exists then, and a watch
+    // reads its source right away while the sections it lists
+    // (recentFolderTiles...) are declared further down in this setup.
+    onMounted(() => {
+      feedScroller = (document.querySelector('.dashboard-central-shell .app-main') as HTMLElement | null)
+        ?? (document.querySelector('.app-main') as HTMLElement | null);
+      feedScroller?.addEventListener('scroll', onFeedScroll, { passive: true });
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.addEventListener(type, onFeedManualScroll, { passive: true });
+      }
+      watch(feedNavSections, () => { void nextTick(updateActiveFeedSection); }, { flush: 'post' });
+    });
+    onBeforeUnmount(() => {
+      feedScroller?.removeEventListener('scroll', onFeedScroll);
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.removeEventListener(type, onFeedManualScroll);
+      }
+      if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
+    });
+    const toggleRecentExpanded = () => {
+      recentExpanded.value = !recentExpanded.value;
+    };
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
       feedback.value = { type, message };
@@ -1578,25 +2378,23 @@ export default defineComponent({
             ),
           );
           const legacyState = await htmlDocuments.list();
-          unfiledHtmlDocuments.value = (legacyState.documents || [])
-            .filter((document: any) => document.ownerId === currentUser.value?.id)
-            .filter((document: any) => !folderDocumentIds.has(document.id))
-            .map((document: any) => normalizeHtmlDocument(document));
-          sharedHtmlDocuments.value = (legacyState.documents || [])
-            .filter((document: any) => document.ownerId !== currentUser.value?.id)
-            .filter((document: any) => document.visibility !== 'public')
-            .filter((document: any) => !folderDocumentIds.has(document.id))
-            .map((document: any) => normalizeHtmlDocument(document));
+          allHtmlDocumentsRaw.value = (legacyState.documents || []).map((document: any) => normalizeHtmlDocument(document));
+          unfiledHtmlDocuments.value = allHtmlDocumentsRaw.value
+            .filter((document) => document.ownerId === currentUser.value?.id)
+            .filter((document) => !folderDocumentIds.has(document.id));
+          sharedHtmlDocuments.value = allHtmlDocumentsRaw.value
+            .filter((document) => document.ownerId !== currentUser.value?.id)
+            .filter((document) => document.visibility !== 'public')
+            .filter((document) => !folderDocumentIds.has(document.id));
           const textState = await textDocuments.list();
-          unfiledTextDocuments.value = (textState.documents || [])
-            .filter((document: any) => document.ownerId === currentUser.value?.id)
-            .filter((document: any) => !folderTextDocumentIds.has(document.id))
-            .map((document: any) => normalizeTextDocument(document));
-          sharedTextDocuments.value = (textState.documents || [])
-            .filter((document: any) => document.ownerId !== currentUser.value?.id)
-            .filter((document: any) => document.visibility !== 'public')
-            .filter((document: any) => !folderTextDocumentIds.has(document.id))
-            .map((document: any) => normalizeTextDocument(document));
+          allTextDocumentsRaw.value = (textState.documents || []).map((document: any) => normalizeTextDocument(document));
+          unfiledTextDocuments.value = allTextDocumentsRaw.value
+            .filter((document) => document.ownerId === currentUser.value?.id)
+            .filter((document) => !folderTextDocumentIds.has(document.id));
+          sharedTextDocuments.value = allTextDocumentsRaw.value
+            .filter((document) => document.ownerId !== currentUser.value?.id)
+            .filter((document) => document.visibility !== 'public')
+            .filter((document) => !folderTextDocumentIds.has(document.id));
           const templateState = await interactiveTemplates.list();
           const templates = [...(templateState.templates || []), ...(templateState.own || []), ...(templateState.shared || [])];
           interactiveTemplateItems.value = [...new Map(templates.map((item) => [item.id, item])).values()];
@@ -1647,6 +2445,11 @@ export default defineComponent({
       const target = event.target as HTMLElement | null;
       if (target?.closest('.dashboard-modal-backdrop, input, textarea, select, [contenteditable="true"]')) return;
       if ((dashboardMain.value?.scrollTop || 0) > 0) return;
+      // An open folder scrolls its own nested body (.folder-manager-body),
+      // separate from dashboardMain - without this check, scrolling up
+      // inside a folder that isn't at ITS OWN top reads as "page at top"
+      // and wrongly starts a pull-to-refresh instead.
+      if ((activeFolderBody.value?.scrollTop || 0) > 0) return;
       const point = event.touches[0];
       if (!point) return;
       dashboardPullStartY = point.clientY;
@@ -1665,6 +2468,10 @@ export default defineComponent({
         resetDashboardPull();
         return;
       }
+      if ((activeFolderBody.value?.scrollTop || 0) > 0) {
+        resetDashboardPull();
+        return;
+      }
       dashboardPullDistance.value = Math.min(distance, DASHBOARD_PULL_THRESHOLD + 36);
       // Prevent the native elastic overscroll only while this dashboard gesture
       // is active, leaving ordinary scrolling and card dragging unchanged.
@@ -1674,17 +2481,18 @@ export default defineComponent({
     const onDashboardPullEnd = () => {
       const shouldRefresh = dashboardPullDistance.value >= DASHBOARD_PULL_THRESHOLD && !isRefreshing.value;
       resetDashboardPull();
-      if (shouldRefresh) void load({ showLoading: false });
+      if (shouldRefresh) {
+        void load({ showLoading: false });
+        void loadRecentResources();
+      }
     };
 
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
-      const recent: RecentResource = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
+      const recent: RecentHistoryEntry = { id: item.id, routeId: ('slug' in item && item.slug) || item.id, type, title: item.title || '', openedAt: Date.now() };
       recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === recent.type && entry.id === recent.id))].slice(0, RECENT_RESOURCES_LIMIT);
-      void recentResourcesApi.markOpened(type, item.id).catch(() => {
-        // Opening a resource must remain available if saving its recent entry fails.
-      });
+      markResourceOpened(type, item.id);
     };
 
     const openCanvas = (id: string) => {
@@ -1729,43 +2537,19 @@ export default defineComponent({
       else if (item.type === 'text-document') openTextDocument(item.routeId);
       else openInteractiveTemplate(item.routeId);
     };
-    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? 'Канвас' : type === 'html-document' ? 'HTML' : type === 'text-document' ? 'Документ' : 'Шаблон';
+    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('document') : t('interactiveTemplate');
     const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
-    const scrollRecentResources = (direction: -1 | 1) => {
-      const strip = recentResourcesStrip.value;
-      if (!strip) return;
-      const card = strip.querySelector<HTMLElement>('.dashboard-recent-card');
-      const gap = Number.parseFloat(getComputedStyle(strip).gap) || 10;
-      strip.scrollBy({ left: direction * ((card?.offsetWidth || 168) + gap), behavior: 'smooth' });
-    };
-    const scrollActiveFolder = (direction: -1 | 1) => {
-      activeFolderBody.value?.scrollBy({ top: direction * 250, behavior: 'smooth' });
-    };
-
-    const updateFolderScrollControls = () => {
-      const body = activeFolderBody.value;
-      if (!body) {
-        canScrollFolderUp.value = false;
-        canScrollFolderDown.value = false;
-        return;
-      }
-      canScrollFolderUp.value = body.scrollTop > 2;
-      canScrollFolderDown.value = body.scrollTop + body.clientHeight < body.scrollHeight - 2;
-    };
-
     const refreshOverflowIndicators = () => {
       void nextTick(() => {
         const tagsList = tagFilterList.value;
         hasTagOverflow.value = Boolean(tagsList && tagsList.scrollWidth > tagsList.clientWidth + 2);
-        const recentsStrip = recentResourcesStrip.value;
-        hasRecentOverflow.value = Boolean(recentsStrip && recentsStrip.scrollWidth > recentsStrip.clientWidth + 2);
-        updateFolderScrollControls();
+        recomputeMobileTagFit();
       });
     };
-    watch([allTagNames, recentResources, activeFolder], refreshOverflowIndicators, { flush: 'post' });
+    watch([allTagNames, activeFolder, selectedTags], refreshOverflowIndicators, { flush: 'post' });
 
     const openTextDocumentFromCard = (id: string) => {
       if (suppressNextCardClick.value) {
@@ -1775,32 +2559,46 @@ export default defineComponent({
       openTextDocument(id);
     };
 
-    const createCanvas = async () => {
+    /**
+     * Where a new item goes: the folder asked for (a folder's own menu), else
+     * the New menu's "Create in" choice - which defaults to the folder you
+     * are in - else Unsorted, as before.
+     */
+    const newItemFolderId = ref('');
+    const newItemFolderOptions = computed(() => folderOptions.value.filter((option) => !isTechnicalFolder(option)));
+    const resolveCreateFolderId = async (explicitFolderId?: unknown) => {
+      if (typeof explicitFolderId === 'string' && explicitFolderId) return explicitFolderId;
+      if (newItemFolderId.value && ownResourceFolders.value.some((f) => f.id === newItemFolderId.value)) return newItemFolderId.value;
+      return (await ensureFolderByName('Unsorted'))?.id;
+    };
+
+    // `folderId` is optional; a click handler may pass its event instead.
+    const createCanvas = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
-      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolder?.id), 'Canvas created');
+      const targetFolderId = await resolveCreateFolderId(folderId);
+      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolderId), 'Canvas created');
       if (!c) return;
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async () => {
+    const createHtmlDocument = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
+      const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolder?.id }),
+        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolderId }),
         'HTML document created',
       );
       if (!doc) return;
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async () => {
+    const createTextDocument = async (folderId?: unknown) => {
       openControlMenu.value = '';
-      const targetFolder = await ensureFolderByName('Unsorted');
+      const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolder?.id }),
+        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolderId }),
         'Document created',
       );
       if (!doc) return;
@@ -1820,11 +2618,22 @@ export default defineComponent({
         isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
       );
       if (!template) return;
-      interactiveTemplateItems.value = [template, ...interactiveTemplateItems.value];
+      const folderId = templateFolderId.value;
+      templateFolderId.value = null;
+      if (folderId) await resourceFolders.move(folderId, 'interactive-template', template.id);
+      interactiveTemplateItems.value = [{ ...template, role: 'owner' }, ...interactiveTemplateItems.value];
       openInteractiveTemplate(template.id);
     };
 
-    const openInteractiveTemplatePicker = () => {
+    // Куда положить новый шаблон: папка из «+» папки или место создания из меню «Новое».
+    const templateFolderId = ref<string | null>(null);
+    const openInteractiveTemplatePicker = (folderId?: unknown) => {
+      templateFolderId.value =
+        typeof folderId === 'string' && folderId
+          ? folderId
+          : newItemFolderId.value && ownResourceFolders.value.some((f) => f.id === newItemFolderId.value)
+            ? newItemFolderId.value
+            : null;
       openControlMenu.value = '';
       templatePickerOpen.value = true;
     };
@@ -1834,6 +2643,7 @@ export default defineComponent({
       if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
       await runAction('delete-interactive-template', () => interactiveTemplates.delete(template.id), 'Шаблон удалён');
       interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => item.id !== template.id);
+      await load({ showLoading: false });
     };
 
     const openCreateGroupModal = () => {
@@ -1884,6 +2694,26 @@ export default defineComponent({
         folderId: doc.folderId || '',
         value: currentFolder?.name || '',
       };
+    };
+
+    const openMoveInteractiveTemplateFolderModal = (template: InteractiveTemplate) => {
+      closeCardMenu();
+      const currentFolder = ownResourceFolders.value.find((folder) => folder.id === template.folderId);
+      draggingResourceFolderId.value = template.folderId || null;
+      folderModal.value = {
+        open: true,
+        resourceId: template.id,
+        resourceType: 'interactive-template',
+        folderId: template.folderId || '',
+        value: currentFolder?.name || '',
+      };
+    };
+
+    const openMoveResourceFolderModal = (item: FolderItem) => {
+      if (item.type === 'canvas') return openMoveFolderModal(item);
+      if (item.type === 'html-document') return openMoveHtmlFolderModal(item);
+      if (item.type === 'text-document') return openMoveTextDocumentFolderModal(item);
+      return openMoveInteractiveTemplateFolderModal(item);
     };
 
     const closeFolderModal = () => {
@@ -2012,10 +2842,8 @@ export default defineComponent({
     const onFolderDragOver = (folder: FolderSummary) => {
       if (!canDropToFolder(folder)) return;
       dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had collapsed it.
-      if (collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder.hasChildren) expandTree(folder.id);
     };
 
     const onFolderDragLeave = (folder: FolderSummary) => {
@@ -2095,6 +2923,34 @@ export default defineComponent({
         return;
       }
       await dropResourceToFolder(folder);
+    };
+
+    const resolveSidebarFolder = (folderId: string) =>
+      folderSummaries.value.find((folder) => folder.id === folderId) || null;
+
+    const onSidebarFolderDragStart = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragStart(event, folder);
+    };
+
+    const onSidebarFolderDragEnter = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragEnter(event, folder);
+    };
+
+    const onSidebarFolderDragOver = (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragOverEvent(event, folder);
+    };
+
+    const onSidebarFolderDragLeave = (_event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) onFolderDragLeave(folder);
+    };
+
+    const onSidebarFolderDrop = async (event: DragEvent, folderId: string) => {
+      const folder = resolveSidebarFolder(folderId);
+      if (folder) await onFolderDrop(event, folder);
     };
 
     const dropResourceToFolder = async (folder: FolderSummary) => {
@@ -2180,16 +3036,14 @@ export default defineComponent({
       }
       event?.preventDefault();
       const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-folder-id]') : null)
+        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
         .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.folderId || '';
+      const folderId = target?.dataset.dashboardFolder || '';
       const folder = findDropFolder(folderId);
       state.targetFolderId = folder?.id || '';
       dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had collapsed it.
-      if (folder && collapsedFolderIds.value.includes(folder.id)) {
-        collapsedFolderIds.value = collapsedFolderIds.value.filter((id) => id !== folder.id);
-      }
+      // Expand the drop target if the user had folded its subtree.
+      if (folder?.hasChildren) expandTree(folder.id);
     };
 
     function onResourceMouseMove(event: MouseEvent) {
@@ -2580,11 +3434,16 @@ export default defineComponent({
     };
 
     const onFolderBodyScroll = () => {
-      updateFolderScrollControls();
       if (openMenuCanvasId.value) closeCardMenu();
     };
 
+    const closeSidebarAccountMenu = () => {
+      const root = dashboardMain.value?.closest('.app-layout');
+      root?.querySelector<HTMLElement>('[data-account-menu-backdrop]')?.click();
+    };
+
     const toggleCardMenu = (canvasId: string, event?: Event) => {
+      closeSidebarAccountMenu();
       openControlMenu.value = '';
       const closing = openMenuCanvasId.value === canvasId;
       openMenuCanvasId.value = closing ? '' : canvasId;
@@ -2598,25 +3457,80 @@ export default defineComponent({
     };
 
     const toggleNewMenu = () => {
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'new' ? '' : 'new';
+      const opening = openControlMenu.value !== 'new';
+      openControlMenu.value = opening ? 'new' : '';
+      if (!opening) return;
+      // Default destination: the (own, non-technical) folder you're in.
+      const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
+      newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
+    };
+
+    const toggleFolderCreateMenu = (folderId: string) => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      const key = `folder-new:${folderId}`;
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
     const toggleFolderMenu = (folderId: string) => {
+      closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
       const key = `folder:${folderId}`;
       openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
-    const toggleUserMenu = () => {
+    const closeControlMenusForAccount = () => {
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'user' ? '' : 'user';
+      openControlMenu.value = '';
+      cardMenuStyle.value = null;
     };
 
-    const logout = () => {
-      resetPlugins();
-      clearToken();
-      router.push('/login');
+    const toggleMobileSortMenu = () => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === 'mobile-sort' ? '' : 'mobile-sort';
+    };
+
+    const selectSortMode = (mode: typeof sortMode.value) => {
+      sortMode.value = mode;
+      openControlMenu.value = '';
+    };
+
+    /**
+     * The sheet edits its own draft copy of selectedTags, committed only on
+     * Apply - closing via the backdrop/X or reopening later must not leak an
+     * in-progress, un-applied selection into the rest of the dashboard.
+     */
+    const tagSheetOpen = ref(false);
+    const tagSheetDraft = ref<string[]>([]);
+
+    const openTagSheet = () => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = '';
+      tagSheetDraft.value = [...selectedTags.value];
+      tagSheetOpen.value = true;
+    };
+
+    const closeTagSheet = () => {
+      tagSheetOpen.value = false;
+    };
+
+    const toggleDraftTag = (tag: string) => {
+      tagSheetDraft.value = tagSheetDraft.value.includes(tag)
+        ? tagSheetDraft.value.filter((t) => t !== tag)
+        : [...tagSheetDraft.value, tag];
+    };
+
+    const resetTagSheetDraft = () => {
+      tagSheetDraft.value = [];
+    };
+
+    const applyTagSheet = () => {
+      selectedTags.value = [...tagSheetDraft.value];
+      tagSheetOpen.value = false;
     };
 
     const resolveAccessRequest = async (id: string, status: 'approved' | 'declined') => {
@@ -2654,6 +3568,46 @@ export default defineComponent({
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
+    /** True once any of search/type/tags actually narrows the result set. */
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentFilter.value !== 'all'));
+
+    /**
+     * Top-level folders shown as tiles below Recent. Unlike the sidebar tree,
+     * this list is not filtered by isTechnicalFolder: "Unsorted" is where new
+     * documents land by default and must stay reachable from Recent, not
+     * sidebar-only. Sourced from allFolderSummaries (not allResourceFolders):
+     * that's the copy with each folder's items already flattened into one
+     * normalized FolderItem[] with real .type/.tags, which matchingCount below
+     * needs - allResourceFolders only carries server-side aggregate counts.
+     *
+     * matchingCount resolves each item through dashboardItemsByKey rather
+     * than matching folder.items directly: the /resource-folders response's
+     * nested canvases/htmlDocuments carry no tags at all (unlike its
+     * textDocuments), so a tag filter would silently zero out every canvas
+     * and HTML doc in every folder without this - see dashboardItemsByKey.
+     */
+    const recentFolderTiles = computed(() => allFolderSummaries.value
+      .filter((folder) => !(folder.parentId ?? null))
+      .map((folder) => {
+        const totalCount = folder.items.length;
+        const matchingCount = folder.items.filter((item) => {
+          const enriched = dashboardItemsByKey.value.get(`${item.type}:${item.id}`) || item;
+          return matchesFolderItem(enriched, folder.name);
+        }).length;
+        const count = hasActiveFilter.value ? matchingCount : totalCount;
+        return {
+          id: folder.id,
+          name: folder.name,
+          count,
+          // A folder that's genuinely empty reads as "Empty"; one that's
+          // empty only because of the active filter shows a literal "0" -
+          // "Empty" would wrongly suggest nothing was ever put in it.
+          displayCount: count === 0 ? (hasActiveFilter.value ? '0' : t('emptyFolder')) : String(count),
+          zeroMatch: hasActiveFilter.value && matchingCount === 0,
+        };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name)));
+
     const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
       subfolderModal.value = {
@@ -2681,6 +3635,53 @@ export default defineComponent({
       if (!created) return;
       // Unfold the parent so the folder that was just created is actually visible.
       expandTree(parentId);
+      await load();
+    };
+
+    // ---- moving a folder under another one ----
+    // Any own folder (a root one included) can go under another own folder,
+    // or back to the root. Never under itself or its own subtree, nor the
+    // technical Unsorted - the backend enforces the same (plus depth and
+    // name clashes, whose errors surface as the usual feedback toast).
+    const folderParentModal = ref<{ open: boolean; folderId: string; name: string; currentParentId: string | null; targetId: string }>({
+      open: false, folderId: '', name: '', currentParentId: null, targetId: '',
+    });
+    const folderParentOptions = computed(() => {
+      const { open, folderId, currentParentId } = folderParentModal.value;
+      if (!open || !folderId) return [];
+      const blocked = descendantFolderIds(ownResourceFolders.value, folderId);
+      blocked.add(folderId);
+      const options = folderOptions.value
+        .filter((option) => !blocked.has(option.id))
+        .filter((option) => option.id !== currentParentId)
+        .filter((option) => !isTechnicalFolder(option));
+      return currentParentId ? [{ id: 'root', name: '', depth: 0, path: '' }, ...options] : options;
+    });
+    const openFolderParentModal = (folder: { id: string; name: string; parentId?: string | null }) => {
+      closeCardMenu();
+      openControlMenu.value = '';
+      folderParentModal.value = {
+        open: true,
+        folderId: folder.id,
+        name: folder.name,
+        currentParentId: folder.parentId ?? null,
+        targetId: '',
+      };
+    };
+    const closeFolderParentModal = () => {
+      folderParentModal.value = { open: false, folderId: '', name: '', currentParentId: null, targetId: '' };
+    };
+    const saveFolderParentModal = async () => {
+      const { folderId, targetId } = folderParentModal.value;
+      if (!folderId || !targetId) return;
+      const parentId = targetId === 'root' ? null : targetId;
+      try {
+        await runAction('move-folder-parent', () => resourceFolders.moveFolder(folderId, parentId), t('folderMoved'));
+      } catch {
+        return; // runAction already showed the reason; the dialog stays open to pick another place.
+      }
+      closeFolderParentModal();
+      if (parentId) expandTree(parentId);
       await load();
     };
 
@@ -2777,39 +3778,236 @@ export default defineComponent({
      * nested folder is hidden until its ancestors are expanded.
      */
     const restoreSelectedFolder = () => {
-      const isVisible = (id: string) =>
-        Boolean(id) && folderSummaries.value.some((folder) => folder.id === id);
-      if (isVisible(selectedFolderId.value)) return;
+      const isKnown = (id: string) =>
+        Boolean(id) && (
+          allResourceFolders.value.some((folder) => folder.id === id)
+          || (id === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length > 0)
+        );
+      const syncActiveFolderSection = () => {
+        if (activeSection.value.kind !== 'folder') return;
+        activeSection.value = selectedFolderId.value
+          ? { kind: 'folder', folderId: selectedFolderId.value }
+          : { kind: 'recent' };
+      };
+      if (isKnown(selectedFolderId.value)) {
+        syncActiveFolderSection();
+        return;
+      }
 
       const known = new Set(allResourceFolders.value.map((folder) => folder.id));
       const remembered = readLastFolderId();
       if (remembered && known.has(remembered)) {
         expandAncestorsOf(remembered);
-        // Expanding changes the tree, so re-check that the folder actually shows.
-        if (isVisible(remembered)) {
-          selectedFolderId.value = remembered;
-          return;
-        }
+        selectedFolderId.value = remembered;
+        syncActiveFolderSection();
+        return;
       }
-      const fallback = folderSummaries.value[0]?.id || '';
+      const fallback = allFolderSummaries.value[0]?.id || (legacyInboxSourceItems.value.length ? 'legacy-resource-inbox' : '');
       selectedFolderId.value = fallback;
+      syncActiveFolderSection();
       // A stale pointer is cleared so it cannot keep losing the race with the
       // fallback on every load.
       if (remembered && !known.has(remembered)) writeLastFolderId('');
     };
 
     const selectFolder = (folderId: string) => {
+      activeSection.value = { kind: 'folder', folderId };
       selectedFolderId.value = folderId;
       expandAncestorsOf(folderId);
       writeLastFolderId(folderId);
       closeCardMenu();
     };
 
-    const isTechnicalFolder = (folder: FolderSummary) =>
-      folder.id === 'legacy-resource-inbox' || folder.name === 'Unsorted';
+    const isTechnicalFolder = (folder: { id: string; name: string }) =>
+      folder.id === 'legacy-resource-inbox'
+      || folder.name === 'Unsorted'
+      || folder.name.toLowerCase() === 'default';
+
+    const selectDashboardSection = (section: DashboardSection) => {
+      activeSection.value = section;
+      if (section.kind === 'folder') selectFolder(section.folderId);
+      else closeCardMenu();
+      mobileSidebarOpen.value = false;
+    };
+
+    /**
+     * The sidebar's Shared / Templates / Public / Recents scroll the home
+     * feed to that section rather than swapping the dashboard for a page of
+     * its own - the feed already shows them all, one under the other. Only a
+     * section the feed has nothing in (so nothing to scroll to) still opens
+     * on its own, where its empty state says why. A guest has no feed: their
+     * dashboard is Public itself.
+     */
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
+    const onSidebarSelect = async (section: DashboardSection) => {
+      const target = section.kind as FeedSection;
+      if (!isLoggedIn || !(FEED_SIDEBAR_SECTIONS as readonly string[]).includes(section.kind)) {
+        selectDashboardSection(section);
+        return;
+      }
+      if (activeSection.value.kind !== 'recent') activeSection.value = { kind: 'recent' };
+      closeCardMenu();
+      mobileSidebarOpen.value = false;
+      await nextTick();
+      if (target === 'recent' || feedNavSections.value.includes(target)) scrollToFeedSection(target);
+      else selectDashboardSection(section);
+    };
+
+    /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
+    const goToParentFolder = (): boolean => {
+      const folder = activeSection.value.kind === 'folder' ? activeFolder.value : null;
+      if (!folder) return false;
+      if (folder.parentId) selectFolder(folder.parentId);
+      else selectDashboardSection({ kind: 'recent' });
+      return true;
+    };
+    // Android's system Back inside a folder does the same as the folder's
+    // own back arrow, rather than main.ts offering to exit the app.
+    useBackHandler(goToParentFolder);
+
+    const toggleSidebarWidth = () => {
+      sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
+      writeSidebarWidthState(storage(), sidebarWidthState.value);
+    };
+
+    const openMobileSidebar = (event?: Event) => {
+      const eventTarget = event?.currentTarget;
+      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
+        ? eventTarget
+        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      mobileSidebarOpen.value = true;
+    };
+
+    const closeMobileSidebar = () => {
+      mobileSidebarOpen.value = false;
+    };
+
+    const focusWithoutScroll = (element: HTMLElement) => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    };
+
+    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
+      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
+      let current: HTMLElement | null = element;
+      while (current) {
+        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        current = current.parentElement;
+      }
+      return true;
+    };
+
+    const restoreSidebarCloseFocus = () => {
+      const opener = mobileSidebarOpener.value;
+      if (isVisibleFocusTarget(opener)) {
+        focusWithoutScroll(opener);
+        return;
+      }
+      const fallback = [
+        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
+        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
+      ].find(isVisibleFocusTarget) ?? null;
+      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
+    };
+
+    const restoreBodyOverflow = () => {
+      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = null;
+    };
+
+    const getSidebarDesktopMedia = () => {
+      try {
+        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const closeMobileSidebarOnDesktop = () => {
+      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
+    };
+
+    const addSidebarDesktopListener = (media: MediaQueryList) => {
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof media.addListener === 'function') {
+        media.addListener(closeMobileSidebarOnDesktop);
+      }
+    };
+
+    const removeSidebarDesktopListener = () => {
+      if (!sidebarDesktopMedia) return;
+      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
+        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
+        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
+      }
+      sidebarDesktopMedia = null;
+    };
+
+    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
+      if (typeof document === 'undefined') return;
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+
+      if (open) {
+        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        await nextTick();
+        if (!cancelled && mobileSidebarOpen.value) {
+          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
+          if (closeButton) focusWithoutScroll(closeButton);
+        }
+        return;
+      }
+
+      restoreBodyOverflow();
+      await nextTick();
+      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
+    });
+
+    const onAppClickCapture = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-account-menu-trigger]')) closeControlMenusForAccount();
+    };
+
+    const onAppKeydownCapture = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (event.key === 'ArrowDown' && target?.closest('[data-account-menu-trigger]')) {
+        closeControlMenusForAccount();
+      }
+    };
 
     const formatDate = (d: string) => new Date(d).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
+
+    // The compact mobile list row uses a relative timestamp ("12 min ago",
+    // "Yesterday · 18:42") instead of formatDate's always-absolute one.
+    const formatCardDateMobile = (d: string) => formatRelativeDate(d, locale.value);
+
+    const folderItemTypeLabel = (type: FolderItem['type']) =>
+      type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('docs') : t('interactiveTemplate');
+
+    const folderSearchPlaceholder = computed(() => {
+      if (activeSection.value.kind === 'folder' && activeFolder.value) {
+        return `${t('searchInFolder')} ${activeFolder.value.name}…`;
+      }
+      return t('search');
     });
 
     const fileInput = ref<HTMLInputElement | null>(null);
@@ -2879,16 +4077,50 @@ export default defineComponent({
       }
     };
 
+    /**
+     * Recents follow you between devices: a resource opened on the web shows
+     * up here as soon as this dashboard is looked at again - the tab regains
+     * focus, or the Android app comes back to the foreground (the dashboard
+     * stays mounted in the background, so mounting alone is not enough).
+     */
+    const onDashboardVisible = () => {
+      if (document.visibilityState === 'visible') void loadRecentResources();
+    };
+    let appStateListener: PluginListenerHandle | null = null;
+    let dashboardUnmounted = false;
+
     onMounted(() => {
       void loadRecentResources();
+      document.addEventListener('visibilitychange', onDashboardVisible);
+      if (Capacitor.isNativePlatform()) {
+        void CapacitorApp.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) void loadRecentResources();
+        }).then((handle) => {
+          if (dashboardUnmounted) void handle.remove();
+          else appStateListener = handle;
+        });
+      }
       const cached = restoreDashboardCache();
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
+      sidebarDesktopMedia = getSidebarDesktopMedia();
+      if (sidebarDesktopMedia) {
+        addSidebarDesktopListener(sidebarDesktopMedia);
+        closeMobileSidebarOnDesktop();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
-    onBeforeUnmount(() => window.removeEventListener('resize', refreshOverflowIndicators));
+    onBeforeUnmount(() => {
+      dashboardUnmounted = true;
+      document.removeEventListener('visibilitychange', onDashboardVisible);
+      void appStateListener?.remove();
+      appStateListener = null;
+      removeSidebarDesktopListener();
+      window.removeEventListener('resize', refreshOverflowIndicators);
+      restoreBodyOverflow();
+    });
 
     return {
       admin,
@@ -2897,21 +4129,21 @@ export default defineComponent({
       loading,
       isRefreshing,
       recentResources,
+      visibleRecent,
+      recentTotal,
+      recentShowAllAvailable,
+      recentExpanded,
+      toggleRecentExpanded,
+      recentViewMode,
+      setRecentViewMode,
       openRecentResource,
       rememberRecentResource,
       recentResourceTypeLabel,
       recentResourceIconClass,
       formatRecentOpenedAt,
-      recentResourcesStrip,
-      scrollRecentResources,
       tagFilterList,
       activeFolderBody,
-      scrollActiveFolder,
-      updateFolderScrollControls,
       hasTagOverflow,
-      hasRecentOverflow,
-      canScrollFolderUp,
-      canScrollFolderDown,
       dashboardMain,
       isNativeDashboard,
       dashboardPullDistance,
@@ -2922,11 +4154,38 @@ export default defineComponent({
       resetDashboardPull,
       sharedFiltered,
       publicFiltered,
+      publicOwnerFilter,
+      PUBLIC_OWNER_FILTERS,
+      PUBLIC_OWNER_FILTER_LABELS,
       allTagNames,
+      isTagSelected,
+      toggleSelectedTag,
+      clearSelectedTags,
+      tagFilterMobileEl,
+      tagMeasureEl,
+      tagMeasureAllEl,
+      tagMeasureMoreEl,
+      tagMeasureClearEl,
+      tagsInPriorityOrder,
+      visibleMobileTags,
+      mobileTagOverflowCount,
+      recomputeMobileTagFit,
+      tagSheetOpen,
+      tagSheetDraft,
+      openTagSheet,
+      closeTagSheet,
+      toggleDraftTag,
+      resetTagSheetDraft,
+      applyTagSheet,
+      toggleMobileSortMenu,
+      selectSortMode,
+      folderSearchPlaceholder,
+      folderItemTypeLabel,
+      formatCardDateMobile,
       folderOptions,
       folderNames,
       searchQuery,
-      selectedTag,
+      selectedTags,
       contentFilter,
       sortMode,
       feedback,
@@ -2935,6 +4194,18 @@ export default defineComponent({
       actionLabel,
       openMenuCanvasId,
       openControlMenu,
+      closeControlMenusForAccount,
+      activeSection,
+      sidebarWidthState,
+      mobileSidebarOpen,
+      sidebarFolders,
+      selectDashboardSection,
+      onSidebarSelect,
+      toggleSidebarWidth,
+      openMobileSidebar,
+      closeMobileSidebar,
+      onAppClickCapture,
+      onAppKeydownCapture,
       draggingResourceId,
       draggingResourceType,
       dragTargetFolder,
@@ -2942,7 +4213,7 @@ export default defineComponent({
       folderDragOverId,
       tagColors,
       tagSuggestions,
-      currentUserLabel,
+      isOwnedResource,
       folderModal,
       renameFolderModal,
       folderShareModal,
@@ -2962,16 +4233,35 @@ export default defineComponent({
       openInteractiveTemplatePicker,
       closeInteractiveTemplatePicker,
       interactiveTemplateItems,
+      visibleInteractiveTemplateItems,
       openInteractiveTemplate,
       deleteInteractiveTemplate,
       load,
       openCreateGroupModal,
       openMoveFolderModal,
+      isHomeFeed,
+      feedItems,
+      FEED_LIMIT,
+      feedNavSections,
+      activeFeedSection,
+      scrollToFeedSection,
+      newItemFolderId,
+      newItemFolderOptions,
+      folderParentModal,
+      folderParentOptions,
+      openFolderParentModal,
+      closeFolderParentModal,
+      saveFolderParentModal,
+      recentFolderPath,
+      goToParentFolder,
       openMoveHtmlFolderModal,
+      openMoveInteractiveTemplateFolderModal,
+      openMoveResourceFolderModal,
       expandedTreeIds,
       isTreeExpanded,
       toggleTreeExpanded,
       activeSubfolders,
+      recentFolderTiles,
       restoreSelectedFolder,
       subfolderModal,
       openSubfolderModal,
@@ -2998,6 +4288,11 @@ export default defineComponent({
       onFolderDragEnter,
       onFolderDragOverEvent,
       onFolderDrop,
+      onSidebarFolderDragStart,
+      onSidebarFolderDragEnter,
+      onSidebarFolderDragOver,
+      onSidebarFolderDragLeave,
+      onSidebarFolderDrop,
       dropResourceToFolder,
       canDropToFolder,
       openRenameFolderModal,
@@ -3035,7 +4330,7 @@ export default defineComponent({
       closeCardMenu,
       toggleNewMenu,
       toggleFolderMenu,
-      toggleUserMenu,
+      toggleFolderCreateMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
@@ -3043,7 +4338,6 @@ export default defineComponent({
       duplicateTextDocument,
       deleteCanvas,
       togglePinned,
-      logout,
       formatDate,
       renamingId,
       renameInput,
