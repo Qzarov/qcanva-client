@@ -9,6 +9,7 @@ describe('CanvasStrokeWidth', () => {
     expect(wrapper.get('input').attributes('aria-orientation')).toBe('vertical');
     expect(wrapper.get('line').attributes('stroke-width')).toBe('4');
     expect(wrapper.get('line').attributes('stroke')).toBe('#1971c2');
+    expect(wrapper.element.firstElementChild).toBe(wrapper.get('.canvas-stroke-preview').element);
     await wrapper.get('input').setValue('12');
     expect(wrapper.emitted('update:width')).toEqual([[12]]);
     await wrapper.setProps({ width: 12 });
