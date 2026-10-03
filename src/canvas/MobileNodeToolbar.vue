@@ -33,16 +33,9 @@
         </div>
       </template>
 
-      <!-- Border color -->
       <template v-if="activeSection === 'border-settings'">
         <div class="mobile-subpanel-row mobile-settings-row">
-          <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeBorderColor(nodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :title="t('borderColor')" :aria-expanded="colorPopup === 'border'" @click="toggleColorPopup('border', $event)" />
-        </div>
-      </template>
-
-      <!-- Border style & width -->
-      <template v-if="activeSection === 'border-settings'">
-        <div class="mobile-subpanel-row mobile-settings-row">
+          <span class="block-menu-sublabel">{{ t('style') }}</span>
           <button
             v-for="bs in canvasRef?.borderStyles ?? []"
             :key="bs.value"
@@ -53,7 +46,10 @@
             :aria-label="t('style') + ': ' + bs.label"
             v-html="'<svg width=\'24\' height=\'10\' viewBox=\'0 0 24 10\'>' + bs.svg + '</svg>'"
           />
-          <span class="tb-sep"></span>
+
+        </div>
+        <div class="mobile-subpanel-row mobile-settings-row">
+          <span class="block-menu-sublabel">{{ t('width') }}</span>
           <button
             v-for="bw in [1,2,3,4]"
             :key="'mw'+bw"
@@ -65,6 +61,11 @@
           >
             <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
           </button>
+
+        </div>
+        <div class="mobile-subpanel-row mobile-settings-row">
+          <span class="block-menu-sublabel">{{ t('color') }}</span>
+          <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeBorderColor(nodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :title="t('borderColor')" :aria-expanded="colorPopup === 'border'" @click="toggleColorPopup('border', $event)" />
         </div>
       </template>
 
@@ -140,22 +141,10 @@
             @click="canvasRef?.setSelectedDrawingColor(c); drawingSection = null"
           />
     </CanvasColorMenu>
-    <div v-if="drawingSection === 'drawing-stroke-width'" class="mobile-drawing-popup" @click.stop>
-        <div class="mobile-drawing-popup-width">
-          <input
-            class="mobile-drawing-popup-width-slider"
-            type="range" min="1" max="20"
-            :value="canvasRef?.selectedDrawingObj?.width ?? 4"
-            @input="canvasRef?.setSelectedDrawingWidth(Number(($event.target as HTMLInputElement).value))"
-            :aria-label="t('width')"
-          />
-          <span class="mobile-drawing-popup-width-label">{{ canvasRef?.selectedDrawingObj?.width ?? 4 }}</span>
-        </div>
-    </div>
-    <!-- Backdrop closes drawing popup on tap-outside -->
-    <Teleport to="body">
-      <div v-if="drawingSection === 'drawing-stroke-width'" class="mobile-drawing-popup-backdrop" @click="drawingSection = null" aria-hidden="true"/>
-    </Teleport>
+    <CanvasColorMenu :open="drawingSection === 'drawing-stroke-width'" :anchor="colorAnchor" :label="t('width')" controls @close="drawingSection = null">
+      <CanvasStrokeWidth :width="canvasRef?.selectedDrawingObj?.width ?? 4" :color="canvasRef?.selectedDrawingObj?.color ?? '#000000'"
+        @update:width="canvasRef?.setSelectedDrawingWidth($event)" />
+    </CanvasColorMenu>
 
     <!-- Icon row -->
     <div class="mobile-node-toolbar-row">
@@ -174,6 +163,7 @@
           @click="onActionClick(action, $event)"
         >
           <component :is="'svg'" v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
+          <span class="mobile-toolbar-caption">{{ caption(action) }}</span>
         </button>
       </template>
 
@@ -226,6 +216,7 @@
 <script lang="ts">
 import { computed, defineComponent, ref, shallowRef, watch, type PropType } from 'vue';
 import CanvasColorMenu from './CanvasColorMenu.vue';
+import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeAction } from './nodeActions';
 import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
@@ -284,7 +275,7 @@ const ICON_PATHS: Record<string, string> = {
 
 export default defineComponent({
   name: 'MobileNodeToolbar',
-  components: { CanvasColorMenu },
+  components: { CanvasColorMenu, CanvasStrokeWidth },
   props: {
     canvasRef: { type: Object as PropType<any>, default: null },
     role: { type: String as PropType<string>, default: 'read' },
@@ -368,6 +359,13 @@ export default defineComponent({
       });
     });
 
+    const caption = (action: ToolbarAction) => {
+      if (action.key === 'lock') return t(action.label === 'Unlock' ? 'toolbarUnlock' : 'toolbarLock');
+      if (action.key === 'hide') return t(props.canvasRef?.areSelectedNodesHidden?.() ? 'show' : 'hide');
+      const labels: Record<string, Parameters<typeof t>[0]> = { 'edit-text': 'toolbarEdit', 'image-title': 'toolbarTitle', 'fill': 'background', 'duplicate': 'duplicate', 'delete': 'delete', 'drawing-color': 'color', 'drawing-stroke-width': 'width', 'drawing-duplicate': 'duplicate', 'drawing-delete': 'delete' };
+      return labels[action.key] ? t(labels[action.key]!) : action.label;
+    };
+
     const layerActions = computed(() => actions.value.filter(action => ['layer-up', 'layer-down', 'bring-front', 'send-back'].includes(action.key)));
     const visibleActions = computed<ToolbarAction[]>(() => {
       if (selectionKind.value !== 'node') return actions.value.slice(0, MAX_VISIBLE_ACTIONS);
@@ -377,11 +375,11 @@ export default defineComponent({
         section('border-settings', t('border')),
         ...(props.canvasRef?.isTextNode?.(nodeId.value) ? [section('text-settings', t('text'))] : []),
         section('layers', t('layers')),
-        ...actions.value.filter(action => action.key === 'lock'),
+        ...actions.value.filter(action => ['lock', 'duplicate', 'delete', 'hide'].includes(action.key)),
       ];
     });
     const overflowActions = computed(() => selectionKind.value === 'node'
-      ? actions.value.filter(action => ['duplicate', 'delete', 'hide'].includes(action.key))
+      ? []
       : actions.value.slice(MAX_VISIBLE_ACTIONS));
 
     const paletteColors = computed<string[]>(() => paletteKind.value === 'fill'
@@ -483,7 +481,7 @@ export default defineComponent({
     };
 
     return {
-      t,
+      t, caption,
       selectionKind,
       nodeId,
       visibleActions,

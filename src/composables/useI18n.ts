@@ -28,6 +28,7 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
+    toolbarTitle: 'Название', toolbarEdit: 'Править', toolbarLock: 'Закрепить', toolbarUnlock: 'Открепить',
     ruler:'Линейка',rulerSettings:'Настройки линейки',rulerUnits:'Единицы измерения',rulerMeters:'Метры',rulerFeet:'Футы',rulerScale:'Масштаб',rulerCanvasUnits:'единиц канваса',rulerScaleHelp:'Количество единиц координат канваса в одном метре или футе. При смене единиц физический масштаб сохраняется.',rulerInvalidScale:'Укажите конечное положительное значение масштаба.',rulerHint:'Зажмите указатель и ведите. После отпускания измерение исчезнет через 3 секунды.',rulerOffline:'Измерение видно только вам: нет соединения.',rulerUnavailable:'Общая линейка сейчас недоступна.',rulerSaveFailed:'Не удалось сохранить настройки линейки.',
     language: 'Язык', english: 'English', russian: 'Русский',
     login: 'Войти', register: 'Регистрация', signOut: 'Выйти', settings: 'Настройки', plugins: 'Плагины',
@@ -194,6 +195,7 @@ export const messages = {
     fullscreen: 'Полный экран', exitFullscreen: 'Выйти из полного экрана', fullscreenFailed: 'Не удалось переключить полноэкранный режим',
   },
   en: {
+    toolbarTitle: 'Title', toolbarEdit: 'Edit text', toolbarLock: 'Lock', toolbarUnlock: 'Unlock',
     ruler:'Ruler',rulerSettings:'Ruler settings',rulerUnits:'Measurement units',rulerMeters:'Meters',rulerFeet:'Feet',rulerScale:'Scale',rulerCanvasUnits:'canvas units',rulerScaleHelp:'Canvas coordinate units in one meter or foot. Switching units preserves the physical scale.',rulerInvalidScale:'Enter a finite positive scale.',rulerHint:'Hold and drag to measure. The result disappears 3 seconds after release.',rulerOffline:'Only you can see this measurement: offline.',rulerUnavailable:'The shared ruler is currently unavailable.',rulerSaveFailed:'Could not save ruler settings.',
     language: 'Language', english: 'English', russian: 'Русский',
     login: 'Login', register: 'Register', signOut: 'Sign out', settings: 'Settings', plugins: 'Plugins',

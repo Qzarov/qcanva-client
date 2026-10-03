@@ -235,7 +235,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 844, height: 390 }
   });
 }
 
-test('selected-node More menu closes on a second tap of its trigger', async ({ page }) => {
+test('selected-node settings close on a second tap and expose actions directly', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setupMocks(page);
   await page.goto('/canvas/smoke-canvas');
@@ -244,16 +244,17 @@ test('selected-node More menu closes on a second tap of its trigger', async ({ p
   await expect(node).toBeVisible();
   const box = await node.boundingBox();
   await page.mouse.click(box!.x + box!.width / 2, box!.y + box!.height / 2);
-  const more = page.locator('.mobile-node-toolbar').getByRole('button', { name: /More|Ещё|Еще/i });
+  await expect(page.locator('.mobile-node-toolbar [aria-label="More"]')).toHaveCount(0);
+  const more = page.locator('.mobile-node-toolbar').getByRole('button', { name: 'Border', exact: true });
   await expect(more).toBeVisible();
   await more.click();
-  await expect(page.locator('.mobile-overflow-sheet')).toBeVisible();
+  await expect(page.locator('.mobile-node-subpanel')).toBeVisible();
   await more.click();
-  await expect(page.locator('.mobile-overflow-sheet')).not.toBeVisible();
+  await expect(page.locator('.mobile-node-subpanel')).not.toBeVisible();
   await more.click();
   await page.locator('.topbar-menu-btn').click();
   await expect(page.locator('.topbar-actions')).toBeVisible();
-  await expect(page.locator('.mobile-overflow-sheet')).not.toBeVisible();
+  await expect(page.locator('.mobile-node-subpanel')).not.toBeVisible();
   await page.locator('.topbar-menu-btn').click();
   await expect(page.locator('.mobile-node-toolbar')).toBeVisible();
 });
@@ -285,7 +286,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     const node = page.locator('[data-node-id="node-1"]');
     await node.click();
     const row = page.locator('.mobile-node-toolbar-row');
-    for (const label of ['Background', 'Border', 'Text', 'Layers', 'Lock', 'More']) {
+    for (const label of ['Background', 'Border', 'Text', 'Layers', 'Lock', 'Duplicate', 'Delete']) {
       const button = row.getByRole('button', { name: label, exact: true });
       await expect(button).toBeVisible();
       const box = await button.boundingBox();
@@ -298,11 +299,8 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect(node).not.toHaveClass(/is-locked/);
     await row.getByRole('button', { name: 'Layers', exact: true }).click();
     await expect(page.locator('.mobile-node-subpanel button')).toHaveCount(4);
-    await row.getByRole('button', { name: 'More', exact: true }).click();
-    for (const label of ['Bring forward', 'Send backward', 'Bring to front', 'Send to back', 'Lock']) {
-      await expect(page.locator('.mobile-overflow-sheet').getByRole('button', { name: label, exact: true })).toHaveCount(0);
-    }
-    await row.getByRole('button', { name: 'More', exact: true }).click();
+    await row.getByRole('button', { name: 'Layers', exact: true }).click();
+    await expect(row.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
     await row.getByRole('button', { name: 'Background', exact: true }).click();
     const settingButtons = page.locator('.mobile-node-subpanel .mobile-settings-row button');
     const tops = await settingButtons.evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));

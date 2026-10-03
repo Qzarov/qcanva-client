@@ -230,11 +230,11 @@
       <div
         v-if="canvasRef?.selectedNodeIds?.length && !canvasRef?.editingNodeId && !canvasRef?.isManipulatingNode"
         ref="nodeToolbarRef"
-        class="node-toolbar"
+        class="node-toolbar desktop-only"
         @pointerdown.stop
         @click.stop
       >
-        <div class="node-toolbar-tabs">
+        <div class="node-toolbar-tabs" :class="{ 'text-node-toolbar-tabs': canvasRef?.selectedNodeId && canvasRef?.isTextNode(canvasRef.selectedNodeId) }">
           <button v-if="canvasRef?.selectedNodeId" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'fill' }" @click="toggleToolbarMenu('fill')" title="Background settings">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M4 15l5-5 4 4 2-2 5 5"/></svg>
             <span>{{ t('background') }}</span>
@@ -251,10 +251,17 @@
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg>
             <span>{{ t('layers') }}</span>
           </button>
-          <button class="toolbar-tab" :class="{ active: activeToolbarMenu === 'actions' }" @click="toggleToolbarMenu('actions')" title="Node actions">
+          <button v-if="!canvasRef?.selectedNodeId || !canvasRef?.isTextNode(canvasRef.selectedNodeId)" class="toolbar-tab" :class="{ active: activeToolbarMenu === 'actions' }" @click="toggleToolbarMenu('actions')" title="Node actions">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>
             <span>{{ t('nodeActions') }}</span>
           </button>
+          <template v-if="canvasRef?.selectedNodeId && canvasRef?.isTextNode(canvasRef.selectedNodeId)">
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.openTextEditor(canvasRef.selectedNodeId)">{{ t('toolbarEdit') }}</button>
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.toggleNodePositionLock(canvasRef.selectedNodeId)">{{ canvasRef?.isNodePositionLocked(canvasRef.selectedNodeId) ? t('toolbarUnlock') : t('toolbarLock') }}</button>
+            <button class="toolbar-tab" :disabled="role === 'read'" @click="canvasRef?.duplicateSelection()">{{ t('duplicate') }}</button>
+            <button v-if="role === 'owner'" class="toolbar-tab" @click="canvasRef?.toggleNodeHidden(canvasRef.selectedNodeId)">{{ canvasRef?.isNodeHidden(canvasRef.selectedNodeId) ? t('show') : t('hide') }}</button>
+            <button class="toolbar-tab toolbar-choice-danger" :disabled="role === 'read'" @click="canvasRef?.deleteSelection()">{{ t('delete') }}</button>
+          </template>
         </div>
 
         <div v-if="activeToolbarMenu && (canvasRef?.selectedNodeId || activeToolbarMenu === 'layers' || activeToolbarMenu === 'actions')" class="toolbar-popover">
@@ -423,51 +430,9 @@
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
         </button>
-        <div v-if="drawPanelOpen" class="draw-toolbar-panel draw-panel-3col">
-          <div class="draw-panel-left">
-            <div class="draw-tools-grid">
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'select' }" @click="canvasRef?.setDrawTool('select')" :title="t('toolSelect')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 17 2.51-7.42L20 10.09 3 3z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" :title="t('toolPen')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'highlighter' }" @click="canvasRef?.setDrawTool('highlighter')" :title="t('toolHighlighter')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 12L12 2l-3 3 10 10 3-3z"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'rect' }" @click="canvasRef?.setDrawTool('rect')" :title="t('toolRect')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'ellipse' }" @click="canvasRef?.setDrawTool('ellipse')" :title="t('toolEllipse')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'line' }" @click="canvasRef?.setDrawTool('line')" :title="t('toolLine')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'arrow' }" @click="canvasRef?.setDrawTool('arrow')" :title="t('toolArrow')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
-            </button>
-            <button class="toolbar-choice draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" :title="t('toolEraser')">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
-            </button>
-            </div>
-          </div>
-          <span class="draw-panel-vsep"></span>
-          <div class="draw-panel-right">
-            <input class="draw-panel-width-vertical" type="range" min="1" max="20" :value="canvasRef?.drawWidth ?? 4"
-              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))" :title="t('width')" />
-            <!-- current colour (under the size slider) → click opens palette -->
-            <div class="draw-action-color">
-              <button class="tb-color draw-action-color-current" :style="{ background: canvasRef?.drawColor || '#000' }" @click="colorAnchor = $event.currentTarget as HTMLElement; drawPaletteColorOpen = !drawPaletteColorOpen" :title="t('color')" :aria-label="t('color')" :aria-expanded="drawPaletteColorOpen"></button>
-              <CanvasColorMenu :open="drawPaletteColorOpen" :anchor="colorAnchor" :label="t('color')" @close="drawPaletteColorOpen = false">
-                <button
-                  v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'draw-'+c"
-                  class="tb-color" :style="{ background: c }" :class="{ active: canvasRef?.drawColor === c }"
-                  @click="canvasRef?.setDrawColor(c); drawPaletteColorOpen = false"
-                ></button>
-              </CanvasColorMenu>
-            </div>
-          </div>
+        <div v-if="drawPanelOpen" class="draw-toolbar-panel">
+          <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'select'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawDesktopPopup" include-select
+            @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
         </div>
       </div>
 
@@ -636,78 +601,8 @@
         @pointerdown.stop
         @click.stop
       >
-        <!-- Upward popup for color or width (floats above panel) -->
-        <CanvasColorMenu :open="drawMobilePopup === 'color'" :anchor="colorAnchor" :label="t('color')" menu-class="mobile-draw-popup-colors" @close="drawMobilePopup = null">
-            <button
-              v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
-              :key="'mdpop-'+c"
-              class="mobile-draw-popup-swatch"
-              :style="{ background: c }"
-              :class="{ active: canvasRef?.drawColor === c }"
-              @click="canvasRef?.setDrawColor(c); drawMobilePopup = null"
-            ></button>
-        </CanvasColorMenu>
-        <div v-if="drawMobilePopup === 'width'" class="mobile-draw-popup" @click.stop>
-          <div class="mobile-draw-popup-width">
-            <input
-              class="mobile-draw-popup-width-slider"
-              type="range" min="1" max="20"
-              :value="canvasRef?.drawWidth ?? 4"
-              @input="canvasRef?.setDrawWidth(Number(($event.target as HTMLInputElement).value))"
-              :aria-label="t('width')"
-            />
-            <span class="mobile-draw-popup-width-label">{{ canvasRef?.drawWidth ?? 4 }}</span>
-          </div>
-        </div>
-        <!-- Backdrop to close draw mode popup on tap-outside -->
-        <Teleport to="body">
-          <div v-if="drawMobilePopup === 'width'" class="mobile-draw-popup-backdrop" @click="drawMobilePopup = null" aria-hidden="true"/>
-        </Teleport>
-
-        <div class="mobile-draw-tools">
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'pen' }" @click="canvasRef?.setDrawTool('pen')" :aria-label="t('toolPen')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'highlighter' }" @click="canvasRef?.setDrawTool('highlighter')" :aria-label="t('toolHighlighter')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l-6 6v3h3l6-6"/><path d="M22 12L12 2l-3 3 10 10 3-3z"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'rect' }" @click="canvasRef?.setDrawTool('rect')" :aria-label="t('toolRect')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'ellipse' }" @click="canvasRef?.setDrawTool('ellipse')" :aria-label="t('toolEllipse')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="9" ry="7"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'line' }" @click="canvasRef?.setDrawTool('line')" :aria-label="t('toolLine')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'arrow' }" @click="canvasRef?.setDrawTool('arrow')" :aria-label="t('toolArrow')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="19" x2="19" y2="5"/><polyline points="10 5 19 5 19 14"/></svg>
-          </button>
-          <button class="mobile-draw-tool-btn" :class="{ active: canvasRef?.drawTool === 'eraser' }" @click="canvasRef?.setDrawTool('eraser')" :aria-label="t('toolEraser')">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 16l5 5h9"/><path d="M14 6l4 4-8 8-5-5 6.5-6.5a1.4 1.4 0 0 1 2 0z"/></svg>
-          </button>
-          <span class="mobile-draw-vsep"></span>
-          <button
-            class="mobile-draw-color-btn"
-            :class="{ active: drawMobilePopup === 'color' }"
-            :style="{ background: canvasRef?.drawColor || '#e03131' }"
-            @click="colorAnchor = $event.currentTarget as HTMLElement; drawMobilePopup = drawMobilePopup === 'color' ? null : 'color'"
-            :aria-expanded="drawMobilePopup === 'color'"
-            :aria-label="t('color')"
-          ></button>
-          <button
-            class="mobile-draw-width-btn"
-            :class="{ active: drawMobilePopup === 'width' }"
-            @click="drawMobilePopup = drawMobilePopup === 'width' ? null : 'width'"
-            :aria-label="t('width')"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <line x1="3" y1="8" x2="21" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-              <line x1="3" y1="13" x2="21" y2="13" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
-              <line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
-            </svg>
-          </button>
-        </div>
+        <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
+          @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
       </div>
 
       <!-- Mobile mode bar: Hand / Cursor / Draw / + (mobile only) -->
@@ -1009,6 +904,7 @@ import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
+import CanvasDrawingPanel from '../canvas/CanvasDrawingPanel.vue';
 import BackButton from '../components/BackButton.vue';
 import ResourceSharePanel from '../components/ResourceSharePanel.vue';
 import { slugFormatIsValid } from '../sharing/slug';
@@ -1022,7 +918,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
+  components: { CanvasDrawingPanel, CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1121,7 +1017,7 @@ export default defineComponent({
         const insidePanel = !!(target && drawToolbarRef.value?.contains(target));
         if (!insidePanel) {
           drawPanelOpen.value = false;
-          drawPaletteColorOpen.value = false;
+          drawDesktopPopup.value = null;
           drawMobilePopup.value = null;
           if (!el?.closest?.('.draw-capture')) canvasRef.value?.setDrawTool('select');
         }
@@ -1310,7 +1206,7 @@ export default defineComponent({
       closeMobileSheets();closeNodeEditingPanels();canvasRef.value?.clearSelection();
       if(pickingNodeForChat.value)onCancelPickNode();
       setMobileMode('hand');canvasRef.value?.setDrawTool('select');
-      drawPanelOpen.value=false;drawMobilePopup.value=null;drawPaletteColorOpen.value=false;drawColorPickerOpen.value=false;
+      drawPanelOpen.value=false;drawMobilePopup.value=null;drawDesktopPopup.value=null;drawColorPickerOpen.value=false;
       showPlugins.value=false;menuOpen.value=false;chatOpen.value=false;showShare.value=false;showHistory.value=false;
       rulerActive.value=true;showToast(t(wsConnected.value?'rulerHint':'rulerOffline'),'info');
     }
@@ -2192,8 +2088,9 @@ export default defineComponent({
 
     const drawPanelOpen = ref(false);
     const drawColorPickerOpen = ref(false);
-    const drawPaletteColorOpen = ref(false);
-    const drawMobilePopup = ref<null | 'color' | 'width'>(null);
+    const drawMobilePopup = ref<null | 'tools' | 'color' | 'width'>(null);
+    const drawDesktopPopup = ref<null | 'tools' | 'color' | 'width'>(null);
+    watch(drawPanelOpen, open => { if (!open) { drawDesktopPopup.value = null; drawMobilePopup.value = null; } });
     watch([showPlugins,addSheetOpen,diceOpen,drawPanelOpen,showShare,showHistory,chatOpen,showEmbedPicker,showDocPicker,templateImportOpen],values=>{if(rulerActive.value&&values.some(Boolean))closeRuler();},{flush:'sync'});
     const toggleDrawPanel = () => {
       closeRuler();
@@ -2219,9 +2116,9 @@ export default defineComponent({
         openPanel.value = false;
         return true;
       }
-      if (drawMobilePopup.value || drawPaletteColorOpen.value || drawColorPickerOpen.value) {
+      if (drawMobilePopup.value || drawDesktopPopup.value || drawColorPickerOpen.value) {
+        drawDesktopPopup.value = null;
         drawMobilePopup.value = null;
-        drawPaletteColorOpen.value = false;
         drawColorPickerOpen.value = false;
         return true;
       }
@@ -2250,7 +2147,7 @@ export default defineComponent({
         if (canvasRef.value?.drawTool === 'select') canvasRef.value?.setDrawTool('pen');
       } else {
         drawPanelOpen.value = false;
-        drawPaletteColorOpen.value = false;
+        drawDesktopPopup.value = null;
         drawMobilePopup.value = null;
         canvasRef.value?.setDrawTool('select');
       }
@@ -2268,7 +2165,7 @@ export default defineComponent({
       if (nextMode === 'draw' && mobileMode.value === 'draw') {
         drawPanelOpen.value = !drawToolsVisible;
         drawMobilePopup.value = null;
-        drawPaletteColorOpen.value = false;
+        drawDesktopPopup.value = null;
       }
     }
 
@@ -2308,7 +2205,7 @@ export default defineComponent({
       closeMobileSheets();
       closeNodeEditingPanels();
       drawColorPickerOpen.value = false;
-      drawPaletteColorOpen.value = false;
+      drawDesktopPopup.value = null;
       drawMobilePopup.value = null;
       menuOpen.value = false;
       showPlugins.value = false;
@@ -2347,7 +2244,7 @@ export default defineComponent({
       ruler,rulerActive,rulerSettings,rulerMeasurements,rulerSettingsBusy,toggleRuler,closeRuler,saveRulerSettings,
       t,
       route, backTarget, canvasViewRef, topbarRef, nodeToolbarRef, drawToolbarRef, canvasRef, modebarRef, aligns,
-      drawColorPickerOpen, drawPaletteColorOpen, drawMobilePopup, nodeColorPopup, colorAnchor, toggleNodeColorMenu,
+      drawColorPickerOpen, drawMobilePopup, drawDesktopPopup, nodeColorPopup, colorAnchor, toggleNodeColorMenu,
       loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
       checkingResourcePassword,
       title, canvasData, role, isPublic, saving, syncStatus, syncNotice,

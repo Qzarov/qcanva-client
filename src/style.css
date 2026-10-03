@@ -9216,8 +9216,9 @@ textarea:focus-visible {
   z-index: 91;
 }
 .mobile-node-toolbar-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
   justify-content: center;
   gap: 2px;
   padding: 4px 8px;
@@ -9229,8 +9230,11 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 4px 2px;
   border: none;
   border-radius: 10px;
   background: transparent;
@@ -9239,8 +9243,12 @@ textarea:focus-visible {
   transition: background 0.15s, color 0.15s;
   -webkit-tap-highlight-color: transparent;
   flex: 1 1 0;
-  max-width: 60px;
+  max-width: none;
 }
+.mobile-toolbar-caption { font-size: 10px; line-height: 1.15; overflow-wrap: anywhere; text-align: center; }
+.text-node-toolbar-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 390px; }
+.text-node-toolbar-tabs .toolbar-tab { height: 44px; flex-direction: column; justify-content: center; gap: 3px; font-size: 11px; }
+.mobile-toolbar-btn svg { flex-shrink: 0; }
 .mobile-toolbar-btn:active { background: var(--ui-surface-subtle); }
 .mobile-toolbar-btn.mobile-toolbar-btn-active {
   background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
@@ -9590,6 +9598,7 @@ textarea:focus-visible {
 /* Show mobile components and adjust layout at mobile breakpoint */
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .mobile-only { display: flex !important; }
+  .canvas-view .node-toolbar.desktop-only { display: none !important; }
   .canvas-view .canvas-topbar .canvas-ruler-button,
   .canvas-view .canvas-topbar .canvas-plugin-settings-action { display: none !important; }
   .canvas-plugin-panel {
@@ -9715,7 +9724,7 @@ textarea:focus-visible {
   }
   .canvas-view .mobile-node-toolbar-row .mobile-toolbar-btn { min-width: 36px; }
   .canvas-view .mobile-node-subpanel {
-    max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 60px) - 80px);
+    max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 60px) - 140px);
     overflow-y: auto;
   }
 

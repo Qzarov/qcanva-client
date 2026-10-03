@@ -24,10 +24,16 @@ config.global.stubs.teleport = true;
 enableAutoUnmount(afterEach);
 
 describe('MobileNodeToolbar system Back', () => {
+  it('shows labelled node actions directly without More', () => {
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
+    expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
+    for (const label of ['Duplicate', 'Delete', 'Hide/Show']) {
+      expect(wrapper.get(`.mobile-toolbar-btn[aria-label="${label}"]`).text()).toBeTruthy();
+    }
+  });
   it('keeps global history out of the block overflow', async () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, canUndo: true, canRedo: true }, role: 'owner' }, global: { stubs: { teleport: true } } });
-    await wrapper.get('[aria-label="More"]').trigger('click');
-    const labels = wrapper.findAll('.mobile-overflow-item').map(item => item.text());
+    const labels = wrapper.findAll('.mobile-toolbar-btn').map(item => item.text());
     expect(labels).not.toContain('Undo');
     expect(labels).not.toContain('Redo');
     wrapper.unmount();
@@ -98,10 +104,8 @@ describe('MobileNodeToolbar system Back', () => {
     }
     await wrapper.get('[aria-label="Layers"]').trigger('click');
     expect(wrapper.find('.mobile-node-subpanel').exists()).toBe(false);
-    await wrapper.get('[aria-label="More"]').trigger('click');
-    const overflowLabels = wrapper.findAll('.mobile-overflow-item').map(item => item.text());
-    expect(overflowLabels).toContain('Duplicate');
-    for (const label of ['Bring forward', 'Send backward', 'Bring to front', 'Send to back', 'Unlock']) expect(overflowLabels).not.toContain(label);
+    expect(wrapper.get('.mobile-toolbar-btn[aria-label="Duplicate"]').text()).toBe('Duplicate');
+    expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -131,6 +135,7 @@ describe('MobileNodeToolbar system Back', () => {
       isNodeFontColorActive: () => true, setNodeFontColor: vi.fn(), getNodeAlign: () => 'left', getNodeFirstLineAlign: () => 'left', setNodeAlign: vi.fn() };
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: cr, role: 'owner' } });
     await wrapper.get('[aria-label="Border"]').trigger('click');
+    expect(wrapper.findAll('.mobile-settings-row .block-menu-sublabel').map(label => label.text())).toEqual(['Style', 'Width', 'Color']);
     await wrapper.get('[aria-label="Width 3px"]').trigger('click');
     expect(cr.setNodeBorderWidth).toHaveBeenCalledWith('n1', 3);
     await wrapper.get('[aria-label="Border color"]').trigger('click');
@@ -151,6 +156,13 @@ describe('MobileNodeToolbar system Back', () => {
       expect(wrapper.get(`[aria-label="${label}"]`).attributes('disabled')).toBeDefined();
     }
     wrapper.unmount();
+  });
+
+  it('keeps visibility owner-only and shows the current visibility action', () => {
+    const editor = mount(MobileNodeToolbar, { props: { canvasRef, role: 'edit' } });
+    expect(editor.find('[aria-label="Hide/Show"]').exists()).toBe(false);
+    const owner = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, areSelectedNodesHidden: () => true }, role: 'owner' } });
+    expect(owner.get('[aria-label="Hide/Show"]').text()).toBe('Show');
   });
 
   it('uses the shared colour menu for a selected drawing', async () => {

@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="canvas-color-menu">
-      <div v-if="open" ref="menu" class="canvas-color-menu" :class="menuClass" :style="position" role="group" :aria-label="label" @pointerdown.stop @click.stop="onChoose" @keydown="onKeydown">
+      <div v-if="open" ref="menu" class="canvas-color-menu" :class="[menuClass, { 'canvas-control-menu': controls }]" :style="position" role="group" :aria-label="label" @pointerdown.stop @click.stop="onChoose" @keydown="onKeydown">
         <slot />
       </div>
     </Transition>
@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
 
-const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string }>();
+const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
 const position = ref<CSSProperties>({ left: '8px', top: '8px' });
@@ -53,6 +53,7 @@ function onChoose(event: MouseEvent) {
   if ((event.target as HTMLElement).closest('button:not(:disabled)')) emit('close');
 }
 function onKeydown(event: KeyboardEvent) {
+  if ((event.target as HTMLElement).matches('input')) return;
   if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
   const buttons = Array.from(menu.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
@@ -118,6 +119,8 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .canvas-color-menu :deep(button:focus-visible) { outline: 2px solid var(--ui-focus); outline-offset: 1px; }
+.canvas-control-menu { width: max-content; max-width: calc(100vw - 16px); }
+.canvas-control-menu :deep(button) { width: 100%; height: auto; min-height: 36px; flex: none; padding: 6px 10px; border-radius: 10px; }
 .canvas-color-menu-enter-active, .canvas-color-menu-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
 .canvas-color-menu-enter-from, .canvas-color-menu-leave-to { opacity: 0; transform: translateY(4px) scale(.92); }
 .canvas-color-menu-leave-active { pointer-events: none; }

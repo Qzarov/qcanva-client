@@ -72,31 +72,98 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
 test('desktop block actions omit history while general canvas undo remains available', async ({ page }) => {
   await setup(page);
   await page.locator('[data-node-id="text"]').click();
-  await page.getByTitle('Node actions', { exact: true }).click();
-  const actions = page.locator('.toolbar-popover');
+  await expect(page.getByTitle('Node actions', { exact: true })).toHaveCount(0);
+  const actions = page.locator('.node-toolbar-tabs');
+  await expect(actions.getByRole('button', { name: 'Duplicate', exact: true })).toBeVisible();
+  await expect(actions.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
   await expect(actions.getByRole('button', { name: 'Redo', exact: true })).toHaveCount(0);
   await expect(page.locator('.canvas-controls [title="Undo"]')).toBeVisible();
 });
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 1280, height: 800 }]) {
+  test(`labelled drawing menus and live vertical width fit ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    const mobile = viewport.width < 900;
+    await setup(page, mobile);
+    await page.setViewportSize(viewport);
+    if (mobile) await page.locator('.mobile-modebar-btn').nth(2).click();
+    else await page.locator('.draw-toolbar > .draw-toolbar-toggle').click();
+    const panel = page.locator(mobile ? '.mobile-draw-panel' : '.draw-toolbar-panel');
+    const trigger = panel.locator('.drawing-tool-trigger');
+    await trigger.click();
+    const tools = page.locator('.drawing-tool-menu');
+    await expect(tools).toBeVisible();
+    await expect(tools.locator('button')).toHaveCount(mobile ? 7 : 8);
+    const bounds = (await tools.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.y).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
+    await trigger.click();
+    await expect(tools).toBeHidden();
+    await trigger.click();
+    await tools.getByRole('button', { name: 'Highlighter', exact: true }).click();
+    await expect(trigger).toHaveText('Highlighter');
+    await expect(tools).toBeHidden();
+    const widthTrigger = panel.getByRole('button', { name: 'Width', exact: true });
+    await widthTrigger.click();
+    const slider = page.locator('.drawing-width-menu input');
+    await expect(slider).toHaveAttribute('aria-orientation', 'vertical');
+    await slider.fill('12');
+    await expect(page.locator('.drawing-width-menu line')).toHaveAttribute('stroke-width', '12');
+    await expect(page.locator('.drawing-width-menu')).toBeVisible();
+    await expect(page.locator('.drawing-width-menu')).toHaveCSS('opacity', '1');
+    await page.screenshot({ path: `test-results/drawing-width-${viewport.width}.png` });
+    await widthTrigger.click();
+    await expect(slider).toBeHidden();
+    await panel.getByRole('button', { name: 'Color', exact: true }).click();
+    await page.getByRole('group', { name: 'Color', exact: true }).getByRole('button', { name: '#1971c2', exact: true }).click();
+    await widthTrigger.click();
+    await expect(page.locator('.drawing-width-menu line')).toHaveAttribute('stroke', '#1971c2');
+    await widthTrigger.click();
+  });
+}
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }]) {
+  test(`Russian node captions fit two rows at ${viewport.width}px`, async ({ page }) => {
+    await setup(page, true, 'ru');
+    await page.setViewportSize(viewport);
+    await page.locator('.mobile-modebar-btn').nth(1).click();
+    await page.locator('[data-node-id="text"]').click();
+    const row = page.locator('.mobile-node-toolbar-row');
+    await expect(row.locator('button')).toHaveCount(9);
+    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Удалить', 'Скрыть']);
+    const rects = await row.locator('button').evaluateAll(buttons => buttons.map(button => {
+      const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, top: r.top, bottom: r.bottom };
+    }));
+    expect(new Set(rects.map(r => Math.round(r.top))).size).toBe(2);
+    expect(rects.every(r => r.x >= 0 && r.right <= viewport.width && r.bottom <= viewport.height)).toBe(true);
+    await row.getByRole('button', { name: 'Рамка', exact: true }).click();
+    await expect(page.locator('.mobile-settings-row .block-menu-sublabel')).toHaveText(['Стиль', 'Толщина', 'Цвет']);
+    await page.screenshot({ path: `test-results/node-russian-${viewport.width}.png` });
+  });
+}
 
 for (const mobile of [false, true]) {
   test(`${mobile ? 'mobile' : 'desktop'} drawing tools use a vertical colour menu without resetting the pen`, async ({ page }) => {
     await setup(page, mobile);
     if (mobile) {
       await page.locator('.mobile-modebar-btn').nth(2).click();
-      await page.locator('.mobile-draw-tool-btn[aria-label="Pen"]').click();
-      await page.locator('.mobile-draw-color-btn').click();
+      await page.locator('.mobile-draw-panel .drawing-tool-trigger').click();
+      await page.locator('.drawing-tool-option[aria-label="Pen"]').click();
+      await page.locator('.mobile-draw-panel .mobile-draw-color-btn').click();
     } else {
       await page.locator('.draw-toolbar > .draw-toolbar-toggle').click();
-      await page.locator('.draw-tool-btn[title="Pen"]').click();
+      await page.locator('.draw-toolbar .drawing-tool-trigger').click();
+      await page.locator('.drawing-tool-option[aria-label="Pen"]').click();
       await page.locator('.draw-toolbar [aria-label="Color"]').click();
     }
     const menu = page.getByRole('group', { name: 'Color', exact: true });
     await expect(menu).toHaveCSS('flex-direction', 'column');
     await menu.locator('button').nth(2).click();
     await expect(menu).toBeHidden();
-    await expect(page.locator(mobile ? '.mobile-draw-tool-btn[aria-label="Pen"]' : '.draw-tool-btn[title="Pen"]')).toHaveClass(/active/);
-    await expect(page.locator(mobile ? '.mobile-draw-color-btn' : '.draw-toolbar [aria-label="Color"]')).toHaveCSS('background-color', 'rgb(47, 158, 68)');
+    await expect(page.locator(mobile ? '.mobile-draw-panel .drawing-tool-trigger' : '.draw-toolbar .drawing-tool-trigger')).toHaveText('Pen');
+    await expect(page.locator(mobile ? '.mobile-draw-panel .drawing-color-sample' : '.draw-toolbar .drawing-color-sample')).toHaveCSS('background-color', 'rgb(47, 158, 68)');
   });
 }
 
