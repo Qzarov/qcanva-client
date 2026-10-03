@@ -2,131 +2,144 @@
   <!-- Shown only when there is an active selection and not editing text -->
   <div v-if="selectionKind !== 'none'" class="mobile-node-toolbar" role="toolbar" :aria-label="t('nodeActions')">
     <!-- Sub-panel: expands above the icon row for fill/text color/border sections (non-drawing) -->
-    <div v-if="activeSection" class="mobile-node-subpanel" @click.stop>
-      <!-- Fill (background) colors -->
-      <template v-if="activeSection === 'fill'">
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <button class="tb-color mobile-node-color-trigger" :class="canvasRef?.getNodeColor(nodeId) ? 'ctx-color-'+canvasRef.getNodeColor(nodeId) : 'tb-color-none'" :aria-label="t('backgroundColor')" :title="t('backgroundColor')" :aria-expanded="colorPopup === 'fill'" @click="toggleColorPopup('fill', $event)" />
-          <button
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeFillStyle(nodeId) === 'solid' }"
-            :aria-label="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')"
-            :title="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')"
-            :aria-pressed="canvasRef?.getNodeFillStyle(nodeId) === 'solid'"
-            @click="canvasRef?.toggleNodeFillStyle(nodeId)"
-          ><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" fill="currentColor"/><path d="M10 3v14" stroke="var(--ui-surface)" stroke-width="7" :opacity="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? 0 : .5"/></svg></button>
-          <button
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeShape(nodeId) === 'round' }"
-            :aria-label="canvasRef?.getNodeShape(nodeId) === 'round' ? t('round') : t('rectangular')"
-            :title="canvasRef?.getNodeShape(nodeId) === 'round' ? t('round') : t('rectangular')"
-            :aria-pressed="canvasRef?.getNodeShape(nodeId) === 'round'"
-            @click="canvasRef?.toggleNodeShape(nodeId)"
-          ><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="canvasRef?.getNodeShape(nodeId) === 'round'" cx="10" cy="10" r="7"/><rect v-else x="3" y="3" width="14" height="14" rx="2"/></svg></button>
-        </div>
-      </template>
+    <div v-if="activeSection" class="mobile-node-subpanel" @pointerdown.stop @click.stop @keydown.esc.stop.prevent="backToSettings">
+      <div ref="settingsViewport" class="mobile-settings-viewport">
+        <Transition name="mobile-settings-screen" @before-leave="rememberSettingsHeight" @enter="enterSettingsScreen">
+          <div :key="activeSection + ':' + (colorPopup || 'settings')" class="mobile-settings-screen">
+            <div v-if="colorPopup || activeSection === 'shape'" class="mobile-settings-header">
+              <button class="mobile-settings-back" :aria-label="t('back')" @click="backToSettings">←</button>
+              <span class="mobile-settings-heading">{{ colorPopup ? paletteLabel : t('shape') }}</span>
+            </div>
+            <div v-if="!colorPopup && activeSection === 'shape'" class="mobile-subpanel-row mobile-settings-row">
+              <button v-for="shape in ['rect', 'round']" :key="shape" class="mobile-shape-option"
+                :class="{ active: canvasRef?.getNodeShape(nodeId) === shape }"
+                :aria-label="shape === 'round' ? t('round') : t('rectangular')"
+                :aria-pressed="canvasRef?.getNodeShape(nodeId) === shape"
+                @click="canvasRef?.getNodeShape(nodeId) !== shape && canvasRef?.toggleNodeShape(nodeId)">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="shape === 'round'" cx="10" cy="10" r="7"/><rect v-else x="3" y="3" width="14" height="14" rx="2"/></svg>
+                <span>{{ shape === 'round' ? t('round') : t('rectangular') }}</span>
+              </button>
+            </div>
+            <!-- Fill (background) colors -->
+            <template v-if="!colorPopup && activeSection === 'fill'">
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <button class="tb-color mobile-node-color-trigger" :class="canvasRef?.getNodeColor(nodeId) ? 'ctx-color-'+canvasRef.getNodeColor(nodeId) : 'tb-color-none'" :aria-label="t('backgroundColor')" :title="t('backgroundColor')" :aria-expanded="colorPopup === 'fill'" @click="toggleColorPopup('fill', $event)" />
+                <button
+                  class="tb-btn"
+                  :class="{ active: canvasRef?.getNodeFillStyle(nodeId) === 'solid' }"
+                  :aria-label="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')"
+                  :title="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')"
+                  :aria-pressed="canvasRef?.getNodeFillStyle(nodeId) === 'solid'"
+                  @click="canvasRef?.toggleNodeFillStyle(nodeId)"
+                ><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" fill="currentColor"/><path d="M10 3v14" stroke="var(--ui-surface)" stroke-width="7" :opacity="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? 0 : .5"/></svg></button>
 
-      <!-- Text (font) colors -->
-      <template v-if="activeSection === 'text-settings'">
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeFontColorSwatch(canvasRef?.getNodeFontColor(nodeId)) || 'var(--content-canvas-node-text)' }" :aria-label="t('textColor')" :title="t('textColor')" :aria-expanded="colorPopup === 'text'" @click="toggleColorPopup('text', $event)" />
-        </div>
-      </template>
+              </div>
+            </template>
 
-      <template v-if="activeSection === 'border-settings'">
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <span class="block-menu-sublabel">{{ t('style') }}</span>
-          <button
-            v-for="bs in canvasRef?.borderStyles ?? []"
-            :key="bs.value"
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeBorderStyle(nodeId) === bs.value }"
-            @click="canvasRef?.setNodeBorderStyle(nodeId, bs.value)"
-            :title="bs.label"
-            :aria-label="t('style') + ': ' + bs.label"
-            v-html="'<svg width=\'24\' height=\'10\' viewBox=\'0 0 24 10\'>' + bs.svg + '</svg>'"
-          />
+            <!-- Text (font) colors -->
+            <template v-if="!colorPopup && activeSection === 'text-settings'">
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeFontColorSwatch(canvasRef?.getNodeFontColor(nodeId)) || 'var(--content-canvas-node-text)' }" :aria-label="t('textColor')" :title="t('textColor')" :aria-expanded="colorPopup === 'text'" @click="toggleColorPopup('text', $event)" />
+              </div>
+            </template>
 
-        </div>
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <span class="block-menu-sublabel">{{ t('width') }}</span>
-          <button
-            v-for="bw in [1,2,3,4]"
-            :key="'mw'+bw"
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeBorderWidth(nodeId) === bw }"
-            @click="canvasRef?.setNodeBorderWidth(nodeId, bw)"
-            :title="bw+'px'"
-            :aria-label="t('width') + ' ' + bw + 'px'"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
-          </button>
+            <template v-if="!colorPopup && activeSection === 'border-settings'">
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <span class="block-menu-sublabel">{{ t('style') }}</span>
+                <button
+                  v-for="bs in canvasRef?.borderStyles ?? []"
+                  :key="bs.value"
+                  class="tb-btn"
+                  :class="{ active: canvasRef?.getNodeBorderStyle(nodeId) === bs.value }"
+                  @click="canvasRef?.setNodeBorderStyle(nodeId, bs.value)"
+                  :title="bs.label"
+                  :aria-label="t('style') + ': ' + bs.label"
+                  v-html="'<svg width=\'24\' height=\'10\' viewBox=\'0 0 24 10\'>' + bs.svg + '</svg>'"
+                />
 
-        </div>
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <span class="block-menu-sublabel">{{ t('color') }}</span>
-          <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeBorderColor(nodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :title="t('borderColor')" :aria-expanded="colorPopup === 'border'" @click="toggleColorPopup('border', $event)" />
-        </div>
-      </template>
+              </div>
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <span class="block-menu-sublabel">{{ t('width') }}</span>
+                <button
+                  v-for="bw in [1,2,3,4]"
+                  :key="'mw'+bw"
+                  class="tb-btn"
+                  :class="{ active: canvasRef?.getNodeBorderWidth(nodeId) === bw }"
+                  @click="canvasRef?.setNodeBorderWidth(nodeId, bw)"
+                  :title="bw+'px'"
+                  :aria-label="t('width') + ' ' + bw + 'px'"
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14"><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" :stroke-width="bw"/></svg>
+                </button>
 
-      <!-- Text alignment -->
-      <template v-if="activeSection === 'text-settings'">
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <span class="block-menu-sublabel">{{ t('firstLineShort') }}</span>
-          <button
-            v-for="a in aligns"
-            :key="'mfa-'+a.v"
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeFirstLineAlign(nodeId) === a.v }"
-            @click="canvasRef?.setNodeFirstLineAlign(nodeId, a.v)"
-            :title="a.l"
-            :aria-label="t('firstLine') + ': ' + a.l"
-            v-html="a.icon"
-          />
-        </div>
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <span class="block-menu-sublabel">{{ t('text') }}</span>
-          <button
-            v-for="a in aligns"
-            :key="'mba-'+a.v"
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeAlign(nodeId) === a.v }"
-            @click="canvasRef?.setNodeAlign(nodeId, a.v)"
-            :title="a.l"
-            :aria-label="t('bodyText') + ': ' + a.l"
-            v-html="a.icon"
-          />
-        </div>
-      </template>
+              </div>
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <span class="block-menu-sublabel">{{ t('color') }}</span>
+                <button class="tb-color mobile-node-color-trigger" :style="{ background: canvasRef?.getNodeBorderColor(nodeId) ?? 'var(--ui-text)' }" :aria-label="t('borderColor')" :title="t('borderColor')" :aria-expanded="colorPopup === 'border'" @click="toggleColorPopup('border', $event)" />
+              </div>
+            </template>
 
-      <template v-if="activeSection === 'layers'">
-        <div class="mobile-subpanel-row mobile-settings-row">
-          <button v-for="action in layerActions" :key="action.key" class="tb-btn" :disabled="action.disabled" :title="action.label" :aria-label="action.label" @click="action.handler()">
-            <svg v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
-          </button>
-        </div>
-      </template>
+            <!-- Text alignment -->
+            <template v-if="!colorPopup && activeSection === 'text-settings'">
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <span class="block-menu-sublabel">{{ t('firstLineShort') }}</span>
+                <button
+                  v-for="a in aligns"
+                  :key="'mfa-'+a.v"
+                  class="tb-btn"
+                  :class="{ active: canvasRef?.getNodeFirstLineAlign(nodeId) === a.v }"
+                  @click="canvasRef?.setNodeFirstLineAlign(nodeId, a.v)"
+                  :title="a.l"
+                  :aria-label="t('firstLine') + ': ' + a.l"
+                  v-html="a.icon"
+                />
+              </div>
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <span class="block-menu-sublabel">{{ t('text') }}</span>
+                <button
+                  v-for="a in aligns"
+                  :key="'mba-'+a.v"
+                  class="tb-btn"
+                  :class="{ active: canvasRef?.getNodeAlign(nodeId) === a.v }"
+                  @click="canvasRef?.setNodeAlign(nodeId, a.v)"
+                  :title="a.l"
+                  :aria-label="t('bodyText') + ': ' + a.l"
+                  v-html="a.icon"
+                />
+              </div>
+            </template>
 
-      <CanvasColorMenu :open="!!colorPopup" :anchor="colorAnchor" :label="paletteLabel" menu-class="mobile-subpanel-colors mobile-node-color-palette" @close="colorPopup = null">
-        <button v-for="c in paletteColors" :key="c" class="tb-color" :class="[{ active: isPaletteColorActive(c) }, paletteKind === 'fill' ? 'ctx-color-'+c : '']" :style="paletteKind !== 'fill' ? { background: paletteKind === 'text' ? canvasRef?.getNodeFontColorSwatch(c) : c } : {}" :aria-label="paletteLabel + ' ' + c" @click="chooseColor(c)" />
-        <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="chooseColor(undefined)">×</button>
-        <button v-if="paletteKind === 'fill'" class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(nodeId) ?? false" @click="canvasRef?.toggleNodeTransparent(nodeId)">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg>
-        </button>
-      </CanvasColorMenu>
+            <template v-if="!colorPopup && activeSection === 'layers'">
+              <div class="mobile-subpanel-row mobile-settings-row">
+                <button v-for="action in layerActions" :key="action.key" class="tb-btn" :disabled="action.disabled" :title="action.label" :aria-label="action.label" @click="action.handler()">
+                  <svg v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
+                </button>
+              </div>
+            </template>
 
-      <!-- Image / group title -->
-      <template v-if="activeSection === 'image-title'">
-        <div class="mobile-subpanel-row">
-          <input
-            class="block-menu-text-input mobile-subpanel-title-input"
-            :value="canvasRef?.getNodeTitle(nodeId)"
-            :placeholder="canvasRef?.isGroupNode(nodeId) ? t('groupName') : t('imageName')"
-            @input="onTitleInput"
-            @keydown.stop
-          />
-        </div>
-      </template>
+            <div v-if="colorPopup" class="mobile-subpanel-colors mobile-node-color-palette" role="group" :aria-label="paletteLabel" @keydown="onPaletteKeydown">
+              <button v-for="c in paletteColors" :key="c" class="tb-color" :class="[{ active: isPaletteColorActive(c) }, paletteKind === 'fill' ? 'ctx-color-'+c : '']" :style="paletteKind !== 'fill' ? { background: paletteKind === 'text' ? canvasRef?.getNodeFontColorSwatch(c) : c } : {}" :aria-label="paletteLabel + ' ' + c" @click="chooseColor(c)" />
+              <button class="tb-color tb-color-none" :aria-label="t('clearColor')" @click="chooseColor(undefined)">×</button>
+              <button v-if="paletteKind === 'fill'" class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(nodeId) ?? false" @click="canvasRef?.toggleNodeTransparent(nodeId); backToSettings()">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg>
+              </button>
+            </div>
+
+            <!-- Image / group title -->
+            <template v-if="!colorPopup && activeSection === 'image-title'">
+              <div class="mobile-subpanel-row">
+                <input
+                  class="block-menu-text-input mobile-subpanel-title-input"
+                  :value="canvasRef?.getNodeTitle(nodeId)"
+                  :placeholder="canvasRef?.isGroupNode(nodeId) ? t('groupName') : t('imageName')"
+                  @input="onTitleInput"
+                  @keydown.stop
+                />
+              </div>
+            </template>
+          </div>
+        </Transition>
+      </div>
     </div>
 
     <!-- Drawing popup: floats above the icon row without changing toolbar height -->
@@ -214,7 +227,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref, shallowRef, watch, type PropType } from 'vue';
+import { computed, defineComponent, onUnmounted, ref, shallowRef, watch, type PropType } from 'vue';
 import CanvasColorMenu from './CanvasColorMenu.vue';
 import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeAction } from './nodeActions';
@@ -224,6 +237,7 @@ import { useBackHandler } from '../composables/useBackHandler';
 type ToolbarAction = Omit<NodeAction, 'key'> & { key: string };
 
 const ICON_PATHS: Record<string, string> = {
+  'shape': '<rect x="3" y="3" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="16" cy="16" r="6" stroke="currentColor" stroke-width="1.8" fill="var(--ui-surface)"/>',
   'edit-text': `<path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
                 <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>`,
   'fill': `<rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
@@ -291,6 +305,43 @@ export default defineComponent({
     const paletteKind = ref<'fill' | 'text' | 'border'>('fill');
     watch(colorPopup, kind => { if (kind) paletteKind.value = kind; }, { flush: 'sync' });
     const colorAnchor = shallowRef<HTMLElement | null>(null);
+    const settingsViewport = ref<HTMLElement | null>(null);
+    let settingsHeight = 0;
+    let settingsAnimation: Animation | undefined;
+    const rememberSettingsHeight = (element: Element) => {
+      settingsHeight = settingsViewport.value?.getBoundingClientRect().height ?? 0;
+      settingsAnimation?.cancel();
+      element.setAttribute('aria-hidden', 'true');
+      (element as HTMLElement).inert = true;
+    };
+    const enterSettingsScreen = (element: Element) => {
+      const viewport = settingsViewport.value;
+      const focusTarget = colorPopup.value ? element.querySelector<HTMLElement>('.mobile-settings-back')
+        : element.querySelector<HTMLElement>('.mobile-node-color-trigger');
+      focusTarget?.focus({ preventScroll: true });
+      if (!viewport?.animate || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+      settingsAnimation = viewport.animate([
+        { height: `${settingsHeight}px` }, { height: `${(element as HTMLElement).offsetHeight}px` },
+      ], { duration: 180, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+    };
+    onUnmounted(() => settingsAnimation?.cancel());
+    const backToSettings = () => {
+      if (colorPopup.value) colorPopup.value = null;
+      else {
+        activeSection.value = null;
+        colorAnchor.value?.focus({ preventScroll: true });
+      }
+    };
+    const onPaletteKeydown = (event: KeyboardEvent) => {
+      if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const buttons = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
+      const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1
+        : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[next]?.focus();
+    };
 
     const DRAWING_SECTIONS = ['drawing-color', 'drawing-stroke-width'];
 
@@ -372,6 +423,7 @@ export default defineComponent({
       const section = (key: string, label: string): ToolbarAction => ({ key, label, isSectionToggle: true, disabled: props.role === 'read', handler: () => triggerSection(key) });
       return [
         ...actions.value.filter(action => ['edit-text', 'image-title', 'fill'].includes(action.key)),
+        section('shape', t('shape')),
         section('border-settings', t('border')),
         ...(props.canvasRef?.isTextNode?.(nodeId.value) ? [section('text-settings', t('text'))] : []),
         section('layers', t('layers')),
@@ -493,6 +545,7 @@ export default defineComponent({
       paletteColors,
       paletteLabel,
       toggleColorPopup,
+      settingsViewport, rememberSettingsHeight, enterSettingsScreen, backToSettings, onPaletteKeydown,
       isPaletteColorActive,
       chooseColor,
       toggleOverflow,
@@ -509,3 +562,22 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.mobile-node-subpanel { width: min(320px, calc(100vw - 20px)); box-sizing: border-box; }
+.mobile-settings-viewport { position: relative; overflow: hidden; }
+.mobile-settings-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mobile-settings-back { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 10px; background: transparent; color: var(--ui-text); font-size: 20px; cursor: pointer; }
+.mobile-settings-heading { color: var(--ui-text); font-size: 13px; font-weight: 600; }
+.mobile-shape-option { display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--ui-text); font: inherit; font-size: 12px; cursor: pointer; }
+.mobile-shape-option.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+.mobile-settings-back:focus-visible, .mobile-shape-option:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: -2px; }
+.mobile-settings-screen-enter-active, .mobile-settings-screen-leave-active { transition: opacity 180ms ease, transform 180ms cubic-bezier(0.2, 0, 0, 1); }
+.mobile-settings-screen-leave-active { position: absolute; inset: 0 0 auto; pointer-events: none; }
+.mobile-settings-screen-enter-from { opacity: 0; transform: translateX(8px); }
+.mobile-settings-screen-leave-to { opacity: 0; transform: translateX(-8px); }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-settings-screen-enter-active, .mobile-settings-screen-leave-active { transition: none; }
+  .mobile-settings-screen-enter-from, .mobile-settings-screen-leave-to { transform: none; }
+}
+</style>

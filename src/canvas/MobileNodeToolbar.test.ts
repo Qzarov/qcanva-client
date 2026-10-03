@@ -24,6 +24,31 @@ config.global.stubs.teleport = true;
 enableAutoUnmount(afterEach);
 
 describe('MobileNodeToolbar system Back', () => {
+  it('replaces second-level contents with inline settings and Back restores the same panel', async () => {
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
+    await wrapper.get('[aria-label="Background"]').trigger('click');
+    const panel = wrapper.get('.mobile-node-subpanel').element;
+    await wrapper.get('[aria-label="Background color"]').trigger('click');
+    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
+    expect(wrapper.find('.canvas-color-menu').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Gradient"]').exists()).toBe(false);
+    expect(wrapper.get('.mobile-settings-heading').text()).toBe('Background color');
+    await wrapper.get('.mobile-settings-back').trigger('click');
+    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
+    expect(wrapper.find('[aria-label="Gradient"]').exists()).toBe(true);
+  });
+
+  it('offers shape as its own second-level menu instead of a background toggle', async () => {
+    const toggleNodeShape = vi.fn();
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, toggleNodeShape }, role: 'owner' } });
+    await wrapper.get('[aria-label="Background"]').trigger('click');
+    expect(wrapper.find('.mobile-node-subpanel [aria-label="Rectangular"]').exists()).toBe(false);
+    await wrapper.get('.mobile-toolbar-btn[aria-label="Shape"]').trigger('click');
+    await wrapper.get('.mobile-node-subpanel [aria-label="Round"]').trigger('click');
+    expect(toggleNodeShape).toHaveBeenCalledWith('n1');
+    await wrapper.get('.mobile-node-subpanel [aria-label="Rectangular"]').trigger('click');
+    expect(toggleNodeShape).toHaveBeenCalledTimes(1);
+  });
   it('shows labelled node actions directly without More', () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
     expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
