@@ -639,7 +639,7 @@
 
       <!-- Mobile draw panel: appears above modebar when draw mode active -->
       <div
-        v-if="mobileMode === 'draw' && drawPanelOpen && role !== 'read'"
+        v-if="mobileMode === 'draw' && drawPanelOpen && !addSheetOpen && !diceOpen && role !== 'read'"
         class="mobile-draw-panel mobile-only"
         @pointerdown.stop
         @click.stop
@@ -2260,14 +2260,15 @@ export default defineComponent({
 
     function openMobileAddSheet() {
       if (role.value === 'read') return;
-      setMobileMode('hand');
+      if (addSheetOpen.value) {
+        addSheetOpen.value = false;
+        return;
+      }
       closeMobileSheets();
       closeNodeEditingPanels();
-      drawPanelOpen.value = false;
       drawColorPickerOpen.value = false;
       drawPaletteColorOpen.value = false;
       drawMobilePopup.value = null;
-      canvasRef.value?.setDrawTool('select');
       menuOpen.value = false;
       showPlugins.value = false;
       showSyncEvents.value = false;
@@ -2281,11 +2282,12 @@ export default defineComponent({
       closeRuler();
       const opening = !diceOpen.value;
       if (opening && window.matchMedia?.('(max-width: 640px), (max-height: 500px) and (orientation: landscape)').matches) {
-        setMobileMode('hand');
-        drawPanelOpen.value = false;
         drawMobilePopup.value = null;
         closeNodeEditingPanels();
-        canvasRef.value?.setDrawTool('select');
+        showPlugins.value = false;
+        showSyncEvents.value = false;
+        showHistory.value = false;
+        chatOpen.value = false;
       }
       addSheetOpen.value = false;
       menuOpen.value = false;

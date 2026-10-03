@@ -171,6 +171,22 @@ describe('CanvasView on mobile', () => {
     wrapper.unmount();
   });
 
+  it('Back dismisses Add before leaving Draw mode', async () => {
+    const wrapper = await mountView();
+    const vm = wrapper.vm as any;
+    useMobileCanvasMode().setMode('draw');
+    vm.openMobileAddSheet();
+    await flushPromises();
+    expect(vm.addSheetOpen).toBe(true);
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
+    expect(runBackHandlers()).toBe(true);
+    expect(vm.addSheetOpen).toBe(false);
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
+    expect(runBackHandlers()).toBe(true);
+    expect(useMobileCanvasMode().mode.value).toBe('hand');
+    wrapper.unmount();
+  });
+
   it('stops handling Back once the canvas is closed', async () => {
     const wrapper = await mountView();
     useMobileCanvasMode().setMode('cursor');

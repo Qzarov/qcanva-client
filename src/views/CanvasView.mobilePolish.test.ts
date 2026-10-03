@@ -13,6 +13,7 @@ vi.mock('vue-router', () => ({
 const undoMock = vi.fn();
 const redoMock = vi.fn();
 const runAddMenuEntryMock = vi.fn();
+const setDrawToolMock = vi.fn();
 const canUndoRef = ref(false);
 const canRedoRef = ref(false);
 
@@ -37,7 +38,7 @@ vi.mock('../components/CanvasLoader.vue', () => ({
         selectedNodeId: null,
         selectedNodeIds: [],
         drawTool: 'select',
-        setDrawTool: vi.fn(),
+        setDrawTool: setDrawToolMock,
       });
       return () => null;
     },
@@ -240,7 +241,8 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
     wrapper.findComponent({ name: 'MobileModebar' }).vm.$emit('add');
     await wrapper.vm.$nextTick();
     expect(wrapper.vm.addSheetOpen).toBe(true);
-    expect(wrapper.vm.drawPanelOpen).toBe(false);
+    expect(wrapper.vm.drawPanelOpen).toBe(true);
+    expect(wrapper.find('.mobile-draw-panel').exists()).toBe(false);
     expect(wrapper.vm.drawMobilePopup).toBeNull();
     expect(wrapper.vm.diceOpen).toBe(false);
     expect(wrapper.vm.activeToolbarMenu).toBe('');
@@ -248,6 +250,54 @@ describe('CanvasView mobile header, undo/redo, and Add sheet (Task 3, 4, 5)', ()
     expect(wrapper.vm.showPlugins).toBe(false);
     expect(wrapper.vm.menuOpen).toBe(false);
     expect(runAddMenuEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps Draw selected and restores its toolbar after Add is dismissed', async () => {
+    const wrapper = mountCanvas();
+    await flushPromises();
+    useMobileCanvasMode().setMode('draw');
+    await wrapper.vm.$nextTick();
+    setDrawToolMock.mockClear();
+    const modebar = wrapper.findComponent({ name: 'MobileModebar' });
+    modebar.vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
+    expect(wrapper.find('.mobile-draw-panel').exists()).toBe(false);
+    expect(setDrawToolMock).not.toHaveBeenCalledWith('select');
+    (document.querySelector('.mobile-add-backdrop') as HTMLElement).click();
+    await wrapper.vm.$nextTick();
+    expect(useMobileCanvasMode().mode.value).toBe('draw');
+    expect(wrapper.find('.mobile-draw-panel').exists()).toBe(true);
+  });
+
+  it('a second Add tap closes the sheet without changing Cursor mode', async () => {
+    const wrapper = mountCanvas();
+    await flushPromises();
+    useMobileCanvasMode().setMode('cursor');
+    await wrapper.vm.$nextTick();
+    const modebar = wrapper.findComponent({ name: 'MobileModebar' });
+    modebar.vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.addSheetOpen).toBe(true);
+    expect(useMobileCanvasMode().mode.value).toBe('cursor');
+    modebar.vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.addSheetOpen).toBe(false);
+    expect(useMobileCanvasMode().mode.value).toBe('cursor');
+  });
+
+  it('opening Dice closes Add and a second Dice tap closes its panel', async () => {
+    const wrapper = mountCanvas();
+    await flushPromises();
+    wrapper.findComponent({ name: 'MobileModebar' }).vm.$emit('add');
+    await wrapper.vm.$nextTick();
+    wrapper.vm.toggleDice();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.addSheetOpen).toBe(false);
+    expect(wrapper.vm.diceOpen).toBe(true);
+    wrapper.vm.toggleDice();
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.diceOpen).toBe(false);
   });
 
   it('changing modes closes Add instead of stacking panels', async () => {
