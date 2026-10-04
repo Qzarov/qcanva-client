@@ -298,7 +298,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await row.getByRole('button', { name: 'Unlock', exact: true }).click();
     await expect(node).not.toHaveClass(/is-locked/);
     await row.getByRole('button', { name: 'Layers', exact: true }).click();
-    await expect(page.locator('.mobile-node-subpanel button')).toHaveCount(4);
+    await expect(page.locator('.mobile-node-subpanel .tb-btn')).toHaveCount(4);
     await page.locator('.mobile-panel-back').click();
     await expect(row.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
     await row.getByRole('button', { name: 'Background', exact: true }).click();
