@@ -62,6 +62,7 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     await page.locator('[data-node-id="text"]').click();
     await page.locator('.mobile-node-toolbar-row [aria-label="Background"]').click();
     const trigger = page.locator('.mobile-node-toolbar button[aria-label="Background color"]');
+    const back = page.locator('.mobile-node-toolbar .mobile-panel-back');
     await trigger.click();
     const menu = page.getByRole('group', { name: 'Background color', exact: true });
     await expect(page.locator('.mobile-node-toolbar-row')).toHaveCount(0);
@@ -77,8 +78,10 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     expect(bounds.x).toBeGreaterThanOrEqual(8);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
     expect(bounds.y).toBeGreaterThanOrEqual(8);
-    expect(bounds.y + bounds.height).toBeLessThanOrEqual(height - 8);
-    await page.screenshot({ path: test.info().outputPath('color-palette.png') });
+    await page.screenshot({ path: test.info().outputPath('inline-color-settings.png') });
+    await back.click();
+    await expect(trigger).toBeFocused();
+    await trigger.click();
     await menu.getByRole('button', { name: 'Transparent', exact: true }).click();
     await expect(menu).toBeHidden();
     await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
@@ -105,6 +108,44 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     await page.screenshot({ path: test.info().outputPath('compact-add.png') });
   });
 }
+
+test('shape choices and nested text/border colours stay in the current settings container', async ({ page }) => {
+  await setup(page, true);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.locator('.mobile-modebar-btn').nth(1).click();
+  await page.locator('[data-node-id="text"]').click();
+  const toolbar = page.locator('.mobile-node-toolbar-row');
+  await toolbar.getByRole('button', { name: 'Shape', exact: true }).click();
+  const panel = page.locator('.mobile-node-subpanel');
+  await panel.getByRole('button', { name: 'Round', exact: true }).click();
+  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-round/);
+  await panel.getByRole('button', { name: 'Rectangular', exact: true }).click();
+  await expect(page.locator('[data-node-id="text"]')).not.toHaveClass(/node-round/);
+  await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+  await expect(toolbar.getByRole('button', { name: 'Shape', exact: true })).toBeFocused();
+  for (const [section, color] of [['Text', 'Text color'], ['Border', 'Border color']]) {
+    await toolbar.getByRole('button', { name: section!, exact: true }).click();
+    const original = await panel.elementHandle();
+    await panel.getByRole('button', { name: color!, exact: true }).click();
+    await expect(page.locator('.mobile-node-toolbar .mobile-settings-heading')).toHaveText(color!);
+    await expect(panel.locator('.canvas-color-menu')).toHaveCSS('position', 'static');
+    expect(await original!.evaluate(el => el === document.querySelector('.mobile-node-subpanel'))).toBe(true);
+    const colors = panel.getByRole('group', { name: color!, exact: true }).getByRole('button');
+    await colors.first().focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(colors.nth(1)).toBeFocused();
+    await page.keyboard.press('End');
+    await expect(colors.last()).toBeFocused();
+    await page.keyboard.press('Home');
+    await expect(colors.first()).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(panel.getByRole('button', { name: color!, exact: true })).toBeFocused();
+    await panel.getByRole('button', { name: color!, exact: true }).click();
+    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+    await expect(panel.getByRole('button', { name: color!, exact: true })).toBeFocused();
+    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+  }
+});
 
 test('desktop block actions omit history while general canvas undo remains available', async ({ page }) => {
   await setup(page);
@@ -147,6 +188,11 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await widthTrigger.click();
     const slider = page.locator('.drawing-width-menu input');
     await expect(slider).toHaveAttribute('aria-orientation', 'vertical');
+    const preview = page.locator('.drawing-width-menu .canvas-stroke-preview');
+    await expect(preview).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    const previewBox = (await preview.boundingBox())!;
+    const sliderBox = (await slider.boundingBox())!;
+    expect(previewBox.y + previewBox.height).toBeLessThanOrEqual(sliderBox.y);
     await slider.fill('12');
     await expect(page.locator('.drawing-width-menu line')).toHaveAttribute('stroke-width', '12');
     await expect(page.locator('.drawing-width-menu')).toBeVisible();
@@ -169,8 +215,8 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     await page.locator('.mobile-modebar-btn').nth(1).click();
     await page.locator('[data-node-id="text"]').click();
     const row = page.locator('.mobile-node-toolbar-row');
-    await expect(row.locator('button')).toHaveCount(9);
-    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Скрыть', 'Удалить']);
+    await expect(row.locator('button')).toHaveCount(10);
+    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Форма', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Скрыть', 'Удалить']);
     const rects = await row.locator('button').evaluateAll(buttons => buttons.map(button => {
       const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, top: r.top, bottom: r.bottom };
     }));

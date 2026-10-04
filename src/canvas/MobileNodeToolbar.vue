@@ -1,14 +1,24 @@
 <template>
   <!-- Shown only when there is an active selection and not editing text -->
-  <div v-if="selectionKind !== 'none'" class="mobile-node-toolbar" role="toolbar" :aria-label="t('nodeActions')" @keydown.esc.stop.prevent="backToMenu">
+  <div v-if="selectionKind !== 'none'" ref="toolbarElement" class="mobile-node-toolbar" role="toolbar" :aria-label="t('nodeActions')" @keydown.esc.stop.prevent="backToMenu">
     <CanvasPanelPage :page="colorPopup || activeSection || drawingSection">
     <header v-if="activeSection || drawingSection" class="mobile-panel-header">
       <button class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
-      <strong>{{ pageLabel }}</strong>
+      <strong class="mobile-settings-heading">{{ pageLabel }}</strong>
     </header>
     <!-- Sub-panel: expands above the icon row for fill/text color/border sections (non-drawing) -->
-    <div v-if="activeSection" class="mobile-node-subpanel" :class="{ 'mobile-node-subpanel-palette': !!colorPopup }" @click.stop>
+    <div v-if="activeSection" class="mobile-node-subpanel" :class="{ 'mobile-node-subpanel-palette': !!colorPopup }" @pointerdown.stop @click.stop>
       <div v-show="!colorPopup">
+      <div v-if="activeSection === 'shape'" class="mobile-subpanel-row mobile-settings-row">
+        <button v-for="shape in ['rect', 'round']" :key="shape" class="mobile-shape-option"
+          :class="{ active: canvasRef?.getNodeShape(nodeId) === shape }"
+          :aria-label="shape === 'round' ? t('round') : t('rectangular')"
+          :aria-pressed="canvasRef?.getNodeShape(nodeId) === shape"
+          @click="canvasRef?.getNodeShape(nodeId) !== shape && canvasRef?.toggleNodeShape(nodeId)">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="shape === 'round'" cx="10" cy="10" r="7"/><rect v-else x="3" y="3" width="14" height="14" rx="2"/></svg>
+          <span>{{ shape === 'round' ? t('round') : t('rectangular') }}</span>
+        </button>
+      </div>
       <!-- Fill (background) colors -->
       <template v-if="activeSection === 'fill'">
         <div class="mobile-subpanel-row mobile-settings-row">
@@ -21,14 +31,6 @@
             :aria-pressed="canvasRef?.getNodeFillStyle(nodeId) === 'solid'"
             @click="canvasRef?.toggleNodeFillStyle(nodeId)"
           ><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" fill="currentColor"/><path d="M10 3v14" stroke="var(--ui-surface)" stroke-width="7" :opacity="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? 0 : .5"/></svg><span>{{ canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient') }}</span></button>
-          <button
-            class="tb-btn"
-            :class="{ active: canvasRef?.getNodeShape(nodeId) === 'round' }"
-            :aria-label="canvasRef?.getNodeShape(nodeId) === 'round' ? t('round') : t('rectangular')"
-            :title="canvasRef?.getNodeShape(nodeId) === 'round' ? t('round') : t('rectangular')"
-            :aria-pressed="canvasRef?.getNodeShape(nodeId) === 'round'"
-            @click="canvasRef?.toggleNodeShape(nodeId)"
-          ><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="canvasRef?.getNodeShape(nodeId) === 'round'" cx="10" cy="10" r="7"/><rect v-else x="3" y="3" width="14" height="14" rx="2"/></svg><span>{{ canvasRef?.getNodeShape(nodeId) === 'round' ? t('round') : t('rectangular') }}</span></button>
         </div>
       </template>
 
@@ -125,7 +127,6 @@
           <span>{{ t('transparent') }}</span>
         </button>
       </CanvasColorMenu>
-
     </div>
 
     <!-- Drawing popup: floats above the icon row without changing toolbar height -->
@@ -212,7 +213,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, ref, shallowRef, watch, type PropType } from 'vue';
+import { computed, defineComponent, nextTick, ref, shallowRef, watch, type PropType } from 'vue';
 import CanvasColorMenu from './CanvasColorMenu.vue';
 import CanvasPanelPage from './CanvasPanelPage.vue';
 import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
@@ -223,6 +224,7 @@ import { useBackHandler } from '../composables/useBackHandler';
 type ToolbarAction = Omit<NodeAction, 'key'> & { key: string };
 
 const ICON_PATHS: Record<string, string> = {
+  'shape': '<rect x="3" y="3" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="16" cy="16" r="6" stroke="currentColor" stroke-width="1.8" fill="var(--ui-surface)"/>',
   'edit-text': `<path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
                 <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4 12.5-12.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>`,
   'fill': `<rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
@@ -290,6 +292,13 @@ export default defineComponent({
     const paletteKind = ref<'fill' | 'text' | 'border'>('fill');
     watch(colorPopup, kind => { if (kind) paletteKind.value = kind; }, { flush: 'sync' });
     const colorAnchor = shallowRef<HTMLElement | null>(null);
+    const actionAnchor = shallowRef<HTMLElement | null>(null);
+    const toolbarElement = ref<HTMLElement | null>(null);
+    watch(colorPopup, async value => {
+      await nextTick();
+      if (value) toolbarElement.value?.querySelector<HTMLElement>('.mobile-panel-back')?.focus({ preventScroll: true });
+      else colorAnchor.value?.focus({ preventScroll: true });
+    });
 
     const DRAWING_SECTIONS = ['drawing-color', 'drawing-stroke-width'];
 
@@ -371,6 +380,7 @@ export default defineComponent({
       const section = (key: string, label: string): ToolbarAction => ({ key, label, isSectionToggle: true, disabled: props.role === 'read', handler: () => triggerSection(key) });
       return [
         ...actions.value.filter(action => ['edit-text', 'image-title', 'fill'].includes(action.key)),
+        section('shape', t('shape')),
         section('border-settings', t('border')),
         ...(props.canvasRef?.isTextNode?.(nodeId.value) ? [section('text-settings', t('text'))] : []),
         section('layers', t('layers')),
@@ -390,7 +400,7 @@ export default defineComponent({
     const paletteLabel = computed(() => t(paletteKind.value === 'fill' ? 'backgroundColor' : paletteKind.value === 'text' ? 'textColor' : 'borderColor'));
     const pageLabel = computed(() => {
       if (colorPopup.value) return paletteLabel.value;
-      const labels: Record<string, Parameters<typeof t>[0]> = { fill: 'background', 'text-settings': 'text', 'border-settings': 'border', layers: 'layers', 'image-title': 'toolbarTitle', 'drawing-color': 'color', 'drawing-stroke-width': 'width' };
+      const labels: Record<string, Parameters<typeof t>[0]> = { fill: 'background', shape: 'shape', 'text-settings': 'text', 'border-settings': 'border', layers: 'layers', 'image-title': 'toolbarTitle', 'drawing-color': 'color', 'drawing-stroke-width': 'width' };
       return t(labels[activeSection.value || drawingSection.value || ''] ?? 'nodeActions');
     });
     const backToMenu = () => {
@@ -398,6 +408,13 @@ export default defineComponent({
       activeSection.value = null;
       drawingSection.value = null;
       overflowOpen.value = false;
+      const anchor = actionAnchor.value;
+      void nextTick(() => {
+        if (!anchor) return;
+        const label = anchor.getAttribute('aria-label');
+        const toolbar = toolbarElement.value?.querySelector('.mobile-node-toolbar-row');
+        Array.from(toolbar?.querySelectorAll<HTMLElement>('button') ?? []).find(button => button.getAttribute('aria-label') === label)?.focus({ preventScroll: true });
+      });
     };
     const toggleColorPopup = (palette: 'fill' | 'text' | 'border', event: MouseEvent) => {
       colorAnchor.value = event.currentTarget as HTMLElement;
@@ -445,6 +462,7 @@ export default defineComponent({
     });
 
     const onActionClick = (action: ToolbarAction, event: MouseEvent) => {
+      actionAnchor.value = event.currentTarget as HTMLElement;
       colorAnchor.value = event.currentTarget as HTMLElement;
       action.handler();
       if (!action.isSectionToggle) {
@@ -493,7 +511,7 @@ export default defineComponent({
     };
 
     return {
-      t, caption, pageLabel, backToMenu,
+      t, caption, pageLabel, backToMenu, toolbarElement,
       selectionKind,
       nodeId,
       visibleActions,
@@ -521,3 +539,22 @@ export default defineComponent({
   },
 });
 </script>
+
+<style scoped>
+.mobile-node-subpanel { width: min(320px, calc(100vw - 20px)); box-sizing: border-box; }
+.mobile-settings-viewport { position: relative; overflow: hidden; }
+.mobile-settings-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.mobile-settings-back { display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: 0; border-radius: 10px; background: transparent; color: var(--ui-text); font-size: 20px; cursor: pointer; }
+.mobile-settings-heading { color: var(--ui-text); font-size: 13px; font-weight: 600; }
+.mobile-shape-option { display: flex; flex: 1; align-items: center; justify-content: center; gap: 6px; min-height: 40px; border: 0; border-radius: 10px; background: transparent; color: var(--ui-text); font: inherit; font-size: 12px; cursor: pointer; }
+.mobile-shape-option.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+.mobile-settings-back:focus-visible, .mobile-shape-option:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: -2px; }
+.mobile-settings-screen-enter-active, .mobile-settings-screen-leave-active { transition: opacity 180ms ease, transform 180ms cubic-bezier(0.2, 0, 0, 1); }
+.mobile-settings-screen-leave-active { position: absolute; inset: 0 0 auto; pointer-events: none; }
+.mobile-settings-screen-enter-from { opacity: 0; transform: translateX(8px); }
+.mobile-settings-screen-leave-to { opacity: 0; transform: translateX(-8px); }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-settings-screen-enter-active, .mobile-settings-screen-leave-active { transition: none; }
+  .mobile-settings-screen-enter-from, .mobile-settings-screen-leave-to { transform: none; }
+}
+</style>
