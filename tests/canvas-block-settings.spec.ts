@@ -178,7 +178,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
-    if (mobile) await panel.locator('.mobile-panel-back').click(); else await trigger.click();
+    await trigger.click();
     await expect(tools).toBeHidden();
     await trigger.click();
     await tools.getByRole('button', { name: 'Highlighter', exact: true }).click();
@@ -198,13 +198,47 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect(page.locator('.drawing-width-menu')).toBeVisible();
     await expect(page.locator('.drawing-width-menu')).toHaveCSS('opacity', '1');
     await page.screenshot({ path: `test-results/drawing-width-${viewport.width}.png` });
-    if (mobile) await panel.locator('.mobile-panel-back').click(); else await widthTrigger.click();
+    await expect(panel.locator('.mobile-panel-header')).toHaveCount(0);
+    await expect(page.locator('.drawing-width-menu')).toHaveCSS('position', 'fixed');
+    await widthTrigger.click();
     await expect(slider).toBeHidden();
     await panel.getByRole('button', { name: 'Color', exact: true }).click();
     await page.getByRole('group', { name: 'Color', exact: true }).getByRole('button', { name: '#1971c2', exact: true }).click();
     await widthTrigger.click();
     await expect(page.locator('.drawing-width-menu line')).toHaveAttribute('stroke', '#1971c2');
-    if (mobile) await panel.locator('.mobile-panel-back').click(); else await widthTrigger.click();
+    await widthTrigger.click();
+  });
+}
+
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`compact menu actions share a row and titles remain centred at ${viewport.width}px`, async ({ page }) => {
+    await setup(page, true);
+    await page.setViewportSize(viewport);
+    await page.locator('.mobile-modebar-btn').nth(1).click();
+    await page.locator('[data-node-id="text"]').click();
+    const toolbar = page.locator('.mobile-node-toolbar');
+    for (const [section, count] of [['Background', 3], ['Shape', 3], ['Layers', 5]] as const) {
+      await toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true }).click();
+      const buttons = toolbar.locator('.mobile-node-subpanel button:visible');
+      await expect(buttons).toHaveCount(count);
+      const boxes = await buttons.evaluateAll(els => els.map(el => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right }; }));
+      expect(Math.max(...boxes.map(b => b.y)) - Math.min(...boxes.map(b => b.y))).toBeLessThanOrEqual(2);
+      expect(boxes.every(b => b.x >= 0 && b.right <= viewport.width)).toBe(true);
+      const header = (await toolbar.locator('.mobile-panel-header').boundingBox())!;
+      const title = (await toolbar.locator('.mobile-settings-heading').boundingBox())!;
+      expect(header.height).toBeLessThanOrEqual(28);
+      expect(Math.abs(title.x + title.width / 2 - header.x - header.width / 2)).toBeLessThanOrEqual(1);
+      await page.screenshot({ path: test.info().outputPath(`compact-${section.toLowerCase()}.png`) });
+      await toolbar.locator('.mobile-panel-back').click();
+    }
+    for (const section of ['Text', 'Border']) {
+      await toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true }).click();
+      const header = (await toolbar.locator('.mobile-panel-header').boundingBox())!;
+      const title = (await toolbar.locator('.mobile-settings-heading').boundingBox())!;
+      expect(header.height).toBeLessThanOrEqual(28);
+      expect(Math.abs(title.x + title.width / 2 - header.x - header.width / 2)).toBeLessThanOrEqual(1);
+      await toolbar.locator('.mobile-panel-back').click();
+    }
   });
 }
 

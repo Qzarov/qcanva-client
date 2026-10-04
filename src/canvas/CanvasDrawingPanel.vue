@@ -1,11 +1,5 @@
 <template>
-  <CanvasPanelPage :page="inline ? popup : null">
-  <header v-if="inline && popup" class="mobile-panel-header">
-    <button class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="emit('update:popup', null)"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
-    <strong>{{ t(popup === 'tools' ? 'drawingTools' : popup === 'color' ? 'color' : 'width') }}</strong>
-  </header>
-  <div class="canvas-drawing-controls" @keydown.esc.stop.prevent="emit('update:popup', null)">
-    <template v-if="!inline || !popup">
+  <div class="canvas-drawing-controls">
     <button class="canvas-drawing-control drawing-tool-trigger" :aria-label="t('drawingTools')" :aria-expanded="popup === 'tools'" @click="toggle('tools', $event)">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" v-html="selected.icon" />
       <span>{{ t(selected.label) }}</span>
@@ -17,28 +11,25 @@
       <svg width="32" height="24" viewBox="0 0 32 24" aria-hidden="true"><line x1="8" y1="12" x2="24" y2="12" :stroke="color" :stroke-width="width" stroke-linecap="round" /></svg>
       <span>{{ t('width') }}</span>
     </button>
-    </template>
-    <CanvasColorMenu :open="popup === 'tools'" :anchor="anchor" :label="t('drawingTools')" :inline="inline" controls menu-class="drawing-tool-menu" @close="emit('update:popup', null)">
+    <CanvasColorMenu :open="popup === 'tools'" :anchor="anchor" :label="t('drawingTools')" controls menu-class="drawing-tool-menu" @close="emit('update:popup', null)">
       <button v-for="entry in tools" :key="entry.value" class="drawing-tool-option" :class="{ active: tool === entry.value }" :aria-label="t(entry.label)" :aria-pressed="tool === entry.value" @click="emit('update:tool', entry.value)">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" v-html="entry.icon" /><span>{{ t(entry.label) }}</span>
       </button>
     </CanvasColorMenu>
-    <CanvasColorMenu :open="popup === 'color'" :anchor="anchor" :label="t('color')" :inline="inline" @close="emit('update:popup', null)">
-      <button v-for="c in colors" :key="c" :class="[{ active: color === c }, { 'tb-color': !inline }]" :style="inline ? undefined : { background: c }" :aria-label="c" @click="emit('update:color', c)"><template v-if="inline"><span class="canvas-palette-swatch" :style="{ background: c }" /><span>{{ t('color') }} {{ c }}</span></template></button>
+    <CanvasColorMenu :open="popup === 'color'" :anchor="anchor" :label="t('color')" @close="emit('update:popup', null)">
+      <button v-for="c in colors" :key="c" class="tb-color" :style="{ background: c }" :class="{ active: color === c }" :aria-label="c" @click="emit('update:color', c)" />
     </CanvasColorMenu>
-    <CanvasColorMenu :open="popup === 'width'" :anchor="anchor" :label="t('width')" :inline="inline" controls menu-class="drawing-width-menu" @close="emit('update:popup', null)">
+    <CanvasColorMenu :open="popup === 'width'" :anchor="anchor" :label="t('width')" controls menu-class="drawing-width-menu" @close="emit('update:popup', null)">
       <CanvasStrokeWidth :width="width" :color="color" @update:width="emit('update:width', $event)" />
     </CanvasColorMenu>
   </div>
-  </CanvasPanelPage>
 </template>
 <script setup lang="ts">
 import { computed, shallowRef } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import CanvasColorMenu from './CanvasColorMenu.vue';
 import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
-import CanvasPanelPage from './CanvasPanelPage.vue';
-const props = defineProps<{ tool: string; color: string; width: number; popup: 'tools' | 'color' | 'width' | null; includeSelect?: boolean; inline?: boolean }>();
+const props = defineProps<{ tool: string; color: string; width: number; popup: 'tools' | 'color' | 'width' | null; includeSelect?: boolean }>();
 const emit = defineEmits<{ 'update:tool': [string]; 'update:color': [string]; 'update:width': [number]; 'update:popup': ['tools' | 'color' | 'width' | null] }>();
 const { t } = useI18n();
 const anchor = shallowRef<HTMLElement | null>(null);

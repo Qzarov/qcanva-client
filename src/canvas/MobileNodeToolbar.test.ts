@@ -220,6 +220,9 @@ describe('MobileNodeToolbar system Back', () => {
     } } });
     await wrapper.get('[aria-label="Color"]').trigger('click');
     const menu = wrapper.get('.canvas-color-menu');
+    expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(true);
+    expect(wrapper.find('.mobile-panel-header').exists()).toBe(false);
+    expect(menu.classes()).not.toContain('canvas-color-menu-inline');
     await menu.get('[aria-label="#1971c2"]').trigger('click');
     expect(setSelectedDrawingColor).toHaveBeenCalledWith('#1971c2');
     expect(wrapper.find('.canvas-color-menu').exists()).toBe(false);

@@ -601,7 +601,7 @@
         @pointerdown.stop
         @click.stop
       >
-        <CanvasDrawingPanel inline :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
+        <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
           @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
       </div>
 

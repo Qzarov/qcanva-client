@@ -9296,13 +9296,19 @@ textarea:focus-visible {
 .mobile-settings-row .block-menu-sublabel { width: auto; flex: 0 0 48px; }
 .mobile-node-color-trigger { flex: 0 0 28px; }
 .mobile-node-color-palette { padding-top: 8px; }
-.mobile-panel-header { display: flex; align-items: center; gap: 12px; padding: 6px 12px; background: var(--ui-surface-elevated); color: var(--ui-text); }
+.mobile-panel-header { display: flex; align-items: center; justify-content: center; min-height: 24px; box-sizing: border-box; padding: 2px 12px; text-align: center; background: var(--ui-surface-elevated); color: var(--ui-text); }
 .mobile-panel-header strong { min-width: 0; font-size: 13px; font-weight: 500; }
 .mobile-panel-back { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 0; border-radius: 10px; min-height: 40px; padding: 6px 10px; color: var(--ui-text); background: transparent; font: inherit; font-size: 12px; }
 .mobile-panel-back:hover { background: var(--ui-surface-subtle); }
+.mobile-panel-navigation { padding: 0 8px; }
 .mobile-node-subpanel .mobile-settings-row { flex-wrap: wrap; overflow: visible; }
+.mobile-node-subpanel .mobile-settings-compact-row { flex-wrap: nowrap; align-items: stretch; }
+.mobile-node-subpanel .mobile-settings-compact-row > .mobile-panel-back { flex-direction: column; justify-content: center; font-size: 11px; }
+.mobile-node-subpanel .mobile-settings-compact-row > button > span:last-child { max-width: 100%; overflow-wrap: anywhere; }
 .mobile-node-subpanel .mobile-settings-row .tb-btn,
 .mobile-node-subpanel .mobile-node-color-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: auto; height: auto; min-width: 48px; min-height: 52px; padding: 6px; border-radius: 10px; background: transparent; color: var(--ui-text); flex: 1 1 0; font-size: 11px; }
+.mobile-node-subpanel .mobile-settings-row.mobile-settings-compact-row > button { flex: 1 1 0; min-width: 0; padding: 4px; min-height: 52px; font-size: 10px; }
+.mobile-node-subpanel .mobile-settings-compact-row > .mobile-panel-back > span:first-child { font-size: 20px; line-height: 20px; }
 .mobile-node-subpanel .mobile-settings-row .tb-btn.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
 .mobile-node-subpanel .canvas-palette-swatch { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ui-border); }
 .mobile-node-subpanel .mobile-node-color-palette { flex-direction: column; flex-wrap: nowrap; }

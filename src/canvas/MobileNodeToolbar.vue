@@ -1,15 +1,18 @@
 <template>
   <!-- Shown only when there is an active selection and not editing text -->
   <div v-if="selectionKind !== 'none'" ref="toolbarElement" class="mobile-node-toolbar" role="toolbar" :aria-label="t('nodeActions')" @keydown.esc.stop.prevent="backToMenu">
-    <CanvasPanelPage :page="colorPopup || activeSection || drawingSection">
-    <header v-if="activeSection || drawingSection" class="mobile-panel-header">
-      <button class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
+    <CanvasPanelPage :page="colorPopup || activeSection">
+    <header v-if="activeSection" class="mobile-panel-header">
       <strong class="mobile-settings-heading">{{ pageLabel }}</strong>
     </header>
+    <div v-if="activeSection && !compactSection" class="mobile-panel-navigation">
+      <button class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
+    </div>
     <!-- Sub-panel: expands above the icon row for fill/text color/border sections (non-drawing) -->
     <div v-if="activeSection" class="mobile-node-subpanel" :class="{ 'mobile-node-subpanel-palette': !!colorPopup }" @pointerdown.stop @click.stop>
       <div v-show="!colorPopup">
-      <div v-if="activeSection === 'shape'" class="mobile-subpanel-row mobile-settings-row">
+      <div v-if="activeSection === 'shape'" class="mobile-subpanel-row mobile-settings-row mobile-settings-compact-row">
+        <button v-if="compactSection" class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
         <button v-for="shape in ['rect', 'round']" :key="shape" class="mobile-shape-option"
           :class="{ active: canvasRef?.getNodeShape(nodeId) === shape }"
           :aria-label="shape === 'round' ? t('round') : t('rectangular')"
@@ -21,7 +24,8 @@
       </div>
       <!-- Fill (background) colors -->
       <template v-if="activeSection === 'fill'">
-        <div class="mobile-subpanel-row mobile-settings-row">
+        <div class="mobile-subpanel-row mobile-settings-row mobile-settings-compact-row">
+          <button v-if="compactSection" class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
           <button class="tb-color mobile-node-color-trigger" :class="canvasRef?.getNodeColor(nodeId) ? 'ctx-color-'+canvasRef.getNodeColor(nodeId) : 'tb-color-none'" :aria-label="t('backgroundColor')" :title="t('backgroundColor')" :aria-expanded="colorPopup === 'fill'" @click="toggleColorPopup('fill', $event)"><span class="canvas-palette-swatch" :class="canvasRef?.getNodeColor(nodeId) ? 'ctx-color-'+canvasRef.getNodeColor(nodeId) : 'tb-color-none'" /><span>{{ t('color') }}</span></button>
           <button
             class="tb-btn"
@@ -106,7 +110,8 @@
       </template>
 
       <template v-if="activeSection === 'layers'">
-        <div class="mobile-subpanel-row mobile-settings-row">
+        <div class="mobile-subpanel-row mobile-settings-row mobile-settings-compact-row">
+          <button v-if="compactSection" class="mobile-panel-back" type="button" :aria-label="t('backToMenu')" @click="backToMenu"><span aria-hidden="true">←</span><span>{{ t('undo') }}</span></button>
           <button v-for="action in layerActions" :key="action.key" class="tb-btn" :disabled="action.disabled" :title="action.label" :aria-label="action.label" @click="action.handler()">
             <svg v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
             <span>{{ action.label }}</span>
@@ -130,22 +135,24 @@
     </div>
 
     <!-- Drawing popup: floats above the icon row without changing toolbar height -->
-    <CanvasColorMenu :open="drawingSection === 'drawing-color'" :anchor="colorAnchor" :label="t('color')" inline menu-class="mobile-drawing-popup-colors" @close="drawingSection = null">
+    <CanvasColorMenu :open="drawingSection === 'drawing-color'" :anchor="colorAnchor" :label="t('color')" menu-class="mobile-drawing-popup-colors" @close="drawingSection = null">
           <button
             v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']"
             :key="'mdpc'+c"
+            class="mobile-drawing-popup-swatch"
             :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
+            :style="{ background: c }"
             :aria-label="c"
             @click="canvasRef?.setSelectedDrawingColor(c); drawingSection = null"
-          ><span class="canvas-palette-swatch" :style="{ background: c }" /><span>{{ t('color') }} {{ c }}</span></button>
+          />
     </CanvasColorMenu>
-    <CanvasColorMenu :open="drawingSection === 'drawing-stroke-width'" :anchor="colorAnchor" :label="t('width')" inline controls @close="drawingSection = null">
+    <CanvasColorMenu :open="drawingSection === 'drawing-stroke-width'" :anchor="colorAnchor" :label="t('width')" controls @close="drawingSection = null">
       <CanvasStrokeWidth :width="canvasRef?.selectedDrawingObj?.width ?? 4" :color="canvasRef?.selectedDrawingObj?.color ?? '#000000'"
         @update:width="canvasRef?.setSelectedDrawingWidth($event)" />
     </CanvasColorMenu>
 
     <!-- Icon row -->
-    <div v-if="!activeSection && !drawingSection" class="mobile-node-toolbar-row">
+    <div v-if="!activeSection" class="mobile-node-toolbar-row">
       <!-- Visible actions -->
       <template v-for="action in visibleActions" :key="action.key">
         <button
@@ -398,6 +405,7 @@ export default defineComponent({
       : paletteKind.value === 'text' ? (props.canvasRef?.fontColors ?? [])
       : ['#fb464c', '#e9973f', '#e0de71', '#44cf6e', '#53dfdd', '#a882ff', '#ffffff']);
     const paletteLabel = computed(() => t(paletteKind.value === 'fill' ? 'backgroundColor' : paletteKind.value === 'text' ? 'textColor' : 'borderColor'));
+    const compactSection = computed(() => !colorPopup.value && ['fill', 'shape', 'layers'].includes(activeSection.value ?? ''));
     const pageLabel = computed(() => {
       if (colorPopup.value) return paletteLabel.value;
       const labels: Record<string, Parameters<typeof t>[0]> = { fill: 'background', shape: 'shape', 'text-settings': 'text', 'border-settings': 'border', layers: 'layers', 'image-title': 'toolbarTitle', 'drawing-color': 'color', 'drawing-stroke-width': 'width' };
@@ -511,7 +519,7 @@ export default defineComponent({
     };
 
     return {
-      t, caption, pageLabel, backToMenu, toolbarElement,
+      t, caption, pageLabel, backToMenu, toolbarElement, compactSection,
       selectionKind,
       nodeId,
       visibleActions,
