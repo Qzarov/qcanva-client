@@ -11,40 +11,43 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
 
-const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean; inline?: boolean }>();
+const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean; inline?: boolean; widthAnchor?: HTMLElement | null }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
 const position = ref<CSSProperties>({ left: '8px', top: '8px' });
 
 function place() {
   if (props.inline || !props.open || !props.anchor || !menu.value) return;
-  const anchor = props.anchor.getBoundingClientRect();
+  const anchor = (props.widthAnchor ?? props.anchor).getBoundingClientRect();
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
   const width = viewport?.width ?? window.innerWidth, height = viewport?.height ?? window.innerHeight;
   // offset dimensions are not distorted by the opening scale animation.
-  const menuWidth = menu.value.offsetWidth;
+  const panelWidth = props.widthAnchor ? Math.min(anchor.width, width - 16) : undefined;
+  const menuWidth = panelWidth ?? menu.value.offsetWidth;
   const borderHeight = menu.value.offsetHeight - menu.value.clientHeight;
-  const menuHeight = Math.min(menu.value.scrollHeight + borderHeight, height - 16);
+  const maxHeight = props.widthAnchor ? Math.max(anchor.top - top - 16, top + height - anchor.bottom - 16, 0) : height - 16;
+  const menuHeight = Math.min(menu.value.scrollHeight + borderHeight, maxHeight);
   const above = anchor.top - menuHeight - 8;
   const fitsAbove = above >= top + 8;
   const fitsBelow = anchor.bottom + 8 + menuHeight <= top + height - 8;
   // On short/landscape screens a full vertical palette may fit on neither
   // side vertically. Move it beside the trigger so repeat-tap stays usable.
   const beside = !fitsAbove && !fitsBelow;
-  const x = beside
+  const x = panelWidth !== undefined ? anchor.left : beside
     ? (anchor.right + 8 + menuWidth <= left + width - 8 ? anchor.right + 8 : anchor.left - menuWidth - 8)
     : anchor.left + anchor.width / 2 - menuWidth / 2;
   const y = fitsAbove ? above : beside ? anchor.bottom - menuHeight : anchor.bottom + 8;
   position.value = {
     left: `${Math.max(left + 8, Math.min(x, left + width - menuWidth - 8))}px`,
     top: `${Math.max(top + 8, Math.min(y, top + height - menuHeight - 8))}px`,
-    maxHeight: `${Math.max(0, height - 16)}px`,
+    width: panelWidth !== undefined ? `${panelWidth}px` : undefined,
+    maxHeight: `${maxHeight}px`,
     transformOrigin: fitsAbove || beside ? 'bottom center' : 'top center',
   };
 }
 
-watch(() => [props.open, props.anchor], async () => { await nextTick(); place(); });
+watch(() => [props.open, props.anchor, props.widthAnchor], async () => { await nextTick(); place(); });
 function outside(event: PointerEvent) {
   const target = event.target as Node | null;
   if (!props.inline && props.open && target && !menu.value?.contains(target) && !props.anchor?.contains(target)) emit('close');

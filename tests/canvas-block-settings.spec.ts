@@ -22,6 +22,39 @@ async function setup(page: Page, mobile = false, locale: 'en' | 'ru' = 'en') {
   await expect(page.locator('[data-node-id="text"]')).toBeVisible();
 }
 
+for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
+  test(`Border and Text popups match the entire panel width at ${viewport.width}px`, async ({ page }) => {
+    await setup(page, true); await page.setViewportSize(viewport);
+    await page.locator('.mobile-modebar-btn').nth(1).click(); await page.locator('[data-node-id="text"]').click();
+    const toolbar = page.locator('.mobile-node-toolbar');
+    for (const [section, controls] of [
+      ['Border', ['Border color', 'Border width', 'Border style']],
+      ['Text', ['Header alignment', 'Body text alignment', 'Text color']],
+    ] as const) {
+      await toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true }).click();
+      const panel = (await toolbar.locator('.canvas-panel-page').boundingBox())!;
+      const row = toolbar.locator('.mobile-node-subpanel');
+      await expect(row.locator('button')).toHaveCount(4);
+      const tops = await row.locator('button').evaluateAll(els => els.map(el => el.getBoundingClientRect().top));
+      expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+      for (const control of controls) {
+        const trigger = row.getByRole('button', { name: control, exact: true });
+        await trigger.click();
+        const menu = page.locator('.mobile-node-popup:visible');
+        await expect(menu).toHaveCSS('position', 'fixed');
+        await expect.poll(async () => Math.abs((await menu.boundingBox())!.width - panel.width)).toBeLessThanOrEqual(1);
+        const box = (await menu.boundingBox())!;
+        expect(Math.abs(box.x - panel.x)).toBeLessThanOrEqual(1);
+        expect(box.y).toBeGreaterThanOrEqual(8); expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 8);
+        await expect(trigger).toBeVisible();
+        await page.screenshot({ path: test.info().outputPath(`full-width-${control.replaceAll(' ', '-').toLowerCase()}.png`) });
+        await trigger.click(); await expect(menu).toBeHidden();
+      }
+      await toolbar.locator('.mobile-panel-back').click();
+    }
+  });
+}
+
 for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
   test(`text editor header fits and undo only changes text at ${width}px`, async ({ page }) => {
     await setup(page, true);
@@ -55,44 +88,26 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     expect(await node.evaluate(el => ({ left: (el as HTMLElement).style.left, top: (el as HTMLElement).style.top }))).toEqual(originalPosition);
   });
 
-  test(`vertical colour page replaces mobile settings and fits at ${width}px`, async ({ page }) => {
-    await setup(page, true);
-    await page.setViewportSize({ width, height });
-    await page.locator('.mobile-modebar-btn').nth(1).click();
-    await page.locator('[data-node-id="text"]').click();
-    await page.locator('.mobile-node-toolbar-row [aria-label="Background"]').click();
-    const trigger = page.locator('.mobile-node-toolbar button[aria-label="Background color"]');
-    const back = page.locator('.mobile-node-toolbar .mobile-panel-back');
+  test(`vertical unlabelled Background palette fits at ${width}px`, async ({ page }) => {
+    await setup(page, true); await page.setViewportSize({ width, height });
+    await page.locator('.mobile-modebar-btn').nth(1).click(); await page.locator('[data-node-id="text"]').click();
+    const trigger = page.locator('.mobile-node-toolbar-row [aria-label="Background"]');
     await trigger.click();
     const menu = page.getByRole('group', { name: 'Background color', exact: true });
-    await expect(page.locator('.mobile-node-toolbar-row')).toHaveCount(0);
-    await expect(trigger).toBeHidden();
-    await expect(menu).toHaveCSS('position', 'static');
-    await expect(menu).toHaveCSS('opacity', '1');
-    await expect.poll(async () => { const b = (await menu.boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(height - 8);
+    await expect(page.locator('.mobile-node-toolbar-row')).toBeVisible();
+    await expect(menu).toHaveCSS('position', 'fixed'); await expect(menu).toHaveCSS('opacity', '1');
     const colors = menu.locator('button[aria-label^="Background color "]');
+    await expect(colors).toHaveText(['', '', '', '', '', '']);
     const boxes = await colors.evaluateAll(els => els.map(el => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y }; }));
     expect(new Set(boxes.map(b => Math.round(b.x))).size).toBe(1);
     expect(boxes.every((b, i) => i === 0 || b.y > boxes[i - 1]!.y)).toBe(true);
     const bounds = (await menu.boundingBox())!;
-    expect(bounds.x).toBeGreaterThanOrEqual(8);
-    expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
-    expect(bounds.y).toBeGreaterThanOrEqual(8);
-    await page.screenshot({ path: test.info().outputPath('inline-color-settings.png') });
-    await back.click();
-    await expect(trigger).toBeFocused();
-    await trigger.click();
+    expect(bounds.x).toBeGreaterThanOrEqual(8); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
+    expect(bounds.y).toBeGreaterThanOrEqual(8); expect(bounds.y + bounds.height).toBeLessThanOrEqual(height - 8);
+    await page.screenshot({ path: test.info().outputPath('floating-background.png') });
     await menu.getByRole('button', { name: 'Transparent', exact: true }).click();
-    await expect(menu).toBeHidden();
-    await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
-    await trigger.click();
-    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
-    await expect(menu).toBeHidden();
-    await trigger.click();
-    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
-    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
-    await expect(page.locator('.mobile-node-toolbar-row')).toBeVisible();
-    await expect(menu).toBeHidden();
+    await expect(menu).toBeHidden(); await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
+    await trigger.click(); await trigger.click(); await expect(menu).toBeHidden();
   });
 
   test(`mobile Add fits all five choices without scrolling at ${width}px`, async ({ page }) => {
@@ -109,41 +124,33 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
   });
 }
 
-test('shape choices and nested text/border colours stay in the current settings container', async ({ page }) => {
-  await setup(page, true);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.locator('.mobile-modebar-btn').nth(1).click();
-  await page.locator('[data-node-id="text"]').click();
+test('shape selection and floating text/border colours preserve controls and keyboard navigation', async ({ page }) => {
+  await setup(page, true); await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.locator('.mobile-modebar-btn').nth(1).click(); await page.locator('[data-node-id="text"]').click();
   const toolbar = page.locator('.mobile-node-toolbar-row');
   await toolbar.getByRole('button', { name: 'Shape', exact: true }).click();
-  const panel = page.locator('.mobile-node-subpanel');
-  await panel.getByRole('button', { name: 'Round', exact: true }).click();
+  await page.locator('.mobile-shape-menu').getByRole('button', { name: 'Round', exact: true }).click();
   await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-round/);
-  await panel.getByRole('button', { name: 'Rectangular', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Shape', exact: true }).click();
+  await page.locator('.mobile-shape-menu').getByRole('button', { name: 'Rectangular', exact: true }).click();
   await expect(page.locator('[data-node-id="text"]')).not.toHaveClass(/node-round/);
-  await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
   await expect(toolbar.getByRole('button', { name: 'Shape', exact: true })).toBeFocused();
   for (const [section, color] of [['Text', 'Text color'], ['Border', 'Border color']]) {
     await toolbar.getByRole('button', { name: section!, exact: true }).click();
-    const original = await panel.elementHandle();
-    await panel.getByRole('button', { name: color!, exact: true }).click();
-    await expect(page.locator('.mobile-node-toolbar .mobile-settings-heading')).toHaveText(color!);
-    await expect(panel.locator('.canvas-color-menu')).toHaveCSS('position', 'static');
+    const panel = page.locator('.mobile-node-subpanel'), original = await panel.elementHandle();
+    const trigger = panel.getByRole('button', { name: color!, exact: true });
+    await trigger.click();
+    await expect(page.locator('.mobile-settings-heading')).toHaveText(section!);
+    const menu = page.getByRole('group', { name: color!, exact: true });
+    await expect(menu).toHaveCSS('position', 'fixed');
     expect(await original!.evaluate(el => el === document.querySelector('.mobile-node-subpanel'))).toBe(true);
-    const colors = panel.getByRole('group', { name: color!, exact: true }).getByRole('button');
-    await colors.first().focus();
-    await page.keyboard.press('ArrowDown');
-    await expect(colors.nth(1)).toBeFocused();
-    await page.keyboard.press('End');
-    await expect(colors.last()).toBeFocused();
-    await page.keyboard.press('Home');
-    await expect(colors.first()).toBeFocused();
-    await page.keyboard.press('Escape');
-    await expect(panel.getByRole('button', { name: color!, exact: true })).toBeFocused();
-    await panel.getByRole('button', { name: color!, exact: true }).click();
-    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
-    await expect(panel.getByRole('button', { name: color!, exact: true })).toBeFocused();
-    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+    const colors = menu.getByRole('button');
+    await colors.first().focus(); await page.keyboard.press('ArrowDown'); await expect(colors.nth(1)).toBeFocused();
+    await page.keyboard.press('End'); await expect(colors.last()).toBeFocused();
+    await page.keyboard.press('Home'); await expect(colors.first()).toBeFocused();
+    await page.keyboard.press('Escape'); await expect(trigger).toBeFocused();
+    await trigger.click(); await trigger.click(); await expect(menu).toBeHidden();
+    await page.locator('.mobile-panel-back').click();
   }
 });
 
@@ -211,25 +218,20 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
 }
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
-  test(`compact menu actions share a row and titles remain centred at ${viewport.width}px`, async ({ page }) => {
-    await setup(page, true);
-    await page.setViewportSize(viewport);
-    await page.locator('.mobile-modebar-btn').nth(1).click();
-    await page.locator('[data-node-id="text"]').click();
+  test(`direct menus are vertical and settings titles remain centred at ${viewport.width}px`, async ({ page }) => {
+    await setup(page, true); await page.setViewportSize(viewport);
+    await page.locator('.mobile-modebar-btn').nth(1).click(); await page.locator('[data-node-id="text"]').click();
     const toolbar = page.locator('.mobile-node-toolbar');
-    for (const [section, count] of [['Background', 3], ['Shape', 3], ['Layers', 5]] as const) {
-      await toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true }).click();
-      const buttons = toolbar.locator('.mobile-node-subpanel button:visible');
-      await expect(buttons).toHaveCount(count);
-      const boxes = await buttons.evaluateAll(els => els.map(el => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right }; }));
-      expect(Math.max(...boxes.map(b => b.y)) - Math.min(...boxes.map(b => b.y))).toBeLessThanOrEqual(2);
-      expect(boxes.every(b => b.x >= 0 && b.right <= viewport.width)).toBe(true);
-      const header = (await toolbar.locator('.mobile-panel-header').boundingBox())!;
-      const title = (await toolbar.locator('.mobile-settings-heading').boundingBox())!;
-      expect(header.height).toBeLessThanOrEqual(28);
-      expect(Math.abs(title.x + title.width / 2 - header.x - header.width / 2)).toBeLessThanOrEqual(1);
-      await page.screenshot({ path: test.info().outputPath(`compact-${section.toLowerCase()}.png`) });
-      await toolbar.locator('.mobile-panel-back').click();
+    for (const [section, count] of [['Background', 9], ['Shape', 2], ['Layers', 4]] as const) {
+      const trigger = toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true });
+      await trigger.click();
+      const menu = page.locator('.mobile-node-popup:visible');
+      await expect(menu.locator('button')).toHaveCount(count); await expect(menu).toHaveCSS('flex-direction', 'column');
+      await expect(toolbar.locator('.mobile-node-subpanel')).toHaveCount(0);
+      const bounds = (await menu.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
+      await page.screenshot({ path: test.info().outputPath(`vertical-${section.toLowerCase()}.png`) });
+      await trigger.click(); await expect(menu).toBeHidden();
     }
     for (const section of ['Text', 'Border']) {
       await toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name: section, exact: true }).click();
@@ -250,14 +252,14 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     await page.locator('[data-node-id="text"]').click();
     const row = page.locator('.mobile-node-toolbar-row');
     await expect(row.locator('button')).toHaveCount(10);
-    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Форма', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Скрыть', 'Удалить']);
+    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Слои', 'Фон', 'Форма', 'Рамка', 'Текст', 'Править', 'Дублировать', 'Закрепить', 'Скрыть', 'Удалить']);
     const rects = await row.locator('button').evaluateAll(buttons => buttons.map(button => {
       const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, top: r.top, bottom: r.bottom };
     }));
     expect(new Set(rects.map(r => Math.round(r.top))).size).toBe(2);
     expect(rects.every(r => r.x >= 0 && r.right <= viewport.width && r.bottom <= viewport.height)).toBe(true);
     await row.getByRole('button', { name: 'Рамка', exact: true }).click();
-    await expect(page.locator('.mobile-settings-row .block-menu-sublabel')).toHaveText(['Стиль', 'Толщина', 'Цвет']);
+    await expect(page.locator('.mobile-node-subpanel button > span:last-child')).toHaveText(['Назад', 'Цвет', 'Толщина', 'Стиль']);
     await page.screenshot({ path: `test-results/node-russian-${viewport.width}.png` });
   });
 }

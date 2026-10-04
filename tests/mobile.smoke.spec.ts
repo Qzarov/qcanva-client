@@ -298,36 +298,28 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await row.getByRole('button', { name: 'Unlock', exact: true }).click();
     await expect(node).not.toHaveClass(/is-locked/);
     await row.getByRole('button', { name: 'Layers', exact: true }).click();
-    await expect(page.locator('.mobile-node-subpanel .tb-btn')).toHaveCount(4);
-    await page.locator('.mobile-panel-back').click();
+    await expect(page.locator('.mobile-layers-menu button')).toHaveCount(4);
+    await row.getByRole('button', { name: 'Layers', exact: true }).click();
     await expect(row.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
     await row.getByRole('button', { name: 'Background', exact: true }).click();
-    const settingButtons = page.locator('.mobile-node-subpanel .mobile-settings-row button');
-    const tops = await settingButtons.evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
-    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(5);
-    await expect(page.locator('.mobile-node-color-palette')).not.toBeVisible();
-    await page.getByRole('button', { name: 'Background color', exact: true }).click();
+    await expect(page.locator('.mobile-node-color-palette')).toBeVisible();
     await page.getByRole('button', { name: 'Background color 2', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Background color', exact: true })).toHaveClass(/ctx-color-2/);
-    await page.locator('.mobile-panel-back').click();
+    await expect(node).toHaveClass(/node-color-2/);
     await row.getByRole('button', { name: 'Border', exact: true }).click();
     await page.getByRole('button', { name: 'Border color', exact: true }).click();
     await expect.poll(async () => { const b = (await page.locator('.mobile-node-subpanel').boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
-    const palette = await page.locator('.mobile-node-subpanel').boundingBox();
+    const palette = await page.locator('.mobile-node-color-palette').boundingBox();
     expect(palette!.y).toBeGreaterThanOrEqual(0);
     expect(palette!.y + palette!.height).toBeLessThanOrEqual(viewport.height);
     await page.getByRole('button', { name: 'Border color #fb464c', exact: true }).click();
     await page.locator('.mobile-panel-back').click();
     await row.getByRole('button', { name: 'Text', exact: true }).click();
     await expect.poll(async () => { const b = (await page.locator('.mobile-node-subpanel').boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
-    const textPanel = (await page.locator('.mobile-node-subpanel').boundingBox())!;
-    for (const button of await page.locator('.mobile-node-subpanel button[aria-label^="First line:"]').all()) {
-      const box = (await button.boundingBox())!;
-      expect(box.x).toBeGreaterThanOrEqual(textPanel.x);
-      expect(box.x + box.width).toBeLessThanOrEqual(textPanel.x + textPanel.width);
-    }
+    await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
     await page.getByRole('button', { name: 'Body text: Center', exact: true }).click();
+    await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Body text: Center', exact: true })).toHaveClass(/active/);
+    await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
     await page.screenshot({ path: test.info().outputPath('grouped-node-settings.png') });
   });
 }
@@ -346,6 +338,7 @@ test('image controls edit title and border without showing text settings', async
   await expect(node.locator('.node-image-title')).toHaveText('Map');
   await page.locator('.mobile-panel-back').click();
   await row.getByRole('button', { name: 'Border', exact: true }).click();
+  await page.getByRole('button', { name: 'Border width', exact: true }).click();
   await page.getByRole('button', { name: 'Width 3px', exact: true }).click();
   await expect(node).toHaveCSS('border-top-width', '3px');
   await page.locator('.mobile-panel-back').click();

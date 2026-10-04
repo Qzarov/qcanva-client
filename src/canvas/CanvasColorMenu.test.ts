@@ -18,6 +18,17 @@ function setup() {
 }
 
 describe('CanvasColorMenu', () => {
+  it('matches a settings panel width and scrolls above it without covering the controls', async () => {
+    const { wrapper, anchor, menu } = setup();
+    const panel = document.createElement('div'); document.body.append(panel);
+    vi.spyOn(panel, 'getBoundingClientRect').mockReturnValue({ left: 10, right: 310, top: 250, bottom: 330, width: 300 } as DOMRect);
+    vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({ left: 160, right: 200, top: 290, bottom: 330, width: 40 } as DOMRect);
+    vi.spyOn(menu, 'scrollHeight', 'get').mockReturnValue(334);
+    vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 390);
+    await wrapper.setProps({ widthAnchor: panel }); await flushPromises();
+    expect(menu.style.width).toBe('300px'); expect(menu.style.left).toBe('10px');
+    expect(menu.style.maxHeight).toBe('234px'); expect(menu.style.top).toBe('8px');
+  });
   it('does not close on its trigger or a swatch pointerdown; closes on outside pointerdown', () => {
     const { wrapper, anchor, menu } = setup();
     anchor.dispatchEvent(new Event('pointerdown', { bubbles: true }));

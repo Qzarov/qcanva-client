@@ -9312,6 +9312,9 @@ textarea:focus-visible {
 .mobile-node-subpanel .mobile-settings-row .tb-btn.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
 .mobile-node-subpanel .canvas-palette-swatch { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ui-border); }
 .mobile-node-subpanel .mobile-node-color-palette { flex-direction: column; flex-wrap: nowrap; }
+.mobile-node-options button { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--ui-text); text-align: left; font: inherit; font-size: 13px; }
+.mobile-node-options button > :first-child { flex-shrink: 0; }
+.mobile-node-options button.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
 
 /* Overflow backdrop */
 .mobile-overflow-backdrop {
