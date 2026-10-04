@@ -22,7 +22,7 @@ describe('CanvasDrawingPanel', () => {
     expect(options.map(button => button.text())).toEqual(['Pen', 'Highlighter', 'Rectangle', 'Ellipse', 'Arrow', 'Line', 'Eraser']);
     await options[1]!.trigger('click');
     expect(wrapper.emitted('update:tool')).toEqual([['highlighter']]);
-    expect(wrapper.emitted('update:popup')).toEqual([[null]]);
+    expect(wrapper.emitted('update:popup')).toBeUndefined();
     expect(wrapper.emitted('update:width')).toBeUndefined();
     expect(wrapper.emitted('update:color')).toBeUndefined();
     wrapper.unmount();

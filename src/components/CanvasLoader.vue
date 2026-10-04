@@ -777,7 +777,7 @@
           <button class="ctx-color-btn" :style="{ background: selectedDrawingObj?.color }" :aria-label="t('color')" :aria-expanded="contextColorPopup === 'drawing'" @click="toggleContextColorMenu('drawing', $event)" />
         </div>
         <CanvasColorMenu :open="contextColorPopup === 'drawing'" :anchor="contextColorAnchor" :label="t('color')" @close="contextColorPopup = null">
-          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c); closeContextMenu()"></button>
+          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c)"></button>
         </CanvasColorMenu>
         <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
@@ -2883,12 +2883,10 @@ export default defineComponent({
         node.color = color;
         emitOp({ type: 'node-update', id: node.id, changes: { color } });
       }
-      closeContextMenu();
     };
 
     const onCtxSetFontColor = (fontColor: string | undefined) => {
       setNodeFontColor(contextMenu.nodeId, fontColor);
-      closeContextMenu();
     };
 
     const withContextNodeSelected = (action: () => void) => {

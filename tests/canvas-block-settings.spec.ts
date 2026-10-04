@@ -51,6 +51,8 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
         expect(Math.abs(box.y + box.height - (anchor.y - 8))).toBeLessThanOrEqual(1);
         expect(box.y).toBeGreaterThanOrEqual(8); expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 8);
         await expect(trigger).toBeVisible();
+        await menu.locator('button:not(:disabled)').first().click();
+        await expect(menu).toBeVisible();
         await page.screenshot({ path: test.info().outputPath(`full-width-${control.replaceAll(' ', '-').toLowerCase()}.png`) });
         await trigger.click(); await expect(menu).toBeHidden();
       }
@@ -155,9 +157,11 @@ test('shape selection and floating text/border colours preserve controls and key
   await toolbar.getByRole('button', { name: 'Shape', exact: true }).click();
   await page.locator('.mobile-shape-menu').getByRole('button', { name: 'Round', exact: true }).click();
   await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-round/);
-  await toolbar.getByRole('button', { name: 'Shape', exact: true }).click();
+  await expect(page.locator('.mobile-shape-menu')).toBeVisible();
   await page.locator('.mobile-shape-menu').getByRole('button', { name: 'Rectangular', exact: true }).click();
   await expect(page.locator('[data-node-id="text"]')).not.toHaveClass(/node-round/);
+  await expect(page.locator('.mobile-shape-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(toolbar.getByRole('button', { name: 'Shape', exact: true })).toBeFocused();
   for (const [section, color] of [['Text', 'Text color'], ['Border', 'Border color']]) {
     await toolbar.getByRole('button', { name: section!, exact: true }).click();
@@ -214,7 +218,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await trigger.click();
     await tools.getByRole('button', { name: 'Highlighter', exact: true }).click();
     await expect(trigger).toHaveText('Highlighter');
-    await expect(tools).toBeHidden();
+    await expect(tools).toBeVisible();
     const widthTrigger = panel.getByRole('button', { name: 'Width', exact: true });
     await widthTrigger.click();
     const slider = page.locator('.drawing-width-menu input');
@@ -305,9 +309,11 @@ for (const mobile of [false, true]) {
     const menu = page.getByRole('group', { name: 'Color', exact: true });
     await expect(menu).toHaveCSS('flex-direction', 'column');
     await menu.locator('button').nth(2).click();
-    await expect(menu).toBeHidden();
+    await expect(menu).toBeVisible();
+    await menu.locator('button').nth(3).click();
+    await expect(menu).toBeVisible();
     await expect(page.locator(mobile ? '.mobile-draw-panel .drawing-tool-trigger' : '.draw-toolbar .drawing-tool-trigger')).toHaveText('Pen');
-    await expect(page.locator(mobile ? '.mobile-draw-panel .drawing-color-sample' : '.draw-toolbar .drawing-color-sample')).toHaveCSS('background-color', 'rgb(47, 158, 68)');
+    await expect(page.locator(mobile ? '.mobile-draw-panel .drawing-color-sample' : '.draw-toolbar .drawing-color-sample')).toHaveCSS('background-color', 'rgb(25, 113, 194)');
   });
 }
 
@@ -319,7 +325,11 @@ test('context-menu colour picker uses the same floating menu and updates the nod
   await expect(menu).toHaveCSS('position', 'fixed');
   await menu.getByRole('button', { name: 'Background color 2', exact: true }).click();
   await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-2/);
-  await expect(menu).toBeHidden();
+  await expect(menu).toBeVisible();
+  await menu.getByRole('button', { name: 'Background color 3', exact: true }).click();
+  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-3/);
+  await expect(menu).toBeVisible();
+  await page.keyboard.press('Escape'); await expect(menu).toBeHidden();
 });
 
 for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'], [true, 'dark']] as const) {
@@ -344,8 +354,7 @@ for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'
     expect(backgrounds).not.toContain('rgba(0, 0, 0, 0)');
     await expect(colors.nth(3)).toHaveClass(/active/);
     await colors.first().click();
-    if (mobile) await page.locator('.mobile-node-toolbar button[aria-label="Text color"]').click();
-    else await page.locator('.node-toolbar [aria-label="Text color"]').click();
+    await expect(menu).toBeVisible();
     await expect(colors.first()).toHaveClass(/active/);
     const textColor = await page.locator('[data-node-id="text"] .node-content').evaluate(el => getComputedStyle(el).color);
     expect(textColor).toBe(backgrounds[0]);

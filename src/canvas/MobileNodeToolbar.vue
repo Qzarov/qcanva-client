@@ -54,7 +54,7 @@
             :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
             :style="{ background: c }"
             :aria-label="c"
-            @click="canvasRef?.setSelectedDrawingColor(c); drawingSection = null"
+            @click="canvasRef?.setSelectedDrawingColor(c)"
           />
     </CanvasColorMenu>
     <CanvasColorMenu :open="drawingSection === 'drawing-stroke-width'" :anchor="colorAnchor" :label="t('width')" controls @close="drawingSection = null">
@@ -354,7 +354,6 @@ export default defineComponent({
       if (colorPopup.value === 'fill') cr?.setNodeColor(nodeId.value, color);
       else if (colorPopup.value === 'text') cr?.setNodeFontColor(nodeId.value, color);
       else if (colorPopup.value === 'border') cr?.setNodeBorderColor(nodeId.value, color);
-      colorPopup.value = null;
     };
 
     const toggleOverflow = () => {

@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body" :disabled="inline">
     <Transition name="canvas-color-menu">
-      <div v-if="open" ref="menu" class="canvas-color-menu" :class="[menuClass, { 'canvas-control-menu': controls, 'canvas-color-menu-inline': inline }]" :style="inline ? undefined : position" role="group" :aria-label="label" @pointerdown.stop @click.stop="onChoose" @keydown="onKeydown">
+      <div v-if="open" ref="menu" class="canvas-color-menu" :class="[menuClass, { 'canvas-control-menu': controls, 'canvas-color-menu-inline': inline }]" :style="inline ? undefined : position" role="group" :aria-label="label" @pointerdown.stop @click.stop @keydown="onKeydown">
         <slot />
       </div>
     </Transition>
@@ -54,9 +54,6 @@ watch(() => [props.open, props.anchor, props.widthAnchor, props.above, props.men
 function outside(event: PointerEvent) {
   const target = event.target as Node | null;
   if (!props.inline && props.open && target && !menu.value?.contains(target) && !props.anchor?.contains(target)) emit('close');
-}
-function onChoose(event: MouseEvent) {
-  if ((event.target as HTMLElement).closest('button:not(:disabled)')) emit('close');
 }
 function onKeydown(event: KeyboardEvent) {
   if ((event.target as HTMLElement).matches('input')) return;

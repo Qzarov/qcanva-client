@@ -399,7 +399,7 @@
               v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000','#ffffff']" :key="'dsel-'+c"
               class="tb-color" :style="{ background: c }"
               :class="{ active: canvasRef?.selectedDrawingObj?.color === c }"
-              @click="canvasRef?.setSelectedDrawingColor(c); drawColorPickerOpen = false"
+              @click="canvasRef?.setSelectedDrawingColor(c)"
             ></button>
           </CanvasColorMenu>
         </div>

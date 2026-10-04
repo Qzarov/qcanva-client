@@ -37,7 +37,7 @@ describe('MobileNodeToolbar system Back', () => {
     await wrapper.get('.mobile-toolbar-btn[aria-label="Shape"]').trigger('click');
     await wrapper.get('[aria-label="Round"]').trigger('click');
     expect(toggleNodeShape).toHaveBeenCalledWith('n1');
-    await wrapper.get('.mobile-toolbar-btn[aria-label="Shape"]').trigger('click');
+    expect(wrapper.find('.mobile-shape-menu').exists()).toBe(true);
     await wrapper.get('[aria-label="Rectangular"]').trigger('click');
     expect(toggleNodeShape).toHaveBeenCalledTimes(1);
   });
@@ -130,10 +130,10 @@ describe('MobileNodeToolbar system Back', () => {
       ['Bring forward', handlers.bringSelectionForward], ['Send backward', handlers.sendSelectionBackward],
       ['Bring to front', handlers.bringSelectionToFront], ['Send to back', handlers.sendSelectionToBack],
     ] as const) {
-      await wrapper.get('.mobile-toolbar-btn[aria-label="Layers"]').trigger('click');
+      if (!wrapper.find('.mobile-layers-menu').exists()) await wrapper.get('.mobile-toolbar-btn[aria-label="Layers"]').trigger('click');
       await wrapper.get(`.mobile-layers-menu [aria-label="${label}"]`).trigger('click');
       expect(handler).toHaveBeenCalledOnce();
-      expect(wrapper.find('.mobile-layers-menu').exists()).toBe(false);
+      expect(wrapper.find('.mobile-layers-menu').exists()).toBe(true);
     }
     expect(wrapper.get('.mobile-toolbar-btn[aria-label="Duplicate"]').text()).toBe('Duplicate');
     expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
@@ -144,7 +144,7 @@ describe('MobileNodeToolbar system Back', () => {
     await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');
     await wrapper.get('[aria-label="Background color 2"]').trigger('click');
     expect(setNodeColor).toHaveBeenCalledWith('n1', '2');
-    await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
     expect(runBackHandlers()).toBe(true); await wrapper.vm.$nextTick();
     expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
     expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(true);
@@ -160,6 +160,8 @@ describe('MobileNodeToolbar system Back', () => {
     await wrapper.get('[aria-label="Border color"]').trigger('click');
     await wrapper.get('[aria-label="Border color #fb464c"]').trigger('click');
     expect(cr.setNodeBorderColor).toHaveBeenCalledWith('n1', '#fb464c');
+    await wrapper.get('.mobile-panel-back').trigger('click');
+    expect(wrapper.find('.mobile-node-subpanel').exists()).toBe(true);
     await wrapper.get('.mobile-panel-back').trigger('click');
     await wrapper.get('.mobile-toolbar-btn[aria-label="Text"]').trigger('click');
     await wrapper.get('[aria-label="Body text alignment"]').trigger('click');
@@ -197,6 +199,8 @@ describe('MobileNodeToolbar system Back', () => {
     expect(menu.classes()).not.toContain('canvas-color-menu-inline');
     await menu.get('[aria-label="#1971c2"]').trigger('click');
     expect(setSelectedDrawingColor).toHaveBeenCalledWith('#1971c2');
+    expect(wrapper.find('.canvas-color-menu').exists()).toBe(true);
+    expect(runBackHandlers()).toBe(true); await wrapper.vm.$nextTick();
     expect(wrapper.find('.canvas-color-menu').exists()).toBe(false);
     wrapper.unmount();
   });

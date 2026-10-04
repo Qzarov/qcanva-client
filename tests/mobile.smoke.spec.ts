@@ -317,7 +317,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect.poll(async () => { const b = (await page.locator('.mobile-node-subpanel').boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
     await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
     await page.getByRole('button', { name: 'Body text: Center', exact: true }).click();
-    await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
+    await expect(page.locator('.mobile-body-text-menu')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Body text: Center', exact: true })).toHaveClass(/active/);
     await page.getByRole('button', { name: 'Body text alignment', exact: true }).click();
     await page.screenshot({ path: test.info().outputPath('grouped-node-settings.png') });

@@ -39,6 +39,8 @@ describe('mobile node floating menus', () => {
     expect(wrapper.get('[aria-label="Background color 2"]').text()).toBe('');
     await wrapper.get('[aria-label="Background color 2"]').trigger('click');
     expect(setNodeColor).toHaveBeenCalledWith('n1', '2');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
+    expect(runBackHandlers()).toBe(true); await wrapper.vm.$nextTick();
     expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
   });
   it('swaps Layers with Edit and closes a directly opened menu on a repeat tap', async () => {
@@ -57,6 +59,7 @@ describe('mobile node floating menus', () => {
     await wrapper.get('[aria-label="Header alignment"]').trigger('click');
     await wrapper.get('[aria-label="First line: Center"]').trigger('click');
     expect(setNodeFirstLineAlign).toHaveBeenCalledWith('n1', 'center');
+    expect(wrapper.find('.mobile-first-line-menu').exists()).toBe(true);
     await wrapper.get('[aria-label="Text color"]').trigger('click');
     expect(runBackHandlers()).toBe(true); await wrapper.vm.$nextTick();
     expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
@@ -72,9 +75,11 @@ describe('mobile node floating menus', () => {
     await wrapper.get('[aria-label="Border width"]').trigger('click');
     await wrapper.get('[aria-label="Width 3px"]').trigger('click');
     expect(setNodeBorderWidth).toHaveBeenCalledWith('n1', 3);
+    expect(wrapper.find('.mobile-border-width-menu').exists()).toBe(true);
     await wrapper.get('[aria-label="Border style"]').trigger('click');
     await wrapper.get('[aria-label="Style: Solid"]').trigger('click');
     expect(setNodeBorderStyle).toHaveBeenCalledWith('n1', 'solid');
+    expect(wrapper.find('.mobile-border-style-menu').exists()).toBe(true);
     expect(wrapper.find('.mobile-node-subpanel').exists()).toBe(true);
   });
 });

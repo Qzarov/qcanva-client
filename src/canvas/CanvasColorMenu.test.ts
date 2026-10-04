@@ -62,10 +62,11 @@ describe('CanvasColorMenu', () => {
     expect(wrapper.emitted('close')).toHaveLength(1);
   });
 
-  it('requests close after a swatch is chosen', () => {
+  it('keeps the popup open after successive options are chosen', () => {
     const { wrapper, menu } = setup();
     menu.querySelector<HTMLButtonElement>('button')!.click();
-    expect(wrapper.emitted('close')).toHaveLength(1);
+    menu.querySelectorAll<HTMLButtonElement>('button')[1]!.click();
+    expect(wrapper.emitted('close')).toBeUndefined();
   });
 
   it('Escape closes and restores focus to the colour trigger', () => {
