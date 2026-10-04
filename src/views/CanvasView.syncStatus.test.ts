@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   connected: null as any,
   pendingOpsCount: null as any,
+  realtimeOpsUnavailable: null as any,
   rejectHandler: null as null | ((reject: unknown) => void),
   applyRemoteData: null as any,
   resync: null as any,
@@ -85,6 +86,7 @@ vi.mock('../composables/useCanvasSocket', async () => {
   const vue = await vi.importActual<typeof import('vue')>('vue');
   state.connected = vue.ref(true);
   state.pendingOpsCount = vue.ref(0);
+  state.realtimeOpsUnavailable = vue.ref(false);
   return {
     useCanvasSocket: () => ({
       connected: state.connected,
@@ -101,7 +103,7 @@ vi.mock('../composables/useCanvasSocket', async () => {
       onAck: vi.fn(),
       setRevision: vi.fn(),
       pendingOpsCount: state.pendingOpsCount,
-      realtimeOpsUnavailable: vue.ref(false),
+      realtimeOpsUnavailable: state.realtimeOpsUnavailable,
       clearPendingOps: vi.fn(),
       sendChat: vi.fn(),
       sendRoll: vi.fn(),
@@ -160,6 +162,7 @@ beforeEach(() => {
   state.resync = vi.fn().mockRejectedValue(new Error('resync unavailable'));
   state.connected.value = true;
   state.pendingOpsCount.value = 0;
+  state.realtimeOpsUnavailable.value = false;
 });
 
 afterEach(() => {
@@ -167,6 +170,28 @@ afterEach(() => {
 });
 
 describe('canvas sync badge', () => {
+  it('does not claim text is saved when the server cannot acknowledge granular operations', async () => {
+    const wrapper = await mountCanvas();
+    state.realtimeOpsUnavailable.value = true;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.editorSyncStatus.kind).not.toBe('synced');
+    expect(wrapper.vm.editorSyncStatus.label).not.toBe('Saved');
+    wrapper.unmount();
+  });
+  it('text status shows pending operations immediately and saved only after acknowledgement', async () => {
+    const wrapper = await mountCanvas();
+    expect(wrapper.vm.editorSyncStatus).toEqual({ kind: 'synced', label: 'Saved' });
+    state.pendingOpsCount.value = 1;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.editorSyncStatus.kind).toBe('saving');
+    state.pendingOpsCount.value = 0;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.editorSyncStatus).toEqual({ kind: 'synced', label: 'Saved' });
+    state.connected.value = false;
+    await wrapper.vm.$nextTick();
+    expect(wrapper.vm.editorSyncStatus.kind).toBe('offline');
+    wrapper.unmount();
+  });
   it('starts Synced when connected with nothing pending', async () => {
     const wrapper = await mountCanvas();
     expect(wrapper.vm.syncStatus.kind).toBe('synced');

@@ -1,7 +1,8 @@
 // Pure geometry for node resizing — shared by mouse and touch resize paths,
 // and unit-testable in isolation from the canvas component.
 
-export const MIN_NODE_SIZE = 24;
+export const MIN_NODE_WIDTH = 144;
+export const MIN_NODE_HEIGHT = 48;
 export const GRID_SIZE = 24;
 
 /** Snap a value to the canvas grid. */
@@ -30,7 +31,7 @@ export interface ResizeInput {
  * Compute the node's new rect from the current pointer position during a resize.
  * Mirrors the original inline logic: right/bottom handles grow width/height;
  * left/top handles also shift the origin so the opposite edge stays put.
- * Width/height are clamped to MIN_NODE_SIZE and snapped to the grid.
+ * Width/height are clamped to their respective minimums and snapped to the grid.
  */
 export function computeResizedRect(input: ResizeInput): Rect {
   const { handle: h, start, pointer, camera, cameraStart } = input;
@@ -42,15 +43,15 @@ export function computeResizedRect(input: ResizeInput): Rect {
   let width = start.nodeW;
   let height = start.nodeH;
 
-  if (h.includes('r')) width = snapToGrid(Math.max(MIN_NODE_SIZE, start.nodeW + dx));
-  if (h.includes('b')) height = snapToGrid(Math.max(MIN_NODE_SIZE, start.nodeH + dy));
+  if (h.includes('r')) width = Math.max(MIN_NODE_WIDTH, snapToGrid(start.nodeW + dx));
+  if (h.includes('b')) height = Math.max(MIN_NODE_HEIGHT, snapToGrid(start.nodeH + dy));
   if (h.includes('l')) {
-    const newW = snapToGrid(Math.max(MIN_NODE_SIZE, start.nodeW - dx));
+    const newW = Math.max(MIN_NODE_WIDTH, snapToGrid(start.nodeW - dx));
     x = start.nodeX + start.nodeW - newW;
     width = newW;
   }
   if (h.includes('t')) {
-    const newH = snapToGrid(Math.max(MIN_NODE_SIZE, start.nodeH - dy));
+    const newH = Math.max(MIN_NODE_HEIGHT, snapToGrid(start.nodeH - dy));
     y = start.nodeY + start.nodeH - newH;
     height = newH;
   }

@@ -249,7 +249,7 @@ test('selected-node settings close on a second tap and expose actions directly',
   await expect(more).toBeVisible();
   await more.click();
   await expect(page.locator('.mobile-node-subpanel')).toBeVisible();
-  await more.click();
+  await page.locator('.mobile-panel-back').click();
   await expect(page.locator('.mobile-node-subpanel')).not.toBeVisible();
   await more.click();
   await page.locator('.topbar-menu-btn').click();
@@ -299,7 +299,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect(node).not.toHaveClass(/is-locked/);
     await row.getByRole('button', { name: 'Layers', exact: true }).click();
     await expect(page.locator('.mobile-node-subpanel button')).toHaveCount(4);
-    await row.getByRole('button', { name: 'Layers', exact: true }).click();
+    await page.locator('.mobile-panel-back').click();
     await expect(row.getByRole('button', { name: 'More', exact: true })).toHaveCount(0);
     await row.getByRole('button', { name: 'Background', exact: true }).click();
     const settingButtons = page.locator('.mobile-node-subpanel .mobile-settings-row button');
@@ -309,13 +309,17 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await page.getByRole('button', { name: 'Background color', exact: true }).click();
     await page.getByRole('button', { name: 'Background color 2', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Background color', exact: true })).toHaveClass(/ctx-color-2/);
+    await page.locator('.mobile-panel-back').click();
     await row.getByRole('button', { name: 'Border', exact: true }).click();
     await page.getByRole('button', { name: 'Border color', exact: true }).click();
+    await expect.poll(async () => { const b = (await page.locator('.mobile-node-subpanel').boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
     const palette = await page.locator('.mobile-node-subpanel').boundingBox();
     expect(palette!.y).toBeGreaterThanOrEqual(0);
     expect(palette!.y + palette!.height).toBeLessThanOrEqual(viewport.height);
     await page.getByRole('button', { name: 'Border color #fb464c', exact: true }).click();
+    await page.locator('.mobile-panel-back').click();
     await row.getByRole('button', { name: 'Text', exact: true }).click();
+    await expect.poll(async () => { const b = (await page.locator('.mobile-node-subpanel').boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
     const textPanel = (await page.locator('.mobile-node-subpanel').boundingBox())!;
     for (const button of await page.locator('.mobile-node-subpanel button[aria-label^="First line:"]').all()) {
       const box = (await button.boundingBox())!;
@@ -340,9 +344,11 @@ test('image controls edit title and border without showing text settings', async
   await row.getByRole('button', { name: 'Title', exact: true }).click();
   await page.locator('.mobile-subpanel-title-input').fill('Map');
   await expect(node.locator('.node-image-title')).toHaveText('Map');
+  await page.locator('.mobile-panel-back').click();
   await row.getByRole('button', { name: 'Border', exact: true }).click();
   await page.getByRole('button', { name: 'Width 3px', exact: true }).click();
   await expect(node).toHaveCSS('border-top-width', '3px');
+  await page.locator('.mobile-panel-back').click();
   await row.getByRole('button', { name: 'Lock', exact: true }).click();
   await expect(node).toHaveClass(/is-locked/);
 });

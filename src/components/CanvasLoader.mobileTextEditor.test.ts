@@ -33,7 +33,7 @@ let wrapper: VueWrapper<any> | null = null;
 const mountLoader = async (readonly = false) => {
   wrapper = mount(CanvasLoader, {
     attachTo: document.body,
-    props: { initialData: { nodes, edges: [] }, readonly },
+    props: { initialData: { nodes: structuredClone(nodes), edges: [] }, readonly },
   });
   await flushPromises();
   return wrapper;
@@ -49,6 +49,74 @@ afterEach(() => {
 
 describe('CanvasLoader full-screen text editor (phone layout)', () => {
   beforeEach(() => stubPhoneLayout(true));
+
+  it('undoes and redoes only this editing session text, preserving other node changes', async () => {
+    const w = await mountLoader();
+    w.vm.openTextEditor('text');
+    await w.vm.$nextTick();
+    const textarea = overlay()!.querySelector('textarea')!;
+    const undo = () => overlay()!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!;
+    expect(undo()).not.toBeNull();
+    expect(undo().disabled).toBe(true);
+    textarea.value = 'Edited';
+    textarea.dispatchEvent(new Event('input'));
+    w.vm.applyRemoteOp({ type: 'node-update', id: 'link', changes: { x: 450 } });
+    await w.vm.$nextTick();
+    undo().click();
+    await w.vm.$nextTick();
+    expect(textarea.value).toBe('Hello');
+    expect(w.vm.nodes.find((n: { id: string }) => n.id === 'link').x).toBe(450);
+    overlay()!.querySelector<HTMLButtonElement>('[aria-label="Redo"]')!.click();
+    await w.vm.$nextTick();
+    expect(textarea.value).toBe('Edited');
+    w.vm.closeTextEditor();
+    w.vm.openTextEditor('text');
+    await w.vm.$nextTick();
+    expect(undo().disabled).toBe(true);
+  });
+
+  it('does not report saved during debounce or before server acknowledgement', async () => {
+    const w = await mountLoader();
+    await w.setProps({ textSyncStatus: { kind: 'synced', label: 'Saved' } });
+    w.vm.openTextEditor('text');
+    await w.vm.$nextTick();
+    const status = () => overlay()!.querySelector('[role="status"]')!.textContent;
+    expect(status()).toBe('Saved');
+    const textarea = overlay()!.querySelector('textarea')!;
+    textarea.value = 'Unsaved';
+    textarea.dispatchEvent(new Event('input'));
+    await w.vm.$nextTick();
+    expect(status()).not.toBe('Saved');
+    await w.setProps({ textSyncStatus: { kind: 'offline', label: 'Offline' } });
+    expect(status()).toBe('Offline');
+    await w.setProps({ textSyncStatus: { kind: 'failed', label: 'Sync failed' } });
+    expect(status()).toBe('Sync failed');
+    w.vm.closeTextEditor();
+    w.vm.openTextEditor('text');
+    await w.setProps({ textSyncStatus: { kind: 'saving', label: 'Saving' } });
+    expect(status()).toBe('Saving');
+    await w.setProps({ textSyncStatus: { kind: 'synced', label: 'Saved' } });
+    expect(status()).toBe('Saved');
+  });
+
+  it('uses text-only keyboard history and invalidates it after a remote text edit', async () => {
+    const w = await mountLoader();
+    w.vm.openTextEditor('text');
+    await w.vm.$nextTick();
+    const textarea = overlay()!.querySelector('textarea')!;
+    textarea.value = 'Edited';
+    textarea.dispatchEvent(new Event('input'));
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+    await w.vm.$nextTick();
+    expect(textarea.value).toBe('Hello');
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }));
+    await w.vm.$nextTick();
+    expect(textarea.value).toBe('Edited');
+    w.vm.applyRemoteOp({ type: 'node-update', id: 'text', changes: { text: 'Remote' } });
+    await w.vm.$nextTick();
+    expect(overlay()!.querySelector<HTMLButtonElement>('[aria-label="Undo"]')!.disabled).toBe(true);
+    expect(textarea.value).toBe('Remote');
+  });
 
   it('does not start editing on double click', async () => {
     const w = await mountLoader();

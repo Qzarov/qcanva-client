@@ -17,6 +17,11 @@ const canvasRef = {
   getNodeFillStyle: () => 'gradient',
   isNodeTransparent: () => false,
   getNodeShape: () => 'rect',
+  getNodeFontColor: () => undefined,
+  getNodeFontColorSwatch: (c: string) => c,
+  getNodeAlign: () => 'left',
+  getNodeFirstLineAlign: () => 'left',
+  isNodeFontColorActive: () => false,
 };
 
 // Keep the real palette component while making its teleported controls queryable.
@@ -24,30 +29,46 @@ config.global.stubs.teleport = true;
 enableAutoUnmount(afterEach);
 
 describe('MobileNodeToolbar system Back', () => {
-  it('replaces second-level contents with inline settings and Back restores the same panel', async () => {
-    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
-    await wrapper.get('[aria-label="Background"]').trigger('click');
-    const panel = wrapper.get('.mobile-node-subpanel').element;
-    await wrapper.get('[aria-label="Background color"]').trigger('click');
-    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
-    expect(wrapper.find('.canvas-color-menu').exists()).toBe(false);
-    expect(wrapper.find('[aria-label="Gradient"]').exists()).toBe(false);
-    expect(wrapper.get('.mobile-settings-heading').text()).toBe('Background color');
-    await wrapper.get('.mobile-settings-back').trigger('click');
-    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
-    expect(wrapper.find('[aria-label="Gradient"]').exists()).toBe(true);
-  });
-
   it('offers shape as its own second-level menu instead of a background toggle', async () => {
     const toggleNodeShape = vi.fn();
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, toggleNodeShape }, role: 'owner' } });
     await wrapper.get('[aria-label="Background"]').trigger('click');
     expect(wrapper.find('.mobile-node-subpanel [aria-label="Rectangular"]').exists()).toBe(false);
+    await wrapper.get('.mobile-panel-back').trigger('click');
     await wrapper.get('.mobile-toolbar-btn[aria-label="Shape"]').trigger('click');
     await wrapper.get('.mobile-node-subpanel [aria-label="Round"]').trigger('click');
     expect(toggleNodeShape).toHaveBeenCalledWith('n1');
     await wrapper.get('.mobile-node-subpanel [aria-label="Rectangular"]').trigger('click');
     expect(toggleNodeShape).toHaveBeenCalledTimes(1);
+  });
+  it('preserves the same settings container when opening a palette', async () => {
+    const wrapper = mount(MobileNodeToolbar, { attachTo: document.body, props: { canvasRef, role: 'owner' } });
+    await wrapper.get('[aria-label="Background"]').trigger('click');
+    const panel = wrapper.get('.mobile-node-subpanel').element;
+    await wrapper.get('[aria-label="Background color"]').trigger('click');
+    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
+    expect(wrapper.get('[aria-label="Gradient"]').isVisible()).toBe(false);
+    expect(wrapper.get('.mobile-settings-heading').text()).toBe('Background color');
+    await wrapper.get('.mobile-panel-back').trigger('click');
+    expect(wrapper.get('.mobile-node-subpanel').element).toBe(panel);
+    expect(wrapper.get('[aria-label="Gradient"]').isVisible()).toBe(true);
+  });
+  it('replaces node actions with labelled settings and returns one level at a time', async () => {
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, fontColors: ['#44cf6e'], getNodeFontColorSwatch: (c: string) => c }, role: 'owner' } });
+    const actions = wrapper.findAll('.mobile-toolbar-btn').map(button => button.attributes('aria-label'));
+    expect(actions.indexOf('Hide/Show')).toBeLessThan(actions.indexOf('Delete'));
+    await wrapper.get('[aria-label="Text"]').trigger('click');
+    expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(false);
+    expect(wrapper.get('.mobile-panel-back').text()).toContain('Back');
+    await wrapper.get('[aria-label="Text color"]').trigger('click');
+    expect(wrapper.find('.mobile-settings-row').isVisible()).toBe(false);
+    expect(wrapper.get('.mobile-node-color-palette').classes()).toContain('canvas-color-menu-inline');
+    expect(wrapper.get('[aria-label="Text color #44cf6e"]').text()).toBeTruthy();
+    await wrapper.get('.mobile-panel-back').trigger('click');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
+    expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(false);
+    await wrapper.get('.mobile-panel-back').trigger('click');
+    expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(true);
   });
   it('shows labelled node actions directly without More', () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
@@ -127,7 +148,7 @@ describe('MobileNodeToolbar system Back', () => {
       await wrapper.get(`.mobile-node-subpanel [aria-label="${label}"]`).trigger('click');
       expect(handler).toHaveBeenCalledOnce();
     }
-    await wrapper.get('[aria-label="Layers"]').trigger('click');
+    await wrapper.get('.mobile-panel-back').trigger('click');
     expect(wrapper.find('.mobile-node-subpanel').exists()).toBe(false);
     expect(wrapper.get('.mobile-toolbar-btn[aria-label="Duplicate"]').text()).toBe('Duplicate');
     expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
@@ -166,6 +187,7 @@ describe('MobileNodeToolbar system Back', () => {
     await wrapper.get('[aria-label="Border color"]').trigger('click');
     await wrapper.get('[aria-label="Border color #fb464c"]').trigger('click');
     expect(cr.setNodeBorderColor).toHaveBeenCalledWith('n1', '#fb464c');
+    await wrapper.get('.mobile-panel-back').trigger('click');
     await wrapper.get('[aria-label="Text"]').trigger('click');
     await wrapper.get('[aria-label="Body text: Center"]').trigger('click');
     expect(cr.setNodeAlign).toHaveBeenCalledWith('n1', 'center');

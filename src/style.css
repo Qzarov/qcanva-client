@@ -9296,6 +9296,16 @@ textarea:focus-visible {
 .mobile-settings-row .block-menu-sublabel { width: auto; flex: 0 0 48px; }
 .mobile-node-color-trigger { flex: 0 0 28px; }
 .mobile-node-color-palette { padding-top: 8px; }
+.mobile-panel-header { display: flex; align-items: center; gap: 12px; padding: 6px 12px; background: var(--ui-surface-elevated); color: var(--ui-text); }
+.mobile-panel-header strong { min-width: 0; font-size: 13px; font-weight: 500; }
+.mobile-panel-back { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 0; border-radius: 10px; min-height: 40px; padding: 6px 10px; color: var(--ui-text); background: transparent; font: inherit; font-size: 12px; }
+.mobile-panel-back:hover { background: var(--ui-surface-subtle); }
+.mobile-node-subpanel .mobile-settings-row { flex-wrap: wrap; overflow: visible; }
+.mobile-node-subpanel .mobile-settings-row .tb-btn,
+.mobile-node-subpanel .mobile-node-color-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: auto; height: auto; min-width: 48px; min-height: 52px; padding: 6px; border-radius: 10px; background: transparent; color: var(--ui-text); flex: 1 1 0; font-size: 11px; }
+.mobile-node-subpanel .mobile-settings-row .tb-btn.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+.mobile-node-subpanel .canvas-palette-swatch { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ui-border); }
+.mobile-node-subpanel .mobile-node-color-palette { flex-direction: column; flex-wrap: nowrap; }
 
 /* Overflow backdrop */
 .mobile-overflow-backdrop {
@@ -9727,6 +9737,9 @@ textarea:focus-visible {
     max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 60px) - 140px);
     overflow-y: auto;
   }
+  .canvas-view .mobile-node-subpanel.mobile-node-subpanel-palette { max-height: none; overflow: visible; }
+  .canvas-view .mobile-node-toolbar > .canvas-panel-page { width: min(100%, 390px); border: 1px solid var(--ui-glass-border); border-radius: 20px; background: var(--ui-glass-tint), var(--ui-glass-bg); backdrop-filter: blur(var(--ui-glass-blur)); }
+  .canvas-view .mobile-node-toolbar :is(.mobile-panel-header, .mobile-node-subpanel, .mobile-node-toolbar-row) { background: transparent; border: 0; border-radius: 0; }
 
   /* Drawing tools: the same floating glass bar as the node toolbar / mode bar,
      instead of an edge-to-edge strip (front task). */

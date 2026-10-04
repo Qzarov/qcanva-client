@@ -601,7 +601,7 @@
         @pointerdown.stop
         @click.stop
       >
-        <CanvasDrawingPanel :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
+        <CanvasDrawingPanel inline :tool="canvasRef?.drawTool ?? 'pen'" :color="canvasRef?.drawColor ?? '#e03131'" :width="canvasRef?.drawWidth ?? 4" v-model:popup="drawMobilePopup"
           @update:tool="canvasRef?.setDrawTool($event)" @update:color="canvasRef?.setDrawColor($event)" @update:width="canvasRef?.setDrawWidth($event)" />
       </div>
 
@@ -846,6 +846,7 @@
       <CanvasLoader
         ref="canvasRef"
         :initial-data="canvasData"
+        :text-sync-status="editorSyncStatus"
         :readonly="role === 'read'"
         :is-owner="role === 'owner'"
         :remote-cursors="remoteCursorsArray"
@@ -1223,6 +1224,11 @@ export default defineComponent({
     const onRulerKeyDown=(event:KeyboardEvent)=>{if(rulerActive.value&&event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();closeRuler();}};
 
     const savingVisible = useCalmSaving(() => saving.value || pendingOpsCount.value > 0);
+    const editorSyncStatus = computed(() => {
+      const kind = resolveSyncStatus({ failed: !!syncIssue.value, offline: !wsConnected.value, saving: saving.value || pendingOpsCount.value > 0 || isResyncing.value });
+      if (kind === 'synced' && realtimeOpsUnavailable.value) return { kind: 'saving' as const, label: t('syncSaving') };
+      return { kind, label: t(kind === 'synced' ? 'textSaved' : SYNC_STATUS_LABEL_KEYS[kind]) };
+    });
 
     const otherUsers = computed(() => {
       return onlineUsers.value.filter((_u) => {
@@ -2247,7 +2253,7 @@ export default defineComponent({
       drawColorPickerOpen, drawMobilePopup, drawDesktopPopup, nodeColorPopup, colorAnchor, toggleNodeColorMenu,
       loading, error, accessDenied, gatePasswordAccessEnabled, cacheStatus, requestingAccess, accessRequestSent,
       checkingResourcePassword,
-      title, canvasData, role, isPublic, saving, syncStatus, syncNotice,
+      title, canvasData, role, isPublic, saving, syncStatus, editorSyncStatus, syncNotice,
       showSyncEvents, syncEvents, syncBadgeTitle, syncReasonLabel, formatSyncEventTime,
       showShare, toggleShare, shareEmail, shareRole, permissions,
       publicUrl, copyPublicLink,
