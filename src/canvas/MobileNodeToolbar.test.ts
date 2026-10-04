@@ -87,11 +87,10 @@ describe('MobileNodeToolbar system Back', () => {
     await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');
     await wrapper.get('.mobile-node-color-palette [aria-label="Transparent"]').trigger('click');
     expect(toggleNodeTransparent).toHaveBeenCalledWith('n1');
-    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
-    await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
     await wrapper.get('[aria-label="Gradient"]').trigger('click');
     expect(toggleNodeFillStyle).toHaveBeenCalledWith('n1');
-    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(false);
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
   });
   it('shows common text settings directly instead of putting them in overflow', () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });

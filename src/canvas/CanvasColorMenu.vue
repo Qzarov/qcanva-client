@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
 
-const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean; inline?: boolean; widthAnchor?: HTMLElement | null }>();
+const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean; inline?: boolean; widthAnchor?: HTMLElement | null; above?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
 const position = ref<CSSProperties>({ left: '8px', top: '8px' });
@@ -22,14 +22,17 @@ function place() {
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
   const width = viewport?.width ?? window.innerWidth, height = viewport?.height ?? window.innerHeight;
+  // A reused popup must be measured without the previous panel's inline width.
+  menu.value.style.width = '';
   // offset dimensions are not distorted by the opening scale animation.
   const panelWidth = props.widthAnchor ? Math.min(anchor.width, width - 16) : undefined;
   const menuWidth = panelWidth ?? menu.value.offsetWidth;
   const borderHeight = menu.value.offsetHeight - menu.value.clientHeight;
-  const maxHeight = props.widthAnchor ? Math.max(anchor.top - top - 16, top + height - anchor.bottom - 16, 0) : height - 16;
+  const maxHeight = props.above ? Math.max(anchor.top - top - 16, 0)
+    : props.widthAnchor ? Math.max(anchor.top - top - 16, top + height - anchor.bottom - 16, 0) : height - 16;
   const menuHeight = Math.min(menu.value.scrollHeight + borderHeight, maxHeight);
   const above = anchor.top - menuHeight - 8;
-  const fitsAbove = above >= top + 8;
+  const fitsAbove = props.above || above >= top + 8;
   const fitsBelow = anchor.bottom + 8 + menuHeight <= top + height - 8;
   // On short/landscape screens a full vertical palette may fit on neither
   // side vertically. Move it beside the trigger so repeat-tap stays usable.
@@ -47,7 +50,7 @@ function place() {
   };
 }
 
-watch(() => [props.open, props.anchor, props.widthAnchor], async () => { await nextTick(); place(); });
+watch(() => [props.open, props.anchor, props.widthAnchor, props.above, props.menuClass, props.label], async () => { await nextTick(); place(); });
 function outside(event: PointerEvent) {
   const target = event.target as Node | null;
   if (!props.inline && props.open && target && !menu.value?.contains(target) && !props.anchor?.contains(target)) emit('close');
@@ -124,6 +127,8 @@ onUnmounted(() => {
 .canvas-color-menu :deep(button:focus-visible) { outline: 2px solid var(--ui-focus); outline-offset: 1px; }
 .canvas-control-menu { width: max-content; max-width: calc(100vw - 16px); }
 .canvas-control-menu :deep(button) { width: 100%; height: auto; min-height: 36px; flex: none; padding: 6px 10px; border-radius: 10px; }
+.canvas-color-menu.mobile-node-background-palette { width: max-content; max-width: calc(100vw - 16px); }
+.canvas-color-menu :deep(.mobile-background-toggle) { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
 .canvas-color-menu-enter-active, .canvas-color-menu-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
 .canvas-color-menu-enter-from, .canvas-color-menu-leave-to { opacity: 0; transform: translateY(4px) scale(.92); }
 .canvas-color-menu-leave-active { pointer-events: none; }

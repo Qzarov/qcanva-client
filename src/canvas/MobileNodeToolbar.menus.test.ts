@@ -18,6 +18,19 @@ function setup(extra = {}) {
   return mount(MobileNodeToolbar, { props: { canvasRef: { ...cr, ...extra }, role: 'owner' }, global: { stubs: { teleport: true } } });
 }
 describe('mobile node floating menus', () => {
+  it('labels Background fill controls and keeps the menu open while toggling them', async () => {
+    const toggleNodeFillStyle = vi.fn(), toggleNodeTransparent = vi.fn();
+    const wrapper = setup({ toggleNodeFillStyle, toggleNodeTransparent });
+    await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');
+    expect(wrapper.get('[aria-label="Gradient"]').text()).toBe('Gradient');
+    expect(wrapper.get('[aria-label="Transparent"]').text()).toBe('Transparent');
+    await wrapper.get('[aria-label="Gradient"]').trigger('click');
+    expect(toggleNodeFillStyle).toHaveBeenCalledWith('n1');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
+    await wrapper.get('[aria-label="Transparent"]').trigger('click');
+    expect(toggleNodeTransparent).toHaveBeenCalledWith('n1');
+    expect(wrapper.find('.mobile-node-color-palette').exists()).toBe(true);
+  });
   it('opens Background directly as an unlabelled palette while root actions remain available', async () => {
     const setNodeColor = vi.fn(); const wrapper = setup({ setNodeColor });
     await wrapper.get('.mobile-toolbar-btn[aria-label="Background"]').trigger('click');

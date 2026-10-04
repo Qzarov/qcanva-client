@@ -23,7 +23,7 @@ async function setup(page: Page, mobile = false, locale: 'en' | 'ru' = 'en') {
 }
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
-  test(`Border and Text popups match the entire panel width at ${viewport.width}px`, async ({ page }) => {
+  test(`compact node popups stay above their triggers across section changes at ${viewport.width}px`, async ({ page }) => {
     await setup(page, true); await page.setViewportSize(viewport);
     await page.locator('.mobile-modebar-btn').nth(1).click(); await page.locator('[data-node-id="text"]').click();
     const toolbar = page.locator('.mobile-node-toolbar');
@@ -42,15 +42,30 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
         await trigger.click();
         const menu = page.locator('.mobile-node-popup:visible');
         await expect(menu).toHaveCSS('position', 'fixed');
-        await expect.poll(async () => Math.abs((await menu.boundingBox())!.width - panel.width)).toBeLessThanOrEqual(1);
+        await expect(menu).toHaveCSS('transform', 'none');
         const box = (await menu.boundingBox())!;
-        expect(Math.abs(box.x - panel.x)).toBeLessThanOrEqual(1);
+        const anchor = (await trigger.boundingBox())!;
+        expect(box.width).toBeLessThan(panel.width);
+        const expectedLeft = Math.max(8, Math.min(anchor.x + anchor.width / 2 - box.width / 2, viewport.width - box.width - 8));
+        expect(Math.abs(box.x - expectedLeft)).toBeLessThanOrEqual(1);
+        expect(Math.abs(box.y + box.height - (anchor.y - 8))).toBeLessThanOrEqual(1);
         expect(box.y).toBeGreaterThanOrEqual(8); expect(box.y + box.height).toBeLessThanOrEqual(viewport.height - 8);
         await expect(trigger).toBeVisible();
         await page.screenshot({ path: test.info().outputPath(`full-width-${control.replaceAll(' ', '-').toLowerCase()}.png`) });
         await trigger.click(); await expect(menu).toBeHidden();
       }
       await toolbar.locator('.mobile-panel-back').click();
+      for (const name of ['Shape', 'Background']) {
+        const trigger = toolbar.locator('.mobile-node-toolbar-row').getByRole('button', { name, exact: true });
+        await trigger.click();
+        const menu = page.locator('.mobile-node-popup:visible');
+        await expect(menu).toHaveCSS('transform', 'none');
+        const box = (await menu.boundingBox())!, anchor = (await trigger.boundingBox())!;
+        const expectedLeft = Math.max(8, Math.min(anchor.x + anchor.width / 2 - box.width / 2, viewport.width - box.width - 8));
+        expect(Math.abs(box.x - expectedLeft)).toBeLessThanOrEqual(1);
+        expect(Math.abs(box.y + box.height - (anchor.y - 8))).toBeLessThanOrEqual(1);
+        await trigger.click(); await expect(menu).toBeHidden();
+      }
     }
   });
 }
@@ -102,12 +117,21 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     expect(new Set(boxes.map(b => Math.round(b.x))).size).toBe(1);
     expect(boxes.every((b, i) => i === 0 || b.y > boxes[i - 1]!.y)).toBe(true);
     const bounds = (await menu.boundingBox())!;
+    const captions = await menu.locator('.mobile-background-toggle span').evaluateAll(els => els.map(el => {
+      const b = el.getBoundingClientRect(); return { left: b.left, right: b.right };
+    }));
+    expect(captions).toHaveLength(2);
+    expect(captions.every(b => b.left >= bounds.x + 8 && b.right <= bounds.x + bounds.width - 8)).toBe(true);
     expect(bounds.x).toBeGreaterThanOrEqual(8); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width - 8);
     expect(bounds.y).toBeGreaterThanOrEqual(8); expect(bounds.y + bounds.height).toBeLessThanOrEqual(height - 8);
     await page.screenshot({ path: test.info().outputPath('floating-background.png') });
     await menu.getByRole('button', { name: 'Transparent', exact: true }).click();
-    await expect(menu).toBeHidden(); await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
-    await trigger.click(); await trigger.click(); await expect(menu).toBeHidden();
+    await expect(menu).toBeVisible(); await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
+    await expect(menu.getByRole('button', { name: 'Transparent', exact: true })).toHaveText('Transparent');
+    await menu.getByRole('button', { name: 'Gradient', exact: true }).click();
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole('button', { name: 'Solid', exact: true })).toHaveText('Solid');
+    await trigger.click(); await expect(menu).toBeHidden();
   });
 
   test(`mobile Add fits all five choices without scrolling at ${width}px`, async ({ page }) => {

@@ -19,15 +19,15 @@
       <label v-if="activeSection === 'image-title'" class="mobile-subpanel-row"><span>{{ canvasRef?.isGroupNode(nodeId) ? t('groupName') : t('imageName') }}</span><input class="block-menu-text-input mobile-subpanel-title-input" :value="canvasRef?.getNodeTitle(nodeId)" :placeholder="canvasRef?.isGroupNode(nodeId) ? t('groupName') : t('imageName')" @input="onTitleInput" @keydown.stop /></label>
     </div>
 
-    <CanvasColorMenu :open="paletteOpen" :anchor="colorAnchor" :width-anchor="popupWidthAnchor" :label="paletteLabel" menu-class="mobile-node-popup mobile-node-color-palette" @close="colorPopup = null">
+    <CanvasColorMenu :open="paletteOpen" :anchor="colorAnchor" above :label="paletteLabel" :menu-class="'mobile-node-popup mobile-node-color-palette' + (paletteKind === 'fill' ? ' mobile-node-background-palette' : '')" @close="colorPopup = null">
       <button v-for="c in paletteColors" :key="c" class="tb-color" :class="[{ active: isPaletteColorActive(c) }, paletteKind === 'fill' ? 'ctx-color-'+c : '']" :style="paletteKind !== 'fill' ? { background: paletteKind === 'text' ? canvasRef?.getNodeFontColorSwatch(c) : c } : {}" :aria-label="paletteLabel + ' ' + c" :title="paletteLabel + ' ' + c" @click="chooseColor(c)" />
       <button class="tb-color tb-color-none" :aria-label="t('clearColor')" :title="t('clearColor')" @click="chooseColor(undefined)">×</button>
       <template v-if="paletteKind === 'fill'">
-        <button class="tb-btn" :aria-label="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')" :title="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')" @click="canvasRef?.toggleNodeFillStyle(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" fill="currentColor" /><path d="M10 3v14" stroke="var(--ui-surface)" stroke-width="7" :opacity="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? 0 : .5" /></svg></button>
-        <button class="tb-btn" :class="{ active: canvasRef?.isNodeTransparent(nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(nodeId) ?? false" @click="canvasRef?.toggleNodeTransparent(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" /><path d="M3 3l14 14M3 17 17 3" /></svg></button>
+        <button class="tb-btn mobile-background-toggle" :aria-label="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')" :title="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient')" @click.stop="canvasRef?.toggleNodeFillStyle(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" fill="currentColor" /><path d="M10 3v14" stroke="var(--ui-surface)" stroke-width="7" :opacity="canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? 0 : .5" /></svg><span>{{ canvasRef?.getNodeFillStyle(nodeId) === 'solid' ? t('solid') : t('gradient') }}</span></button>
+        <button class="tb-btn mobile-background-toggle" :class="{ active: canvasRef?.isNodeTransparent(nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="canvasRef?.isNodeTransparent(nodeId) ?? false" @click.stop="canvasRef?.toggleNodeTransparent(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3" /><path d="M3 3l14 14M3 17 17 3" /></svg><span>{{ t('transparent') }}</span></button>
       </template>
     </CanvasColorMenu>
-    <CanvasColorMenu :open="!!colorPopup && !paletteOpen" :anchor="colorAnchor" :width-anchor="popupWidthAnchor" :label="popupLabel" controls :menu-class="'mobile-node-popup mobile-node-options mobile-' + colorPopup + '-menu'" @close="colorPopup = null">
+    <CanvasColorMenu :open="!!colorPopup && !paletteOpen" :anchor="colorAnchor" above :label="popupLabel" controls :menu-class="'mobile-node-popup mobile-node-options mobile-' + colorPopup + '-menu'" @close="colorPopup = null">
       <template v-if="colorPopup === 'shape'">
         <button v-for="shape in ['rect', 'round']" :key="shape" :class="{ active: canvasRef?.getNodeShape(nodeId) === shape }" :aria-label="shape === 'round' ? t('round') : t('rectangular')" :aria-pressed="canvasRef?.getNodeShape(nodeId) === shape" @click="canvasRef?.getNodeShape(nodeId) !== shape && canvasRef?.toggleNodeShape(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="shape === 'round'" cx="10" cy="10" r="7" /><rect v-else x="3" y="3" width="14" height="14" rx="2" /></svg><span>{{ shape === 'round' ? t('round') : t('rectangular') }}</span></button>
       </template>
@@ -212,7 +212,6 @@ export default defineComponent({
     const paletteKind = ref<'fill' | 'text' | 'border'>('fill');
     watch(colorPopup, kind => { if (kind === 'fill' || kind === 'text' || kind === 'border') paletteKind.value = kind; }, { flush: 'sync' });
     const colorAnchor = shallowRef<HTMLElement | null>(null);
-    const popupWidthAnchor = shallowRef<HTMLElement | null>(null);
     const actionAnchor = shallowRef<HTMLElement | null>(null);
     const toolbarElement = ref<HTMLElement | null>(null);
     watch(colorPopup, async value => {
@@ -342,8 +341,6 @@ export default defineComponent({
     };
     const toggleColorPopup = (palette: Popup, event: MouseEvent) => {
       colorAnchor.value = event.currentTarget as HTMLElement;
-      popupWidthAnchor.value = activeSection.value === 'border-settings' || activeSection.value === 'text-settings'
-        ? toolbarElement.value?.querySelector<HTMLElement>('.canvas-panel-page') ?? null : null;
       colorPopup.value = colorPopup.value === palette ? null : palette;
     };
     const isPaletteColorActive = (color: string) => {
@@ -369,7 +366,6 @@ export default defineComponent({
 
     const triggerSection = (section: string) => {
       if (section === 'fill' || section === 'shape' || section === 'layers') {
-        popupWidthAnchor.value = null;
         activeSection.value = null;
         drawingSection.value = null;
         overflowOpen.value = false;
@@ -445,7 +441,7 @@ export default defineComponent({
     };
 
     return {
-      t, caption, pageLabel, backToMenu, toolbarElement, paletteOpen, popupLabel, popupWidthAnchor,
+      t, caption, pageLabel, backToMenu, toolbarElement, paletteOpen, popupLabel,
       selectionKind,
       nodeId,
       visibleActions,
