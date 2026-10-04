@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-async function setup(page: Page, groupOptions: Record<string, unknown> = {}) {
+async function setup(page: Page, groupOptions: Record<string, unknown> = {}, viewport = { width: 1280, height: 900 }) {
   await page.addInitScript(() => {
     localStorage.setItem('token', 'selection-test-token');
     localStorage.setItem('userRole', 'user');
@@ -17,9 +17,41 @@ async function setup(page: Page, groupOptions: Record<string, unknown> = {}) {
     } });
     return route.fulfill({ json: path.startsWith('/api/plugins/') || path.endsWith('/permissions') || path.endsWith('/messages') ? [] : {} });
   });
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize(viewport);
   await page.goto('/canvas/selection');
   await expect(page.locator('[data-node-id="group"]')).toBeVisible();
+}
+
+for (const mobile of [false, true]) {
+  test.describe(mobile ? 'touch group marquee' : 'desktop group marquee', () => {
+    test.use({ hasTouch: mobile });
+    test('selects contents, not the group, and still allows explicit border selection', async ({ page }) => {
+      await setup(page, {}, mobile ? { width: 390, height: 844 } : { width: 1280, height: 900 });
+      if (mobile) await page.locator('.mobile-modebar-btn[aria-label="Cursor"]').click();
+      const group = page.locator('[data-node-id="group"]');
+      const box = (await group.boundingBox())!;
+      const start = { x: box.x - 16, y: box.y - 16 }, end = { x: box.x + box.width + 16, y: box.y + box.height + 16 };
+      if (mobile) {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [start] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [end] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await cdp.detach();
+      } else {
+        await page.mouse.move(start.x, start.y);
+        await page.mouse.down();
+        await page.mouse.move(end.x, end.y, { steps: 5 });
+        await page.mouse.up();
+      }
+      await expect(group).not.toHaveClass(/is-selected/);
+      await expect(page.locator('[data-node-id="text"]')).toHaveClass(/is-selected/);
+      await expect(page.locator('.drawing-selection-outline')).toBeVisible();
+      const border = { x: box.x + 1, y: box.y + box.height / 2 };
+      if (mobile) await page.touchscreen.tap(border.x, border.y);
+      else await page.mouse.click(border.x, border.y);
+      await expect(group).toHaveClass(/is-selected/);
+    });
+  });
 }
 
 test('desktop group interior is empty canvas but boundary selects the group', async ({ page }) => {

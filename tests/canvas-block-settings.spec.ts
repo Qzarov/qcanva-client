@@ -23,18 +23,53 @@ async function setup(page: Page, mobile = false, locale: 'en' | 'ru' = 'en') {
 }
 
 for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }]) {
-  test(`colour menu floats vertically above mobile controls at ${width}px`, async ({ page }) => {
+  test(`text editor header fits and undo only changes text at ${width}px`, async ({ page }) => {
+    await setup(page, true);
+    await page.setViewportSize({ width, height });
+    await page.locator('.mobile-modebar-btn').nth(1).click();
+    const node = page.locator('[data-node-id="text"]');
+    await node.click();
+    const originalPosition = await node.evaluate(el => ({ left: (el as HTMLElement).style.left, top: (el as HTMLElement).style.top }));
+    await page.locator('.mobile-node-toolbar-row').getByRole('button', { name: 'Edit text', exact: true }).click();
+    const editor = page.locator('.node-fullscreen-editor');
+    const textarea = editor.locator('textarea');
+    const original = await textarea.inputValue();
+    const undo = editor.getByRole('button', { name: 'Undo', exact: true });
+    const redo = editor.getByRole('button', { name: 'Redo', exact: true });
+    await expect(undo).toBeDisabled();
+    await expect(editor.getByRole('status')).toHaveText('Offline');
+    await textarea.fill('Local edit');
+    await undo.click();
+    await expect(textarea).toHaveValue(original);
+    await redo.click();
+    await expect(textarea).toHaveValue('Local edit');
+    await textarea.press('Control+z');
+    await expect(textarea).toHaveValue(original);
+    for (const button of [undo, redo]) {
+      const bounds = (await button.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(0);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    }
+    await page.screenshot({ path: test.info().outputPath('text-editor.png') });
+    await editor.getByRole('button', { name: 'Back to canvas', exact: true }).click();
+    expect(await node.evaluate(el => ({ left: (el as HTMLElement).style.left, top: (el as HTMLElement).style.top }))).toEqual(originalPosition);
+  });
+
+  test(`vertical colour page replaces mobile settings and fits at ${width}px`, async ({ page }) => {
     await setup(page, true);
     await page.setViewportSize({ width, height });
     await page.locator('.mobile-modebar-btn').nth(1).click();
     await page.locator('[data-node-id="text"]').click();
     await page.locator('.mobile-node-toolbar-row [aria-label="Background"]').click();
-    const trigger = page.locator('.mobile-node-toolbar [aria-label="Background color"]');
+    const trigger = page.locator('.mobile-node-toolbar button[aria-label="Background color"]');
     await trigger.click();
     const menu = page.getByRole('group', { name: 'Background color', exact: true });
-    await expect(menu).toHaveCSS('position', 'fixed');
+    await expect(page.locator('.mobile-node-toolbar-row')).toHaveCount(0);
+    await expect(trigger).toBeHidden();
+    await expect(menu).toHaveCSS('position', 'static');
     await expect(menu).toHaveCSS('opacity', '1');
-    const colors = menu.locator('.tb-color:not(.tb-color-none)');
+    await expect.poll(async () => { const b = (await menu.boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(height - 8);
+    const colors = menu.locator('button[aria-label^="Background color "]');
     const boxes = await colors.evaluateAll(els => els.map(el => { const b = el.getBoundingClientRect(); return { x: b.x, y: b.y }; }));
     expect(new Set(boxes.map(b => Math.round(b.x))).size).toBe(1);
     expect(boxes.every((b, i) => i === 0 || b.y > boxes[i - 1]!.y)).toBe(true);
@@ -48,10 +83,12 @@ for (const { width, height } of [{ width: 320, height: 568 }, { width: 390, heig
     await expect(menu).toBeHidden();
     await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-transparent/);
     await trigger.click();
-    await trigger.click();
+    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
     await expect(menu).toBeHidden();
     await trigger.click();
-    await page.locator('.mobile-node-toolbar-row [aria-label="Background"]').click();
+    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+    await page.locator('.mobile-node-toolbar .mobile-panel-back').click();
+    await expect(page.locator('.mobile-node-toolbar-row')).toBeVisible();
     await expect(menu).toBeHidden();
   });
 
@@ -94,12 +131,13 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     const tools = page.locator('.drawing-tool-menu');
     await expect(tools).toBeVisible();
     await expect(tools.locator('button')).toHaveCount(mobile ? 7 : 8);
+    await expect.poll(async () => { const b = (await tools.boundingBox())!; return b.y + b.height; }).toBeLessThanOrEqual(viewport.height);
     const bounds = (await tools.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.y).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
     expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
-    await trigger.click();
+    if (mobile) await panel.locator('.mobile-panel-back').click(); else await trigger.click();
     await expect(tools).toBeHidden();
     await trigger.click();
     await tools.getByRole('button', { name: 'Highlighter', exact: true }).click();
@@ -114,13 +152,13 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }
     await expect(page.locator('.drawing-width-menu')).toBeVisible();
     await expect(page.locator('.drawing-width-menu')).toHaveCSS('opacity', '1');
     await page.screenshot({ path: `test-results/drawing-width-${viewport.width}.png` });
-    await widthTrigger.click();
+    if (mobile) await panel.locator('.mobile-panel-back').click(); else await widthTrigger.click();
     await expect(slider).toBeHidden();
     await panel.getByRole('button', { name: 'Color', exact: true }).click();
     await page.getByRole('group', { name: 'Color', exact: true }).getByRole('button', { name: '#1971c2', exact: true }).click();
     await widthTrigger.click();
     await expect(page.locator('.drawing-width-menu line')).toHaveAttribute('stroke', '#1971c2');
-    await widthTrigger.click();
+    if (mobile) await panel.locator('.mobile-panel-back').click(); else await widthTrigger.click();
   });
 }
 
@@ -132,7 +170,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 844, height: 390 }
     await page.locator('[data-node-id="text"]').click();
     const row = page.locator('.mobile-node-toolbar-row');
     await expect(row.locator('button')).toHaveCount(9);
-    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Удалить', 'Скрыть']);
+    await expect(row.locator('.mobile-toolbar-caption')).toHaveText(['Править', 'Фон', 'Рамка', 'Текст', 'Слои', 'Дублировать', 'Закрепить', 'Скрыть', 'Удалить']);
     const rects = await row.locator('button').evaluateAll(buttons => buttons.map(button => {
       const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, top: r.top, bottom: r.bottom };
     }));
@@ -186,20 +224,21 @@ for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'
     await page.locator('[data-node-id="text"]').click();
     if (mobile) {
       await page.locator('.mobile-node-toolbar-row [aria-label="Text"]').click();
-      await page.locator('.mobile-node-toolbar [aria-label="Text color"]').click();
+      await page.locator('.mobile-node-toolbar button[aria-label="Text color"]').click();
     }
     else {
       await page.getByTitle('Text settings', { exact: true }).click();
       await page.locator('.node-toolbar [aria-label="Text color"]').click();
     }
-    const colors = page.getByRole('group', { name: 'Text color', exact: true }).locator('.tb-color:not(.tb-color-none)');
+    const menu = page.getByRole('group', { name: 'Text color', exact: true });
+    const colors = menu.locator(mobile ? 'button[aria-label^="Text color "]' : '.tb-color:not(.tb-color-none)');
     await expect(colors).toHaveCount(6);
-    const backgrounds = await colors.evaluateAll(buttons => buttons.map(button => getComputedStyle(button).backgroundColor));
+    const backgrounds = await colors.evaluateAll(buttons => buttons.map(button => getComputedStyle(button.querySelector('.canvas-palette-swatch') ?? button).backgroundColor));
     expect(new Set(backgrounds).size).toBe(6);
     expect(backgrounds).not.toContain('rgba(0, 0, 0, 0)');
     await expect(colors.nth(3)).toHaveClass(/active/);
     await colors.first().click();
-    if (mobile) await page.locator('.mobile-node-toolbar [aria-label="Text color"]').click();
+    if (mobile) await page.locator('.mobile-node-toolbar button[aria-label="Text color"]').click();
     else await page.locator('.node-toolbar [aria-label="Text color"]').click();
     await expect(colors.first()).toHaveClass(/active/);
     const textColor = await page.locator('[data-node-id="text"] .node-content').evaluate(el => getComputedStyle(el).color);
@@ -230,7 +269,7 @@ test('wheel scrolls long node text before panning canvas', async ({ page }) => {
   await expect(world).not.toHaveAttribute('style', before!);
 });
 
-test('a text block can shrink to 24×24 and grow again', async ({ page }) => {
+test('a text block stops at 144×48 and can grow again', async ({ page }) => {
   await setup(page);
   const node = page.locator('[data-node-id="text"]');
   await node.click();
@@ -240,17 +279,17 @@ test('a text block can shrink to 24×24 and grow again', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + 10, box.y + 10, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '24px', height: '24px' });
+  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '144px', height: '48px' });
   // The inline model size updates before CSS size transitions settle.
   // Wait for the rendered handle position before starting the next drag.
-  await expect(node).toHaveCSS('width', '24px');
-  await expect(node).toHaveCSS('height', '24px');
+  await expect(node).toHaveCSS('width', '144px');
+  await expect(node).toHaveCSS('height', '48px');
   const smallHandle = (await handle.boundingBox())!;
   await handle.hover();
   await page.mouse.down();
   await page.mouse.move(smallHandle.x + smallHandle.width / 2 + 48, smallHandle.y + smallHandle.height / 2 + 48, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '72px', height: '72px' });
+  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '192px', height: '96px' });
 });
 
 test('wheel scrolls a node text editor without moving the canvas', async ({ page }) => {

@@ -1,7 +1,7 @@
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="inline">
     <Transition name="canvas-color-menu">
-      <div v-if="open" ref="menu" class="canvas-color-menu" :class="[menuClass, { 'canvas-control-menu': controls }]" :style="position" role="group" :aria-label="label" @pointerdown.stop @click.stop="onChoose" @keydown="onKeydown">
+      <div v-if="open" ref="menu" class="canvas-color-menu" :class="[menuClass, { 'canvas-control-menu': controls, 'canvas-color-menu-inline': inline }]" :style="inline ? undefined : position" role="group" :aria-label="label" @pointerdown.stop @click.stop="onChoose" @keydown="onKeydown">
         <slot />
       </div>
     </Transition>
@@ -11,13 +11,13 @@
 <script setup lang="ts">
 import { nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from 'vue';
 
-const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean }>();
+const props = defineProps<{ open: boolean; anchor: HTMLElement | null; label: string; menuClass?: string; controls?: boolean; inline?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
 const position = ref<CSSProperties>({ left: '8px', top: '8px' });
 
 function place() {
-  if (!props.open || !props.anchor || !menu.value) return;
+  if (props.inline || !props.open || !props.anchor || !menu.value) return;
   const anchor = props.anchor.getBoundingClientRect();
   const viewport = window.visualViewport;
   const left = viewport?.offsetLeft ?? 0, top = viewport?.offsetTop ?? 0;
@@ -47,7 +47,7 @@ function place() {
 watch(() => [props.open, props.anchor], async () => { await nextTick(); place(); });
 function outside(event: PointerEvent) {
   const target = event.target as Node | null;
-  if (props.open && target && !menu.value?.contains(target) && !props.anchor?.contains(target)) emit('close');
+  if (!props.inline && props.open && target && !menu.value?.contains(target) && !props.anchor?.contains(target)) emit('close');
 }
 function onChoose(event: MouseEvent) {
   if ((event.target as HTMLElement).closest('button:not(:disabled)')) emit('close');
@@ -62,7 +62,7 @@ function onKeydown(event: KeyboardEvent) {
   buttons[next]?.focus();
 }
 function escape(event: KeyboardEvent) {
-  if (!props.open || event.key !== 'Escape') return;
+  if (props.inline || !props.open || event.key !== 'Escape') return;
   event.preventDefault();
   event.stopImmediatePropagation();
   emit('close');
@@ -124,6 +124,11 @@ onUnmounted(() => {
 .canvas-color-menu-enter-active, .canvas-color-menu-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
 .canvas-color-menu-enter-from, .canvas-color-menu-leave-to { opacity: 0; transform: translateY(4px) scale(.92); }
 .canvas-color-menu-leave-active { pointer-events: none; }
+.canvas-color-menu-inline { position: static; width: 100%; max-width: 100%; max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 52px) - 90px); border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.canvas-color-menu-inline :deep(button) { display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex: none; width: 100%; height: auto; min-height: 40px; padding: 6px 10px; border: 0; border-radius: 10px; color: var(--ui-text); background: transparent; text-align: left; font: inherit; font-size: 12px; }
+.canvas-color-menu-inline :deep(.canvas-palette-swatch) { flex-shrink: 0; width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ui-border); }
+.canvas-color-menu-inline :deep(button.active) { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+.canvas-color-menu-inline.canvas-color-menu-leave-active { display: none; transition: none; }
 @media (prefers-reduced-motion: reduce) {
   .canvas-color-menu-enter-active, .canvas-color-menu-leave-active { transition: none; }
 }

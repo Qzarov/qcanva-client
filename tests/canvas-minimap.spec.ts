@@ -24,14 +24,43 @@ async function setup(page: Page, options: { mobile?: boolean; enabled?: boolean;
 }
 
 async function openPreferences(page: Page, mobile = false, role = 'owner') {
-  if (mobile) await page.getByTitle('Menu', { exact: true }).click();
-  await page.getByRole('button', { name: role === 'owner' ? 'Plugins' : 'View settings', exact: true }).click();
+  if (mobile) {
+    await page.getByTestId('mobile-plugin-settings').click();
+  } else {
+    await page.getByRole('button', { name: role === 'owner' ? 'Plugins' : 'View settings', exact: true }).click();
+  }
 }
 
 test('new desktop visits start with the minimap off', async ({ page }) => {
   await setup(page);
   await expect(page.locator('.minimap')).toHaveCount(0);
 });
+
+for (const viewport of [
+  { name: 'desktop', width: 1280, height: 900, small: [120, 80], large: [180, 120] },
+  { name: 'mobile', width: 600, height: 844, small: [88, 60], large: [132, 88] },
+  { name: 'narrow mobile', width: 390, height: 844, small: [76, 52], large: [112, 76] },
+  { name: 'smallest mobile', width: 320, height: 568, small: [76, 52], large: [112, 76] },
+  { name: 'landscape', width: 844, height: 390, small: [120, 80], large: [180, 120] },
+]) {
+  test(`compact minimap and former-small large preset fit ${viewport.name}`, async ({ page }) => {
+    const mobile = viewport.width <= 640 || viewport.height <= 500;
+    await setup(page, { enabled: true, mobile });
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const minimap = page.locator('.minimap');
+    await expect(minimap).toHaveCSS('width', `${viewport.small[0]}px`);
+    await expect(minimap).toHaveCSS('height', `${viewport.small[1]}px`);
+    await openPreferences(page, mobile);
+    await page.getByLabel('Minimap size', { exact: true }).selectOption('large');
+    await expect(minimap).toHaveCSS('width', `${viewport.large[0]}px`);
+    await expect(minimap).toHaveCSS('height', `${viewport.large[1]}px`);
+    const box = (await minimap.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+  });
+}
 
 for (const mobile of [false, true]) {
   test(`size and visibility preferences persist (${mobile ? 'mobile' : 'web'})`, async ({ page }) => {

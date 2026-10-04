@@ -20,7 +20,7 @@ async function mountCanvas(initialData: any) {
 
 describe('CanvasLoader minimum resize', () => {
   for (const touch of [false, true]) {
-    it(`${touch ? 'touch' : 'mouse'} resize persists and synchronises a 24×24 node`, async () => {
+    it(`${touch ? 'touch' : 'mouse'} resize persists and synchronises a 144×48 node`, async () => {
       const makeInitialData = () => ({ nodes: [{ id: 'node', type: 'text', text: 'Text', x: 0, y: 0, width: 240, height: 120 }], edges: [] });
       const wrapper = await mountCanvas(makeInitialData());
       const vm = wrapper.vm as any;
@@ -37,15 +37,15 @@ describe('CanvasLoader minimum resize', () => {
         await viewport.trigger('mousemove', { clientX: 100, clientY: 100 });
         await viewport.trigger('mouseup', { clientX: 100, clientY: 100 });
       }
-      expect(vm.getCanvasData().nodes[0]).toMatchObject({ width: 24, height: 24 });
+      expect(vm.getCanvasData().nodes[0]).toMatchObject({ width: 144, height: 48 });
       const operation = wrapper.emitted('op')?.map(args => args[0] as any).find(op => op.type === 'node-resize');
-      expect(operation).toMatchObject({ type: 'node-resize', id: 'node', width: 24, height: 24 });
+      expect(operation).toMatchObject({ type: 'node-resize', id: 'node', width: 144, height: 48 });
       const peer = await mountCanvas(makeInitialData());
       expect((peer.vm as any).getCanvasData().nodes[0]).toMatchObject({ width: 240, height: 120 });
       (peer.vm as any).applyRemoteOp(operation);
-      expect((peer.vm as any).getCanvasData().nodes[0]).toMatchObject({ width: 24, height: 24 });
+      expect((peer.vm as any).getCanvasData().nodes[0]).toMatchObject({ width: 144, height: 48 });
       const reloaded = await mountCanvas(vm.getCanvasData());
-      expect((reloaded.vm as any).getCanvasData().nodes[0]).toMatchObject({ width: 24, height: 24 });
+      expect((reloaded.vm as any).getCanvasData().nodes[0]).toMatchObject({ width: 144, height: 48 });
     });
   }
 });

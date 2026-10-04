@@ -4,6 +4,16 @@ import { describe, expect, it } from 'vitest';
 import CanvasDrawingPanel from './CanvasDrawingPanel.vue';
 
 describe('CanvasDrawingPanel', () => {
+  it('replaces mobile drawing controls with a labelled page and a Back action', async () => {
+    const wrapper = mount(CanvasDrawingPanel, { props: { tool: 'pen', color: '#1971c2', width: 4, popup: null, inline: true }, global: { stubs: { teleport: true } } });
+    await wrapper.get('.drawing-tool-trigger').trigger('click');
+    await wrapper.setProps({ popup: 'tools' });
+    expect(wrapper.find('.drawing-tool-trigger').exists()).toBe(false);
+    expect(wrapper.findAll('.drawing-tool-option')).toHaveLength(7);
+    await wrapper.get('.mobile-panel-back').trigger('click');
+    expect(wrapper.emitted('update:popup')).toEqual([['tools'], [null]]);
+    wrapper.unmount();
+  });
   it('groups seven labelled tools and emits a choice without resetting width or color', async () => {
     const wrapper = mount(CanvasDrawingPanel, { props: { tool: 'pen', color: '#1971c2', width: 8, popup: 'tools' }, global: { stubs: { teleport: true } } });
     const options = wrapper.findAll('.drawing-tool-option');

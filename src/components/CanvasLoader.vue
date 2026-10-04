@@ -252,7 +252,7 @@
           @mouseup.stop
           @click.stop
           @dblclick.stop
-          @keydown.stop
+          @keydown.stop="onTextEditorKeydown"
           @keyup.stop
           @keydown.escape="onEditEnd"
           ref="editorRefs"
@@ -312,6 +312,9 @@
               </svg>
             </button>
             <span class="node-fullscreen-editor-title">{{ t('editText') }}</span>
+            <span class="node-text-save-status" role="status" aria-live="polite">{{ textSaveStatus.label }}</span>
+            <button class="node-text-history" type="button" :aria-label="t('textUndo')" :title="t('textUndo')" :disabled="!canUndoText" @pointerdown.prevent @click="undoText">↶</button>
+            <button class="node-text-history" type="button" :aria-label="t('textRedo')" :title="t('textRedo')" :disabled="!canRedoText" @pointerdown.prevent @click="redoText">↷</button>
           </header>
           <div class="node-fullscreen-editor-card">
             <textarea
@@ -320,7 +323,7 @@
               :style="{ color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || undefined }"
               :value="fullscreenEditingNode.text"
               @input="onEditInput($event, fullscreenEditingNode)"
-              @keydown.stop
+              @keydown.stop="onTextEditorKeydown"
               @keyup.stop
             ></textarea>
           </div>
@@ -964,6 +967,7 @@ export default defineComponent({
   name: "CanvasLoader",
   components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay },
   props: {
+    textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
     rulerMeasurements:{type:Array as PropType<RulerMeasurement[]>,default:()=>[]},
     rulerSettings:{type:Object as PropType<RulerSettings>,default:()=>({...DEFAULT_RULER_SETTINGS})},
@@ -1825,6 +1829,20 @@ export default defineComponent({
     const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
     const fullscreenEditorRef = ref<HTMLTextAreaElement | null>(null);
+    const textHistory = ref<{ past: string[]; future: string[]; current: string }>({ past: [], future: [], current: '' });
+    const textDirty = ref(false);
+    const canUndoText = computed(() => !!editingNodeId.value && textHistory.value.past.length > 0);
+    const canRedoText = computed(() => !!editingNodeId.value && textHistory.value.future.length > 0);
+    const resetTextHistory = (text: string) => { textHistory.value = { past: [], future: [], current: text }; };
+    // Remote edits/resyncs must never become something a local Undo can overwrite.
+    watch(() => nodes.value.find(n => n.id === editingNodeId.value)?.text, text => {
+      if (editingNodeId.value && (text ?? '') !== textHistory.value.current) resetTextHistory(text ?? '');
+    }, { flush: 'sync' });
+    const textSaveStatus = computed(() => {
+      const status = props.textSyncStatus;
+      if (status.kind === 'offline' || status.kind === 'failed') return { ...status, label: status.label || t('syncOffline') };
+      return textDirty.value ? { kind: 'saving', label: t('syncSaving') } : status;
+    });
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
@@ -2032,6 +2050,8 @@ export default defineComponent({
     };
 
     const startTextEditing = (node: CanvasNode) => {
+      if (editingNodeId.value && editingNodeId.value !== node.id) onEditEnd();
+      resetTextHistory(node.text ?? '');
       emit('node-edit-start', node.id);
       editingNodeId.value = node.id;
       nextTick(focusTextEditor);
@@ -2062,20 +2082,52 @@ export default defineComponent({
         clearTimeout(editSaveTimer);
         editSaveTimer = null;
       }
+      textDirty.value = false;
       if (lastEmittedText.get(node.id) === node.text) return;
       lastEmittedText.set(node.id, node.text);
       emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
     };
 
     const scheduleTextUpdate = (node: CanvasNode) => {
+      textDirty.value = true;
       if (editSaveTimer) clearTimeout(editSaveTimer);
       editSaveTimer = setTimeout(() => emitTextUpdate(node), 500);
     };
 
     const onEditInput = (e: Event, node: CanvasNode) => {
-      node.text = (e.target as HTMLTextAreaElement).value;
+      const text = (e.target as HTMLTextAreaElement).value;
+      if (text === node.text) return;
+      textHistory.value.past.push(node.text ?? '');
+      if (textHistory.value.past.length > 100) textHistory.value.past.shift();
+      textHistory.value.future = [];
+      textHistory.value.current = text;
+      node.text = text;
       scheduleTextUpdate(node);
       scheduleChange();
+    };
+
+    const stepTextHistory = (redo: boolean) => {
+      const node = nodes.value.find(n => n.id === editingNodeId.value);
+      if (!node || props.readonly) return;
+      const from = redo ? textHistory.value.future : textHistory.value.past;
+      const to = redo ? textHistory.value.past : textHistory.value.future;
+      if (!from.length) return;
+      to.push(node.text ?? '');
+      const text = from.pop()!;
+      textHistory.value.current = text;
+      node.text = text;
+      scheduleTextUpdate(node);
+      scheduleChange();
+      nextTick(focusTextEditor);
+    };
+    const undoText = () => stepTextHistory(false);
+    const redoText = () => stepTextHistory(true);
+    const onTextEditorKeydown = (event: KeyboardEvent) => {
+      if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      if (key !== 'z' && key !== 'y') return;
+      event.preventDefault();
+      if (event.shiftKey || key === 'y') redoText(); else undoText();
     };
 
     const onEditEnd = () => {
@@ -2495,7 +2547,7 @@ export default defineComponent({
     const commitMarqueeSelection = (x1: number, y1: number, x2: number, y2: number) => {
       if (x2 - x1 <= 5 && y2 - y1 <= 5) return;
       selectedNodeIds.value = viewerNodes.value.filter((n) =>
-        n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
+        n.type !== 'group' && n.x + n.width > x1 && n.x < x2 && n.y + n.height > y1 && n.y < y2
       ).map((n) => n.id);
       selectedDrawingIds.value = drawings.value.filter((d) => {
         const b = drawingBounds(d);
@@ -3629,6 +3681,14 @@ export default defineComponent({
         touchNodeId = nodeEl?.dataset.nodeId ?? null;
 
         const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        // Empty group interiors behave like empty canvas, just as on desktop.
+        // Keep a screen-sized border hit area usable at every zoom level.
+        if (touchNode?.type === 'group') {
+          const rect = viewport.value!.getBoundingClientRect();
+          const wx = (t.clientX - rect.left - camera.x) / camera.scale;
+          const wy = (t.clientY - rect.top - camera.y) / camera.scale;
+          if (!hitTestGroupBorder(touchNode, wx, wy, 12 / camera.scale)) touchNodeId = null;
+        }
 
         if (touchNodeId && !props.readonly) {
           // Select immediately (so the style toolbar appears).
@@ -4382,6 +4442,7 @@ export default defineComponent({
       selBoxStyle,
       selBox,
       editingNodeId,
+      textSaveStatus, canUndoText, canRedoText, undoText, redoText, onTextEditorKeydown,
       editorRefs,
       fullscreenEditorRef,
       fullscreenEditingNode,
@@ -5086,6 +5147,10 @@ g:hover > .edge-midpoint-conn {
   font-size: 16px;
   font-weight: 600;
 }
+.node-fullscreen-editor-title { min-width: 0; flex: 1; }
+.node-text-save-status { font-size: 11px; max-width: 100px; color: var(--ui-text-secondary); }
+.node-text-history { flex-shrink: 0; border: 0; border-radius: 10px; min-width: 36px; min-height: 40px; padding: 4px; background: var(--nfe-button-bg); color: inherit; font-size: 25px; }
+.node-text-history:disabled { opacity: .35; }
 
 /* Glass card around the text. The textarea itself is transparent - a
    textarea cannot carry the ::before sheen. */
@@ -5392,11 +5457,15 @@ g:hover > .edge-midpoint-conn {
 
 /* ===== Minimap ===== */
 .minimap {
+  --minimap-small-width: 120px;
+  --minimap-small-height: 80px;
+  --minimap-large-width: 180px;
+  --minimap-large-height: 120px;
   position: absolute;
   bottom: 16px;
   left: 16px;
-  width: 180px;
-  height: 120px;
+  width: var(--minimap-small-width);
+  height: var(--minimap-small-height);
   box-sizing: border-box;
   max-width: calc(100% - 32px);
   max-height: calc(100% - var(--canvas-topbar-height, 44px) - 32px);
@@ -5409,8 +5478,8 @@ g:hover > .edge-midpoint-conn {
   padding: 6px;
 }
 .minimap.is-large {
-  width: 360px;
-  height: 240px;
+  width: var(--minimap-large-width);
+  height: var(--minimap-large-height);
 }
 .minimap svg {
   width: 100%;
@@ -5641,12 +5710,14 @@ g:hover > .edge-midpoint-conn {
   }
 
   .minimap {
+    --minimap-small-width: 88px;
+    --minimap-small-height: 60px;
+    --minimap-large-width: 132px;
+    --minimap-large-height: 88px;
     left: auto;
     right: 8px;
     bottom: auto;
     top: calc(var(--canvas-topbar-height, 52px) + 8px);
-    width: 132px;
-    height: 88px;
   }
 
   /* Floating controls panel is replaced on mobile by the kebab "canvas
@@ -5658,8 +5729,10 @@ g:hover > .edge-midpoint-conn {
 
 @media (max-width: 420px) {
   .minimap {
-    width: 112px;
-    height: 76px;
+    --minimap-small-width: 76px;
+    --minimap-small-height: 52px;
+    --minimap-large-width: 112px;
+    --minimap-large-height: 76px;
   }
 
   .canvas-controls {
