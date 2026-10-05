@@ -237,7 +237,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, w
 import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
-  proficiencyBonusForLevel, passiveScore, initiativeBonus, calculateHpChange, isHpAmount,
+  proficiencyBonusForLevel, passiveScore, initiativeBonus, isHpAmount,
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
@@ -258,7 +258,9 @@ export default defineComponent({
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
   },
-  emits: ['change', 'request-portrait', 'remove-portrait'],
+  // `op` carries changes that must merge with other people's as deltas (HP,
+  // feature uses) instead of being diffed into absolute values on `change`.
+  emits: ['change', 'op', 'request-portrait', 'remove-portrait'],
   setup(props, { emit }) {
     const change = () => emit('change');
     // `<input @change>` gives a buffered value (fires on blur), matching the
@@ -363,9 +365,8 @@ export default defineComponent({
     const hpMode = ref<'heal' | 'damage' | null>(null);
     const applyHpAmount = (amount: number) => {
       if (props.readonly || !hpMode.value || !isHpAmount(amount)) return;
-      Object.assign(props.data.combat, calculateHpChange(props.data.combat, hpMode.value, amount));
+      emit('op', { type: 'hp-change', mode: hpMode.value, amount });
       hpMode.value = null;
-      change();
     };
     watch(() => props.readonly, value => { if (value) hpMode.value = null; });
 
@@ -387,7 +388,7 @@ export default defineComponent({
     const toggleItem = (key: ListKey, id: string, field: 'equipped' | 'completed' | 'prepared') => { const it = listOf(key).find((x) => x.id === id); if (it) (it as any)[field] = !it[field]; change(); };
     const changeUses = (id: string, delta: number) => {
       const it = props.data.features.find((x) => x.id === id); if (!it || !it.maxUses) return;
-      it.currentUses = clamp((it.currentUses || 0) + delta, 0, it.maxUses); change();
+      emit('op', { type: 'uses-change', itemId: id, delta });
     };
 
     const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };

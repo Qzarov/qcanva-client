@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
+import { applySheetOperation, type SheetOperation } from '../dnd/sheetOperations';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
 import { runBackHandlers } from '../composables/useBackHandler';
 
@@ -74,10 +75,15 @@ describe('DndCharacterSheet interactions', () => {
       await wrapper.get('[aria-label="Количество HP"]').setValue(amount);
       expect(data.combat.currentHp).toBe(10);
       await wrapper.get('.dnd-hp-dialog form').trigger('submit');
-      expect(data.combat.currentHp).toBe(hp);
-      expect(data.combat.temporaryHp).toBe(temp);
-      expect(data.combat.exhaustion).toBe(3);
-      expect(wrapper.emitted('change')).toHaveLength(1);
+      // HP travels as a delta so the DM's and the player's damage add up;
+      // the sheet itself is updated by whoever applies the operation.
+      const ops = wrapper.emitted('op') as [SheetOperation][];
+      expect(ops).toEqual([[{ type: 'hp-change', mode: mode === 'Лечение' ? 'heal' : 'damage', amount: Number(amount) }]]);
+      expect(wrapper.emitted('change')).toBeUndefined();
+      const applied = applySheetOperation(data as unknown as Record<string, unknown>, ops[0]![0]) as unknown as typeof data;
+      expect(applied.combat.currentHp).toBe(hp);
+      expect(applied.combat.temporaryHp).toBe(temp);
+      expect(applied.combat.exhaustion).toBe(3);
       expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
       expect(wrapper.text()).not.toContain('Истощение');
     } finally { wrapper.unmount(); }
@@ -219,14 +225,20 @@ describe('DndCharacterSheet interactions', () => {
     const useBtns = wrapper.findAll('.dnd-cs-uses .dnd-cs-hp-btn');
     const minus = useBtns[0]!;
     const plus = useBtns[1]!;
-    await plus.trigger('click');
-    expect(feature.currentUses).toBe(2);
-    await plus.trigger('click'); // clamped at max
-    expect(feature.currentUses).toBe(2);
-    await minus.trigger('click');
-    await minus.trigger('click');
-    await minus.trigger('click'); // clamped at 0
-    expect(feature.currentUses).toBe(0);
+    // Each click is a delta operation; applying them clamps to 0..max.
+    let sheet = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
+    const click = async (button: typeof plus) => {
+      await button.trigger('click');
+      const ops = wrapper.emitted('op') as [SheetOperation][];
+      sheet = applySheetOperation(sheet, ops[ops.length - 1]![0]);
+      return (sheet.features as Array<{ currentUses: number }>)[0]!.currentUses;
+    };
+    expect(await click(plus)).toBe(2);
+    expect(await click(plus)).toBe(2); // clamped at max
+    await click(minus);
+    await click(minus);
+    expect(await click(minus)).toBe(0); // clamped at 0
+    expect(wrapper.emitted('op')![0]).toEqual([{ type: 'uses-change', itemId: feature.id, delta: 1 }]);
   });
 
   it('cycles a skill proficiency none → proficient → expertise → none', async () => {

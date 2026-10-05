@@ -2,12 +2,14 @@
   <div class="template-page">
     <header class="template-header">
       <BackButton :to="backTarget.to" :label="backTarget.label" />
-      <div class="template-header-actions"><span v-if="saving" class="template-save-status">Сохраняем…</span><AccountMenu :show-plugins="false" /></div>
+      <div class="template-header-actions"><span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span><AccountMenu :show-plugins="false" /></div>
     </header>
-    <main v-if="template" class="template-editor">
+    <main v-if="template" ref="editorRoot" class="template-editor" @input.capture="markDirty" @change.capture="markClean">
       <DndCharacterSheet
         :data="data"
-        @change="save"
+        :readonly="readonly"
+        @change="commitEdits"
+        @op="sendOperation"
         @request-portrait="portraitInput?.click()"
         @remove-portrait="removePortrait"
       />
@@ -18,47 +20,108 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
-import { characterSheetTitle, createDndCharacterSheet, normalizeDndCharacterSheet } from '../dnd/characterSheet';
+import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
+import { diffSheet, type SheetOperation } from '../dnd/sheetOperations';
+import { useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
 import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 import BackButton from '../components/BackButton.vue';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 
+type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
+
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
 export default defineComponent({
   components: { AccountMenu, DndCharacterSheet, BackButton },
   setup() {
     const route = useRoute();
+    const sheetId = String(route.params.id);
     const { backTarget } = useResourceBackTarget();
     const template = ref<InteractiveTemplate | null>(null);
-    const saving = ref(false);
     const error = ref('');
     const data = reactive(createDndCharacterSheet());
+    const sync = useCharacterSheetSocket(sheetId);
 
-    const persist = async () => {
-      if (!template.value) return;
-      saving.value = true;
-      try {
-        template.value = await interactiveTemplates.update(template.value.id, { title: characterSheetTitle(data), data });
-      } catch (e: any) {
-        error.value = e?.message || 'Не удалось сохранить шаблон';
-      } finally {
-        saving.value = false;
+    // The tab and display mode are this viewer's, not the sheet's: the DM
+    // switching tabs must not move the player's.
+    const prefsKey = `dnd-sheet-view:${sheetId}`;
+    const readPrefs = (): Partial<ViewPrefs> => {
+      try { return JSON.parse(localStorage.getItem(prefsKey) || '{}') as Partial<ViewPrefs>; } catch { return {}; }
+    };
+    const prefs = reactive<Partial<ViewPrefs>>(readPrefs());
+    const savePrefs = () => {
+      prefs.activeTab = data.activeTab;
+      prefs.displayMode = data.displayMode;
+      try { localStorage.setItem(prefsKey, JSON.stringify(prefs)); } catch { /* storage unavailable: keep in memory */ }
+    };
+
+    // What the sheet looked like after the last rebuild or edit: the base the
+    // next edit is diffed against.
+    let shadow = clone(data) as unknown as Record<string, unknown>;
+
+    // Inputs save on `change` (blur/Enter). An input the user is typing in
+    // must keep its text when a remote edit re-renders the sheet.
+    const dirtyInputs = new WeakSet<EventTarget>();
+    const markDirty = (event: Event) => { if (event.target) dirtyInputs.add(event.target); };
+    const markClean = (event: Event) => { if (event.target) dirtyInputs.delete(event.target); };
+    const editorRoot = ref<HTMLElement | null>(null);
+
+    const rebuild = (sheet: Record<string, unknown>) => {
+      const next = normalizeDndCharacterSheet(sheet);
+      if (prefs.activeTab) next.activeTab = prefs.activeTab;
+      if (prefs.displayMode) next.displayMode = prefs.displayMode;
+      const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+      const typing = active && dirtyInputs.has(active) && editorRoot.value?.contains(active)
+        ? { element: active, value: active.value, start: active.selectionStart, end: active.selectionEnd }
+        : null;
+      Object.assign(data, next);
+      shadow = clone(next) as unknown as Record<string, unknown>;
+      if (typing) {
+        void nextTick(() => {
+          if (document.activeElement !== typing.element || typing.element.value === typing.value) return;
+          typing.element.value = typing.value;
+          try { typing.element.setSelectionRange(typing.start, typing.end); } catch { /* number inputs have no selection */ }
+        });
       }
     };
+    sync.onState(rebuild);
 
-    // Buffered autosave: `@change` already fires per-field (on blur), not per
-    // keystroke; the debounce additionally batches rapid changes (HP actions,
-    // proficiency pips) into one request instead of one save per click.
-    let saveTimer: ReturnType<typeof setTimeout> | null = null;
-    const save = () => {
-      if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => { saveTimer = null; void persist(); }, 500);
+    const notice = ref('');
+    let noticeTimer: ReturnType<typeof setTimeout> | null = null;
+    const showNotice = (text: string) => {
+      notice.value = text;
+      if (noticeTimer) clearTimeout(noticeTimer);
+      noticeTimer = setTimeout(() => { notice.value = ''; }, 5000);
     };
-    onBeforeUnmount(() => { if (saveTimer) { clearTimeout(saveTimer); void persist(); } });
+    sync.onReject((reason) => {
+      showNotice(reason === 'forbidden'
+        ? 'Нет прав на изменение персонажа'
+        : reason === 'target_missing' ? 'Этот элемент уже удалён' : 'Изменение не применилось');
+    });
+
+    const sendOperation = (op: SheetOperation) => { sync.sendOperation(op); };
+    const commitEdits = () => {
+      if (data.activeTab !== shadow.activeTab || data.displayMode !== shadow.displayMode) savePrefs();
+      const ops = diffSheet(shadow, data as unknown as Record<string, unknown>);
+      shadow = clone(data) as unknown as Record<string, unknown>;
+      for (const op of ops) sync.sendOperation(op);
+    };
+
+    const readonly = computed(() => sync.role.value === 'read' || sync.status.value === 'forbidden');
+    const syncWarning = computed(() => sync.status.value === 'offline' || sync.status.value === 'error');
+    const syncText = computed(() => {
+      if (notice.value) return notice.value;
+      if (sync.status.value === 'forbidden') return 'Нет доступа';
+      if (syncWarning.value) return sync.pendingCount.value ? 'Нет связи — изменения отправятся при подключении' : 'Нет связи';
+      if (sync.pendingCount.value) return 'Сохраняем…';
+      if (sync.role.value === 'read') return 'Только просмотр';
+      return '';
+    });
 
     const portraitInput = ref<HTMLInputElement | null>(null);
     const uploadPortrait = async (event: Event) => {
@@ -67,28 +130,42 @@ export default defineComponent({
       input.value = '';
       if (!file) return;
       try {
-        saving.value = true;
         const { url } = await uploadImage(file);
-        if (url) { data.identity.portraitUrl = url; await persist(); }
+        if (url) sync.sendOperation({ type: 'set', path: ['identity', 'portraitUrl'], value: url });
       } catch (e: any) {
-        error.value = e?.message || 'Не удалось загрузить портрет';
-      } finally {
-        saving.value = false;
+        showNotice(e?.message || 'Не удалось загрузить портрет');
       }
     };
-    const removePortrait = async () => { data.identity.portraitUrl = ''; await persist(); };
+    const removePortrait = () => { sync.sendOperation({ type: 'set', path: ['identity', 'portraitUrl'], value: '' }); };
+
+    // Leaving with unconfirmed edits would lose them: ask first.
+    const warnUnsaved = (event: BeforeUnloadEvent) => {
+      if (!sync.pendingCount.value) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
 
     onMounted(async () => {
+      window.addEventListener('beforeunload', warnUnsaved);
       try {
-        template.value = await interactiveTemplates.get(String(route.params.id));
+        template.value = await interactiveTemplates.get(sheetId);
         markResourceOpened('interactive-template', template.value?.id);
-        Object.assign(data, normalizeDndCharacterSheet(template.value.data));
+        sync.seed(template.value.data as Record<string, unknown>);
+        sync.connect();
       } catch (e: any) {
         error.value = e?.message || 'Шаблон не найден';
       }
     });
+    onBeforeUnmount(() => {
+      window.removeEventListener('beforeunload', warnUnsaved);
+      if (noticeTimer) clearTimeout(noticeTimer);
+    });
 
-    return { template, data, saving, error, save, portraitInput, uploadPortrait, removePortrait, backTarget };
+    return {
+      template, data, error, readonly, syncText, syncWarning, editorRoot,
+      markDirty, markClean, commitEdits, sendOperation,
+      portraitInput, uploadPortrait, removePortrait, backTarget,
+    };
   },
 });
 </script>
@@ -104,6 +181,7 @@ export default defineComponent({
 .template-header :deep(.account-menu-trigger) { border-radius:999px; }
 .template-header-actions { display:flex; align-items:center; gap:10px; }
 .template-save-status { color:var(--ui-text-secondary); font-size:13px; }
+.template-save-status.is-warning { color:var(--ui-danger-foreground); }
 .template-editor { max-width:1120px; margin:auto; padding:20px; }
 .template-error { text-align:center; color:var(--ui-danger-foreground); }
 @media (max-width: 760px) { .template-editor { padding:12px; } .template-header { padding:8px 12px; } }
