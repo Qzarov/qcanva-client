@@ -49,6 +49,9 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
   // finished, and socket.io flushes updates buffered while offline BEFORE the
   // `connect` handler re-joins - so nothing may be emitted until joined.
   let joined = false;
+  // Set once the server state can no longer be merged into this client's
+  // ydoc (see mergeServerState): from then on nothing is sent or re-joined.
+  let halted = false;
 
   const genClientUpdateId = () =>
     `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -101,7 +104,10 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
 
     s.on('text-doc-room-state', (data: TextDocumentRoomState) => {
       joined = true;
-      currentRevision.value = data.revision ?? currentRevision.value;
+      // The server reads the revision before building the state it sends,
+      // and on a re-join broadcasts newer than it may already have arrived:
+      // never move backwards, or the next broadcast looks like a gap.
+      currentRevision.value = Math.max(currentRevision.value, data.revision ?? 0);
       yjsState.value = data.yjsState ?? yjsState.value;
       // Everything pending is superseded by the diff the room-state callback
       // computes against the server's state.
@@ -133,6 +139,18 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
       onRejectCb?.({ ...data, pending });
     });
 
+    // The server answers a failed join with a generic `error`. Updates held
+    // back for the join would otherwise wait forever; hand them to the
+    // REST fallback the same way a timed-out update is.
+    s.on('error', () => {
+      if (joined) return;
+      for (const [clientUpdateId, pending] of [...pendingUpdates.value.entries()]) {
+        if (pending.timeout) continue;
+        removePendingUpdate(clientUpdateId);
+        onRejectCb?.({ clientUpdateId, reason: 'timeout', pending: { update: pending.update } });
+      }
+    });
+
     s.on('awareness-update', (data: TextDocumentAwareness) => {
       onAwarenessCb?.(data);
     });
@@ -142,6 +160,7 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
 
   function sendUpdate(update: string, options: { clientUpdateId?: string } = {}) {
     const clientUpdateId = options.clientUpdateId || genClientUpdateId();
+    if (halted) return clientUpdateId;
     if (!joined) {
       pendingUpdates.value.set(clientUpdateId, { update, timeout: null });
       updatePendingUpdatesCount();
@@ -163,7 +182,7 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
    * merges the server state and re-sends whatever the server lacks.
    */
   function resync() {
-    if (!socket.value || !connected.value || !joined) return;
+    if (halted || !socket.value || !connected.value || !joined) return;
     joined = false;
     socket.value.emit('join-text-document', { documentId: resolveDocumentId() });
   }
@@ -186,6 +205,12 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
 
   function onAwareness(cb: (awareness: TextDocumentAwareness) => void) {
     onAwarenessCb = cb;
+  }
+
+  /** Stops sending and re-joining for good; the page has to be reloaded. */
+  function halt() {
+    halted = true;
+    clearPendingUpdates();
   }
 
   function onRoomState(cb: (state: TextDocumentRoomState) => void) {
@@ -219,6 +244,7 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
     sendUpdate,
     sendAwareness,
     resync,
+    halt,
     onRemoteUpdate,
     onRoomState,
     onReject,

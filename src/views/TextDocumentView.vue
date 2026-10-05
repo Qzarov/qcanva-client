@@ -947,6 +947,9 @@ export default defineComponent({
     let applyingInitialState = false;
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
+    // The server's copy was rebuilt from scratch (content replace or history
+    // restore) and can no longer be merged into this ydoc: read-only until reload.
+    const replacedOnServer = ref(false);
     const currentUser = computed(() => getCurrentUser());
 
     /**
@@ -2796,6 +2799,7 @@ export default defineComponent({
       sendUpdate,
       sendAwareness,
       resync,
+      halt,
       onRemoteUpdate,
       onRoomState,
       onReject,
@@ -2808,10 +2812,10 @@ export default defineComponent({
 
     function syncEditorEditable() {
       if (loading.value) return;
-      editor.value?.setEditable(canEditContent.value);
+      editor.value?.setEditable(canEditContent.value && !replacedOnServer.value);
     }
 
-    watch([canEditContent, editor, loading], syncEditorEditable, { immediate: true });
+    watch([canEditContent, editor, loading, replacedOnServer], syncEditorEditable, { immediate: true });
 
     ydoc.on('update', (update: Uint8Array, origin: unknown) => {
       if (!canEditContent.value || applyingInitialState || origin === 'remote') return;
@@ -2849,7 +2853,7 @@ export default defineComponent({
         if (route.params.id !== preferred) {
           router.replace({ name: 'text-document', params: { id: preferred }, query: route.query }).catch(() => {});
         }
-        editor.value?.setEditable(canEditContent.value);
+        editor.value?.setEditable(canEditContent.value && !replacedOnServer.value);
         refreshBlockCount();
         focusAfterMentionCreateIfPending(preferred);
         reopenShareIfPending(preferred);
@@ -2865,23 +2869,29 @@ export default defineComponent({
           socketInitialized = true;
           connect();
           onRemoteUpdate((encodedUpdate, nextRevision) => {
+            const hadPending = hasPendingUpdates(ydoc);
             Y.applyUpdate(ydoc, base64ToUint8Array(encodedUpdate), 'remote');
             revision.value = nextRevision;
             // An update that depends on one this client never received is
             // parked by Yjs, not shown - and so is every later edit from the
             // same author. Pull the full state instead of waiting for a reload.
-            if (hasPendingUpdates(ydoc)) resync();
+            // Only when pending first appears: an update lost on the server
+            // too leaves pending no resync can fill, and re-joining on every
+            // later update would loop.
+            if (!hadPending && hasPendingUpdates(ydoc)) resync();
           });
           // Every (re)join: catch up on whatever happened between the REST
           // load (or the disconnect) and this join, then hand the server any
           // local edits it never acked.
-          onRoomState(({ revision: roomRevision, yjsState }) => {
-            revision.value = roomRevision ?? revision.value;
+          onRoomState(({ yjsState }) => {
+            revision.value = currentRevision.value;
             if (!yjsState) return;
             const merged = mergeServerState(ydoc, base64ToUint8Array(yjsState), 'remote');
             if (merged.kind === 'diverged') {
               // Content was replaced server-side (MCP/REST replace or a history
               // restore): this ydoc can no longer be merged, only reloaded.
+              halt();
+              replacedOnServer.value = true;
               syncIssue.value = 'conflict';
               showToast(t('documentReplacedReload'), 'error');
               return;

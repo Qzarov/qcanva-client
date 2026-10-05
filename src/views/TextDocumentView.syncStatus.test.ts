@@ -68,6 +68,7 @@ vi.mock('../composables/useTextDocumentSocket', async () => {
       onRemoteUpdate: () => undefined,
       onRoomState: () => undefined,
       resync: () => undefined,
+      halt: () => undefined,
       onReject: (cb: (reject: unknown) => void) => { state.rejectHandler = cb; },
       onAck: (cb: (ack: { revision: number }) => void) => { state.ackHandler = cb; },
       setRevision: () => undefined,

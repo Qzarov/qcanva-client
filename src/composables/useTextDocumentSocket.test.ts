@@ -188,4 +188,50 @@ describe('useTextDocumentSocket', () => {
 
     expect(sockets[0].emit).toHaveBeenCalledWith('join-text-document', { documentId: 'doc-1' });
   });
+
+  it('never moves the revision backwards on a room-state, so one gap resyncs once', () => {
+    const textSocket = useTextDocumentSocket('doc-1');
+    textSocket.connect();
+    sockets[0].trigger('connect');
+    sockets[0].trigger('text-doc-room-state', { revision: 4 });
+    sockets[0].emit.mockClear();
+
+    sockets[0].trigger('text-doc-update', { update: 'u6', revision: 6 });
+    sockets[0].trigger('text-doc-update', { update: 'u7', revision: 7 });
+    sockets[0].trigger('text-doc-room-state', { revision: 5 });
+    sockets[0].trigger('text-doc-update', { update: 'u8', revision: 8 });
+
+    const joins = sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'join-text-document');
+    expect(joins).toHaveLength(1);
+    expect(textSocket.currentRevision.value).toBe(8);
+  });
+
+  it('stops sending and re-joining once halted', () => {
+    const textSocket = useTextDocumentSocket('doc-1');
+    textSocket.connect();
+    sockets[0].trigger('connect');
+    sockets[0].trigger('text-doc-room-state', { revision: 4 });
+    sockets[0].emit.mockClear();
+
+    textSocket.halt();
+    textSocket.sendUpdate('after-halt');
+    sockets[0].trigger('text-doc-update', { update: 'u9', revision: 9 });
+
+    expect(sockets[0].emit).not.toHaveBeenCalled();
+    expect(textSocket.pendingUpdatesCount.value).toBe(0);
+  });
+
+  it('hands updates held for a failed join to the REST fallback', () => {
+    const textSocket = useTextDocumentSocket('doc-1');
+    const reject = vi.fn();
+    textSocket.onReject(reject);
+    textSocket.connect();
+    sockets[0].trigger('connect');
+
+    const clientUpdateId = textSocket.sendUpdate('held');
+    sockets[0].trigger('error', { message: 'No access to this text document' });
+
+    expect(reject).toHaveBeenCalledWith({ clientUpdateId, reason: 'timeout', pending: { update: 'held' } });
+    expect(textSocket.pendingUpdatesCount.value).toBe(0);
+  });
 });
