@@ -1,27 +1,19 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createDndCharacterSheet } from '../src/dnd/characterSheet';
+import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const longName = 'Элеонора Серебряная Звезда из Далёкого Лунного Леса Хранительница Древних Преданий';
 async function openSheet(page: Page) {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: longName, race: 'Эльф', className: 'Волшебник', experience: 350, nextLevelExperience: 900 };
-  let template = { id: 'hero', title: 'Старое название', templateType: 'dnd-character', data, createdAt: '', updatedAt: '', role: 'owner' };
+  const saved = await serveCharacterSheet(page, { id: 'hero', title: 'Старое название', templateType: 'dnd-character', data: data as unknown as Record<string, unknown>, createdAt: '', updatedAt: '' });
   await page.addInitScript(() => {
     localStorage.setItem('token', 'test-token');
     localStorage.setItem('currentUser', JSON.stringify({ id: 'test-user', role: 'user' }));
   });
-  await page.route('**/api/**', route => {
-    const path = new URL(route.request().url()).pathname;
-    if (!path.startsWith('/api/')) return route.continue();
-    if (path === '/api/interactive-templates/hero') {
-      if (route.request().method() === 'PUT') template = { ...template, ...route.request().postDataJSON() };
-      return route.fulfill({ json: template });
-    }
-    return route.fulfill({ json: {} });
-  });
   await page.goto('/templates/hero');
   await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue(longName);
-  return () => template;
+  return saved as () => { title: string; data: any };
 }
 
 for (const width of [320, 1280]) {
