@@ -8,6 +8,8 @@ export type SheetRole = 'owner' | 'edit' | 'read';
 export type SheetSyncStatus = 'idle' | 'connecting' | 'synced' | 'offline' | 'forbidden' | 'error';
 export type SheetRejectReason = 'forbidden' | 'invalid_op' | 'target_missing' | 'not_joined';
 
+type AppliedEvent = { clientOpId: string; op: SheetOperation; revision: number };
+
 type RoomState = {
   sheetId: string;
   data: Record<string, unknown>;
@@ -43,6 +45,10 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   let confirmedRevision = 0;
   let joined = false;
   const pending = new Map<string, SheetOperation>();
+  // Relays that arrive while a join is in flight. The server reads the state
+  // it sends a moment before sending it, so an operation committed in between
+  // is relayed first yet missing from the room-state: replay these on top.
+  let joinBuffer: AppliedEvent[] = [];
 
   let onStateCb: ((sheet: Record<string, unknown>) => void) | null = null;
   let onRejectCb: ((reason: SheetRejectReason, op?: SheetOperation) => void) | null = null;
@@ -66,6 +72,7 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   function join() {
     if (!socket.value?.connected) return;
     joined = false;
+    joinBuffer = [];
     socket.value.emit('join-sheet', { sheetId: resolveSheetId(), pendingClientOpIds: [...pending.keys()] });
   }
 
@@ -77,32 +84,43 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
     for (const clientOpId of state.appliedClientOpIds || []) pending.delete(clientOpId);
     joined = true;
     status.value = 'synced';
+    const buffered = joinBuffer.sort((left, right) => left.revision - right.revision);
+    joinBuffer = [];
+    for (const event of buffered) {
+      if (!applyRelayed(event)) return; // a gap: applyRelayed re-joined
+    }
     for (const [clientOpId, op] of pending) emitOp(clientOpId, op);
     notify();
   }
 
-  function handleApplied(event: { clientOpId: string; op: SheetOperation; revision: number }) {
-    // Until the room-state of the current join arrives, `confirmed` is about
-    // to be replaced wholesale; anything relayed meanwhile is already in it.
-    if (!joined || !confirmed) return;
+  /** Advances `confirmed` by one relayed operation. False when it had to re-join instead. */
+  function applyRelayed(event: AppliedEvent): boolean {
+    if (!confirmed) return true;
     if (event.revision <= confirmedRevision) {
       pending.delete(event.clientOpId);
-      notify();
-      return;
+      return true;
     }
     if (event.revision !== confirmedRevision + 1) {
       join(); // missed a revision: fetch the state again
-      return;
+      return false;
     }
     try {
       confirmed = applySheetOperation(confirmed, event.op);
     } catch {
       join();
-      return;
+      return false;
     }
     confirmedRevision = event.revision;
     pending.delete(event.clientOpId);
-    notify();
+    return true;
+  }
+
+  function handleApplied(event: AppliedEvent) {
+    if (!joined) {
+      joinBuffer.push(event);
+      return;
+    }
+    if (applyRelayed(event)) notify();
   }
 
   function connect() {
@@ -140,6 +158,14 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
     });
     s.on('sheet-reset', (event: { sheetId: string }) => {
       if (event.sheetId === resolveSheetId()) join();
+    });
+    s.on('sheet-access-revoked', (event: { sheetId: string }) => {
+      if (event.sheetId !== resolveSheetId()) return;
+      pending.clear();
+      joined = false;
+      role.value = null;
+      status.value = 'forbidden';
+      notify();
     });
     s.on('sheet-join-error', (event: { sheetId: string; reason: string }) => {
       if (event.sheetId !== resolveSheetId()) return;

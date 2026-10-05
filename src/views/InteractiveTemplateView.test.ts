@@ -5,7 +5,8 @@ import InteractiveTemplateView from './InteractiveTemplateView.vue';
 import { interactiveTemplates } from '../api/client';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
 
-vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'hero' } }) }));
+const routeLeaveGuards: Array<() => boolean> = [];
+vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'hero' } }), onBeforeRouteLeave: (guard: () => boolean) => { routeLeaveGuards.push(guard); } }));
 vi.mock('../api/client', () => ({ interactiveTemplates: { get: vi.fn(), update: vi.fn() }, uploadImage: vi.fn() }));
 vi.mock('../composables/useRecentResource', () => ({ markResourceOpened: vi.fn() }));
 vi.mock('../components/AccountMenu.vue', () => ({ default: { name: 'AccountMenu', props: ['showPlugins'], template: '<div />' } }));
@@ -33,7 +34,7 @@ const sentOps = () => sockets[0].emit.mock.calls.filter(([event]: [string]) => e
 
 describe('character sheet page', () => {
   let wrapper: ReturnType<typeof mount>;
-  beforeEach(() => { vi.clearAllMocks(); sockets.length = 0; localStorage.clear(); });
+  beforeEach(() => { vi.clearAllMocks(); sockets.length = 0; routeLeaveGuards.length = 0; localStorage.clear(); });
   afterEach(() => { wrapper?.unmount(); });
 
   async function open(role: 'owner' | 'edit' | 'read' = 'owner') {
@@ -99,5 +100,17 @@ describe('character sheet page', () => {
     await open('read');
     expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeDefined();
     expect(wrapper.text()).toContain('Только просмотр');
+  });
+
+  it('asks before navigating away with unsent edits', async () => {
+    await open();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    expect(routeLeaveGuards[0]!()).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    sockets[0].trigger('disconnect');
+    await wrapper.get('[aria-label="Имя персонажа"]').setValue('Элиан');
+    expect(routeLeaveGuards[0]!()).toBe(false);
+    expect(confirm).toHaveBeenCalledOnce();
+    confirm.mockRestore();
   });
 });

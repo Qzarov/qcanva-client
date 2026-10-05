@@ -136,4 +136,38 @@ describe('useCharacterSheetSocket', () => {
     socket.trigger('sheet-reset', { sheetId: 'sheet-1', revision: 9 });
     expect(joins(socket)).toHaveLength(1);
   });
+
+  it('keeps an operation relayed while the join was in flight (committed after the state was read)', () => {
+    const sync = useCharacterSheetSocket('sheet-1');
+    sync.connect();
+    const socket = sockets[0];
+    socket.trigger('connect');
+    socket.trigger('sheet-op-applied', { clientOpId: 'dm', op: { type: 'hp-change', mode: 'damage', amount: 5 }, revision: 4 });
+    socket.trigger('sheet-room-state', { sheetId: 'sheet-1', data: { combat: { currentHp: 20, maxHp: 30, temporaryHp: 0 } }, revision: 3, role: 'edit', appliedClientOpIds: [] });
+    expect(hpOf(sync.display())).toBe(15);
+    expect(joins(socket)).toHaveLength(1);
+    // And one the state already contains is not applied twice.
+    socket.trigger('sheet-op-applied', { clientOpId: 'dm', op: { type: 'hp-change', mode: 'damage', amount: 5 }, revision: 4 });
+    expect(hpOf(sync.display())).toBe(15);
+  });
+
+  it('re-joins when the buffered relays leave a gap after the room state', () => {
+    const sync = useCharacterSheetSocket('sheet-1');
+    sync.connect();
+    const socket = sockets[0];
+    socket.trigger('connect');
+    socket.trigger('sheet-op-applied', { clientOpId: 'x', op: setHp(1), revision: 6 });
+    socket.trigger('sheet-room-state', { sheetId: 'sheet-1', data: { combat: { currentHp: 20 } }, revision: 3, role: 'edit', appliedClientOpIds: [] });
+    expect(joins(socket)).toHaveLength(2);
+    expect(hpOf(sync.display())).toBe(20);
+  });
+
+  it('stops syncing and goes forbidden when access is revoked', () => {
+    const { sync, socket } = joined();
+    sync.sendOperation(setHp(1));
+    socket.trigger('sheet-access-revoked', { sheetId: 'sheet-1' });
+    expect(sync.status.value).toBe('forbidden');
+    expect(sync.pendingCount.value).toBe(0);
+    expect(sync.sendOperation(setHp(2))).toBeUndefined();
+  });
 });

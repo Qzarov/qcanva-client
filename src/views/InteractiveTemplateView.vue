@@ -21,7 +21,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
 import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
@@ -138,12 +138,14 @@ export default defineComponent({
     };
     const removePortrait = () => { sync.sendOperation({ type: 'set', path: ['identity', 'portraitUrl'], value: '' }); };
 
-    // Leaving with unconfirmed edits would lose them: ask first.
+    // Leaving with unconfirmed edits would lose them: ask first - both on a
+    // full unload and on in-app navigation.
     const warnUnsaved = (event: BeforeUnloadEvent) => {
       if (!sync.pendingCount.value) return;
       event.preventDefault();
       event.returnValue = '';
     };
+    onBeforeRouteLeave(() => !sync.pendingCount.value || window.confirm('Есть неотправленные изменения персонажа. Уйти со страницы?'));
 
     onMounted(async () => {
       window.addEventListener('beforeunload', warnUnsaved);
