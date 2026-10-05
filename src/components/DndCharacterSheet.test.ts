@@ -126,14 +126,18 @@ describe('DndCharacterSheet interactions', () => {
     data.abilities.dexterity.score = dexterity;
     data.combat.customInitiativeBonus = bonus;
     const wrapper = mount(DndCharacterSheet, { props: { data, readonly } });
-    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    // Dice use crypto.getRandomValues: 0.5 of the range is a d20 face of 11.
+    const rng = vi.spyOn(globalThis.crypto, 'getRandomValues').mockImplementation(<T extends ArrayBufferView>(array: T) => {
+      (array as unknown as Uint32Array)[0] = 2 ** 31;
+      return array;
+    });
     try {
       const button = wrapper.get('button[aria-label="Бросить инициативу"]');
       expect(button.text()).toContain(modifier);
       await button.trigger('click');
       const toast = document.querySelector('.dnd-cs-toast')!;
       expect(toast.textContent).toContain('Инициатива');
-      expect(toast.querySelector('.dnd-cs-toast-formula')!.textContent).toContain(`1d20 (11) ${formula} = ${total}`);
+      expect(toast.querySelector('.dnd-cs-toast-formula')!.textContent).toContain(`d20 (11) ${formula} = ${total}`);
       expect(data.combat.customInitiativeBonus).toBe(bonus);
       expect(wrapper.emitted('change')).toBeUndefined();
       expect(wrapper.find('[aria-label="Бонус инициативы"]').exists()).toBe(false);

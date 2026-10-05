@@ -56,6 +56,7 @@
         <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
         <button type="button" class="dnd-cs-stat readonly-stat dnd-cs-initiative" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong></button>
       </div>
+      <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :weapons="weaponAttacks" :history-count="rollHistory.length" @set-mode="setRollMode" @attack="attackWithWeapon" @open-log="rollLogOpen = true" />
     </div>
     </section>
 
@@ -127,6 +128,8 @@
         <div class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
           <!-- Attacks -->
           <template v-if="data.activeTab === 'attacks'">
+            <DndWeaponAttacks :attacks="weaponAttacks" @attack="attackWithWeapon" @damage="weaponDamage" />
+            <h4 class="dnd-cs-subheading">Другие атаки</h4>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
               <div class="dnd-cs-attack-top">
                 <input class="dnd-cs-attack-name" :readonly="readonly" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', evVal($event))" />
@@ -136,6 +139,10 @@
                 <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', evVal($event))" />
                 <input :readonly="readonly" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', evVal($event))" />
                 <input :readonly="readonly" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', evVal($event))" />
+              </div>
+              <div class="dnd-cs-attack-rolls">
+                <DndFormulaButton :formula="parseAttackBonus(item.attackBonus)" :source="item.attackBonus" prefix="Атака" :label="attackBonusText(item.attackBonus)" @roll="attackWithCustom(item)" />
+                <DndFormulaButton v-if="item.damage?.trim()" :formula="parseFormula(item.damage)" :source="item.damage" prefix="Урон" @roll="customDamage(item)" />
               </div>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('attacks')">+ Добавить атаку</button>
@@ -168,7 +175,9 @@
               <input :readonly="readonly" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
               <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', evVal($event))" />
               <input :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', evVal($event))" />
+              <button type="button" class="dnd-cs-weapon-toggle" :class="{ on: isWeapon(item) }" :disabled="readonly" :aria-pressed="isWeapon(item)" :aria-label="isWeapon(item) ? 'Это оружие: убрать боевые параметры' : 'Сделать оружием'" :title="isWeapon(item) ? 'Оружие' : 'Сделать оружием'" @click="toggleWeapon(item)">⚔</button>
               <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
+              <DndWeaponFields v-if="isWeapon(item)" :item="item" :sheet="data" :readonly="readonly" @change="change" />
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
           </template>
@@ -216,19 +225,8 @@
 
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
 
-    <!-- Roll toasts: bottom-left, glass, auto-dismiss after 10s. Teleported to
-         body so the scroll container never clips them. -->
-    <Teleport to="body">
-      <div class="dnd-cs-toasts" aria-live="polite">
-        <transition-group name="dnd-cs-toast">
-          <div v-for="t in rolls" :key="t.id" class="dnd-cs-toast" :class="t.crit">
-            <button type="button" class="dnd-cs-toast-close" aria-label="Закрыть" @click="dismissRoll(t.id)">×</button>
-            <div class="dnd-cs-toast-head">{{ t.typeLabel }} · {{ t.name }}</div>
-            <div class="dnd-cs-toast-formula">1d20 (<b>{{ t.d }}</b>) {{ t.modText }} = <strong>{{ t.total }}</strong></div>
-          </div>
-        </transition-group>
-      </div>
-    </Teleport>
+    <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
+    <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" />
   </div>
 </template>
 
@@ -243,17 +241,24 @@ import {
 import DndHpDialog from './DndHpDialog.vue';
 import DndPassiveScores from './DndPassiveScores.vue';
 import DndCharacterStates from './DndCharacterStates.vue';
+import DndFormulaButton from './DndFormulaButton.vue';
+import DndRollBar from './DndRollBar.vue';
+import DndRollLog from './DndRollLog.vue';
+import DndRollToasts from './DndRollToasts.vue';
+import DndWeaponAttacks from './DndWeaponAttacks.vue';
+import DndWeaponFields from './DndWeaponFields.vue';
+import { formatSigned, parseFormula } from '../dnd/dice';
+import { useSheetRolls, type DamageOption } from '../dnd/useSheetRolls';
+import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
 type RollKind = 'check' | 'save' | 'skill' | 'initiative';
-type RollToast = { id: string; typeLabel: string; name: string; d: number; modText: string; total: number; crit: '' | 'crit-max' | 'crit-min' };
 
 const newId = () => Math.random().toString(36).slice(2, 10);
-const ROLL_TOAST_MS = 10000;
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndPassiveScores, DndCharacterStates },
+  components: { DndHpDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -393,22 +398,45 @@ export default defineComponent({
 
     const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };
 
-    // ===== Dice rolls + toasts =====
-    const rolls = ref<RollToast[]>([]);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    const rollTypeLabel: Record<RollKind, string> = { check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Бросок' };
-    const dismissRoll = (id: string) => { rolls.value = rolls.value.filter((r) => r.id !== id); };
-    const roll = (kind: RollKind, name: string, modifier: number) => {
-      const d = Math.floor(Math.random() * 20) + 1;
-      const total = d + modifier;
-      const modText = modifier === 0 ? '' : modifier > 0 ? `+ ${modifier}` : `− ${Math.abs(modifier)}`;
-      const id = newId();
-      const crit: RollToast['crit'] = d === 20 ? 'crit-max' : d === 1 ? 'crit-min' : '';
-      rolls.value = [{ id, typeLabel: rollTypeLabel[kind], name, d, modText, total, crit }, ...rolls.value].slice(0, 5);
-      timers.push(setTimeout(() => dismissRoll(id), ROLL_TOAST_MS));
+    // ===== Dice rolls =====
+    const rolls = useSheetRolls();
+    const rollLogOpen = ref(false);
+    const roll = (kind: RollKind, name: string, modifier: number) => { rolls.rollCheck(kind, name, modifier); };
+    const weaponAttacks = computed(() => equippedWeaponAttacks(props.data));
+    const damageOptions = (attack: WeaponAttack): DamageOption[] =>
+      attack.damage.flatMap((entry) => (entry.formula.ok ? [{ label: entry.label, formula: entry.formula, type: entry.type }] : []));
+    const attackWithWeapon = (attack: WeaponAttack) => { rolls.rollAttack(attack.name, attack.attackBonus, damageOptions(attack)); };
+    const weaponDamage = (attack: WeaponAttack, index: number) => {
+      const entry = attack.damage[index];
+      if (entry?.formula.ok) rolls.rollDamage(attack.name, { label: entry.label, formula: entry.formula, type: entry.type });
     };
-    onBeforeUnmount(() => { timers.forEach(clearTimeout); });
-
+    const attackBonusText = (text: string | undefined) => {
+      const parsed = parseAttackBonus(text);
+      return parsed.ok && !parsed.dice.length ? formatSigned(parsed.modifier) : undefined;
+    };
+    const attackWithCustom = (item: DndListItem) => {
+      const bonus = parseAttackBonus(item.attackBonus);
+      if (!bonus.ok) return;
+      const damage = parseFormula(item.damage || '');
+      const options = damage.ok ? [{ label: 'Урон', formula: damage, type: item.damageType || '' }] : [];
+      rolls.rollAttack(item.name.trim() || 'Атака', bonus, options);
+    };
+    const customDamage = (item: DndListItem) => {
+      const damage = parseFormula(item.damage || '');
+      if (damage.ok) rolls.rollDamage(item.name.trim() || 'Атака', { label: 'Урон', formula: damage, type: item.damageType || '' });
+    };
+    /** "Урон"/"Крит" on an attack toast: a natural 20 doubles the damage dice. */
+    const damageFromToast = (rollId: string, index: number) => {
+      const attack = rolls.history.value.find((entry) => entry.id === rollId);
+      const option = attack?.damage?.[index];
+      if (attack && option) rolls.rollDamage(attack.label, option, attack.natural === 'max');
+    };
+    const toggleWeapon = (item: DndListItem) => {
+      // null, not delete: the sync diff only sends keys that are present.
+      const target = item as DndListItem & { weapon?: unknown };
+      target.weapon = target.weapon ? null : createWeapon();
+      change();
+    };
     return {
       // Display order groups the two SHORTEST cards (STR: 1 skill, CON: 0) into
       // the first grid row so they sit together and stay compact, instead of
@@ -432,7 +460,9 @@ export default defineComponent({
       hpMode, applyHpAmount, change,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
-      rolls, roll, dismissRoll,
+      roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
+      attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon,
+      rollMode: rolls.mode, setRollMode: rolls.setMode, rollHistory: rolls.history, rollToasts: rolls.toasts, dismissRoll: rolls.dismiss,
     };
   },
 });
@@ -712,7 +742,14 @@ export default defineComponent({
 .dnd-cs-spell-head { grid-template-columns: 30px 1fr 52px 26px; }
 .dnd-cs-spell-row { display: grid; grid-template-columns: 30px 1fr 52px 26px; gap: 6px; align-items: center; }
 .dnd-cs-spell-notes { grid-column: 1 / -1; }
-.dnd-cs-equip-row { display: grid; grid-template-columns: 28px 2fr 60px 2fr 26px; gap: 6px; align-items: center; }
+.dnd-cs-equip-row { display: grid; grid-template-columns: 28px minmax(0, 2fr) 60px minmax(0, 2fr) 30px 26px; gap: 6px; align-items: center; }
+.dnd-cs-equip-row > input { width: 100%; min-width: 0; }
+.dnd-cs-weapon-toggle { width: 30px; height: 30px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: transparent; color: var(--dnd-text-dim); cursor: pointer; font-size: 14px; }
+.dnd-cs-weapon-toggle.on { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); color: var(--ui-text); }
+.dnd-cs-weapon-toggle:disabled { cursor: default; }
+.dnd-cs-attack-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
+.dnd-cs-subheading { margin: 4px 0 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
+.dnd-cs-roll-bar { margin-top: 2px; }
 .dnd-cs-goal-row { display: grid; grid-template-columns: 28px 1fr 26px; gap: 6px; align-items: start; }
 .dnd-cs-goal-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .dnd-cs-goal-main input.done { text-decoration: line-through; color: var(--dnd-text-dim); }
@@ -727,33 +764,6 @@ export default defineComponent({
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
 
-/* ===== Roll toasts (Teleported to body: literal colours, not .dnd-cs tokens) ===== */
-.dnd-cs-toasts {
-  position: fixed; left: 16px; bottom: 16px; z-index: 3000;
-  display: flex; flex-direction: column-reverse; gap: 8px;
-  max-width: min(330px, calc(100vw - 32px)); pointer-events: none;
-}
-.dnd-cs-toast {
-  position: relative; pointer-events: auto;
-  padding: 10px 30px 10px 13px; border-radius: 14px;
-  background: linear-gradient(160deg, rgba(22, 30, 24, 0.93), rgba(9, 13, 10, 0.93));
-  border: 1px solid rgba(0, 255, 0, 0.30);
-  box-shadow: 0 0 20px rgba(0, 255, 0, 0.14), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09);
-  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  color: #eaf6ee;
-}
-.dnd-cs-toast-head { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: #8fe0a4; margin-bottom: 3px; }
-.dnd-cs-toast-formula { font-size: 15px; font-variant-numeric: tabular-nums; }
-.dnd-cs-toast-formula b { color: #d3ecda; font-weight: 700; }
-.dnd-cs-toast-formula strong { color: #00ff00; font-size: 18px; font-weight: 800; }
-.dnd-cs-toast.crit-max { border-color: rgba(0, 255, 0, 0.65); box-shadow: 0 0 30px rgba(0, 255, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
-.dnd-cs-toast.crit-max .dnd-cs-toast-formula strong { text-shadow: 0 0 12px rgba(0, 255, 0, 0.7); }
-.dnd-cs-toast.crit-min { border-color: rgba(255, 90, 90, 0.55); box-shadow: 0 0 22px rgba(255, 70, 70, 0.28), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
-.dnd-cs-toast.crit-min .dnd-cs-toast-formula strong { color: #ff6b6b; }
-.dnd-cs-toast-close { position: absolute; top: 5px; right: 8px; padding: 0; width: 18px; height: 18px; border: 0; background: transparent; color: #8fe0a4; cursor: pointer; font-size: 15px; line-height: 1; }
-.dnd-cs-toast-close:hover { color: #eaf6ee; }
-.dnd-cs-toast-enter-active, .dnd-cs-toast-leave-active { transition: opacity 220ms ease, transform 220ms ease; }
-.dnd-cs-toast-enter-from, .dnd-cs-toast-leave-to { opacity: 0; transform: translateX(-18px); }
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
@@ -789,7 +799,7 @@ export default defineComponent({
   .dnd-cs-attack-head { display: none; }
   .dnd-cs-attack-row { grid-template-columns: 1fr 1fr; }
   .dnd-cs-attack-row .dnd-cs-row-remove { grid-column: 2; justify-self: end; }
-  .dnd-cs-equip-row { grid-template-columns: 28px 1fr 52px 26px; }
-  .dnd-cs-equip-row input[aria-label='Заметки'] { grid-column: 2 / -1; }
+  .dnd-cs-equip-row { grid-template-columns: 28px minmax(0, 1fr) 52px 30px 26px; }
+  .dnd-cs-equip-row input[aria-label='Заметки'] { grid-column: 2 / -1; grid-row: 2; }
 }
 </style>
