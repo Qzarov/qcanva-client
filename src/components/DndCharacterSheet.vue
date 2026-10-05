@@ -179,7 +179,10 @@
               <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
               <DndWeaponFields v-if="isWeapon(item)" :item="item" :sheet="data" :readonly="readonly" @change="change" />
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
+            <div v-if="!readonly" class="dnd-cs-add-row">
+              <button type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
+              <button type="button" class="dnd-cs-add" @click="weaponCatalogOpen = true">+ Оружие из списка</button>
+            </div>
           </template>
 
           <!-- Personality -->
@@ -226,6 +229,7 @@
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
 
     <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
+    <DndWeaponCatalog v-if="weaponCatalogOpen && !readonly" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
     <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
   </div>
 </template>
@@ -247,6 +251,8 @@ import DndRollLog from './DndRollLog.vue';
 import DndRollToasts from './DndRollToasts.vue';
 import DndWeaponAttacks from './DndWeaponAttacks.vue';
 import DndWeaponFields from './DndWeaponFields.vue';
+import DndWeaponCatalog from './DndWeaponCatalog.vue';
+import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
 import { useSheetRolls, type DamageOption } from '../dnd/useSheetRolls';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
@@ -258,7 +264,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields },
+  components: { DndHpDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -427,6 +433,12 @@ export default defineComponent({
     };
     /** "Урон"/"Крит" on an attack (toast or log): a natural 20 doubles the dice; once per attack. */
     const damageFromToast = (rollId: string, index: number) => { rolls.rollAttackDamage(rollId, index); };
+    const weaponCatalogOpen = ref(false);
+    const addCatalogWeapon = (weapon: CatalogWeapon) => {
+      props.data.equipment.push(catalogEquipmentItem(weapon, newId()));
+      weaponCatalogOpen.value = false;
+      change();
+    };
     const toggleWeapon = (item: DndListItem) => {
       // null, not delete: the sync diff only sends keys that are present.
       const target = item as DndListItem & { weapon?: unknown };
@@ -457,7 +469,7 @@ export default defineComponent({
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
-      attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon,
+      attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon, weaponCatalogOpen, addCatalogWeapon,
       rollMode: rolls.mode, setRollMode: rolls.setMode, rollHistory: rolls.history, rollToasts: rolls.toasts, dismissRoll: rolls.dismiss,
     };
   },
@@ -740,6 +752,8 @@ export default defineComponent({
 .dnd-cs-spell-notes { grid-column: 1 / -1; }
 .dnd-cs-equip-row { display: grid; grid-template-columns: 28px minmax(0, 2fr) 60px minmax(0, 2fr) 30px 26px; gap: 6px; align-items: center; }
 .dnd-cs-equip-row > input { width: 100%; min-width: 0; }
+.dnd-cs-add-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.dnd-cs-add-row .dnd-cs-add { flex: 1 1 160px; }
 .dnd-cs-weapon-toggle { width: 30px; height: 30px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: transparent; color: var(--dnd-text-dim); cursor: pointer; font-size: 14px; }
 .dnd-cs-weapon-toggle.on { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); color: var(--ui-text); }
 .dnd-cs-weapon-toggle:disabled { cursor: default; }

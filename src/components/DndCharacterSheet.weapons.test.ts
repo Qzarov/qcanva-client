@@ -178,4 +178,32 @@ describe('weapons and attack rolls', () => {
     expect(document.querySelector('.dnd-roll-log li')?.textContent).toContain('Урон · Длинный меч');
     expect(document.querySelector('.dnd-roll-log-actions')).toBeNull();
   });
+
+  it('adds a weapon from the catalog as one synced item', async () => {
+    const data = reactive(createDndCharacterSheet());
+    const before = JSON.parse(JSON.stringify(data));
+    wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
+    await wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Снаряжение')!.trigger('click');
+    await wrapper.findAll('.dnd-cs-add').find((b) => b.text() === '+ Оружие из списка')!.trigger('click');
+    const search = document.querySelector<HTMLInputElement>('[aria-label="Поиск оружия"]')!;
+    expect(document.activeElement).toBe(search);
+    search.value = 'рапира';
+    search.dispatchEvent(new Event('input'));
+    await nextTick();
+    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-catalog-item'));
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(['Добавить: Рапира']);
+    items[0]!.click();
+    await nextTick();
+    expect(document.querySelector('.dnd-catalog')).toBeNull();
+    expect(data.equipment).toHaveLength(1);
+    const ops = diffSheet(before, JSON.parse(JSON.stringify(data)));
+    expect(ops).toEqual([{ type: 'list-add', list: 'equipment', index: 0, item: expect.objectContaining({ name: 'Рапира', weapon: expect.objectContaining({ damage: '1d8', finesse: true, category: 'martial' }) }) }]);
+    expect(wrapper.find('[aria-label="Кость урона"]').exists()).toBe(true);
+  });
+
+  it('hides the catalog button for read-only viewers', async () => {
+    wrapper = mount(DndCharacterSheet, { props: { data: sheet(), readonly: true }, attachTo: document.body });
+    await wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Снаряжение')!.trigger('click');
+    expect(wrapper.findAll('.dnd-cs-add').some((b) => b.text() === '+ Оружие из списка')).toBe(false);
+  });
 });
