@@ -45,6 +45,21 @@ for (const width of [320, 390, 760, 1280]) {
     const ac = (await page.getByLabel('Класс доспеха', { exact: true }).boundingBox())!;
     if (width > 760) expect(ac.x).toBeGreaterThan(nameBox.x + nameBox.width);
     else expect(ac.y).toBeGreaterThan(xp.y + xp.height);
+    const hp = (await page.locator('.dnd-cs-hp').boundingBox())!;
+    const hpBar = (await page.locator('.dnd-cs-hp-bar').boundingBox())!;
+    expect(hpBar.height).toBeLessThanOrEqual(10);
+    expect(ac.y).toBeGreaterThanOrEqual(hp.y + hp.height);
+    expect(ac.y).toBeGreaterThanOrEqual(hpBar.y + hpBar.height);
+    const combatCells = await page.locator('.dnd-cs-combat-stats > *').evaluateAll(elements => elements.map(element => {
+      const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, right: b.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
+    }));
+    expect(combatCells).toHaveLength(4);
+    expect(Math.max(...combatCells.map(c => c.y)) - Math.min(...combatCells.map(c => c.y))).toBeLessThanOrEqual(1);
+    expect(combatCells.every(c => c.x >= 0 && c.right <= width && c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+    await expect(page.getByLabel('Бонус инициативы', { exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).click();
+    await expect(page.locator('.dnd-cs-toast')).toContainText('Инициатива');
+    await page.locator('.dnd-cs-toast').getByRole('button', { name: 'Закрыть', exact: true }).click();
 
     const tiles = await page.locator('.dnd-cs-ability').evaluateAll(elements => elements.map(element => {
       const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, right: b.right };

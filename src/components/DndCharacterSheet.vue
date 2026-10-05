@@ -37,11 +37,6 @@
 
     <!-- ===== COMBAT STRIP ===== -->
     <div class="dnd-cs-combat">
-      <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
-      <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
-      <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
-      <div class="dnd-cs-stat readonly-stat"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong>
-        <input v-if="!readonly" class="dnd-cs-init-bonus" type="number" :value="data.combat.customInitiativeBonus" aria-label="Бонус инициативы" title="Доп. бонус инициативы" @change="setNumber(data.combat, 'customInitiativeBonus', evVal($event))" /></div>
       <div class="dnd-cs-stat dnd-cs-hp">
         <span>HP</span>
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Убрать HP" @click="changeHp(-1)">−</button>
@@ -51,6 +46,12 @@
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Добавить HP" @click="changeHp(1)">+</button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
+      <div class="dnd-cs-combat-stats">
+        <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
+        <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
+        <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
+        <button type="button" class="dnd-cs-stat readonly-stat dnd-cs-initiative" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong></button>
+      </div>
     </div>
     <div class="dnd-cs-combat-extra">
       <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /></div>
@@ -246,7 +247,7 @@ import {
 } from '../dnd/characterSheet';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
-type RollKind = 'check' | 'save' | 'skill';
+type RollKind = 'check' | 'save' | 'skill' | 'initiative';
 type RollToast = { id: string; typeLabel: string; name: string; d: number; modText: string; total: number; crit: '' | 'crit-max' | 'crit-min' };
 
 const newId = () => Math.random().toString(36).slice(2, 10);
@@ -362,7 +363,7 @@ export default defineComponent({
     // ===== Dice rolls + toasts =====
     const rolls = ref<RollToast[]>([]);
     const timers: ReturnType<typeof setTimeout>[] = [];
-    const rollTypeLabel: Record<RollKind, string> = { check: 'Проверка', save: 'Спасбросок', skill: 'Проверка' };
+    const rollTypeLabel: Record<RollKind, string> = { check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Бросок' };
     const dismissRoll = (id: string) => { rolls.value = rolls.value.filter((r) => r.id !== id); };
     const roll = (kind: RollKind, name: string, modifier: number) => {
       const d = Math.floor(Math.random() * 20) + 1;
@@ -538,19 +539,26 @@ export default defineComponent({
   box-shadow: 0 0 10px var(--dnd-glass-accent-glow);
   transition: width 200ms ease;
 }
-.dnd-cs-hp-bar { flex-basis: 100%; height: 8px; }
+.dnd-cs-hp-bar { flex: none; height: 8px; }
 
 /* Combat values sit right of identity on desktop and below it on mobile. */
-.dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.dnd-cs-combat { display: flex; flex-direction: column; gap: 8px; align-items: stretch; align-self: start; min-width: 0; }
+.dnd-cs-combat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dnd-cs-combat-stats .dnd-cs-stat { flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; text-align: center; padding: 5px 0; }
+.dnd-cs-combat-stats .dnd-cs-stat span { white-space: normal; overflow-wrap: anywhere; font-size: 9px; line-height: 1.2; letter-spacing: 0; text-transform: none; }
+.dnd-cs-combat-stats input[type='number'] { width: 100%; min-width: 0; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.dnd-cs-combat-stats input::-webkit-inner-spin-button, .dnd-cs-combat-stats input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.dnd-cs-initiative { border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(255,255,255,.04); font: inherit; cursor: pointer; transition: background 150ms, border-color 150ms; }
+.dnd-cs-initiative:hover, .dnd-cs-initiative:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); }
+.dnd-cs-initiative:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
 .dnd-cs-combat-extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-stat span { white-space: nowrap; }
 .dnd-cs-stat input { width: 50px; font-size: 14px; font-weight: 700; color: var(--ui-text); text-transform: none; letter-spacing: 0; }
 .dnd-cs-stat.readonly-stat strong { color: var(--ui-text); font-size: 16px; font-weight: 800; }
-.dnd-cs-init-bonus { width: 40px !important; }
-.dnd-cs-hp { flex-basis: 100%; gap: 8px; }
+.dnd-cs-hp { gap: 8px; }
 .dnd-cs-hp > span:first-child { font-size: 11px; }
-.dnd-cs-hp input { width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
+.dnd-cs-hp input[type='number'] { flex: 1; min-width: 0; width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
 .dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
 .dnd-cs-toggle {
   padding: 7px 12px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
@@ -746,7 +754,7 @@ export default defineComponent({
   .dnd-cs-save-cell .dnd-cs-roll { flex: 1; min-width: 0; }
   .dnd-cs-skills li { gap: 3px; }
   .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
-  .dnd-cs-combat { gap: 8px 12px; }
+  .dnd-cs-combat { gap: 8px; }
   .dnd-cs-stat input { width: 46px; }
   .dnd-cs-attack-head { display: none; }
   .dnd-cs-attack-row { grid-template-columns: 1fr 1fr; }

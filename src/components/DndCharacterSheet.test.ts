@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
@@ -12,6 +12,27 @@ const mountSheet = () => {
 };
 
 describe('DndCharacterSheet interactions', () => {
+  it.each([
+    { dexterity: 16, bonus: 2, readonly: false, modifier: '+5', formula: '+ 5', total: '16' },
+    { dexterity: 8, bonus: 0, readonly: true, modifier: '-1', formula: '− 1', total: '10' },
+  ])('rolls initiative with the existing modifier (dexterity $dexterity, readonly $readonly)', async ({ dexterity, bonus, readonly, modifier, formula, total }) => {
+    const data = reactive(createDndCharacterSheet());
+    data.abilities.dexterity.score = dexterity;
+    data.combat.customInitiativeBonus = bonus;
+    const wrapper = mount(DndCharacterSheet, { props: { data, readonly } });
+    const rng = vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    try {
+      const button = wrapper.get('button[aria-label="Бросить инициативу"]');
+      expect(button.text()).toContain(modifier);
+      await button.trigger('click');
+      const toast = document.querySelector('.dnd-cs-toast')!;
+      expect(toast.textContent).toContain('Инициатива');
+      expect(toast.querySelector('.dnd-cs-toast-formula')!.textContent).toContain(`1d20 (11) ${formula} = ${total}`);
+      expect(data.combat.customInitiativeBonus).toBe(bonus);
+      expect(wrapper.emitted('change')).toBeUndefined();
+      expect(wrapper.find('[aria-label="Бонус инициативы"]').exists()).toBe(false);
+    } finally { rng.mockRestore(); wrapper.unmount(); }
+  });
   it('labels every ability with its full name', () => {
     const { wrapper } = mountSheet();
     expect(wrapper.findAll('.dnd-cs-ability-name').map(node => node.text())).toEqual([
