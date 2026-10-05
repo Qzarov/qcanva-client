@@ -8,7 +8,7 @@ import { runBackHandlers } from '../composables/useBackHandler';
 
 const mountSheet = () => {
   const data = reactive(createDndCharacterSheet());
-  const wrapper = mount(DndCharacterSheet, { props: { data, readonly: false } });
+  const wrapper = mount(DndCharacterSheet, { props: { data, readonly: false }, global: { stubs: { Teleport: true } } });
   return { data, wrapper };
 };
 

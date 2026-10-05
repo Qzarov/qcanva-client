@@ -57,8 +57,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dnd-cs-passives { position:relative; padding:12px; }
-.dnd-cs-passive-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.dnd-cs-passives { position:relative; padding:12px; display:flex; align-items:center; min-width:0; }
+.dnd-cs-passive-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); width:100%; }
 .dnd-cs-passive { display:flex; flex-direction:row; justify-content:center; align-items:center; text-align:center; gap:8px; min-width:0; padding:0 4px; border:0; background:none; font:inherit; cursor:pointer; }
 .dnd-cs-passive + .dnd-cs-passive { border-left:1px solid var(--dnd-glass-border); }
 .dnd-cs-passive strong { font-size:17px; line-height:1.2; font-weight:800; color:var(--dnd-glass-accent); font-variant-numeric:tabular-nums; }

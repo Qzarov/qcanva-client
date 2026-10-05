@@ -236,7 +236,7 @@ for (const width of [320, 1280]) {
     await states.getByRole('button', { name: 'Вдохновение' }).click();
     const add = states.getByRole('button', { name: 'Добавить состояние', exact: true });
     await add.click();
-    const menu = states.getByRole('group', { name: 'Доступные состояния', exact: true });
+    const menu = page.getByRole('group', { name: 'Доступные состояния', exact: true });
     const menuBox = (await menu.boundingBox())!;
     expect(menuBox.x).toBeGreaterThanOrEqual(0);
     expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
@@ -290,6 +290,65 @@ for (const width of [320, 1280]) {
     }
   });
 }
+
+test('desktop status cards stay equal-height while condition choices overlay the sheet', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openSheet(page);
+  await page.evaluate(() => document.fonts.ready);
+  const states = page.getByRole('region', { name: 'Состояния', exact: true });
+  const passives = page.getByRole('region', { name: 'Пассивные характеристики', exact: true });
+  const add = states.getByRole('button', { name: 'Добавить состояние', exact: true });
+  const menu = page.getByRole('group', { name: 'Доступные состояния', exact: true });
+  for (const condition of ['Ослеплён', 'Очарован', 'Оглохший', 'Испуган', 'Отравлен']) {
+    const before = [await states.boundingBox(), await passives.boundingBox()];
+    expect(Math.abs(before[0]!.height - before[1]!.height)).toBeLessThanOrEqual(1);
+    await add.click();
+    await expect(menu).toBeVisible();
+    expect([await states.boundingBox(), await passives.boundingBox()]).toEqual(before);
+    expect(await menu.evaluate(element => {
+      const box = element.getBoundingClientRect();
+      return element.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    })).toBe(true);
+    const option = menu.getByRole('button', { name: `Добавить: ${condition}`, exact: true });
+    await option.click();
+    await expect(menu).toHaveCount(0);
+    await expect(add).toBeFocused();
+  }
+  const before = [await states.boundingBox(), await passives.boundingBox()];
+  expect(Math.abs(before[0]!.height - before[1]!.height)).toBeLessThanOrEqual(1);
+  await add.click();
+  await page.screenshot({ path: '/tmp/qcanva-status-overlay-desktop.png', animations: 'disabled' });
+  await add.click();
+  await expect(menu).toHaveCount(0);
+});
+
+test('keyboard opening conditions focuses the choices and Escape returns to the trigger', async ({ page }) => {
+  await openSheet(page);
+  const add = page.getByRole('button', { name: 'Добавить состояние', exact: true });
+  await add.focus(); await page.keyboard.press('Enter');
+  const first = page.getByRole('group', { name: 'Доступные состояния', exact: true }).getByRole('button').first();
+  await expect(first).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(add).toBeFocused();
+});
+
+test('condition choices escape card stacking contexts and track viewport changes', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openSheet(page);
+  const add = page.getByRole('button', { name: 'Добавить состояние', exact: true });
+  const menu = page.getByRole('group', { name: 'Доступные состояния', exact: true });
+  await add.click();
+  await expect(menu).toBeVisible();
+  expect(await menu.evaluate(element => getComputedStyle(element).position)).toBe('fixed');
+  await page.setViewportSize({ width: 320, height: 700 });
+  await add.scrollIntoViewIfNeeded();
+  await expect.poll(async () => {
+    const box = (await menu.boundingBox())!;
+    return box.x >= 0 && box.x + box.width <= 320 && box.y >= 0 && box.y + box.height <= 700;
+  }).toBe(true);
+  await menu.getByRole('button', { name: 'Добавить: Отравлен', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Удалить состояние: Отравлен', exact: true })).toBeVisible();
+});
 
 test('mobile HP action buttons center their contents consistently', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });

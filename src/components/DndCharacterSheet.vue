@@ -602,7 +602,7 @@ export default defineComponent({
 
 /* ===== BODY ===== */
 .dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); gap: 14px; align-items: start; }
-.dnd-cs-status-row { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:14px; align-items:start; }
+.dnd-cs-status-row { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:14px; align-items:stretch; }
 .dnd-cs-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .dnd-cs-right { min-width: 0; }
 

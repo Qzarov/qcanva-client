@@ -4,6 +4,7 @@ import { useBackHandler } from './useBackHandler';
 /** Dismiss an anchored sheet popup with outside tap, Escape or Android Back. */
 export function useSheetPopup() {
   const root = ref<HTMLElement | null>(null);
+  const popup = ref<HTMLElement | null>(null);
   const open = ref<string | null>(null);
   let trigger: HTMLElement | null = null;
   const close = (restoreFocus = false) => {
@@ -15,7 +16,7 @@ export function useSheetPopup() {
     open.value = open.value === key ? null : key;
   };
   const outside = (event: PointerEvent) => {
-    if (open.value && event.target instanceof Node && !root.value?.contains(event.target)) close();
+    if (open.value && event.target instanceof Node && !root.value?.contains(event.target) && !popup.value?.contains(event.target)) close();
   };
   const escape = (event: KeyboardEvent) => {
     if (open.value && event.key === 'Escape') {
@@ -31,5 +32,5 @@ export function useSheetPopup() {
     document.removeEventListener('keydown', escape);
   });
   useBackHandler(() => { if (!open.value) return false; close(true); return true; });
-  return { root, open, toggle, close };
+  return { root, popup, open, toggle, close };
 }
