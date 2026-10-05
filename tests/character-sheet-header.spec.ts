@@ -24,17 +24,61 @@ async function openSheet(page: Page) {
   return () => template;
 }
 
+for (const width of [320, 1280]) {
+  test(`HP actions, modal keyboard controls and account menu at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const saved = await openSheet(page);
+    await expect(page.getByText('Интерактивный шаблон', { exact: false })).toHaveCount(0);
+    await expect(page.getByText('Истощение', { exact: true })).toHaveCount(0);
+    await page.locator('[data-account-menu-trigger]').click();
+    await expect(page.locator('[data-account-menu] a[href="/plugins"]')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    const temp = page.getByLabel('Временные HP', { exact: true });
+    await temp.fill('5'); await temp.blur();
+    const damage = page.getByRole('button', { name: 'Урон', exact: true });
+    await damage.click();
+    const dialog = page.getByRole('dialog', { name: 'Урон', exact: true });
+    const amount = dialog.getByLabel('Количество HP', { exact: true });
+    await expect(amount).toBeFocused();
+    await amount.fill('8');
+    await expect(dialog).toContainText('После: 7 / 10 (+0 врем.)');
+    const apply = dialog.getByRole('button', { name: 'Урон', exact: true });
+    await apply.focus(); await page.keyboard.press('Tab'); await expect(amount).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(dialog).toHaveCount(0);
+    await expect(damage).toBeFocused();
+    await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('7');
+    await expect(temp).toHaveValue('0');
+    await expect.poll(() => saved().data.combat.currentHp).toBe(7);
+    await page.getByRole('button', { name: 'Лечение', exact: true }).click();
+    const healing = page.getByRole('dialog', { name: 'Лечение', exact: true });
+    await healing.getByLabel('Количество HP', { exact: true }).fill('100');
+    await healing.getByRole('button', { name: 'Лечение', exact: true }).click();
+    await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('10');
+    await damage.click(); await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0); await expect(damage).toBeFocused();
+    await damage.click();
+    await page.locator('.dnd-hp-backdrop').click({ position: { x: 2, y: 2 } });
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => saved().data.combat.currentHp).toBe(10);
+    await page.reload();
+    await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('10');
+  });
+}
+
 for (const width of [320, 390, 760, 1280]) {
   test(`character header and full ability tiles fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const saved = await openSheet(page);
     const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
-    expect(await name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
+    await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
     expect((await name.boundingBox())!.height).toBeGreaterThan(45);
     await expect(page.getByText('Название в дашборде')).toHaveCount(0);
     const race = await page.getByRole('textbox', { name: 'Раса', exact: true }).boundingBox();
     const nameBox = (await name.boundingBox())!;
     expect(race!.y).toBeLessThan(nameBox.y + nameBox.height);
+    const classBox = (await page.getByRole('textbox', { name: 'Класс', exact: true }).boundingBox())!;
+    expect(classBox.y).toBeGreaterThanOrEqual(race!.y + race!.height);
     const level = (await page.getByLabel('Уровень', { exact: true }).boundingBox())!;
     const xp = (await page.locator('.dnd-cs-xp-bar').boundingBox())!;
     expect(xp.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height);
@@ -67,6 +111,24 @@ for (const width of [320, 390, 760, 1280]) {
     expect(tiles).toHaveLength(6);
     expect(Math.abs(tiles[0]!.y - tiles[1]!.y)).toBeLessThanOrEqual(1);
     expect(tiles[1]!.x).toBeGreaterThan(tiles[0]!.x);
+    const passives = await page.locator('.dnd-cs-passive').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+    expect(passives).toHaveLength(3);
+    expect(Math.max(...passives) - Math.min(...passives)).toBeLessThanOrEqual(1);
+    if (width <= 760) {
+      for (const tile of await page.locator('.dnd-cs-ability').all()) {
+        const title = (await tile.locator('.dnd-cs-ability-name').boundingBox())!;
+        const score = (await tile.locator('.dnd-cs-ability-score').boundingBox())!;
+        expect(await tile.locator('.dnd-cs-ability-score').evaluate(element => {
+          const input = element as HTMLInputElement, style = getComputedStyle(input);
+          const context = document.createElement('canvas').getContext('2d')!;
+          context.font = style.font;
+          return context.measureText(input.value).width <= input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+        })).toBe(true);
+        expect(Math.max(title.y, score.y)).toBeLessThan(Math.min(title.y + title.height, score.y + score.height));
+        const rolls = await tile.locator('.dnd-cs-roll-row .dnd-cs-roll').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+        expect(Math.max(...rolls) - Math.min(...rolls)).toBeLessThanOrEqual(1);
+      }
+    }
     for (const label of ['Сила', 'Ловкость', 'Телосложение', 'Интеллект', 'Мудрость', 'Харизма']) {
       const title = page.locator('.dnd-cs-ability-name').getByText(label, { exact: true });
       await expect(title).toHaveCount(1);
@@ -94,10 +156,22 @@ test('name height follows viewport changes and reloading keeps the name and titl
   const height = (await name.boundingBox())!.height;
   await page.setViewportSize({ width: 320, height: 900 });
   await expect.poll(async () => (await name.boundingBox())!.height).toBeGreaterThan(height);
-  expect(await name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
+  await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
   await name.fill('Лира'); await name.blur();
   await expect.poll(() => saved().title).toBe('Лира');
+  const race = (await page.getByRole('textbox', { name: 'Раса', exact: true }).boundingBox())!;
+  const classBox = (await page.getByRole('textbox', { name: 'Класс', exact: true }).boundingBox())!;
+  expect(Math.abs(race.y - classBox.y)).toBeLessThanOrEqual(1);
   await page.reload();
   await expect(name).toHaveValue('Лира');
   await expect(page.getByLabel('Опыт', { exact: true })).toHaveValue('350');
+});
+
+test('name height adapts when font metrics change after initial layout', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 900 });
+  await openSheet(page);
+  const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
+  await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
+  await page.addStyleTag({ content: '.dnd-cs textarea.dnd-cs-name, .dnd-cs-name-measure { font-size: 28px !important; }' });
+  await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
 });

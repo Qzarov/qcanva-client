@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
+import { runBackHandlers } from '../composables/useBackHandler';
 
 const mountSheet = () => {
   const data = reactive(createDndCharacterSheet());
@@ -12,6 +13,59 @@ const mountSheet = () => {
 };
 
 describe('DndCharacterSheet interactions', () => {
+  it.each([
+    { mode: 'Лечение', amount: '7', hp: 17, temp: 5 },
+    { mode: 'Лечение', amount: '100', hp: 20, temp: 5 },
+    { mode: 'Урон', amount: '3', hp: 10, temp: 2 },
+    { mode: 'Урон', amount: '8', hp: 7, temp: 0 },
+    { mode: 'Урон', amount: '100', hp: 0, temp: 0 },
+  ])('$mode $amount applies once, respects temporary HP and limits', async ({ mode, amount, hp, temp }) => {
+    const data = reactive(createDndCharacterSheet());
+    Object.assign(data.combat, { currentHp: 10, maxHp: 20, temporaryHp: 5, exhaustion: 3 });
+    const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
+    try {
+      await wrapper.get(`button[aria-label="${mode}"]`).trigger('click');
+      await wrapper.get('[aria-label="Количество HP"]').setValue(amount);
+      expect(data.combat.currentHp).toBe(10);
+      await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+      expect(data.combat.currentHp).toBe(hp);
+      expect(data.combat.temporaryHp).toBe(temp);
+      expect(data.combat.exhaustion).toBe(3);
+      expect(wrapper.emitted('change')).toHaveLength(1);
+      expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
+      expect(wrapper.text()).not.toContain('Истощение');
+    } finally { wrapper.unmount(); }
+  });
+
+  it('rejects invalid HP amounts and cancels without mutating HP', async () => {
+    const data = reactive(createDndCharacterSheet());
+    const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
+    try {
+      await wrapper.get('[aria-label="Урон"]').trigger('click');
+      for (const amount of ['', '0', '-1', '1.5', 'Infinity', '9007199254740992']) {
+        await wrapper.get('[aria-label="Количество HP"]').setValue(amount);
+        expect(wrapper.get('.dnd-hp-apply').attributes('disabled')).toBeDefined();
+        await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+        expect(data.combat.currentHp).toBe(10);
+      }
+      await wrapper.get('.dnd-hp-cancel').trigger('click');
+      expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
+      expect(wrapper.emitted('change')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
+  it('system Back closes the HP dialog without applying the draft amount', async () => {
+    const data = reactive(createDndCharacterSheet());
+    const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
+    try {
+      await wrapper.get('[aria-label="Урон"]').trigger('click');
+      await wrapper.get('[aria-label="Количество HP"]').setValue('5');
+      expect(runBackHandlers()).toBe(true);
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
+      expect(data.combat.currentHp).toBe(10);
+      expect(wrapper.emitted('change')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
   it.each([
     { dexterity: 16, bonus: 2, readonly: false, modifier: '+5', formula: '+ 5', total: '16' },
     { dexterity: 8, bonus: 0, readonly: true, modifier: '-1', formula: '− 1', total: '10' },
@@ -141,13 +195,10 @@ describe('DndCharacterSheet interactions', () => {
     expect(data.skills[firstSkillKey]!.proficiency).toBe('none');
   });
 
-  it('quick-changes HP and toggles inspiration', async () => {
+  it('toggles inspiration', async () => {
     const { data, wrapper } = mountSheet();
     data.combat.currentHp = 5;
     await wrapper.vm.$nextTick();
-    const hpBtns = wrapper.findAll('.dnd-cs-hp .dnd-cs-hp-btn');
-    await hpBtns[1]!.trigger('click'); // +
-    expect(data.combat.currentHp).toBe(6);
     await wrapper.get('.dnd-cs-toggle').trigger('click');
     expect(data.combat.inspiration).toBe(true);
   });
@@ -156,5 +207,8 @@ describe('DndCharacterSheet interactions', () => {
     const data = reactive(createDndCharacterSheet());
     const wrapper = mount(DndCharacterSheet, { props: { data, readonly: true } });
     expect(wrapper.find('.dnd-cs-add').exists()).toBe(false);
+    expect(wrapper.get('[aria-label="Лечение"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('[aria-label="Урон"]').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
   });
 });

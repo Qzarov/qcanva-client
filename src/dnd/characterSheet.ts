@@ -75,6 +75,14 @@ export interface DndCharacterSheetData {
 
 const ability = (): DndAbility => ({ score: 10, savingThrowProficient: false, customSavingThrowBonus: 0 });
 
+export const isHpAmount = (amount: number) => Number.isSafeInteger(amount) && amount > 0;
+export const calculateHpChange = (combat: DndCharacterSheetData['combat'], mode: 'heal' | 'damage', amount: number) => {
+  if (!isHpAmount(amount)) return { currentHp: combat.currentHp, temporaryHp: combat.temporaryHp };
+  if (mode === 'heal') return { currentHp: Math.min(combat.maxHp, combat.currentHp + amount), temporaryHp: combat.temporaryHp };
+  const absorbed = Math.min(combat.temporaryHp, amount);
+  return { currentHp: Math.max(0, combat.currentHp - (amount - absorbed)), temporaryHp: combat.temporaryHp - absorbed };
+};
+
 /** Character names are also resource titles; old sheets may use a root name. */
 export const characterSheetTitle = (source: unknown, fallback = 'Новый персонаж'): string => {
   const data = source as { identity?: { name?: unknown }; name?: unknown } | null;

@@ -8,7 +8,7 @@ import { createDndCharacterSheet } from '../dnd/characterSheet';
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'hero' } }) }));
 vi.mock('../api/client', () => ({ interactiveTemplates: { get: vi.fn(), update: vi.fn() }, uploadImage: vi.fn() }));
 vi.mock('../composables/useRecentResource', () => ({ markResourceOpened: vi.fn() }));
-vi.mock('../components/AccountMenu.vue', () => ({ default: { template: '<div />' } }));
+vi.mock('../components/AccountMenu.vue', () => ({ default: { name: 'AccountMenu', props: ['showPlugins'], template: '<div />' } }));
 
 describe('character sheet dashboard title', () => {
   let wrapper: ReturnType<typeof mount>;
@@ -26,6 +26,8 @@ describe('character sheet dashboard title', () => {
   it('removes the separate dashboard-title field', async () => {
     await open();
     expect(wrapper.text()).not.toContain('Название в дашборде');
+    expect(wrapper.text()).not.toContain('Интерактивный шаблон');
+    expect(wrapper.getComponent({ name: 'AccountMenu' }).props('showPlugins')).toBe(false);
   });
   it('saves the character name as the title, including subsequent edits', async () => {
     await open();
