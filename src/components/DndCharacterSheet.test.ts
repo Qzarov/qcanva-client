@@ -12,6 +12,34 @@ const mountSheet = () => {
 };
 
 describe('DndCharacterSheet interactions', () => {
+  it('labels every ability with its full name', () => {
+    const { wrapper } = mountSheet();
+    expect(wrapper.findAll('.dnd-cs-ability-name').map(node => node.text())).toEqual([
+      'Сила', 'Телосложение', 'Ловкость', 'Интеллект', 'Мудрость', 'Харизма',
+    ]);
+  });
+  it('edits a multiline character name without losing its full value', async () => {
+    const { data, wrapper } = mountSheet();
+    const name = wrapper.get('textarea[aria-label="Имя персонажа"]');
+    await name.setValue('Очень длинное имя персонажа\nс продолжением');
+    expect(data.identity.name).toBe('Очень длинное имя персонажа\nс продолжением');
+    expect(wrapper.emitted('change')).toBeTruthy();
+  });
+
+  it('edits experience inside the progress track and updates its fill', async () => {
+    const { data, wrapper } = mountSheet();
+    const track = wrapper.get('.dnd-cs-xp-bar');
+    await track.get('[aria-label="Опыт до следующего уровня"]').setValue('900');
+    await track.get('[aria-label="Опыт"]').setValue('450');
+    expect(data.identity.experience).toBe(450);
+    expect(data.identity.nextLevelExperience).toBe(900);
+    expect(track.attributes('aria-valuenow')).toBe('50');
+    await track.get('[aria-label="Опыт"]').setValue('1200');
+    expect(track.attributes('aria-valuenow')).toBe('100');
+    await track.get('[aria-label="Опыт до следующего уровня"]').setValue('0');
+    expect(track.attributes('aria-valuenow')).toBe('0');
+  });
+
   it('renders all 6 abilities, 18 skills and 7 tabs', () => {
     const { wrapper } = mountSheet();
     expect(wrapper.findAll('.dnd-cs-ability')).toHaveLength(6);

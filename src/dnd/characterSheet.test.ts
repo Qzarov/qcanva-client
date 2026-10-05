@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   abilityModifier,
   createDndCharacterSheet,
+  characterSheetTitle,
   formatModifier,
   normalizeDndCharacterSheet,
   savingThrowBonus,
@@ -15,6 +16,12 @@ import {
 } from './characterSheet';
 
 describe('D&D character sheet calculations', () => {
+  it('derives a resource title from the character name, with legacy and empty-name fallbacks', () => {
+    expect(characterSheetTitle({ identity: { name: '  Лира  ' } })).toBe('Лира');
+    expect(characterSheetTitle({ name: 'Элиан' })).toBe('Элиан');
+    expect(characterSheetTitle({ identity: { name: ' ' } })).toBe('Новый персонаж');
+    expect(characterSheetTitle(null, 'Старый персонаж')).toBe('Старый персонаж');
+  });
   it('calculates and formats ability modifiers', () => {
     expect(abilityModifier(17)).toBe(3);
     expect(abilityModifier(9)).toBe(-1);

@@ -582,6 +582,22 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
   });
 
+  it('uses the character name in dashboard cards and search without renaming kanban boards', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({ templates: [
+      { id: 'hero', title: 'Старое название', templateType: 'dnd-character', data: { identity: { name: 'Лира' } }, createdAt: '', updatedAt: '' },
+      { id: 'board', title: 'Планы', templateType: 'trello-board', data: { identity: { name: 'Не название доски' } }, createdAt: '', updatedAt: '' },
+    ] });
+    const wrapper = mountDashboard();
+    await flushPromises();
+    await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+    expect(wrapper.get('[data-template-resource="hero"] .card-title').text()).toBe('Лира');
+    expect(wrapper.get('[data-template-resource="board"] .card-title').text()).toBe('Планы');
+    (wrapper.vm as any).searchQuery = 'Лира';
+    await nextTick();
+    expect(wrapper.find('[data-template-resource="hero"]').exists()).toBe(true);
+    expect(wrapper.find('[data-template-resource="board"]').exists()).toBe(false);
+  });
+
   it('keeps a filed interactive template and a filed shared resource in their own sections', async () => {
     const template = {
       id: 'template-1', title: 'Board in folder', templateType: 'trello-board', data: {},

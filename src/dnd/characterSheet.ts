@@ -75,6 +75,13 @@ export interface DndCharacterSheetData {
 
 const ability = (): DndAbility => ({ score: 10, savingThrowProficient: false, customSavingThrowBonus: 0 });
 
+/** Character names are also resource titles; old sheets may use a root name. */
+export const characterSheetTitle = (source: unknown, fallback = 'Новый персонаж'): string => {
+  const data = source as { identity?: { name?: unknown }; name?: unknown } | null;
+  const name = data?.identity?.name ?? data?.name;
+  return typeof name === 'string' ? name.trim() || 'Новый персонаж' : fallback;
+};
+
 export const createDndCharacterSheet = (): DndCharacterSheetData => ({
   version: 1,
   displayMode: 'full',

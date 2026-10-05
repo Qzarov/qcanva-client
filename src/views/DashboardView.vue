@@ -1276,6 +1276,7 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { characterSheetTitle } from '../dnd/characterSheet';
 import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -1700,6 +1701,7 @@ export default defineComponent({
 
     const normalizeInteractiveTemplate = (template: any): InteractiveTemplateRecord => ({
       ...template,
+      title: template.templateType === 'dnd-character' ? characterSheetTitle(template.data, template.title || 'Новый персонаж') : template.title,
       type: 'interactive-template',
       folderId: template.folderId || null,
       tags: normalizeTags(template.tags),

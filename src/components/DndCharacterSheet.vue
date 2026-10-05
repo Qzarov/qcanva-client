@@ -13,19 +13,24 @@
       </div>
 
       <div class="dnd-cs-identity">
-        <input class="dnd-cs-name" :readonly="readonly" :value="data.identity.name" placeholder="Имя персонажа" aria-label="Имя персонажа" @change="setIdentity('name', evVal($event))" />
-        <div class="dnd-cs-subline">
-          <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', evVal($event))" />
-          <span class="dnd-cs-dot">—</span>
-          <input :readonly="readonly" :value="data.identity.className" placeholder="Класс" aria-label="Класс" @change="setIdentity('className', evVal($event))" />
+        <div class="dnd-cs-identity-line">
+          <textarea ref="nameInput" class="dnd-cs-name" rows="1" :readonly="readonly" :value="data.identity.name" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
+          <div class="dnd-cs-subline">
+            <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', evVal($event))" />
+            <span class="dnd-cs-dot">—</span>
+            <input :readonly="readonly" :value="data.identity.className" placeholder="Класс" aria-label="Класс" @change="setIdentity('className', evVal($event))" />
+          </div>
         </div>
         <div class="dnd-cs-xp">
-          <label class="dnd-cs-level">Уровень <input type="number" min="1" max="20" :readonly="readonly" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', evVal($event), 1, 20)" /></label>
-          <label class="dnd-cs-xp-field">XP <input type="number" min="0" :readonly="readonly" :value="data.identity.experience" aria-label="Опыт" @change="setNumber(data.identity, 'experience', evVal($event), 0)" /></label>
-          <span class="dnd-cs-xp-next">/ {{ data.identity.nextLevelExperience || '—' }}
-            <input type="number" min="0" :readonly="readonly" :value="data.identity.nextLevelExperience" aria-label="Опыт до следующего уровня" @change="setNumber(data.identity, 'nextLevelExperience', evVal($event), 0)" />
-          </span>
-          <div class="dnd-cs-xp-bar" role="progressbar" :aria-valuenow="xpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: xpPercent + '%' }"></span></div>
+          <label class="dnd-cs-level"><span>Ур.</span> <input type="number" min="1" max="20" :readonly="readonly" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', evVal($event), 1, 20)" /></label>
+          <div class="dnd-cs-xp-bar" role="progressbar" aria-label="Прогресс опыта" :aria-valuenow="xpPercent" aria-valuemin="0" aria-valuemax="100">
+            <span class="dnd-cs-xp-fill" :style="{ width: xpPercent + '%' }"></span>
+            <div class="dnd-cs-xp-values">
+              <input type="number" min="0" :readonly="readonly" :value="data.identity.experience" aria-label="Опыт" @change="setNumber(data.identity, 'experience', evVal($event), 0)" />
+              <b>/</b>
+              <input type="number" min="0" :readonly="readonly" :value="data.identity.nextLevelExperience" aria-label="Опыт до следующего уровня" @change="setNumber(data.identity, 'nextLevelExperience', evVal($event), 0)" />
+            </div>
+          </div>
         </div>
       </div>
     </header>
@@ -46,6 +51,8 @@
         <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Добавить HP" @click="changeHp(1)">+</button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
+    </div>
+    <div class="dnd-cs-combat-extra">
       <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /></div>
       <button type="button" class="dnd-cs-toggle" :class="{ on: data.combat.inspiration }" :disabled="readonly" :aria-pressed="data.combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
       <div class="dnd-cs-stat dnd-cs-exhaustion"><span>Истощение</span>
@@ -71,7 +78,7 @@
         <section class="dnd-cs-abilities">
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
             <header class="dnd-cs-ability-head">
-              <span class="dnd-cs-ability-name">{{ ability.short }}</span>
+              <span class="dnd-cs-ability-name">{{ ability.label }}</span>
               <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, evVal($event))" />
             </header>
             <div class="dnd-cs-roll-row">
@@ -230,7 +237,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, onBeforeUnmount, ref, type PropType } from 'vue';
+import { computed, defineComponent, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue';
 import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
@@ -257,6 +264,23 @@ export default defineComponent({
     // `<input @change>` gives a buffered value (fires on blur), matching the
     // parent's own buffered autosave - no per-keystroke saves.
     const evVal = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
+    const nameInput = ref<HTMLTextAreaElement | null>(null);
+    const resizeName = () => {
+      const input = nameInput.value;
+      if (!input) return;
+      input.style.height = 'auto';
+      input.style.height = `${input.scrollHeight + 2}px`;
+    };
+    let nameObserver: ResizeObserver | undefined;
+    onMounted(() => {
+      resizeName();
+      if (typeof ResizeObserver !== 'undefined' && nameInput.value?.parentElement) {
+        nameObserver = new ResizeObserver(resizeName);
+        nameObserver.observe(nameInput.value.parentElement);
+      }
+    });
+    watch(() => props.data.identity.name, resizeName, { flush: 'post' });
+    onBeforeUnmount(() => nameObserver?.disconnect());
 
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
     const initiative = computed(() => initiativeBonus(props.data));
@@ -368,7 +392,7 @@ export default defineComponent({
       weaponOptions: ['Простое', 'Воинское'],
       proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
-      evVal, setIdentity, setNumber, setField, setPersonality,
+      nameInput, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
       skillMod, skillProf, skillProfTitle, cycleSkill,
       changeHp, changeExhaustion, toggleInspiration,
@@ -473,8 +497,8 @@ export default defineComponent({
 .dnd-cs-hp-btn:disabled { opacity: .45; cursor: default; }
 
 /* ===== TOP CARD (identity + combat as one compact block) ===== */
-.dnd-cs-topcard { display: flex; flex-direction: column; gap: 10px; padding: 13px 16px; }
-.dnd-cs-header { display: flex; gap: 14px; align-items: center; }
+.dnd-cs-topcard { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .8fr); gap: 12px 20px; padding: 13px 16px; }
+.dnd-cs-header { display: flex; gap: 14px; align-items: start; min-width: 0; }
 .dnd-cs-portrait {
   position: relative; flex: 0 0 76px; display: grid; place-items: center;
   width: 76px; height: 76px; border-radius: 22px; overflow: visible;
@@ -487,23 +511,28 @@ export default defineComponent({
 .dnd-cs-portrait-actions { position: absolute; right: -6px; bottom: -6px; display: flex; gap: 2px; }
 .dnd-cs-portrait-actions button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 50%; background: rgba(10,14,11,.85); color: var(--ui-text); cursor: pointer; }
 .dnd-cs-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.dnd-cs-name { font-size: 26px; font-weight: 800; letter-spacing: -.01em; padding: 2px 4px; }
-.dnd-cs-subline { display: flex; align-items: center; gap: 4px; color: var(--dnd-text-dim); font-size: 13px; }
-.dnd-cs-subline input { flex: 1; min-width: 0; color: var(--dnd-text-dim); }
-.dnd-cs-dot { opacity: .6; }
-.dnd-cs-xp { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); }
-.dnd-cs-level { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; color: var(--ui-text); }
-.dnd-cs-level input, .dnd-cs-xp-field input { width: 58px; }
-.dnd-cs-xp-field { display: inline-flex; align-items: center; gap: 4px; }
-.dnd-cs-xp-next { display: inline-flex; align-items: center; gap: 4px; }
-.dnd-cs-xp-next input { width: 66px; }
+.dnd-cs-identity-line { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; gap: 6px; }
+.dnd-cs textarea.dnd-cs-name { min-height: 0; resize: none; overflow: hidden; font-size: 24px; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; padding: 2px 4px; overflow-wrap: anywhere; }
+.dnd-cs-subline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 4px; padding-top: 6px; color: var(--dnd-text-dim); font-size: 13px; }
+.dnd-cs-subline input { width: 100%; min-width: 0; color: var(--dnd-text-dim); }
+.dnd-cs-dot { display: none; }
+.dnd-cs-xp { display: flex; align-items: stretch; gap: 0; font-size: 11px; color: var(--dnd-text-dim); }
+.dnd-cs-level { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; padding: 3px 5px; border: 1px solid var(--dnd-glass-border); border-radius: 12px 0 0 12px; font-weight: 700; color: var(--ui-text); background: var(--dnd-glass-accent-soft); }
+.dnd-cs-level input[type='number'] { width: 34px; min-width: 0; padding: 3px 1px; text-align: center; }
+.dnd-cs-xp-bar { position: relative; flex: 1; min-width: 0; border: 1px solid var(--dnd-glass-border); border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; background: rgba(0,0,0,.45); }
+.dnd-cs-xp-fill { position: absolute; inset: 0 auto 0 0; background: var(--dnd-glass-accent-soft); transition: width 200ms ease; pointer-events: none; }
+.dnd-cs-xp-values { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; gap: 2px; }
+.dnd-cs-xp-values input[type='number'] { width: 50%; min-width: 0; max-width: 100px; padding: 4px 1px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dnd-cs-xp-values b { flex: 0 0 auto; }
+.dnd-cs-xp input[type='number'] { appearance: textfield; -moz-appearance: textfield; }
+.dnd-cs-xp input::-webkit-inner-spin-button, .dnd-cs-xp input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
-/* Progress bars (XP + HP): dark track, acid-green fill with glow. */
-.dnd-cs-xp-bar, .dnd-cs-hp-bar {
+/* HP progress: dark track, acid-green fill with glow. */
+.dnd-cs-hp-bar {
   flex: 1 1 120px; min-width: 90px; height: 7px; border-radius: 999px;
   background: rgba(0, 0, 0, 0.45); overflow: hidden; border: 1px solid var(--dnd-glass-border);
 }
-.dnd-cs-xp-bar span, .dnd-cs-hp-bar span {
+.dnd-cs-hp-bar span {
   display: block; height: 100%; border-radius: 999px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--dnd-glass-accent) 70%, #0a7a2e), var(--dnd-glass-accent));
   box-shadow: 0 0 10px var(--dnd-glass-accent-glow);
@@ -511,8 +540,9 @@ export default defineComponent({
 }
 .dnd-cs-hp-bar { flex-basis: 100%; height: 8px; }
 
-/* Combat strip - flows straight under identity as one block (no separator). */
+/* Combat values sit right of identity on desktop and below it on mobile. */
 .dnd-cs-combat { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+.dnd-cs-combat-extra { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
 .dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-stat span { white-space: nowrap; }
 .dnd-cs-stat input { width: 50px; font-size: 14px; font-weight: 700; color: var(--ui-text); text-transform: none; letter-spacing: 0; }
@@ -545,7 +575,7 @@ export default defineComponent({
 .dnd-cs-abilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .dnd-cs-ability { padding: 10px; }
 .dnd-cs-ability-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.dnd-cs-ability-name { font-weight: 800; font-size: 12px; letter-spacing: .08em; color: var(--ui-text); flex: 1; }
+.dnd-cs-ability-name { font-weight: 800; font-size: 12px; color: var(--ui-text); flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .dnd-cs-ability-score { width: 46px !important; flex: 0 0 46px; font-weight: 800; font-size: 18px; text-align: center; padding: 2px; }
 /* Check + save roll row under the ability title. */
 .dnd-cs-roll-row { display: flex; gap: 6px; margin-bottom: 8px; }
@@ -697,10 +727,25 @@ export default defineComponent({
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
-  .dnd-cs-topcard { padding: 14px; }
-  .dnd-cs-name { font-size: 22px; }
+  .dnd-cs-topcard { padding: 12px; grid-template-columns: minmax(0, 1fr); }
+  .dnd-cs-header { gap: 8px; }
+  .dnd-cs-portrait { flex-basis: 48px; width: 48px; height: 48px; border-radius: 14px; font-size: 24px; }
+  .dnd-cs-portrait img { border-radius: 13px; }
+  .dnd-cs textarea.dnd-cs-name { font-size: 20px; }
+  .dnd-cs-subline { font-size: 12px; gap: 2px; }
+  .dnd-cs-subline input { padding-inline: 1px; }
   .dnd-cs-body { grid-template-columns: 1fr; }
-  .dnd-cs-abilities { grid-template-columns: 1fr; }
+  .dnd-cs-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .dnd-cs-ability { padding: 8px; min-width: 0; }
+  .dnd-cs-ability-head { gap: 4px; flex-direction: column; align-items: stretch; }
+  .dnd-cs-ability-name { min-height: 30px; line-height: 1.25; }
+  .dnd-cs-ability-score { width: 100% !important; flex-basis: auto; appearance: textfield; -moz-appearance: textfield; }
+  .dnd-cs-ability-score::-webkit-inner-spin-button, .dnd-cs-ability-score::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .dnd-cs-roll-row { flex-direction: column; align-items: stretch; }
+  .dnd-cs-roll { justify-content: space-between; padding: 5px 6px; }
+  .dnd-cs-save-cell .dnd-cs-roll { flex: 1; min-width: 0; }
+  .dnd-cs-skills li { gap: 3px; }
+  .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
   .dnd-cs-combat { gap: 8px 12px; }
   .dnd-cs-stat input { width: 46px; }
   .dnd-cs-attack-head { display: none; }

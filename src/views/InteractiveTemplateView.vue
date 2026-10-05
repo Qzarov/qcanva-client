@@ -6,7 +6,6 @@
     </header>
     <main v-if="template" class="template-editor">
       <div class="template-editor-head">
-        <label>Название в дашборде<input v-model="template.title" @change="save" /></label>
         <span class="template-kind">Интерактивный шаблон · D&D</span>
       </div>
       <DndCharacterSheet
@@ -26,7 +25,7 @@ import { defineComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
-import { createDndCharacterSheet, normalizeDndCharacterSheet } from '../dnd/characterSheet';
+import { characterSheetTitle, createDndCharacterSheet, normalizeDndCharacterSheet } from '../dnd/characterSheet';
 import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 
@@ -43,7 +42,7 @@ export default defineComponent({
       if (!template.value) return;
       saving.value = true;
       try {
-        template.value = await interactiveTemplates.update(template.value.id, { title: template.value.title, data });
+        template.value = await interactiveTemplates.update(template.value.id, { title: characterSheetTitle(data), data });
       } catch (e: any) {
         error.value = e?.message || 'Не удалось сохранить шаблон';
       } finally {
@@ -103,8 +102,6 @@ export default defineComponent({
 .template-save-status,.template-kind { color:var(--ui-text-secondary); font-size:13px; }
 .template-editor { max-width:1080px; margin:auto; }
 .template-editor-head { display:flex; justify-content:space-between; gap:16px; align-items:end; margin-bottom:20px; flex-wrap:wrap; }
-.template-editor-head label { display:grid; gap:6px; color:var(--ui-text-secondary); font-size:13px; }
-.template-editor-head input { width:min(360px,75vw); padding:9px; border-radius:6px; border:1px solid var(--ui-border); background:var(--ui-surface-subtle); color:var(--ui-text); }
 .template-error { text-align:center; color:var(--ui-danger-foreground); }
 @media (max-width: 760px) { .template-page { padding:12px; } }
 </style>
