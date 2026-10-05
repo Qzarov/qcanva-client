@@ -24,7 +24,9 @@ write_contract "$BACK_CONTRACT_FILE" 'paragraph|block|p|||'
 
 cat > "$FAKE_BIN/git" <<'EOF'
 #!/usr/bin/env bash
-if [[ "$1" == "rev-parse" ]]; then
+if [[ "$1" == "rev-parse" && "$2" == "--abbrev-ref" ]]; then
+  printf '%s\n' "${FAKE_BRANCH:-main}"
+elif [[ "$1" == "rev-parse" ]]; then
   printf 'test-commit\n'
 fi
 EOF
@@ -67,6 +69,13 @@ PATH="$FAKE_BIN:$PATH" \
 
 [[ "$(cat "$FRONT_ROOT/dist/index.html")" == "new build release-one" ]]
 [[ "$(cat "$FRONT_ROOT/dist.previous/index.html")" == "new build release-two" ]]
+# Production deploys main: a checkout left on another branch is refused, not pulled.
+if FAKE_BRANCH=dev PATH="$FAKE_BIN:$PATH" REPO_DIR="$REPO_DIR" DEPLOY_ROOT="$FRONT_ROOT" BACK_CONTRACT="$BACK_CONTRACT_FILE" \
+  bash "$REPO_ROOT/scripts/deploy-production.sh" >"$TEST_ROOT/wrong-branch.log" 2>&1; then
+  printf 'expected a deploy from dev to be refused\n' >&2
+  exit 1
+fi
+grep -q 'not on main' "$TEST_ROOT/wrong-branch.log"
 printf 'deploy-production test passed\n'
 
 # A node inventory that disagrees with the backend must stop the deploy, since

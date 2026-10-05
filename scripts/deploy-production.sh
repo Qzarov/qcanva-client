@@ -7,6 +7,8 @@ RELEASES_DIR="$DEPLOY_ROOT/releases"
 DIST_LINK="$DEPLOY_ROOT/dist"
 PREVIOUS_LINK="$DEPLOY_ROOT/dist.previous"
 RELEASE_ID="${RELEASE_ID:-}"
+# Production deploys main; dev is where work lands before it is released.
+DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
 
 fail() {
   printf 'Deploy failed: %s\n' "$*" >&2
@@ -68,7 +70,8 @@ deploy() {
   cd "$REPO_DIR"
   git diff --quiet || fail 'repository has unstaged changes'
   git diff --cached --quiet || fail 'repository has staged changes'
-  git pull --ff-only origin dev
+  [[ "$(git rev-parse --abbrev-ref HEAD)" == "$DEPLOY_BRANCH" ]] || fail "checkout is not on $DEPLOY_BRANCH (git checkout $DEPLOY_BRANCH first)"
+  git pull --ff-only origin "$DEPLOY_BRANCH"
   # The document node inventory is duplicated in canvas-server-back, and each
   # repository's tests only pin its own copy — so both suites pass while the
   # two drift. This is the only point where both are checked out together.
