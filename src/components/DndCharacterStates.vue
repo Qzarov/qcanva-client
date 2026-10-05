@@ -1,12 +1,11 @@
 <template>
   <section ref="root" class="dnd-cs-states dnd-glass" aria-label="Состояния">
-    <h3>Состояния</h3>
     <div class="dnd-cs-state-list">
       <button type="button" class="dnd-cs-toggle" :class="{ on: combat.inspiration }" :disabled="readonly" :aria-pressed="combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
       <button v-for="condition in combat.conditions" :key="condition" type="button" class="dnd-cs-condition" :disabled="readonly" :aria-label="'Удалить состояние: ' + conditionLabel(condition)" @click="remove(condition)">
         {{ conditionLabel(condition) }} <span aria-hidden="true">×</span>
       </button>
-      <button type="button" class="dnd-cs-add-condition" aria-label="Добавить состояние" :aria-expanded="Boolean(open)" :disabled="readonly || !available.length" @click="toggle('conditions', $event)">+ добавить</button>
+      <button type="button" class="dnd-cs-add-condition" aria-label="Добавить состояние" :aria-expanded="Boolean(open)" :disabled="readonly || !available.length" @click="toggle('conditions', $event)">+ состояние</button>
     </div>
     <div v-if="open && !readonly" class="dnd-cs-condition-menu" role="group" aria-label="Доступные состояния">
       <button v-for="condition in available" :key="condition.key" type="button" :aria-label="'Добавить: ' + condition.label" @click="add(condition.key)">{{ condition.label }}</button>
@@ -39,7 +38,6 @@ watch(() => props.readonly, value => { if (value) close(); });
 
 <style scoped>
 .dnd-cs-states { position:relative; padding:12px; }
-h3 { margin:0 0 10px; font-size:12px; color:var(--dnd-text-dim); }
 .dnd-cs-state-list { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .dnd-cs-state-list button { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border:1px solid var(--dnd-glass-border); border-radius:999px; background:rgba(255,255,255,.04); color:var(--dnd-text-dim); font:inherit; font-size:12px; cursor:pointer; max-width:100%; overflow-wrap:anywhere; }
 .dnd-cs-state-list button:disabled { opacity:.5; cursor:default; }

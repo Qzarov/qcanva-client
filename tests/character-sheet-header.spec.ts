@@ -127,7 +127,7 @@ for (const width of [320, 390, 760, 1280]) {
       const passive = page.locator('.dnd-cs-passive').first();
       const label = (await passive.locator('span').boundingBox())!;
       const value = (await passive.locator('strong').boundingBox())!;
-      expect(value.x).toBeGreaterThan(label.x + label.width);
+      expect(label.x).toBeGreaterThan(value.x + value.width);
       expect(Math.abs(label.y + label.height / 2 - value.y - value.height / 2)).toBeLessThanOrEqual(1);
     }
     const back = (await page.locator('.template-header .back-btn').boundingBox())!;
@@ -222,7 +222,17 @@ for (const width of [320, 1280]) {
     const saved = await openSheet(page);
     const states = page.getByRole('region', { name: 'Состояния', exact: true });
     const passives = page.getByRole('region', { name: 'Пассивные характеристики', exact: true });
-    expect((await states.boundingBox())!.y).toBeGreaterThanOrEqual((await passives.boundingBox())!.y + (await passives.boundingBox())!.height);
+    const stateBox = (await states.boundingBox())!;
+    const passiveBox = (await passives.boundingBox())!;
+    if (width > 760) {
+      expect(Math.abs(stateBox.y - passiveBox.y)).toBeLessThanOrEqual(1);
+      expect(stateBox.x).toBeGreaterThanOrEqual(passiveBox.x + passiveBox.width);
+    } else {
+      expect(stateBox.y).toBeGreaterThanOrEqual(passiveBox.y + passiveBox.height);
+      expect(passiveBox.height).toBeLessThanOrEqual(62);
+    }
+    await expect(states.getByRole('heading')).toHaveCount(0);
+    await expect(states.locator('.dnd-cs-add-condition')).toHaveText('+ состояние');
     await states.getByRole('button', { name: 'Вдохновение' }).click();
     const add = states.getByRole('button', { name: 'Добавить состояние', exact: true });
     await add.click();
@@ -246,16 +256,51 @@ for (const width of [320, 1280]) {
     await expect(menu).toHaveCount(0);
     await states.getByRole('button', { name: 'Удалить состояние: Отравлен', exact: true }).click();
     await expect.poll(() => saved().data.combat.conditions).toEqual([]);
+    await page.evaluate(() => document.fonts.ready);
+    if (width <= 760) {
+      expect((await passives.boundingBox())!.height).toBeLessThanOrEqual(62);
+    }
     for (const label of ['О пассивном восприятии', 'О пассивном анализе', 'О пассивной проницательности']) {
       const button = page.getByRole('button', { name: label, exact: true });
+      const passiveBefore = await passives.boundingBox();
+      const stateBefore = await states.boundingBox();
       await button.click();
       await expect(page.getByRole('tooltip')).toContainText('Пассивная характеристика:');
       await expect(page.getByRole('tooltip')).toContainText('без броска');
       const bounds = (await page.getByRole('tooltip').boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+      const buttonBox = (await button.boundingBox())!;
+      expect(bounds.y + bounds.height).toBeLessThanOrEqual(buttonBox.y);
+      expect(await page.getByRole('tooltip').evaluate(element => getComputedStyle(element).position)).toBe('fixed');
+      expect(await passives.boundingBox()).toEqual(passiveBefore);
+      expect(await states.boundingBox()).toEqual(stateBefore);
+      expect(await page.getByRole('tooltip').evaluate(element => {
+        const box = element.getBoundingClientRect();
+        const hint = element as HTMLElement;
+        const original = hint.style.pointerEvents;
+        hint.style.pointerEvents = 'auto';
+        const topmost = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        hint.style.pointerEvents = original;
+        return topmost === element;
+      })).toBe(true);
+      if (label === 'О пассивном восприятии') await page.screenshot({ path: `/tmp/qcanva-passive-hint-${width}.png`, fullPage: true, animations: 'disabled' });
       await button.click();
       await expect(page.getByRole('tooltip')).toHaveCount(0);
     }
   });
 }
+
+test('mobile HP action buttons center their contents consistently', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await openSheet(page);
+  for (const mode of ['Лечение', 'Урон']) {
+    await page.getByRole('button', { name: mode, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: mode, exact: true });
+    for (const button of await dialog.getByRole('button').all()) {
+      expect(await button.evaluate(element => getComputedStyle(element).justifyContent)).toBe('center');
+      expect(await button.evaluate(element => getComputedStyle(element).textAlign)).toBe('center');
+    }
+    await page.keyboard.press('Escape');
+  }
+});

@@ -60,8 +60,10 @@
     </section>
 
     <!-- ===== PASSIVE SCORES (compact, up top) ===== -->
-    <DndPassiveScores :items="passives" />
-    <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
+    <div class="dnd-cs-status-row">
+      <DndPassiveScores :items="passives" />
+      <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
+    </div>
 
     <!-- ===== BODY: abilities+skills (left) | tabs (right) ===== -->
     <div class="dnd-cs-body">
@@ -600,6 +602,7 @@ export default defineComponent({
 
 /* ===== BODY ===== */
 .dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); gap: 14px; align-items: start; }
+.dnd-cs-status-row { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:14px; align-items:start; }
 .dnd-cs-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .dnd-cs-right { min-width: 0; }
 
@@ -753,6 +756,7 @@ export default defineComponent({
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
+  .dnd-cs-status-row { grid-template-columns:minmax(0,1fr); }
   .dnd-cs-topcard { padding: 12px; grid-template-columns: minmax(0, 1fr); }
   .dnd-cs-header { grid-template-columns:48px minmax(0,1fr); gap:8px; }
   .dnd-cs-portrait { flex-basis: 48px; width: 48px; height: 48px; border-radius: 14px; font-size: 24px; }

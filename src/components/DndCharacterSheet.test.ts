@@ -32,7 +32,7 @@ describe('DndCharacterSheet interactions', () => {
   });
 
   it('system Back closes condition choices and passive help without changing the sheet', async () => {
-    const { wrapper } = mountSheet();
+    const wrapper = mount(DndCharacterSheet, { props: { data: reactive(createDndCharacterSheet()) }, global: { stubs: { Teleport: true } } });
     try {
       await wrapper.get('[aria-label="Добавить состояние"]').trigger('click');
       expect(runBackHandlers()).toBe(true);
