@@ -13,6 +13,52 @@ const mountSheet = () => {
 };
 
 describe('DndCharacterSheet interactions', () => {
+  it('adds and removes conditions without duplicating them or changing roll modifiers', async () => {
+    const { data, wrapper } = mountSheet();
+    try {
+      const states = wrapper.get('[aria-label="Состояния"]');
+      expect(states.text()).toContain('Вдохновение');
+      await states.get('[aria-label="Добавить состояние"]').trigger('click');
+      await states.get('[aria-label="Добавить: Отравлен"]').trigger('click');
+      expect(data.combat.conditions).toEqual(['poisoned']);
+      expect(data.abilities.strength.score).toBe(10);
+      expect(wrapper.emitted('change')).toHaveLength(1);
+      await states.get('[aria-label="Добавить состояние"]').trigger('click');
+      expect(states.find('[aria-label="Добавить: Отравлен"]').exists()).toBe(false);
+      await states.get('[aria-label="Удалить состояние: Отравлен"]').trigger('click');
+      expect(data.combat.conditions).toEqual([]);
+      expect(wrapper.emitted('change')).toHaveLength(2);
+    } finally { wrapper.unmount(); }
+  });
+
+  it('system Back closes condition choices and passive help without changing the sheet', async () => {
+    const { wrapper } = mountSheet();
+    try {
+      await wrapper.get('[aria-label="Добавить состояние"]').trigger('click');
+      expect(runBackHandlers()).toBe(true);
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[aria-label="Доступные состояния"]').exists()).toBe(false);
+      await wrapper.get('[aria-label="О пассивном восприятии"]').trigger('click');
+      expect(wrapper.get('[role="tooltip"]').text()).toContain('без броска');
+      expect(runBackHandlers()).toBe(true);
+      await wrapper.vm.$nextTick();
+      expect(wrapper.find('[role="tooltip"]').exists()).toBe(false);
+      expect(wrapper.emitted('change')).toBeUndefined();
+    } finally { wrapper.unmount(); }
+  });
+
+  it('preserves unknown saved conditions and disables state mutations in readonly mode', async () => {
+    const data = reactive(createDndCharacterSheet());
+    data.combat.conditions = ['Магическая метка'];
+    const wrapper = mount(DndCharacterSheet, { props: { data, readonly: true } });
+    try {
+      expect(wrapper.get('[aria-label="Состояния"]').text()).toContain('Магическая метка');
+      expect(wrapper.get('[aria-label="Добавить состояние"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.get('[aria-label="Удалить состояние: Магическая метка"]').attributes('disabled')).toBeDefined();
+      await wrapper.get('[aria-label="Удалить состояние: Магическая метка"]').trigger('click');
+      expect(data.combat.conditions).toEqual(['Магическая метка']);
+    } finally { wrapper.unmount(); }
+  });
   it.each([
     { mode: 'Лечение', amount: '7', hp: 17, temp: 5 },
     { mode: 'Лечение', amount: '100', hp: 20, temp: 5 },

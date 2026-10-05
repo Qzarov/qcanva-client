@@ -128,6 +128,9 @@ export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetDa
   base.identity.level = Math.max(1, asNumber(data.identity?.level ?? data.level, base.identity.level));
   base.proficiencyBonus = Math.max(0, asNumber(data.proficiencyBonus, base.proficiencyBonus));
   Object.assign(base.combat, data.combat || {});
+  base.combat.conditions = Array.isArray(data.combat?.conditions)
+    ? [...new Set<string>(data.combat.conditions.filter((value: unknown): value is string => typeof value === 'string').map((value: string) => value.trim()).filter(Boolean))]
+    : [];
   base.combat.currentHp = Math.max(0, asNumber(data.combat?.currentHp ?? data.hp, base.combat.currentHp));
   base.combat.maxHp = Math.max(1, asNumber(data.combat?.maxHp, base.combat.maxHp));
   base.combat.temporaryHp = Math.max(0, asNumber(data.combat?.temporaryHp, base.combat.temporaryHp));

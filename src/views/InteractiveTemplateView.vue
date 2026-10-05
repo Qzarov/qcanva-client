@@ -100,6 +100,8 @@ export default defineComponent({
 .template-header { position:sticky; top:0; z-index:30; display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:56px; padding:10px 18px; pointer-events:none; }
 .template-header > * { pointer-events:auto; }
 .template-header :deep(.back-btn), .template-header :deep(.account-menu-trigger) { background:var(--ui-glass-tint),var(--ui-glass-bg); border:1px solid var(--ui-glass-border); box-shadow:inset 0 1px 0 var(--ui-glass-highlight),var(--ui-glass-shadow); backdrop-filter:blur(var(--ui-glass-blur)) saturate(1.2); color:var(--ui-text); }
+.template-header :deep(.back-btn) { width:36px; height:36px; min-width:36px; border-radius:999px; }
+.template-header :deep(.account-menu-trigger) { border-radius:999px; }
 .template-header-actions { display:flex; align-items:center; gap:10px; }
 .template-save-status { color:var(--ui-text-secondary); font-size:13px; }
 .template-editor { max-width:1120px; margin:auto; padding:20px; }

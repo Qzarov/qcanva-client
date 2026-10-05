@@ -48,5 +48,5 @@ const trapTab = (event: KeyboardEvent) => {
 .dnd-hp-dialog label { display: grid; gap: 8px; }
 .dnd-hp-dialog input { width: 100%; box-sizing: border-box; padding: 10px; font: inherit; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-subtle); color: var(--ui-text); }
 .dnd-hp-dialog p { font-size: 13px; color: var(--ui-text-secondary); }
-.dnd-hp-dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dnd-hp-dialog-actions { display: flex; justify-content: center; gap: 8px; }
 </style>

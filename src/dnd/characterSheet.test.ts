@@ -16,6 +16,11 @@ import {
 } from './characterSheet';
 
 describe('D&D character sheet calculations', () => {
+  it('normalizes saved conditions without dropping unknown labels or accepting malformed values', () => {
+    expect(normalizeDndCharacterSheet({ combat: { conditions: ['poisoned', 'poisoned', '  Магическая метка  ', '', null, 12] } }).combat.conditions)
+      .toEqual(['poisoned', 'Магическая метка']);
+    expect(normalizeDndCharacterSheet({ combat: { conditions: 'poisoned' } }).combat.conditions).toEqual([]);
+  });
   it('derives a resource title from the character name, with legacy and empty-name fallbacks', () => {
     expect(characterSheetTitle({ identity: { name: '  Лира  ' } })).toBe('Лира');
     expect(characterSheetTitle({ name: 'Элиан' })).toBe('Элиан');
