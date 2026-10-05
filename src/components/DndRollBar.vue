@@ -59,4 +59,10 @@ watch(open, async (value) => { if (value) { await nextTick(); popup.value?.query
 .dnd-roll-weapon-menu { position:fixed; z-index:1000; display:grid; gap:4px; width:220px; padding:6px; border-radius:12px; border:1px solid var(--ui-border); background:var(--ui-surface-solid); box-shadow:var(--ui-glass-shadow); }
 .dnd-roll-weapon-menu button { display:flex; justify-content:space-between; gap:8px; padding:8px 10px; border:0; border-radius:8px; background:transparent; color:var(--ui-text); font:inherit; font-size:13px; text-align:left; cursor:pointer; }
 .dnd-roll-weapon-menu button:hover, .dnd-roll-weapon-menu button:focus-visible { background:var(--ui-surface-subtle); }
+@media (max-width:760px) {
+  /* Touch targets: these are the buttons used every turn. */
+  .dnd-roll-mode button, .dnd-roll-attack, .dnd-roll-log-button { min-height:44px; }
+  .dnd-roll-mode button { padding:6px 12px; }
+  .dnd-roll-weapon-menu button { min-height:44px; }
+}
 </style>

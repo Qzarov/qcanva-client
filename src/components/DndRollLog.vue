@@ -11,6 +11,11 @@
           <li v-for="roll in history" :key="roll.id" :class="{ 'is-crit': roll.natural === 'max', 'is-fumble': roll.natural === 'min' }">
             <div class="dnd-roll-log-head"><span>{{ ROLL_KIND_LABEL[roll.kind] }} · {{ roll.label }}<template v-if="roll.damageType"> · {{ roll.damageType }}</template></span><time>{{ time(roll.at) }}</time></div>
             <div class="dnd-roll-log-detail">{{ describeRoll(roll) }} = <strong>{{ roll.total }}</strong></div>
+            <div v-if="awaitsDamage(roll)" class="dnd-roll-log-actions">
+              <button v-for="(option, index) in roll.damage" :key="index" type="button" @click="emit('damage', roll.id, index)">
+                {{ roll.natural === 'max' ? 'Крит' : 'Урон' }}{{ roll.damage!.length > 1 ? ' · ' + option.label.toLowerCase() : '' }}: {{ option.formula.text }}
+              </button>
+            </div>
           </li>
         </ol>
         <p class="dnd-roll-log-note">Последние 30 бросков этой вкладки. Скоро броски можно будет отправлять в чат канваса.</p>
@@ -21,11 +26,11 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { describeRoll, ROLL_KIND_LABEL, type SheetRoll } from '../dnd/useSheetRolls';
+import { awaitsDamage, describeRoll, ROLL_KIND_LABEL, type SheetRoll } from '../dnd/useSheetRolls';
 import { useBackHandler } from '../composables/useBackHandler';
 
 defineProps<{ history: SheetRoll[] }>();
-const emit = defineEmits<{ close: [] }>();
+const emit = defineEmits<{ close: []; damage: [rollId: string, option: number] }>();
 const closeButton = ref<HTMLButtonElement | null>(null);
 const previousFocus = document.activeElement as HTMLElement | null;
 const time = (at: number) => new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -48,6 +53,8 @@ useBackHandler(() => { emit('close'); return true; });
 .dnd-roll-log-head time { font-variant-numeric:tabular-nums; flex:none; }
 .dnd-roll-log-detail { margin-top:3px; font-size:14px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
 .dnd-roll-log-detail strong { font-size:16px; }
+.dnd-roll-log-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+.dnd-roll-log-actions button { padding:5px 9px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface-solid); color:var(--ui-text); font:inherit; font-size:12px; cursor:pointer; }
 .dnd-roll-log-empty, .dnd-roll-log-note { font-size:13px; color:var(--ui-text-secondary); }
 .dnd-roll-log-note { margin:12px 0 0; }
 </style>

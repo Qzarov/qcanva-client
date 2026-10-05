@@ -138,4 +138,44 @@ describe('weapons and attack rolls', () => {
     expect(entries[0]).toContain('Атака · Длинный меч');
     expect(entries[1]).toContain('Инициатива');
   });
+
+  it('keeps a crit attack waiting for the DM, then rolls its damage once', async () => {
+    vi.useFakeTimers();
+    try {
+      wrapper = mount(DndCharacterSheet, { props: { data: sheet() }, attachTo: document.body });
+      dice([20, 20], [5, 8], [7, 8], [11, 20]);
+      await wrapper.get('[aria-label="Атака: Длинный меч"]').trigger('click');
+      await vi.advanceTimersByTimeAsync(15000);
+      const crit = document.querySelector<HTMLButtonElement>('.dnd-cs-toast-actions button');
+      expect(crit?.textContent).toContain('Крит');
+      crit!.click();
+      await nextTick();
+      expect(toastTexts()).toHaveLength(1);
+      expect(toastTexts()[0]).toContain('2d8 (5, 7) + 3 = 15');
+      expect(document.querySelector('.dnd-cs-toast-actions')).toBeNull();
+      // The log offers no second damage roll for it either.
+      await wrapper.get('.dnd-roll-log-button').trigger('click');
+      expect(document.querySelector('.dnd-roll-log-actions')).toBeNull();
+      // A plain roll still disappears on its own.
+      await vi.advanceTimersByTimeAsync(11000);
+      expect(toastTexts()).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('keeps a pending attack ahead of later checks and rolls it from the log', async () => {
+    wrapper = mount(DndCharacterSheet, { props: { data: sheet() }, attachTo: document.body });
+    dice([12, 20], [6, 8], [3, 20]);
+    await wrapper.get('[aria-label="Атака: Длинный меч"]').trigger('click');
+    for (let i = 0; i < 5; i++) await wrapper.get('[aria-label="Бросить инициативу"]').trigger('click');
+    const toasts = toastTexts();
+    expect(toasts).toHaveLength(4);
+    expect(toasts[0]).toContain('Атака · Длинный меч'); // first in DOM = shown even when phones show two
+    await wrapper.get('.dnd-roll-log-button').trigger('click');
+    const fromLog = document.querySelector<HTMLButtonElement>('.dnd-roll-log-actions button')!;
+    expect(fromLog.textContent).toContain('Урон · одной рукой: 1d8+3');
+    fromLog.click();
+    await nextTick();
+    expect(document.querySelector('.dnd-roll-log li')?.textContent).toContain('Урон · Длинный меч');
+    expect(document.querySelector('.dnd-roll-log-actions')).toBeNull();
+  });
 });

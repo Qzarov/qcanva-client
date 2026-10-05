@@ -21,8 +21,18 @@ export type SheetRoll = {
   natural: '' | 'max' | 'min';
   /** Damage this attack can roll next (crit doubles its dice on a natural 20). */
   damage?: DamageOption[];
+  /** Set once this attack's damage was rolled from it: it cannot be rolled again. */
+  damageRolled?: boolean;
   damageType?: string;
 };
+
+/**
+ * An attack whose damage is still to be rolled. At the table the DM may take
+ * a while to say "hit", so such an attack never times out: it stays until its
+ * damage is rolled or the player closes it.
+ */
+export const awaitsDamage = (roll: SheetRoll) =>
+  roll.kind === 'attack' && roll.natural !== 'min' && Boolean(roll.damage?.length) && !roll.damageRolled;
 
 export const ROLL_KIND_LABEL: Record<SheetRollKind, string> = {
   check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Инициатива', attack: 'Атака', damage: 'Урон',
@@ -69,12 +79,21 @@ export function useSheetRolls(options: { rng?: Rng } = {}) {
     timers.delete(id);
   };
 
+  const findRoll = (id: string) => history.value.find((entry) => entry.id === id);
+
   const record = (roll: SheetRoll) => {
     history.value = [roll, ...history.value].slice(0, HISTORY_LIMIT);
-    const visible = [roll.id, ...toasts.value];
-    visible.slice(TOAST_LIMIT).forEach(dismiss);
-    toasts.value = visible.slice(0, TOAST_LIMIT);
-    timers.set(roll.id, setTimeout(() => dismiss(roll.id), TOAST_MS));
+    // Over the limit, plain rolls make room first; a pending attack is the
+    // last thing to be pushed out.
+    let visible = [roll.id, ...toasts.value];
+    while (visible.length > TOAST_LIMIT) {
+      const candidates = visible.slice(1);
+      const drop = [...candidates].reverse().find((id) => { const entry = findRoll(id); return !entry || !awaitsDamage(entry); }) ?? visible[visible.length - 1]!;
+      dismiss(drop);
+      visible = visible.filter((id) => id !== drop);
+    }
+    toasts.value = visible;
+    if (!awaitsDamage(roll)) timers.set(roll.id, setTimeout(() => dismiss(roll.id), TOAST_MS));
     return roll;
   };
 
@@ -109,9 +128,20 @@ export function useSheetRolls(options: { rng?: Rng } = {}) {
     });
   };
 
+  /** Rolls an attack's damage from the attack itself (toast or log): crit on a natural 20, once. */
+  const rollAttackDamage = (attackId: string, optionIndex: number) => {
+    const attack = findRoll(attackId);
+    const option = attack?.damage?.[optionIndex];
+    if (!attack || !option || !awaitsDamage(attack)) return undefined;
+    attack.damageRolled = true;
+    history.value = [...history.value];
+    dismiss(attackId);
+    return rollDamage(attack.label, option, attack.natural === 'max');
+  };
+
   const setMode = (next: RollMode) => { mode.value = mode.value === next ? 'normal' : next; };
 
   onBeforeUnmount(() => { timers.forEach(clearTimeout); timers.clear(); });
 
-  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage };
+  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage, rollAttackDamage };
 }

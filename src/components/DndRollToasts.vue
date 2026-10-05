@@ -8,9 +8,9 @@
           <button type="button" class="dnd-cs-toast-close" aria-label="Закрыть" @click="emit('dismiss', roll.id)">×</button>
           <div class="dnd-cs-toast-head">{{ head(roll) }}</div>
           <div class="dnd-cs-toast-formula">{{ describeRoll(roll) }} = <strong>{{ roll.total }}</strong></div>
-          <div v-if="roll.kind === 'attack' && roll.natural !== 'min' && roll.damage?.length" class="dnd-cs-toast-actions">
+          <div v-if="awaitsDamage(roll)" class="dnd-cs-toast-actions">
             <button v-for="(option, index) in roll.damage" :key="index" type="button" @click="emit('damage', roll.id, index)">
-              {{ roll.natural === 'max' ? 'Крит' : 'Урон' }}{{ roll.damage.length > 1 ? ' · ' + option.label.toLowerCase() : '' }}: {{ option.formula.text }}
+              {{ roll.natural === 'max' ? 'Крит' : 'Урон' }}{{ roll.damage!.length > 1 ? ' · ' + option.label.toLowerCase() : '' }}: {{ option.formula.text }}
             </button>
           </div>
         </div>
@@ -21,12 +21,18 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { describeRoll, ROLL_KIND_LABEL, ROLL_MODE_LABEL, type SheetRoll } from '../dnd/useSheetRolls';
+import { awaitsDamage, describeRoll, ROLL_KIND_LABEL, ROLL_MODE_LABEL, type SheetRoll } from '../dnd/useSheetRolls';
 
 const props = defineProps<{ history: SheetRoll[]; toasts: string[] }>();
 const emit = defineEmits<{ dismiss: [id: string]; damage: [rollId: string, option: number] }>();
 
-const visible = computed(() => props.toasts.map((id) => props.history.find((roll) => roll.id === id)).filter((roll): roll is SheetRoll => Boolean(roll)));
+// Attacks still waiting for damage come first: the list stacks bottom-up, and
+// on phones only the first two are shown, so they must not be pushed out of
+// view by later checks.
+const visible = computed(() => {
+  const rolls = props.toasts.map((id) => props.history.find((roll) => roll.id === id)).filter((roll): roll is SheetRoll => Boolean(roll));
+  return [...rolls.filter(awaitsDamage), ...rolls.filter((roll) => !awaitsDamage(roll))];
+});
 const toastClass = (roll: SheetRoll) => (roll.natural === 'max' ? 'crit-max' : roll.natural === 'min' ? 'crit-min' : '');
 const head = (roll: SheetRoll) => {
   const mode = roll.d20 && roll.d20.mode !== 'normal' ? ` · ${ROLL_MODE_LABEL[roll.d20.mode].toLowerCase()}` : '';

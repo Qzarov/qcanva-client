@@ -226,7 +226,7 @@
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
 
     <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
-    <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" />
+    <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
   </div>
 </template>
 
@@ -425,12 +425,8 @@ export default defineComponent({
       const damage = parseFormula(item.damage || '');
       if (damage.ok) rolls.rollDamage(item.name.trim() || 'Атака', { label: 'Урон', formula: damage, type: item.damageType || '' });
     };
-    /** "Урон"/"Крит" on an attack toast: a natural 20 doubles the damage dice. */
-    const damageFromToast = (rollId: string, index: number) => {
-      const attack = rolls.history.value.find((entry) => entry.id === rollId);
-      const option = attack?.damage?.[index];
-      if (attack && option) rolls.rollDamage(attack.label, option, attack.natural === 'max');
-    };
+    /** "Урон"/"Крит" on an attack (toast or log): a natural 20 doubles the dice; once per attack. */
+    const damageFromToast = (rollId: string, index: number) => { rolls.rollAttackDamage(rollId, index); };
     const toggleWeapon = (item: DndListItem) => {
       // null, not delete: the sync diff only sends keys that are present.
       const target = item as DndListItem & { weapon?: unknown };
