@@ -794,6 +794,7 @@ import { useToast } from '../composables/useToast';
 import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
+import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
@@ -2794,7 +2795,9 @@ export default defineComponent({
       disconnect,
       sendUpdate,
       sendAwareness,
+      resync,
       onRemoteUpdate,
+      onRoomState,
       onReject,
       onAck,
       setRevision,
@@ -2864,6 +2867,26 @@ export default defineComponent({
           onRemoteUpdate((encodedUpdate, nextRevision) => {
             Y.applyUpdate(ydoc, base64ToUint8Array(encodedUpdate), 'remote');
             revision.value = nextRevision;
+            // An update that depends on one this client never received is
+            // parked by Yjs, not shown - and so is every later edit from the
+            // same author. Pull the full state instead of waiting for a reload.
+            if (hasPendingUpdates(ydoc)) resync();
+          });
+          // Every (re)join: catch up on whatever happened between the REST
+          // load (or the disconnect) and this join, then hand the server any
+          // local edits it never acked.
+          onRoomState(({ revision: roomRevision, yjsState }) => {
+            revision.value = roomRevision ?? revision.value;
+            if (!yjsState) return;
+            const merged = mergeServerState(ydoc, base64ToUint8Array(yjsState), 'remote');
+            if (merged.kind === 'diverged') {
+              // Content was replaced server-side (MCP/REST replace or a history
+              // restore): this ydoc can no longer be merged, only reloaded.
+              syncIssue.value = 'conflict';
+              showToast(t('documentReplacedReload'), 'error');
+              return;
+            }
+            if (merged.missing && canEditContent.value) sendUpdate(uint8ArrayToBase64(merged.missing));
           });
           onAck((ack) => {
             revision.value = ack.revision;
