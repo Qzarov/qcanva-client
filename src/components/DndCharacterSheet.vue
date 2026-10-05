@@ -13,8 +13,9 @@
       </div>
 
       <div class="dnd-cs-identity">
-        <div class="dnd-cs-identity-line">
-          <textarea ref="nameInput" class="dnd-cs-name" rows="1" :readonly="readonly" :value="data.identity.name" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
+        <div class="dnd-cs-identity-line" :class="{ 'is-multiline': nameMultiline }">
+          <span ref="nameMeasure" class="dnd-cs-name-measure" aria-hidden="true"></span>
+          <textarea ref="nameInput" v-model="nameDraft" class="dnd-cs-name" rows="1" :readonly="readonly" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
           <div class="dnd-cs-subline">
             <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', evVal($event))" />
             <span class="dnd-cs-dot">—</span>
@@ -39,13 +40,16 @@
     <div class="dnd-cs-combat">
       <div class="dnd-cs-stat dnd-cs-hp">
         <span>HP</span>
-        <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Убрать HP" @click="changeHp(-1)">−</button>
         <input type="number" min="0" :readonly="readonly" :value="data.combat.currentHp" aria-label="Текущие HP" @change="setNumber(data.combat, 'currentHp', evVal($event), 0)" />
         <b>/</b>
         <input type="number" min="1" :readonly="readonly" :value="data.combat.maxHp" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', evVal($event), 1)" />
-        <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Добавить HP" @click="changeHp(1)">+</button>
+        <label class="dnd-cs-temp-hp">(+<input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /><span>врем.</span>)</label>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
+      <div class="dnd-cs-hp-actions">
+        <button type="button" :disabled="readonly" aria-label="Лечение" @click="hpMode = 'heal'">Лечение</button>
+        <button type="button" :disabled="readonly" aria-label="Урон" @click="hpMode = 'damage'">Урон</button>
+      </div>
       <div class="dnd-cs-combat-stats">
         <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
@@ -54,21 +58,18 @@
       </div>
     </div>
     <div class="dnd-cs-combat-extra">
-      <div class="dnd-cs-stat"><span>Врем. HP</span><input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /></div>
       <button type="button" class="dnd-cs-toggle" :class="{ on: data.combat.inspiration }" :disabled="readonly" :aria-pressed="data.combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
-      <div class="dnd-cs-stat dnd-cs-exhaustion"><span>Истощение</span>
-        <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Меньше истощения" @click="changeExhaustion(-1)">−</button>
-        <strong>{{ data.combat.exhaustion }}</strong>
-        <button type="button" class="dnd-cs-hp-btn" :disabled="readonly" aria-label="Больше истощения" @click="changeExhaustion(1)">+</button>
-      </div>
     </div>
     </section>
 
     <!-- ===== PASSIVE SCORES (compact, up top) ===== -->
-    <section class="dnd-cs-passives">
-      <div v-for="p in passives" :key="p.key" class="dnd-cs-passive">
-        <strong>{{ p.value }}</strong>
-        <span>{{ p.label }}</span>
+    <section class="dnd-cs-passives dnd-glass" aria-label="Пассивные характеристики">
+      <h3>Пассивные характеристики</h3>
+      <div class="dnd-cs-passive-row">
+        <div v-for="p in passives" :key="p.key" class="dnd-cs-passive">
+          <strong>{{ p.value }}</strong>
+          <span>{{ p.label }}</span>
+        </div>
       </div>
     </section>
 
@@ -221,6 +222,8 @@
       </div>
     </div>
 
+    <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
+
     <!-- Roll toasts: bottom-left, glass, auto-dismiss after 10s. Teleported to
          body so the scroll container never clips them. -->
     <Teleport to="body">
@@ -238,13 +241,14 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue';
+import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue';
 import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
-  proficiencyBonusForLevel, passiveScore, initiativeBonus,
+  proficiencyBonusForLevel, passiveScore, initiativeBonus, calculateHpChange, isHpAmount,
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
+import DndHpDialog from './DndHpDialog.vue';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
 type RollKind = 'check' | 'save' | 'skill' | 'initiative';
@@ -255,6 +259,7 @@ const ROLL_TOAST_MS = 10000;
 
 export default defineComponent({
   name: 'DndCharacterSheet',
+  components: { DndHpDialog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -266,9 +271,23 @@ export default defineComponent({
     // parent's own buffered autosave - no per-keystroke saves.
     const evVal = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
     const nameInput = ref<HTMLTextAreaElement | null>(null);
+    const nameDraft = ref(props.data.identity.name);
+    const nameMeasure = ref<HTMLSpanElement | null>(null);
+    const nameMultiline = ref(false);
     const resizeName = () => {
       const input = nameInput.value;
       if (!input) return;
+      if (nameMeasure.value && input.parentElement) {
+        nameMeasure.value.textContent = input.value;
+        // Measure against the NORMAL layout so switching to the wider stacked
+        // layout never oscillates between one and two lines near the boundary.
+        const normalWidth = (input.parentElement.clientWidth - 6) * 1.4 / 2.4 - 10;
+        const multiline = input.value.includes('\n') || (normalWidth > 0 && nameMeasure.value.scrollWidth > normalWidth);
+        if (nameMultiline.value !== multiline) {
+          nameMultiline.value = multiline;
+          void nextTick(resizeName);
+        }
+      }
       input.style.height = 'auto';
       input.style.height = `${input.scrollHeight + 2}px`;
     };
@@ -278,9 +297,13 @@ export default defineComponent({
       if (typeof ResizeObserver !== 'undefined' && nameInput.value?.parentElement) {
         nameObserver = new ResizeObserver(resizeName);
         nameObserver.observe(nameInput.value.parentElement);
+        // The name's intrinsic metrics can change when a web font loads,
+        // without changing the fixed-height textarea or its parent.
+        if (nameMeasure.value) nameObserver.observe(nameMeasure.value);
       }
     });
-    watch(() => props.data.identity.name, resizeName, { flush: 'post' });
+    watch(() => props.data.identity.name, value => { nameDraft.value = value; }, { flush: 'post' });
+    watch(nameDraft, () => { void nextTick(resizeName); }, { flush: 'post' });
     onBeforeUnmount(() => nameObserver?.disconnect());
 
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
@@ -304,9 +327,9 @@ export default defineComponent({
     });
 
     const passives = computed(() => [
-      { key: 'perception', label: 'Пас. Восприятие', value: passiveScore(skillModifier(props.data, 'perception', proficiencyBonus.value), props.data.passiveBonuses.perception) },
-      { key: 'investigation', label: 'Пас. Анализ', value: passiveScore(skillModifier(props.data, 'investigation', proficiencyBonus.value), props.data.passiveBonuses.investigation) },
-      { key: 'insight', label: 'Пас. Проницательность', value: passiveScore(skillModifier(props.data, 'insight', proficiencyBonus.value), props.data.passiveBonuses.insight) },
+      { key: 'perception', label: 'Восприятие', value: passiveScore(skillModifier(props.data, 'perception', proficiencyBonus.value), props.data.passiveBonuses.perception) },
+      { key: 'investigation', label: 'Анализ', value: passiveScore(skillModifier(props.data, 'investigation', proficiencyBonus.value), props.data.passiveBonuses.investigation) },
+      { key: 'insight', label: 'Проницательность', value: passiveScore(skillModifier(props.data, 'insight', proficiencyBonus.value), props.data.passiveBonuses.insight) },
     ]);
 
     const clamp = (n: number, min: number, max = Number.MAX_SAFE_INTEGER) => Math.min(max, Math.max(min, n));
@@ -333,8 +356,14 @@ export default defineComponent({
       change();
     };
 
-    const changeHp = (delta: number) => { props.data.combat.currentHp = Math.max(0, props.data.combat.currentHp + delta); change(); };
-    const changeExhaustion = (delta: number) => { props.data.combat.exhaustion = clamp(props.data.combat.exhaustion + delta, 0, 6); change(); };
+    const hpMode = ref<'heal' | 'damage' | null>(null);
+    const applyHpAmount = (amount: number) => {
+      if (props.readonly || !hpMode.value || !isHpAmount(amount)) return;
+      Object.assign(props.data.combat, calculateHpChange(props.data.combat, hpMode.value, amount));
+      hpMode.value = null;
+      change();
+    };
+    watch(() => props.readonly, value => { if (value) hpMode.value = null; });
     const toggleInspiration = () => { props.data.combat.inspiration = !props.data.combat.inspiration; change(); };
 
     const toggleProf = (group: 'armor' | 'weapons', value: string) => {
@@ -393,10 +422,10 @@ export default defineComponent({
       weaponOptions: ['Простое', 'Воинское'],
       proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
-      nameInput, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
+      nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
       skillMod, skillProf, skillProfTitle, cycleSkill,
-      changeHp, changeExhaustion, toggleInspiration,
+      hpMode, applyHpAmount, toggleInspiration,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
       rolls, roll, dismissRoll,
@@ -448,7 +477,6 @@ export default defineComponent({
 
 /* Smaller inner cards: translucent + bordered, NO blur (kept cheap). */
 .dnd-cs-ability,
-.dnd-cs-passive,
 .dnd-cs-proficiencies {
   background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)), rgba(10, 14, 11, 0.5);
   border: 1px solid var(--dnd-glass-border);
@@ -513,6 +541,9 @@ export default defineComponent({
 .dnd-cs-portrait-actions button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 50%; background: rgba(10,14,11,.85); color: var(--ui-text); cursor: pointer; }
 .dnd-cs-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .dnd-cs-identity-line { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; gap: 6px; }
+.dnd-cs-identity-line.is-multiline { grid-template-columns: minmax(0, 1fr) minmax(0, 90px); }
+.dnd-cs-identity-line.is-multiline .dnd-cs-subline { grid-template-columns: minmax(0, 1fr); }
+.dnd-cs-name-measure { position: absolute; visibility: hidden; pointer-events: none; white-space: pre; width: max-content; font-size: 24px; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; }
 .dnd-cs textarea.dnd-cs-name { min-height: 0; resize: none; overflow: hidden; font-size: 24px; line-height: 1.25; font-weight: 800; letter-spacing: -.01em; padding: 2px 4px; overflow-wrap: anywhere; }
 .dnd-cs-subline { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 4px; padding-top: 6px; color: var(--dnd-text-dim); font-size: 13px; }
 .dnd-cs-subline input { width: 100%; min-width: 0; color: var(--dnd-text-dim); }
@@ -558,6 +589,12 @@ export default defineComponent({
 .dnd-cs-stat.readonly-stat strong { color: var(--ui-text); font-size: 16px; font-weight: 800; }
 .dnd-cs-hp { gap: 8px; }
 .dnd-cs-hp > span:first-child { font-size: 11px; }
+.dnd-cs-temp-hp { display:flex; align-items:center; gap:1px; color:var(--dnd-text-dim); font-size:11px; text-transform:none; letter-spacing:0; white-space:nowrap; }
+.dnd-cs-hp .dnd-cs-temp-hp input[type='number'] { flex:none; width:34px; padding:2px 0; font-size:14px; appearance:textfield; -moz-appearance:textfield; }
+.dnd-cs-temp-hp input::-webkit-inner-spin-button, .dnd-cs-temp-hp input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+.dnd-cs-hp-actions { display:flex; gap:8px; }
+.dnd-cs-hp-actions button { flex:1; padding:7px 10px; border:1px solid var(--dnd-glass-border); border-radius:8px; font:inherit; font-size:12px; background:var(--dnd-glass-accent-soft); color:var(--ui-text); cursor:pointer; }
+.dnd-cs-hp-actions button:disabled { opacity:.45; cursor:default; }
 .dnd-cs-hp input[type='number'] { flex: 1; min-width: 0; width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
 .dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
 .dnd-cs-toggle {
@@ -572,7 +609,6 @@ export default defineComponent({
   background: var(--dnd-glass-accent-soft);
   box-shadow: 0 0 16px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
 }
-.dnd-cs-exhaustion strong { min-width: 14px; text-align: center; color: var(--ui-text); font-size: 15px; }
 
 /* ===== BODY ===== */
 .dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); gap: 14px; align-items: start; }
@@ -625,10 +661,13 @@ export default defineComponent({
 .dnd-cs-pip.half { background: var(--dnd-text-dim); border-color: var(--dnd-text-dim); }
 
 /* Passives - compact chips in a single row up top. */
-.dnd-cs-passives { display: flex; flex-wrap: wrap; gap: 8px; }
-.dnd-cs-passive { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; }
+.dnd-cs-passives { padding:12px; }
+.dnd-cs-passives h3 { margin:0 0 10px; font-size:12px; color:var(--dnd-text-dim); }
+.dnd-cs-passive-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+.dnd-cs-passive { display:flex; flex-direction:column; align-items:center; text-align:center; gap:4px; min-width:0; padding:0 4px; }
+.dnd-cs-passive + .dnd-cs-passive { border-left:1px solid var(--dnd-glass-border); }
 .dnd-cs-passive strong { font-size: 17px; font-weight: 800; color: var(--dnd-glass-accent); font-variant-numeric: tabular-nums; }
-.dnd-cs-passive span { font-size: 11px; letter-spacing: .02em; color: var(--dnd-text-dim); }
+.dnd-cs-passive span { font-size: 11px; color: var(--dnd-text-dim); overflow-wrap:anywhere; }
 
 /* Proficiencies */
 .dnd-cs-proficiencies { padding: 12px; }
@@ -740,17 +779,25 @@ export default defineComponent({
   .dnd-cs-portrait { flex-basis: 48px; width: 48px; height: 48px; border-radius: 14px; font-size: 24px; }
   .dnd-cs-portrait img { border-radius: 13px; }
   .dnd-cs textarea.dnd-cs-name { font-size: 20px; }
+  .dnd-cs-name-measure { font-size:20px; }
+  .dnd-cs-identity-line.is-multiline { grid-template-columns:minmax(0,1fr) minmax(0,70px); }
   .dnd-cs-subline { font-size: 12px; gap: 2px; }
   .dnd-cs-subline input { padding-inline: 1px; }
   .dnd-cs-body { grid-template-columns: 1fr; }
   .dnd-cs-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .dnd-cs-ability { padding: 8px; min-width: 0; }
-  .dnd-cs-ability-head { gap: 4px; flex-direction: column; align-items: stretch; }
-  .dnd-cs-ability-name { min-height: 30px; line-height: 1.25; }
-  .dnd-cs-ability-score { width: 100% !important; flex-basis: auto; appearance: textfield; -moz-appearance: textfield; }
+  .dnd-cs-ability { padding: 6px; min-width: 0; }
+  .dnd-cs-ability-head { gap: 3px; flex-direction:row; align-items:center; }
+  .dnd-cs-ability-name { line-height: 1.25; font-size:11px; }
+  .dnd-cs-ability-score { width:26px !important; flex:0 0 26px; font-size:14px; appearance:textfield; -moz-appearance:textfield; }
+  .dnd-cs-ability-score[type='number'] { padding:2px 0; font-size:14px; font-weight:800; }
+  .dnd-cs-passive span { font-size:clamp(9px,2.5vw,11px); }
   .dnd-cs-ability-score::-webkit-inner-spin-button, .dnd-cs-ability-score::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  .dnd-cs-roll-row { flex-direction: column; align-items: stretch; }
-  .dnd-cs-roll { justify-content: space-between; padding: 5px 6px; }
+  .dnd-cs-roll-row { flex-direction:row; align-items:center; gap:3px; }
+  .dnd-cs-roll { justify-content:space-between; padding:5px 3px; gap:2px; font-size:9px; }
+  .dnd-cs-roll b { font-size:10px; }
+  .dnd-cs-save-cell { gap:1px; }
+  .dnd-cs-save-cell .dnd-cs-pip-btn { padding:2px; }
+  .dnd-cs-save-cell .dnd-cs-pip { width:9px; height:9px; }
   .dnd-cs-save-cell .dnd-cs-roll { flex: 1; min-width: 0; }
   .dnd-cs-skills li { gap: 3px; }
   .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
