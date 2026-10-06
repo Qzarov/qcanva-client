@@ -1,3 +1,4 @@
+import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket';
 import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { interactiveTemplates } from '../api/client';
@@ -174,6 +175,23 @@ export function useBoardSocket(boardId: string | { value: string }) {
     }
   }
 
+  /** Liveness check: see useCharacterSheetSocket's probe. */
+  async function probe(): Promise<LivenessResult> {
+    const s = socket.value;
+    if (!s) return 'idle'; // not connected yet: a fresh connection needs no check
+    if (!s.connected) { s.connect(); return 'reconnecting'; }
+    try {
+      const answer = await s.timeout(PROBE_TIMEOUT_MS).emitWithAck('board-ping', { boardId: resolveBoardId() }) as { joined?: boolean; revision?: number | null };
+      if (!answer?.joined) { s.emit('join-board', { boardId: resolveBoardId() }); return 'rejoined'; }
+      if (typeof answer.revision === 'number' && answer.revision > revision.value) { void requestSnapshot(); return 'stale'; }
+      return 'ok';
+    } catch {
+      s.disconnect();
+      s.connect();
+      return 'reconnecting';
+    }
+  }
+
   function connect() {
     if (socket.value) return;
     syncStatus.value = 'connecting';
@@ -261,5 +279,6 @@ export function useBoardSocket(boardId: string | { value: string }) {
     disconnect,
     sendOperation,
     requestSnapshot,
+    probe,
   };
 }

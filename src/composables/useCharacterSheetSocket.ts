@@ -53,6 +53,10 @@ type RoomState = {
  * Labels the history uses: operations sent together as one user action share
  * an `actionId`; an undo or redo says so. Both are optional.
  */
+/** How long a liveness ping may take before the socket counts as dead. */
+export const PROBE_TIMEOUT_MS = 5000;
+export type LivenessResult = 'ok' | 'reconnecting' | 'rejoined' | 'stale' | 'idle';
+
 export type SheetOperationMeta = { actionId?: string; note?: 'undo' | 'redo' };
 
 export function useCharacterSheetSocket(sheetIdInput: string | { value: string }) {
@@ -240,6 +244,29 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
     socket.value = s;
   }
 
+  /**
+   * Liveness check (docs/app-tabs-plan.md, "Проверки связи"): a socket can
+   * count as connected and be dead after the app was frozen or the network
+   * changed. No answer in time - reconnect; out of the room or behind the
+   * server's revision - join again, which resyncs. Unsent operations stay
+   * queued through all of it.
+   */
+  async function probe(): Promise<LivenessResult> {
+    const s = socket.value;
+    if (!s) return 'idle'; // not connected yet: a fresh connection needs no check
+    if (!s.connected) { s.connect(); return 'reconnecting'; }
+    try {
+      const answer = await s.timeout(PROBE_TIMEOUT_MS).emitWithAck('sheet-ping', { sheetId: resolveSheetId() }) as { joined?: boolean; revision?: number | null };
+      if (!answer?.joined) { join(); return 'rejoined'; }
+      if (typeof answer.revision === 'number' && answer.revision > confirmedRevision) { join(); return 'stale'; }
+      return 'ok';
+    } catch {
+      s.disconnect();
+      s.connect();
+      return 'reconnecting';
+    }
+  }
+
   /** Queues an operation; it shows immediately and is sent once the room is joined. */
   function sendOperation(op: SheetOperation, meta?: SheetOperationMeta) {
     if (role.value === 'read' || status.value === 'forbidden') return undefined;
@@ -275,5 +302,5 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
 
   onUnmounted(disconnect);
 
-  return { status, role, pendingCount, rollTarget, connect, disconnect, sendOperation, requestRoll, requestRollTarget, seed, onState, onReject, display };
+  return { status, role, pendingCount, rollTarget, connect, disconnect, sendOperation, requestRoll, requestRollTarget, seed, onState, onReject, display, probe };
 }

@@ -66,6 +66,7 @@ import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
 import { useTab } from '../tabs/tabContext';
 import TabsButton from '../components/tabs/TabsButton.vue';
+import { useLivenessChecks } from '../tabs/useLivenessChecks';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
@@ -74,6 +75,7 @@ const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
 const { backTarget } = useResourceBackTarget();
 const templateType = ref<InteractiveTemplate['templateType'] | null>(null);
+useLivenessChecks(() => (templateType.value === 'trello-board' ? probeBoard() : Promise.resolve('ok' as const)));
 // The tabs panel names a board by its title (a character sheet names itself).
 const tab = useTab();
 const loading = ref(true);
@@ -94,6 +96,7 @@ const {
   disconnect,
   sendOperation,
   requestSnapshot,
+  probe: probeBoard,
 } = useBoardSocket(boardId);
 
 const editorParticipants = computed<BoardParticipant[]>(() => {

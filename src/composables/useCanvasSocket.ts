@@ -1,3 +1,4 @@
+import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket';
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import type {RulerActor,RulerState,RulerMeasurement,RulerSettings,RulerUpdate} from '../canvas/ruler';
@@ -312,6 +313,23 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     onAckCb = cb;
   }
 
+  /** Liveness check: see useCharacterSheetSocket's probe. 'stale' asks the caller to resync. */
+  async function probe(): Promise<LivenessResult> {
+    const s = socket.value;
+    if (!s) return 'idle'; // not connected yet: a fresh connection needs no check
+    if (!s.connected) { s.connect(); return 'reconnecting'; }
+    try {
+      const answer = await s.timeout(PROBE_TIMEOUT_MS).emitWithAck('canvas-ping', { canvasId: resolveCanvasId() }) as { joined?: boolean; revision?: number | null };
+      if (!answer?.joined) { s.emit('join-canvas', { canvasId: resolveCanvasId() }); return 'rejoined'; }
+      if (typeof answer.revision === 'number' && answer.revision > currentRevision.value) return 'stale';
+      return 'ok';
+    } catch {
+      s.disconnect();
+      s.connect();
+      return 'reconnecting';
+    }
+  }
+
   function setRevision(revision: number) {
     currentRevision.value = revision;
   }
@@ -369,6 +387,7 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     onReject,
     onAck,
     clearPendingOps,
+    probe,
     setRevision,
     sendChat,
     sendRoll,

@@ -15,6 +15,10 @@ vi.mock('socket.io-client', () => ({
       emit: vi.fn(),
       on: vi.fn((event: string, cb: Function) => { handlers.set(event, cb); }),
       disconnect: vi.fn(),
+      connect: vi.fn(),
+      // Liveness pings: tests set what the server answers (or a rejection for silence).
+      pingAnswer: undefined as unknown,
+      timeout: vi.fn(() => ({ emitWithAck: vi.fn(() => (socket.pingAnswer instanceof Error ? Promise.reject(socket.pingAnswer) : Promise.resolve(socket.pingAnswer))) })),
       trigger(event: string, payload?: unknown) {
         if (event === 'connect') socket.connected = true;
         if (event === 'disconnect') socket.connected = false;
@@ -170,4 +174,41 @@ describe('useCharacterSheetSocket', () => {
     expect(sync.pendingCount.value).toBe(0);
     expect(sync.sendOperation(setHp(2))).toBeUndefined();
   });
+
+  describe('liveness probe', () => {
+    it('reports a live socket in its room at the same revision as ok', async () => {
+      const { sync, socket } = joined(3);
+      socket.pingAnswer = { joined: true, revision: 3 };
+      await expect(sync.probe()).resolves.toBe('ok');
+      expect(socket.timeout).toHaveBeenCalledWith(5000);
+      expect(socket.connect).not.toHaveBeenCalled();
+    });
+
+    it('reconnects a socket that counts as connected but does not answer, keeping unsent edits', async () => {
+      const { sync, socket } = joined(3);
+      sync.sendOperation(setHp(7));
+      socket.pingAnswer = new Error('operation has timed out');
+      await expect(sync.probe()).resolves.toBe('reconnecting');
+      expect(socket.disconnect).toHaveBeenCalled();
+      expect(socket.connect).toHaveBeenCalled();
+      expect(sync.pendingCount.value).toBe(1);
+    });
+
+    it('joins again when the server is ahead or the socket left the room', async () => {
+      const { sync, socket } = joined(3);
+      socket.emit.mockClear();
+      socket.pingAnswer = { joined: true, revision: 9 };
+      await expect(sync.probe()).resolves.toBe('stale');
+      expect(joins(socket)).toHaveLength(1);
+      socket.pingAnswer = { joined: false };
+      await expect(sync.probe()).resolves.toBe('rejoined');
+    });
+
+    it('treats an old server that never answers like a dead socket (it reconnects, nothing breaks)', async () => {
+      const { sync, socket } = joined(3);
+      socket.pingAnswer = new Error('operation has timed out');
+      await expect(sync.probe()).resolves.toBe('reconnecting');
+    });
+  });
 });
+

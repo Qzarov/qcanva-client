@@ -33,6 +33,7 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reacti
 import { useActiveListener } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { tabsEnabled } from '../tabs/flag';
+import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
@@ -174,8 +175,9 @@ export default defineComponent({
       undoStack.value = [...undoStack.value, entry];
     };
     // A restore reaches this tab as ordinary edits through the socket.
-    // What the tabs panel shows for this sheet.
+    // What the tabs panel shows for this sheet, and checks that its socket is alive.
     const tab = useTab();
+    useLivenessChecks(sync.probe);
     watch(() => data.identity.name, (name) => tab.setTitle(name.trim() || 'Персонаж'), { immediate: true });
     watch(() => sync.status.value, (status) => tab.setStatus(status === 'offline' || status === 'error' ? 'offline' : status === 'connecting' ? 'reconnecting' : 'online'), { immediate: true });
     watch(() => sync.pendingCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });

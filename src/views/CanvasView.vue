@@ -903,6 +903,7 @@ import { markResourceOpened } from '../composables/useRecentResource';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
+import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
@@ -1203,9 +1204,11 @@ export default defineComponent({
       onChatMessage,
       onChatError,
       sendRulerUpdate,sendRulerClear,getRulerActor,onRulerState,onRulerUpdate,onRulerClear,onRulerSettings,onRulerError,
+      probe: probeSocket,
     } = useCanvasSocket(resolvedId);
 
     watch(() => wsConnected.value, (on) => tab.setStatus(on ? 'online' : 'reconnecting'), { immediate: true });
+    useLivenessChecks(probeSocket, () => { void resyncCanvas(); });
     watch(() => pendingOpsCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
     const ruler=useCanvasRuler({connected:wsConnected,sendUpdate:sendRulerUpdate,sendClear:sendRulerClear,getActor:getRulerActor});
     const rulerActive=ref(false),rulerSettingsBusy=ref(false);
