@@ -61,7 +61,11 @@ export const SPELL_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
 export type SpellSlotKey = `l${typeof SPELL_LEVELS[number]}`;
 export const spellSlotKey = (level: number) => `l${level}` as SpellSlotKey;
 export type DndSpellSlot = { max: number; spent: number };
+export const SPELL_CLASS_KEYS = ['bard', 'cleric', 'druid', 'paladin', 'ranger', 'sorcerer', 'warlock', 'wizard'] as const;
+export type SpellClassKey = typeof SPELL_CLASS_KEYS[number];
 export type DndSpellcasting = {
+  /** The spellcasting class (slots, prepared limit, catalog spells); empty for a hand-kept list. */
+  casterClass: SpellClassKey | '';
   /** The spellcasting ability; empty until the player picks one. */
   ability: DndAbilityKey | '';
   slots: Record<SpellSlotKey, DndSpellSlot>;
@@ -80,6 +84,8 @@ export type DndListItem = {
   attackBonus?: string; damage?: string; damageType?: string;
   /** Spells only: how the spell is resolved, and which save the target makes. */
   rollKind?: SpellRollKind; saveAbility?: DndAbilityKey | '';
+  /** Spells only: the catalog entry this spell was added from. */
+  catalogKey?: string;
 };
 
 export interface DndCharacterSheetData {
@@ -175,7 +181,7 @@ const asNumber = (value: unknown, fallback: number) => Number.isFinite(Number(va
 export function createSpellcasting(): DndSpellcasting {
   const slots = {} as DndSpellcasting['slots'];
   for (const level of SPELL_LEVELS) slots[spellSlotKey(level)] = { max: 0, spent: 0 };
-  return { ability: '', slots };
+  return { casterClass: '', ability: '', slots };
 }
 
 /** Reads stored spellcasting data: unknown abilities are dropped, slots are whole numbers with spent <= max. */
@@ -183,6 +189,7 @@ export function normalizeSpellcasting(source: unknown): DndSpellcasting {
   const data = source && typeof source === 'object' ? source as Record<string, any> : {};
   const base = createSpellcasting();
   if (DND_ABILITIES.some((item) => item.key === data.ability)) base.ability = data.ability;
+  if ((SPELL_CLASS_KEYS as readonly string[]).includes(data.casterClass)) base.casterClass = data.casterClass;
   for (const level of SPELL_LEVELS) {
     const stored = data.slots?.[spellSlotKey(level)] || {};
     const max = Math.min(99, Math.max(0, Math.trunc(asNumber(stored.max, 0))));

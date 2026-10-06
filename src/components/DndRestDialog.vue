@@ -69,6 +69,8 @@ const effects = computed(() => {
     if (combat.exhaustion > 1) lines.push(`Истощение: ${combat.exhaustion} → ${combat.exhaustion - 1}`);
     else if (combat.exhaustion === 1 || combat.conditions.includes('exhaustion')) lines.push('Истощение снимается');
     if (combat.currentHp <= 0 && (combat.deathSaves.successes || combat.deathSaves.failures)) lines.push('Спасброски от смерти сбрасываются');
+  }
+  if (props.kind === 'long' || props.data.spellcasting.casterClass === 'warlock') {
     const spentSlots = Object.values(props.data.spellcasting.slots).reduce((sum, slot) => sum + Math.min(slot.spent, slot.max), 0);
     if (spentSlots > 0) lines.push(`Ячейки заклинаний: возвращается ${spentSlots}`);
   }

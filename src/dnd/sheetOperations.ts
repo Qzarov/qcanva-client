@@ -135,6 +135,13 @@ export function applySheetOperation(source: Record<string, unknown>, op: SheetOp
         const maxUses = Math.max(0, numberOr(item.maxUses, 0));
         if (restores && maxUses > 0) item.currentUses = maxUses;
       }
+      const spellcasting = isRecord(sheet.spellcasting) ? sheet.spellcasting : {};
+      // A warlock's pact slots come back on a short rest; everyone else waits for a long one.
+      if (op.kind === 'long' || spellcasting.casterClass === 'warlock') {
+        for (const slot of Object.values(isRecord(spellcasting.slots) ? spellcasting.slots : {})) {
+          if (isRecord(slot)) slot.spent = 0;
+        }
+      }
       if (op.kind === 'long') {
         const level = levelOf(sheet);
         combat.currentHp = Math.max(1, numberOr(combat.maxHp, 10));
@@ -146,10 +153,6 @@ export function applySheetOperation(source: Record<string, unknown>, op: SheetOp
           combat.conditions = combat.conditions.filter((value) => value !== 'exhaustion');
         }
         combat.deathSaves = { successes: 0, failures: 0 };
-        const spellcasting = isRecord(sheet.spellcasting) ? sheet.spellcasting : {};
-        for (const slot of Object.values(isRecord(spellcasting.slots) ? spellcasting.slots : {})) {
-          if (isRecord(slot)) slot.spent = 0;
-        }
       }
       break;
     }

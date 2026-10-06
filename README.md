@@ -25,7 +25,7 @@ Obsidian / JSON Canvas, документами, досками и листами
 ### Доски и шаблоны
 - Trello-доски с колонками и карточками
 - Лист персонажа D&D 5e: характеристики, навыки, бой, состояния, оружие, броски,
-  спасброски от смерти, отдых —
+  спасброски от смерти, отдых, заклинания с ячейками и каталогом SRD —
   см. [состояние и план](docs/character-sheet-roadmap.md)
 
 ### Дашборд и доступ
@@ -139,5 +139,12 @@ npm run android:open
 Copyright (C) 2025–2026 Yaroslav Paroshin (Qzarov).
 
 QCanva client распространяется под лицензией **GNU Affero General Public License v3.0** (`AGPL-3.0-only`), полный текст — в файле [`LICENSE`](LICENSE).
+
+Каталог заклинаний (`src/dnd/spellCatalog.data.ts`) содержит материалы System Reference
+Document 5.1 («SRD 5.1») компании Wizards of the Coast LLC, доступного по адресу
+<https://dnd.wizards.com/resources/systems-reference-document>. SRD 5.1 распространяется
+по лицензии [Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/legalcode).
+Взята только механика заклинаний; русские названия и краткая суть написаны для этого
+проекта. Как каталог собирается — в `scripts/spell-catalog/build.py`.
 
 Коротко: код можно свободно использовать, изучать, изменять и распространять. Если вы запускаете изменённую версию как сетевой сервис (сайт, SaaS), вы обязаны предоставить её пользователям исходный код своих изменений на тех же условиях.

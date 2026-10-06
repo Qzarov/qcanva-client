@@ -82,6 +82,74 @@ for (const width of [320, 1280]) {
   });
 }
 
+for (const width of [320, 1280]) {
+  test(`class, prepared limit and the spell catalog work and fit at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const saved = await openSheet(page);
+    const panel = page.locator('.dnd-cs-tab-panel');
+
+    // Choosing a class sets the ability and the slots for level 5.
+    await page.getByLabel('Заклинательный класс').selectOption('cleric');
+    await expect.poll(() => saved().data.spellcasting.casterClass).toBe('cleric');
+    await expect.poll(() => [1, 2, 3, 4].map((level) => saved().data.spellcasting.slots[`l${level}`].max)).toEqual([4, 3, 2, 0]);
+    await expect(panel.locator('.dnd-cs-spell-prepared')).toHaveText('Подготовлено: 2 из 8');
+
+    await panel.getByRole('button', { name: '+ Из списка заклинаний' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Заклинания из списка' });
+    await expect(dialog).toContainText('Только доступные: Жрец, до 3 уровня');
+    const frame = (await dialog.boundingBox())!;
+    expect(frame.x).toBeGreaterThanOrEqual(0);
+    expect(frame.x + frame.width).toBeLessThanOrEqual(width);
+    const search = dialog.getByLabel('Поиск заклинания');
+    await expect(search).toBeFocused();
+
+    await search.fill('возрожд');
+    const revivify = dialog.getByRole('button', { name: 'Добавить: Возрождение' });
+    const item = (await revivify.boundingBox())!;
+    expect(item.x + item.width).toBeLessThanOrEqual(frame.x + frame.width + 0.5);
+    await revivify.click();
+    await expect.poll(() => saved().data.spells.map((spell: any) => spell.catalogKey).filter(Boolean)).toEqual(['revivify']);
+    // Still open, and the spell is marked as taken.
+    const taken = dialog.getByRole('button', { name: 'Уже в листе: Возрождение' });
+    await expect(taken).toHaveAttribute('aria-disabled', 'true');
+    await expect(taken).toBeFocused();
+    await taken.click({ force: true }); // Playwright treats aria-disabled as not clickable
+    expect(saved().data.spells.filter((spell: any) => spell.catalogKey === 'revivify')).toHaveLength(1);
+
+    await search.fill('fireball');
+    await expect(dialog).toContainText('Ничего не нашлось');
+    await dialog.getByText('Только доступные').click();
+    await dialog.getByRole('button', { name: 'Добавить: Огненный шар' }).click();
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByRole('button', { name: '+ Из списка заклинаний' })).toBeFocused();
+
+    // The added spell is ready to roll and survives a reload.
+    await expect(panel.locator('.dnd-cs-spell-dc').last()).toHaveText('Сл 14 · ЛОВ');
+    await panel.getByRole('button', { name: 'Урон 8d6: бросить' }).click();
+    await expect(page.locator('.dnd-cs-toast').first()).toContainText('Огненный шар');
+    await page.reload();
+    await expect(page.getByLabel('Заклинательный класс')).toHaveValue('cleric');
+    await expect(page.locator('input[aria-label="Название заклинания"]').last()).toHaveValue('Огненный шар');
+  });
+}
+
+if (SHOTS) {
+  for (const theme of ['dark', 'light'] as const) {
+    for (const width of [390, 1280]) {
+      test(`catalog screenshots ${theme} ${width}`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 860 });
+        await openSheet(page, theme);
+        await page.getByLabel('Заклинательный класс').selectOption('cleric');
+        await page.locator('.dnd-cs-tab-panel').getByRole('button', { name: '+ Из списка заклинаний' }).click();
+        await page.getByRole('button', { name: 'Добавить: Лечение ран' }).waitFor();
+        await page.mouse.move(1, 1);
+        await page.screenshot({ path: `${SHOTS}/catalog-${theme}-${width}.png` });
+      });
+    }
+  }
+}
+
 if (SHOTS) {
   for (const theme of ['dark', 'light'] as const) {
     for (const width of [390, 1280]) {

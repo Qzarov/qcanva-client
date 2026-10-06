@@ -234,6 +234,12 @@
           <!-- Spells -->
           <template v-else-if="data.activeTab === 'spells'">
             <div class="dnd-cs-spell-summary">
+              <label class="dnd-cs-recharge">Класс
+                <select :value="data.spellcasting.casterClass" :disabled="readonly" aria-label="Заклинательный класс" @change="setCasterClass(evVal($event))">
+                  <option value="">Не выбран</option>
+                  <option v-for="caster in casterClasses" :key="caster.key" :value="caster.key">{{ caster.label }}</option>
+                </select>
+              </label>
               <label class="dnd-cs-recharge">Характеристика
                 <select :value="data.spellcasting.ability" :disabled="readonly" aria-label="Заклинательная характеристика" @change="setSpellAbility(evVal($event))">
                   <option value="">Не выбрана</option>
@@ -242,7 +248,8 @@
               </label>
               <div class="dnd-cs-stat readonly-stat" :title="spellDc === null ? 'Выберите заклинательную характеристику' : 'Сложность спасброска: 8 + мастерство + модификатор'"><span>Сл спасброска</span><strong>{{ spellDc ?? '—' }}</strong></div>
               <button type="button" class="dnd-cs-roll" :disabled="spellAttack === null" :title="spellAttack === null ? 'Выберите заклинательную характеристику' : 'Атака заклинанием: d20 + мастерство + модификатор'" @click="rollSpellAttack()">Атака заклинанием <b>{{ spellAttack === null ? '—' : formatModifier(spellAttack) }}</b></button>
-              <span v-if="preparedCount" class="dnd-cs-spell-prepared">Подготовлено: {{ preparedCount }}</span>
+              <span v-if="showPrepared && (preparedCount || preparedMax !== null)" class="dnd-cs-spell-prepared" :class="{ 'is-over': preparedMax !== null && preparedCount > preparedMax }">Подготовлено: {{ preparedCount }}<template v-if="preparedMax !== null"> из {{ preparedMax }}</template></span>
+              <button v-if="!readonly && slotsOutdated" type="button" class="dnd-cs-add-sm" title="Проставить число ячеек по таблице класса для текущего уровня" @click="fillClassSlots">Ячейки по уровню {{ data.identity.level }}</button>
             </div>
             <template v-for="group in spellGroups" :key="group.level">
               <div class="dnd-cs-spell-level">
@@ -255,7 +262,7 @@
                 </div>
               </div>
               <div v-for="item in group.spells" :key="item.id" class="dnd-cs-spell-row">
-                <label v-if="group.level" class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
+                <label v-if="group.level && showPrepared" class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
                 <span v-else aria-hidden="true"></span>
                 <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
                 <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
@@ -271,6 +278,7 @@
               </div>
             </template>
             <div v-if="!readonly" class="dnd-cs-add-row">
+              <button type="button" class="dnd-cs-add" @click="spellCatalogOpen = true">+ Из списка заклинаний</button>
               <button type="button" class="dnd-cs-add" @click="addSpell(1)">+ Добавить заклинание</button>
               <button type="button" class="dnd-cs-add" @click="addSpell(0)">+ Добавить заговор</button>
             </div>
@@ -283,6 +291,7 @@
     <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
     <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
+    <DndSpellCatalog v-if="spellCatalogOpen && !readonly" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
     <DndWeaponCatalog v-if="weaponCatalogOpen && !readonly" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
     <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
   </div>
@@ -308,6 +317,7 @@ import DndRollToasts from './DndRollToasts.vue';
 import DndWeaponAttacks from './DndWeaponAttacks.vue';
 import DndWeaponFields from './DndWeaponFields.vue';
 import DndSpellFields from './DndSpellFields.vue';
+import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
@@ -316,6 +326,10 @@ import {
   abilityShort, preparedSpellCount, spellAttackBonus, spellGroups as groupSpells, spellLevelLabel, spellRollKind,
   spellSaveAbility, spellSaveDc, spellSlots,
 } from '../dnd/spells';
+import {
+  SPELLCASTER_CLASSES, catalogSpellItem, classSlots, preparedLimit, preparesSpells, slotsDifferFromClass, spellcasterClass,
+  type CatalogSpell,
+} from '../dnd/spellCatalog';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
@@ -325,7 +339,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndWeaponCatalog },
+  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -441,7 +455,7 @@ export default defineComponent({
       emit('op', { type: 'hp-change', mode: hpMode.value, amount });
       hpMode.value = null;
     };
-    watch(() => props.readonly, value => { if (value) { hpMode.value = null; restKind.value = null; } });
+    watch(() => props.readonly, value => { if (value) { hpMode.value = null; restKind.value = null; spellCatalogOpen.value = false; } });
 
     // ===== Death saves, hit dice, rests =====
     const deathStatus = computed(() => deathSaveStatus(props.data.combat));
@@ -547,6 +561,34 @@ export default defineComponent({
       if (props.readonly) return;
       emit('op', { type: 'slot-change', level, delta });
     };
+    // Choosing a class sets what follows from it: the ability and the slots for the current level.
+    const fillClassSlots = () => {
+      const caster = spellcasterClass(props.data.spellcasting.casterClass);
+      if (!caster) return;
+      classSlots(caster.key, props.data.identity.level).forEach((max, index) => {
+        const slot = props.data.spellcasting.slots[spellSlotKey(index + 1)];
+        slot.max = max;
+        slot.spent = Math.min(slot.spent, max);
+      });
+      change();
+    };
+    const setCasterClass = (value: string) => {
+      const caster = spellcasterClass(value);
+      props.data.spellcasting.casterClass = caster?.key ?? '';
+      if (caster) {
+        props.data.spellcasting.ability = caster.ability;
+        fillClassSlots();
+      } else change();
+    };
+    const slotsOutdated = computed(() => slotsDifferFromClass(props.data));
+    const preparedMax = computed(() => preparedLimit(props.data));
+    const showPrepared = computed(() => preparesSpells(props.data));
+    const spellCatalogOpen = ref(false);
+    const addCatalogSpell = (spell: CatalogSpell) => {
+      if (props.readonly || props.data.spells.some((entry) => entry.catalogKey === spell.key)) return;
+      props.data.spells.push(catalogSpellItem(spell, newId(), props.data));
+      change();
+    };
     const addSpell = (level: number) => { props.data.spells.push({ id: newId(), name: '', level }); change(); };
     const setSpellLevel = (id: string, value: string) => {
       const spell = props.data.spells.find((entry) => entry.id === id);
@@ -610,6 +652,8 @@ export default defineComponent({
       rechargeOptions: FEATURE_RECHARGE_OPTIONS,
       spellAttack, spellDc, spellGroups, preparedCount, slotsOf, setSpellAbility, setSlotMax, changeSlot, addSpell, setSpellLevel,
       openSpells, toggleSpell, rollSpellAttack, castSpellAttack, spellDamage,
+      casterClasses: SPELLCASTER_CLASSES, setCasterClass, fillClassSlots, slotsOutdated, preparedMax, showPrepared,
+      spellCatalogOpen, addCatalogSpell,
       spellLevelLabel, spellRollKind, spellSaveAbility, abilityShort,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
@@ -932,6 +976,7 @@ export default defineComponent({
 .dnd-cs-spell-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .dnd-cs-spell-summary .dnd-cs-roll:disabled { opacity: .45; cursor: default; }
 .dnd-cs-spell-prepared { font-size: 12px; color: var(--dnd-text-dim); font-variant-numeric: tabular-nums; }
+.dnd-cs-spell-prepared.is-over { color: var(--dnd-danger); font-weight: 700; }
 .dnd-cs-spell-level { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: 6px; }
 .dnd-cs-spell-level .dnd-cs-subheading { margin: 0; }
 .dnd-cs-spell-dc { display: inline-flex; align-items: center; min-height: 30px; box-sizing: border-box; padding: 4px 9px; border: 1px solid var(--dnd-glass-border); border-radius: 8px; font-size: 12px; color: var(--dnd-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
