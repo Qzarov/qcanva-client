@@ -187,6 +187,10 @@
 - Компонент, который может оказаться вне `.dnd-cs`, подставляет запасные значения:
   `var(--dnd-glass-border, var(--ui-border))`, как в `DndFormulaButton`.
 - У числовых полей в плотных местах скрыты стрелки (`appearance: textfield`).
+- Выпадающее меню `select` рисует система в теме приложения (`color-scheme`). Пунктам
+  задаются фон и текст из общих токенов: `option { background: var(--ui-surface-solid);
+  color: var(--ui-text); }`. Литерал цвета здесь даёт невидимый текст в одной из тем;
+  это проверяет `tests/character-sheet-selects.spec.ts`.
 - У каждого поля и кнопки без текста есть `aria-label` — на них опираются тесты
   `tests/character-sheet-header.spec.ts`.
 - Подписи пока только на русском.

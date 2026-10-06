@@ -53,7 +53,7 @@ const set = (key: 'rollKind' | 'saveAbility' | 'damage' | 'damageType', value: s
 .dnd-spell-fields input, .dnd-spell-fields select { width:100%; min-width:0; box-sizing:border-box; padding:5px 7px; border:1px solid var(--dnd-glass-border); border-radius:8px; background:rgba(var(--dnd-fill-rgb, 255, 255, 255), .045); color:var(--ui-text); font:inherit; font-size:13px; text-transform:none; letter-spacing:0; }
 .dnd-spell-fields input:focus, .dnd-spell-fields select:focus { outline:none; border-color:color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); box-shadow:0 0 0 3px var(--dnd-glass-accent-soft); }
 .dnd-spell-fields input[readonly], .dnd-spell-fields select:disabled { background:transparent; }
-.dnd-spell-fields select option { color:#111; }
+.dnd-spell-fields select option { background:var(--ui-surface-solid); color:var(--ui-text); }
 .dnd-spell-fields input.invalid { border-color:var(--ui-danger-foreground); }
 .dnd-spell-error { grid-column:1 / -1; margin:0; font-size:12px; color:var(--ui-danger-foreground); }
 @media (max-width:760px) {

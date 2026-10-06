@@ -1016,7 +1016,8 @@ export default defineComponent({
 .dnd-cs-recharge select { flex: 0 1 auto; min-width: 0; padding: 5px 7px; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb), 0.045); color: var(--ui-text); font: inherit; font-size: 13px; text-transform: none; letter-spacing: 0; }
 .dnd-cs-recharge select:focus { outline: none; border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); box-shadow: 0 0 0 3px var(--dnd-glass-accent-soft); }
 .dnd-cs-recharge select:disabled { background: transparent; }
-.dnd-cs-recharge select option { color: #111; }
+/* The popup follows the theme (same as the app's share form): tokens, not a literal. */
+.dnd-cs-recharge select option { background: var(--ui-surface-solid); color: var(--ui-text); }
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
 
