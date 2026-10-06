@@ -70,12 +70,12 @@ const set = <K extends keyof DndWeapon>(key: K, value: DndWeapon[K]) => {
 </script>
 
 <style scoped>
-.dnd-weapon-fields { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px 8px; padding:8px; border-radius:10px; background:rgba(255,255,255,.03); border:1px dashed var(--dnd-glass-border); }
+.dnd-weapon-fields { grid-column:1 / -1; display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px 8px; padding:8px; border-radius:10px; background:rgba(var(--dnd-fill-rgb, 255, 255, 255), .03); border:1px dashed var(--dnd-glass-border); }
 .dnd-weapon-fields label { display:flex; flex-direction:column; gap:3px; min-width:0; font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--dnd-text-dim); }
 .dnd-weapon-fields .dnd-weapon-wide { grid-column:span 2; }
 .dnd-weapon-fields .dnd-weapon-check { flex-direction:row; align-items:center; gap:6px; font-size:12px; text-transform:none; letter-spacing:0; color:var(--ui-text); }
 /* Child component: the sheet's scoped input styles do not reach here. */
-.dnd-weapon-fields input:not([type='checkbox']), .dnd-weapon-fields select { width:100%; min-width:0; box-sizing:border-box; padding:5px 7px; border:1px solid var(--dnd-glass-border); border-radius:8px; background:rgba(255,255,255,.045); color:var(--ui-text); font:inherit; font-size:13px; text-transform:none; letter-spacing:0; }
+.dnd-weapon-fields input:not([type='checkbox']), .dnd-weapon-fields select { width:100%; min-width:0; box-sizing:border-box; padding:5px 7px; border:1px solid var(--dnd-glass-border); border-radius:8px; background:rgba(var(--dnd-fill-rgb, 255, 255, 255), .045); color:var(--ui-text); font:inherit; font-size:13px; text-transform:none; letter-spacing:0; }
 .dnd-weapon-fields input:not([type='checkbox']):focus, .dnd-weapon-fields select:focus { outline:none; border-color:color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); box-shadow:0 0 0 3px var(--dnd-glass-accent-soft); }
 .dnd-weapon-fields input[readonly], .dnd-weapon-fields select:disabled { background:transparent; }
 .dnd-weapon-fields select option { color:#111; }

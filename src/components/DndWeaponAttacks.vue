@@ -35,7 +35,7 @@ const emit = defineEmits<{ attack: [attack: WeaponAttack]; damage: [attack: Weap
 .dnd-weapon-attacks { display:flex; flex-direction:column; gap:8px; margin-bottom:12px; }
 .dnd-weapon-attacks h4 { margin:0; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--dnd-text-dim); }
 .dnd-weapon-attacks-empty { margin:0; font-size:13px; color:var(--dnd-text-dim); }
-.dnd-weapon-attack { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--dnd-glass-border); border-radius:12px; background:rgba(255,255,255,.05); }
+.dnd-weapon-attack { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--dnd-glass-border); border-radius:12px; background:rgba(var(--dnd-fill-rgb, 255, 255, 255), .05); }
 .dnd-weapon-attack-name { display:flex; flex-direction:column; min-width:0; }
 .dnd-weapon-attack-name strong { overflow-wrap:anywhere; }
 .dnd-weapon-attack-name span { font-size:12px; color:var(--dnd-text-dim); }

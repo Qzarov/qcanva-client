@@ -83,7 +83,7 @@ watch(() => props.readonly, value => { if (value) close(); });
 <style scoped>
 .dnd-cs-states { position:relative; padding:12px; display:flex; align-items:center; min-width:0; }
 .dnd-cs-state-list { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
-.dnd-cs-state-list button { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border:1px solid var(--dnd-glass-border); border-radius:999px; background:rgba(255,255,255,.04); color:var(--dnd-text-dim); font:inherit; font-size:12px; cursor:pointer; max-width:100%; overflow-wrap:anywhere; }
+.dnd-cs-state-list button { display:inline-flex; align-items:center; gap:6px; padding:7px 11px; border:1px solid var(--dnd-glass-border); border-radius:999px; background:rgba(var(--dnd-fill-rgb, 255, 255, 255), .04); color:var(--dnd-text-dim); font:inherit; font-size:12px; cursor:pointer; max-width:100%; overflow-wrap:anywhere; }
 .dnd-cs-state-list button:disabled { opacity:.5; cursor:default; }
 .dnd-cs-state-list .on, .dnd-cs-state-list .dnd-cs-condition { color:var(--dnd-glass-accent); background:var(--dnd-glass-accent-soft); }
 .dnd-cs-condition-menu { position:fixed; z-index:1000; display:grid; gap:2px; width:min(240px,calc(100vw - 24px)); max-height:min(280px,calc(100dvh - 24px)); box-sizing:border-box; overflow-y:auto; padding:6px; border:1px solid var(--ui-border); border-radius:12px; background:var(--ui-surface-solid); box-shadow:var(--ui-glass-shadow); }

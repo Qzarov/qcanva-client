@@ -480,14 +480,26 @@ export default defineComponent({
 /* ===== Liquid Glass visual tokens (develop the style from here) ===== */
 .dnd-cs {
   --dnd-glass-bg: rgba(13, 17, 14, 0.72);
+  --dnd-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
   --dnd-glass-border: rgba(130, 210, 155, 0.28);
   --dnd-glass-highlight: rgba(255, 255, 255, 0.10);
+  --dnd-glass-sheen: rgba(255, 255, 255, 0.08);
+  --dnd-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
   --dnd-glass-accent: #00ff00;
   --dnd-glass-accent-soft: rgba(0, 255, 0, 0.16);
   --dnd-glass-accent-glow: rgba(0, 255, 0, 0.36);
   --dnd-glass-radius: 20px;
-  --dnd-sub-bg: rgba(255, 255, 255, 0.06);
   --dnd-text-dim: #a7c8b4;
+  /* Inner cards (abilities, proficiencies): no blur, so their own backing. */
+  --dnd-card-bg: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)), rgba(10, 14, 11, 0.5);
+  /* Tint of rows, chips and buttons: rgba(var(--dnd-fill-rgb), <step>). */
+  --dnd-fill-rgb: 255, 255, 255;
+  /* Sunken surfaces: bar tracks, the focused field, the portrait's shade. */
+  --dnd-well: rgba(0, 0, 0, 0.45);
+  --dnd-field-focus-bg: rgba(0, 0, 0, 0.28);
+  --dnd-portrait-shade: rgba(0, 0, 0, 0.25);
+  --dnd-solid: rgba(10, 14, 11, 0.85);
+  --dnd-danger: #ff6b6b;
 
   display: flex;
   flex-direction: column;
@@ -495,16 +507,37 @@ export default defineComponent({
   color: var(--ui-text);
 }
 
+/* Light theme: the same roles, taken from the app's light glass tokens. */
+:root[data-theme='light'] .dnd-cs {
+  --dnd-glass-bg: var(--ui-glass-bg);
+  --dnd-glass-tint: var(--ui-glass-tint);
+  --dnd-glass-border: var(--ui-glass-border);
+  --dnd-glass-highlight: var(--ui-glass-highlight);
+  --dnd-glass-sheen: var(--ui-glass-sheen);
+  --dnd-glass-shadow: var(--ui-glass-shadow);
+  --dnd-glass-accent: var(--ui-accent-strong);
+  --dnd-glass-accent-soft: var(--ui-glass-accent-bg);
+  --dnd-glass-accent-glow: rgba(32, 207, 69, 0.28);
+  --dnd-text-dim: var(--ui-text-secondary);
+  --dnd-card-bg: var(--ui-glass-card-bg);
+  --dnd-fill-rgb: 20, 91, 37;
+  --dnd-well: rgba(20, 91, 37, 0.12);
+  --dnd-field-focus-bg: rgba(255, 255, 255, 0.9);
+  --dnd-portrait-shade: rgba(20, 91, 37, 0.08);
+  --dnd-solid: var(--ui-surface-solid);
+  --dnd-danger: var(--ui-danger-foreground);
+}
+
 /* Big translucent surface WITH blur - used only on the few large panels
    (top card, tab panel) so we never stack backdrop-filter on dozens of rows. */
 .dnd-glass {
   position: relative;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006)), var(--dnd-glass-bg);
+  background: var(--dnd-glass-tint), var(--dnd-glass-bg);
   border: 1px solid var(--dnd-glass-border);
   border-radius: var(--dnd-glass-radius);
   backdrop-filter: blur(18px) saturate(1.15);
   -webkit-backdrop-filter: blur(18px) saturate(1.15);
-  box-shadow: inset 0 1px 0 var(--dnd-glass-highlight), 0 10px 34px rgba(0, 0, 0, 0.38);
+  box-shadow: inset 0 1px 0 var(--dnd-glass-highlight), var(--dnd-glass-shadow);
 }
 /* Soft highlight along the top edge (the "liquid" sheen). */
 .dnd-glass::before {
@@ -513,17 +546,17 @@ export default defineComponent({
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 42%);
+  background: linear-gradient(180deg, var(--dnd-glass-sheen), transparent 42%);
 }
 .dnd-glass > * { position: relative; z-index: 1; }
 
 /* Smaller inner cards: translucent + bordered, NO blur (kept cheap). */
 .dnd-cs-ability,
 .dnd-cs-proficiencies {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)), rgba(10, 14, 11, 0.5);
+  background: var(--dnd-card-bg);
   border: 1px solid var(--dnd-glass-border);
   border-radius: 14px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 1px 0 var(--dnd-glass-sheen);
 }
 
 /* ===== Inputs: read as plain values in idle, reveal edit affordance on hover/focus ===== */
@@ -542,13 +575,13 @@ export default defineComponent({
 .dnd-cs input[type='number'] { width: 100%; }
 .dnd-cs input:hover:not([readonly]):not(:focus),
 .dnd-cs textarea:hover:not([readonly]):not(:focus) {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(var(--dnd-fill-rgb), 0.045);
   border-color: var(--dnd-glass-border);
 }
 .dnd-cs input:focus,
 .dnd-cs textarea:focus {
   outline: none;
-  background: rgba(0, 0, 0, 0.28);
+  background: var(--dnd-field-focus-bg);
   border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
   box-shadow: 0 0 0 3px var(--dnd-glass-accent-soft);
 }
@@ -560,7 +593,7 @@ export default defineComponent({
 .dnd-cs-hp-btn {
   width: 24px; height: 24px; flex: 0 0 24px; padding: 0;
   border: 1px solid var(--dnd-glass-border); border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05); color: var(--ui-text);
+  background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--ui-text);
   cursor: pointer; font-size: 15px; line-height: 1;
   transition: background 150ms, border-color 150ms, color 150ms;
 }
@@ -573,14 +606,14 @@ export default defineComponent({
 .dnd-cs-portrait {
   position: relative; flex: 0 0 76px; display: grid; place-items: center;
   width: 76px; height: 76px; border-radius: 22px; overflow: visible;
-  background: radial-gradient(120% 120% at 30% 20%, var(--dnd-glass-accent-soft), rgba(0,0,0,.25));
+  background: radial-gradient(120% 120% at 30% 20%, var(--dnd-glass-accent-soft), var(--dnd-portrait-shade));
   border: 1px solid color-mix(in srgb, var(--dnd-glass-accent) 30%, transparent);
   color: var(--dnd-glass-accent); font-size: 30px; font-weight: 800;
   box-shadow: 0 0 22px rgba(0, 255, 0, 0.10), inset 0 1px 0 var(--dnd-glass-highlight);
 }
 .dnd-cs-portrait img { width: 100%; height: 100%; border-radius: 21px; object-fit: cover; }
 .dnd-cs-portrait-actions { position: absolute; right: -6px; bottom: -6px; display: flex; gap: 2px; }
-.dnd-cs-portrait-actions button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 50%; background: rgba(10,14,11,.85); color: var(--ui-text); cursor: pointer; }
+.dnd-cs-portrait-actions button { width: 22px; height: 22px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 50%; background: var(--dnd-solid); color: var(--ui-text); cursor: pointer; }
 .dnd-cs-identity { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .dnd-cs-identity-line { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); align-items: start; gap: 6px; }
 .dnd-cs-identity-line.is-multiline { grid-template-columns: minmax(0, 1fr) minmax(0, 90px); }
@@ -593,7 +626,7 @@ export default defineComponent({
 .dnd-cs-xp { grid-column:1 / -1; display:flex; align-items:stretch; gap:0; font-size:11px; color:var(--dnd-text-dim); }
 .dnd-cs-level { display: flex; flex: 0 0 auto; align-items: center; gap: 2px; padding: 1px 5px; border: 1px solid var(--dnd-glass-border); border-radius: 12px 0 0 12px; font-weight: 700; color: var(--ui-text); background: var(--dnd-glass-accent-soft); }
 .dnd-cs-level input[type='number'] { width: 34px; min-width: 0; padding: 1px; text-align: center; }
-.dnd-cs-xp-bar { position: relative; flex: 1; min-width: 0; border: 1px solid var(--dnd-glass-border); border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; background: rgba(0,0,0,.45); }
+.dnd-cs-xp-bar { position: relative; flex: 1; min-width: 0; border: 1px solid var(--dnd-glass-border); border-left: 0; border-radius: 0 12px 12px 0; overflow: hidden; background: var(--dnd-well); }
 .dnd-cs-xp-fill { position: absolute; inset: 0 auto 0 0; background: var(--dnd-glass-accent-soft); transition: width 200ms ease; pointer-events: none; }
 .dnd-cs-xp-values { position: relative; display: flex; align-items: center; justify-content: center; height: 100%; gap: 2px; }
 .dnd-cs-xp-values input[type='number'] { width: 50%; min-width: 0; max-width: 100px; padding: 1px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
@@ -604,7 +637,7 @@ export default defineComponent({
 /* HP progress: dark track, acid-green fill with glow. */
 .dnd-cs-hp-bar {
   flex: 1 1 120px; min-width: 90px; height: 7px; border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45); overflow: hidden; border: 1px solid var(--dnd-glass-border);
+  background: var(--dnd-well); overflow: hidden; border: 1px solid var(--dnd-glass-border);
 }
 .dnd-cs-hp-bar span {
   display: block; height: 100%; border-radius: 999px;
@@ -621,7 +654,7 @@ export default defineComponent({
 .dnd-cs-combat-stats .dnd-cs-stat span { white-space: normal; overflow-wrap: anywhere; font-size: 9px; line-height: 1.2; letter-spacing: 0; text-transform: none; }
 .dnd-cs-combat-stats input[type='number'] { width: 100%; min-width: 0; text-align: center; appearance: textfield; -moz-appearance: textfield; }
 .dnd-cs-combat-stats input::-webkit-inner-spin-button, .dnd-cs-combat-stats input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.dnd-cs-initiative { border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(255,255,255,.04); font: inherit; cursor: pointer; transition: background 150ms, border-color 150ms; }
+.dnd-cs-initiative { border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb), .04); font: inherit; cursor: pointer; transition: background 150ms, border-color 150ms; }
 .dnd-cs-initiative:hover, .dnd-cs-initiative:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); }
 .dnd-cs-initiative:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
 .dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
@@ -657,7 +690,7 @@ export default defineComponent({
 .dnd-cs-roll {
   display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px;
   border: 1px solid var(--dnd-glass-border); border-radius: 999px;
-  background: rgba(255, 255, 255, 0.05); color: var(--dnd-text-dim);
+  background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim);
   font-size: 11px; cursor: pointer; white-space: nowrap;
   transition: all 140ms ease;
 }
@@ -698,7 +731,7 @@ export default defineComponent({
 .dnd-cs-prof-group label {
   display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
   border: 1px solid var(--dnd-glass-border); border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03); cursor: pointer; user-select: none;
+  background: rgba(var(--dnd-fill-rgb), 0.03); cursor: pointer; user-select: none;
 }
 .dnd-cs-prof-group label:has(input:checked) {
   border-color: color-mix(in srgb, var(--dnd-glass-accent) 50%, transparent);
@@ -710,13 +743,13 @@ export default defineComponent({
 .dnd-cs-prof-row button, .dnd-cs-row-remove {
   flex: 0 0 26px; width: 26px; height: 26px; padding: 0;
   border: 1px solid var(--dnd-glass-border); border-radius: 8px;
-  background: rgba(255, 255, 255, 0.04); color: var(--dnd-text-dim); cursor: pointer;
+  background: rgba(var(--dnd-fill-rgb), 0.04); color: var(--dnd-text-dim); cursor: pointer;
   transition: all 150ms ease;
 }
-.dnd-cs-row-remove:hover { color: #ff6b6b; border-color: rgba(255,107,107,.4); }
+.dnd-cs-row-remove:hover { color: var(--dnd-danger); border-color: color-mix(in srgb, var(--dnd-danger) 40%, transparent); }
 .dnd-cs-add, .dnd-cs-add-sm {
   align-self: flex-start; padding: 7px 12px; border: 1px dashed var(--dnd-glass-border); border-radius: 12px;
-  background: rgba(255, 255, 255, 0.02); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
+  background: rgba(var(--dnd-fill-rgb), 0.02); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
   transition: all 150ms ease;
 }
 .dnd-cs-add:hover, .dnd-cs-add-sm:hover { border-color: color-mix(in srgb, var(--dnd-glass-accent) 40%, transparent); color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft); }
@@ -726,7 +759,7 @@ export default defineComponent({
 .dnd-cs-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .dnd-cs-tabs button {
   padding: 7px 14px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
-  background: rgba(255, 255, 255, 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
+  background: rgba(var(--dnd-fill-rgb), 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
   transition: all 160ms ease;
 }
 .dnd-cs-tabs button:hover { color: var(--ui-text); }
@@ -739,8 +772,8 @@ export default defineComponent({
 
 /* Rows */
 .dnd-cs-spell-head { display: grid; gap: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); padding: 0 4px; }
-.dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.04); padding: 8px; transition: border-color 150ms, background 150ms; }
-.dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(255, 255, 255, 0.06); }
+.dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); padding: 8px; transition: border-color 150ms, background 150ms; }
+.dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(var(--dnd-fill-rgb), 0.06); }
 /* Attack card: name row on top, bonus/damage/type wrap below - never overflows. */
 .dnd-cs-attack-row { display: flex; flex-direction: column; gap: 6px; }
 .dnd-cs-attack-top { display: flex; align-items: center; gap: 6px; }
@@ -766,7 +799,7 @@ export default defineComponent({
 .dnd-cs-equip-check { display: grid; place-items: center; }
 .dnd-cs-equip-check input { accent-color: var(--dnd-glass-accent); }
 .dnd-cs-qty { text-align: center; }
-.dnd-cs-feature-row { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(255, 255, 255, 0.025); }
+.dnd-cs-feature-row { display: flex; flex-direction: column; gap: 4px; padding: 8px; border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.025); }
 .dnd-cs-feature-main { display: flex; align-items: center; gap: 6px; }
 .dnd-cs-feature-main > input { flex: 1; min-width: 0; font-weight: 600; }
 .dnd-cs-uses { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; color: var(--dnd-text-dim); }

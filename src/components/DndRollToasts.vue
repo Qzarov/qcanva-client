@@ -42,8 +42,19 @@ const head = (roll: SheetRoll) => {
 </script>
 
 <style scoped>
-/* ===== Roll toasts (Teleported to body: literal colours, not .dnd-cs tokens) ===== */
+/* ===== Roll toasts (Teleported to body: own tokens, the .dnd-cs ones do not reach here) ===== */
 .dnd-cs-toasts {
+  --toast-bg: linear-gradient(160deg, rgba(22, 30, 24, 0.93), rgba(9, 13, 10, 0.93));
+  --toast-border: rgba(0, 255, 0, 0.30);
+  --toast-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  --toast-text: #eaf6ee;
+  --toast-dim: #8fe0a4;
+  --toast-value: #d3ecda;
+  --toast-accent: #00ff00;
+  --toast-danger: #ff6b6b;
+  --toast-btn-bg: rgba(0, 255, 0, 0.12);
+  --toast-btn-hover: rgba(0, 255, 0, 0.2);
+  --toast-btn-border: rgba(130, 210, 155, 0.4);
   position: fixed; left: 16px; bottom: 16px; z-index: 3000;
   display: flex; flex-direction: column-reverse; gap: 8px;
   max-width: min(330px, calc(100vw - 32px)); pointer-events: none;
@@ -51,27 +62,40 @@ const head = (roll: SheetRoll) => {
 .dnd-cs-toast {
   position: relative; pointer-events: auto;
   padding: 10px 30px 10px 13px; border-radius: 14px;
-  background: linear-gradient(160deg, rgba(22, 30, 24, 0.93), rgba(9, 13, 10, 0.93));
-  border: 1px solid rgba(0, 255, 0, 0.30);
-  box-shadow: 0 0 20px rgba(0, 255, 0, 0.14), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  background: var(--toast-bg);
+  border: 1px solid var(--toast-border);
+  box-shadow: 0 0 20px rgba(0, 255, 0, 0.14), var(--toast-shadow);
   backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  color: #eaf6ee;
+  color: var(--toast-text);
 }
-.dnd-cs-toast-head { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: #8fe0a4; margin-bottom: 3px; }
+:root[data-theme='light'] .dnd-cs-toasts {
+  --toast-bg: var(--ui-glass-tint), rgba(255, 255, 255, 0.92);
+  --toast-border: var(--ui-glass-accent-border);
+  --toast-shadow: var(--ui-glass-shadow), inset 0 1px 0 var(--ui-glass-highlight);
+  --toast-text: var(--ui-text);
+  --toast-dim: var(--ui-text-secondary);
+  --toast-value: var(--ui-text);
+  --toast-accent: var(--ui-accent-strong);
+  --toast-danger: var(--ui-danger-foreground);
+  --toast-btn-bg: var(--ui-glass-accent-bg);
+  --toast-btn-hover: rgba(32, 207, 69, 0.28);
+  --toast-btn-border: var(--ui-glass-accent-border);
+}
+.dnd-cs-toast-head { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--toast-dim); margin-bottom: 3px; }
 .dnd-cs-toast-formula { font-size: 15px; font-variant-numeric: tabular-nums; }
-.dnd-cs-toast-formula b { color: #d3ecda; font-weight: 700; }
-.dnd-cs-toast-formula strong { color: #00ff00; font-size: 18px; font-weight: 800; }
-.dnd-cs-toast.crit-max { border-color: rgba(0, 255, 0, 0.65); box-shadow: 0 0 30px rgba(0, 255, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
+.dnd-cs-toast-formula b { color: var(--toast-value); font-weight: 700; }
+.dnd-cs-toast-formula strong { color: var(--toast-accent); font-size: 18px; font-weight: 800; }
+.dnd-cs-toast.crit-max { border-color: rgba(0, 255, 0, 0.65); box-shadow: 0 0 30px rgba(0, 255, 0, 0.4), var(--toast-shadow); }
 .dnd-cs-toast.crit-max .dnd-cs-toast-formula strong { text-shadow: 0 0 12px rgba(0, 255, 0, 0.7); }
-.dnd-cs-toast.crit-min { border-color: rgba(255, 90, 90, 0.55); box-shadow: 0 0 22px rgba(255, 70, 70, 0.28), 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.09); }
-.dnd-cs-toast.crit-min .dnd-cs-toast-formula strong { color: #ff6b6b; }
-.dnd-cs-toast-close { position: absolute; top: 5px; right: 8px; padding: 0; width: 18px; height: 18px; border: 0; background: transparent; color: #8fe0a4; cursor: pointer; font-size: 15px; line-height: 1; }
-.dnd-cs-toast-close:hover { color: #eaf6ee; }
+.dnd-cs-toast.crit-min { border-color: rgba(255, 90, 90, 0.55); box-shadow: 0 0 22px rgba(255, 70, 70, 0.28), var(--toast-shadow); }
+.dnd-cs-toast.crit-min .dnd-cs-toast-formula strong { color: var(--toast-danger); }
+.dnd-cs-toast-close { position: absolute; top: 5px; right: 8px; padding: 0; width: 18px; height: 18px; border: 0; background: transparent; color: var(--toast-dim); cursor: pointer; font-size: 15px; line-height: 1; }
+.dnd-cs-toast-close:hover { color: var(--toast-text); }
 .dnd-cs-toast-enter-active, .dnd-cs-toast-leave-active { transition: opacity 220ms ease, transform 220ms ease; }
 .dnd-cs-toast-enter-from, .dnd-cs-toast-leave-to { opacity: 0; transform: translateX(-18px); }
 .dnd-cs-toast-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
-.dnd-cs-toast-actions button { padding:6px 10px; border:1px solid rgba(130,210,155,.4); border-radius:8px; background:rgba(0,255,0,.12); color:#eaf6ee; font:inherit; font-size:12px; cursor:pointer; }
-.dnd-cs-toast-actions button:hover { background:rgba(0,255,0,.2); }
+.dnd-cs-toast-actions button { padding:6px 10px; border:1px solid var(--toast-btn-border); border-radius:8px; background:var(--toast-btn-bg); color:var(--toast-text); font:inherit; font-size:12px; cursor:pointer; }
+.dnd-cs-toast-actions button:hover { background:var(--toast-btn-hover); }
 /* Phones: two toasts at most, so rolls do not bury the sheet; the log keeps them all. */
 @media (max-width: 760px) {
   .dnd-cs-toasts { left: 12px; bottom: 12px; max-width: calc(100vw - 24px); }
