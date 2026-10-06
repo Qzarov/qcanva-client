@@ -4,6 +4,12 @@ import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const SHOTS = process.env.SHOT_DIR;
 
+/** Set-once data (race, class, slot counts, recharge...) is edited in setup mode (character-sheet-edit-modes.md). */
+async function toSetup(page: Page) {
+  await page.locator('.dnd-mode-button').click();
+  await expect(page.locator('.dnd-mode-button')).toHaveAttribute('aria-pressed', 'true');
+}
+
 async function openSheet(page: Page, identity: { race?: string; className?: string } = {}, theme: 'dark' | 'light' = 'dark') {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: 'Арвен', level: 3, race: identity.race ?? '', className: identity.className ?? '' };
@@ -22,6 +28,7 @@ for (const width of [320, 1280]) {
   test(`race and class are chosen from lists at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const server = await openSheet(page);
+    await toSetup(page);
     const race = page.getByRole('combobox', { name: 'Раса', exact: true });
     const cls = page.getByRole('combobox', { name: 'Класс', exact: true });
 

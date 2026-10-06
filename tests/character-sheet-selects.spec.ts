@@ -23,6 +23,8 @@ for (const theme of ['dark', 'light'] as const) {
     }, theme);
     await page.goto('/templates/hero');
     await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Мириэль');
+    // The weapon and spell parameter selects exist in setup mode (character-sheet-edit-modes.md).
+    await page.locator('.dnd-mode-button').click();
     const measure = async (label: string, selector: string) => {
       const result = await page.locator(selector).first().evaluate((select) => {
         const option = select.querySelector('option')!;

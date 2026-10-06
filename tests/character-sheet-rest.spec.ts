@@ -4,6 +4,12 @@ import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const SHOTS = process.env.SHOT_DIR;
 
+/** Set-once data (race, class, slot counts, recharge...) is edited in setup mode (character-sheet-edit-modes.md). */
+async function toSetup(page: Page) {
+  await page.locator('.dnd-mode-button').click();
+  await expect(page.locator('.dnd-mode-button')).toHaveAttribute('aria-pressed', 'true');
+}
+
 async function openSheet(page: Page, theme: 'dark' | 'light' = 'dark') {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: 'Арвен', level: 4 };
@@ -113,6 +119,7 @@ for (const width of [320, 1280]) {
 test('feature recharge is saved and survives a reload', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const saved = await openSheet(page);
+  await toSetup(page);
   const selects = page.getByLabel('Когда восстанавливаются заряды');
   await expect(selects).toHaveCount(2);
   await selects.nth(1).selectOption('short');

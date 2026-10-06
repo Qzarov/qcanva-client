@@ -4,6 +4,12 @@ import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const SHOTS = process.env.SHOT_DIR;
 
+/** Set-once data (race, class, slot counts, recharge...) is edited in setup mode (character-sheet-edit-modes.md). */
+async function toSetup(page: Page) {
+  await page.locator('.dnd-mode-button').click();
+  await expect(page.locator('.dnd-mode-button')).toHaveAttribute('aria-pressed', 'true');
+}
+
 async function openSheet(page: Page, theme: 'dark' | 'light' = 'dark') {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: 'Мириэль', className: 'Жрец', level: 5 };
@@ -33,6 +39,7 @@ for (const width of [320, 1280]) {
   test(`spell slots, DC and rolls work and fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const saved = await openSheet(page);
+    await toSetup(page);
     const panel = page.locator('.dnd-cs-tab-panel');
     await expect(panel.locator('.dnd-cs-spell-summary')).toContainText('Сл спасброска14');
     await expect(panel.getByRole('button', { name: /Атака заклинанием \+6/ })).toBeVisible();
@@ -86,6 +93,7 @@ for (const width of [320, 1280]) {
   test(`class, prepared limit and the spell catalog work and fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const saved = await openSheet(page);
+    await toSetup(page);
     const panel = page.locator('.dnd-cs-tab-panel');
 
     // Choosing a class sets the ability and the slots for level 5.
