@@ -178,4 +178,71 @@ describe('character sheet page', () => {
       expect(wrapper.findAll('.dnd-cs-add').length).toBe(0);
     });
   });
+
+  describe('undo and redo in setup mode', () => {
+    const lastOps = (n: number) => sentOps().slice(-n);
+    const echo = (op: unknown, revision: number) => {
+      const payload = sockets[0].emit.mock.calls.filter(([event]: [string]) => event === 'sheet-op').map(([, p]: [string, any]) => p).find((p: any) => JSON.stringify(p.op) === JSON.stringify(op));
+      sockets[0].trigger('sheet-op-applied', { clientOpId: payload.clientOpId, op, revision });
+    };
+
+    it('undoes and redoes a rename, as new edits everyone sees', async () => {
+      await open();
+      expect(wrapper.find('[aria-label="Отменить"]').exists()).toBe(false); // play: no undo
+      await toSetup();
+      expect(wrapper.get('[aria-label="Отменить"]').attributes('disabled')).toBeDefined();
+      await wrapper.get('[aria-label="Имя персонажа"]').setValue('Элиан');
+      await flushPromises();
+      echo({ type: 'set', path: ['identity', 'name'], value: 'Элиан' }, 2);
+      await flushPromises();
+      await wrapper.get('[aria-label="Отменить"]').trigger('click');
+      await flushPromises();
+      expect(lastOps(1)).toEqual([{ type: 'set', path: ['identity', 'name'], value: 'Лира' }]);
+      expect((wrapper.get('[aria-label="Имя персонажа"]').element as HTMLTextAreaElement).value).toBe('Лира');
+      expect(wrapper.get('[aria-label="Вернуть"]').attributes('disabled')).toBeUndefined();
+      await wrapper.get('[aria-label="Вернуть"]').trigger('click');
+      await flushPromises();
+      expect(lastOps(1)).toEqual([{ type: 'set', path: ['identity', 'name'], value: 'Элиан' }]);
+    });
+
+    it('does not record play actions, even in setup mode', async () => {
+      await open();
+      await toSetup();
+      await wrapper.get('button[aria-label="Урон"]').trigger('click');
+      await wrapper.get('[aria-label="Количество HP"]').setValue('4');
+      await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+      await wrapper.get('[aria-label="Опыт"]').setValue('300');
+      await flushPromises();
+      expect(wrapper.get('[aria-label="Отменить"]').attributes('disabled')).toBeDefined();
+    });
+
+    it('skips a step whose field someone else changed since, with a notice', async () => {
+      await open();
+      await toSetup();
+      await wrapper.get('[aria-label="Имя персонажа"]').setValue('Элиан');
+      await flushPromises();
+      echo({ type: 'set', path: ['identity', 'name'], value: 'Элиан' }, 2);
+      sockets[0].trigger('sheet-op-applied', { clientOpId: 'dm', op: { type: 'set', path: ['identity', 'name'], value: 'Двалин' }, revision: 3 });
+      await flushPromises();
+      const before = sentOps().length;
+      await wrapper.get('[aria-label="Отменить"]').trigger('click');
+      await flushPromises();
+      expect(sentOps().length).toBe(before);
+      expect(wrapper.text()).toContain('Отмена пропущена');
+      expect((wrapper.get('[aria-label="Имя персонажа"]').element as HTMLTextAreaElement).value).toBe('Двалин');
+    });
+
+    it('answers Ctrl+Z outside text fields and keeps the stack across leaving setup', async () => {
+      await open();
+      await toSetup();
+      await wrapper.get('[aria-label="Сила"]').setValue('16');
+      await flushPromises();
+      await wrapper.get('.dnd-mode-button').trigger('click'); // back to play
+      await toSetup();
+      (document.activeElement as HTMLElement | null)?.blur();
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true }));
+      await flushPromises();
+      expect(lastOps(1)).toEqual([{ type: 'set', path: ['abilities', 'strength', 'score'], value: 10 }]);
+    });
+  });
 });

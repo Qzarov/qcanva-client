@@ -4,6 +4,7 @@
       <BackButton :to="backTarget.to" :label="backTarget.label" />
       <div class="template-header-actions">
         <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
+        <DndUndoButtons v-if="template && !readonly && mode === 'setup'" :can-undo="undoStack.length > 0" :can-redo="redoStack.length > 0" @undo="undo" @redo="redo" />
         <DndModeToggle v-if="template && !readonly" :mode="mode" @change="mode = $event" />
         <DndCanvasLink v-if="template" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" />
         <AccountMenu :show-plugins="false" />
@@ -37,6 +38,9 @@ import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCha
 import type { RemoteRoller } from '../dnd/useSheetRolls';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
 import DndModeToggle from '../components/DndModeToggle.vue';
+import DndUndoButtons from '../components/DndUndoButtons.vue';
+import { setupPart } from '../dnd/sheetKinds';
+import { redoOps, undoOps, type UndoEntry } from '../dnd/sheetUndo';
 import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 import BackButton from '../components/BackButton.vue';
@@ -47,7 +51,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, DndUndoButtons, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -123,12 +127,63 @@ export default defineComponent({
         : reason === 'target_missing' ? 'Этот элемент уже удалён' : 'Изменение не применилось');
     });
 
+    // ===== Undo / redo of this tab's own setup edits (edit-modes spec, part 2) =====
+    // Only setup edits made in setup mode are recorded; play actions are
+    // corrected with their own buttons. The stacks live until a reload.
+    const UNDO_LIMIT = 100;
+    const undoStack = ref<UndoEntry[]>([]);
+    const redoStack = ref<UndoEntry[]>([]);
+    const current = () => clone(data) as unknown as Record<string, unknown>;
+    const recordSetup = (ops: SheetOperation[], before: Record<string, unknown>) => {
+      if (readonly.value || mode.value !== 'setup') return;
+      const setupOps = setupPart(ops);
+      if (!setupOps.length) return;
+      undoStack.value = [...undoStack.value, { ops: setupOps, before, after: current() }].slice(-UNDO_LIMIT);
+      redoStack.value = [];
+    };
+    const undo = () => {
+      const entry = undoStack.value[undoStack.value.length - 1];
+      if (!entry) return;
+      undoStack.value = undoStack.value.slice(0, -1);
+      const ops = undoOps(entry, current());
+      if (!ops) {
+        showNotice('Отмена пропущена: это уже изменил кто-то другой');
+        return;
+      }
+      for (const op of ops) sync.sendOperation(op);
+      redoStack.value = [...redoStack.value, entry];
+    };
+    const redo = () => {
+      const entry = redoStack.value[redoStack.value.length - 1];
+      if (!entry) return;
+      redoStack.value = redoStack.value.slice(0, -1);
+      const ops = redoOps(entry, current());
+      if (!ops) {
+        showNotice('Возврат пропущен: это уже изменил кто-то другой');
+        return;
+      }
+      for (const op of ops) sync.sendOperation(op);
+      undoStack.value = [...undoStack.value, entry];
+    };
+    // Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) in setup mode. A text field keeps its
+    // own undo while it has focus.
+    const undoKeys = (event: KeyboardEvent) => {
+      if (mode.value !== 'setup' || readonly.value || !(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const target = event.target;
+      if (target instanceof Element && target.closest('input, textarea, select, [contenteditable="true"]')) return;
+      const key = event.key.toLowerCase();
+      if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
+      else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redo(); }
+    };
+
     const sendOperation = (op: SheetOperation) => { sync.sendOperation(op); };
     const commitEdits = () => {
       if (data.activeTab !== shadow.activeTab || data.displayMode !== shadow.displayMode) savePrefs();
+      const before = shadow;
       const ops = diffSheet(shadow, data as unknown as Record<string, unknown>);
       shadow = clone(data) as unknown as Record<string, unknown>;
       for (const op of ops) sync.sendOperation(op);
+      recordSetup(ops, before);
     };
 
     // ===== Rolls to the chat of a connected canvas =====
@@ -171,6 +226,12 @@ export default defineComponent({
       return '';
     });
 
+    /** A setup edit sent directly (not via the sheet's diff), still undoable. */
+    const sendSetup = (op: SheetOperation) => {
+      const before = current();
+      sync.sendOperation(op);
+      recordSetup([op], before);
+    };
     const portraitInput = ref<HTMLInputElement | null>(null);
     const uploadPortrait = async (event: Event) => {
       const input = event.target as HTMLInputElement;
@@ -179,12 +240,12 @@ export default defineComponent({
       if (!file) return;
       try {
         const { url } = await uploadImage(file);
-        if (url) sync.sendOperation({ type: 'set', path: ['identity', 'portraitUrl'], value: url });
+        if (url) sendSetup({ type: 'set', path: ['identity', 'portraitUrl'], value: url });
       } catch (e: any) {
         showNotice(e?.message || 'Не удалось загрузить портрет');
       }
     };
-    const removePortrait = () => { sync.sendOperation({ type: 'set', path: ['identity', 'portraitUrl'], value: '' }); };
+    const removePortrait = () => { sendSetup({ type: 'set', path: ['identity', 'portraitUrl'], value: '' }); };
 
     // Leaving with unconfirmed edits would lose them: ask first - both on a
     // full unload and on in-app navigation.
@@ -197,6 +258,7 @@ export default defineComponent({
 
     onMounted(async () => {
       window.addEventListener('beforeunload', warnUnsaved);
+      window.addEventListener('keydown', undoKeys);
       try {
         template.value = await interactiveTemplates.get(sheetId);
         markResourceOpened('interactive-template', template.value?.id);
@@ -208,11 +270,12 @@ export default defineComponent({
     });
     onBeforeUnmount(() => {
       window.removeEventListener('beforeunload', warnUnsaved);
+      window.removeEventListener('keydown', undoKeys);
       if (noticeTimer) clearTimeout(noticeTimer);
     });
 
     return {
-      template, data, error, readonly, mode, syncText, syncWarning, editorRoot,
+      template, data, error, readonly, mode, undoStack, redoStack, undo, redo, syncText, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
       rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
       portraitInput, uploadPortrait, removePortrait, backTarget,

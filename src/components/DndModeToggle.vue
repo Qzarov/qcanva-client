@@ -4,6 +4,7 @@
     class="dnd-mode-button"
     :class="{ 'is-setup': mode === 'setup' }"
     :aria-pressed="mode === 'setup'"
+    :aria-label="mode === 'setup' ? 'Режим: настройка' : 'Режим: игра'"
     :title="mode === 'setup' ? 'Режим настройки: имя, характеристики, владения и состав списков редактируются. Нажмите, чтобы вернуться к игре.' : 'Режим игры. Нажмите, чтобы настроить персонажа: имя, характеристики, владения, списки.'"
     @click="emit('change', mode === 'setup' ? 'play' : 'setup')"
   >
@@ -31,5 +32,7 @@ const emit = defineEmits<{ change: [mode: DndSheetMode] }>();
 /* Setup is the exception: visible at a glance. */
 .dnd-mode-button.is-setup { color: var(--ui-glass-accent-text); border-color: var(--ui-glass-accent-border); background: var(--ui-glass-accent-bg, var(--ui-glass-tint)), var(--ui-glass-bg); }
 .dnd-mode-icon { width: 14px; height: 14px; flex: none; }
-@media (max-width: 480px) { .dnd-mode-button { padding: 0 10px; } .dnd-mode-text { font-size: 12px; } }
+/* Narrow phones: the icon (and the accent in setup) says which mode is on; the
+   label would push the header past the back button. */
+@media (max-width: 420px) { .dnd-mode-button { width: 36px; padding: 0; justify-content: center; } .dnd-mode-text { display: none; } }
 </style>
