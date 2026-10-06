@@ -292,7 +292,7 @@
       <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
       <Teleport to="body">
         <div
-          v-if="fullscreenEditingNode"
+          v-if="fullscreenEditingNode && onScreen"
           class="node-fullscreen-editor"
           role="dialog"
           aria-modal="true"
@@ -851,6 +851,7 @@
 </template>
 
 <script lang="ts">
+import { useViewActivity } from '../composables/useViewActivity';
 import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import { marked } from "marked";
@@ -4362,36 +4363,47 @@ export default defineComponent({
         viewportObserver = new ResizeObserver(measureViewport);
         viewportObserver.observe(viewport.value);
       }
-      window.addEventListener('resize', measureViewport);
-      // Browser zoom on a double tap also emits resize on Android and used to
-      // reset this canvas to fit-to-content. Orientation is the only layout
-      // change that should intentionally reset the view.
-      window.addEventListener("orientationchange", onOrientationChange);
-      const viewportMeta = document.querySelector('meta[name="viewport"]');
-      if (viewportMeta) {
-        previousViewportContent = viewportMeta.getAttribute('content');
-        viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
-      }
-      window.addEventListener("keydown", onKeyDown);
-      document.addEventListener("pointerdown", onDocumentPointerDown, true);
+    });
+
+    // Page-wide effects only while this canvas is on screen (in a background
+    // tab it must not block zoom, take keys or react to resizes).
+    const { active: onScreen } = useViewActivity({
+      onShow: () => {
+        window.addEventListener('resize', measureViewport);
+        // Browser zoom on a double tap also emits resize on Android and used to
+        // reset this canvas to fit-to-content. Orientation is the only layout
+        // change that should intentionally reset the view.
+        window.addEventListener("orientationchange", onOrientationChange);
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta) {
+          previousViewportContent = viewportMeta.getAttribute('content');
+          viewportMeta.setAttribute('content', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover');
+        }
+        window.addEventListener("keydown", onKeyDown);
+        document.addEventListener("pointerdown", onDocumentPointerDown, true);
+        measureViewport();
+      },
+      onHide: () => {
+        window.removeEventListener('resize', measureViewport);
+        window.removeEventListener("orientationchange", onOrientationChange);
+        const viewportMeta = document.querySelector('meta[name="viewport"]');
+        if (viewportMeta && previousViewportContent !== null) viewportMeta.setAttribute('content', previousViewportContent);
+        window.removeEventListener("keydown", onKeyDown);
+        document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+        stopAutoPan();
+      },
     });
 
     onUnmounted(() => {
       viewportObserver?.disconnect();
-      window.removeEventListener('resize', measureViewport);
       if (editSaveTimer) clearTimeout(editSaveTimer);
       unregisterEditorBack?.();
       mobileLayoutQuery?.removeEventListener?.('change', onMobileLayoutChange);
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
-      stopAutoPan();
-      window.removeEventListener("orientationchange", onOrientationChange);
-      const viewportMeta = document.querySelector('meta[name="viewport"]');
-      if (viewportMeta && previousViewportContent !== null) viewportMeta.setAttribute('content', previousViewportContent);
-      window.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
     });
 
     return {
+      onScreen,
       rulerGesture,viewportSize,
       t,
       isTouchDevice,

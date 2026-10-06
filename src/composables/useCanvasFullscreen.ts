@@ -1,4 +1,5 @@
-import { onBeforeUnmount, onMounted, readonly, ref, type Ref } from 'vue';
+import { onMounted, readonly, ref, type Ref } from 'vue';
+import { useViewActivity } from './useViewActivity';
 
 /** Device-local viewing mode: never changes the canvas camera or saved data. */
 export function useCanvasFullscreen(element: Ref<HTMLElement | null>, onError: () => void) {
@@ -23,14 +24,19 @@ export function useCanvasFullscreen(element: Ref<HTMLElement | null>, onError: (
   };
   onMounted(() => {
     supported.value = !!element.value?.requestFullscreen && !!document.exitFullscreen && document.fullscreenEnabled !== false;
-    sync();
-    document.addEventListener('fullscreenchange', sync);
-    document.addEventListener('keydown', onEscape);
   });
-  onBeforeUnmount(() => {
-    document.removeEventListener('fullscreenchange', sync);
-    document.removeEventListener('keydown', onEscape);
-    if (active.value && document.fullscreenElement === element.value) void document.exitFullscreen().catch(() => {});
+  // Listening, and staying full screen, only while the canvas is on screen.
+  useViewActivity({
+    onShow: () => {
+      sync();
+      document.addEventListener('fullscreenchange', sync);
+      document.addEventListener('keydown', onEscape);
+    },
+    onHide: () => {
+      document.removeEventListener('fullscreenchange', sync);
+      document.removeEventListener('keydown', onEscape);
+      if (active.value && document.fullscreenElement === element.value) void document.exitFullscreen().catch(() => {});
+    },
   });
   return { supported: readonly(supported), active: readonly(active), busy: readonly(busy), toggle };
 }

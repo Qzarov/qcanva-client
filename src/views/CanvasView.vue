@@ -901,6 +901,8 @@ import { useCanvasFullscreen } from '../composables/useCanvasFullscreen';
 import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useBackHandler } from '../composables/useBackHandler';
+import { useViewActivity } from '../composables/useViewActivity';
+import { useTab } from '../tabs/tabContext';
 import CanvasLoader from '../components/CanvasLoader.vue';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
@@ -1053,6 +1055,14 @@ export default defineComponent({
     const checkingResourcePassword = ref(false);
     const title = ref('');
     useDocumentTitle(title);
+    // Tabs (docs/app-tabs-plan.md): both addresses of this canvas are one tab;
+    // the address bar is only rewritten while this canvas is the page on screen.
+    const tab = useTab();
+    const canonicalize = (preferred: string, id: string) => {
+      tab.registerAlias(id);
+      tab.registerAlias(preferred);
+      if (tab.active.value && route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
+    };
     const canvasData = ref<any>(null);
     const role = ref('');
     const isPublic = ref(false);
@@ -1195,6 +1205,8 @@ export default defineComponent({
       sendRulerUpdate,sendRulerClear,getRulerActor,onRulerState,onRulerUpdate,onRulerClear,onRulerSettings,onRulerError,
     } = useCanvasSocket(resolvedId);
 
+    watch(() => wsConnected.value, (on) => tab.setStatus(on ? 'online' : 'reconnecting'), { immediate: true });
+    watch(() => pendingOpsCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
     const ruler=useCanvasRuler({connected:wsConnected,sendUpdate:sendRulerUpdate,sendClear:sendRulerClear,getActor:getRulerActor});
     const rulerActive=ref(false),rulerSettingsBusy=ref(false);
     const rulerSettings=ruler.settings,rulerMeasurements=ruler.measurements;
@@ -1346,9 +1358,7 @@ export default defineComponent({
         slugInput.value = slug.value || '';
         // Prettify the address bar: prefer the slug when present.
         const preferred = slug.value || res.canvas.id;
-        if (route.params.id !== preferred) {
-          router.replace(`/canvas/${preferred}`).catch(() => {});
-        }
+        canonicalize(preferred, res.canvas.id);
         title.value = res.canvas.title;
         if(res.canvas.rulerSettings)ruler.setInitialSettings(res.canvas.rulerSettings);
         canvasData.value = JSON.parse(res.canvas.data);
@@ -1440,7 +1450,8 @@ export default defineComponent({
           return;
         }
         console.warn('Canvas is not available, redirecting to dashboard', e);
-        await router.replace('/dashboard');
+        // From a background tab this would pull the user off the page they are on.
+        if (tab.active.value) await router.replace('/dashboard');
         return;
       }
       loading.value = false;
@@ -1598,7 +1609,7 @@ export default defineComponent({
         slugInput.value = slug.value || '';
         showToast(slug.value ? 'Link updated' : 'Link removed', 'success');
         const preferred = slug.value || resolvedId.value;
-        if (route.params.id !== preferred) router.replace(`/canvas/${preferred}`).catch(() => {});
+        canonicalize(preferred, resolvedId.value);
       } catch (err: any) {
         // Keep what was typed so the inline error explains THIS value.
         slugError.value = err.message || t('linkSaveFailed');
@@ -2051,10 +2062,25 @@ export default defineComponent({
       void nextTick(observeChromeMetrics);
     });
 
+    // Window listeners and the :root toolbar height belong to the canvas on
+    // screen only; asleep in a background tab it leaves the page alone, and
+    // its teleported Add sheet closes.
+    useViewActivity({
+      onShow: () => {
+        window.addEventListener('keydown', onRulerKeyDown, true);
+        window.addEventListener('resize', updateChromeMetrics);
+        window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
+        void nextTick(updateChromeMetrics);
+      },
+      onHide: () => {
+        window.removeEventListener('keydown', onRulerKeyDown, true);
+        window.removeEventListener('resize', updateChromeMetrics);
+        window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
+        document.documentElement.style.removeProperty('--canvas-toolbar-height');
+        addSheetOpen.value = false;
+      },
+    });
     onMounted(() => {
-      window.addEventListener('keydown',onRulerKeyDown,true);
-      window.addEventListener('resize', updateChromeMetrics);
-      window.addEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       const cached = readNativeResourceCache<any>('canvas', canvasId);
       if (cached?.value?.canvas?.data) {
         const res = cached.value;
@@ -2082,14 +2108,10 @@ export default defineComponent({
       void nextTick(observeChromeMetrics);
     });
     onUnmounted(() => {
-      window.removeEventListener('keydown',onRulerKeyDown,true);
       if (saveTimeout) clearTimeout(saveTimeout);
       if (noticeTimeout) clearTimeout(noticeTimeout);
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
-      window.removeEventListener('resize', updateChromeMetrics);
-      window.removeEventListener('pointerdown', closeToolbarOnOutsidePointer, true);
       chromeResizeObserver?.disconnect();
-      document.documentElement.style.removeProperty('--canvas-toolbar-height');
     });
 
     const drawPanelOpen = ref(false);
