@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import { isAuthenticated } from '../api/client';
+import { getCurrentUser, isAuthenticated } from '../api/client';
+import { tabsEnabled } from '../tabs/flag';
+import { restoreTabs, showTab } from '../tabs/registry';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -82,8 +84,12 @@ router.beforeEach((to) => {
 // their own reactive title once mounted (useDocumentTitle); every other
 // route (login, admin, ...) has none of its own, and without this reset it
 // would otherwise keep showing whatever the PREVIOUS page's tab title was.
-router.afterEach(() => {
+router.afterEach((to) => {
   document.title = 'QCanva';
+  if (tabsEnabled()) showTab(to);
 });
+
+// Tab mode: the list of open tabs is per user and survives a restart.
+if (tabsEnabled()) restoreTabs(getCurrentUser()?.id ?? null);
 
 export default router;

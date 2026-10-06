@@ -1,3 +1,4 @@
+import { clearTabs } from '../tabs/registry';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -56,6 +57,8 @@ export function setToken(token: string, role = 'user', accessMode = 'user', user
 }
 
 export function clearToken() {
+  // Signing out forgets this device's open tabs and drops their live pages.
+  clearTabs();
   localStorage.removeItem('token');
   localStorage.removeItem('userRole');
   localStorage.removeItem('accessMode');

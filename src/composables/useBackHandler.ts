@@ -9,7 +9,7 @@
  * offering to close the app.
  */
 
-import { onBeforeUnmount, onMounted } from 'vue';
+import { useViewActivity } from './useViewActivity';
 
 /** Returns true when it handled the Back press. */
 export type BackHandler = () => boolean;
@@ -32,9 +32,15 @@ export function runBackHandlers(): boolean {
   return false;
 }
 
-/** Registers `handler` for as long as the calling component is mounted. */
+/**
+ * Registers `handler` while the calling component is on screen: mounted, and
+ * in tab mode also not asleep in a background tab - a hidden page must not
+ * answer the system Back.
+ */
 export function useBackHandler(handler: BackHandler): void {
   let unregister: (() => void) | null = null;
-  onMounted(() => { unregister = registerBackHandler(handler); });
-  onBeforeUnmount(() => { unregister?.(); unregister = null; });
+  useViewActivity({
+    onShow: () => { unregister = registerBackHandler(handler); },
+    onHide: () => { unregister?.(); unregister = null; },
+  });
 }

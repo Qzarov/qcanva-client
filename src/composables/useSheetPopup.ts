@@ -1,4 +1,5 @@
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { ref } from 'vue';
+import { useViewActivity } from './useViewActivity';
 import { useBackHandler } from './useBackHandler';
 
 /** Dismiss an anchored sheet popup with outside tap, Escape or Android Back. */
@@ -23,13 +24,18 @@ export function useSheetPopup() {
       event.preventDefault(); event.stopPropagation(); close(true);
     }
   };
-  onMounted(() => {
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', escape);
-  });
-  onBeforeUnmount(() => {
-    document.removeEventListener('pointerdown', outside);
-    document.removeEventListener('keydown', escape);
+  // Listening only while the page is on screen; a popup left open in a page
+  // that goes to sleep is closed with it.
+  useViewActivity({
+    onShow: () => {
+      document.addEventListener('pointerdown', outside);
+      document.addEventListener('keydown', escape);
+    },
+    onHide: () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+      open.value = null;
+    },
   });
   useBackHandler(() => { if (!open.value) return false; close(true); return true; });
   return { root, popup, open, toggle, close };
