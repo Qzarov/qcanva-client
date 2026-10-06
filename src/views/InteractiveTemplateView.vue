@@ -1,6 +1,6 @@
 <template>
   <div class="template-page">
-    <header class="template-header">
+    <header class="template-header" :class="{ 'has-tabs': tabMode }">
       <BackButton :to="backTarget.to" :label="backTarget.label" />
       <div class="template-header-actions">
         <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
@@ -32,6 +32,7 @@
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useActiveListener } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
+import { tabsEnabled } from '../tabs/flag';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
@@ -299,6 +300,7 @@ export default defineComponent({
     });
 
     return {
+      tabMode: tabsEnabled(),
       template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
       rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
@@ -323,4 +325,16 @@ export default defineComponent({
 .template-editor { max-width:1120px; margin:auto; padding:20px; }
 .template-error { text-align:center; color:var(--ui-danger-foreground); }
 @media (max-width: 760px) { .template-editor { padding:12px; } .template-header { padding:8px 12px; } }
+/* Tab mode adds the tabs button next to Back: on the narrowest phones the
+   header tightens, the canvas link shrinks to its dot, and below 340 px the
+   account menu (also on the dashboard, one tap away in the tabs panel) goes. */
+@media (max-width: 360px) {
+  .template-header.has-tabs { gap:4px; padding:8px; }
+  .template-header.has-tabs .template-header-actions { gap:4px; }
+  .template-header.has-tabs :deep(.back-group) { gap:4px; }
+  .template-header.has-tabs :deep(.dnd-undo) { gap:4px; }
+  .template-header.has-tabs :deep(.dnd-link-button) { width:36px; padding:0; justify-content:center; }
+  .template-header.has-tabs :deep(.dnd-link-text) { display:none; }
+}
+@media (max-width: 340px) { .template-header.has-tabs :deep(.account-menu) { display:none; } }
 </style>

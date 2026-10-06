@@ -133,3 +133,31 @@ test('without the flag nothing is kept alive', async ({ page }) => {
   await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
   expect(counts.rest).toBe(perOpen * 3); // every visit loads again, as before tabs
 });
+
+test('the tabs panel switches tabs, and closing a tab drops its live page', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const { counts } = await serveSheets(page, ['a', 'b']);
+  await page.goto('/templates/a');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+  const perOpen = counts.rest;
+  await go(page, '/templates/b');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой b');
+
+  await page.getByRole('button', { name: 'Открытые вкладки: 2' }).click();
+  const panel = page.getByRole('dialog', { name: 'Открытые вкладки' });
+  await expect(panel.locator('.tabs-panel-title')).toHaveText(['Дашборд', 'Герой b', 'Герой a']);
+  await page.screenshot({ path: `${process.env.SHOTS || 'test-results'}/tabs-panel-390.png` });
+  await panel.locator('.tabs-panel-item', { hasText: 'Герой a' }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+  expect(counts.rest).toBe(perOpen * 2); // a was woken, not reloaded
+
+  await page.getByRole('button', { name: 'Открытые вкладки: 2' }).click();
+  await panel.getByRole('button', { name: 'Закрыть вкладку: Герой b' }).click();
+  await expect(panel.locator('.tabs-panel-title')).toHaveText(['Дашборд', 'Герой a']);
+  await page.keyboard.press('Escape');
+  await go(page, '/templates/b');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой b');
+  expect(counts.rest).toBe(perOpen * 3); // b was closed: it loads again
+});
+

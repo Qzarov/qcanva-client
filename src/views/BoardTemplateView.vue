@@ -3,7 +3,10 @@
 
   <div v-else class="board-template-page">
     <header class="board-template-header">
-      <router-link :to="backTarget.to" class="board-template-back">← {{ backTarget.label }}</router-link>
+      <span class="board-template-back-group">
+        <router-link :to="backTarget.to" class="board-template-back">← {{ backTarget.label }}</router-link>
+        <TabsButton />
+      </span>
       <div v-if="template" class="board-template-title">
         <input
           v-if="role === 'owner'"
@@ -62,6 +65,7 @@ import { useBoardSocket } from '../composables/useBoardSocket';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
 import { useTab } from '../tabs/tabContext';
+import TabsButton from '../components/tabs/TabsButton.vue';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
@@ -233,6 +237,7 @@ watch(() => (templateType.value === 'trello-board' ? pendingCount.value : 0), (c
 .board-template-header { display:grid; grid-template-columns:minmax(120px,1fr) minmax(220px,auto) minmax(120px,1fr); align-items:center; gap:16px; min-height:62px; padding:0 20px; border-bottom:1px solid var(--ui-border); background:var(--ui-surface-solid); }
 .board-template-back { color:var(--ui-text-secondary); font-size:13px; text-decoration:none; }
 .board-template-back:hover { color:var(--ui-text); }
+.board-template-back-group { display:inline-flex; align-items:center; gap:8px; min-width:0; }
 .board-template-title { display:grid; justify-items:center; gap:2px; }
 .board-template-title input { width:min(400px,44vw); padding:5px 9px; border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ui-text); font-size:18px; font-weight:700; text-align:center; }
 .board-template-title input:focus { border-color:var(--ui-focus); outline:none; background:var(--ui-surface-subtle); }
