@@ -84,7 +84,9 @@ describe('character sheet page', () => {
 
   it('shows a remote edit live without wiping what the user is typing', async () => {
     const data = await open();
-    const race = wrapper.get('[aria-label="Раса"]');
+    // The race is a list now; its last option switches to typing a custom one.
+    await wrapper.get('select[aria-label="Раса"]').setValue('\u0000type');
+    const race = wrapper.get('[aria-label="Раса: свой вариант"]');
     (race.element as HTMLInputElement).focus();
     // Typing: `input` only. setValue() would also fire `change` (a commit).
     (race.element as HTMLInputElement).value = 'Полуэ';

@@ -76,10 +76,10 @@ for (const width of [320, 390, 760, 1280]) {
     await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
     expect((await name.boundingBox())!.height).toBeGreaterThan(45);
     await expect(page.getByText('Название в дашборде')).toHaveCount(0);
-    const race = await page.getByRole('textbox', { name: 'Раса', exact: true }).boundingBox();
+    const race = await page.getByRole('combobox', { name: 'Раса', exact: true }).boundingBox();
     const nameBox = (await name.boundingBox())!;
     expect(race!.y).toBeLessThan(nameBox.y + nameBox.height);
-    const classBox = (await page.getByRole('textbox', { name: 'Класс', exact: true }).boundingBox())!;
+    const classBox = (await page.getByRole('combobox', { name: 'Класс', exact: true }).boundingBox())!;
     expect(classBox.y).toBeGreaterThanOrEqual(race!.y + race!.height);
     const level = (await page.getByLabel('Уровень', { exact: true }).boundingBox())!;
     const xp = (await page.locator('.dnd-cs-xp-bar').boundingBox())!;
@@ -184,8 +184,8 @@ test('name height follows viewport changes and reloading keeps the name and titl
   await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
   await name.fill('Лира'); await name.blur();
   await expect.poll(() => saved().title).toBe('Лира');
-  const race = (await page.getByRole('textbox', { name: 'Раса', exact: true }).boundingBox())!;
-  const classBox = (await page.getByRole('textbox', { name: 'Класс', exact: true }).boundingBox())!;
+  const race = (await page.getByRole('combobox', { name: 'Раса', exact: true }).boundingBox())!;
+  const classBox = (await page.getByRole('combobox', { name: 'Класс', exact: true }).boundingBox())!;
   expect(Math.abs(race.y - classBox.y)).toBeLessThanOrEqual(1);
   await page.reload();
   await expect(name).toHaveValue('Лира');
