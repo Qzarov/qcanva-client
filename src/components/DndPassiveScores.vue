@@ -12,7 +12,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { useActiveListener } from '../composables/useViewActivity';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { useSheetPopup } from '../composables/useSheetPopup';
 const props = defineProps<{ items: { key: string; label: string; value: number; ariaLabel: string; help: string }[] }>();
 const { root, open, toggle, close } = useSheetPopup();
@@ -44,16 +45,10 @@ watch(open, async key => {
   await nextTick();
   if (open.value === key) positionHint();
 });
-onMounted(() => {
-  window.addEventListener('resize', positionHint);
-  // Capture also sees scrolling in the character page's own scroll container.
-  document.addEventListener('scroll', positionHint, true);
-});
-onBeforeUnmount(() => {
-  clearTimer();
-  window.removeEventListener('resize', positionHint);
-  document.removeEventListener('scroll', positionHint, true);
-});
+useActiveListener(window, 'resize', positionHint);
+// Capture also sees scrolling in the character page's own scroll container.
+useActiveListener(document, 'scroll', positionHint, true);
+onBeforeUnmount(clearTimer);
 </script>
 
 <style scoped>

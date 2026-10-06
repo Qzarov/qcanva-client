@@ -29,7 +29,9 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
+import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useActiveListener } from '../composables/useViewActivity';
+import { useTab } from '../tabs/tabContext';
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
@@ -171,6 +173,12 @@ export default defineComponent({
       undoStack.value = [...undoStack.value, entry];
     };
     // A restore reaches this tab as ordinary edits through the socket.
+    // What the tabs panel shows for this sheet.
+    const tab = useTab();
+    watch(() => data.identity.name, (name) => tab.setTitle(name.trim() || 'Персонаж'), { immediate: true });
+    watch(() => sync.status.value, (status) => tab.setStatus(status === 'offline' || status === 'error' ? 'offline' : status === 'connecting' ? 'reconnecting' : 'online'), { immediate: true });
+    watch(() => sync.pendingCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
+
     const onRestored = (rolledBack: number) => { showNotice(`Настройка возвращена: откачено записей — ${rolledBack}`); };
 
     // Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) in setup mode. A text field keeps its
@@ -183,6 +191,9 @@ export default defineComponent({
       if (key === 'z' && !event.shiftKey) { event.preventDefault(); undo(); }
       else if ((key === 'z' && event.shiftKey) || key === 'y') { event.preventDefault(); redo(); }
     };
+
+    // Undo keys only while this sheet is on screen, not from a background tab.
+    useActiveListener(window, 'keydown', undoKeys);
 
     const sendOperation = (op: SheetOperation) => { sync.sendOperation(op); };
     const commitEdits = () => {
@@ -264,11 +275,14 @@ export default defineComponent({
       event.preventDefault();
       event.returnValue = '';
     };
-    onBeforeRouteLeave(() => !sync.pendingCount.value || window.confirm('Есть неотправленные изменения персонажа. Уйти со страницы?'));
+    // With tabs, leaving is switching tabs: the sheet stays alive and its edits
+    // keep syncing in the background, so there is nothing to confirm (closing
+    // the tab asks instead).
+    onBeforeRouteLeave(() => Boolean(tab.key) || !sync.pendingCount.value || window.confirm('Есть неотправленные изменения персонажа. Уйти со страницы?'));
 
     onMounted(async () => {
       window.addEventListener('beforeunload', warnUnsaved);
-      window.addEventListener('keydown', undoKeys);
+
       try {
         template.value = await interactiveTemplates.get(sheetId);
         markResourceOpened('interactive-template', template.value?.id);
@@ -280,7 +294,7 @@ export default defineComponent({
     });
     onBeforeUnmount(() => {
       window.removeEventListener('beforeunload', warnUnsaved);
-      window.removeEventListener('keydown', undoKeys);
+
       if (noticeTimer) clearTimeout(noticeTimer);
     });
 

@@ -42,6 +42,7 @@
 </template>
 
 <script setup lang="ts">
+import { useViewActivity } from '../composables/useViewActivity';
 import { computed, nextTick, ref } from 'vue';
 import { interactiveTemplates, type SheetHistoryEntry } from '../api/client';
 import { describeHistoryEntry, HISTORY_NOTE_LABEL } from '../dnd/sheetHistoryText';
@@ -62,6 +63,8 @@ const filters: Array<{ key: Filter; label: string }> = [
 ];
 
 const open = ref(false);
+// Closed when the page goes to sleep in a background tab (it is teleported to <body>).
+useViewActivity({ onHide: () => { open.value = false; } });
 const loading = ref(false);
 const error = ref('');
 const entries = ref<SheetHistoryEntry[]>([]);

@@ -25,6 +25,7 @@ import ToastContainer from './components/ToastContainer.vue';
 import { viewKeyFor } from './router/view-remount';
 import { tabsEnabled } from './tabs/flag';
 import { hostFor, hostName } from './tabs/TabHost';
+import { installScrollMemory } from './tabs/scrollMemory';
 import { isSleepReady, liveTabKeys, tabKeyFor, tabs } from './tabs/registry';
 
 /** A plain pass-through for pages that are not tabs (or cannot sleep yet). */
@@ -34,6 +35,7 @@ export default defineComponent({
   components: { ToastContainer },
   setup() {
     const tabMode = tabsEnabled();
+    if (tabMode) installScrollMemory();
 
     // Only pages that implement the sleep contract are hosted per tab and kept
     // alive; anything else gets a pass-through keyed on its path and remounts

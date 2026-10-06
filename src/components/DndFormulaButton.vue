@@ -15,7 +15,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { useActiveListener } from '../composables/useViewActivity';
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
 import { FORMULA_HINT, type FormulaParse } from '../dnd/dice';
 import { useSheetPopup } from '../composables/useSheetPopup';
 
@@ -64,15 +65,9 @@ watch(open, async (key) => {
   await nextTick();
   place();
 });
-onMounted(() => {
-  window.addEventListener('resize', place);
-  document.addEventListener('scroll', place, true);
-});
-onBeforeUnmount(() => {
-  if (timer) clearTimeout(timer);
-  window.removeEventListener('resize', place);
-  document.removeEventListener('scroll', place, true);
-});
+useActiveListener(window, 'resize', place);
+useActiveListener(document, 'scroll', place, true);
+onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
 </script>
 
 <style scoped>

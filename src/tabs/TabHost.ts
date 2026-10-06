@@ -1,4 +1,5 @@
-import { computed, defineComponent, provide, shallowReactive, watch, type Component } from 'vue';
+import { computed, defineComponent, nextTick, onActivated, provide, shallowReactive, watch, type Component } from 'vue';
+import { restoreScrollPositions } from './scrollMemory';
 import { routeLocationKey, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import { tabKeyFor } from './registry';
 import { createTabContext, TAB_CONTEXT } from './tabContext';
@@ -33,6 +34,8 @@ export function hostFor(key: string): Component {
       });
       provide(routeLocationKey, frozen);
       provide(TAB_CONTEXT, createTabContext(key, computed(() => ownsRoute())));
+      // Scroll containers come back where they were (see scrollMemory).
+      onActivated(() => { void nextTick(() => requestAnimationFrame(restoreScrollPositions)); });
       return () => slots.default?.();
     },
   });

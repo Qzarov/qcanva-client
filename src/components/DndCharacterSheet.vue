@@ -290,7 +290,7 @@
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
     <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" :hit-die-locked="locked" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
-    <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
+    <DndRollToasts v-if="onScreen" :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
     <DndSpellCatalog v-if="spellCatalogOpen && !locked" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
     <DndWeaponCatalog v-if="weaponCatalogOpen && !locked" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
     <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
@@ -307,6 +307,7 @@ import {
   type DndAbilityKey, type DndCharacterSheetData, type DndSheetMode, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
+import { useViewActivity } from '../composables/useViewActivity';
 import DndIdentitySelect from './DndIdentitySelect.vue';
 import DndRestDialog from './DndRestDialog.vue';
 import DndPassiveScores from './DndPassiveScores.vue';
@@ -649,6 +650,18 @@ export default defineComponent({
       if (option) void rolls.rollDamage(spellName(item), option);
     };
     const weaponCatalogOpen = ref(false);
+    // Dialogs and toasts are teleported to <body>: a sheet asleep in a
+    // background tab must not leave them over the page on screen. Toasts come
+    // back with the sheet (a pending attack keeps its damage roll).
+    const { active: onScreen } = useViewActivity({
+      onHide: () => {
+        hpMode.value = null;
+        restKind.value = null;
+        spellCatalogOpen.value = false;
+        weaponCatalogOpen.value = false;
+        rollLogOpen.value = false;
+      },
+    });
     const addCatalogWeapon = (weapon: CatalogWeapon) => {
       props.data.equipment.push(catalogEquipmentItem(weapon, newId()));
       weaponCatalogOpen.value = false;
@@ -675,6 +688,7 @@ export default defineComponent({
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
       armorOptions: ['Лёгкие', 'Средние', 'Тяжёлые', 'Щиты'],
       weaponOptions: ['Простое', 'Воинское'],
+      onScreen,
       locked, proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
       nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,

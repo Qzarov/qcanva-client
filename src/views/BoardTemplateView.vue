@@ -61,6 +61,7 @@ import AccountMenu from '../components/AccountMenu.vue';
 import { useBoardSocket } from '../composables/useBoardSocket';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
+import { useTab } from '../tabs/tabContext';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
@@ -69,6 +70,8 @@ const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
 const { backTarget } = useResourceBackTarget();
 const templateType = ref<InteractiveTemplate['templateType'] | null>(null);
+// The tabs panel names a board by its title (a character sheet names itself).
+const tab = useTab();
 const loading = ref(true);
 const loadError = ref('');
 const savingTitle = ref(false);
@@ -218,6 +221,11 @@ function submitOperation(operation: BoardOperation) {
 onUnmounted(() => {
   if (connected) disconnect();
 });
+watch(() => (templateType.value === 'trello-board' ? template.value?.title : null), (title) => { if (title) tab.setTitle(title); }, { immediate: true });
+watch(() => (templateType.value === 'trello-board' ? syncStatus.value : null), (status) => {
+  if (status) tab.setStatus(status === 'synced' ? 'online' : status === 'connecting' || status === 'resyncing' ? 'reconnecting' : status === 'idle' ? 'online' : 'offline');
+}, { immediate: true });
+watch(() => (templateType.value === 'trello-board' ? pendingCount.value : 0), (count) => tab.setUnsent(count > 0), { immediate: true });
 </script>
 
 <style scoped>

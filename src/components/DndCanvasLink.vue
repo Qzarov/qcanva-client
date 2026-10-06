@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { useViewActivity } from '../composables/useViewActivity';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink } from 'vue-router';
 import { canvas as canvasApi } from '../api/client';
@@ -86,6 +87,8 @@ const statusText = computed(() => {
 });
 
 const open = ref(false);
+// Closed when the page goes to sleep in a background tab (it is teleported to <body>).
+useViewActivity({ onHide: () => { open.value = false; } });
 const query = ref('');
 const loading = ref(false);
 const failed = ref(false);

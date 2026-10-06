@@ -61,6 +61,7 @@
 </template>
 
 <script setup lang="ts">
+import { useViewActivity } from '../composables/useViewActivity';
 import { LogOut, Puzzle, Settings } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -136,6 +137,8 @@ watch(open, (isOpen) => {
   else document.removeEventListener('pointerdown', onDocumentPointerDown, true);
 });
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocumentPointerDown, true));
+// A page going to sleep in a background tab takes its open menu down with it.
+useViewActivity({ onHide: () => { open.value = false; } });
 
 const toggleFromClick = () => {
   if (open.value) {

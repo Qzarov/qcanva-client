@@ -16,7 +16,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useActiveListener } from '../composables/useViewActivity';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useSheetPopup } from '../composables/useSheetPopup';
 import { conditionLabel, DND_CONDITIONS } from '../dnd/conditions';
 import type { DndCharacterSheetData } from '../dnd/characterSheet';
@@ -57,14 +58,8 @@ watch(open, async key => {
   await nextTick();
   if (open.value === key) positionMenu();
 });
-onMounted(() => {
-  window.addEventListener('resize', positionMenu);
-  document.addEventListener('scroll', positionMenu, true);
-});
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', positionMenu);
-  document.removeEventListener('scroll', positionMenu, true);
-});
+useActiveListener(window, 'resize', positionMenu);
+useActiveListener(document, 'scroll', positionMenu, true);
 const available = computed(() => DND_CONDITIONS.filter(condition => !props.combat.conditions.includes(condition.key)));
 const add = (key: string) => {
   if (props.readonly || !available.value.some(condition => condition.key === key)) return;

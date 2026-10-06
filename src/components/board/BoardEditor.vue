@@ -139,7 +139,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { useActiveListener, useViewActivity } from '../../composables/useViewActivity';
+import { computed, onUnmounted, ref } from 'vue';
 import type { BoardCard, BoardColumn as BoardColumnData, BoardData, BoardOperation, BoardParticipant, BoardRole } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardColumn from './BoardColumn.vue';
@@ -262,11 +263,10 @@ function onKeydown(event: KeyboardEvent) {
   else undoLastOperation();
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown));
-onUnmounted(() => {
-  window.removeEventListener('keydown', onKeydown);
-  stopColumnPointerListeners();
-});
+// Undo keys only while the board is on screen; a drag in progress ends when it is hidden.
+useActiveListener(window, 'keydown', onKeydown);
+useViewActivity({ onHide: () => { if (columnDragPointerId.value !== null) cancelColumnPointerDrag(); } });
+onUnmounted(stopColumnPointerListeners);
 
 function addColumn() {
   const title = newColumnTitle.value.trim();
