@@ -32,6 +32,12 @@ for (const width of [320, 1280]) {
     const dialog = page.getByRole('dialog', { name: 'Урон', exact: true });
     const amount = dialog.getByLabel('Количество HP', { exact: true });
     await expect(amount).toBeFocused();
+    const frame = (await dialog.boundingBox())!;
+    for (const control of await dialog.getByRole('button').all()) {
+      const bounds = (await control.boundingBox())!;
+      expect(bounds.x).toBeGreaterThanOrEqual(frame.x);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(frame.x + frame.width + 0.5);
+    }
     await amount.fill('8');
     await expect(dialog).toContainText('После: 7 / 10 (+0 врем.)');
     const apply = dialog.getByRole('button', { name: 'Урон', exact: true });

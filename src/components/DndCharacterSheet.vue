@@ -46,9 +46,25 @@
         <label class="dnd-cs-temp-hp">(+<input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /><span>врем.</span>)</label>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
+      <div v-if="deathStatus !== 'none'" class="dnd-cs-death" role="group" aria-label="Спасброски от смерти">
+        <div class="dnd-cs-death-track">
+          <span>Успехи</span>
+          <button v-for="n in 3" :key="'s' + n" type="button" class="dnd-cs-pip-btn" :disabled="readonly" :aria-pressed="data.combat.deathSaves.successes >= n" :aria-label="'Успех ' + n + ' из 3'" @click="setDeathSaves('successes', n)"><span class="dnd-cs-pip" :class="{ on: data.combat.deathSaves.successes >= n }"></span></button>
+        </div>
+        <div class="dnd-cs-death-track is-failures">
+          <span>Провалы</span>
+          <button v-for="n in 3" :key="'f' + n" type="button" class="dnd-cs-pip-btn" :disabled="readonly" :aria-pressed="data.combat.deathSaves.failures >= n" :aria-label="'Провал ' + n + ' из 3'" @click="setDeathSaves('failures', n)"><span class="dnd-cs-pip" :class="{ on: data.combat.deathSaves.failures >= n }"></span></button>
+        </div>
+        <button v-if="deathStatus === 'dying'" type="button" class="dnd-cs-roll dnd-cs-death-roll" :disabled="readonly" title="Спасбросок от смерти: d20, 10 и выше — успех" @click="rollDeathSave">Спасбросок от смерти</button>
+        <strong v-else class="dnd-cs-death-result" :class="{ 'is-dead': deathStatus === 'dead' }" aria-live="polite">{{ deathStatus === 'dead' ? 'Мёртв' : 'Стабилен' }}</strong>
+      </div>
       <div class="dnd-cs-hp-actions">
         <button type="button" :disabled="readonly" aria-label="Лечение" @click="hpMode = 'heal'">Лечение</button>
         <button type="button" :disabled="readonly" aria-label="Урон" @click="hpMode = 'damage'">Урон</button>
+      </div>
+      <div class="dnd-cs-hp-actions dnd-cs-rest-actions">
+        <button type="button" :disabled="readonly" :title="'Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Короткий отдых</button>
+        <button type="button" :disabled="readonly" @click="restKind = 'long'">Длинный отдых</button>
       </div>
       <div class="dnd-cs-combat-stats">
         <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
@@ -164,6 +180,11 @@
                 <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить умение" @click="removeItem('features', item.id)">×</button>
               </div>
               <textarea :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', evVal($event))"></textarea>
+              <label v-if="item.maxUses" class="dnd-cs-recharge">Заряды возвращает
+                <select :value="item.recharge || ''" :disabled="readonly" aria-label="Когда восстанавливаются заряды" @change="setItem('features', item.id, 'recharge', evVal($event))">
+                  <option v-for="option in rechargeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
+                </select>
+              </label>
             </div>
             <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('features')">+ Добавить умение</button>
           </template>
@@ -227,6 +248,7 @@
     </div>
 
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
+    <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
     <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
     <DndWeaponCatalog v-if="weaponCatalogOpen && !readonly" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
@@ -240,9 +262,11 @@ import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
   proficiencyBonusForLevel, passiveScore, initiativeBonus, isHpAmount,
+  FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, type RestKind,
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
+import DndRestDialog from './DndRestDialog.vue';
 import DndPassiveScores from './DndPassiveScores.vue';
 import DndCharacterStates from './DndCharacterStates.vue';
 import DndFormulaButton from './DndFormulaButton.vue';
@@ -264,13 +288,14 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndWeaponCatalog },
+  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
   },
   // `op` carries changes that must merge with other people's as deltas (HP,
-  // feature uses) instead of being diffed into absolute values on `change`.
+  // feature uses) or that touch several fields at once (rests, hit dice, death
+  // saves) instead of being diffed into absolute values on `change`.
   emits: ['change', 'op', 'request-portrait', 'remove-portrait'],
   setup(props, { emit }) {
     const change = () => emit('change');
@@ -379,7 +404,29 @@ export default defineComponent({
       emit('op', { type: 'hp-change', mode: hpMode.value, amount });
       hpMode.value = null;
     };
-    watch(() => props.readonly, value => { if (value) hpMode.value = null; });
+    watch(() => props.readonly, value => { if (value) { hpMode.value = null; restKind.value = null; } });
+
+    // ===== Death saves, hit dice, rests =====
+    const deathStatus = computed(() => deathSaveStatus(props.data.combat));
+    /** Tapping the n-th pip sets the count to n; tapping the last filled one clears it. */
+    const setDeathSaves = (key: 'successes' | 'failures', n: number) => {
+      if (props.readonly) return;
+      const saves = props.data.combat.deathSaves;
+      saves[key] = saves[key] === n ? n - 1 : n;
+      change();
+    };
+    const restKind = ref<RestKind | null>(null);
+    const hitDiceLeft = computed(() => hitDiceRemaining(props.data));
+    const applyRest = () => {
+      if (props.readonly || !restKind.value) return;
+      emit('op', { type: 'rest', kind: restKind.value });
+      restKind.value = null;
+    };
+    const setHitDie = (sides: number) => {
+      if (props.readonly || !(HIT_DICE as readonly number[]).includes(sides)) return;
+      props.data.combat.hitDie = sides;
+      change();
+    };
 
     const toggleProf = (group: 'armor' | 'weapons', value: string) => {
       const list = props.data.proficiencies[group];
@@ -408,6 +455,15 @@ export default defineComponent({
     const rolls = useSheetRolls();
     const rollLogOpen = ref(false);
     const roll = (kind: RollKind, name: string, modifier: number) => { rolls.rollCheck(kind, name, modifier); };
+    const rollDeathSave = () => {
+      if (props.readonly || deathStatus.value !== 'dying') return;
+      emit('op', { type: 'death-save', outcome: rolls.rollDeathSave() });
+    };
+    const spendHitDie = () => {
+      if (props.readonly || !hitDiceLeft.value) return;
+      const heal = rolls.rollHitDie(props.data.combat.hitDie, abilityModifier(props.data.abilities.constitution.score));
+      emit('op', { type: 'hit-die', heal });
+    };
     const weaponAttacks = computed(() => equippedWeaponAttacks(props.data));
     const damageOptions = (attack: WeaponAttack): DamageOption[] =>
       attack.damage.flatMap((entry) => (entry.formula.ok ? [{ label: entry.label, formula: entry.formula, type: entry.type }] : []));
@@ -466,6 +522,8 @@ export default defineComponent({
       setAbilityScore, toggleSave, savingThrow,
       skillMod, skillProf, skillProfTitle, cycleSkill,
       hpMode, applyHpAmount, change,
+      deathStatus, setDeathSaves, rollDeathSave, restKind, hitDiceLeft, applyRest, setHitDie, spendHitDie,
+      rechargeOptions: FEATURE_RECHARGE_OPTIONS,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
@@ -669,6 +727,19 @@ export default defineComponent({
 .dnd-cs-hp-actions { display:flex; gap:8px; }
 .dnd-cs-hp-actions button { flex:1; padding:7px 10px; border:1px solid var(--dnd-glass-border); border-radius:8px; font:inherit; font-size:12px; background:var(--dnd-glass-accent-soft); color:var(--ui-text); cursor:pointer; }
 .dnd-cs-hp-actions button:disabled { opacity:.45; cursor:default; }
+/* Rests: the same action buttons, one step quieter than heal / damage. */
+.dnd-cs-rest-actions button { background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
+.dnd-cs-rest-actions button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); color: var(--ui-text); }
+/* Death saves: shown only at 0 HP, inside the combat column (no panel of its own). */
+.dnd-cs-death { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--dnd-danger) 40%, transparent); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); }
+.dnd-cs-death-track { display: flex; align-items: center; gap: 2px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
+.dnd-cs-death-track > span { margin-right: 4px; }
+.dnd-cs-death-track.is-failures .dnd-cs-pip.on { background: var(--dnd-danger); border-color: var(--dnd-danger); box-shadow: 0 0 8px color-mix(in srgb, var(--dnd-danger) 45%, transparent); }
+.dnd-cs-death .dnd-cs-pip-btn:disabled { cursor: default; }
+.dnd-cs-death-roll { margin-left: auto; color: var(--ui-text); }
+.dnd-cs-death-roll:disabled { opacity: .45; cursor: default; }
+.dnd-cs-death-result { margin-left: auto; font-size: 13px; font-weight: 800; color: var(--dnd-glass-accent); }
+.dnd-cs-death-result.is-dead { color: var(--dnd-danger); }
 .dnd-cs-hp input[type='number'] { flex: 1; min-width: 0; width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
 .dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
 
@@ -804,6 +875,11 @@ export default defineComponent({
 .dnd-cs-feature-main > input { flex: 1; min-width: 0; font-weight: 600; }
 .dnd-cs-uses { display: flex; align-items: center; gap: 4px; white-space: nowrap; font-size: 12px; color: var(--dnd-text-dim); }
 .dnd-cs-uses input { width: 40px; }
+.dnd-cs-recharge { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
+.dnd-cs-recharge select { flex: 0 1 auto; min-width: 0; padding: 5px 7px; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb), 0.045); color: var(--ui-text); font: inherit; font-size: 13px; text-transform: none; letter-spacing: 0; }
+.dnd-cs-recharge select:focus { outline: none; border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); box-shadow: 0 0 0 3px var(--dnd-glass-accent-soft); }
+.dnd-cs-recharge select:disabled { background: transparent; }
+.dnd-cs-recharge select option { color: #111; }
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
 
@@ -838,6 +914,13 @@ export default defineComponent({
   .dnd-cs-skills li { gap: 3px; }
   .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
   .dnd-cs-combat { gap: 8px; }
+  /* Used every turn at 0 HP / every rest: full touch targets. */
+  .dnd-cs-rest-actions button, .dnd-cs-death-roll { min-height: 44px; }
+  .dnd-cs-death { justify-content: space-between; }
+  .dnd-cs-death-roll { flex: 1 1 100%; justify-content: center; margin-left: 0; font-size: 12px; }
+  .dnd-cs-death-result { flex: 1 1 100%; margin-left: 0; text-align: center; }
+  .dnd-cs-death .dnd-cs-pip-btn { padding: 8px 5px; }
+  .dnd-cs-death .dnd-cs-pip { width: 14px; height: 14px; }
   .dnd-cs-stat input { width: 46px; }
   .dnd-cs-attack-head { display: none; }
   .dnd-cs-attack-row { grid-template-columns: 1fr 1fr; }

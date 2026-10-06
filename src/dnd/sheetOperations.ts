@@ -8,7 +8,9 @@
  * `diffSheet` turns "the sheet before an edit" and "after" into operations,
  * so the sheet component can keep mutating its data and emitting `change`;
  * only HP and feature-use changes are emitted as explicit delta operations,
- * because concurrent damage must add up rather than overwrite.
+ * because concurrent damage must add up rather than overwrite. A rest, a spent
+ * hit die and a death save are single operations for the same reason: each
+ * touches several fields that must change together.
  */
 
 export const SHEET_LISTS = ['attacks', 'features', 'equipment', 'spells', 'goals'] as const;
@@ -19,6 +21,9 @@ export type SheetOperation =
   | { type: 'set'; path: string[]; value: unknown }
   | { type: 'hp-change'; mode: 'heal' | 'damage'; amount: number }
   | { type: 'uses-change'; itemId: string; delta: number }
+  | { type: 'rest'; kind: 'short' | 'long' }
+  | { type: 'hit-die'; heal: number }
+  | { type: 'death-save'; outcome: 'success' | 'failure' | 'critical-failure' | 'critical-success' }
   | { type: 'list-add'; list: SheetList; item: SheetListItem; index?: number }
   | { type: 'list-update'; list: SheetList; itemId: string; changes: Record<string, unknown> }
   | { type: 'list-remove'; list: SheetList; itemId: string }
@@ -76,6 +81,20 @@ function listOf(root: Record<string, unknown>, list: SheetList): SheetListItem[]
   return root[list] as SheetListItem[];
 }
 
+const clampInt = (value: unknown, fallback: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, Math.trunc(numberOr(value, fallback))));
+
+/** Character level, 1-20 (legacy flat sheets keep it at the root). */
+function levelOf(sheet: Record<string, unknown>) {
+  const identity = isRecord(sheet.identity) ? sheet.identity : {};
+  return clampInt(identity.level ?? sheet.level, 1, 1, 20);
+}
+
+function deathSavesOf(combat: Record<string, unknown>) {
+  const saves = isRecord(combat.deathSaves) ? combat.deathSaves : {};
+  return { successes: clampInt(saves.successes, 0, 0, 3), failures: clampInt(saves.failures, 0, 0, 3) };
+}
+
 /** Applies an operation, returning a new sheet. Throws `not_found` for a vanished list item. */
 export function applySheetOperation(source: Record<string, unknown>, op: SheetOperation): Record<string, unknown> {
   const sheet = clone(source ?? {});
@@ -95,6 +114,56 @@ export function applySheetOperation(source: Record<string, unknown>, op: SheetOp
         const absorbed = Math.min(temporaryHp, op.amount);
         combat.currentHp = Math.max(0, currentHp - (op.amount - absorbed));
         combat.temporaryHp = temporaryHp - absorbed;
+      }
+      // Death saves start from scratch whenever the character gets up or drops.
+      if ((combat.currentHp as number) > 0 || currentHp > 0) combat.deathSaves = { successes: 0, failures: 0 };
+      break;
+    }
+    case 'rest': {
+      const combat = objectAt(sheet, ['combat']);
+      for (const item of listOf(sheet, 'features')) {
+        const restores = item.recharge === 'short' || (op.kind === 'long' && item.recharge === 'long');
+        const maxUses = Math.max(0, numberOr(item.maxUses, 0));
+        if (restores && maxUses > 0) item.currentUses = maxUses;
+      }
+      if (op.kind === 'long') {
+        const level = levelOf(sheet);
+        combat.currentHp = Math.max(1, numberOr(combat.maxHp, 10));
+        combat.temporaryHp = 0;
+        combat.hitDiceSpent = Math.max(0, clampInt(combat.hitDiceSpent, 0, 0, level) - Math.max(1, Math.floor(level / 2)));
+        combat.exhaustion = Math.max(0, clampInt(combat.exhaustion, 0, 0, 6) - 1);
+        // The sheet shows exhaustion as a condition: once no level is left, it goes too.
+        if (combat.exhaustion === 0 && Array.isArray(combat.conditions)) {
+          combat.conditions = combat.conditions.filter((value) => value !== 'exhaustion');
+        }
+        combat.deathSaves = { successes: 0, failures: 0 };
+      }
+      break;
+    }
+    case 'hit-die': {
+      const combat = objectAt(sheet, ['combat']);
+      const level = levelOf(sheet);
+      const spent = clampInt(combat.hitDiceSpent, 0, 0, level);
+      if (spent >= level) break; // none left: someone else spent the last one first
+      const maxHp = Math.max(1, numberOr(combat.maxHp, 10));
+      const currentHp = Math.max(0, numberOr(combat.currentHp ?? sheet.hp, 10));
+      combat.hitDiceSpent = spent + 1;
+      combat.currentHp = Math.min(maxHp, currentHp + op.heal);
+      if ((combat.currentHp as number) > 0) combat.deathSaves = { successes: 0, failures: 0 };
+      break;
+    }
+    case 'death-save': {
+      const combat = objectAt(sheet, ['combat']);
+      const saves = deathSavesOf(combat);
+      if (op.outcome === 'critical-success') {
+        // A natural 20: back on their feet with 1 HP.
+        combat.currentHp = Math.max(1, numberOr(combat.currentHp ?? sheet.hp, 0));
+        combat.deathSaves = { successes: 0, failures: 0 };
+      } else if (op.outcome === 'success') {
+        combat.deathSaves = { ...saves, successes: Math.min(3, saves.successes + 1) };
+      } else {
+        const failures = saves.failures + (op.outcome === 'critical-failure' ? 2 : 1);
+        combat.deathSaves = { ...saves, failures: Math.min(3, failures) };
       }
       break;
     }

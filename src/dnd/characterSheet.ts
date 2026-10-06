@@ -42,9 +42,25 @@ export type DndSkillKey = typeof DND_SKILLS[number]['key'];
 
 export type DndAbility = { score: number; savingThrowProficient: boolean; customSavingThrowBonus: number };
 export type DndSkill = { proficiency: SkillProficiency; customBonus: number };
+/** When a feature's uses come back: on a short rest (and so on a long one too), or only on a long rest. */
+export type FeatureRecharge = 'short' | 'long';
+export const FEATURE_RECHARGE_OPTIONS = [
+  { value: '', label: 'Не восстанавливается' },
+  { value: 'short', label: 'Короткий отдых' },
+  { value: 'long', label: 'Длинный отдых' },
+] as const;
+
+/** Hit die sizes of the 5e classes (d6 wizard ... d12 barbarian). */
+export const HIT_DICE = [6, 8, 10, 12] as const;
+export type DndDeathSaves = { successes: number; failures: number };
+export type DeathSaveOutcome = 'success' | 'failure' | 'critical-failure' | 'critical-success';
+export type RestKind = 'short' | 'long';
+
 export type DndListItem = {
   id: string; name: string; description?: string;
   currentUses?: number; maxUses?: number;
+  /** Features only: which rest restores the uses. Absent = never automatically. */
+  recharge?: FeatureRecharge;
   quantity?: number; equipped?: boolean; completed?: boolean;
   level?: number; prepared?: boolean;
   // Attack-specific (optional, only used on the Attacks tab).
@@ -59,7 +75,14 @@ export interface DndCharacterSheetData {
   abilities: Record<DndAbilityKey, DndAbility>;
   proficiencyBonus: number;
   skills: Record<string, DndSkill>;
-  combat: { armorClass: number; speed: number; currentHp: number; maxHp: number; temporaryHp: number; inspiration: boolean; exhaustion: number; initiativeMode: 'auto' | 'manual'; manualInitiative: number; customInitiativeBonus: number; conditions: string[] };
+  combat: {
+    armorClass: number; speed: number; currentHp: number; maxHp: number; temporaryHp: number; inspiration: boolean; exhaustion: number; initiativeMode: 'auto' | 'manual'; manualInitiative: number; customInitiativeBonus: number; conditions: string[];
+    /** Death saving throws, rolled at 0 HP: three successes stabilise, three failures kill. */
+    deathSaves: DndDeathSaves;
+    /** Size of the hit die (one per level); `hitDiceSpent` of them are used up until a long rest. */
+    hitDie: number;
+    hitDiceSpent: number;
+  };
   passiveBonuses: { perception: number; insight: number; investigation: number };
   attacks: DndListItem[];
   features: DndListItem[];
@@ -83,6 +106,29 @@ export const calculateHpChange = (combat: DndCharacterSheetData['combat'], mode:
   return { currentHp: Math.max(0, combat.currentHp - (amount - absorbed)), temporaryHp: combat.temporaryHp - absorbed };
 };
 
+/** Hit dice still unspent: one per level, minus those used since the last long rest. */
+export const hitDiceRemaining = (sheet: Pick<DndCharacterSheetData, 'identity' | 'combat'>) =>
+  Math.max(0, clampLevel(sheet.identity.level) - Math.max(0, Math.trunc(Number(sheet.combat.hitDiceSpent) || 0)));
+
+/** Hit dice a long rest gives back: half the level, at least one. */
+export const hitDiceRegainedOnLongRest = (level: number) => Math.max(1, Math.floor(clampLevel(level) / 2));
+
+/**
+ * What a d20 means as a death saving throw (5e): 10+ succeeds, lower fails,
+ * a natural 1 counts as two failures, a natural 20 puts the character back
+ * on their feet with 1 HP.
+ */
+export const deathSaveOutcome = (d20: number): DeathSaveOutcome =>
+  d20 >= 20 ? 'critical-success' : d20 <= 1 ? 'critical-failure' : d20 >= 10 ? 'success' : 'failure';
+
+/** Dying: at 0 HP and neither stabilised nor dead yet. */
+export const deathSaveStatus = (combat: Pick<DndCharacterSheetData['combat'], 'currentHp' | 'deathSaves'>): 'none' | 'dying' | 'stable' | 'dead' => {
+  if (combat.currentHp > 0) return 'none';
+  if (combat.deathSaves.failures >= 3) return 'dead';
+  if (combat.deathSaves.successes >= 3) return 'stable';
+  return 'dying';
+};
+
 /** Character names are also resource titles; old sheets may use a root name. */
 export const characterSheetTitle = (source: unknown, fallback = 'Новый персонаж'): string => {
   const data = source as { identity?: { name?: unknown }; name?: unknown } | null;
@@ -98,7 +144,7 @@ export const createDndCharacterSheet = (): DndCharacterSheetData => ({
   abilities: { strength: ability(), dexterity: ability(), constitution: ability(), intelligence: ability(), wisdom: ability(), charisma: ability() },
   proficiencyBonus: 2,
   skills: {},
-  combat: { armorClass: 10, speed: 30, currentHp: 10, maxHp: 10, temporaryHp: 0, inspiration: false, exhaustion: 0, initiativeMode: 'auto', manualInitiative: 0, customInitiativeBonus: 0, conditions: [] },
+  combat: { armorClass: 10, speed: 30, currentHp: 10, maxHp: 10, temporaryHp: 0, inspiration: false, exhaustion: 0, initiativeMode: 'auto', manualInitiative: 0, customInitiativeBonus: 0, conditions: [], deathSaves: { successes: 0, failures: 0 }, hitDie: 8, hitDiceSpent: 0 },
   passiveBonuses: { perception: 0, insight: 0, investigation: 0 },
   attacks: [], features: [], equipment: [], spells: [], goals: [],
   personality: { traits: '', ideals: '', bonds: '', flaws: '' },
@@ -109,6 +155,7 @@ export const createDndCharacterSheet = (): DndCharacterSheetData => ({
 
 const asNumber = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const clampLevel = (level: unknown) => clamp(Math.trunc(asNumber(level, 1)), 1, 20);
 
 /** Converts both the original flat card payload and current nested payload to v1. */
 export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetData => {
@@ -137,6 +184,14 @@ export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetDa
   base.combat.armorClass = Math.max(0, asNumber(data.combat?.armorClass ?? data.ac, base.combat.armorClass));
   base.combat.speed = Math.max(0, asNumber(data.combat?.speed, base.combat.speed));
   base.combat.exhaustion = clamp(asNumber(data.combat?.exhaustion, base.combat.exhaustion), 0, 6);
+  base.combat.deathSaves = {
+    successes: clamp(Math.trunc(asNumber(data.combat?.deathSaves?.successes, 0)), 0, 3),
+    failures: clamp(Math.trunc(asNumber(data.combat?.deathSaves?.failures, 0)), 0, 3),
+  };
+  const hitDie = asNumber(data.combat?.hitDie, 8);
+  base.combat.hitDie = (HIT_DICE as readonly number[]).includes(hitDie) ? hitDie : 8;
+  // One hit die per level: never more spent than the character has.
+  base.combat.hitDiceSpent = clamp(Math.trunc(asNumber(data.combat?.hitDiceSpent, 0)), 0, clamp(Math.trunc(base.identity.level), 1, 20));
   base.displayMode = data.displayMode === 'compact' ? 'compact' : 'full';
   base.activeTab = ['attacks', 'features', 'equipment', 'personality', 'goals', 'notes', 'spells'].includes(data.activeTab) ? data.activeTab : base.activeTab;
   for (const key of ['skills', 'passiveBonuses', 'personality', 'proficiencies'] as const) Object.assign(base[key], data[key] || {});

@@ -3,8 +3,9 @@ import {
   rollD20, rollFormula, formatFormula,
   type D20Roll, type FormulaRoll, type ParsedFormula, type Rng, type RollMode,
 } from './dice';
+import { deathSaveOutcome, type DeathSaveOutcome } from './characterSheet';
 
-export type SheetRollKind = 'check' | 'save' | 'skill' | 'initiative' | 'attack' | 'damage';
+export type SheetRollKind = 'check' | 'save' | 'skill' | 'initiative' | 'attack' | 'damage' | 'death-save' | 'hit-die';
 export type DamageOption = { label: string; formula: ParsedFormula; type: string };
 
 export type SheetRoll = {
@@ -36,6 +37,10 @@ export const awaitsDamage = (roll: SheetRoll) =>
 
 export const ROLL_KIND_LABEL: Record<SheetRollKind, string> = {
   check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Инициатива', attack: 'Атака', damage: 'Урон',
+  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов',
+};
+export const DEATH_SAVE_LABEL: Record<DeathSaveOutcome, string> = {
+  success: 'успех', failure: 'провал', 'critical-failure': 'два провала', 'critical-success': 'встаёт с 1 HP',
 };
 export const ROLL_MODE_LABEL: Record<RollMode, string> = { normal: 'Обычный', advantage: 'Преимущество', disadvantage: 'Помеха' };
 
@@ -114,8 +119,29 @@ export function useSheetRolls(options: { rng?: Rng } = {}) {
     });
   };
 
-  const rollCheck = (kind: Exclude<SheetRollKind, 'attack' | 'damage'>, label: string, bonus: number) =>
+  const rollCheck = (kind: Exclude<SheetRollKind, 'attack' | 'damage' | 'death-save' | 'hit-die'>, label: string, bonus: number) =>
     rollWithD20(kind, label, bonus);
+
+  /** A death saving throw: a bare d20, labelled with what it means. */
+  const rollDeathSave = () => {
+    const d20 = rollD20(takeMode(), options.rng);
+    const outcome = deathSaveOutcome(d20.kept);
+    record({
+      id: newId(), at: Date.now(), kind: 'death-save', label: DEATH_SAVE_LABEL[outcome], d20,
+      roll: rollFormula(flat(0), { rng: options.rng }), total: d20.kept,
+      natural: d20.kept === 20 ? 'max' : d20.kept === 1 ? 'min' : '',
+    });
+    return outcome;
+  };
+
+  /** A spent hit die: the die plus the Constitution modifier, never below zero. Returns the HP healed. */
+  const rollHitDie = (sides: number, modifier: number) => {
+    const formula: ParsedFormula = { dice: [{ sign: 1, count: 1, sides }], modifier, text: formatFormula([{ sign: 1, count: 1, sides }], modifier) };
+    const roll = rollFormula(formula, { rng: options.rng });
+    const total = Math.max(0, roll.total);
+    record({ id: newId(), at: Date.now(), kind: 'hit-die', label: 'лечение', roll, total, natural: '' });
+    return total;
+  };
 
   const rollAttack = (label: string, bonus: number | ParsedFormula, damage: DamageOption[] = []) =>
     rollWithD20('attack', label, bonus, { damage });
@@ -143,5 +169,5 @@ export function useSheetRolls(options: { rng?: Rng } = {}) {
 
   onBeforeUnmount(() => { timers.forEach(clearTimeout); timers.clear(); });
 
-  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage, rollAttackDamage };
+  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage, rollAttackDamage, rollDeathSave, rollHitDie };
 }
