@@ -38,7 +38,7 @@ const ROUTE_TYPES: Record<string, TabType> = {
  * effects while hidden, guarded URL canonicalisation). Only these are kept
  * alive; every other view remounts on each visit, exactly as without tabs.
  */
-export const SLEEP_READY_ROUTES = new Set<string>(['interactive-template', 'canvas']);
+export const SLEEP_READY_ROUTES = new Set<string>(['interactive-template', 'canvas', 'text-document']);
 
 type State = { tabs: Tab[]; aliases: Record<string, string>; activeKey: string | null };
 const state = reactive<State>({ tabs: [], aliases: {}, activeKey: null });

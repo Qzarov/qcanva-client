@@ -719,6 +719,9 @@
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
+import { useTab } from '../tabs/tabContext';
+import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useBackHandler } from '../composables/useBackHandler';
@@ -852,6 +855,13 @@ export default defineComponent({
     const accessRequestSent = ref(false);
     const checkingResourcePassword = ref(false);
     const showShare = ref(false);
+    // Tabs (docs/app-tabs-plan.md): this document's addresses are one tab, and
+    // the address bar is only rewritten while it is the page on screen - from
+    // a background tab that would pull the user back to it.
+    const tab = useTab();
+    const replaceAddress = (to: Parameters<typeof router.replace>[0]) => {
+      if (tab.active.value) router.replace(to).catch(() => {});
+    };
     const closeShare = () => { showShare.value = false; };
     // Mobile-only "⋮" popover that houses Access/History (both stay driven
     // by the same showShare/toggleHistory state the desktop buttons use).
@@ -1232,8 +1242,7 @@ export default defineComponent({
     function updateOutlineIsDesktop(): void {
       outlineIsDesktop.value = window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH;
     }
-    onMounted(() => window.addEventListener('resize', updateOutlineIsDesktop));
-    onBeforeUnmount(() => window.removeEventListener('resize', updateOutlineIsDesktop));
+    useActiveListener(window, 'resize', updateOutlineIsDesktop);
 
     /** Visible right now, on WHICHEVER breakpoint currently applies. */
     const outlinePanelOpen = computed(() => (outlineIsDesktop.value ? !outlineCollapsedPref.value : outlineMobileOpen.value));
@@ -1881,14 +1890,16 @@ export default defineComponent({
       const vv = window.visualViewport;
       keyboardInset.value = vv ? Math.max(0, window.innerHeight - (vv.height + vv.offsetTop)) : 0;
     };
-    onMounted(() => {
-      updateKeyboardInset();
-      window.visualViewport?.addEventListener('resize', updateKeyboardInset);
-      window.visualViewport?.addEventListener('scroll', updateKeyboardInset);
-    });
-    onBeforeUnmount(() => {
-      window.visualViewport?.removeEventListener('resize', updateKeyboardInset);
-      window.visualViewport?.removeEventListener('scroll', updateKeyboardInset);
+    useViewActivity({
+      onShow: () => {
+        updateKeyboardInset();
+        window.visualViewport?.addEventListener('resize', updateKeyboardInset);
+        window.visualViewport?.addEventListener('scroll', updateKeyboardInset);
+      },
+      onHide: () => {
+        window.visualViewport?.removeEventListener('resize', updateKeyboardInset);
+        window.visualViewport?.removeEventListener('scroll', updateKeyboardInset);
+      },
     });
 
     /**
@@ -1901,6 +1912,19 @@ export default defineComponent({
      * knows the range to replace) rather than reimplementing it.
      */
     const slashOpen = ref(false);
+    // Asleep in a background tab the document closes its menus and sheets
+    // (teleported to <body>, and each holding a window listener while open).
+    useViewActivity({
+      onHide: () => {
+        docMenuOpen.value = false;
+        outlineMobileOpen.value = false;
+        linkActionOpen.value = false;
+        linkEditorOpen.value = false;
+        showHistory.value = false;
+        slashOpen.value = false;
+        if (outlineResizing.value) stopOutlineResize();
+      },
+    });
     const slashItems = ref<SlashMenuItem[]>([]);
     const slashIndex = ref(0);
     const slashRect = ref<{ top: number; left: number } | null>(null);
@@ -2263,7 +2287,7 @@ export default defineComponent({
       reopenShareConsumed = true;
       showShare.value = true;
       const { openShare: _openShare, ...restQuery } = route.query || {};
-      router.replace({ name: 'text-document', params: { id: preferredId }, query: restQuery }).catch(() => {});
+      replaceAddress({ name: 'text-document', params: { id: preferredId }, query: restQuery });
     }
 
     const shouldFocusAfterMentionCreate = route.query?.mentionFocus === '1';
@@ -2279,7 +2303,7 @@ export default defineComponent({
       // One-shot flag, consumed: stripped so it cannot linger in a URL that
       // gets shared or bookmarked.
       const { mentionFocus: _mentionFocus, ...restQuery } = route.query || {};
-      router.replace({ name: 'text-document', params: { id: preferredId }, query: restQuery }).catch(() => {});
+      replaceAddress({ name: 'text-document', params: { id: preferredId }, query: restQuery });
     }
 
     /**
@@ -2806,7 +2830,12 @@ export default defineComponent({
       onAck,
       setRevision,
       clearPendingUpdates,
+      probe: probeSocket,
     } = useTextDocumentSocket(resolvedId);
+    // Liveness and the tab's state (docs/app-tabs-plan.md).
+    useLivenessChecks(probeSocket);
+    watch(() => connected.value, (on) => tab.setStatus(on ? 'online' : 'reconnecting'), { immediate: true });
+    watch(() => pendingUpdatesCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
 
     const savingVisible = useCalmSaving(() => pendingUpdatesCount.value > 0);
 
@@ -2850,9 +2879,9 @@ export default defineComponent({
           applyingInitialState = false;
         }
         const preferred = slug.value || res.document.id;
-        if (route.params.id !== preferred) {
-          router.replace({ name: 'text-document', params: { id: preferred }, query: route.query }).catch(() => {});
-        }
+        tab.registerAlias(res.document.id);
+        tab.registerAlias(preferred);
+        if (route.params.id !== preferred) replaceAddress({ name: 'text-document', params: { id: preferred }, query: route.query });
         editor.value?.setEditable(canEditContent.value && !replacedOnServer.value);
         refreshBlockCount();
         focusAfterMentionCreateIfPending(preferred);
@@ -2913,7 +2942,7 @@ export default defineComponent({
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
-          await router.replace({ name: 'dashboard', query: { type: 'text-document' } });
+          if (tab.active.value) await router.replace({ name: 'dashboard', query: { type: 'text-document' } });
           return;
         }
         if (hydratedFromCache.value) {
@@ -3111,7 +3140,14 @@ export default defineComponent({
          * reopenShareIfPending() after the fresh mount's load() resolves,
          * then stripped so it never lingers in a shareable URL.
          */
-        await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: { ...route.query, openShare: '1' } });
+        if (tab.key) {
+          // Tab mode: the new slug is the same tab, so the page is not remounted
+          // and the Share sheet simply stays open - no openShare round trip.
+          tab.registerAlias(slug.value || resolvedId.value);
+          replaceAddress({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: route.query });
+        } else {
+          await router.replace({ name: 'text-document', params: { id: slug.value || resolvedId.value }, query: { ...route.query, openShare: '1' } });
+        }
         showToast(t('linkSaved'), 'success');
       } catch (e: any) {
         slugError.value = e.message || t('linkSaveFailed');

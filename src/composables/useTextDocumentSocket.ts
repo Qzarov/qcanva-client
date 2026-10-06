@@ -1,3 +1,4 @@
+import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket';
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 
@@ -187,6 +188,26 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
     socket.value.emit('join-text-document', { documentId: resolveDocumentId() });
   }
 
+  /** Liveness check: see useCharacterSheetSocket's probe. Pending updates survive a forced reconnect. */
+  async function probe(): Promise<LivenessResult> {
+    const s = socket.value;
+    if (!s) return 'idle'; // not connected yet: a fresh connection needs no check
+    if (!s.connected) { s.connect(); return 'reconnecting'; }
+    try {
+      const answer = await s.timeout(PROBE_TIMEOUT_MS).emitWithAck('text-doc-ping', { documentId: resolveDocumentId() }) as { joined?: boolean; revision?: number | null };
+      if (!answer?.joined) {
+        if (!halted) { joined = false; s.emit('join-text-document', { documentId: resolveDocumentId() }); }
+        return 'rejoined';
+      }
+      if (typeof answer.revision === 'number' && answer.revision > currentRevision.value) { resync(); return 'stale'; }
+      return 'ok';
+    } catch {
+      s.disconnect();
+      s.connect();
+      return 'reconnecting';
+    }
+  }
+
   function sendAwareness(state: unknown) {
     socket.value?.emit('awareness-update', { state });
   }
@@ -244,6 +265,7 @@ export function useTextDocumentSocket(documentIdInput: string | { value: string 
     sendUpdate,
     sendAwareness,
     resync,
+    probe,
     halt,
     onRemoteUpdate,
     onRoomState,
