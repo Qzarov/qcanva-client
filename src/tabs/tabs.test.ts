@@ -4,7 +4,7 @@ import { defineComponent, h, KeepAlive, nextTick, onActivated, onDeactivated, on
 import { mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView, useRoute } from 'vue-router';
 import {
-  clearTabs, closeTab, LIVE_LIMIT, liveTabKeys, registerAlias, resetTabsForTests, restoreTabs, showTab, TAB_LIMIT, tabKeyFor, tabs, updateTab,
+  clearTabs, closeTab, ensureTabsFor, LIVE_LIMIT, liveTabKeys, registerAlias, resetTabsForTests, restoreTabs, showTab, TAB_LIMIT, tabKeyFor, tabs, updateTab,
 } from './registry';
 import { hostFor, hostName } from './TabHost';
 import { useTab } from './tabContext';
@@ -52,6 +52,26 @@ describe('tab registry', () => {
     clearTabs();
     restoreTabs('u1');
     expect(tabs.value).toHaveLength(0);
+  });
+
+  it('signing out and in as someone else switches lists, never writing one user\'s tabs under another', () => {
+    ensureTabsFor('u1');
+    showTab(route('canvas', 'a'));
+    clearTabs();
+    ensureTabsFor('u2');
+    showTab(route('canvas', 'b'));
+    expect(localStorage.getItem('qcanva:tabs:u1')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('qcanva:tabs:u2')!).tabs.map((tab: { key: string }) => tab.key)).toEqual(['canvas:b']);
+    ensureTabsFor('u2'); // same user again: list kept
+    expect(tabs.value.map((tab) => tab.key)).toEqual(['canvas:b']);
+  });
+
+  it('gives live slots only to pages that can sleep', () => {
+    showTab(route('interactive-template', 's1'), 1);
+    showTab(route('canvas', 'c1'), 2);
+    showTab(route('text-document', 'd1'), 3);
+    showTab(route('html-document', 'h1'), 4); // cold: never hosted
+    expect([...liveTabKeys.value].sort()).toEqual(['canvas:c1', 'doc:d1', 'template:s1']);
   });
 
   it('closing a tab removes it and its aliases', () => {

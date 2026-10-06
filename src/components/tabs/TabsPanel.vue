@@ -49,16 +49,18 @@ const goDashboard = () => {
   emit('close');
   void router.push({ name: 'dashboard' });
 };
-const close = (tab: Tab) => {
+const close = async (tab: Tab) => {
   if (tab.unsent && !window.confirm('На этой вкладке есть неотправленные изменения. Закрыть её?')) return;
-  const wasCurrent = tab.key === activeTabKey.value;
+  if (tab.key === activeTabKey.value) {
+    // The current tab goes: leave it first (to the most recent other one, or
+    // the dashboard). Dropping it while still on screen would make the shell
+    // mount a fresh page for it just before navigating away.
+    const next = tabs.value.find((other) => other.key !== tab.key);
+    emit('close');
+    await router.push(next ? next.path : { name: 'dashboard' });
+  }
   closeTab(tab.key);
   forgetHost(tab.key);
-  if (!wasCurrent) return;
-  // The current tab went: show the most recent other one, or the dashboard.
-  const next = tabs.value[0];
-  emit('close');
-  void router.push(next ? next.path : { name: 'dashboard' });
 };
 
 useBackHandler(() => { emit('close'); return true; });

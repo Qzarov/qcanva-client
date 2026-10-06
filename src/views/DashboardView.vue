@@ -69,6 +69,8 @@
           class="dash-search dash-search-header-mobile"
           :placeholder="folderSearchPlaceholder"
         />
+        <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
+        <TabsButton class="dashboard-tabs-button" />
       </div>
     </header>
 
@@ -1281,6 +1283,7 @@ import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
 import {
   readSidebarWidthState,
@@ -1392,6 +1395,7 @@ const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   components: {
+    TabsButton,
     DashboardSidebar,
     LanguageToggle,
     ArrowLeft,

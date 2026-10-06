@@ -61,6 +61,15 @@ describe('TabsPanel', () => {
     expect(push).toHaveBeenLastCalledWith({ name: 'dashboard' });
   });
 
+  it('leaves the current tab before dropping it', async () => {
+    let listedDuringNavigation: string[] = [];
+    push.mockImplementation(async () => { listedDuringNavigation = tabs.value.map((tab) => tab.key); });
+    wrapper = mount(TabsPanel, { attachTo: document.body });
+    await click(rows()[1]!.querySelector('.tabs-panel-close'));
+    expect(listedDuringNavigation).toContain('template:hero'); // still there while navigating away
+    expect(tabs.value.map((tab) => tab.key)).toEqual(['canvas:map']);
+  });
+
   it('closes on the system Back before anything else', () => {
     wrapper = mount(TabsPanel, { attachTo: document.body });
     expect(runBackHandlers()).toBe(true);

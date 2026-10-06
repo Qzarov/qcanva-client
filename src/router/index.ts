@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import { getCurrentUser, isAuthenticated } from '../api/client';
 import { tabsEnabled } from '../tabs/flag';
-import { restoreTabs, showTab } from '../tabs/registry';
+import { ensureTabsFor, showTab } from '../tabs/registry';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -86,10 +86,11 @@ router.beforeEach((to) => {
 // would otherwise keep showing whatever the PREVIOUS page's tab title was.
 router.afterEach((to) => {
   document.title = 'QCanva';
-  if (tabsEnabled()) showTab(to);
+  if (!tabsEnabled()) return;
+  // Tab mode: the list of open tabs is per user and survives a restart; a
+  // sign-in as someone else switches to their list.
+  ensureTabsFor(getCurrentUser()?.id ?? null);
+  showTab(to);
 });
-
-// Tab mode: the list of open tabs is per user and survives a restart.
-if (tabsEnabled()) restoreTabs(getCurrentUser()?.id ?? null);
 
 export default router;

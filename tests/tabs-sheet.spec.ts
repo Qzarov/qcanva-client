@@ -167,3 +167,37 @@ test('the tabs panel switches tabs, and closing a tab drops its live page', asyn
   expect(counts.rest).toBe(perOpen * 3); // b was closed: it loads again
 });
 
+test('closing the tab on screen leaves it without reloading it first', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  const { counts } = await serveSheets(page, ['a', 'b']);
+  await page.goto('/templates/a');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+  await go(page, '/templates/b');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой b');
+  const rest = counts.rest;
+  const sockets = counts.sockets;
+  await page.getByRole('button', { name: 'Открытые вкладки: 2' }).click();
+  await page.getByRole('dialog', { name: 'Открытые вкладки' }).getByRole('button', { name: 'Закрыть вкладку: Герой b' }).click();
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+  await page.waitForTimeout(300);
+  expect(counts.rest).toBe(rest); // a woke up; b was not loaded again on its way out
+  expect(counts.sockets).toBe(sockets);
+  await expect(page.getByRole('button', { name: 'Открытые вкладки: 1' })).toBeVisible();
+});
+
+test('the dashboard has the tabs button too (Back lands there)', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await serveSheets(page, ['a']);
+  await page.goto('/templates/a');
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+  await go(page, '/dashboard');
+  const button = page.getByRole('button', { name: 'Открытые вкладки: 1' });
+  await expect(button).toBeVisible();
+  const box = (await button.boundingBox())!;
+  expect(box.x + box.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: `${process.env.SHOTS || 'test-results'}/tabs-dashboard-320.png`, clip: { x: 0, y: 0, width: 320, height: 70 } });
+  await button.click();
+  await page.getByRole('dialog', { name: 'Открытые вкладки' }).locator('.tabs-panel-item', { hasText: 'Герой a' }).click();
+  await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
+});
+

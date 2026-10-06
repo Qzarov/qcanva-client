@@ -32,6 +32,7 @@ const ROUTE_TYPES: Record<string, TabType> = {
   'html-document': 'html',
   'interactive-template': 'template',
 };
+const ROUTE_OF_TYPE = Object.fromEntries(Object.entries(ROUTE_TYPES).map(([route, type]) => [type, route])) as Record<TabType, string>;
 
 /**
  * Views that implement the sleep contract (useViewActivity, no global side
@@ -118,13 +119,22 @@ export const activeTabKey = computed(() => state.activeKey);
  * that can sleep are considered by the caller.
  */
 export const liveTabKeys = computed(() => {
-  const recent = tabs.value.slice(0, LIVE_LIMIT).map((tab) => tab.key);
+  // Only pages that can sleep take a slot: a cold tab (an HTML document) must
+  // not push a real sheet, canvas or document out.
+  const recent = tabs.value.filter((tab) => SLEEP_READY_ROUTES.has(ROUTE_OF_TYPE[tab.type])).slice(0, LIVE_LIMIT).map((tab) => tab.key);
   const unsent = state.tabs.filter((tab) => tab.unsent).map((tab) => tab.key);
   return new Set([...recent, ...unsent]);
 });
 
 // ===== Persistence: the list survives an app restart; pages load on first visit =====
 let storageKey: string | null = null;
+let loadedFor: string | null | undefined;
+
+/** Loads the list of `userId` unless it is already the one loaded (a sign-in as someone else switches it). */
+export function ensureTabsFor(userId: string | null) {
+  if (loadedFor === userId) return;
+  restoreTabs(userId);
+}
 
 function persist() {
   if (!storageKey) return;
@@ -134,6 +144,7 @@ function persist() {
 
 /** Loads the list saved for this user (or none). Call once the user is known. */
 export function restoreTabs(userId: string | null) {
+  loadedFor = userId;
   storageKey = userId ? `qcanva:tabs:${userId}` : null;
   state.tabs = [];
   state.aliases = {};
@@ -152,10 +163,14 @@ export function restoreTabs(userId: string | null) {
 /** Signing out forgets the list on this device. */
 export function clearTabs() {
   if (storageKey) { try { localStorage.removeItem(storageKey); } catch { /* ignore */ } }
+  // Nobody is signed in now: nothing may be written under the old user's key,
+  // and the next sign-in loads that user's own list.
+  storageKey = null;
+  loadedFor = undefined;
   state.tabs = [];
   state.aliases = {};
   state.activeKey = null;
 }
 
 /** Tests only. */
-export function resetTabsForTests() { storageKey = null; state.tabs = []; state.aliases = {}; state.activeKey = null; }
+export function resetTabsForTests() { storageKey = null; loadedFor = undefined; state.tabs = []; state.aliases = {}; state.activeKey = null; }
