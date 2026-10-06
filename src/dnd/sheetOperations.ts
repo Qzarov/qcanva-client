@@ -33,7 +33,7 @@ export type SheetOperation =
 /** Top-level keys the server accepts in a `set`. Everything else is view state or legacy. */
 const SETTABLE_ROOTS = new Set([
   'identity', 'abilities', 'proficiencyBonus', 'skills', 'combat',
-  'passiveBonuses', 'personality', 'proficiencies', 'spellcasting', 'attacksNotes', 'notes',
+  'passiveBonuses', 'personality', 'proficiencies', 'spellcasting', 'campaign', 'attacksNotes', 'notes',
 ]);
 /** String sets synced member by member, so two people toggling different members both win. */
 const STRING_SET_PATHS = new Set(['combat.conditions', 'proficiencies.armor', 'proficiencies.weapons']);

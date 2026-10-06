@@ -13,7 +13,12 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
           </button>
         </div>
-        <div v-if="parseRoll(m)" class="chat-roll">
+        <div v-if="sheetRoll(m)" class="chat-roll chat-sheet-roll" :class="{ 'is-crit': sheetRoll(m).natural === 'max', 'is-fumble': sheetRoll(m).natural === 'min' }">
+          <span class="chat-sheet-roll-head"><b v-if="sheetRoll(m).character">{{ sheetRoll(m).character }}</b>{{ sheetRoll(m).heading }}</span>
+          <span class="chat-roll-dice">{{ sheetRoll(m).rolled }}</span>
+          <span class="chat-roll-total">= {{ parseRoll(m).total }}</span>
+        </div>
+        <div v-else-if="parseRoll(m)" class="chat-roll">
           <span class="chat-roll-notation">{{ parseRoll(m).notation }}</span>
           <span class="chat-roll-dice">[{{ parseRoll(m).rolls.join(', ') }}]<template v-if="parseRoll(m).modifier"> {{ parseRoll(m).modifier > 0 ? '+' + parseRoll(m).modifier : parseRoll(m).modifier }}</template></span>
           <span class="chat-roll-total">= {{ parseRoll(m).total }}</span>
@@ -55,6 +60,21 @@
 import { ref, watch, nextTick, computed } from "vue";
 const props = defineProps<{ messages: any[]; canPost: boolean; attachedNode: { id: string; label: string } | null; canAttach: boolean }>();
 const parseRoll = (m: any) => { try { return m.rollData ? JSON.parse(m.rollData) : null; } catch { return null; } };
+// A roll made from a character sheet carries the whole roll in `sheet`
+// (who, what for, every die); plain chat rolls do not.
+const SHEET_ROLL_KIND: Record<string, string> = {
+  check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Инициатива', attack: 'Атака', damage: 'Урон',
+  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов',
+};
+const sheetRoll = (m: any): any => {
+  const sheet = parseRoll(m)?.sheet;
+  if (!sheet || typeof sheet !== 'object' || typeof sheet.rolled !== 'string') return null;
+  const parts = [SHEET_ROLL_KIND[sheet.kind] || 'Бросок'];
+  if (sheet.label) parts.push(`${sheet.label}${sheet.critical ? ' (крит)' : ''}`);
+  else if (sheet.critical) parts.push('крит');
+  if (sheet.damageType) parts.push(sheet.damageType);
+  return { character: typeof sheet.character === 'string' ? sheet.character : '', heading: parts.join(' · '), rolled: sheet.rolled as string, natural: sheet.natural as string };
+};
 const msgById = computed(() => {
   const map = new Map<string, any>();
   for (const m of props.messages) map.set(m.id, m);
@@ -154,6 +174,11 @@ watch(() => props.messages.length, scrollToBottom);
 .chat-roll-notation { font-size: 12px; font-weight: 600; color: var(--ui-text-secondary); border: 1px solid var(--ui-border); border-radius: 6px; padding: 1px 6px; }
 .chat-roll-dice { color: var(--ui-text-secondary); }
 .chat-roll-total { font-weight: 700; font-size: 16px; color: var(--ui-accent-strong); }
+.chat-sheet-roll-head { flex: 1 1 100%; font-size: 12px; color: var(--ui-text-secondary); overflow-wrap: anywhere; }
+.chat-sheet-roll-head b { margin-right: 6px; font-weight: 700; color: var(--ui-text); }
+.chat-sheet-roll .chat-roll-dice { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.chat-sheet-roll.is-crit .chat-roll-total { text-shadow: 0 0 10px var(--ui-glass-accent-border); }
+.chat-sheet-roll.is-fumble .chat-roll-total { color: var(--ui-danger-foreground); }
 
 /* Mobile: roomier, clearer message separation, comfortable input (16px avoids iOS zoom) */
 @media (max-width: 640px) {

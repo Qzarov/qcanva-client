@@ -321,7 +321,7 @@ import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
-import { useSheetRolls, type DamageOption } from '../dnd/useSheetRolls';
+import { useSheetRolls, type DamageOption, type RemoteRoller } from '../dnd/useSheetRolls';
 import {
   abilityShort, preparedSpellCount, spellAttackBonus, spellGroups as groupSpells, spellLevelLabel, spellRollKind,
   spellSaveAbility, spellSaveDc, spellSlots,
@@ -343,6 +343,9 @@ export default defineComponent({
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
+    // Rolls the dice elsewhere (the server, for a sheet connected to a canvas).
+    // Without it, or when it answers `null`, the sheet rolls by itself.
+    remoteRoll: { type: Function as PropType<RemoteRoller>, default: undefined },
   },
   // `op` carries changes that must merge with other people's as deltas (HP,
   // feature uses) or that touch several fields at once (rests, hit dice, death
@@ -503,25 +506,25 @@ export default defineComponent({
     const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };
 
     // ===== Dice rolls =====
-    const rolls = useSheetRolls();
+    const rolls = useSheetRolls({ remote: (spec) => props.remoteRoll?.(spec) ?? null });
     const rollLogOpen = ref(false);
-    const roll = (kind: RollKind, name: string, modifier: number) => { rolls.rollCheck(kind, name, modifier); };
+    const roll = (kind: RollKind, name: string, modifier: number) => { void rolls.rollCheck(kind, name, modifier); };
     const rollDeathSave = () => {
       if (props.readonly || deathStatus.value !== 'dying') return;
-      emit('op', { type: 'death-save', outcome: rolls.rollDeathSave() });
+      void rolls.rollDeathSave().then((outcome) => { if (outcome) emit('op', { type: 'death-save', outcome }); });
     };
     const spendHitDie = () => {
       if (props.readonly || !hitDiceLeft.value) return;
-      const heal = rolls.rollHitDie(props.data.combat.hitDie, abilityModifier(props.data.abilities.constitution.score));
-      emit('op', { type: 'hit-die', heal });
+      void rolls.rollHitDie(props.data.combat.hitDie, abilityModifier(props.data.abilities.constitution.score))
+        .then((heal) => { if (heal !== undefined) emit('op', { type: 'hit-die', heal }); });
     };
     const weaponAttacks = computed(() => equippedWeaponAttacks(props.data));
     const damageOptions = (attack: WeaponAttack): DamageOption[] =>
       attack.damage.flatMap((entry) => (entry.formula.ok ? [{ label: entry.label, formula: entry.formula, type: entry.type }] : []));
-    const attackWithWeapon = (attack: WeaponAttack) => { rolls.rollAttack(attack.name, attack.attackBonus, damageOptions(attack)); };
+    const attackWithWeapon = (attack: WeaponAttack) => { void rolls.rollAttack(attack.name, attack.attackBonus, damageOptions(attack)); };
     const weaponDamage = (attack: WeaponAttack, index: number) => {
       const entry = attack.damage[index];
-      if (entry?.formula.ok) rolls.rollDamage(attack.name, { label: entry.label, formula: entry.formula, type: entry.type });
+      if (entry?.formula.ok) void rolls.rollDamage(attack.name, { label: entry.label, formula: entry.formula, type: entry.type });
     };
     const attackBonusText = (text: string | undefined) => {
       const parsed = parseAttackBonus(text);
@@ -532,14 +535,14 @@ export default defineComponent({
       if (!bonus.ok) return;
       const damage = parseFormula(item.damage || '');
       const options = damage.ok ? [{ label: 'Урон', formula: damage, type: item.damageType || '' }] : [];
-      rolls.rollAttack(item.name.trim() || 'Атака', bonus, options);
+      void rolls.rollAttack(item.name.trim() || 'Атака', bonus, options);
     };
     const customDamage = (item: DndListItem) => {
       const damage = parseFormula(item.damage || '');
-      if (damage.ok) rolls.rollDamage(item.name.trim() || 'Атака', { label: 'Урон', formula: damage, type: item.damageType || '' });
+      if (damage.ok) void rolls.rollDamage(item.name.trim() || 'Атака', { label: 'Урон', formula: damage, type: item.damageType || '' });
     };
     /** "Урон"/"Крит" on an attack (toast or log): a natural 20 doubles the dice; once per attack. */
-    const damageFromToast = (rollId: string, index: number) => { rolls.rollAttackDamage(rollId, index); };
+    const damageFromToast = (rollId: string, index: number) => { void rolls.rollAttackDamage(rollId, index); };
     // ===== Spells =====
     const spellAttack = computed(() => spellAttackBonus(props.data));
     const spellDc = computed(() => spellSaveDc(props.data));
@@ -607,13 +610,13 @@ export default defineComponent({
       const damage = parseFormula(item.damage || '');
       return damage.ok ? [{ label: 'Урон', formula: damage, type: item.damageType || '' }] : [];
     };
-    const rollSpellAttack = () => { if (spellAttack.value !== null) rolls.rollAttack('Заклинание', spellAttack.value); };
+    const rollSpellAttack = () => { if (spellAttack.value !== null) void rolls.rollAttack('Заклинание', spellAttack.value); };
     const castSpellAttack = (item: DndListItem) => {
-      if (spellAttack.value !== null) rolls.rollAttack(spellName(item), spellAttack.value, spellDamageOption(item));
+      if (spellAttack.value !== null) void rolls.rollAttack(spellName(item), spellAttack.value, spellDamageOption(item));
     };
     const spellDamage = (item: DndListItem) => {
       const [option] = spellDamageOption(item);
-      if (option) rolls.rollDamage(spellName(item), option);
+      if (option) void rolls.rollDamage(spellName(item), option);
     };
     const weaponCatalogOpen = ref(false);
     const addCatalogWeapon = (weapon: CatalogWeapon) => {

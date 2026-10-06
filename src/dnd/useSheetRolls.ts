@@ -1,12 +1,46 @@
 import { onBeforeUnmount, ref } from 'vue';
 import {
   rollD20, rollFormula, formatFormula,
-  type D20Roll, type FormulaRoll, type ParsedFormula, type Rng, type RollMode,
+  type D20Roll, type DiceTerm, type FormulaRoll, type ParsedFormula, type RolledDice, type Rng, type RollMode,
 } from './dice';
 import { deathSaveOutcome, type DeathSaveOutcome } from './characterSheet';
 
 export type SheetRollKind = 'check' | 'save' | 'skill' | 'initiative' | 'attack' | 'damage' | 'death-save' | 'hit-die';
 export type DamageOption = { label: string; formula: ParsedFormula; type: string };
+
+/**
+ * What is rolled, before any dice: the same request goes to the local roller
+ * or to the server (canvas-server-back's character-sheet.rolls.ts), which
+ * rolls it when the sheet is connected to a canvas.
+ */
+export type RollSpec = {
+  kind: SheetRollKind;
+  label: string;
+  /** Present when the roll starts with a d20 (checks, saves, attacks). */
+  d20?: RollMode;
+  dice: DiceTerm[];
+  modifier: number;
+  /** A critical hit: the dice are doubled, the flat modifier is not. */
+  critical?: boolean;
+  damageType?: string;
+};
+
+/** The dice that came up for a RollSpec - from the local roller or from the server. */
+export type RolledSpec = {
+  d20?: D20Roll;
+  dice: RolledDice[];
+  modifier: number;
+  total: number;
+  natural: '' | 'max' | 'min';
+  critical: boolean;
+};
+
+/**
+ * Rolls a request somewhere else (on the server). Returns `null` to mean "roll
+ * it here" - the sheet is not connected, or cannot post to its canvas. A
+ * rejected promise means no roll was made at all (no connection).
+ */
+export type RemoteRoller = (spec: RollSpec) => Promise<RolledSpec | null> | null;
 
 export type SheetRoll = {
   id: string;
@@ -65,12 +99,32 @@ export function describeRoll(roll: SheetRoll): string {
   return parts.join(' ');
 }
 
+/** Rolls a request in this browser - the same arithmetic as the server's roller. */
+export function rollSpecLocally(spec: RollSpec, rng?: Rng): RolledSpec {
+  const d20 = spec.d20 ? rollD20(spec.d20, rng) : undefined;
+  const formula = rollFormula({ dice: spec.dice, modifier: spec.modifier, text: '' }, { critical: spec.critical, rng });
+  const sum = (d20?.kept ?? 0) + formula.total;
+  return {
+    ...(d20 ? { d20 } : {}),
+    dice: formula.dice,
+    modifier: spec.modifier,
+    // Damage and healing never go below zero; a check may.
+    total: spec.kind === 'damage' || spec.kind === 'hit-die' ? Math.max(0, sum) : sum,
+    natural: d20?.kept === 20 ? 'max' : d20?.kept === 1 ? 'min' : '',
+    critical: Boolean(spec.critical),
+  };
+}
+
 /**
  * Dice rolling state for one open sheet: the advantage/disadvantage mode
  * (one roll, then back to normal), recent toasts, and a short history.
- * Rolls are local for now; posting them to a canvas chat comes later.
+ *
+ * Without `remote` every roll is made here and stays in this tab. With it, a
+ * roll is first offered to the remote roller (the server, when the sheet is
+ * connected to a canvas): its dice are the ones shown, and the same roll
+ * appears in that canvas's chat.
  */
-export function useSheetRolls(options: { rng?: Rng } = {}) {
+export function useSheetRolls(options: { rng?: Rng; remote?: RemoteRoller } = {}) {
   const mode = ref<RollMode>('normal');
   const history = ref<SheetRoll[]>([]);
   const toasts = ref<string[]>([]);
@@ -108,61 +162,71 @@ export function useSheetRolls(options: { rng?: Rng } = {}) {
     return current;
   };
 
-  const rollWithD20 = (kind: SheetRollKind, label: string, bonus: number | ParsedFormula, extra: Partial<SheetRoll> = {}) => {
-    const d20 = rollD20(takeMode(), options.rng);
-    const roll = rollFormula(typeof bonus === 'number' ? flat(bonus) : bonus, { rng: options.rng });
-    return record({
-      id: newId(), at: Date.now(), kind, label, d20, roll,
-      total: d20.kept + roll.total,
-      natural: d20.kept === 20 ? 'max' : d20.kept === 1 ? 'min' : '',
-      ...extra,
+  type Extra = Partial<SheetRoll> | ((rolled: RolledSpec) => Partial<SheetRoll>);
+
+  /**
+   * Makes one roll and records it. Local rolls are recorded before this
+   * returns; a remote roll resolves when the server answers, and resolves to
+   * `undefined` when no roll could be made.
+   */
+  const perform = (spec: RollSpec, extra: Extra = {}): Promise<SheetRoll | undefined> => {
+    const finish = (rolled: RolledSpec) => record({
+      id: newId(), at: Date.now(), kind: spec.kind, label: spec.label,
+      ...(rolled.d20 ? { d20: rolled.d20 } : {}),
+      roll: { dice: rolled.dice, modifier: rolled.modifier, total: rolled.total - (rolled.d20?.kept ?? 0), critical: rolled.critical },
+      total: rolled.total,
+      natural: rolled.natural,
+      ...(spec.damageType ? { damageType: spec.damageType } : {}),
+      ...(typeof extra === 'function' ? extra(rolled) : extra),
     });
+    const remote = options.remote?.(spec) ?? null;
+    if (!remote) return Promise.resolve(finish(rollSpecLocally(spec, options.rng)));
+    return remote.then((rolled) => finish(rolled ?? rollSpecLocally(spec, options.rng)), () => undefined);
   };
+
+  const withBonus = (bonus: number | ParsedFormula) => (typeof bonus === 'number' ? flat(bonus) : bonus);
 
   const rollCheck = (kind: Exclude<SheetRollKind, 'attack' | 'damage' | 'death-save' | 'hit-die'>, label: string, bonus: number) =>
-    rollWithD20(kind, label, bonus);
+    perform({ kind, label, d20: takeMode(), dice: [], modifier: bonus });
 
-  /** A death saving throw: a bare d20, labelled with what it means. */
-  const rollDeathSave = () => {
-    const d20 = rollD20(takeMode(), options.rng);
-    const outcome = deathSaveOutcome(d20.kept);
-    record({
-      id: newId(), at: Date.now(), kind: 'death-save', label: DEATH_SAVE_LABEL[outcome], d20,
-      roll: rollFormula(flat(0), { rng: options.rng }), total: d20.kept,
-      natural: d20.kept === 20 ? 'max' : d20.kept === 1 ? 'min' : '',
-    });
-    return outcome;
+  const rollAttack = (label: string, bonus: number | ParsedFormula, damage: DamageOption[] = []) => {
+    const formula = withBonus(bonus);
+    return perform({ kind: 'attack', label, d20: takeMode(), dice: formula.dice, modifier: formula.modifier }, { damage });
   };
 
-  /** A spent hit die: the die plus the Constitution modifier, never below zero. Returns the HP healed. */
-  const rollHitDie = (sides: number, modifier: number) => {
-    const formula: ParsedFormula = { dice: [{ sign: 1, count: 1, sides }], modifier, text: formatFormula([{ sign: 1, count: 1, sides }], modifier) };
-    const roll = rollFormula(formula, { rng: options.rng });
-    const total = Math.max(0, roll.total);
-    record({ id: newId(), at: Date.now(), kind: 'hit-die', label: 'лечение', roll, total, natural: '' });
-    return total;
-  };
+  const rollDamage = (label: string, option: DamageOption, critical = false) =>
+    perform(
+      { kind: 'damage', label, dice: option.formula.dice, modifier: option.formula.modifier, critical, damageType: option.type },
+      { label: critical ? `${label} (крит)` : label },
+    );
 
-  const rollAttack = (label: string, bonus: number | ParsedFormula, damage: DamageOption[] = []) =>
-    rollWithD20('attack', label, bonus, { damage });
+  /** A death saving throw: a bare d20, labelled with what it means. Resolves to the outcome. */
+  const rollDeathSave = () =>
+    perform({ kind: 'death-save', label: '', d20: takeMode(), dice: [], modifier: 0 }, (rolled) => ({ label: DEATH_SAVE_LABEL[deathSaveOutcome(rolled.d20!.kept)] }))
+      .then((roll) => (roll?.d20 ? deathSaveOutcome(roll.d20.kept) : undefined));
 
-  const rollDamage = (label: string, option: DamageOption, critical = false) => {
-    const roll = rollFormula(option.formula, { critical, rng: options.rng });
-    return record({
-      id: newId(), at: Date.now(), kind: 'damage', label: critical ? `${label} (крит)` : label,
-      roll, total: Math.max(0, roll.total), natural: '', damageType: option.type,
-    });
-  };
+  /** A spent hit die: the die plus the Constitution modifier, never below zero. Resolves to the HP healed. */
+  const rollHitDie = (sides: number, modifier: number) =>
+    perform({ kind: 'hit-die', label: 'лечение', dice: [{ sign: 1, count: 1, sides }], modifier })
+      .then((roll) => roll?.total);
 
   /** Rolls an attack's damage from the attack itself (toast or log): crit on a natural 20, once. */
   const rollAttackDamage = (attackId: string, optionIndex: number) => {
     const attack = findRoll(attackId);
     const option = attack?.damage?.[optionIndex];
-    if (!attack || !option || !awaitsDamage(attack)) return undefined;
+    if (!attack || !option || !awaitsDamage(attack)) return Promise.resolve(undefined);
+    // Taken at once, so a second tap cannot roll the damage twice while the server answers.
     attack.damageRolled = true;
     history.value = [...history.value];
     dismiss(attackId);
-    return rollDamage(attack.label, option, attack.natural === 'max');
+    return rollDamage(attack.label, option, attack.natural === 'max').then((roll) => {
+      if (roll) return roll;
+      // No roll was made (no connection): the attack waits for its damage again.
+      attack.damageRolled = false;
+      history.value = [...history.value];
+      if (!toasts.value.includes(attackId)) toasts.value = [attackId, ...toasts.value];
+      return undefined;
+    });
   };
 
   const setMode = (next: RollMode) => { mode.value = mode.value === next ? 'normal' : next; };

@@ -1,12 +1,27 @@
 import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { applySheetOperation, replaySheetOperations, type SheetOperation } from '../dnd/sheetOperations';
+import type { RollSpec, RolledSpec } from '../dnd/useSheetRolls';
 
 const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
 
 export type SheetRole = 'owner' | 'edit' | 'read';
 export type SheetSyncStatus = 'idle' | 'connecting' | 'synced' | 'offline' | 'forbidden' | 'error';
 export type SheetRejectReason = 'forbidden' | 'invalid_op' | 'target_missing' | 'not_joined';
+
+/** Whether this user's rolls can go to the canvas the sheet is connected to. */
+export type RollTargetStatus = 'ok' | 'not_linked' | 'forbidden' | 'plugin_disabled' | 'canvas_missing';
+export type RollTarget = { status: RollTargetStatus; canvasId?: string; title?: string };
+/** Why the server did not roll: one of the statuses above, or a transport failure. */
+export class SheetRollRefused extends Error {
+  readonly reason: string;
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'SheetRollRefused';
+    this.reason = reason;
+  }
+}
+const ROLL_TIMEOUT_MS = 6000;
 
 type AppliedEvent = { clientOpId: string; op: SheetOperation; revision: number };
 
@@ -41,6 +56,8 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   const status = ref<SheetSyncStatus>('idle');
   const role = ref<SheetRole | null>(null);
   const pendingCount = ref(0);
+  const rollTarget = ref<RollTarget | null>(null);
+  const rollWaiters = new Map<string, { resolve: (roll: RolledSpec) => void; reject: (error: SheetRollRefused) => void; timer: ReturnType<typeof setTimeout> }>();
   let confirmed: Record<string, unknown> | null = null;
   let confirmedRevision = 0;
   let joined = false;
@@ -91,6 +108,38 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
     }
     for (const [clientOpId, op] of pending) emitOp(clientOpId, op);
     notify();
+    requestRollTarget();
+  }
+
+  /** Asks the server whether rolls from this sheet reach its canvas (answered in `rollTarget`). */
+  function requestRollTarget() {
+    if (joined) socket.value?.emit('sheet-roll-target', { sheetId: resolveSheetId() });
+  }
+
+  function settleRoll(clientRollId: string, outcome: { roll?: RolledSpec; reason?: string }) {
+    const waiter = rollWaiters.get(clientRollId);
+    if (!waiter) return;
+    rollWaiters.delete(clientRollId);
+    clearTimeout(waiter.timer);
+    if (outcome.roll) waiter.resolve(outcome.roll);
+    else waiter.reject(new SheetRollRefused(outcome.reason || 'error'));
+  }
+
+  /**
+   * Has the server roll the dice and post them to the connected canvas's chat.
+   * Rejects with the reason when it did not roll (see SheetRollRefused).
+   */
+  function requestRoll(spec: RollSpec): Promise<RolledSpec> {
+    return new Promise((resolve, reject) => {
+      if (!joined || !socket.value?.connected) {
+        reject(new SheetRollRefused('offline'));
+        return;
+      }
+      const clientRollId = genClientOpId();
+      const timer = setTimeout(() => settleRoll(clientRollId, { reason: 'offline' }), ROLL_TIMEOUT_MS);
+      rollWaiters.set(clientRollId, { resolve, reject, timer });
+      socket.value.emit('sheet-roll', { sheetId: resolveSheetId(), clientRollId, spec });
+    });
   }
 
   /** Advances `confirmed` by one relayed operation. False when it had to re-join instead. */
@@ -121,6 +170,8 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
       return;
     }
     if (applyRelayed(event)) notify();
+    // The connection to a canvas changed (here or in another tab): ask again where rolls go.
+    if (event.op.type === 'set' && event.op.path[0] === 'campaign') requestRollTarget();
   }
 
   function connect() {
@@ -135,7 +186,13 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
     s.on('disconnect', () => {
       joined = false;
       if (status.value !== 'forbidden') status.value = 'offline';
+      for (const clientRollId of [...rollWaiters.keys()]) settleRoll(clientRollId, { reason: 'offline' });
     });
+    s.on('sheet-roll-target-state', (state: RollTarget & { sheetId: string }) => {
+      if (state.sheetId === resolveSheetId()) rollTarget.value = { status: state.status, canvasId: state.canvasId, title: state.title };
+    });
+    s.on('sheet-roll-result', (event: { clientRollId: string; roll: RolledSpec }) => settleRoll(event.clientRollId, { roll: event.roll }));
+    s.on('sheet-roll-error', (event: { clientRollId: string; reason: string }) => settleRoll(event.clientRollId, { reason: event.reason }));
     s.on('sheet-room-state', handleRoomState);
     s.on('sheet-op-applied', handleApplied);
     s.on('sheet-op-ack', (ack: { clientOpId: string; revision: number }) => {
@@ -196,6 +253,7 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   function onReject(cb: (reason: SheetRejectReason, op?: SheetOperation) => void) { onRejectCb = cb; }
 
   function disconnect() {
+    for (const clientRollId of [...rollWaiters.keys()]) settleRoll(clientRollId, { reason: 'offline' });
     if (socket.value) {
       socket.value.emit('leave-sheet');
       socket.value.disconnect();
@@ -207,5 +265,5 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
 
   onUnmounted(disconnect);
 
-  return { status, role, pendingCount, connect, disconnect, sendOperation, seed, onState, onReject, display };
+  return { status, role, pendingCount, rollTarget, connect, disconnect, sendOperation, requestRoll, requestRollTarget, seed, onState, onReject, display };
 }

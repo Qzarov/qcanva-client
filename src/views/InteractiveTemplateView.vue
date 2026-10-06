@@ -2,12 +2,17 @@
   <div class="template-page">
     <header class="template-header">
       <BackButton :to="backTarget.to" :label="backTarget.label" />
-      <div class="template-header-actions"><span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span><AccountMenu :show-plugins="false" /></div>
+      <div class="template-header-actions">
+        <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
+        <DndCanvasLink v-if="template" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" />
+        <AccountMenu :show-plugins="false" />
+      </div>
     </header>
     <main v-if="template" ref="editorRoot" class="template-editor" @input.capture="markDirty" @change.capture="markClean">
       <DndCharacterSheet
         :data="data"
         :readonly="readonly"
+        :remote-roll="remoteRoll"
         @change="commitEdits"
         @op="sendOperation"
         @request-portrait="portraitInput?.click()"
@@ -26,7 +31,9 @@ import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
 import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
 import { diffSheet, type SheetOperation } from '../dnd/sheetOperations';
-import { useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
+import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
+import type { RemoteRoller } from '../dnd/useSheetRolls';
+import DndCanvasLink from '../components/DndCanvasLink.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 import BackButton from '../components/BackButton.vue';
@@ -37,7 +44,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -112,6 +119,35 @@ export default defineComponent({
       for (const op of ops) sync.sendOperation(op);
     };
 
+    // ===== Rolls to the chat of a connected canvas =====
+    // The connection is a field of the sheet, so everyone who opens it sees
+    // (and, with edit rights, changes) the same one.
+    const linkCanvas = (canvasId: string) => {
+      if (data.campaign.canvasId === canvasId) return;
+      data.campaign.canvasId = canvasId;
+      commitEdits();
+    };
+    // Reasons that mean "this user's rolls cannot reach the canvas": the roll is
+    // made locally instead, and the header says so.
+    const LOCAL_REASONS = new Set(['not_linked', 'forbidden', 'plugin_disabled', 'canvas_missing']);
+    const remoteRoll: RemoteRoller = (spec) => {
+      if (!data.campaign.canvasId) return null;
+      const target = sync.rollTarget.value;
+      const current = target && (!target.canvasId || target.canvasId === data.campaign.canvasId);
+      if (current && target.status !== 'ok') return null;
+      return sync.requestRoll(spec).catch((error: unknown) => {
+        const reason = error instanceof SheetRollRefused ? error.reason : 'error';
+        if (LOCAL_REASONS.has(reason)) {
+          sync.requestRollTarget();
+          showNotice('Бросок не попал в чат канваса — он только у вас');
+          return null;
+        }
+        // No answer from the server: making the roll here would leave the table without it.
+        showNotice(reason === 'offline' ? 'Нет связи — бросок не сделан' : 'Бросок не удался, попробуйте ещё раз');
+        throw error;
+      });
+    };
+
     const readonly = computed(() => sync.role.value === 'read' || sync.status.value === 'forbidden');
     const syncWarning = computed(() => sync.status.value === 'offline' || sync.status.value === 'error');
     const syncText = computed(() => {
@@ -166,6 +202,7 @@ export default defineComponent({
     return {
       template, data, error, readonly, syncText, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
+      rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
       portraitInput, uploadPortrait, removePortrait, backTarget,
     };
   },
@@ -181,8 +218,8 @@ export default defineComponent({
 .template-header :deep(.back-btn), .template-header :deep(.account-menu-trigger) { background:var(--ui-glass-tint),var(--ui-glass-bg); border:1px solid var(--ui-glass-border); box-shadow:inset 0 1px 0 var(--ui-glass-highlight),var(--ui-glass-shadow); backdrop-filter:blur(var(--ui-glass-blur)) saturate(1.2); color:var(--ui-text); }
 .template-header :deep(.back-btn) { width:36px; height:36px; min-width:36px; border-radius:999px; }
 .template-header :deep(.account-menu-trigger) { border-radius:999px; }
-.template-header-actions { display:flex; align-items:center; gap:10px; }
-.template-save-status { color:var(--ui-text-secondary); font-size:13px; }
+.template-header-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0; }
+.template-save-status { min-width:0; color:var(--ui-text-secondary); font-size:13px; }
 .template-save-status.is-warning { color:var(--ui-danger-foreground); }
 .template-editor { max-width:1120px; margin:auto; padding:20px; }
 .template-error { text-align:center; color:var(--ui-danger-foreground); }
