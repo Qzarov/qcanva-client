@@ -37,10 +37,16 @@ async function serveSheets(page: Page, ids: string[]) {
     ws.onMessage((message) => {
       const text = String(message);
       if (text.startsWith(`40${NAMESPACE}`)) { ws.send(`40${NAMESPACE},${JSON.stringify({ sid: 'socket' })}`); return; }
-      if (!text.startsWith(`42${NAMESPACE},`)) return;
-      const [event, payload] = JSON.parse(text.slice(`42${NAMESPACE},`.length)) as [string, any];
+      // An event with an acknowledgement carries its id before the array: 42/ns,7["sheet-ping",...]
+      const packet = new RegExp(`^42${NAMESPACE},(\\d*)(\\[.*)$`, 's').exec(text);
+      if (!packet) return;
+      const [event, payload] = JSON.parse(packet[2]!) as [string, any];
       const sheet = sheets.get(payload?.sheetId);
       if (!sheet) return;
+      if (event === 'sheet-ping' && packet[1]) {
+        ws.send(`43${NAMESPACE},${packet[1]}${JSON.stringify([{ joined: true, revision: sheet.revision }])}`);
+        return;
+      }
       if (event === 'join-sheet') {
         counts.joins += 1;
         emit('sheet-room-state', { sheetId: payload.sheetId, data: sheet.data, revision: sheet.revision, role: 'owner', appliedClientOpIds: [] });
