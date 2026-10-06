@@ -5,6 +5,7 @@
       <div class="template-header-actions">
         <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
         <DndUndoButtons v-if="template && !readonly && mode === 'setup'" :can-undo="undoStack.length > 0" :can-redo="redoStack.length > 0" @undo="undo" @redo="redo" />
+        <DndSheetHistory v-if="template" :sheet-id="template.id" :can-restore="!readonly" @restored="onRestored" />
         <DndModeToggle v-if="template && !readonly" :mode="mode" @change="mode = $event" />
         <DndCanvasLink v-if="template" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" />
         <AccountMenu :show-plugins="false" />
@@ -39,6 +40,7 @@ import type { RemoteRoller } from '../dnd/useSheetRolls';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
 import DndModeToggle from '../components/DndModeToggle.vue';
 import DndUndoButtons from '../components/DndUndoButtons.vue';
+import DndSheetHistory from '../components/DndSheetHistory.vue';
 import { setupPart } from '../dnd/sheetKinds';
 import { redoOps, undoOps, type UndoEntry } from '../dnd/sheetUndo';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -51,7 +53,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, DndUndoButtons, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -131,6 +133,7 @@ export default defineComponent({
     // Only setup edits made in setup mode are recorded; play actions are
     // corrected with their own buttons. The stacks live until a reload.
     const UNDO_LIMIT = 100;
+    const newActionId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
     const undoStack = ref<UndoEntry[]>([]);
     const redoStack = ref<UndoEntry[]>([]);
     const current = () => clone(data) as unknown as Record<string, unknown>;
@@ -150,7 +153,8 @@ export default defineComponent({
         showNotice('Отмена пропущена: это уже изменил кто-то другой');
         return;
       }
-      for (const op of ops) sync.sendOperation(op);
+      const meta = { actionId: newActionId(), note: 'undo' as const };
+      for (const op of ops) sync.sendOperation(op, meta);
       redoStack.value = [...redoStack.value, entry];
     };
     const redo = () => {
@@ -162,9 +166,13 @@ export default defineComponent({
         showNotice('Возврат пропущен: это уже изменил кто-то другой');
         return;
       }
-      for (const op of ops) sync.sendOperation(op);
+      const meta = { actionId: newActionId(), note: 'redo' as const };
+      for (const op of ops) sync.sendOperation(op, meta);
       undoStack.value = [...undoStack.value, entry];
     };
+    // A restore reaches this tab as ordinary edits through the socket.
+    const onRestored = (rolledBack: number) => { showNotice(`Настройка возвращена: откачено записей — ${rolledBack}`); };
+
     // Ctrl+Z / Ctrl+Shift+Z (and Ctrl+Y) in setup mode. A text field keeps its
     // own undo while it has focus.
     const undoKeys = (event: KeyboardEvent) => {
@@ -182,7 +190,9 @@ export default defineComponent({
       const before = shadow;
       const ops = diffSheet(shadow, data as unknown as Record<string, unknown>);
       shadow = clone(data) as unknown as Record<string, unknown>;
-      for (const op of ops) sync.sendOperation(op);
+      // One change on the sheet is one action in the history, however many fields it touched.
+      const meta = ops.length > 1 ? { actionId: newActionId() } : undefined;
+      for (const op of ops) sync.sendOperation(op, meta);
       recordSetup(ops, before);
     };
 
@@ -275,7 +285,7 @@ export default defineComponent({
     });
 
     return {
-      template, data, error, readonly, mode, undoStack, redoStack, undo, redo, syncText, syncWarning, editorRoot,
+      template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
       rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
       portraitInput, uploadPortrait, removePortrait, backTarget,

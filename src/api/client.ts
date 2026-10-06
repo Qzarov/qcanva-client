@@ -420,6 +420,24 @@ export const interactiveTemplates = {
   revoke: (id: string, userId: string) =>
     request<any>(`/interactive-templates/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/interactive-templates/${id}/share`),
+  /** A character sheet's history, newest first (docs/character-sheet-edit-modes.md, part 3). */
+  history: (id: string) => request<{ entries: SheetHistoryEntry[] }>(`/interactive-templates/${id}/history`),
+  restoreSetup: (id: string, entryId: string) =>
+    request<{ revision: number; rolledBack: number }>(`/interactive-templates/${id}/history/restore`, { method: 'POST', body: JSON.stringify({ entryId }) }),
+};
+
+export type SheetHistoryEntry = {
+  id: string;
+  kind: 'setup' | 'play';
+  /** 'undo' | 'redo' | 'restore' | 'replace', or null for a plain edit. */
+  note: string | null;
+  userId: string;
+  userName: string;
+  at: string;
+  revision: number;
+  ops: Array<{ op: unknown; before: unknown; after: unknown }>;
+  restorable: boolean;
+  newerSetupEntries: number;
 };
 
 /** One document the `@`-mention picker can offer. Already access-filtered server-side. */

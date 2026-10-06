@@ -49,6 +49,12 @@ type RoomState = {
  * join; the server applies each clientOpId once, so a re-sent HP delta never
  * counts twice. Nothing is sent before the room is joined.
  */
+/**
+ * Labels the history uses: operations sent together as one user action share
+ * an `actionId`; an undo or redo says so. Both are optional.
+ */
+export type SheetOperationMeta = { actionId?: string; note?: 'undo' | 'redo' };
+
 export function useCharacterSheetSocket(sheetIdInput: string | { value: string }) {
   const resolveSheetId = () => typeof sheetIdInput === 'string' ? sheetIdInput : sheetIdInput.value;
 
@@ -62,6 +68,8 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   let confirmedRevision = 0;
   let joined = false;
   const pending = new Map<string, SheetOperation>();
+  // Which user action a pending operation belongs to, re-sent with it.
+  const pendingMeta = new Map<string, SheetOperationMeta>();
   // Relays that arrive while a join is in flight. The server reads the state
   // it sends a moment before sending it, so an operation committed in between
   // is relayed first yet missing from the room-state: replay these on top.
@@ -78,12 +86,13 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
 
   function notify() {
     pendingCount.value = pending.size;
+    for (const clientOpId of pendingMeta.keys()) if (!pending.has(clientOpId)) pendingMeta.delete(clientOpId);
     const sheet = display();
     if (sheet) onStateCb?.(sheet);
   }
 
   function emitOp(clientOpId: string, op: SheetOperation) {
-    socket.value?.emit('sheet-op', { sheetId: resolveSheetId(), clientOpId, op });
+    socket.value?.emit('sheet-op', { sheetId: resolveSheetId(), clientOpId, op, ...pendingMeta.get(clientOpId) });
   }
 
   function join() {
@@ -232,10 +241,11 @@ export function useCharacterSheetSocket(sheetIdInput: string | { value: string }
   }
 
   /** Queues an operation; it shows immediately and is sent once the room is joined. */
-  function sendOperation(op: SheetOperation) {
+  function sendOperation(op: SheetOperation, meta?: SheetOperationMeta) {
     if (role.value === 'read' || status.value === 'forbidden') return undefined;
     const clientOpId = genClientOpId();
     pending.set(clientOpId, op);
+    if (meta) pendingMeta.set(clientOpId, meta);
     if (joined) emitOp(clientOpId, op);
     notify();
     return clientOpId;
