@@ -17,9 +17,9 @@
           <span ref="nameMeasure" class="dnd-cs-name-measure" aria-hidden="true"></span>
           <textarea ref="nameInput" v-model="nameDraft" class="dnd-cs-name" rows="1" :readonly="readonly" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
           <div class="dnd-cs-subline">
-            <input :readonly="readonly" :value="data.identity.race" placeholder="Раса" aria-label="Раса" @change="setIdentity('race', evVal($event))" />
+            <DndIdentitySelect :value="data.identity.race" :options="raceOptions" label="Раса" other-label="Другая…" :readonly="readonly" @change="setRace" />
             <span class="dnd-cs-dot">—</span>
-            <input :readonly="readonly" :value="data.identity.className" placeholder="Класс" aria-label="Класс" @change="setIdentity('className', evVal($event))" />
+            <DndIdentitySelect :value="data.identity.className" :options="classOptions" label="Класс" other-label="Другой…" :readonly="readonly" @change="setClass" />
           </div>
         </div>
       </div>
@@ -307,6 +307,7 @@ import {
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
+import DndIdentitySelect from './DndIdentitySelect.vue';
 import DndRestDialog from './DndRestDialog.vue';
 import DndPassiveScores from './DndPassiveScores.vue';
 import DndCharacterStates from './DndCharacterStates.vue';
@@ -330,6 +331,7 @@ import {
   SPELLCASTER_CLASSES, catalogSpellItem, classSlots, preparedLimit, preparesSpells, slotsDifferFromClass, spellcasterClass,
   type CatalogSpell,
 } from '../dnd/spellCatalog';
+import { DND_CLASSES, DND_RACES, classOption, raceOption } from '../dnd/identityOptions';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
@@ -339,7 +341,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
+  components: { DndHpDialog, DndIdentitySelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -583,6 +585,26 @@ export default defineComponent({
         fillClassSlots();
       } else change();
     };
+    // ===== Race and class from the lists =====
+    // The text is what is stored; a listed option also sets what the rules tie to it.
+    const setRace = (value: string) => {
+      props.data.identity.race = value;
+      const race = raceOption(value);
+      if (race) props.data.combat.speed = race.speed;
+      change();
+    };
+    const setClass = (value: string) => {
+      const previous = classOption(props.data.identity.className);
+      const next = classOption(value);
+      props.data.identity.className = value;
+      if (next) props.data.combat.hitDie = next.hitDie;
+      const caster = props.data.spellcasting.casterClass;
+      // Spellcasting follows the class: a caster brings its own, and leaving a
+      // caster class takes away only what that class had set.
+      if (next?.caster && caster !== next.caster) setCasterClass(next.caster);
+      else if (!next?.caster && previous?.caster && caster === previous.caster) setCasterClass('');
+      else change();
+    };
     const slotsOutdated = computed(() => slotsDifferFromClass(props.data));
     const preparedMax = computed(() => preparedLimit(props.data));
     const showPrepared = computed(() => preparesSpells(props.data));
@@ -655,6 +677,7 @@ export default defineComponent({
       rechargeOptions: FEATURE_RECHARGE_OPTIONS,
       spellAttack, spellDc, spellGroups, preparedCount, slotsOf, setSpellAbility, setSlotMax, changeSlot, addSpell, setSpellLevel,
       openSpells, toggleSpell, rollSpellAttack, castSpellAttack, spellDamage,
+      raceOptions: DND_RACES.map((option) => option.label), classOptions: DND_CLASSES.map((option) => option.label), setRace, setClass,
       casterClasses: SPELLCASTER_CLASSES, setCasterClass, fillClassSlots, slotsOutdated, preparedMax, showPrepared,
       spellCatalogOpen, addCatalogSpell,
       spellLevelLabel, spellRollKind, spellSaveAbility, abilityShort,
