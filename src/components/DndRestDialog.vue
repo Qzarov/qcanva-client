@@ -8,7 +8,8 @@
           <div v-if="kind === 'short'" class="dnd-rest-dice">
             <div class="dnd-rest-dice-head">
               <span>Кости хитов: <b>{{ remaining }}</b> из {{ level }}</span>
-              <label>Кость
+              <span v-if="hitDieLocked" class="dnd-rest-hit-die">Кость <b>к{{ data.combat.hitDie }}</b></span>
+              <label v-else>Кость
                 <select :value="data.combat.hitDie" aria-label="Кость хитов" @change="emit('set-hit-die', Number(($event.target as HTMLSelectElement).value))">
                   <option v-for="sides in HIT_DICE" :key="sides" :value="sides">к{{ sides }}</option>
                 </select>
@@ -46,7 +47,8 @@ import { useBackHandler } from '../composables/useBackHandler';
  * A rest, confirmed before it happens: the dialog lists what will change. On
  * a short rest hit dice are spent here too, one roll at a time.
  */
-const props = defineProps<{ kind: RestKind; data: DndCharacterSheetData }>();
+// The hit die is set-once data: in play mode it is shown, not chosen.
+const props = defineProps<{ kind: RestKind; data: DndCharacterSheetData; hitDieLocked?: boolean }>();
 const emit = defineEmits<{ close: []; apply: []; 'spend-hit-die': []; 'set-hit-die': [sides: number] }>();
 
 const title = computed(() => (props.kind === 'short' ? 'Короткий отдых' : 'Длинный отдых'));

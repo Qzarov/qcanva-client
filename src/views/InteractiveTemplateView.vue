@@ -4,6 +4,7 @@
       <BackButton :to="backTarget.to" :label="backTarget.label" />
       <div class="template-header-actions">
         <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
+        <DndModeToggle v-if="template && !readonly" :mode="mode" @change="mode = $event" />
         <DndCanvasLink v-if="template" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" />
         <AccountMenu :show-plugins="false" />
       </div>
@@ -12,6 +13,7 @@
       <DndCharacterSheet
         :data="data"
         :readonly="readonly"
+        :mode="readonly ? 'play' : mode"
         :remote-roll="remoteRoll"
         @change="commitEdits"
         @op="sendOperation"
@@ -29,11 +31,12 @@ import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reacti
 import { onBeforeRouteLeave, useRoute } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../api/client';
-import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
+import { createDndCharacterSheet, isBlankSheet, normalizeDndCharacterSheet, type DndCharacterSheetData, type DndSheetMode } from '../dnd/characterSheet';
 import { diffSheet, type SheetOperation } from '../dnd/sheetOperations';
 import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
 import type { RemoteRoller } from '../dnd/useSheetRolls';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
+import DndModeToggle from '../components/DndModeToggle.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 import BackButton from '../components/BackButton.vue';
@@ -44,7 +47,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -67,6 +70,11 @@ export default defineComponent({
       try { localStorage.setItem(prefsKey, JSON.stringify(prefs)); } catch { /* storage unavailable: keep in memory */ }
     };
 
+    // Play or setup: this viewer's own, never synced or remembered - every
+    // opening starts in play, except a sheet nobody has filled in yet.
+    const mode = ref<DndSheetMode>('play');
+    let modeChosen = false;
+
     // What the sheet looked like after the last rebuild or edit: the base the
     // next edit is diffed against.
     let shadow = clone(data) as unknown as Record<string, unknown>;
@@ -80,6 +88,10 @@ export default defineComponent({
 
     const rebuild = (sheet: Record<string, unknown>) => {
       const next = normalizeDndCharacterSheet(sheet);
+      if (!modeChosen) {
+        modeChosen = true;
+        if (isBlankSheet(next)) mode.value = 'setup';
+      }
       if (prefs.activeTab) next.activeTab = prefs.activeTab;
       if (prefs.displayMode) next.displayMode = prefs.displayMode;
       const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
@@ -200,7 +212,7 @@ export default defineComponent({
     });
 
     return {
-      template, data, error, readonly, syncText, syncWarning, editorRoot,
+      template, data, error, readonly, mode, syncText, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
       rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
       portraitInput, uploadPortrait, removePortrait, backTarget,

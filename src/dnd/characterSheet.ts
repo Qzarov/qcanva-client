@@ -9,6 +9,8 @@ export const DND_ABILITIES = [
 
 export type DndAbilityKey = typeof DND_ABILITIES[number]['key'];
 export type DndDisplayMode = 'full' | 'compact';
+/** "play" during a session, "setup" for the rare edits; per viewer, never synced. */
+export type DndSheetMode = 'play' | 'setup';
 export type DndTab = 'attacks' | 'features' | 'equipment' | 'personality' | 'goals' | 'notes' | 'spells';
 export type SkillProficiency = 'none' | 'half' | 'proficient' | 'expertise';
 
@@ -282,3 +284,16 @@ export const initiativeBonus = (sheet: DndCharacterSheetData) =>
   sheet.combat.initiativeMode === 'manual'
     ? sheet.combat.manualInitiative
     : abilityModifier(sheet.abilities.dexterity.score) + sheet.combat.customInitiativeBonus;
+
+/**
+ * A sheet nobody has filled in yet: default name, no race or class, all
+ * abilities at 10 and empty lists. Such a sheet opens in setup mode, since
+ * there is nothing to play with yet.
+ */
+export const isBlankSheet = (sheet: DndCharacterSheetData) => {
+  const blank = createDndCharacterSheet();
+  return (sheet.identity.name.trim() === '' || sheet.identity.name === blank.identity.name)
+    && !sheet.identity.race.trim() && !sheet.identity.className.trim()
+    && DND_ABILITIES.every((ability) => sheet.abilities[ability.key].score === 10)
+    && (['attacks', 'features', 'equipment', 'spells', 'goals'] as const).every((list) => sheet[list].length === 0);
+};

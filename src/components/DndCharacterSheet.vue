@@ -1,12 +1,12 @@
 <template>
-  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly }">
+  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly, 'dnd-cs-play': locked }">
     <!-- ===== TOP CARD: identity + combat ===== -->
     <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
       <div class="dnd-cs-portrait" :class="{ empty: !data.identity.portraitUrl }">
         <img v-if="data.identity.portraitUrl" :src="data.identity.portraitUrl" alt="Портрет персонажа" />
         <span v-else>{{ initial }}</span>
-        <div v-if="!readonly" class="dnd-cs-portrait-actions">
+        <div v-if="!locked" class="dnd-cs-portrait-actions">
           <button type="button" title="Загрузить портрет" aria-label="Загрузить портрет" @click="$emit('request-portrait')">▣</button>
           <button v-if="data.identity.portraitUrl" type="button" title="Удалить портрет" aria-label="Удалить портрет" @click="$emit('remove-portrait')">×</button>
         </div>
@@ -15,16 +15,16 @@
       <div class="dnd-cs-identity">
         <div class="dnd-cs-identity-line" :class="{ 'is-multiline': nameMultiline }">
           <span ref="nameMeasure" class="dnd-cs-name-measure" aria-hidden="true"></span>
-          <textarea ref="nameInput" v-model="nameDraft" class="dnd-cs-name" rows="1" :readonly="readonly" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
+          <textarea ref="nameInput" v-model="nameDraft" class="dnd-cs-name" rows="1" :readonly="locked" placeholder="Имя персонажа" aria-label="Имя персонажа" @input="resizeName" @change="setIdentity('name', evVal($event))"></textarea>
           <div class="dnd-cs-subline">
-            <DndIdentitySelect :value="data.identity.race" :options="raceOptions" label="Раса" other-label="Другая…" :readonly="readonly" @change="setRace" />
+            <DndIdentitySelect :value="data.identity.race" :options="raceOptions" label="Раса" other-label="Другая…" :readonly="locked" @change="setRace" />
             <span class="dnd-cs-dot">—</span>
-            <DndIdentitySelect :value="data.identity.className" :options="classOptions" label="Класс" other-label="Другой…" :readonly="readonly" @change="setClass" />
+            <DndIdentitySelect :value="data.identity.className" :options="classOptions" label="Класс" other-label="Другой…" :readonly="locked" @change="setClass" />
           </div>
         </div>
       </div>
       <div class="dnd-cs-xp">
-        <label class="dnd-cs-level"><span>Ур.</span> <input type="number" min="1" max="20" :readonly="readonly" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', evVal($event), 1, 20)" /></label>
+        <label class="dnd-cs-level"><span>Ур.</span> <input type="number" min="1" max="20" :readonly="locked" :value="data.identity.level" aria-label="Уровень" @change="setNumber(data.identity, 'level', evVal($event), 1, 20)" /></label>
         <div class="dnd-cs-xp-bar" role="progressbar" aria-label="Прогресс опыта" :aria-valuenow="xpPercent" aria-valuemin="0" aria-valuemax="100">
           <span class="dnd-cs-xp-fill" :style="{ width: xpPercent + '%' }"></span>
           <div class="dnd-cs-xp-values">
@@ -67,8 +67,8 @@
         <button type="button" :disabled="readonly" @click="restKind = 'long'">Длинный отдых</button>
       </div>
       <div class="dnd-cs-combat-stats">
-        <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="readonly" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
-        <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="readonly" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
+        <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
+        <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="locked" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
         <button type="button" class="dnd-cs-stat readonly-stat dnd-cs-initiative" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong></button>
       </div>
@@ -90,18 +90,18 @@
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
             <header class="dnd-cs-ability-head">
               <span class="dnd-cs-ability-name">{{ ability.label }}</span>
-              <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="readonly" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, evVal($event))" />
+              <input class="dnd-cs-ability-score" type="number" min="1" max="30" :readonly="locked" :value="data.abilities[ability.key].score" :aria-label="ability.label" @change="setAbilityScore(ability.key, evVal($event))" />
             </header>
             <div class="dnd-cs-roll-row">
               <button type="button" class="dnd-cs-roll" :title="'Проверка: ' + ability.label" @click="roll('check', ability.label, abilityModifier(data.abilities[ability.key].score))">Проверка <b>{{ formatModifier(abilityModifier(data.abilities[ability.key].score)) }}</b></button>
               <div class="dnd-cs-save-cell">
-                <button type="button" class="dnd-cs-pip-btn" :class="{ on: data.abilities[ability.key].savingThrowProficient }" :disabled="readonly" :aria-pressed="data.abilities[ability.key].savingThrowProficient" :title="data.abilities[ability.key].savingThrowProficient ? 'Владение спасброском' : 'Нет владения спасброском'" @click="toggleSave(ability.key)"><span class="dnd-cs-pip" :class="{ on: data.abilities[ability.key].savingThrowProficient }"></span></button>
+                <button type="button" class="dnd-cs-pip-btn" :class="{ on: data.abilities[ability.key].savingThrowProficient }" :disabled="locked" :aria-pressed="data.abilities[ability.key].savingThrowProficient" :title="data.abilities[ability.key].savingThrowProficient ? 'Владение спасброском' : 'Нет владения спасброском'" @click="toggleSave(ability.key)"><span class="dnd-cs-pip" :class="{ on: data.abilities[ability.key].savingThrowProficient }"></span></button>
                 <button type="button" class="dnd-cs-roll" :title="'Спасбросок: ' + ability.label" @click="roll('save', ability.label, savingThrow(ability.key))">Спас <b>{{ formatModifier(savingThrow(ability.key)) }}</b></button>
               </div>
             </div>
             <ul class="dnd-cs-skills">
               <li v-for="skill in skillsByAbility[ability.key]" :key="skill.key">
-                <button type="button" class="dnd-cs-skill-pip" :class="skillProf(skill.key)" :disabled="readonly" :title="skillProfTitle(skill.key)" @click="cycleSkill(skill.key)">
+                <button type="button" class="dnd-cs-skill-pip" :class="skillProf(skill.key)" :disabled="locked" :title="skillProfTitle(skill.key)" @click="cycleSkill(skill.key)">
                   <span class="dnd-cs-pip" :class="skillProf(skill.key)"></span>
                 </button>
                 <button type="button" class="dnd-cs-skill-roll" :title="'Проверка: ' + skill.label" @click="roll('skill', skill.label, skillMod(skill.key))">
@@ -118,19 +118,19 @@
           <h4>Владения</h4>
           <div class="dnd-cs-prof-group">
             <span class="dnd-cs-prof-label">Доспехи</span>
-            <label v-for="opt in armorOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.armor.includes(opt)" :disabled="readonly" @change="toggleProf('armor', opt)" /> {{ opt }}</label>
+            <label v-for="opt in armorOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.armor.includes(opt)" :disabled="locked" @change="toggleProf('armor', opt)" /> {{ opt }}</label>
           </div>
           <div class="dnd-cs-prof-group">
             <span class="dnd-cs-prof-label">Оружие</span>
-            <label v-for="opt in weaponOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.weapons.includes(opt)" :disabled="readonly" @change="toggleProf('weapons', opt)" /> {{ opt }}</label>
+            <label v-for="opt in weaponOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.weapons.includes(opt)" :disabled="locked" @change="toggleProf('weapons', opt)" /> {{ opt }}</label>
           </div>
           <div class="dnd-cs-prof-list">
             <span class="dnd-cs-prof-label">Языки и прочее</span>
             <div v-for="(val, i) in data.proficiencies.languages" :key="'lang' + i" class="dnd-cs-prof-row">
-              <input :readonly="readonly" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, evVal($event))" />
-              <button v-if="!readonly" type="button" aria-label="Удалить" @click="removeProfListItem('languages', i)">×</button>
+              <input :readonly="locked" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, evVal($event))" />
+              <button v-if="!locked" type="button" aria-label="Удалить" @click="removeProfListItem('languages', i)">×</button>
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add-sm" @click="addProfListItem('languages')">+ Добавить</button>
+            <button v-if="!locked" type="button" class="dnd-cs-add-sm" @click="addProfListItem('languages')">+ Добавить</button>
           </div>
         </section>
       </div>
@@ -145,23 +145,23 @@
           <!-- Attacks -->
           <template v-if="data.activeTab === 'attacks'">
             <DndWeaponAttacks :attacks="weaponAttacks" @attack="attackWithWeapon" @damage="weaponDamage" />
-            <h4 class="dnd-cs-subheading">Другие атаки</h4>
+            <h4 v-if="data.attacks.length || !locked" class="dnd-cs-subheading">Другие атаки</h4>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
               <div class="dnd-cs-attack-top">
-                <input class="dnd-cs-attack-name" :readonly="readonly" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', evVal($event))" />
-                <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить атаку" @click="removeItem('attacks', item.id)">×</button>
+                <input class="dnd-cs-attack-name" :readonly="locked" :value="item.name" placeholder="Название атаки" aria-label="Название атаки" @change="setItem('attacks', item.id, 'name', evVal($event))" />
+                <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить атаку" @click="removeItem('attacks', item.id)">×</button>
               </div>
               <div class="dnd-cs-attack-fields">
-                <input :readonly="readonly" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', evVal($event))" />
-                <input :readonly="readonly" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', evVal($event))" />
-                <input :readonly="readonly" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', evVal($event))" />
+                <input :readonly="locked" :value="item.attackBonus || ''" placeholder="Бонус +5" aria-label="Бонус атаки" @change="setItem('attacks', item.id, 'attackBonus', evVal($event))" />
+                <input :readonly="locked" :value="item.damage || ''" placeholder="Урон 1d8+3" aria-label="Урон" @change="setItem('attacks', item.id, 'damage', evVal($event))" />
+                <input :readonly="locked" :value="item.damageType || ''" placeholder="Тип: колющий" aria-label="Тип урона" @change="setItem('attacks', item.id, 'damageType', evVal($event))" />
               </div>
               <div class="dnd-cs-attack-rolls">
                 <DndFormulaButton :formula="parseAttackBonus(item.attackBonus)" :source="item.attackBonus" prefix="Атака" :label="attackBonusText(item.attackBonus)" @roll="attackWithCustom(item)" />
                 <DndFormulaButton v-if="item.damage?.trim()" :formula="parseFormula(item.damage)" :source="item.damage" prefix="Урон" @roll="customDamage(item)" />
               </div>
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('attacks')">+ Добавить атаку</button>
+            <button v-if="!locked" type="button" class="dnd-cs-add" @click="addItem('attacks')">+ Добавить атаку</button>
             <label class="dnd-cs-freetext">Атаки и заклинания
               <textarea :readonly="readonly" :value="data.attacksNotes" placeholder="Свободные заметки по атакам и заклинаниям" @change="setField('attacksNotes', evVal($event))"></textarea>
             </label>
@@ -171,36 +171,36 @@
           <template v-else-if="data.activeTab === 'features'">
             <div v-for="item in data.features" :key="item.id" class="dnd-cs-feature-row">
               <div class="dnd-cs-feature-main">
-                <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название умения" @change="setItem('features', item.id, 'name', evVal($event))" />
+                <input :readonly="locked" :value="item.name" placeholder="Название" aria-label="Название умения" @change="setItem('features', item.id, 'name', evVal($event))" />
                 <div class="dnd-cs-uses">
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !item.maxUses" aria-label="Использовать" @click="changeUses(item.id, -1)">−</button>
-                  <span>{{ item.currentUses || 0 }}/<input type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" aria-label="Максимум использований" @change="setItemNumber('features', item.id, 'maxUses', evVal($event))" /></span>
+                  <span>{{ item.currentUses || 0 }}/<input type="number" min="0" :readonly="locked" :value="item.maxUses || 0" aria-label="Максимум использований" @change="setItemNumber('features', item.id, 'maxUses', evVal($event))" /></span>
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !item.maxUses" aria-label="Восстановить" @click="changeUses(item.id, 1)">+</button>
                 </div>
-                <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить умение" @click="removeItem('features', item.id)">×</button>
+                <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить умение" @click="removeItem('features', item.id)">×</button>
               </div>
-              <textarea :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', evVal($event))"></textarea>
+              <textarea :readonly="locked" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', evVal($event))"></textarea>
               <label v-if="item.maxUses" class="dnd-cs-recharge">Заряды возвращает
-                <select :value="item.recharge || ''" :disabled="readonly" aria-label="Когда восстанавливаются заряды" @change="setItem('features', item.id, 'recharge', evVal($event))">
+                <select :value="item.recharge || ''" :disabled="locked" aria-label="Когда восстанавливаются заряды" @change="setItem('features', item.id, 'recharge', evVal($event))">
                   <option v-for="option in rechargeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
                 </select>
               </label>
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('features')">+ Добавить умение</button>
+            <button v-if="!locked" type="button" class="dnd-cs-add" @click="addItem('features')">+ Добавить умение</button>
           </template>
 
           <!-- Equipment -->
           <template v-else-if="data.activeTab === 'equipment'">
             <div v-for="item in data.equipment" :key="item.id" class="dnd-cs-equip-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.equipped" :disabled="readonly" aria-label="Экипировано" @change="toggleItem('equipment', item.id, 'equipped')" /></label>
-              <input :readonly="readonly" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
+              <input :readonly="locked" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
               <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', evVal($event))" />
-              <input :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', evVal($event))" />
-              <button type="button" class="dnd-cs-weapon-toggle" :class="{ on: isWeapon(item) }" :disabled="readonly" :aria-pressed="isWeapon(item)" :aria-label="isWeapon(item) ? 'Это оружие: убрать боевые параметры' : 'Сделать оружием'" :title="isWeapon(item) ? 'Оружие' : 'Сделать оружием'" @click="toggleWeapon(item)">⚔</button>
-              <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
-              <DndWeaponFields v-if="isWeapon(item)" :item="item" :sheet="data" :readonly="readonly" @change="change" />
+              <input :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', evVal($event))" />
+              <button v-if="!locked" type="button" class="dnd-cs-weapon-toggle" :class="{ on: isWeapon(item) }" :disabled="readonly" :aria-pressed="isWeapon(item)" :aria-label="isWeapon(item) ? 'Это оружие: убрать боевые параметры' : 'Сделать оружием'" :title="isWeapon(item) ? 'Оружие' : 'Сделать оружием'" @click="toggleWeapon(item)">⚔</button>
+              <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
+              <DndWeaponFields v-if="isWeapon(item) && !locked" :item="item" :sheet="data" :readonly="locked" @change="change" />
             </div>
-            <div v-if="!readonly" class="dnd-cs-add-row">
+            <div v-if="!locked" class="dnd-cs-add-row">
               <button type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
               <button type="button" class="dnd-cs-add" @click="weaponCatalogOpen = true">+ Оружие из списка</button>
             </div>
@@ -218,12 +218,12 @@
             <div v-for="item in data.goals" :key="item.id" class="dnd-cs-goal-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.completed" :disabled="readonly" aria-label="Выполнено" @change="toggleItem('goals', item.id, 'completed')" /></label>
               <div class="dnd-cs-goal-main">
-                <input :class="{ done: item.completed }" :readonly="readonly" :value="item.name" placeholder="Цель" aria-label="Название цели" @change="setItem('goals', item.id, 'name', evVal($event))" />
-                <input :readonly="readonly" :value="item.description || ''" placeholder="Описание" aria-label="Описание цели" @change="setItem('goals', item.id, 'description', evVal($event))" />
+                <input :class="{ done: item.completed }" :readonly="locked" :value="item.name" placeholder="Цель" aria-label="Название цели" @change="setItem('goals', item.id, 'name', evVal($event))" />
+                <input :readonly="locked" :value="item.description || ''" placeholder="Описание" aria-label="Описание цели" @change="setItem('goals', item.id, 'description', evVal($event))" />
               </div>
-              <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить цель" @click="removeItem('goals', item.id)">×</button>
+              <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить цель" @click="removeItem('goals', item.id)">×</button>
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('goals')">+ Добавить цель</button>
+            <button v-if="!locked" type="button" class="dnd-cs-add" @click="addItem('goals')">+ Добавить цель</button>
           </template>
 
           <!-- Notes -->
@@ -235,13 +235,13 @@
           <template v-else-if="data.activeTab === 'spells'">
             <div class="dnd-cs-spell-summary">
               <label class="dnd-cs-recharge">Класс
-                <select :value="data.spellcasting.casterClass" :disabled="readonly" aria-label="Заклинательный класс" @change="setCasterClass(evVal($event))">
+                <select :value="data.spellcasting.casterClass" :disabled="locked" aria-label="Заклинательный класс" @change="setCasterClass(evVal($event))">
                   <option value="">Не выбран</option>
                   <option v-for="caster in casterClasses" :key="caster.key" :value="caster.key">{{ caster.label }}</option>
                 </select>
               </label>
               <label class="dnd-cs-recharge">Характеристика
-                <select :value="data.spellcasting.ability" :disabled="readonly" aria-label="Заклинательная характеристика" @change="setSpellAbility(evVal($event))">
+                <select :value="data.spellcasting.ability" :disabled="locked" aria-label="Заклинательная характеристика" @change="setSpellAbility(evVal($event))">
                   <option value="">Не выбрана</option>
                   <option v-for="ability in abilities" :key="ability.key" :value="ability.key">{{ ability.label }}</option>
                 </select>
@@ -249,7 +249,7 @@
               <div class="dnd-cs-stat readonly-stat" :title="spellDc === null ? 'Выберите заклинательную характеристику' : 'Сложность спасброска: 8 + мастерство + модификатор'"><span>Сл спасброска</span><strong>{{ spellDc ?? '—' }}</strong></div>
               <button type="button" class="dnd-cs-roll" :disabled="spellAttack === null" :title="spellAttack === null ? 'Выберите заклинательную характеристику' : 'Атака заклинанием: d20 + мастерство + модификатор'" @click="rollSpellAttack()">Атака заклинанием <b>{{ spellAttack === null ? '—' : formatModifier(spellAttack) }}</b></button>
               <span v-if="showPrepared && (preparedCount || preparedMax !== null)" class="dnd-cs-spell-prepared" :class="{ 'is-over': preparedMax !== null && preparedCount > preparedMax }">Подготовлено: {{ preparedCount }}<template v-if="preparedMax !== null"> из {{ preparedMax }}</template></span>
-              <button v-if="!readonly && slotsOutdated" type="button" class="dnd-cs-add-sm" title="Проставить число ячеек по таблице класса для текущего уровня" @click="fillClassSlots">Ячейки по уровню {{ data.identity.level }}</button>
+              <button v-if="!locked && slotsOutdated" type="button" class="dnd-cs-add-sm" title="Проставить число ячеек по таблице класса для текущего уровня" @click="fillClassSlots">Ячейки по уровню {{ data.identity.level }}</button>
             </div>
             <template v-for="group in spellGroups" :key="group.level">
               <div class="dnd-cs-spell-level">
@@ -257,27 +257,27 @@
                 <div v-if="group.level" class="dnd-cs-uses" role="group" :aria-label="'Ячейки ' + group.level + ' уровня'">
                   <span>Ячейки</span>
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !slotsOf(group.level).remaining" :aria-label="'Потратить ячейку ' + group.level + ' уровня'" @click="changeSlot(group.level, 1)">−</button>
-                  <span>{{ slotsOf(group.level).remaining }}/<input type="number" min="0" max="99" :readonly="readonly" :value="slotsOf(group.level).max" :aria-label="'Всего ячеек ' + group.level + ' уровня'" @change="setSlotMax(group.level, evVal($event))" /></span>
+                  <span>{{ slotsOf(group.level).remaining }}/<input type="number" min="0" max="99" :readonly="locked" :value="slotsOf(group.level).max" :aria-label="'Всего ячеек ' + group.level + ' уровня'" @change="setSlotMax(group.level, evVal($event))" /></span>
                   <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !slotsOf(group.level).spent" :aria-label="'Вернуть ячейку ' + group.level + ' уровня'" @click="changeSlot(group.level, -1)">+</button>
                 </div>
               </div>
               <div v-for="item in group.spells" :key="item.id" class="dnd-cs-spell-row">
                 <label v-if="group.level && showPrepared" class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
                 <span v-else aria-hidden="true"></span>
-                <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
-                <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
-                <button type="button" class="dnd-cs-weapon-toggle" :class="{ on: openSpells.has(item.id) }" :aria-expanded="openSpells.has(item.id)" aria-label="Бросок и урон заклинания" title="Бросок и урон" @click="toggleSpell(item.id)">✦</button>
-                <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
+                <input :readonly="locked" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
+                <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="locked" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
+                <button v-if="!locked" type="button" class="dnd-cs-weapon-toggle" :class="{ on: openSpells.has(item.id) }" :aria-expanded="openSpells.has(item.id)" aria-label="Бросок и урон заклинания" title="Бросок и урон" @click="toggleSpell(item.id)">✦</button>
+                <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
                 <div v-if="spellRollKind(item) || item.damage?.trim()" class="dnd-cs-attack-rolls dnd-cs-spell-notes">
                   <DndFormulaButton v-if="spellRollKind(item) === 'attack' && spellAttack !== null" :formula="parseAttackBonus(formatModifier(spellAttack))" prefix="Атака" :label="formatModifier(spellAttack)" @roll="castSpellAttack(item)" />
                   <span v-if="spellRollKind(item) === 'save'" class="dnd-cs-spell-dc">Сл {{ spellDc ?? '—' }}<template v-if="spellSaveAbility(item)"> · {{ abilityShort(spellSaveAbility(item)) }}</template></span>
                   <DndFormulaButton v-if="item.damage?.trim()" :formula="parseFormula(item.damage)" :source="item.damage" :prefix="spellRollKind(item) || item.damageType?.trim() ? 'Урон' : 'Бросок'" @roll="spellDamage(item)" />
                 </div>
-                <DndSpellFields v-if="openSpells.has(item.id)" :item="item" :has-ability="Boolean(data.spellcasting.ability)" :readonly="readonly" @change="change" />
-                <input class="dnd-cs-spell-notes" :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
+                <DndSpellFields v-if="openSpells.has(item.id) && !locked" :item="item" :has-ability="Boolean(data.spellcasting.ability)" :readonly="locked" @change="change" />
+                <input class="dnd-cs-spell-notes" :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
               </div>
             </template>
-            <div v-if="!readonly" class="dnd-cs-add-row">
+            <div v-if="!locked" class="dnd-cs-add-row">
               <button type="button" class="dnd-cs-add" @click="spellCatalogOpen = true">+ Из списка заклинаний</button>
               <button type="button" class="dnd-cs-add" @click="addSpell(1)">+ Добавить заклинание</button>
               <button type="button" class="dnd-cs-add" @click="addSpell(0)">+ Добавить заговор</button>
@@ -288,11 +288,11 @@
     </div>
 
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
-    <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
+    <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" :hit-die-locked="locked" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
     <DndRollToasts :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
-    <DndSpellCatalog v-if="spellCatalogOpen && !readonly" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
-    <DndWeaponCatalog v-if="weaponCatalogOpen && !readonly" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
+    <DndSpellCatalog v-if="spellCatalogOpen && !locked" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
+    <DndWeaponCatalog v-if="weaponCatalogOpen && !locked" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
     <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
   </div>
 </template>
@@ -304,7 +304,7 @@ import {
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
   proficiencyBonusForLevel, passiveScore, initiativeBonus, isHpAmount,
   FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, spellSlotKey, type RestKind,
-  type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
+  type DndAbilityKey, type DndCharacterSheetData, type DndSheetMode, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
 import DndIdentitySelect from './DndIdentitySelect.vue';
@@ -345,6 +345,12 @@ export default defineComponent({
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
+    // "play" shows the set-once data (identity, abilities, proficiencies, list
+    // contents, weapon and spell parameters) as text and hides the buttons that
+    // add, remove or configure; what changes during a session stays live. See
+    // docs/character-sheet-edit-modes.md. Defaults to "setup" so a sheet used
+    // on its own stays fully editable.
+    mode: { type: String as PropType<DndSheetMode>, default: 'setup' },
     // Rolls the dice elsewhere (the server, for a sheet connected to a canvas).
     // Without it, or when it answers `null`, the sheet rolls by itself.
     remoteRoll: { type: Function as PropType<RemoteRoller>, default: undefined },
@@ -404,6 +410,8 @@ export default defineComponent({
     watch(nameDraft, () => { void nextTick(resizeName); }, { flush: 'post' });
     onBeforeUnmount(() => nameObserver?.disconnect());
 
+    /** Set-once data is locked for readers and in play mode; play data only for readers. */
+    const locked = computed(() => props.readonly || props.mode === 'play');
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
     const initiative = computed(() => initiativeBonus(props.data));
     const initial = computed(() => (props.data.identity.name || '?').slice(0, 1).toUpperCase());
@@ -667,7 +675,7 @@ export default defineComponent({
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
       armorOptions: ['Лёгкие', 'Средние', 'Тяжёлые', 'Щиты'],
       weaponOptions: ['Простое', 'Воинское'],
-      proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
+      locked, proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
       nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
@@ -966,6 +974,15 @@ export default defineComponent({
   background: var(--dnd-glass-accent-soft); color: var(--dnd-glass-accent);
 }
 .dnd-cs-prof-group input { width: auto; accent-color: var(--dnd-glass-accent); }
+/* Play mode (and readers): set-once values read as text, not as disabled
+   controls - no frames, no hover, no dimming. See character-sheet-edit-modes.md. */
+.dnd-cs-play .dnd-cs-prof-group label { cursor: default; }
+.dnd-cs-play .dnd-cs-prof-group label:not(:has(input:checked)) { display: none; }
+.dnd-cs-play .dnd-cs-prof-group input { display: none; }
+.dnd-cs-play .dnd-cs-prof-group:not(:has(input:checked))::after { content: '—'; color: var(--dnd-text-dim); }
+.dnd-cs-play .dnd-cs-pip-btn:disabled, .dnd-cs-play .dnd-cs-skill-pip:disabled { cursor: default; opacity: 1; }
+.dnd-cs-play .dnd-cs-recharge select:disabled { appearance: none; -webkit-appearance: none; border-color: transparent; padding-inline: 0; opacity: 1; color: var(--ui-text); }
+.dnd-cs input[readonly]:focus, .dnd-cs textarea[readonly]:focus { background: transparent; border-color: transparent; box-shadow: none; }
 .dnd-cs-prof-row { display: flex; gap: 4px; width: 100%; }
 .dnd-cs-prof-row input { flex: 1; }
 .dnd-cs-prof-row button, .dnd-cs-row-remove {

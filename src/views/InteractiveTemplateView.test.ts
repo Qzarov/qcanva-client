@@ -37,9 +37,9 @@ describe('character sheet page', () => {
   beforeEach(() => { vi.clearAllMocks(); sockets.length = 0; routeLeaveGuards.length = 0; localStorage.clear(); });
   afterEach(() => { wrapper?.unmount(); });
 
-  async function open(role: 'owner' | 'edit' | 'read' = 'owner') {
+  async function open(role: 'owner' | 'edit' | 'read' = 'owner', blank = false) {
     const data = createDndCharacterSheet();
-    data.identity.name = 'Лира';
+    if (!blank) data.identity.name = 'Лира';
     const template = { id: 'hero', title: 'Лира', templateType: 'dnd-character' as const, data: JSON.parse(JSON.stringify(data)), createdAt: '', updatedAt: '' };
     vi.mocked(interactiveTemplates.get).mockResolvedValue(template);
     wrapper = mount(InteractiveTemplateView, { attachTo: document.body, global: { stubs: { RouterLink: true, Teleport: true } } });
@@ -56,8 +56,14 @@ describe('character sheet page', () => {
     expect(wrapper.getComponent({ name: 'AccountMenu' }).props('showPlugins')).toBe(false);
   });
 
+  const toSetup = async () => {
+    await wrapper.get('.dnd-mode-button').trigger('click');
+    await flushPromises();
+  };
+
   it('sends a name edit as one field operation, never a whole-sheet save', async () => {
     await open();
+    await toSetup();
     await wrapper.get('[aria-label="Имя персонажа"]').setValue('Элиан');
     await flushPromises();
     expect(sentOps()).toEqual([{ type: 'set', path: ['identity', 'name'], value: 'Элиан' }]);
@@ -84,6 +90,7 @@ describe('character sheet page', () => {
 
   it('shows a remote edit live without wiping what the user is typing', async () => {
     const data = await open();
+    await toSetup();
     // The race is a list now; its last option switches to typing a custom one.
     await wrapper.get('select[aria-label="Раса"]').setValue('\u0000type');
     const race = wrapper.get('[aria-label="Раса: свой вариант"]');
@@ -114,5 +121,61 @@ describe('character sheet page', () => {
     expect(routeLeaveGuards[0]!()).toBe(false);
     expect(confirm).toHaveBeenCalledOnce();
     confirm.mockRestore();
+  });
+
+  describe('play and setup modes', () => {
+    it('opens a filled-in sheet in play: set-once data is text, session data stays live', async () => {
+      await open();
+      const toggle = wrapper.get('.dnd-mode-button');
+      expect(toggle.text()).toContain('Игра');
+      expect(toggle.attributes('aria-pressed')).toBe('false');
+      expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeDefined();
+      expect(wrapper.get('[aria-label="Сила"]').attributes('readonly')).toBeDefined();
+      expect(wrapper.get('[aria-label="Уровень"]').attributes('readonly')).toBeDefined();
+      expect(wrapper.get('[aria-label="Класс доспеха"]').attributes('readonly')).toBeDefined();
+      expect(wrapper.find('.dnd-cs-portrait-actions').exists()).toBe(false);
+      expect(wrapper.findAll('.dnd-cs-add').length).toBe(0);
+      // Still live in play: HP, experience, rolls.
+      expect(wrapper.get('[aria-label="Текущие HP"]').attributes('readonly')).toBeUndefined();
+      expect(wrapper.get('[aria-label="Опыт"]').attributes('readonly')).toBeUndefined();
+      expect(wrapper.get('button[aria-label="Урон"]').attributes('disabled')).toBeUndefined();
+      expect(wrapper.get('[aria-label="Бросить инициативу"]').attributes('disabled')).toBeUndefined();
+    });
+
+    it('switches to setup and back without syncing the mode', async () => {
+      await open();
+      await toSetup();
+      const toggle = wrapper.get('.dnd-mode-button');
+      expect(toggle.text()).toContain('Настройка');
+      expect(toggle.attributes('aria-pressed')).toBe('true');
+      expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeUndefined();
+      expect(wrapper.findAll('.dnd-cs-add').length).toBeGreaterThan(0);
+      await wrapper.get('.dnd-mode-button').trigger('click');
+      expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeDefined();
+      expect(sentOps()).toEqual([]);
+      expect(localStorage.getItem('dnd-sheet-view:hero')).toBeNull();
+    });
+
+    it('opens a sheet nobody has filled in yet straight in setup', async () => {
+      await open('owner', true);
+      expect(wrapper.get('.dnd-mode-button').text()).toContain('Настройка');
+      expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeUndefined();
+    });
+
+    it('starts in play again on the next opening, even after leaving it in setup', async () => {
+      await open();
+      await toSetup();
+      wrapper.unmount();
+      sockets.length = 0;
+      await open();
+      expect(wrapper.get('.dnd-mode-button').text()).toContain('Игра');
+    });
+
+    it('gives a reader no mode switch: always play', async () => {
+      await open('read', true);
+      expect(wrapper.find('.dnd-mode-button').exists()).toBe(false);
+      expect(wrapper.get('[aria-label="Имя персонажа"]').attributes('readonly')).toBeDefined();
+      expect(wrapper.findAll('.dnd-cs-add').length).toBe(0);
+    });
   });
 });

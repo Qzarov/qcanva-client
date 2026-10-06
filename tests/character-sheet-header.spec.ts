@@ -3,7 +3,8 @@ import { createDndCharacterSheet } from '../src/dnd/characterSheet';
 import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const longName = 'Элеонора Серебряная Звезда из Далёкого Лунного Леса Хранительница Древних Преданий';
-async function openSheet(page: Page) {
+/** `setup`: switch the sheet to setup mode, for tests that edit set-once data such as the name. */
+async function openSheet(page: Page, mode: 'play' | 'setup' = 'play') {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: longName, race: 'Эльф', className: 'Волшебник', experience: 350, nextLevelExperience: 900 };
   const saved = await serveCharacterSheet(page, { id: 'hero', title: 'Старое название', templateType: 'dnd-character', data: data as unknown as Record<string, unknown>, createdAt: '', updatedAt: '' });
@@ -13,6 +14,10 @@ async function openSheet(page: Page) {
   });
   await page.goto('/templates/hero');
   await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue(longName);
+  if (mode === 'setup') {
+    await page.locator('.dnd-mode-button').click();
+    await expect(page.locator('.dnd-mode-button')).toHaveAttribute('aria-pressed', 'true');
+  }
   return saved as () => { title: string; data: any };
 }
 
@@ -71,7 +76,7 @@ for (const width of [320, 1280]) {
 for (const width of [320, 390, 760, 1280]) {
   test(`character header and full ability tiles fit at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    const saved = await openSheet(page);
+    const saved = await openSheet(page, 'setup');
     const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
     await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
     expect((await name.boundingBox())!.height).toBeGreaterThan(45);
@@ -176,7 +181,7 @@ for (const width of [320, 390, 760, 1280]) {
 
 test('name height follows viewport changes and reloading keeps the name and title', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
-  const saved = await openSheet(page);
+  const saved = await openSheet(page, 'setup');
   const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
   const height = (await name.boundingBox())!.height;
   await page.setViewportSize({ width: 320, height: 900 });
@@ -194,7 +199,7 @@ test('name height follows viewport changes and reloading keeps the name and titl
 
 test('name height adapts when font metrics change after initial layout', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
-  await openSheet(page);
+  await openSheet(page, 'setup');
   const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
   await expect.poll(() => name.evaluate(element => element.scrollHeight <= element.clientHeight + 2)).toBe(true);
   await page.addStyleTag({ content: '.dnd-cs textarea.dnd-cs-name, .dnd-cs-name-measure { font-size: 28px !important; }' });
@@ -203,7 +208,7 @@ test('name height adapts when font metrics change after initial layout', async (
 
 test('long names shrink but one or two lines retain the normal font', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
-  await openSheet(page);
+  await openSheet(page, 'setup');
   const name = page.getByRole('textbox', { name: 'Имя персонажа', exact: true });
   await expect.poll(() => name.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeLessThan(20);
   expect(await name.evaluate(element => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(14);
