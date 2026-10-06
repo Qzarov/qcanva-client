@@ -56,6 +56,19 @@ export type DndDeathSaves = { successes: number; failures: number };
 export type DeathSaveOutcome = 'success' | 'failure' | 'critical-failure' | 'critical-success';
 export type RestKind = 'short' | 'long';
 
+/** Spell slot levels. Slots are keyed `l1`..`l9`: sync paths must start with a letter. */
+export const SPELL_LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+export type SpellSlotKey = `l${typeof SPELL_LEVELS[number]}`;
+export const spellSlotKey = (level: number) => `l${level}` as SpellSlotKey;
+export type DndSpellSlot = { max: number; spent: number };
+export type DndSpellcasting = {
+  /** The spellcasting ability; empty until the player picks one. */
+  ability: DndAbilityKey | '';
+  slots: Record<SpellSlotKey, DndSpellSlot>;
+};
+/** What a spell asks for: an attack roll by the caster, a saving throw by the target, or neither. */
+export type SpellRollKind = '' | 'attack' | 'save';
+
 export type DndListItem = {
   id: string; name: string; description?: string;
   currentUses?: number; maxUses?: number;
@@ -63,8 +76,10 @@ export type DndListItem = {
   recharge?: FeatureRecharge;
   quantity?: number; equipped?: boolean; completed?: boolean;
   level?: number; prepared?: boolean;
-  // Attack-specific (optional, only used on the Attacks tab).
+  // Attack-specific (optional; `damage` and `damageType` are shared with spells).
   attackBonus?: string; damage?: string; damageType?: string;
+  /** Spells only: how the spell is resolved, and which save the target makes. */
+  rollKind?: SpellRollKind; saveAbility?: DndAbilityKey | '';
 };
 
 export interface DndCharacterSheetData {
@@ -91,6 +106,7 @@ export interface DndCharacterSheetData {
   goals: DndListItem[];
   personality: { traits: string; ideals: string; bonds: string; flaws: string };
   proficiencies: { armor: string[]; weapons: string[]; tools: string[]; languages: string[]; other: string[] };
+  spellcasting: DndSpellcasting;
   /** Free-text "Attacks & Spellcasting" notes shown alongside the attack list. */
   attacksNotes: string;
   notes: string;
@@ -149,11 +165,31 @@ export const createDndCharacterSheet = (): DndCharacterSheetData => ({
   attacks: [], features: [], equipment: [], spells: [], goals: [],
   personality: { traits: '', ideals: '', bonds: '', flaws: '' },
   proficiencies: { armor: [], weapons: [], tools: [], languages: [], other: [] },
+  spellcasting: createSpellcasting(),
   attacksNotes: '',
   notes: '',
 });
 
 const asNumber = (value: unknown, fallback: number) => Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+export function createSpellcasting(): DndSpellcasting {
+  const slots = {} as DndSpellcasting['slots'];
+  for (const level of SPELL_LEVELS) slots[spellSlotKey(level)] = { max: 0, spent: 0 };
+  return { ability: '', slots };
+}
+
+/** Reads stored spellcasting data: unknown abilities are dropped, slots are whole numbers with spent <= max. */
+export function normalizeSpellcasting(source: unknown): DndSpellcasting {
+  const data = source && typeof source === 'object' ? source as Record<string, any> : {};
+  const base = createSpellcasting();
+  if (DND_ABILITIES.some((item) => item.key === data.ability)) base.ability = data.ability;
+  for (const level of SPELL_LEVELS) {
+    const stored = data.slots?.[spellSlotKey(level)] || {};
+    const max = Math.min(99, Math.max(0, Math.trunc(asNumber(stored.max, 0))));
+    base.slots[spellSlotKey(level)] = { max, spent: Math.min(max, Math.max(0, Math.trunc(asNumber(stored.spent, 0)))) };
+  }
+  return base;
+}
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const clampLevel = (level: unknown) => clamp(Math.trunc(asNumber(level, 1)), 1, 20);
 
@@ -196,6 +232,7 @@ export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetDa
   base.activeTab = ['attacks', 'features', 'equipment', 'personality', 'goals', 'notes', 'spells'].includes(data.activeTab) ? data.activeTab : base.activeTab;
   for (const key of ['skills', 'passiveBonuses', 'personality', 'proficiencies'] as const) Object.assign(base[key], data[key] || {});
   for (const key of ['attacks', 'features', 'equipment', 'spells', 'goals'] as const) base[key] = Array.isArray(data[key]) ? data[key] : [];
+  base.spellcasting = normalizeSpellcasting(data.spellcasting);
   base.attacksNotes = typeof data.attacksNotes === 'string' ? data.attacksNotes : '';
   base.notes = typeof data.notes === 'string' ? data.notes : '';
   return base;

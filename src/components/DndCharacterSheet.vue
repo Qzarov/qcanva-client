@@ -233,15 +233,47 @@
 
           <!-- Spells -->
           <template v-else-if="data.activeTab === 'spells'">
-            <div class="dnd-cs-spell-head"><span></span><span>Заклинание</span><span>Ур.</span><span></span></div>
-            <div v-for="item in data.spells" :key="item.id" class="dnd-cs-spell-row">
-              <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
-              <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
-              <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" @change="setItemNumber('spells', item.id, 'level', evVal($event))" />
-              <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
-              <input class="dnd-cs-spell-notes" :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
+            <div class="dnd-cs-spell-summary">
+              <label class="dnd-cs-recharge">Характеристика
+                <select :value="data.spellcasting.ability" :disabled="readonly" aria-label="Заклинательная характеристика" @change="setSpellAbility(evVal($event))">
+                  <option value="">Не выбрана</option>
+                  <option v-for="ability in abilities" :key="ability.key" :value="ability.key">{{ ability.label }}</option>
+                </select>
+              </label>
+              <div class="dnd-cs-stat readonly-stat" :title="spellDc === null ? 'Выберите заклинательную характеристику' : 'Сложность спасброска: 8 + мастерство + модификатор'"><span>Сл спасброска</span><strong>{{ spellDc ?? '—' }}</strong></div>
+              <button type="button" class="dnd-cs-roll" :disabled="spellAttack === null" :title="spellAttack === null ? 'Выберите заклинательную характеристику' : 'Атака заклинанием: d20 + мастерство + модификатор'" @click="rollSpellAttack()">Атака заклинанием <b>{{ spellAttack === null ? '—' : formatModifier(spellAttack) }}</b></button>
+              <span v-if="preparedCount" class="dnd-cs-spell-prepared">Подготовлено: {{ preparedCount }}</span>
             </div>
-            <button v-if="!readonly" type="button" class="dnd-cs-add" @click="addItem('spells')">+ Добавить заклинание</button>
+            <template v-for="group in spellGroups" :key="group.level">
+              <div class="dnd-cs-spell-level">
+                <h4 class="dnd-cs-subheading">{{ spellLevelLabel(group.level) }}</h4>
+                <div v-if="group.level" class="dnd-cs-uses" role="group" :aria-label="'Ячейки ' + group.level + ' уровня'">
+                  <span>Ячейки</span>
+                  <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !slotsOf(group.level).remaining" :aria-label="'Потратить ячейку ' + group.level + ' уровня'" @click="changeSlot(group.level, 1)">−</button>
+                  <span>{{ slotsOf(group.level).remaining }}/<input type="number" min="0" max="99" :readonly="readonly" :value="slotsOf(group.level).max" :aria-label="'Всего ячеек ' + group.level + ' уровня'" @change="setSlotMax(group.level, evVal($event))" /></span>
+                  <button type="button" class="dnd-cs-hp-btn" :disabled="readonly || !slotsOf(group.level).spent" :aria-label="'Вернуть ячейку ' + group.level + ' уровня'" @click="changeSlot(group.level, -1)">+</button>
+                </div>
+              </div>
+              <div v-for="item in group.spells" :key="item.id" class="dnd-cs-spell-row">
+                <label v-if="group.level" class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
+                <span v-else aria-hidden="true"></span>
+                <input :readonly="readonly" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
+                <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
+                <button type="button" class="dnd-cs-weapon-toggle" :class="{ on: openSpells.has(item.id) }" :aria-expanded="openSpells.has(item.id)" aria-label="Бросок и урон заклинания" title="Бросок и урон" @click="toggleSpell(item.id)">✦</button>
+                <button v-if="!readonly" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
+                <div v-if="spellRollKind(item) || item.damage?.trim()" class="dnd-cs-attack-rolls dnd-cs-spell-notes">
+                  <DndFormulaButton v-if="spellRollKind(item) === 'attack' && spellAttack !== null" :formula="parseAttackBonus(formatModifier(spellAttack))" prefix="Атака" :label="formatModifier(spellAttack)" @roll="castSpellAttack(item)" />
+                  <span v-if="spellRollKind(item) === 'save'" class="dnd-cs-spell-dc">Сл {{ spellDc ?? '—' }}<template v-if="spellSaveAbility(item)"> · {{ abilityShort(spellSaveAbility(item)) }}</template></span>
+                  <DndFormulaButton v-if="item.damage?.trim()" :formula="parseFormula(item.damage)" :source="item.damage" :prefix="spellRollKind(item) || item.damageType?.trim() ? 'Урон' : 'Бросок'" @roll="spellDamage(item)" />
+                </div>
+                <DndSpellFields v-if="openSpells.has(item.id)" :item="item" :has-ability="Boolean(data.spellcasting.ability)" :readonly="readonly" @change="change" />
+                <input class="dnd-cs-spell-notes" :readonly="readonly" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
+              </div>
+            </template>
+            <div v-if="!readonly" class="dnd-cs-add-row">
+              <button type="button" class="dnd-cs-add" @click="addSpell(1)">+ Добавить заклинание</button>
+              <button type="button" class="dnd-cs-add" @click="addSpell(0)">+ Добавить заговор</button>
+            </div>
           </template>
         </div>
       </div>
@@ -262,7 +294,7 @@ import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
   proficiencyBonusForLevel, passiveScore, initiativeBonus, isHpAmount,
-  FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, type RestKind,
+  FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, spellSlotKey, type RestKind,
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
 import DndHpDialog from './DndHpDialog.vue';
@@ -275,10 +307,15 @@ import DndRollLog from './DndRollLog.vue';
 import DndRollToasts from './DndRollToasts.vue';
 import DndWeaponAttacks from './DndWeaponAttacks.vue';
 import DndWeaponFields from './DndWeaponFields.vue';
+import DndSpellFields from './DndSpellFields.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
 import { useSheetRolls, type DamageOption } from '../dnd/useSheetRolls';
+import {
+  abilityShort, preparedSpellCount, spellAttackBonus, spellGroups as groupSpells, spellLevelLabel, spellRollKind,
+  spellSaveAbility, spellSaveDc, spellSlots,
+} from '../dnd/spells';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
@@ -288,7 +325,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndWeaponCatalog },
+  components: { DndHpDialog, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -489,6 +526,53 @@ export default defineComponent({
     };
     /** "Урон"/"Крит" on an attack (toast or log): a natural 20 doubles the dice; once per attack. */
     const damageFromToast = (rollId: string, index: number) => { rolls.rollAttackDamage(rollId, index); };
+    // ===== Spells =====
+    const spellAttack = computed(() => spellAttackBonus(props.data));
+    const spellDc = computed(() => spellSaveDc(props.data));
+    const spellGroups = computed(() => groupSpells(props.data));
+    const preparedCount = computed(() => preparedSpellCount(props.data));
+    const slotsOf = (level: number) => spellSlots(props.data, level);
+    const setSpellAbility = (value: string) => {
+      props.data.spellcasting.ability = DND_ABILITIES.some((ability) => ability.key === value) ? value as DndAbilityKey : '';
+      change();
+    };
+    const setSlotMax = (level: number, value: string) => {
+      const slot = props.data.spellcasting.slots[spellSlotKey(level)];
+      slot.max = clamp(Math.trunc(Number(value) || 0), 0, 99);
+      slot.spent = Math.min(slot.spent, slot.max);
+      change();
+    };
+    // Spending a slot is a delta, like feature uses: two casters at once add up.
+    const changeSlot = (level: number, delta: number) => {
+      if (props.readonly) return;
+      emit('op', { type: 'slot-change', level, delta });
+    };
+    const addSpell = (level: number) => { props.data.spells.push({ id: newId(), name: '', level }); change(); };
+    const setSpellLevel = (id: string, value: string) => {
+      const spell = props.data.spells.find((entry) => entry.id === id);
+      if (spell) spell.level = clamp(Math.trunc(Number(value) || 0), 0, 9);
+      change();
+    };
+    // Which spells show their roll settings: a view choice, not part of the sheet.
+    const openSpells = ref(new Set<string>());
+    const toggleSpell = (id: string) => {
+      const next = new Set(openSpells.value);
+      if (!next.delete(id)) next.add(id);
+      openSpells.value = next;
+    };
+    const spellName = (item: DndListItem) => item.name.trim() || 'Заклинание';
+    const spellDamageOption = (item: DndListItem): DamageOption[] => {
+      const damage = parseFormula(item.damage || '');
+      return damage.ok ? [{ label: 'Урон', formula: damage, type: item.damageType || '' }] : [];
+    };
+    const rollSpellAttack = () => { if (spellAttack.value !== null) rolls.rollAttack('Заклинание', spellAttack.value); };
+    const castSpellAttack = (item: DndListItem) => {
+      if (spellAttack.value !== null) rolls.rollAttack(spellName(item), spellAttack.value, spellDamageOption(item));
+    };
+    const spellDamage = (item: DndListItem) => {
+      const [option] = spellDamageOption(item);
+      if (option) rolls.rollDamage(spellName(item), option);
+    };
     const weaponCatalogOpen = ref(false);
     const addCatalogWeapon = (weapon: CatalogWeapon) => {
       props.data.equipment.push(catalogEquipmentItem(weapon, newId()));
@@ -524,6 +608,9 @@ export default defineComponent({
       hpMode, applyHpAmount, change,
       deathStatus, setDeathSaves, rollDeathSave, restKind, hitDiceLeft, applyRest, setHitDie, spendHitDie,
       rechargeOptions: FEATURE_RECHARGE_OPTIONS,
+      spellAttack, spellDc, spellGroups, preparedCount, slotsOf, setSpellAbility, setSlotMax, changeSlot, addSpell, setSpellLevel,
+      openSpells, toggleSpell, rollSpellAttack, castSpellAttack, spellDamage,
+      spellLevelLabel, spellRollKind, spellSaveAbility, abilityShort,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
@@ -842,7 +929,12 @@ export default defineComponent({
 .dnd-cs-tab-panel { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
 
 /* Rows */
-.dnd-cs-spell-head { display: grid; gap: 6px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--dnd-text-dim); padding: 0 4px; }
+.dnd-cs-spell-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.dnd-cs-spell-summary .dnd-cs-roll:disabled { opacity: .45; cursor: default; }
+.dnd-cs-spell-prepared { font-size: 12px; color: var(--dnd-text-dim); font-variant-numeric: tabular-nums; }
+.dnd-cs-spell-level { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: 6px; }
+.dnd-cs-spell-level .dnd-cs-subheading { margin: 0; }
+.dnd-cs-spell-dc { display: inline-flex; align-items: center; min-height: 30px; box-sizing: border-box; padding: 4px 9px; border: 1px solid var(--dnd-glass-border); border-radius: 8px; font-size: 12px; color: var(--dnd-text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .dnd-cs-attack-row, .dnd-cs-spell-row, .dnd-cs-equip-row, .dnd-cs-goal-row { border: 1px solid var(--dnd-glass-border); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); padding: 8px; transition: border-color 150ms, background 150ms; }
 .dnd-cs-attack-row:hover, .dnd-cs-spell-row:hover, .dnd-cs-equip-row:hover, .dnd-cs-goal-row:hover, .dnd-cs-feature-row:hover { background: rgba(var(--dnd-fill-rgb), 0.06); }
 /* Attack card: name row on top, bonus/damage/type wrap below - never overflows. */
@@ -851,8 +943,8 @@ export default defineComponent({
 .dnd-cs-attack-name { flex: 1; min-width: 0; font-weight: 600; }
 .dnd-cs-attack-fields { display: flex; flex-wrap: wrap; gap: 6px; }
 .dnd-cs-attack-fields input { flex: 1 1 90px; min-width: 0; }
-.dnd-cs-spell-head { grid-template-columns: 30px 1fr 52px 26px; }
-.dnd-cs-spell-row { display: grid; grid-template-columns: 30px 1fr 52px 26px; gap: 6px; align-items: center; }
+.dnd-cs-spell-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) 52px 30px 26px; gap: 6px; align-items: center; }
+.dnd-cs-spell-row > input { width: 100%; min-width: 0; }
 .dnd-cs-spell-notes { grid-column: 1 / -1; }
 .dnd-cs-equip-row { display: grid; grid-template-columns: 28px minmax(0, 2fr) 60px minmax(0, 2fr) 30px 26px; gap: 6px; align-items: center; }
 .dnd-cs-equip-row > input { width: 100%; min-width: 0; }
@@ -921,6 +1013,15 @@ export default defineComponent({
   .dnd-cs-death-result { flex: 1 1 100%; margin-left: 0; text-align: center; }
   .dnd-cs-death .dnd-cs-pip-btn { padding: 8px 5px; }
   .dnd-cs-death .dnd-cs-pip { width: 14px; height: 14px; }
+  /* Spell slots are spent every turn: full touch targets. */
+  .dnd-cs-spell-level .dnd-cs-hp-btn { width: 44px; height: 44px; flex-basis: 44px; }
+  .dnd-cs-spell-summary .dnd-cs-roll { min-height: 44px; padding-inline: 12px; font-size: 12px; }
+  .dnd-cs-spell-summary .dnd-cs-roll b { font-size: 12px; }
+  /* Room for the spell's name: narrower side columns, slightly smaller text. */
+  .dnd-cs-spell-row { grid-template-columns: 22px minmax(0, 1fr) 30px 30px 26px; gap: 4px; }
+  .dnd-cs-spell-row > input:not(.dnd-cs-spell-notes) { font-size: 14px; padding-inline: 3px; }
+  .dnd-cs-spell-row > .dnd-cs-qty { appearance: textfield; -moz-appearance: textfield; }
+  .dnd-cs-spell-row > .dnd-cs-qty::-webkit-inner-spin-button, .dnd-cs-spell-row > .dnd-cs-qty::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   .dnd-cs-stat input { width: 46px; }
   .dnd-cs-attack-head { display: none; }
   .dnd-cs-attack-row { grid-template-columns: 1fr 1fr; }

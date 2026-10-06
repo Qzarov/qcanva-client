@@ -21,6 +21,7 @@ export type SheetOperation =
   | { type: 'set'; path: string[]; value: unknown }
   | { type: 'hp-change'; mode: 'heal' | 'damage'; amount: number }
   | { type: 'uses-change'; itemId: string; delta: number }
+  | { type: 'slot-change'; level: number; delta: number }
   | { type: 'rest'; kind: 'short' | 'long' }
   | { type: 'hit-die'; heal: number }
   | { type: 'death-save'; outcome: 'success' | 'failure' | 'critical-failure' | 'critical-success' }
@@ -32,7 +33,7 @@ export type SheetOperation =
 /** Top-level keys the server accepts in a `set`. Everything else is view state or legacy. */
 const SETTABLE_ROOTS = new Set([
   'identity', 'abilities', 'proficiencyBonus', 'skills', 'combat',
-  'passiveBonuses', 'personality', 'proficiencies', 'attacksNotes', 'notes',
+  'passiveBonuses', 'personality', 'proficiencies', 'spellcasting', 'attacksNotes', 'notes',
 ]);
 /** String sets synced member by member, so two people toggling different members both win. */
 const STRING_SET_PATHS = new Set(['combat.conditions', 'proficiencies.armor', 'proficiencies.weapons']);
@@ -119,6 +120,14 @@ export function applySheetOperation(source: Record<string, unknown>, op: SheetOp
       if ((combat.currentHp as number) > 0 || currentHp > 0) combat.deathSaves = { successes: 0, failures: 0 };
       break;
     }
+    case 'slot-change': {
+      // `delta` moves the number of SPENT slots: +1 casts a spell, -1 gives the slot back.
+      const slot = objectAt(sheet, ['spellcasting', 'slots', `l${op.level}`]);
+      const max = clampInt(slot.max, 0, 0, 99);
+      slot.max = max;
+      slot.spent = Math.min(max, Math.max(0, clampInt(slot.spent, 0, 0, max) + op.delta));
+      break;
+    }
     case 'rest': {
       const combat = objectAt(sheet, ['combat']);
       for (const item of listOf(sheet, 'features')) {
@@ -137,6 +146,10 @@ export function applySheetOperation(source: Record<string, unknown>, op: SheetOp
           combat.conditions = combat.conditions.filter((value) => value !== 'exhaustion');
         }
         combat.deathSaves = { successes: 0, failures: 0 };
+        const spellcasting = isRecord(sheet.spellcasting) ? sheet.spellcasting : {};
+        for (const slot of Object.values(isRecord(spellcasting.slots) ? spellcasting.slots : {})) {
+          if (isRecord(slot)) slot.spent = 0;
+        }
       }
       break;
     }
