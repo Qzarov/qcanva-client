@@ -84,5 +84,9 @@ onBeforeUnmount(() => {
 .dnd-formula-invalid { border:1px dashed var(--ui-danger-foreground); background:transparent; color:var(--dnd-text-dim, var(--ui-text-secondary)); }
 .dnd-formula-invalid span[aria-hidden] { display:inline-grid; place-items:center; width:16px; height:16px; border-radius:999px; background:var(--ui-danger-foreground); color:#fff; font-size:11px; font-weight:700; }
 .dnd-formula-prefix { color:var(--dnd-text-dim, var(--ui-text-secondary)); }
+/* Rolled every turn: a full touch target on phones. */
+@media (max-width:760px) {
+  .dnd-formula button { min-height:44px; padding-inline:12px; }
+}
 .dnd-formula-hint { position:fixed; z-index:3100; /* above roll toasts */ margin:0; width:max-content; max-width:min(300px, calc(100vw - 24px)); box-sizing:border-box; padding:10px 12px; border-radius:12px; border:1px solid var(--ui-border); background:var(--ui-surface-solid); color:var(--ui-text); box-shadow:var(--ui-glass-shadow); font-size:13px; line-height:1.35; }
 </style>

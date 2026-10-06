@@ -42,4 +42,8 @@ const emit = defineEmits<{ attack: [attack: WeaponAttack]; damage: [attack: Weap
 .dnd-weapon-attack-rolls { display:flex; flex-wrap:wrap; gap:6px; }
 .dnd-weapon-attack-roll { min-height:30px; padding:4px 10px; border:1px solid var(--dnd-glass-accent); border-radius:8px; background:var(--dnd-glass-accent-soft); color:var(--ui-text); font:inherit; font-size:12px; cursor:pointer; }
 .dnd-weapon-attack-roll b { font-variant-numeric:tabular-nums; }
+/* Rolled every turn: a full touch target on phones. */
+@media (max-width:760px) {
+  .dnd-weapon-attack-roll { min-height:44px; padding-inline:12px; }
+}
 </style>
