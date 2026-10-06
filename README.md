@@ -129,6 +129,7 @@ npm run android:open
 
 - [`docs/character-sheet-roadmap.md`](docs/character-sheet-roadmap.md) — карточка персонажа D&D: что есть и план
 - [`docs/character-sheet-style.md`](docs/character-sheet-style.md) — визуальный стиль карточки персонажа: токены, правила, эталонные снимки
+- [`docs/app-tabs-plan.md`](docs/app-tabs-plan.md) — план вкладок в Android-приложении: переключение между ресурсами без перезагрузки
 - [`docs/release-tagging.md`](docs/release-tagging.md) — релизные теги и версии
 - [`docs/google-play-release.md`](docs/google-play-release.md) — публикация в Google Play
 - [`COLLABORATION_PROTOCOL.md`](COLLABORATION_PROTOCOL.md) — протокол совместного редактирования канваса
