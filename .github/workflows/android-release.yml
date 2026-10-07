@@ -24,6 +24,19 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      # The app's menu shows the version from package.json, the build takes it
+      # from the tag. v1.8.7 - v1.9.0 shipped with the menu still saying 1.8.6.
+      - name: Check that package.json has the released version
+        env:
+          VERSION_NAME: ${{ inputs.version || github.ref_name }}
+        run: |
+          VERSION_NAME="${VERSION_NAME#v}"
+          PACKAGE_VERSION="$(sed -n 's/^  "version": "\(.*\)",$/\1/p' package.json | head -n 1)"
+          if [ "$PACKAGE_VERSION" != "$VERSION_NAME" ]; then
+            echo "::error::package.json says $PACKAGE_VERSION, the release is $VERSION_NAME. Set \"version\" in package.json (npm version $VERSION_NAME --no-git-tag-version), merge it into main and tag again."
+            exit 1
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
