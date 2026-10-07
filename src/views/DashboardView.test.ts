@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DashboardView from './DashboardView.vue';
 import { canvas, htmlDocuments, interactiveTemplates, recentResources, resourceFolders, textDocuments } from '../api/client';
 import { runBackHandlers } from '../composables/useBackHandler';
+import { currentAppDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
@@ -1072,21 +1073,25 @@ describe('DashboardView groups', () => {
   });
 
   it('refreshes folders after deleting an owned interactive template', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const wrapper = mountDashboard();
     await flushPromises();
     vi.mocked(resourceFolders.list).mockClear();
 
-    await (wrapper.vm as any).deleteInteractiveTemplate({
+    const deleting = (wrapper.vm as any).deleteInteractiveTemplate({
       id: 'board-owned',
       title: 'Моя доска',
       templateType: 'trello-board',
       role: 'owner',
     });
+    // Nothing is deleted until the question is answered.
+    expect(currentAppDialog.value).toMatchObject({ kind: 'confirm', danger: true });
+    expect(currentAppDialog.value!.title).toContain('Моя доска');
+    expect(interactiveTemplates.delete).not.toHaveBeenCalled();
+    currentAppDialog.value!.settle(true);
+    await deleting;
 
     expect(interactiveTemplates.delete).toHaveBeenCalledWith('board-owned');
     expect(resourceFolders.list).toHaveBeenCalledTimes(1);
-    confirm.mockRestore();
   });
 
   it('moves public resources from their three-dot menu', async () => {

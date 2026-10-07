@@ -16,12 +16,14 @@
     <component :is="Component" :key="viewKeyFor(route)" />
   </router-view>
   <ToastContainer />
+  <AppDialogHost />
 </template>
 
 <script lang="ts">
 import { computed, defineComponent, type Component } from 'vue';
 import type { RouteLocationNormalizedLoaded } from 'vue-router';
 import ToastContainer from './components/ToastContainer.vue';
+import AppDialogHost from './components/AppDialogHost.vue';
 import { viewKeyFor } from './router/view-remount';
 import { tabsEnabled } from './tabs/flag';
 import { hostFor, hostName } from './tabs/TabHost';
@@ -32,7 +34,7 @@ import { isSleepReady, liveTabKeys, tabKeyFor, tabs } from './tabs/registry';
 const Passthrough: Component = { name: 'TabPassthrough', setup: (_: unknown, { slots }: any) => () => slots.default?.() };
 
 export default defineComponent({
-  components: { ToastContainer },
+  components: { ToastContainer, AppDialogHost },
   setup() {
     const tabMode = tabsEnabled();
     if (tabMode) installScrollMemory();

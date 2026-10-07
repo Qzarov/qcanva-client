@@ -4,7 +4,8 @@ import { Capacitor } from '@capacitor/core'
 import App from './App.vue'
 import router from './router'
 import './style.css'
-import { applyInitialLocale } from './composables/useI18n'
+import { applyInitialLocale, useI18n } from './composables/useI18n'
+import { confirmDialog } from './composables/appDialog'
 import { runBackHandlers } from './composables/useBackHandler'
 
 applyInitialLocale()
@@ -26,7 +27,9 @@ if (Capacitor.isNativePlatform()) {
       return
     }
 
-    if (window.confirm('Exit QCanva?')) {
+    // Back pressed again while the question is open closes it (the dialog is a back handler itself).
+    const { t } = useI18n()
+    if (await confirmDialog({ title: t('exitAppTitle'), confirmLabel: t('exitAppConfirm') })) {
       await CapacitorApp.exitApp()
     }
   }))

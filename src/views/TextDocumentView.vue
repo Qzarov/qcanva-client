@@ -719,6 +719,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { confirmRestoreRevision } from '../composables/appDialog';
 import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { useLivenessChecks } from '../tabs/useLivenessChecks';
@@ -3252,7 +3253,7 @@ export default defineComponent({
 
     async function restoreSelectedHistory() {
       if (!selectedHistory.value) return;
-      const ok = window.confirm(`Restore revision ${selectedHistory.value.revision}? This will create a new revision.`);
+      const ok = await confirmRestoreRevision(selectedHistory.value.revision);
       if (!ok) return;
       restoringHistory.value = true;
       try {

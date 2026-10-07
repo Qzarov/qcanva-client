@@ -235,6 +235,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { confirmRestoreRevision } from '../composables/appDialog';
 import { useRoute, useRouter } from 'vue-router';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
@@ -577,7 +578,7 @@ export default defineComponent({
 
     async function restoreSelectedHistory() {
       if (!selectedHistory.value) return;
-      const ok = window.confirm(`Restore revision ${selectedHistory.value.revision}? This will create a new revision.`);
+      const ok = await confirmRestoreRevision(selectedHistory.value.revision);
       if (!ok) return;
       restoringHistory.value = true;
       try {

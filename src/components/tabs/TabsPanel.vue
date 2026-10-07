@@ -40,6 +40,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { confirmDialog } from '../../composables/appDialog';
 import { useRouter } from 'vue-router';
 import { activeTabKey, closeTab, tabs, type Tab, type TabStatus, type TabType } from '../../tabs/registry';
 import { forgetHost } from '../../tabs/TabHost';
@@ -63,7 +64,7 @@ const goDashboard = () => {
   void router.push({ name: 'dashboard' });
 };
 const close = async (tab: Tab) => {
-  if (tab.unsent && !window.confirm('На этой вкладке есть неотправленные изменения. Закрыть её?')) return;
+  if (tab.unsent && !(await confirmDialog({ title: 'Закрыть вкладку?', message: 'На ней есть неотправленные изменения.', confirmLabel: 'Закрыть', cancelLabel: 'Отмена' }))) return;
   if (tab.key === activeTabKey.value) {
     // The current tab goes: leave it first (to the most recent other one, or
     // the dashboard). Dropping it while still on screen would make the shell

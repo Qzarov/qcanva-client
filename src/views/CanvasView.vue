@@ -876,6 +876,7 @@
 
 <script lang="ts">
 import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, nextTick, watchPostEffect, watch } from 'vue';
+import { confirmRestoreRevision } from '../composables/appDialog';
 import { useRoute, useRouter } from 'vue-router';
 import { accessRequests, ApiError, auth, canvas as canvasApi, getCurrentUser, htmlDocuments as htmlDocumentsApi, interactiveTemplates, isAuthenticated, isAdmin, setToken, textDocuments as textDocumentsApi, type InteractiveTemplate } from '../api/client';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -1827,7 +1828,7 @@ export default defineComponent({
 
     const restoreSelectedHistorySnapshot = async () => {
       if (!selectedHistoryItem.value || !selectedHistorySnapshot.value) return;
-      const ok = window.confirm(`Restore revision ${selectedHistoryItem.value.revision}? This will create a new current revision.`);
+      const ok = await confirmRestoreRevision(selectedHistoryItem.value.revision);
       if (!ok) return;
       restoringHistory.value = true;
       try {

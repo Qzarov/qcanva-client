@@ -5,6 +5,7 @@ import InteractiveTemplateView from './InteractiveTemplateView.vue';
 import { interactiveTemplates } from '../api/client';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
 import { choose } from '../components/dndSelect.testing';
+import { currentAppDialog, dismissAppDialog } from '../composables/appDialog';
 
 const routeLeaveGuards: Array<() => boolean> = [];
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'hero' } }), onBeforeRouteLeave: (guard: () => boolean) => { routeLeaveGuards.push(guard); } }));
@@ -114,14 +115,17 @@ describe('character sheet page', () => {
 
   it('asks before navigating away with unsent edits', async () => {
     await open();
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     expect(routeLeaveGuards[0]!()).toBe(true);
-    expect(confirm).not.toHaveBeenCalled();
+    expect(currentAppDialog.value).toBeNull();
     sockets[0].trigger('disconnect');
     await wrapper.get('[aria-label="Имя персонажа"]').setValue('Элиан');
-    expect(routeLeaveGuards[0]!()).toBe(false);
-    expect(confirm).toHaveBeenCalledOnce();
-    confirm.mockRestore();
+    const leaving = routeLeaveGuards[0]!();
+    expect(currentAppDialog.value).toMatchObject({ title: 'Уйти со страницы?', confirmLabel: 'Уйти' });
+    dismissAppDialog();
+    expect(await leaving).toBe(false);
+    const staying = routeLeaveGuards[0]!();
+    currentAppDialog.value!.settle(true);
+    expect(await staying).toBe(true);
   });
 
   describe('play and setup modes', () => {

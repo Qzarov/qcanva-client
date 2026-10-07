@@ -1257,6 +1257,7 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
+import { confirmDelete } from '../composables/appDialog';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
@@ -2637,7 +2638,7 @@ export default defineComponent({
     const importCharacter = (imported: CharacterImport) => createInteractiveTemplate('dnd-character', imported);
 
     const deleteInteractiveTemplate = async (template: InteractiveTemplate) => {
-      if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
+      if (!(await confirmDelete('deleteTemplateTitle', template.title))) return;
       await runAction('delete-interactive-template', () => interactiveTemplates.delete(template.id), 'Шаблон удалён');
       interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => item.id !== template.id);
       await load({ showLoading: false });
@@ -3127,7 +3128,7 @@ export default defineComponent({
 
     const deleteFolder = async (folder: FolderSummary) => {
       closeCardMenu();
-      const confirmed = window.confirm(`Delete group "${folder.name}"? Resources will move to Unsorted.`);
+      const confirmed = await confirmDelete('deleteGroupTitle', folder.name, 'deleteGroupNote');
       if (!confirmed) return;
       await runAction(
         'delete-folder',
@@ -3262,7 +3263,7 @@ export default defineComponent({
     };
 
     const deleteManagedTag = async (tag: ManagedTag) => {
-      const confirmed = window.confirm(`Delete tag "${tag.originalName}" from all owned canvas and HTML documents?`);
+      const confirmed = await confirmDelete('deleteTagTitle', tag.originalName, 'deleteTagNote');
       if (!confirmed) return;
       await runAction(`delete-tag-${tag.originalName}`, () => tags.delete(tag.originalName), 'Tag deleted');
       await refreshTagManager();
@@ -3314,7 +3315,7 @@ export default defineComponent({
 
     const deleteCanvas = async (canvasRecord: CanvasRecord) => {
       const title = canvasRecord.title?.trim() || 'Untitled';
-      const confirmed = window.confirm(`Delete canvas "${title}"?`);
+      const confirmed = await confirmDelete('deleteCanvasTitle', title);
       if (!confirmed) return;
       await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
       own.value = own.value.filter((c) => c.id !== canvasRecord.id);
@@ -3323,7 +3324,7 @@ export default defineComponent({
 
     const deleteHtmlDocument = async (doc: HtmlDocumentRecord) => {
       const title = doc.title?.trim() || 'Untitled HTML';
-      const confirmed = window.confirm(`Delete HTML document "${title}"?`);
+      const confirmed = await confirmDelete('deleteHtmlDocumentTitle', title);
       if (!confirmed) return;
       await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), `Deleted ${title}`);
       await load();
@@ -3331,7 +3332,7 @@ export default defineComponent({
 
     const deleteTextDocument = async (doc: TextDocumentRecord) => {
       const title = doc.title?.trim() || 'Untitled document';
-      const confirmed = window.confirm(`Delete document "${title}"?`);
+      const confirmed = await confirmDelete('deleteDocumentTitle', title);
       if (!confirmed) return;
       await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
       await load();

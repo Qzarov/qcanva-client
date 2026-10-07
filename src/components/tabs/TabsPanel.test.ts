@@ -4,6 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import TabsPanel from './TabsPanel.vue';
 import { resetTabsForTests, showTab, tabs, updateTab } from '../../tabs/registry';
 import { runBackHandlers } from '../../composables/useBackHandler';
+import { currentAppDialog, resetAppDialogs } from '../../composables/appDialog';
 
 const push = vi.fn();
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }));
@@ -38,16 +39,18 @@ describe('TabsPanel', () => {
 
   it('asks before closing a tab with unsent edits', async () => {
     updateTab('canvas:map', { unsent: true });
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     wrapper = mount(TabsPanel, { attachTo: document.body });
     await click(rows()[2]!.querySelector('.tabs-panel-close'));
-    expect(confirm).toHaveBeenCalledOnce();
+    expect(currentAppDialog.value).toMatchObject({ kind: 'confirm', title: 'Закрыть вкладку?', confirmLabel: 'Закрыть' });
+    currentAppDialog.value!.settle(false);
+    await flushPromises();
     expect(tabs.value).toHaveLength(2);
-    confirm.mockReturnValue(true);
     await click(rows()[2]!.querySelector('.tabs-panel-close'));
+    currentAppDialog.value!.settle(true);
+    await flushPromises();
     expect(tabs.value.map((tab) => tab.key)).toEqual(['template:hero']);
     expect(push).not.toHaveBeenCalled(); // it was not the current tab
-    confirm.mockRestore();
+    resetAppDialogs();
   });
 
   it('closing the current tab shows the next one, or the dashboard when none is left', async () => {

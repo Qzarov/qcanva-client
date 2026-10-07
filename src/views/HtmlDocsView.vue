@@ -212,6 +212,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, onMounted, ref } from 'vue';
+import { confirmDelete, promptText } from '../composables/appDialog';
 import { useRouter } from 'vue-router';
 import { clearToken, htmlDocuments, isAdmin, isPasswordAccess, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
@@ -357,7 +358,7 @@ export default defineComponent({
     }
 
     async function createGroup() {
-      const name = window.prompt('Group name');
+      const name = await promptText('groupNameTitle', 'create');
       if (!name) return;
       try {
         await resourceFolders.create(name);
@@ -368,7 +369,7 @@ export default defineComponent({
     }
 
     async function renameGroup(group: any) {
-      const name = window.prompt('Group name', group.name);
+      const name = await promptText('groupNameTitle', 'save', group.name);
       if (!name) return;
       try {
         await resourceFolders.rename(group.id, name);
@@ -379,7 +380,7 @@ export default defineComponent({
     }
 
     async function createDoc() {
-      const title = window.prompt('Document title', 'Untitled HTML');
+      const title = await promptText('documentTitleTitle', 'create', 'Untitled HTML');
       if (!title) return;
       try {
         const doc = await htmlDocuments.create({ title, html: '<main><h1>' + title + '</h1></main>', folderId: groups.value[0]?.id });
@@ -442,7 +443,7 @@ export default defineComponent({
 
     async function deleteDoc(doc: HtmlDocumentRecord) {
       const title = doc.title?.trim() || 'Untitled HTML';
-      const confirmed = window.confirm(`Delete HTML document "${title}"?`);
+      const confirmed = await confirmDelete('deleteHtmlDocumentTitle', title);
       if (!confirmed) return;
       busy.value = true;
       openMenuId.value = '';

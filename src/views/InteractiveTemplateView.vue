@@ -38,6 +38,7 @@
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { confirmDialog } from '../composables/appDialog';
 import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { tabsEnabled } from '../tabs/flag';
@@ -328,7 +329,7 @@ export default defineComponent({
     // With tabs, leaving is switching tabs: the sheet stays alive and its edits
     // keep syncing in the background, so there is nothing to confirm (closing
     // the tab asks instead).
-    onBeforeRouteLeave(() => Boolean(tab.key) || !sync.pendingCount.value || window.confirm('Есть неотправленные изменения персонажа. Уйти со страницы?'));
+    onBeforeRouteLeave(() => Boolean(tab.key) || !sync.pendingCount.value || confirmDialog({ title: 'Уйти со страницы?', message: 'Есть неотправленные изменения персонажа.', confirmLabel: 'Уйти', cancelLabel: 'Отмена' }));
 
     onMounted(async () => {
       window.addEventListener('beforeunload', warnUnsaved);

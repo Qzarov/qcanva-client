@@ -15,7 +15,8 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { nextTick, onMounted, ref, watch } from 'vue';
+import { promptText } from '../../composables/appDialog';
 import { sanitizeInlineHtml } from '../../html/visualHtml';
 
 const props = defineProps<{ modelValue: string }>();
@@ -39,9 +40,19 @@ function exec(command: 'bold' | 'italic') {
   document.execCommand(command);
 }
 
-function promptLink() {
-  const href = window.prompt('Link URL');
+async function promptLink() {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+  const href = await promptText('linkUrlTitle', 'linkUrlConfirm');
   if (!href) return;
+  // The dialog had the focus: wait for it to go, then put the selection back.
+  await nextTick();
+  surfaceRef.value?.focus();
+  if (range) {
+    const current = window.getSelection();
+    current?.removeAllRanges();
+    current?.addRange(range);
+  }
   document.execCommand('createLink', false, href);
 }
 

@@ -853,6 +853,7 @@
 <script lang="ts">
 import { useViewActivity } from '../composables/useViewActivity';
 import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
+import { alertFailure } from "../composables/appDialog";
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
@@ -4148,7 +4149,7 @@ export default defineComponent({
         selectedNodeIds.value = [newNode.id];
       } catch (err) {
         console.error("Failed to upload image:", err);
-        window.alert(err instanceof Error ? err.message : "Не удалось загрузить изображение. Попробуйте ещё раз.");
+        void alertFailure('imageUploadFailedTitle', err);
       } finally {
         imageUploadStatus.value = "";
       }
@@ -4172,7 +4173,7 @@ export default defineComponent({
         if (url) setDndIdentity(node, 'portraitUrl', url);
       } catch (err) {
         console.error('Failed to upload D&D portrait:', err);
-        window.alert(err instanceof Error ? err.message : 'Не удалось загрузить портрет. Попробуйте ещё раз.');
+        void alertFailure('portraitUploadFailedTitle', err);
       } finally {
         imageUploadStatus.value = '';
       }
