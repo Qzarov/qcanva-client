@@ -91,6 +91,11 @@ jobs:
         run: |
           VERSION_NAME="${VERSION_NAME#v}"
           TAG="${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}"
+          # A tag moved to a newer commit is built again: its earlier release
+          # is replaced, not left to fail this step. The tag itself is kept.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --yes
+          fi
           gh release create "$TAG" \
             --title "QCanva $VERSION_NAME" \
             --generate-notes \

@@ -32,12 +32,13 @@
       <input ref="portraitInput" type="file" accept="image/*" hidden @change="uploadPortrait" />
     </main>
     <p v-else-if="error" class="template-error">{{ error }}</p>
+    <DndModeToast :text="modeToast" />
   </div>
 </template>
 
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { useActiveListener } from '../composables/useViewActivity';
+import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { tabsEnabled } from '../tabs/flag';
 import { useLivenessChecks } from '../tabs/useLivenessChecks';
@@ -50,6 +51,7 @@ import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCha
 import { useSheetRolls, type RemoteRoller } from '../dnd/useSheetRolls';
 import type { ParsedFormula } from '../dnd/dice';
 import DndQuickRoll from '../components/DndQuickRoll.vue';
+import DndModeToast from '../components/DndModeToast.vue';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
 import DndCanvasLinkMenuItem from '../components/DndCanvasLinkMenuItem.vue';
 import DndSyncStatus, { type SheetStatusKind } from '../components/DndSyncStatus.vue';
@@ -68,7 +70,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndCanvasLinkMenuItem, DndSyncStatus, DndQuickRoll, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndCanvasLinkMenuItem, DndSyncStatus, DndQuickRoll, DndModeToast, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -132,12 +134,9 @@ export default defineComponent({
     sync.onState(rebuild);
 
     const notice = ref('');
-    // A notice is a problem ("the roll was not made"); a message just confirms what was done.
-    const noticeTone = ref<'notice' | 'message'>('notice');
     let noticeTimer: ReturnType<typeof setTimeout> | null = null;
-    const showNotice = (text: string, tone: 'notice' | 'message' = 'notice') => {
+    const showNotice = (text: string) => {
       notice.value = text;
-      noticeTone.value = tone;
       if (noticeTimer) clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => { notice.value = ''; }, 5000);
     };
@@ -264,11 +263,20 @@ export default defineComponent({
     const rollByFormula = (formula: ParsedFormula) => { void rolls.rollByFormula(formula); };
     const rollDamageFromLog = (rollId: string, option: number) => { void rolls.rollAttackDamage(rollId, option); };
 
+    // Said in the middle of the screen, above the page: the header's status would
+    // push its neighbours aside, and nothing may move when the mode changes.
+    const modeToast = ref('');
+    let modeToastTimer: ReturnType<typeof setTimeout> | null = null;
     const setMode = (next: DndSheetMode) => {
       if (mode.value === next) return;
       mode.value = next;
-      showNotice(`Выбран режим: ${next === 'setup' ? '«Настройка»' : '«Игра»'}`, 'message');
+      modeToast.value = `Выбран режим: ${next === 'setup' ? '«Настройка»' : '«Игра»'}`;
+      if (modeToastTimer) clearTimeout(modeToastTimer);
+      modeToastTimer = setTimeout(() => { modeToast.value = ''; }, 1600);
     };
+    // Teleported to <body>: it must not outlive the page or a sleeping tab.
+    useViewActivity({ onHide: () => { modeToast.value = ''; } });
+    onBeforeUnmount(() => { if (modeToastTimer) clearTimeout(modeToastTimer); });
 
     const readonly = computed(() => sync.role.value === 'read' || sync.status.value === 'forbidden');
     const syncWarning = computed(() => sync.status.value === 'offline' || sync.status.value === 'error');
@@ -282,7 +290,7 @@ export default defineComponent({
     });
     // The same state as a colour, for the dot the status becomes on a phone.
     const syncKind = computed<SheetStatusKind>(() => {
-      if (notice.value) return noticeTone.value;
+      if (notice.value) return 'notice';
       if (sync.status.value === 'forbidden' || syncWarning.value) return 'danger';
       if (sync.pendingCount.value) return 'saving';
       if (sync.role.value === 'read') return 'info';
@@ -345,7 +353,7 @@ export default defineComponent({
       template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncKind, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
       rollTarget: sync.rollTarget, linkCanvas, linkDialog, focusAccountMenu,
-      rolls, rollHistory: rolls.history, rollByFormula, rollDamageFromLog, setMode,
+      rolls, rollHistory: rolls.history, rollByFormula, rollDamageFromLog, setMode, modeToast,
       portraitInput, uploadPortrait, removePortrait, backTarget,
     };
   },

@@ -1,5 +1,5 @@
 <template>
-  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly, 'dnd-cs-play': locked, 'dnd-cs-mode-switch': modeSwitching }">
+  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly, 'dnd-cs-play': locked }">
     <!-- ===== TOP CARD: identity + combat ===== -->
     <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
@@ -410,20 +410,6 @@ export default defineComponent({
 
     /** Set-once data is locked for readers and in play mode; play data only for readers. */
     const locked = computed(() => props.readonly || props.mode === 'play');
-    // Switching between play and setup swaps fields for text all over the sheet:
-    // it rises in again, so the change reads as one move and not as a flicker.
-    const modeSwitching = ref(false);
-    let modeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
-    watch(() => props.mode, () => {
-      if (props.readonly) return;
-      modeSwitching.value = false;
-      if (modeSwitchTimer) clearTimeout(modeSwitchTimer);
-      void nextTick(() => {
-        modeSwitching.value = true;
-        modeSwitchTimer = setTimeout(() => { modeSwitching.value = false; }, 420);
-      });
-    });
-    onBeforeUnmount(() => { if (modeSwitchTimer) clearTimeout(modeSwitchTimer); });
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
     const initiative = computed(() => initiativeBonus(props.data));
     const initial = computed(() => (props.data.identity.name || '?').slice(0, 1).toUpperCase());
@@ -712,7 +698,7 @@ export default defineComponent({
       armorOptions: ['Лёгкие', 'Средние', 'Тяжёлые', 'Щиты'],
       weaponOptions: ['Простое', 'Воинское'],
       onScreen,
-      locked, proficiencyBonus, initiative, initial, nextXp, nextXpTitle, setNextXp, modeSwitching, xpPercent, hpPercent, skillsByAbility, passives,
+      locked, proficiencyBonus, initiative, initial, nextXp, nextXpTitle, setNextXp, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
       nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
@@ -1103,18 +1089,6 @@ export default defineComponent({
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
 
-
-/* ===== Mode switch: the sheet's blocks rise in, one after another ===== */
-@keyframes dnd-cs-mode-rise {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
-}
-.dnd-cs-mode-switch > * { animation: dnd-cs-mode-rise 280ms cubic-bezier(.2, .7, .2, 1) both; }
-.dnd-cs-mode-switch > *:nth-child(2) { animation-delay: 50ms; }
-.dnd-cs-mode-switch > *:nth-child(3) { animation-delay: 100ms; }
-@media (prefers-reduced-motion: reduce) {
-  .dnd-cs-mode-switch > * { animation: none; }
-}
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {

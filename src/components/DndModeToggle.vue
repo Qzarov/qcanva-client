@@ -32,6 +32,8 @@ const emit = defineEmits<{ change: [mode: DndSheetMode] }>();
 /* Setup is the exception: visible at a glance. */
 .dnd-mode-button.is-setup { color: var(--ui-glass-accent-text); border-color: var(--ui-glass-accent-border); background: var(--ui-glass-accent-bg, var(--ui-glass-tint)), var(--ui-glass-bg); }
 .dnd-mode-icon { width: 14px; height: 14px; flex: none; }
+/* "Игра" and "Настройка" differ in length: one width for both, so switching moves nothing next to it. */
+@media (min-width: 421px) { .dnd-mode-button { min-width: 122px; justify-content: center; } }
 /* Narrow phones: the icon (and the accent in setup) says which mode is on; the
    label would push the header past the back button. */
 @media (max-width: 420px) { .dnd-mode-button { width: 36px; padding: 0; justify-content: center; } .dnd-mode-text { display: none; } }

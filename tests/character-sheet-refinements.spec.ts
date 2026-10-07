@@ -68,21 +68,46 @@ test('a free roll from the header lands in the toasts and in the history panel',
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/history-rolls.png`, clip: { x: 320, y: 60, width: 640, height: 520 } });
 });
 
-test('switching the mode says so, hides the dice button in setup and brings the sheet in', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 860 });
-  await openSheet(page);
-  await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toBeVisible();
-  await page.getByRole('button', { name: 'Режим: игра' }).click();
-  await expect(page.locator('.template-save-status')).toHaveText('Выбран режим: «Настройка»');
-  await expect(page.locator('.template-save-status')).not.toHaveClass(/is-warning/);
-  await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toHaveCount(0);
-  // The sheet's blocks rise in for a moment, then the class is gone.
-  await expect(page.locator('.dnd-cs')).toHaveClass(/dnd-cs-mode-switch/);
-  await expect(page.locator('.dnd-cs')).not.toHaveClass(/dnd-cs-mode-switch/, { timeout: 3000 });
-  await page.getByRole('button', { name: 'Режим: настройка' }).click();
-  await expect(page.locator('.template-save-status')).toHaveText('Выбран режим: «Игра»');
-  await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toBeVisible();
-});
+/** Where the sheet's blocks and the header's buttons are, sampled over the frames after a mode switch. */
+const sampleLayout = (page: Page, frames: number) => page.evaluate(async (count) => {
+  const snapshot = () => ['.dnd-cs', '.dnd-cs-topcard', '.dnd-cs-status-row', '.dnd-cs-abilities', '.dnd-mode-button', '[data-account-menu-trigger]', '.dnd-history-button']
+    .map((selector) => { const box = document.querySelector(selector)!.getBoundingClientRect(); return `${selector}@${Math.round(box.left)},${Math.round(box.top)}`; }).join(' ');
+  const seen = new Set<string>();
+  for (let i = 0; i < count; i += 1) { seen.add(snapshot()); await new Promise((resolve) => requestAnimationFrame(resolve)); }
+  return [...seen];
+}, frames);
+
+for (const width of [390, 1280]) {
+  test(`switching the mode says so in the middle of the screen and moves nothing at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 860 });
+    await openSheet(page);
+    await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toBeVisible();
+    const before = await sampleLayout(page, 1);
+
+    await page.getByRole('button', { name: 'Режим: игра' }).click();
+    // Every frame of the switch: the sheet, its top blocks and the header's right-hand buttons stay where they were.
+    expect(await sampleLayout(page, 30)).toEqual(before);
+
+    const toast = page.locator('.dnd-mode-toast');
+    await expect(toast).toHaveText('Выбран режим: «Настройка»');
+    const box = (await toast.boundingBox())!;
+    expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(2);
+    expect(Math.abs(box.y + box.height / 2 - 430)).toBeLessThanOrEqual(16);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+    // It is a message over the page, not in it: the header's status says nothing about it.
+    await expect(page.getByRole('tooltip')).toHaveCount(0);
+    if (width > 760) await expect(page.locator('.template-save-status')).toHaveCount(0);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/mode-toast-${width}.png` });
+    await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toHaveCount(0);
+    await expect(toast).toHaveCount(0, { timeout: 4000 });
+
+    await page.getByRole('button', { name: 'Режим: настройка' }).click();
+    expect(await sampleLayout(page, 30)).toEqual(before);
+    await expect(toast).toHaveText('Выбран режим: «Игра»');
+    await expect(page.getByRole('button', { name: 'Бросок по формуле' })).toBeVisible();
+  });
+}
 
 test('experience for the next level comes from the level', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 860 });
@@ -133,10 +158,7 @@ test.describe('on a phone', () => {
     await expect(link.getByLabel('Поиск канваса')).toBeVisible();
     await expect(link.getByLabel('Поиск канваса')).not.toBeFocused();
 
-    // The mode message is shown by itself where the status is only a dot.
     await link.getByRole('button', { name: 'Закрыть' }).tap();
-    await page.getByRole('button', { name: 'Режим: настройка' }).tap();
-    await expect(page.getByRole('tooltip')).toHaveText('Выбран режим: «Игра»');
   });
 
   test('the tabs panel slides in, and a swipe down closes it', async ({ page }) => {
