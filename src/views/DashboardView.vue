@@ -1001,29 +1001,13 @@
       </div>
     </div>
 
-    <div v-if="templatePickerOpen" class="dashboard-modal-backdrop" @click.self="closeInteractiveTemplatePicker">
-      <div class="dashboard-modal template-picker-modal">
-        <div class="dashboard-modal-head">
-          <h3>Выберите интерактивный шаблон</h3>
-          <button class="dashboard-modal-close" @click="closeInteractiveTemplatePicker">×</button>
-        </div>
-        <div class="template-picker-grid">
-          <button class="template-picker-tile" data-template-type="dnd-character" @click="createInteractiveTemplate('dnd-character')" :disabled="isBusy">
-            <span class="template-picker-icon">⚄</span>
-            <strong>Карточка персонажа D&amp;D</strong>
-            <small>Характеристики, HP, AC и броски d20 на канвасе</small>
-          </button>
-          <button class="template-picker-tile" data-template-type="trello-board" @click="createInteractiveTemplate('trello-board')" :disabled="isBusy">
-            <span class="template-picker-icon" aria-hidden="true">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M8 8v8M16 8v5" /></svg>
-            </span>
-            <strong>Канбан-доска</strong>
-            <small>Списки и карточки задач в стиле Trello</small>
-          </button>
-        </div>
-      </div>
-    </div>
-
+    <InteractiveTemplatePicker
+      v-if="templatePickerOpen"
+      :busy="isBusy"
+      @close="closeInteractiveTemplatePicker"
+      @create="createInteractiveTemplate"
+      @import="importCharacter"
+    />
 
     <div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
       <div class="dashboard-modal">
@@ -1283,6 +1267,8 @@ import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
+import type { CharacterImport } from '../dnd/importLongStoryShort';
 import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
 import {
@@ -1397,6 +1383,7 @@ export default defineComponent({
   components: {
     TabsButton,
     DashboardSidebar,
+    InteractiveTemplatePicker,
     LanguageToggle,
     ArrowLeft,
     ArrowUpDown,
@@ -2614,14 +2601,17 @@ export default defineComponent({
     const interactiveTemplateTypeLabel = (templateType: InteractiveTemplate['templateType']) =>
       templateType === 'trello-board' ? 'Канбан-доска' : 'D&D персонаж';
 
-    const createInteractiveTemplate = async (templateType: InteractiveTemplate['templateType'] = 'dnd-character') => {
+    // `imported` is a character read from a file: the sheet is created already filled in.
+    const createInteractiveTemplate = async (templateType: InteractiveTemplate['templateType'] = 'dnd-character', imported?: CharacterImport) => {
       openControlMenu.value = '';
       templatePickerOpen.value = false;
       const isBoard = templateType === 'trello-board';
       const template = await runAction(
         'create-interactive-template',
-        () => interactiveTemplates.create({ templateType, title: isBoard ? '' : 'Новый персонаж' }),
-        isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
+        () => interactiveTemplates.create(imported
+          ? { templateType, title: imported.title, data: imported.data as unknown as Record<string, unknown> }
+          : { templateType, title: isBoard ? '' : 'Новый персонаж' }),
+        imported ? 'Персонаж импортирован' : isBoard ? 'Канбан-доска создана' : 'Шаблон персонажа создан',
       );
       if (!template) return;
       const folderId = templateFolderId.value;
@@ -2644,6 +2634,7 @@ export default defineComponent({
       templatePickerOpen.value = true;
     };
     const closeInteractiveTemplatePicker = () => { templatePickerOpen.value = false; };
+    const importCharacter = (imported: CharacterImport) => createInteractiveTemplate('dnd-character', imported);
 
     const deleteInteractiveTemplate = async (template: InteractiveTemplate) => {
       if (!window.confirm(`Удалить шаблон «${template.title}»?`)) return;
@@ -4234,6 +4225,7 @@ export default defineComponent({
       createHtmlDocument,
       createTextDocument,
       createInteractiveTemplate,
+      importCharacter,
       interactiveTemplateTypeLabel,
       templatePickerOpen,
       openInteractiveTemplatePicker,
@@ -4360,9 +4352,4 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.template-picker-modal { width: min(620px, calc(100vw - 32px)); }
-.template-picker-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; padding-top: 6px; }
-.template-picker-tile { display: grid; gap: 8px; min-height: 172px; padding: 18px; text-align: left; color: inherit; background: rgba(124,138,255,.08); border: 1px solid rgba(124,138,255,.4); border-radius: 12px; cursor: pointer; }
-.template-picker-tile:hover { background: rgba(124,138,255,.16); border-color: rgba(143,154,255,.75); }.template-picker-tile:disabled { opacity: .6; cursor: wait; }
-.template-picker-icon { font-size: 30px; color: #9ca8ff; }.template-picker-tile strong { font-size: 15px; }.template-picker-tile small { color: var(--muted, #a8a8b6); line-height: 1.35; }
 </style>
