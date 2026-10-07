@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import InteractiveTemplateView from './InteractiveTemplateView.vue';
 import { interactiveTemplates } from '../api/client';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
+import { choose } from '../components/dndSelect.testing';
 
 const routeLeaveGuards: Array<() => boolean> = [];
 vi.mock('vue-router', () => ({ useRoute: () => ({ params: { id: 'hero' } }), onBeforeRouteLeave: (guard: () => boolean) => { routeLeaveGuards.push(guard); } }));
@@ -92,7 +93,7 @@ describe('character sheet page', () => {
     const data = await open();
     await toSetup();
     // The race is a list now; its last option switches to typing a custom one.
-    await wrapper.get('select[aria-label="Раса"]').setValue('\u0000type');
+    await choose(wrapper, 'Раса', '\u0000type');
     const race = wrapper.get('[aria-label="Раса: свой вариант"]');
     (race.element as HTMLInputElement).focus();
     // Typing: `input` only. setValue() would also fire `change` (a commit).

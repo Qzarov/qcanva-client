@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createDndCharacterSheet } from '../src/dnd/characterSheet';
 import { serveCharacterSheet } from './support/fake-character-sheet-server';
+import { chooseOption, selectControl } from './support/dnd-select';
 
 const SHOTS = process.env.SHOT_DIR;
 
@@ -120,12 +121,12 @@ test('feature recharge is saved and survives a reload', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   const saved = await openSheet(page);
   await toSetup(page);
-  const selects = page.getByLabel('Когда восстанавливаются заряды');
+  const selects = page.getByRole('combobox', { name: 'Когда восстанавливаются заряды' });
   await expect(selects).toHaveCount(2);
-  await selects.nth(1).selectOption('short');
+  await chooseOption(page, 'Когда восстанавливаются заряды', 'Короткий отдых', 1);
   await expect.poll(() => saved().data.features[1].recharge).toBe('short');
   await page.reload();
-  await expect(page.getByLabel('Когда восстанавливаются заряды').nth(1)).toHaveValue('short');
+  await expect(selectControl(page, 'Когда восстанавливаются заряды', 1)).toHaveText('Короткий отдых');
 });
 
 if (SHOTS) {

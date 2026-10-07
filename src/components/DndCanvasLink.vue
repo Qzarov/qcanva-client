@@ -1,5 +1,5 @@
 <template>
-  <button v-if="canvasId || !readonly" ref="trigger" type="button" class="dnd-link-button" :class="{ 'is-on': state === 'ok', 'is-warning': warning }" :aria-label="buttonHint" :title="buttonHint" aria-haspopup="dialog" @click="open = true">
+  <button v-if="showTrigger && (canvasId || !readonly)" ref="trigger" type="button" class="dnd-link-button" :class="{ 'is-on': state === 'ok', 'is-warning': warning }" :aria-label="buttonHint" :title="buttonHint" aria-haspopup="dialog" @click="open = true">
     <span class="dnd-link-dot" aria-hidden="true"></span>
     <span class="dnd-link-text">{{ buttonText }}</span>
   </button>
@@ -44,37 +44,33 @@ import { RouterLink } from 'vue-router';
 import { canvas as canvasApi } from '../api/client';
 import type { RollTarget } from '../composables/useCharacterSheetSocket';
 import { registerBackHandler } from '../composables/useBackHandler';
+import { canvasLinkHint, canvasLinkLabel, canvasLinkState, canvasLinkTitle, canvasLinkWarning } from '../dnd/canvasLink';
 
 /**
  * Connects a character to a canvas, so its rolls go to that canvas's chat.
- * The button in the page header says where rolls go now; the dialog explains
- * it and lets an editor of the sheet pick another canvas or disconnect.
+ * The dialog explains where rolls go now and lets an editor of the sheet pick
+ * another canvas or disconnect.
+ *
+ * What opens it is up to the page. On the sheet page it is a row of the
+ * account menu (DndCanvasLinkMenuItem), which calls `show()` here - the dialog
+ * cannot live inside the menu, or it would close with it. With `trigger` left
+ * on, the component brings its own pill button instead.
  */
-const props = defineProps<{ canvasId: string; target: RollTarget | null; readonly: boolean }>();
-const emit = defineEmits<{ link: [canvasId: string]; unlink: [] }>();
+const props = withDefaults(defineProps<{
+  canvasId: string;
+  target: RollTarget | null;
+  readonly: boolean;
+  /** Render the pill button that opens the dialog. Off when something else opens it. */
+  trigger?: boolean;
+}>(), { trigger: true });
+const emit = defineEmits<{ link: [canvasId: string]; unlink: []; closed: [] }>();
 
-type State = 'none' | 'checking' | RollTarget['status'];
-const state = computed<State>(() => {
-  if (!props.canvasId) return 'none';
-  // An answer about another canvas is stale: the connection has just changed.
-  if (!props.target || (props.target.canvasId && props.target.canvasId !== props.canvasId)) return 'checking';
-  return props.target.status === 'not_linked' ? 'checking' : props.target.status;
-});
-const warning = computed(() => state.value === 'forbidden' || state.value === 'plugin_disabled' || state.value === 'canvas_missing');
-const title = computed(() => props.target?.title?.trim() || 'канвас');
-
-const buttonText = computed(() => {
-  if (state.value === 'none') return 'Подключить канвас';
-  if (state.value === 'ok') return title.value;
-  if (state.value === 'checking') return 'Канвас…';
-  return 'Броски только у вас';
-});
-const buttonHint = computed(() => {
-  if (state.value === 'none') return 'Подключить персонажа к канвасу: броски пойдут в его чат';
-  if (state.value === 'ok') return `Броски уходят в чат канваса «${title.value}»`;
-  if (state.value === 'checking') return 'Проверяем подключение к канвасу';
-  return 'Броски не попадают в чат канваса — нажмите, чтобы узнать почему';
-});
+const showTrigger = computed(() => props.trigger);
+const state = computed(() => canvasLinkState(props.canvasId, props.target));
+const warning = computed(() => canvasLinkWarning(state.value));
+const title = computed(() => canvasLinkTitle(props.target));
+const buttonText = computed(() => canvasLinkLabel(state.value, props.target));
+const buttonHint = computed(() => canvasLinkHint(state.value, props.target));
 const statusText = computed(() => {
   switch (state.value) {
     case 'none': return 'Персонаж не подключён к канвасу. Броски видите только вы.';
@@ -145,7 +141,9 @@ const release = () => {
 watch(open, async (value) => {
   if (!value) {
     release();
-    trigger.value?.focus();
+    // With its own button the focus goes back to it; otherwise whoever opened the dialog takes it back.
+    if (trigger.value) trigger.value.focus();
+    emit('closed');
     return;
   }
   document.addEventListener('keydown', onKeydown, true);
@@ -157,6 +155,8 @@ watch(open, async (value) => {
 });
 watch(() => props.readonly, (value) => { if (value && !props.canvasId) close(); });
 onBeforeUnmount(release);
+
+defineExpose({ show: () => { open.value = true; } });
 </script>
 
 <style scoped>

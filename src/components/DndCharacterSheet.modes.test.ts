@@ -5,6 +5,7 @@ import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { createDndCharacterSheet, isBlankSheet, spellSlotKey } from '../dnd/characterSheet';
 import { createWeapon } from '../dnd/weapons';
+import { selectSelector } from './dndSelect.testing';
 
 function filled() {
   const data = reactive(createDndCharacterSheet());
@@ -31,8 +32,8 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
     expect(wrapper.classes()).toContain('dnd-cs-play');
     for (const label of ['Имя персонажа', 'Уровень', 'Сила', 'Класс доспеха', 'Скорость']) expect(isReadonly(`[aria-label="${label}"]`), label).toBe(true);
-    expect(isDisabled('select[aria-label="Раса"]')).toBe(true);
-    expect(isDisabled('select[aria-label="Класс"]')).toBe(true);
+    expect(isDisabled(selectSelector('Раса'))).toBe(true);
+    expect(isDisabled(selectSelector('Класс'))).toBe(true);
     expect(wrapper.findAll('.dnd-cs-save-cell .dnd-cs-pip-btn').every((b) => b.attributes('disabled') !== undefined)).toBe(true);
     expect(wrapper.findAll('.dnd-cs-skill-pip').every((b) => b.attributes('disabled') !== undefined)).toBe(true);
     expect(wrapper.findAll('.dnd-cs-prof-group input').every((i) => i.attributes('disabled') !== undefined)).toBe(true);
@@ -98,7 +99,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
   it('shows the hit die as text in the short rest dialog', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
     await wrapper.findAll('.dnd-cs-rest-actions button').find((b) => b.text() === 'Короткий отдых')!.trigger('click');
-    expect(document.querySelector('select[aria-label="Кость хитов"]')).toBeNull();
+    expect(document.querySelector(selectSelector('Кость хитов'))).toBeNull();
     expect(document.querySelector('.dnd-rest-hit-die')?.textContent).toContain('к8');
   });
 

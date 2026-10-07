@@ -1,15 +1,10 @@
 <template>
   <div class="dnd-spell-fields" role="group" :aria-label="'Параметры заклинания: ' + (item.name || 'без названия')">
     <label class="dnd-spell-wide">Бросок
-      <select :disabled="readonly" :value="rollKind" aria-label="Бросок заклинания" @change="set('rollKind', text($event))">
-        <option v-for="option in SPELL_ROLL_OPTIONS" :key="option.value" :value="option.value">{{ option.label }}</option>
-      </select>
+      <DndSelect :value="rollKind" :options="SPELL_ROLL_OPTIONS" label="Бросок заклинания" :disabled="readonly" @change="set('rollKind', $event)" />
     </label>
     <label v-if="rollKind === 'save'" class="dnd-spell-wide">Спасбросок
-      <select :disabled="readonly" :value="saveAbility" aria-label="Характеристика спасброска" @change="set('saveAbility', text($event))">
-        <option value="">—</option>
-        <option v-for="ability in DND_ABILITIES" :key="ability.key" :value="ability.key">{{ ability.label }}</option>
-      </select>
+      <DndSelect :value="saveAbility" :options="saveOptions" label="Характеристика спасброска" :disabled="readonly" @change="set('saveAbility', $event)" />
     </label>
     <label class="dnd-spell-wide">Урон или лечение
       <input :readonly="readonly" :value="item.damage || ''" placeholder="например 3d6" aria-label="Формула заклинания" :class="{ invalid: invalidDamage }" @change="set('damage', text($event))" />
@@ -27,6 +22,9 @@ import { computed } from 'vue';
 import { FORMULA_HINT, parseFormula } from '../dnd/dice';
 import { DND_ABILITIES, type DndListItem } from '../dnd/characterSheet';
 import { SPELL_ROLL_OPTIONS, spellRollKind, spellSaveAbility } from '../dnd/spells';
+import DndSelect from './DndSelect.vue';
+
+const saveOptions = [{ value: '', label: '—' }, ...DND_ABILITIES.map((ability) => ({ value: ability.key as string, label: ability.label as string }))];
 
 /** How one spell is rolled: attack or save, and the damage (or healing) formula. */
 const props = defineProps<{ item: DndListItem; hasAbility: boolean; readonly?: boolean }>();
@@ -55,6 +53,7 @@ const set = (key: 'rollKind' | 'saveAbility' | 'damage' | 'damageType', value: s
 .dnd-spell-fields input[readonly], .dnd-spell-fields select:disabled { background:transparent; }
 .dnd-spell-fields select option { background:var(--ui-surface-solid); color:var(--ui-text); }
 .dnd-spell-fields input.invalid { border-color:var(--ui-danger-foreground); }
+.dnd-spell-fields .dnd-select { display:flex; width:100%; font-size:13px; }
 .dnd-spell-error { grid-column:1 / -1; margin:0; font-size:12px; color:var(--ui-danger-foreground); }
 @media (max-width:760px) {
   .dnd-spell-fields { grid-template-columns:repeat(2, minmax(0,1fr)); }

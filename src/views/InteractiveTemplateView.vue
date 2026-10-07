@@ -3,12 +3,17 @@
     <header class="template-header" :class="{ 'has-tabs': tabMode }">
       <BackButton :to="backTarget.to" :label="backTarget.label" />
       <div class="template-header-actions">
-        <span v-if="syncText" class="template-save-status" :class="{ 'is-warning': syncWarning }">{{ syncText }}</span>
+        <DndSyncStatus :text="syncText" :kind="syncKind" />
         <DndUndoButtons v-if="template && !readonly && mode === 'setup'" :can-undo="undoStack.length > 0" :can-redo="redoStack.length > 0" @undo="undo" @redo="redo" />
         <DndSheetHistory v-if="template" :sheet-id="template.id" :can-restore="!readonly" @restored="onRestored" />
         <DndModeToggle v-if="template && !readonly" :mode="mode" @change="mode = $event" />
-        <DndCanvasLink v-if="template" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" />
-        <AccountMenu :show-plugins="false" />
+        <AccountMenu :show-plugins="false" glass>
+          <template v-if="template" #page="{ close }">
+            <DndCanvasLinkMenuItem :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @open="close(false); linkDialog?.show()" />
+          </template>
+        </AccountMenu>
+        <!-- Its dialog lives here, not in the menu: the menu closes when the row is tapped. -->
+        <DndCanvasLink v-if="template" ref="linkDialog" :trigger="false" :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @link="linkCanvas" @unlink="linkCanvas('')" @closed="focusAccountMenu" />
       </div>
     </header>
     <main v-if="template" ref="editorRoot" class="template-editor" @input.capture="markDirty" @change.capture="markClean">
@@ -42,6 +47,8 @@ import { diffSheet, type SheetOperation } from '../dnd/sheetOperations';
 import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
 import type { RemoteRoller } from '../dnd/useSheetRolls';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
+import DndCanvasLinkMenuItem from '../components/DndCanvasLinkMenuItem.vue';
+import DndSyncStatus, { type SheetStatusKind } from '../components/DndSyncStatus.vue';
 import DndModeToggle from '../components/DndModeToggle.vue';
 import DndUndoButtons from '../components/DndUndoButtons.vue';
 import DndSheetHistory from '../components/DndSheetHistory.vue';
@@ -57,7 +64,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndCanvasLinkMenuItem, DndSyncStatus, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -213,6 +220,11 @@ export default defineComponent({
     // ===== Rolls to the chat of a connected canvas =====
     // The connection is a field of the sheet, so everyone who opens it sees
     // (and, with edit rights, changes) the same one.
+    const linkDialog = ref<InstanceType<typeof DndCanvasLink> | null>(null);
+    // The dialog was opened from the account menu: closing it hands the focus back there.
+    const focusAccountMenu = () => {
+      document.querySelector<HTMLElement>('.template-header [data-account-menu-trigger]')?.focus();
+    };
     const linkCanvas = (canvasId: string) => {
       if (data.campaign.canvasId === canvasId) return;
       data.campaign.canvasId = canvasId;
@@ -248,6 +260,14 @@ export default defineComponent({
       if (sync.pendingCount.value) return 'Сохраняем…';
       if (sync.role.value === 'read') return 'Только просмотр';
       return '';
+    });
+    // The same state as a colour, for the dot the status becomes on a phone.
+    const syncKind = computed<SheetStatusKind>(() => {
+      if (notice.value) return 'notice';
+      if (sync.status.value === 'forbidden' || syncWarning.value) return 'danger';
+      if (sync.pendingCount.value) return 'saving';
+      if (sync.role.value === 'read') return 'info';
+      return 'ok';
     });
 
     /** A setup edit sent directly (not via the sheet's diff), still undoable. */
@@ -303,9 +323,9 @@ export default defineComponent({
 
     return {
       tabMode: tabsEnabled(),
-      template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncWarning, editorRoot,
+      template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncKind, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
-      rollTarget: sync.rollTarget, linkCanvas, remoteRoll,
+      rollTarget: sync.rollTarget, linkCanvas, linkDialog, focusAccountMenu, remoteRoll,
       portraitInput, uploadPortrait, removePortrait, backTarget,
     };
   },
@@ -322,8 +342,6 @@ export default defineComponent({
 .template-header :deep(.back-btn) { width:36px; height:36px; min-width:36px; border-radius:999px; }
 .template-header :deep(.account-menu-trigger) { border-radius:999px; }
 .template-header-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; min-width:0; }
-.template-save-status { min-width:0; color:var(--ui-text-secondary); font-size:13px; }
-.template-save-status.is-warning { color:var(--ui-danger-foreground); }
 .template-editor { max-width:1120px; margin:auto; padding:20px; }
 .template-error { text-align:center; color:var(--ui-danger-foreground); }
 @media (max-width: 760px) { .template-editor { padding:12px; } .template-header { padding:8px 12px; } }
@@ -335,8 +353,6 @@ export default defineComponent({
   .template-header.has-tabs .template-header-actions { gap:4px; }
   .template-header.has-tabs :deep(.back-group) { gap:4px; }
   .template-header.has-tabs :deep(.dnd-undo) { gap:4px; }
-  .template-header.has-tabs :deep(.dnd-link-button) { width:36px; padding:0; justify-content:center; }
-  .template-header.has-tabs :deep(.dnd-link-text) { display:none; }
 }
 @media (max-width: 340px) { .template-header.has-tabs :deep(.account-menu) { display:none; } }
 </style>

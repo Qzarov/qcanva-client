@@ -4,6 +4,7 @@ import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { createDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
+import { choose } from './dndSelect.testing';
 
 const mountSheet = (setup: (data: DndCharacterSheetData) => void = () => {}, readonly = false) => {
   const initial = createDndCharacterSheet();
@@ -20,7 +21,7 @@ describe('spellcasting class', () => {
   it('sets the ability and the slots for the current level', async () => {
     const { data, wrapper } = mountSheet((sheet) => { sheet.identity.level = 5; sheet.abilities.wisdom.score = 16; });
     try {
-      await wrapper.get('select[aria-label="Заклинательный класс"]').setValue('cleric');
+      await choose(wrapper, 'Заклинательный класс', 'cleric');
       expect(data.spellcasting).toMatchObject({ casterClass: 'cleric', ability: 'wisdom' });
       const maxima = [data.spellcasting.slots.l1.max, data.spellcasting.slots.l2.max, data.spellcasting.slots.l3.max, data.spellcasting.slots.l4.max];
       expect(maxima).toEqual([4, 3, 2, 0]);

@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createDndCharacterSheet } from '../src/dnd/characterSheet';
 import { serveCharacterSheet } from './support/fake-character-sheet-server';
+import { chooseOption, selectControl } from './support/dnd-select';
 
 const SHOTS = process.env.SHOT_DIR;
 
@@ -41,27 +42,27 @@ for (const width of [320, 1280]) {
       expect(box.width).toBeGreaterThan(40);
     }
 
-    await race.selectOption('Дварф');
+    await chooseOption(page, 'Раса', 'Дварф');
     await expect.poll(() => server().data.identity).toMatchObject({ race: 'Дварф' });
     await expect(page.getByLabel('Скорость', { exact: true })).toHaveValue('25');
 
-    await cls.selectOption('Жрец');
+    await chooseOption(page, 'Класс', 'Жрец');
     await expect.poll(() => (server().data as any).spellcasting.casterClass).toBe('cleric');
     expect((server().data as any).combat.hitDie).toBe(8);
     await page.getByRole('tab', { name: 'Заклинания', exact: true }).click();
-    await expect(page.getByLabel('Заклинательный класс')).toHaveValue('cleric');
+    await expect(selectControl(page, 'Заклинательный класс')).toHaveText('Жрец');
     await expect(page.getByRole('group', { name: 'Ячейки 2 уровня' })).toContainText('2/');
 
     // Something the list does not have is typed in, and is there after a reload.
-    await race.selectOption({ label: 'Другая…' });
+    await chooseOption(page, 'Раса', 'Другая…');
     const custom = page.getByRole('textbox', { name: 'Раса: свой вариант' });
     await expect(custom).toBeFocused();
     await custom.fill('Табакси');
     await custom.press('Enter');
     await expect.poll(() => (server().data as any).identity.race).toBe('Табакси');
     await page.reload();
-    await expect(page.getByRole('combobox', { name: 'Раса', exact: true }).locator('option:checked')).toHaveText('Табакси');
-    await expect(page.getByRole('combobox', { name: 'Класс', exact: true })).toHaveValue('Жрец');
+    await expect(selectControl(page, 'Раса')).toHaveText('Табакси');
+    await expect(selectControl(page, 'Класс')).toHaveText('Жрец');
   });
 }
 

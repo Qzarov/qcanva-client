@@ -10,9 +10,7 @@
               <span>Кости хитов: <b>{{ remaining }}</b> из {{ level }}</span>
               <span v-if="hitDieLocked" class="dnd-rest-hit-die">Кость <b>к{{ data.combat.hitDie }}</b></span>
               <label v-else>Кость
-                <select :value="data.combat.hitDie" aria-label="Кость хитов" @change="emit('set-hit-die', Number(($event.target as HTMLSelectElement).value))">
-                  <option v-for="sides in HIT_DICE" :key="sides" :value="sides">к{{ sides }}</option>
-                </select>
+                <DndSelect :value="String(data.combat.hitDie)" :options="hitDieOptions" label="Кость хитов" @change="emit('set-hit-die', Number($event))" />
               </label>
             </div>
             <button type="button" class="btn-ghost dnd-rest-spend" :disabled="!remaining || atFullHp" @click="emit('spend-hit-die')">Потратить кость: {{ hitDieFormula }}</button>
@@ -42,6 +40,9 @@ import {
 } from '../dnd/characterSheet';
 import { formatFormula } from '../dnd/dice';
 import { useBackHandler } from '../composables/useBackHandler';
+import DndSelect from './DndSelect.vue';
+
+const hitDieOptions = HIT_DICE.map((sides) => ({ value: String(sides), label: `к${sides}` }));
 
 /**
  * A rest, confirmed before it happens: the dialog lists what will change. On

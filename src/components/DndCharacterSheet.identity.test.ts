@@ -5,6 +5,7 @@ import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { createDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
 import { DND_CLASSES, DND_RACES, classOption, raceOption } from '../dnd/identityOptions';
+import { choose, optionLabels, selectSelector, selectedLabel } from './dndSelect.testing';
 
 const mountSheet = (setup: (data: DndCharacterSheetData) => void = () => {}, readonly = false) => {
   const initial = createDndCharacterSheet();
@@ -13,8 +14,6 @@ const mountSheet = (setup: (data: DndCharacterSheetData) => void = () => {}, rea
   const wrapper = mount(DndCharacterSheet, { props: { data, readonly }, global: { stubs: { Teleport: true } }, attachTo: document.body });
   return { data, wrapper };
 };
-const options = (wrapper: ReturnType<typeof mountSheet>['wrapper'], label: string) =>
-  wrapper.findAll(`select[aria-label="${label}"] option`).map((option) => option.text());
 
 describe('the lists', () => {
   it('have the nine races and twelve classes of the SRD', () => {
@@ -37,12 +36,13 @@ describe('choosing a race', () => {
   it('is done from a list and sets the walking speed', async () => {
     const { data, wrapper } = mountSheet();
     try {
-      expect(options(wrapper, 'Раса')).toEqual(['Раса', ...DND_RACES.map((entry) => entry.label), 'Другая…']);
-      await wrapper.get('select[aria-label="Раса"]').setValue('Дварф');
+      expect(await optionLabels(wrapper, 'Раса')).toEqual([...DND_RACES.map((entry) => entry.label), 'Другая…']);
+      expect(selectedLabel(wrapper, 'Раса')).toBe('Раса'); // empty: the field names itself
+      await choose(wrapper, 'Раса', 'Дварф');
       expect(data.identity.race).toBe('Дварф');
       expect(data.combat.speed).toBe(25);
       expect(wrapper.emitted('change')).toHaveLength(1);
-      await wrapper.get('select[aria-label="Раса"]').setValue('Эльф');
+      await choose(wrapper, 'Раса', 'Эльф');
       expect(data.combat.speed).toBe(30);
     } finally { wrapper.unmount(); }
   });
@@ -51,10 +51,10 @@ describe('choosing a race', () => {
     const { data, wrapper } = mountSheet((sheet) => { sheet.identity.race = 'Табакси'; sheet.combat.speed = 35; });
     try {
       // What the sheet already had is shown as its own option.
-      expect(options(wrapper, 'Раса')).toContain('Табакси');
-      expect((wrapper.get('select[aria-label="Раса"]').element as HTMLSelectElement).selectedOptions[0]!.text).toBe('Табакси');
+      expect(await optionLabels(wrapper, 'Раса')).toContain('Табакси');
+      expect(selectedLabel(wrapper, 'Раса')).toBe('Табакси');
 
-      await wrapper.get('select[aria-label="Раса"]').setValue('\u0000type');
+      await choose(wrapper, 'Раса', '\u0000type');
       const input = wrapper.get('input[aria-label="Раса: свой вариант"]');
       expect(document.activeElement).toBe(input.element);
       expect((input.element as HTMLInputElement).value).toBe('Табакси');
@@ -69,10 +69,10 @@ describe('choosing a race', () => {
   it('goes back to the list when typing is abandoned', async () => {
     const { data, wrapper } = mountSheet((sheet) => { sheet.identity.race = 'Эльф'; });
     try {
-      await wrapper.get('select[aria-label="Раса"]').setValue('\u0000type');
+      await choose(wrapper, 'Раса', '\u0000type');
       await wrapper.get('input[aria-label="Раса: свой вариант"]').trigger('keydown', { key: 'Escape' });
       expect(wrapper.find('input[aria-label="Раса: свой вариант"]').exists()).toBe(false);
-      expect((wrapper.get('select[aria-label="Раса"]').element as HTMLSelectElement).value).toBe('Эльф');
+      expect(selectedLabel(wrapper, 'Раса')).toBe('Эльф');
       expect(data.identity.race).toBe('Эльф');
       expect(wrapper.emitted('change')).toBeUndefined();
     } finally { wrapper.unmount(); }
@@ -83,7 +83,7 @@ describe('choosing a class', () => {
   it('sets the hit die, and the spellcasting of a caster', async () => {
     const { data, wrapper } = mountSheet((sheet) => { sheet.identity.level = 3; });
     try {
-      await wrapper.get('select[aria-label="Класс"]').setValue('Волшебник');
+      await choose(wrapper, 'Класс', 'Волшебник');
       expect(data.identity.className).toBe('Волшебник');
       expect(data.combat.hitDie).toBe(6);
       expect(data.spellcasting).toMatchObject({ casterClass: 'wizard', ability: 'intelligence' });
@@ -95,7 +95,7 @@ describe('choosing a class', () => {
   it('gives a non-caster only its hit die', async () => {
     const { data, wrapper } = mountSheet();
     try {
-      await wrapper.get('select[aria-label="Класс"]').setValue('Варвар');
+      await choose(wrapper, 'Класс', 'Варвар');
       expect(data.combat.hitDie).toBe(12);
       expect(data.spellcasting.casterClass).toBe('');
     } finally { wrapper.unmount(); }
@@ -104,14 +104,14 @@ describe('choosing a class', () => {
   it('takes away the spellcasting the previous class brought, but not one set by hand', async () => {
     const fromClass = mountSheet((sheet) => { sheet.identity.className = 'Жрец'; sheet.spellcasting.casterClass = 'cleric'; });
     try {
-      await fromClass.wrapper.get('select[aria-label="Класс"]').setValue('Воин');
+      await choose(fromClass.wrapper, 'Класс', 'Воин');
       expect(fromClass.data.spellcasting.casterClass).toBe('');
     } finally { fromClass.wrapper.unmount(); }
 
     // A fighter who was given wizard spells by hand (an eldritch knight) keeps them.
     const byHand = mountSheet((sheet) => { sheet.identity.className = 'Воин'; sheet.spellcasting.casterClass = 'wizard'; });
     try {
-      await byHand.wrapper.get('select[aria-label="Класс"]').setValue('Плут');
+      await choose(byHand.wrapper, 'Класс', 'Плут');
       expect(byHand.data.spellcasting.casterClass).toBe('wizard');
       expect(byHand.data.combat.hitDie).toBe(8);
     } finally { byHand.wrapper.unmount(); }
@@ -120,22 +120,22 @@ describe('choosing a class', () => {
   it('keeps a homebrew class as typed and changes nothing else', async () => {
     const { data, wrapper } = mountSheet((sheet) => { sheet.combat.hitDie = 10; });
     try {
-      await wrapper.get('select[aria-label="Класс"]').setValue('\u0000type');
+      await choose(wrapper, 'Класс', '\u0000type');
       const input = wrapper.get('input[aria-label="Класс: свой вариант"]');
       await input.setValue('Кровавый охотник');
       await input.trigger('change');
       expect(data.identity.className).toBe('Кровавый охотник');
       expect(data.combat.hitDie).toBe(10);
-      expect(options(wrapper, 'Класс')).toContain('Кровавый охотник');
+      expect(await optionLabels(wrapper, 'Класс')).toContain('Кровавый охотник');
     } finally { wrapper.unmount(); }
   });
 
   it('cannot be changed by a read-only viewer', () => {
     const { wrapper } = mountSheet((sheet) => { sheet.identity.race = 'Эльф'; sheet.identity.className = 'Следопыт'; }, true);
     try {
-      expect(wrapper.get('select[aria-label="Раса"]').attributes('disabled')).toBeDefined();
-      expect(wrapper.get('select[aria-label="Класс"]').attributes('disabled')).toBeDefined();
-      expect((wrapper.get('select[aria-label="Класс"]').element as HTMLSelectElement).value).toBe('Следопыт');
+      expect(wrapper.get(selectSelector('Раса')).attributes('disabled')).toBeDefined();
+      expect(wrapper.get(selectSelector('Класс')).attributes('disabled')).toBeDefined();
+      expect(selectedLabel(wrapper, 'Класс')).toBe('Следопыт');
     } finally { wrapper.unmount(); }
   });
 });

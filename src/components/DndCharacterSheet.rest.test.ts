@@ -6,6 +6,7 @@ import DndCharacterSheet from './DndCharacterSheet.vue';
 import { applySheetOperation, type SheetOperation } from '../dnd/sheetOperations';
 import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
 import { runBackHandlers } from '../composables/useBackHandler';
+import { choose, selectSelector } from './dndSelect.testing';
 
 /** Mounts the sheet and applies every emitted `op` to its data, the way the page does. */
 const mountSheet = (setup: (data: DndCharacterSheetData) => void = () => {}, readonly = false) => {
@@ -140,7 +141,7 @@ describe('rests', () => {
     const { data, wrapper, ops } = mountSheet(tired);
     try {
       await button(wrapper, 'Короткий отдых').trigger('click');
-      await wrapper.get('select[aria-label="Кость хитов"]').setValue('12');
+      await choose(wrapper, 'Кость хитов', '12');
       expect(data.combat.hitDie).toBe(12);
       expect(wrapper.get('.dnd-rest-spend').text()).toBe('Потратить кость: 1d12+2');
       expect(runBackHandlers()).toBe(true);
@@ -158,9 +159,9 @@ describe('feature recharge', () => {
       sheet.features = [{ id: 'a', name: 'Ярость', currentUses: 1, maxUses: 2 }, { id: 'b', name: 'Тёмное зрение' }];
     });
     try {
-      const selects = wrapper.findAll('select[aria-label="Когда восстанавливаются заряды"]');
+      const selects = wrapper.findAll(selectSelector('Когда восстанавливаются заряды'));
       expect(selects).toHaveLength(1);
-      await selects[0]!.setValue('long');
+      await choose(wrapper, 'Когда восстанавливаются заряды', 'long');
       expect(data.features[0]!.recharge).toBe('long');
       expect(wrapper.emitted('change')).toHaveLength(1);
     } finally { wrapper.unmount(); }

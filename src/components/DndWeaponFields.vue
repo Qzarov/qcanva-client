@@ -7,10 +7,7 @@
       <input :readonly="readonly" :value="weapon.damageType" placeholder="рубящий" aria-label="Тип урона оружия" @change="set('damageType', text($event))" />
     </label>
     <label>Категория
-      <select :disabled="readonly" :value="weapon.category" aria-label="Категория оружия" @change="set('category', text($event) === 'martial' ? 'martial' : 'simple')">
-        <option value="simple">Простое</option>
-        <option value="martial">Воинское</option>
-      </select>
+      <DndSelect :value="weapon.category" :options="CATEGORY_OPTIONS" label="Категория оружия" :disabled="readonly" @change="set('category', $event === 'martial' ? 'martial' : 'simple')" />
     </label>
     <label>Магия +
       <input type="number" min="0" max="5" :readonly="readonly" :value="weapon.magicBonus" aria-label="Магический бонус" @change="set('magicBonus', Math.max(0, Math.min(5, Number(text($event)) || 0)))" />
@@ -38,6 +35,9 @@ import { computed } from 'vue';
 import { FORMULA_HINT, formatSigned, parseFormula } from '../dnd/dice';
 import type { DndCharacterSheetData, DndListItem } from '../dnd/characterSheet';
 import { automaticWeaponAttack, normalizeWeapon, weaponAttack, type DndWeapon } from '../dnd/weapons';
+import DndSelect from './DndSelect.vue';
+
+const CATEGORY_OPTIONS = [{ value: 'simple', label: 'Простое' }, { value: 'martial', label: 'Воинское' }];
 
 const props = defineProps<{ item: DndListItem; sheet: DndCharacterSheetData; readonly?: boolean }>();
 const emit = defineEmits<{ change: [] }>();
@@ -80,6 +80,7 @@ const set = <K extends keyof DndWeapon>(key: K, value: DndWeapon[K]) => {
 .dnd-weapon-fields input[readonly], .dnd-weapon-fields select:disabled { background:transparent; }
 .dnd-weapon-fields select option { background:var(--ui-surface-solid); color:var(--ui-text); }
 .dnd-weapon-fields input.invalid { border-color:var(--ui-danger-foreground); }
+.dnd-weapon-fields .dnd-select { display:flex; width:100%; font-size:13px; }
 .dnd-weapon-error { grid-column:1 / -1; margin:0; font-size:12px; color:var(--ui-danger-foreground); }
 .dnd-weapon-summary { grid-column:1 / -1; margin:0; font-size:12px; color:var(--dnd-text-dim); font-variant-numeric:tabular-nums; }
 @media (max-width:760px) {

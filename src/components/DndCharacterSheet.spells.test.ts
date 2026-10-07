@@ -5,6 +5,7 @@ import { reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { applySheetOperation, type SheetOperation } from '../dnd/sheetOperations';
 import { createDndCharacterSheet, normalizeDndCharacterSheet, type DndCharacterSheetData } from '../dnd/characterSheet';
+import { choose, selectSelector } from './dndSelect.testing';
 
 /** Mounts the sheet on the spells tab and applies every emitted `op`, the way the page does. */
 const mountSheet = (setup: (data: DndCharacterSheetData) => void = () => {}, readonly = false) => {
@@ -38,7 +39,7 @@ describe('spellcasting summary', () => {
       const summary = wrapper.get('.dnd-cs-spell-summary');
       expect(summary.text()).toContain('Сл спасброска—');
       expect(summary.get('.dnd-cs-roll').attributes('disabled')).toBeDefined();
-      await wrapper.get('select[aria-label="Заклинательная характеристика"]').setValue('wisdom');
+      await choose(wrapper, 'Заклинательная характеристика', 'wisdom');
       expect(data.spellcasting.ability).toBe('wisdom');
       expect(wrapper.emitted('change')).toHaveLength(1);
       expect(summary.text()).toContain('Сл спасброска14');
@@ -94,7 +95,7 @@ describe('spell slots', () => {
     const { wrapper } = mountSheet(cleric, true);
     try {
       expect(wrapper.get('[aria-label="Потратить ячейку 1 уровня"]').attributes('disabled')).toBeDefined();
-      expect(wrapper.get('select[aria-label="Заклинательная характеристика"]').attributes('disabled')).toBeDefined();
+      expect(wrapper.get(selectSelector('Заклинательная характеристика')).attributes('disabled')).toBeDefined();
       expect(wrapper.findAll('button').some((button) => button.text() === '+ Добавить заговор')).toBe(false);
     } finally { wrapper.unmount(); }
   });
@@ -123,8 +124,8 @@ describe('spells', () => {
     try {
       expect(wrapper.find('.dnd-spell-fields').exists()).toBe(false);
       await wrapper.get('[aria-label="Бросок и урон заклинания"]').trigger('click');
-      await wrapper.get('select[aria-label="Бросок заклинания"]').setValue('save');
-      await wrapper.get('select[aria-label="Характеристика спасброска"]').setValue('dexterity');
+      await choose(wrapper, 'Бросок заклинания', 'save');
+      await choose(wrapper, 'Характеристика спасброска', 'dexterity');
       await wrapper.get('input[aria-label="Формула заклинания"]').setValue('2d8');
       await wrapper.get('input[aria-label="Тип урона заклинания"]').setValue('излучение');
       expect(data.spells[0]).toMatchObject({ rollKind: 'save', saveAbility: 'dexterity', damage: '2d8', damageType: 'излучение' });
@@ -132,7 +133,7 @@ describe('spells', () => {
       await wrapper.get('[aria-label="Урон 2d8: бросить"]').trigger('click');
       expect(wrapper.get('.dnd-cs-toast').text()).toContain('Урон · Священное пламя');
 
-      await wrapper.get('select[aria-label="Бросок заклинания"]').setValue('attack');
+      await choose(wrapper, 'Бросок заклинания', 'attack');
       expect(wrapper.find('.dnd-cs-spell-dc').exists()).toBe(false);
       await wrapper.get('[aria-label="Атака +6: бросить"]').trigger('click');
       expect(wrapper.findAll('.dnd-cs-toast').some((toast) => toast.text().includes('Атака · Священное пламя'))).toBe(true);

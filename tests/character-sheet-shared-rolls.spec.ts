@@ -29,13 +29,30 @@ async function openSheet(page: Page, options: { canvasId?: string; role?: 'owner
   return server;
 }
 
+// The connection lives in the account menu: a row that says where rolls go and opens the dialog.
+const openAccountMenu = async (page: Page) => {
+  await page.locator('[data-account-menu-trigger]').click();
+  return page.locator('.dnd-link-row');
+};
+/** The connection row's second line ("не подключён", the canvas title, "Броски только у вас"). */
+const linkState = async (page: Page) => {
+  const row = await openAccountMenu(page);
+  const text = (await row.locator('.dnd-link-row-state').textContent())?.trim();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-account-menu]')).toHaveCount(0);
+  return text;
+};
+const openLinkDialog = async (page: Page) => {
+  await (await openAccountMenu(page)).click();
+  await expect(page.locator('[data-account-menu]')).toHaveCount(0);
+};
+
 for (const width of [320, 1280]) {
   test(`connecting a canvas sends rolls to its chat at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     const server = await openSheet(page);
-    const link = page.locator('.dnd-link-button');
-    await expect(link).toHaveText('Подключить канвас');
-    // The header stays inside the screen with the new button in it.
+    await expect.poll(() => linkState(page)).toBe('не подключён');
+    // The header stays inside the screen.
     for (const control of await page.locator('.template-header > *, .template-header-actions > *').all()) {
       const box = await control.boundingBox();
       if (!box) continue;
@@ -48,7 +65,7 @@ for (const width of [320, 1280]) {
     await expect(page.locator('.dnd-cs-toast').first()).toContainText('Проверка · Ловкость');
     expect(server.chat).toHaveLength(0);
 
-    await link.click();
+    await openLinkDialog(page);
     const dialog = page.getByRole('dialog', { name: 'Канвас для бросков' });
     await expect(dialog).toContainText('не подключён');
     const frame = (await dialog.boundingBox())!;
@@ -57,8 +74,9 @@ for (const width of [320, 1280]) {
     await expect(dialog.getByLabel('Поиск канваса')).toBeFocused();
     await dialog.getByRole('button', { name: 'Подключить: Проклятие Страда' }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(link).toBeFocused();
-    await expect(link).toHaveText('Проклятие Страда');
+    // The dialog was opened from the account menu: the focus goes back to its button.
+    await expect(page.locator('[data-account-menu-trigger]')).toBeFocused();
+    await expect.poll(() => linkState(page)).toBe('Проклятие Страда');
     await expect.poll(() => server().data.campaign).toEqual({ canvasId: 'c1' });
 
     // Connected: the server rolls, the sheet shows that roll, the chat gets it.
@@ -71,14 +89,14 @@ for (const width of [320, 1280]) {
 
     // The connection belongs to the sheet: it is there after a reload.
     await page.reload();
-    await expect(page.locator('.dnd-link-button')).toHaveText('Проклятие Страда');
+    await expect.poll(() => linkState(page)).toBe('Проклятие Страда');
 
-    await page.locator('.dnd-link-button').click();
+    await openLinkDialog(page);
     await expect(dialog).toContainText('Броски уходят в чат канваса «Проклятие Страда».');
     await expect(dialog.getByRole('link', { name: 'Открыть канвас' })).toHaveAttribute('href', '/canvas/c1');
     await dialog.getByRole('button', { name: 'Отключить' }).click();
-    await expect(page.locator('.dnd-link-button')).toHaveText('Подключить канвас');
     await expect.poll(() => server().data.campaign).toEqual({ canvasId: '' });
+    await expect.poll(() => linkState(page)).toBe('не подключён');
     await page.getByTitle('Проверка: Ловкость', { exact: true }).click();
     await expect(page.locator('.dnd-cs-toast').first()).toContainText('Проверка · Ловкость');
     expect(server.chat).toHaveLength(1);
@@ -88,9 +106,9 @@ for (const width of [320, 1280]) {
 test('a canvas that cannot take rolls leaves them local and says why', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const server = await openSheet(page, { canvasId: 'c2' });
-  const link = page.locator('.dnd-link-button');
-  await expect(link).toHaveText('Броски только у вас');
-  await link.click();
+  await expect.poll(() => linkState(page)).toBe('Броски только у вас');
+  await expect((await openAccountMenu(page))).toHaveClass(/is-warning/);
+  await page.locator('.dnd-link-row').click();
   await expect(page.getByRole('dialog', { name: 'Канвас для бросков' })).toContainText('выключены кубики');
   await page.keyboard.press('Escape');
   await page.getByTitle('Проверка: Ловкость', { exact: true }).click();
@@ -101,7 +119,7 @@ test('a canvas that cannot take rolls leaves them local and says why', async ({ 
 test('with no answer from the server a connected sheet makes no roll', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const server = await openSheet(page, { canvasId: 'c1' });
-  await expect(page.locator('.dnd-link-button')).toHaveText('Проклятие Страда');
+  await expect.poll(() => linkState(page)).toBe('Проклятие Страда');
   server.silence();
   await page.getByTitle('Проверка: Ловкость', { exact: true }).click();
   await expect(page.locator('.template-save-status')).toHaveText('Нет связи — бросок не сделан', { timeout: 10000 });
@@ -112,7 +130,7 @@ test('with no answer from the server a connected sheet makes no roll', async ({ 
 test('a read-only viewer sees the connection but cannot change it', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openSheet(page, { canvasId: 'c1', role: 'read' });
-  await page.locator('.dnd-link-button').click();
+  await openLinkDialog(page);
   const dialog = page.getByRole('dialog', { name: 'Канвас для бросков' });
   await expect(dialog).toContainText('Броски уходят в чат канваса');
   await expect(dialog.getByRole('button', { name: 'Отключить' })).toHaveCount(0);
@@ -125,10 +143,8 @@ if (SHOTS) {
       test(`shared rolls screenshots ${theme} ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: 760 });
         await openSheet(page, { canvasId: 'c1', theme });
-        await expect(page.locator('.dnd-link-button')).toHaveText('Проклятие Страда');
-        await page.mouse.move(1, 300);
-        await page.screenshot({ path: `${SHOTS}/link-header-${theme}-${width}.png`, clip: { x: 0, y: 0, width, height: 120 } });
-        await page.locator('.dnd-link-button').click();
+        await expect.poll(() => linkState(page)).toBe('Проклятие Страда');
+        await openLinkDialog(page);
         await page.getByRole('button', { name: 'Подключён: Проклятие Страда' }).waitFor();
         await page.screenshot({ path: `${SHOTS}/link-dialog-${theme}-${width}.png` });
       });

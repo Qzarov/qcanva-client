@@ -1,7 +1,7 @@
 <template>
   <div
     class="account-menu"
-    :class="[`account-menu--${placement}`, { 'account-menu--compact': compact }]"
+    :class="[`account-menu--${placement}`, { 'account-menu--compact': compact, 'account-menu--glass': glass }]"
     @keydown.esc.stop="close(true)"
   >
     <button
@@ -45,6 +45,10 @@
         <span>{{ t('theme') }}</span>
         <ThemeSelector ref="selectorRef" />
       </div>
+      <!-- What the open page adds to the menu (the character sheet: its canvas connection). -->
+      <div v-if="$slots.page" class="account-menu-page">
+        <slot name="page" :close="close" />
+      </div>
       <nav class="account-menu-links" :aria-label="userLabel">
         <router-link v-if="showPlugins" to="/plugins" class="account-menu-item" @click="close(false)">
           <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
@@ -77,10 +81,17 @@ const props = withDefaults(defineProps<{
   placement?: 'header' | 'sidebar';
   /** Plugins only exist for canvases so far: off where they'd lead nowhere useful. */
   showPlugins?: boolean;
+  /**
+   * The Liquid Glass look of the menu. Opt-in while it is rolled out page by
+   * page (the character sheet first); once every page has it, this becomes
+   * the only look and the prop goes away.
+   */
+  glass?: boolean;
 }>(), {
   compact: false,
   placement: 'header',
   showPlugins: true,
+  glass: false,
 });
 
 const router = useRouter();
@@ -94,6 +105,7 @@ const avatarLabel = computed(() => userLabel.value.trim().slice(0, 1).toUpperCas
 const compact = computed(() => props.compact);
 const placement = computed(() => props.placement);
 const showPlugins = computed(() => props.showPlugins);
+const glass = computed(() => props.glass);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const popoverRef = ref<HTMLDivElement | null>(null);
 const selectorRef = ref<InstanceType<typeof ThemeSelector> | null>(null);
@@ -228,6 +240,14 @@ defineExpose({ close });
   padding: 10px;
   border-bottom: 1px solid var(--ui-border);
 }
+.account-menu-page {
+  display: grid;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+.account-menu--glass .account-menu-page {
+  border-bottom-color: var(--ui-glass-border);
+}
 .account-menu-links {
   display: grid;
   padding-top: 6px;
@@ -260,6 +280,86 @@ defineExpose({ close });
 }
 .account-menu-sign-out {
   color: var(--accent-red);
+}
+
+/* ===== Liquid Glass (opt-in, see the `glass` prop) =====
+   One translucent, blurred surface for the whole menu; inside it nothing is
+   blurred again. Colours are the app's glass tokens, so both themes follow. */
+.account-menu--glass .account-menu-popover {
+  width: min(280px, calc(100vw - 24px));
+  padding: 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.account-menu--glass .account-menu-identity,
+.account-menu--glass .account-menu-theme {
+  border-bottom-color: var(--ui-glass-border);
+}
+.account-menu--glass .account-menu-identity strong {
+  font-size: 14px;
+}
+.account-menu--glass .account-menu-identity span,
+.account-menu--glass .account-menu-theme > span {
+  font-size: 12px;
+}
+.account-menu--glass .account-menu-theme > span {
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  font-size: 10px;
+}
+/* The theme choice as one glass pill with the chosen segment lit, like the sheet's roll-mode switch. */
+.account-menu--glass :deep(.theme-selector) {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+}
+.account-menu--glass :deep(.theme-selector-option) {
+  min-height: 32px;
+  border-radius: 999px;
+}
+.account-menu--glass :deep(.theme-selector-option:hover:not(.active)) {
+  background: var(--ui-glass-btn-hover);
+}
+.account-menu--glass :deep(.theme-selector-option.active) {
+  border-color: var(--ui-glass-accent-border);
+  color: var(--ui-glass-accent-text);
+  background: var(--ui-glass-accent-bg);
+  box-shadow: var(--ui-glass-accent-glow);
+}
+.account-menu--glass .account-menu-links {
+  gap: 2px;
+  padding-top: 8px;
+}
+.account-menu--glass .account-menu-item {
+  min-height: 40px;
+  border-radius: 12px;
+  transition: background-color 150ms ease;
+}
+.account-menu--glass .account-menu-item:hover,
+.account-menu--glass .account-menu-item:focus-visible {
+  background: var(--ui-glass-btn-hover);
+}
+.account-menu--glass .account-menu-item:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+.account-menu--glass .account-menu-item svg {
+  color: var(--ui-text-secondary);
+}
+.account-menu--glass .account-menu-sign-out,
+.account-menu--glass .account-menu-sign-out svg {
+  color: var(--ui-danger-foreground);
+}
+@media (max-width: 760px) {
+  /* Tapped with a thumb: full touch targets. */
+  .account-menu--glass .account-menu-item { min-height: 44px; }
+  .account-menu--glass :deep(.theme-selector-option) { min-height: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

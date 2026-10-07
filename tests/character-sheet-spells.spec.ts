@@ -1,6 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 import { createDndCharacterSheet } from '../src/dnd/characterSheet';
 import { serveCharacterSheet } from './support/fake-character-sheet-server';
+import { chooseOption, selectControl } from './support/dnd-select';
 
 const SHOTS = process.env.SHOT_DIR;
 
@@ -97,7 +98,7 @@ for (const width of [320, 1280]) {
     const panel = page.locator('.dnd-cs-tab-panel');
 
     // Choosing a class sets the ability and the slots for level 5.
-    await page.getByLabel('Заклинательный класс').selectOption('cleric');
+    await chooseOption(page, 'Заклинательный класс', 'Жрец');
     await expect.poll(() => saved().data.spellcasting.casterClass).toBe('cleric');
     await expect.poll(() => [1, 2, 3, 4].map((level) => saved().data.spellcasting.slots[`l${level}`].max)).toEqual([4, 3, 2, 0]);
     await expect(panel.locator('.dnd-cs-spell-prepared')).toHaveText('Подготовлено: 2 из 8');
@@ -137,7 +138,7 @@ for (const width of [320, 1280]) {
     await panel.getByRole('button', { name: 'Урон 8d6: бросить' }).click();
     await expect(page.locator('.dnd-cs-toast').first()).toContainText('Огненный шар');
     await page.reload();
-    await expect(page.getByLabel('Заклинательный класс')).toHaveValue('cleric');
+    await expect(selectControl(page, 'Заклинательный класс')).toHaveText('Жрец');
     await expect(page.locator('input[aria-label="Название заклинания"]').last()).toHaveValue('Огненный шар');
   });
 }
@@ -148,7 +149,7 @@ if (SHOTS) {
       test(`catalog screenshots ${theme} ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: 860 });
         await openSheet(page, theme);
-        await page.getByLabel('Заклинательный класс').selectOption('cleric');
+        await chooseOption(page, 'Заклинательный класс', 'Жрец');
         await page.locator('.dnd-cs-tab-panel').getByRole('button', { name: '+ Из списка заклинаний' }).click();
         await page.getByRole('button', { name: 'Добавить: Лечение ран' }).waitFor();
         await page.mouse.move(1, 1);

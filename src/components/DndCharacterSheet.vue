@@ -181,9 +181,7 @@
               </div>
               <textarea :readonly="locked" :value="item.description || ''" placeholder="Описание" aria-label="Описание умения" @change="setItem('features', item.id, 'description', evVal($event))"></textarea>
               <label v-if="item.maxUses" class="dnd-cs-recharge">Заряды возвращает
-                <select :value="item.recharge || ''" :disabled="locked" aria-label="Когда восстанавливаются заряды" @change="setItem('features', item.id, 'recharge', evVal($event))">
-                  <option v-for="option in rechargeOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
-                </select>
+                <DndSelect :value="item.recharge || ''" :options="rechargeOptions" label="Когда восстанавливаются заряды" :disabled="locked" @change="setItem('features', item.id, 'recharge', $event)" />
               </label>
             </div>
             <button v-if="!locked" type="button" class="dnd-cs-add" @click="addItem('features')">+ Добавить умение</button>
@@ -235,16 +233,10 @@
           <template v-else-if="data.activeTab === 'spells'">
             <div class="dnd-cs-spell-summary">
               <label class="dnd-cs-recharge">Класс
-                <select :value="data.spellcasting.casterClass" :disabled="locked" aria-label="Заклинательный класс" @change="setCasterClass(evVal($event))">
-                  <option value="">Не выбран</option>
-                  <option v-for="caster in casterClasses" :key="caster.key" :value="caster.key">{{ caster.label }}</option>
-                </select>
+                <DndSelect :value="data.spellcasting.casterClass" :options="casterClassOptions" label="Заклинательный класс" :disabled="locked" @change="setCasterClass" />
               </label>
               <label class="dnd-cs-recharge">Характеристика
-                <select :value="data.spellcasting.ability" :disabled="locked" aria-label="Заклинательная характеристика" @change="setSpellAbility(evVal($event))">
-                  <option value="">Не выбрана</option>
-                  <option v-for="ability in abilities" :key="ability.key" :value="ability.key">{{ ability.label }}</option>
-                </select>
+                <DndSelect :value="data.spellcasting.ability" :options="spellAbilityOptions" label="Заклинательная характеристика" :disabled="locked" @change="setSpellAbility" />
               </label>
               <div class="dnd-cs-stat readonly-stat" :title="spellDc === null ? 'Выберите заклинательную характеристику' : 'Сложность спасброска: 8 + мастерство + модификатор'"><span>Сл спасброска</span><strong>{{ spellDc ?? '—' }}</strong></div>
               <button type="button" class="dnd-cs-roll" :disabled="spellAttack === null" :title="spellAttack === null ? 'Выберите заклинательную характеристику' : 'Атака заклинанием: d20 + мастерство + модификатор'" @click="rollSpellAttack()">Атака заклинанием <b>{{ spellAttack === null ? '—' : formatModifier(spellAttack) }}</b></button>
@@ -309,6 +301,7 @@ import {
 import DndHpDialog from './DndHpDialog.vue';
 import { useViewActivity } from '../composables/useViewActivity';
 import DndIdentitySelect from './DndIdentitySelect.vue';
+import DndSelect from './DndSelect.vue';
 import DndRestDialog from './DndRestDialog.vue';
 import DndPassiveScores from './DndPassiveScores.vue';
 import DndCharacterStates from './DndCharacterStates.vue';
@@ -342,7 +335,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndIdentitySelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
+  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -696,7 +689,9 @@ export default defineComponent({
       skillMod, skillProf, skillProfTitle, cycleSkill,
       hpMode, applyHpAmount, change,
       deathStatus, setDeathSaves, rollDeathSave, restKind, hitDiceLeft, applyRest, setHitDie, spendHitDie,
-      rechargeOptions: FEATURE_RECHARGE_OPTIONS,
+      rechargeOptions: FEATURE_RECHARGE_OPTIONS.map((option) => ({ value: option.value as string, label: option.label as string })),
+      casterClassOptions: [{ value: '', label: 'Не выбран' }, ...SPELLCASTER_CLASSES.map((caster) => ({ value: caster.key as string, label: caster.label }))],
+      spellAbilityOptions: [{ value: '', label: 'Не выбрана' }, ...DND_ABILITIES.map((ability) => ({ value: ability.key as string, label: ability.label as string }))],
       spellAttack, spellDc, spellGroups, preparedCount, slotsOf, setSpellAbility, setSlotMax, changeSlot, addSpell, setSpellLevel,
       openSpells, toggleSpell, rollSpellAttack, castSpellAttack, spellDamage,
       raceOptions: DND_RACES.map((option) => option.label), classOptions: DND_CLASSES.map((option) => option.label), setRace, setClass,
