@@ -41,7 +41,7 @@ function fieldLabel(path: string[]): string | null {
     'combat.exhaustion': 'Истощение', 'combat.initiativeMode': 'Инициатива', 'combat.customInitiativeBonus': 'Бонус инициативы',
     'spellcasting.casterClass': 'Заклинательный класс', 'spellcasting.ability': 'Заклинательная характеристика',
     'proficiencies.languages': 'Языки и прочее', 'proficiencies.tools': 'Инструменты', 'proficiencies.other': 'Прочие владения',
-    notes: 'Заметки', attacksNotes: 'Заметки об атаках', 'campaign.canvasId': 'Канвас для бросков',
+    notes: 'Заметки', attacksNotes: 'Заметки об атаках', 'campaign.canvasId': 'Доска для бросков',
     'personality.traits': 'Черты характера', 'personality.ideals': 'Идеалы', 'personality.bonds': 'Привязанности', 'personality.flaws': 'Слабости',
   };
   if (simple[key]) return simple[key]!;

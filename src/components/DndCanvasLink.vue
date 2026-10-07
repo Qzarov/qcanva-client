@@ -5,9 +5,9 @@
   </button>
   <Teleport to="body">
     <div v-if="open" class="dnd-link-backdrop" @click.self="close">
-      <section class="dnd-link-dialog" role="dialog" aria-modal="true" aria-label="Канвас для бросков">
+      <section class="dnd-link-dialog" role="dialog" aria-modal="true" aria-label="Доска для бросков">
         <header>
-          <h2>Канвас для бросков</h2>
+          <h2>Доска для бросков</h2>
           <button ref="closeButton" type="button" class="dnd-link-close" aria-label="Закрыть" @click="close">×</button>
         </header>
 

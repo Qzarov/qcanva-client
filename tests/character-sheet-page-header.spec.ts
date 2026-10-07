@@ -95,7 +95,7 @@ for (const width of [390, 1280]) {
     expect(style.blur).toContain('blur');
     await expect(menu).toContainText('Ярослав');
     // The canvas connection is a row here now, not a pill in the header.
-    await expect(menu.locator('.dnd-link-row')).toContainText('Канвас для бросков');
+    await expect(menu.locator('.dnd-link-row')).toContainText('Доска для бросков');
     await expect(menu.locator('.dnd-link-row-state')).toHaveText('Проклятие Страда');
     await expect(page.locator('.template-header .dnd-link-button')).toHaveCount(0);
     // The theme still switches from here, and the menu follows it.

@@ -66,7 +66,7 @@ for (const width of [320, 1280]) {
     expect(server.chat).toHaveLength(0);
 
     await openLinkDialog(page);
-    const dialog = page.getByRole('dialog', { name: 'Канвас для бросков' });
+    const dialog = page.getByRole('dialog', { name: 'Доска для бросков' });
     await expect(dialog).toContainText('не подключён');
     const frame = (await dialog.boundingBox())!;
     expect(frame.x).toBeGreaterThanOrEqual(0);
@@ -109,7 +109,7 @@ test('a canvas that cannot take rolls leaves them local and says why', async ({ 
   await expect.poll(() => linkState(page)).toBe('Броски только у вас');
   await expect((await openAccountMenu(page))).toHaveClass(/is-warning/);
   await page.locator('.dnd-link-row').click();
-  await expect(page.getByRole('dialog', { name: 'Канвас для бросков' })).toContainText('выключены кубики');
+  await expect(page.getByRole('dialog', { name: 'Доска для бросков' })).toContainText('выключены кубики');
   await page.keyboard.press('Escape');
   await page.getByTitle('Проверка: Ловкость', { exact: true }).click();
   await expect(page.locator('.dnd-cs-toast').first()).toContainText('Проверка · Ловкость');
@@ -131,7 +131,7 @@ test('a read-only viewer sees the connection but cannot change it', async ({ pag
   await page.setViewportSize({ width: 1280, height: 900 });
   await openSheet(page, { canvasId: 'c1', role: 'read' });
   await openLinkDialog(page);
-  const dialog = page.getByRole('dialog', { name: 'Канвас для бросков' });
+  const dialog = page.getByRole('dialog', { name: 'Доска для бросков' });
   await expect(dialog).toContainText('Броски уходят в чат канваса');
   await expect(dialog.getByRole('button', { name: 'Отключить' })).toHaveCount(0);
   await expect(dialog.getByLabel('Поиск канваса')).toHaveCount(0);

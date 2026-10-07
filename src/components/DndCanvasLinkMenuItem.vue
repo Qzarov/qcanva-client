@@ -2,7 +2,7 @@
   <button v-if="canvasId || !readonly" type="button" class="dnd-link-row" :class="{ 'is-on': state === 'ok', 'is-warning': warning }" :title="hint" @click="emit('open')">
     <span class="dnd-link-row-dot" aria-hidden="true"></span>
     <span class="dnd-link-row-text">
-      <span class="dnd-link-row-title">Канвас для бросков</span>
+      <span class="dnd-link-row-title">Доска для бросков</span>
       <span class="dnd-link-row-state">{{ label }}</span>
     </span>
   </button>
