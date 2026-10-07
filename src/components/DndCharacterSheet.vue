@@ -1,5 +1,5 @@
 <template>
-  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly, 'dnd-cs-play': locked }">
+  <div class="dnd-cs" :class="{ 'dnd-cs-readonly': readonly, 'dnd-cs-play': locked, 'dnd-cs-mode-switch': modeSwitching }">
     <!-- ===== TOP CARD: identity + combat ===== -->
     <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
@@ -30,7 +30,7 @@
           <div class="dnd-cs-xp-values">
             <input type="number" min="0" :readonly="readonly" :value="data.identity.experience" aria-label="Опыт" @change="setNumber(data.identity, 'experience', evVal($event), 0)" />
             <b>/</b>
-            <input type="number" min="0" :readonly="readonly" :value="data.identity.nextLevelExperience" aria-label="Опыт до следующего уровня" @change="setNumber(data.identity, 'nextLevelExperience', evVal($event), 0)" />
+            <input type="number" min="0" :readonly="readonly" :value="nextXp" aria-label="Опыт до следующего уровня" :title="nextXpTitle" @change="setNextXp(evVal($event))" />
           </div>
         </div>
       </div>
@@ -72,7 +72,7 @@
         <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
         <button type="button" class="dnd-cs-stat readonly-stat dnd-cs-initiative" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong></button>
       </div>
-      <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :weapons="weaponAttacks" :history-count="rollHistory.length" @set-mode="setRollMode" @attack="attackWithWeapon" @open-log="rollLogOpen = true" />
+      <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :weapons="weaponAttacks" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @attack="attackWithWeapon" @open-log="rollLogOpen = true" />
     </div>
     </section>
 
@@ -295,6 +295,7 @@ import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
   proficiencyBonusForLevel, passiveScore, initiativeBonus, isHpAmount,
+  defaultNextLevelExperience, nextLevelExperienceOf,
   FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, spellSlotKey, type RestKind,
   type DndAbilityKey, type DndCharacterSheetData, type DndSheetMode, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
@@ -316,7 +317,7 @@ import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
-import { useSheetRolls, type DamageOption, type RemoteRoller } from '../dnd/useSheetRolls';
+import { useSheetRolls, type DamageOption, type RemoteRoller, type SheetRolls } from '../dnd/useSheetRolls';
 import {
   abilityShort, preparedSpellCount, spellAttackBonus, spellGroups as groupSpells, spellLevelLabel, spellRollKind,
   spellSaveAbility, spellSaveDc, spellSlots,
@@ -348,6 +349,9 @@ export default defineComponent({
     // Rolls the dice elsewhere (the server, for a sheet connected to a canvas).
     // Without it, or when it answers `null`, the sheet rolls by itself.
     remoteRoll: { type: Function as PropType<RemoteRoller>, default: undefined },
+    // The page's own rolling state. Given it, the sheet rolls into it and shows
+    // no log button of its own: the page puts the log in its history panel.
+    rolls: { type: Object as PropType<SheetRolls>, default: undefined },
   },
   // `op` carries changes that must merge with other people's as deltas (HP,
   // feature uses) or that touch several fields at once (rests, hit dice, death
@@ -406,11 +410,37 @@ export default defineComponent({
 
     /** Set-once data is locked for readers and in play mode; play data only for readers. */
     const locked = computed(() => props.readonly || props.mode === 'play');
+    // Switching between play and setup swaps fields for text all over the sheet:
+    // it rises in again, so the change reads as one move and not as a flicker.
+    const modeSwitching = ref(false);
+    let modeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+    watch(() => props.mode, () => {
+      if (props.readonly) return;
+      modeSwitching.value = false;
+      if (modeSwitchTimer) clearTimeout(modeSwitchTimer);
+      void nextTick(() => {
+        modeSwitching.value = true;
+        modeSwitchTimer = setTimeout(() => { modeSwitching.value = false; }, 420);
+      });
+    });
+    onBeforeUnmount(() => { if (modeSwitchTimer) clearTimeout(modeSwitchTimer); });
     const proficiencyBonus = computed(() => proficiencyBonusForLevel(props.data.identity.level));
     const initiative = computed(() => initiativeBonus(props.data));
     const initial = computed(() => (props.data.identity.name || '?').slice(0, 1).toUpperCase());
+    // Experience for the next level: by the rule for the level unless set by hand.
+    const nextXp = computed(() => nextLevelExperienceOf(props.data.identity));
+    const nextXpDefault = computed(() => defaultNextLevelExperience(props.data.identity.level));
+    const nextXpTitle = computed(() => (props.data.identity.nextLevelExperience > 0 && props.data.identity.nextLevelExperience !== nextXpDefault.value
+      ? `Задано вручную. По правилам для уровня ${props.data.identity.level}: ${nextXpDefault.value}. Сотрите значение, чтобы вернуть.`
+      : `По правилам для уровня ${props.data.identity.level}. Меняется вместе с уровнем.`));
+    const setNextXp = (value: string) => {
+      const typed = Math.max(0, Math.trunc(Number(value) || 0));
+      // The rule's own number is not stored: it would stop following the level.
+      props.data.identity.nextLevelExperience = typed === nextXpDefault.value ? 0 : typed;
+      change();
+    };
     const xpPercent = computed(() => {
-      const next = props.data.identity.nextLevelExperience;
+      const next = nextXp.value;
       if (!next || next <= 0) return 0;
       return Math.max(0, Math.min(100, Math.round((props.data.identity.experience / next) * 100)));
     });
@@ -510,7 +540,7 @@ export default defineComponent({
     const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };
 
     // ===== Dice rolls =====
-    const rolls = useSheetRolls({ remote: (spec) => props.remoteRoll?.(spec) ?? null });
+    const rolls = props.rolls ?? useSheetRolls({ remote: (spec) => props.remoteRoll?.(spec) ?? null });
     const rollLogOpen = ref(false);
     const roll = (kind: RollKind, name: string, modifier: number) => { void rolls.rollCheck(kind, name, modifier); };
     const rollDeathSave = () => {
@@ -682,7 +712,7 @@ export default defineComponent({
       armorOptions: ['Лёгкие', 'Средние', 'Тяжёлые', 'Щиты'],
       weaponOptions: ['Простое', 'Воинское'],
       onScreen,
-      locked, proficiencyBonus, initiative, initial, xpPercent, hpPercent, skillsByAbility, passives,
+      locked, proficiencyBonus, initiative, initial, nextXp, nextXpTitle, setNextXp, modeSwitching, xpPercent, hpPercent, skillsByAbility, passives,
       abilityModifier, formatModifier,
       nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
@@ -1074,6 +1104,18 @@ export default defineComponent({
 .dnd-cs-notes { min-height: 240px; text-transform: none; }
 
 
+/* ===== Mode switch: the sheet's blocks rise in, one after another ===== */
+@keyframes dnd-cs-mode-rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.dnd-cs-mode-switch > * { animation: dnd-cs-mode-rise 280ms cubic-bezier(.2, .7, .2, 1) both; }
+.dnd-cs-mode-switch > *:nth-child(2) { animation-delay: 50ms; }
+.dnd-cs-mode-switch > *:nth-child(3) { animation-delay: 100ms; }
+@media (prefers-reduced-motion: reduce) {
+  .dnd-cs-mode-switch > * { animation: none; }
+}
+
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
   .dnd-cs-status-row { grid-template-columns:minmax(0,1fr); }
@@ -1112,7 +1154,8 @@ export default defineComponent({
   .dnd-cs-death .dnd-cs-pip-btn { padding: 8px 5px; }
   .dnd-cs-death .dnd-cs-pip { width: 14px; height: 14px; }
   /* Spell slots are spent every turn: full touch targets. */
-  .dnd-cs-spell-level .dnd-cs-hp-btn { width: 44px; height: 44px; flex-basis: 44px; }
+  /* Asked to be smaller than the 44 px the rest of the sheet's frequent buttons get: a row of slots must stay one line. */
+  .dnd-cs-spell-level .dnd-cs-hp-btn { width: 30px; height: 30px; flex-basis: 30px; }
   .dnd-cs-spell-summary .dnd-cs-roll { min-height: 44px; padding-inline: 12px; font-size: 12px; }
   .dnd-cs-spell-summary .dnd-cs-roll b { font-size: 12px; }
   /* Room for the spell's name: narrower side columns, slightly smaller text. */

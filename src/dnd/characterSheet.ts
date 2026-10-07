@@ -132,6 +132,23 @@ export const calculateHpChange = (combat: DndCharacterSheetData['combat'], mode:
   return { currentHp: Math.max(0, combat.currentHp - (amount - absorbed)), temporaryHp: combat.temporaryHp - absorbed };
 };
 
+/**
+ * Experience at which each level begins (5e): `XP_THRESHOLDS[n - 1]` is the
+ * total needed to BE level n.
+ */
+export const XP_THRESHOLDS = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000] as const;
+
+/** Experience needed to reach the level after this one (at level 20 there is none: the last threshold stays). */
+export const defaultNextLevelExperience = (level: number) => XP_THRESHOLDS[Math.min(19, clampLevel(level))]!;
+
+/**
+ * What the sheet shows as "experience for the next level": the stored value
+ * when someone set one by hand, otherwise the rule for the current level - so
+ * it moves by itself when the level changes. A stored 0 means "by the rule".
+ */
+export const nextLevelExperienceOf = (identity: Pick<DndCharacterSheetData['identity'], 'level' | 'nextLevelExperience'>) =>
+  (Number(identity.nextLevelExperience) > 0 ? Number(identity.nextLevelExperience) : defaultNextLevelExperience(identity.level));
+
 /** Hit dice still unspent: one per level, minus those used since the last long rest. */
 export const hitDiceRemaining = (sheet: Pick<DndCharacterSheetData, 'identity' | 'combat'>) =>
   Math.max(0, clampLevel(sheet.identity.level) - Math.max(0, Math.trunc(Number(sheet.combat.hitDiceSpent) || 0)));

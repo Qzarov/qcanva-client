@@ -5,8 +5,10 @@
       <div class="template-header-actions">
         <DndSyncStatus :text="syncText" :kind="syncKind" />
         <DndUndoButtons v-if="template && !readonly && mode === 'setup'" :can-undo="undoStack.length > 0" :can-redo="redoStack.length > 0" @undo="undo" @redo="redo" />
-        <DndSheetHistory v-if="template" :sheet-id="template.id" :can-restore="!readonly" @restored="onRestored" />
-        <DndModeToggle v-if="template && !readonly" :mode="mode" @change="mode = $event" />
+        <!-- A free roll is a thing of play: in setup its place goes to undo and redo. -->
+        <DndQuickRoll v-if="template && (readonly || mode === 'play')" @roll="rollByFormula" />
+        <DndSheetHistory v-if="template" :sheet-id="template.id" :can-restore="!readonly" :rolls="rollHistory" @restored="onRestored" @damage="rollDamageFromLog" />
+        <DndModeToggle v-if="template && !readonly" :mode="mode" @change="setMode" />
         <AccountMenu :show-plugins="false" glass>
           <template v-if="template" #page="{ close }">
             <DndCanvasLinkMenuItem :canvas-id="data.campaign.canvasId" :target="rollTarget" :readonly="readonly" @open="close(false); linkDialog?.show()" />
@@ -21,7 +23,7 @@
         :data="data"
         :readonly="readonly"
         :mode="readonly ? 'play' : mode"
-        :remote-roll="remoteRoll"
+        :rolls="rolls"
         @change="commitEdits"
         @op="sendOperation"
         @request-portrait="portraitInput?.click()"
@@ -45,7 +47,9 @@ import { interactiveTemplates, uploadImage, type InteractiveTemplate } from '../
 import { createDndCharacterSheet, isBlankSheet, normalizeDndCharacterSheet, type DndCharacterSheetData, type DndSheetMode } from '../dnd/characterSheet';
 import { diffSheet, type SheetOperation } from '../dnd/sheetOperations';
 import { SheetRollRefused, useCharacterSheetSocket } from '../composables/useCharacterSheetSocket';
-import type { RemoteRoller } from '../dnd/useSheetRolls';
+import { useSheetRolls, type RemoteRoller } from '../dnd/useSheetRolls';
+import type { ParsedFormula } from '../dnd/dice';
+import DndQuickRoll from '../components/DndQuickRoll.vue';
 import DndCanvasLink from '../components/DndCanvasLink.vue';
 import DndCanvasLinkMenuItem from '../components/DndCanvasLinkMenuItem.vue';
 import DndSyncStatus, { type SheetStatusKind } from '../components/DndSyncStatus.vue';
@@ -64,7 +68,7 @@ type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export default defineComponent({
-  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndCanvasLinkMenuItem, DndSyncStatus, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
+  components: { AccountMenu, DndCharacterSheet, DndCanvasLink, DndCanvasLinkMenuItem, DndSyncStatus, DndQuickRoll, DndModeToggle, DndUndoButtons, DndSheetHistory, BackButton },
   setup() {
     const route = useRoute();
     const sheetId = String(route.params.id);
@@ -128,9 +132,12 @@ export default defineComponent({
     sync.onState(rebuild);
 
     const notice = ref('');
+    // A notice is a problem ("the roll was not made"); a message just confirms what was done.
+    const noticeTone = ref<'notice' | 'message'>('notice');
     let noticeTimer: ReturnType<typeof setTimeout> | null = null;
-    const showNotice = (text: string) => {
+    const showNotice = (text: string, tone: 'notice' | 'message' = 'notice') => {
       notice.value = text;
+      noticeTone.value = tone;
       if (noticeTimer) clearTimeout(noticeTimer);
       noticeTimer = setTimeout(() => { notice.value = ''; }, 5000);
     };
@@ -251,6 +258,18 @@ export default defineComponent({
       });
     };
 
+    // The rolling state lives here, not in the sheet: the header rolls into it
+    // (the dice button) and the history panel shows its log.
+    const rolls = useSheetRolls({ remote: remoteRoll });
+    const rollByFormula = (formula: ParsedFormula) => { void rolls.rollByFormula(formula); };
+    const rollDamageFromLog = (rollId: string, option: number) => { void rolls.rollAttackDamage(rollId, option); };
+
+    const setMode = (next: DndSheetMode) => {
+      if (mode.value === next) return;
+      mode.value = next;
+      showNotice(`Выбран режим: ${next === 'setup' ? '«Настройка»' : '«Игра»'}`, 'message');
+    };
+
     const readonly = computed(() => sync.role.value === 'read' || sync.status.value === 'forbidden');
     const syncWarning = computed(() => sync.status.value === 'offline' || sync.status.value === 'error');
     const syncText = computed(() => {
@@ -263,7 +282,7 @@ export default defineComponent({
     });
     // The same state as a colour, for the dot the status becomes on a phone.
     const syncKind = computed<SheetStatusKind>(() => {
-      if (notice.value) return 'notice';
+      if (notice.value) return noticeTone.value;
       if (sync.status.value === 'forbidden' || syncWarning.value) return 'danger';
       if (sync.pendingCount.value) return 'saving';
       if (sync.role.value === 'read') return 'info';
@@ -325,7 +344,8 @@ export default defineComponent({
       tabMode: tabsEnabled(),
       template, data, error, readonly, mode, undoStack, redoStack, undo, redo, onRestored, syncText, syncKind, syncWarning, editorRoot,
       markDirty, markClean, commitEdits, sendOperation,
-      rollTarget: sync.rollTarget, linkCanvas, linkDialog, focusAccountMenu, remoteRoll,
+      rollTarget: sync.rollTarget, linkCanvas, linkDialog, focusAccountMenu,
+      rolls, rollHistory: rolls.history, rollByFormula, rollDamageFromLog, setMode,
       portraitInput, uploadPortrait, removePortrait, backTarget,
     };
   },

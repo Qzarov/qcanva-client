@@ -64,7 +64,7 @@ const parseRoll = (m: any) => { try { return m.rollData ? JSON.parse(m.rollData)
 // (who, what for, every die); plain chat rolls do not.
 const SHEET_ROLL_KIND: Record<string, string> = {
   check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Инициатива', attack: 'Атака', damage: 'Урон',
-  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов',
+  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов', formula: 'Бросок',
 };
 const sheetRoll = (m: any): any => {
   const sheet = parseRoll(m)?.sheet;

@@ -5,7 +5,7 @@ import {
 } from './dice';
 import { deathSaveOutcome, type DeathSaveOutcome } from './characterSheet';
 
-export type SheetRollKind = 'check' | 'save' | 'skill' | 'initiative' | 'attack' | 'damage' | 'death-save' | 'hit-die';
+export type SheetRollKind = 'check' | 'save' | 'skill' | 'initiative' | 'attack' | 'damage' | 'death-save' | 'hit-die' | 'formula';
 export type DamageOption = { label: string; formula: ParsedFormula; type: string };
 
 /**
@@ -71,7 +71,7 @@ export const awaitsDamage = (roll: SheetRoll) =>
 
 export const ROLL_KIND_LABEL: Record<SheetRollKind, string> = {
   check: 'Проверка', save: 'Спасбросок', skill: 'Проверка', initiative: 'Инициатива', attack: 'Атака', damage: 'Урон',
-  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов',
+  'death-save': 'Спасбросок от смерти', 'hit-die': 'Кость хитов', formula: 'Бросок',
 };
 export const DEATH_SAVE_LABEL: Record<DeathSaveOutcome, string> = {
   success: 'успех', failure: 'провал', 'critical-failure': 'два провала', 'critical-success': 'встаёт с 1 HP',
@@ -124,6 +124,9 @@ export function rollSpecLocally(spec: RollSpec, rng?: Rng): RolledSpec {
  * connected to a canvas): its dice are the ones shown, and the same roll
  * appears in that canvas's chat.
  */
+/** The rolling state of one sheet: what `useSheetRolls` returns. */
+export type SheetRolls = ReturnType<typeof useSheetRolls>;
+
 export function useSheetRolls(options: { rng?: Rng; remote?: RemoteRoller } = {}) {
   const mode = ref<RollMode>('normal');
   const history = ref<SheetRoll[]>([]);
@@ -186,7 +189,7 @@ export function useSheetRolls(options: { rng?: Rng; remote?: RemoteRoller } = {}
 
   const withBonus = (bonus: number | ParsedFormula) => (typeof bonus === 'number' ? flat(bonus) : bonus);
 
-  const rollCheck = (kind: Exclude<SheetRollKind, 'attack' | 'damage' | 'death-save' | 'hit-die'>, label: string, bonus: number) =>
+  const rollCheck = (kind: Exclude<SheetRollKind, 'attack' | 'damage' | 'death-save' | 'hit-die' | 'formula'>, label: string, bonus: number) =>
     perform({ kind, label, d20: takeMode(), dice: [], modifier: bonus });
 
   const rollAttack = (label: string, bonus: number | ParsedFormula, damage: DamageOption[] = []) => {
@@ -233,5 +236,9 @@ export function useSheetRolls(options: { rng?: Rng; remote?: RemoteRoller } = {}
 
   onBeforeUnmount(() => { timers.forEach(clearTimeout); timers.clear(); });
 
-  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage, rollAttackDamage, rollDeathSave, rollHitDie };
+  /** A free roll of a typed formula (the header's dice button): no d20, no bonus rules, the total as it falls. */
+  const rollByFormula = (formula: ParsedFormula) =>
+    perform({ kind: 'formula', label: formula.text, dice: formula.dice, modifier: formula.modifier });
+
+  return { mode, setMode, history, toasts, dismiss, rollCheck, rollAttack, rollDamage, rollAttackDamage, rollDeathSave, rollHitDie, rollByFormula };
 }

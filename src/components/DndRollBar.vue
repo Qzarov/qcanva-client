@@ -4,7 +4,7 @@
       <button v-for="option in modes" :key="option.key" type="button" :class="{ on: mode === option.key }" :aria-pressed="mode === option.key" :title="option.title" @click="emit('set-mode', option.key)">{{ option.label }}</button>
     </div>
     <button type="button" class="dnd-roll-attack" :disabled="!weapons.length" :title="weapons.length ? 'Атака экипированным оружием' : 'Нет экипированного оружия'" :aria-expanded="weapons.length > 1 ? Boolean(open) : undefined" @click="attack">⚔ Атака</button>
-    <button type="button" class="dnd-roll-log-button" :aria-label="'Журнал бросков: ' + historyCount" @click="emit('open-log')">Журнал<span v-if="historyCount"> · {{ historyCount }}</span></button>
+    <button v-if="showLog" type="button" class="dnd-roll-log-button" :aria-label="'Журнал бросков: ' + historyCount" @click="emit('open-log')">Журнал<span v-if="historyCount"> · {{ historyCount }}</span></button>
     <Teleport to="body">
       <div v-if="open" ref="popup" class="dnd-roll-weapon-menu" role="menu" aria-label="Чем атаковать" :style="menuStyle">
         <button v-for="weapon in weapons" :key="weapon.itemId" type="button" role="menuitem" @click="choose(weapon)">
@@ -21,7 +21,7 @@ import { formatSigned, type RollMode } from '../dnd/dice';
 import type { WeaponAttack } from '../dnd/weapons';
 import { useSheetPopup } from '../composables/useSheetPopup';
 
-const props = defineProps<{ mode: RollMode; weapons: WeaponAttack[]; historyCount: number }>();
+const props = withDefaults(defineProps<{ mode: RollMode; weapons: WeaponAttack[]; historyCount: number; showLog?: boolean }>(), { showLog: true });
 const emit = defineEmits<{ 'set-mode': [mode: RollMode]; attack: [weapon: WeaponAttack]; 'open-log': [] }>();
 
 const modes: Array<{ key: RollMode; label: string; title: string }> = [

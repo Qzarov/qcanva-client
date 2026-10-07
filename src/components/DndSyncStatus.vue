@@ -21,7 +21,8 @@ import { useSheetPopup } from '../composables/useSheetPopup';
  * text used to push the header's buttons around every time it changed; there
  * it is a coloured dot of fixed size, with the text in a hint.
  */
-export type SheetStatusKind = 'ok' | 'saving' | 'info' | 'danger' | 'notice';
+/** `notice` is a problem said once; `message` confirms an action ("Выбран режим: «Игра»"). Both pass by themselves. */
+export type SheetStatusKind = 'ok' | 'saving' | 'info' | 'danger' | 'notice' | 'message';
 const props = defineProps<{
   /** What to say; empty when everything is saved. */
   text: string;
@@ -65,7 +66,7 @@ watch(hint, () => { if (open.value) void nextTick(place); });
 // A notice is a message, not a state: on a phone nobody would see it behind a
 // dot, so it opens the hint by itself for as long as it lasts.
 const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 760px)').matches;
-watch(() => (props.kind === 'notice' ? props.text : ''), (message) => {
+watch(() => (props.kind === 'notice' || props.kind === 'message' ? props.text : ''), (message) => {
   if (!message || !isPhone()) return;
   if (open.value) {
     clearTimer();
@@ -100,6 +101,7 @@ onBeforeUnmount(() => {
   .sheet-status-dot:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: -2px; border-radius: 999px; }
   .is-saving .sheet-status-dot span { background: var(--ui-warning-foreground); }
   .is-info .sheet-status-dot span { background: var(--ui-text-muted); }
+  .is-message .sheet-status-dot span { background: var(--ui-glass-accent-text); }
   .is-danger .sheet-status-dot span, .is-notice .sheet-status-dot span { background: var(--ui-danger-foreground); }
 }
 

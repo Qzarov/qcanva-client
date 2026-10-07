@@ -44,6 +44,7 @@ import { RouterLink } from 'vue-router';
 import { canvas as canvasApi } from '../api/client';
 import type { RollTarget } from '../composables/useCharacterSheetSocket';
 import { registerBackHandler } from '../composables/useBackHandler';
+import { isCoarsePointer } from '../composables/pointer';
 import { canvasLinkHint, canvasLinkLabel, canvasLinkState, canvasLinkTitle, canvasLinkWarning } from '../dnd/canvasLink';
 
 /**
@@ -151,7 +152,8 @@ watch(open, async (value) => {
   query.value = '';
   if (!props.readonly) void load();
   await nextTick();
-  (search.value ?? closeButton.value)?.focus();
+  // On a touch screen focusing the search would raise the keyboard over the list.
+  ((isCoarsePointer() ? null : search.value) ?? closeButton.value)?.focus();
 });
 watch(() => props.readonly, (value) => { if (value && !props.canvasId) close(); });
 onBeforeUnmount(release);

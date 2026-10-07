@@ -6,19 +6,8 @@
           <h2>Журнал бросков</h2>
           <button ref="closeButton" type="button" class="dnd-roll-log-close" aria-label="Закрыть журнал" @click="emit('close')">×</button>
         </header>
-        <p v-if="!history.length" class="dnd-roll-log-empty">Бросков пока не было.</p>
-        <ol v-else>
-          <li v-for="roll in history" :key="roll.id" :class="{ 'is-crit': roll.natural === 'max', 'is-fumble': roll.natural === 'min' }">
-            <div class="dnd-roll-log-head"><span>{{ ROLL_KIND_LABEL[roll.kind] }} · {{ roll.label }}<template v-if="roll.damageType"> · {{ roll.damageType }}</template></span><time>{{ time(roll.at) }}</time></div>
-            <div class="dnd-roll-log-detail">{{ describeRoll(roll) }} = <strong>{{ roll.total }}</strong></div>
-            <div v-if="awaitsDamage(roll)" class="dnd-roll-log-actions">
-              <button v-for="(option, index) in roll.damage" :key="index" type="button" @click="emit('damage', roll.id, index)">
-                {{ roll.natural === 'max' ? 'Крит' : 'Урон' }}{{ roll.damage!.length > 1 ? ' · ' + option.label.toLowerCase() : '' }}: {{ option.formula.text }}
-              </button>
-            </div>
-          </li>
-        </ol>
-        <p class="dnd-roll-log-note">Последние 30 бросков этой вкладки. Скоро броски можно будет отправлять в чат канваса.</p>
+        <DndRollList :history="history" @damage="(rollId, option) => emit('damage', rollId, option)" />
+        <p class="dnd-roll-log-note">Последние 30 бросков этой вкладки.</p>
       </section>
     </div>
   </Teleport>
@@ -26,14 +15,19 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { awaitsDamage, describeRoll, ROLL_KIND_LABEL, type SheetRoll } from '../dnd/useSheetRolls';
+import type { SheetRoll } from '../dnd/useSheetRolls';
 import { useBackHandler } from '../composables/useBackHandler';
+import DndRollList from './DndRollList.vue';
 
+/**
+ * The roll log as its own dialog - for a sheet shown without the page around
+ * it. On the sheet's page the same list lives in the history panel
+ * (DndSheetHistory), and this dialog is not offered.
+ */
 defineProps<{ history: SheetRoll[] }>();
 const emit = defineEmits<{ close: []; damage: [rollId: string, option: number] }>();
 const closeButton = ref<HTMLButtonElement | null>(null);
 const previousFocus = document.activeElement as HTMLElement | null;
-const time = (at: number) => new Date(at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 onMounted(() => closeButton.value?.focus());
 onBeforeUnmount(() => previousFocus?.isConnected && previousFocus.focus());
 useBackHandler(() => { emit('close'); return true; });
@@ -45,16 +39,5 @@ useBackHandler(() => { emit('close'); return true; });
 .dnd-roll-log header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
 .dnd-roll-log h2 { margin:0; font-size:18px; }
 .dnd-roll-log-close { width:32px; height:32px; border:0; border-radius:999px; background:var(--ui-surface-subtle); color:var(--ui-text); font-size:18px; cursor:pointer; }
-.dnd-roll-log ol { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
-.dnd-roll-log li { padding:8px 10px; border:1px solid var(--ui-border); border-radius:10px; background:var(--ui-surface-subtle); }
-.dnd-roll-log li.is-crit { border-color:rgba(0,200,0,.6); }
-.dnd-roll-log li.is-fumble { border-color:rgba(230,70,70,.6); }
-.dnd-roll-log-head { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:var(--ui-text-secondary); }
-.dnd-roll-log-head time { font-variant-numeric:tabular-nums; flex:none; }
-.dnd-roll-log-detail { margin-top:3px; font-size:14px; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
-.dnd-roll-log-detail strong { font-size:16px; }
-.dnd-roll-log-actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
-.dnd-roll-log-actions button { padding:5px 9px; border:1px solid var(--ui-border); border-radius:8px; background:var(--ui-surface-solid); color:var(--ui-text); font:inherit; font-size:12px; cursor:pointer; }
-.dnd-roll-log-empty, .dnd-roll-log-note { font-size:13px; color:var(--ui-text-secondary); }
-.dnd-roll-log-note { margin:12px 0 0; }
+.dnd-roll-log-note { margin:12px 0 0; font-size:13px; color:var(--ui-text-secondary); }
 </style>

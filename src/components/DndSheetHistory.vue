@@ -1,5 +1,5 @@
 <template>
-  <button ref="trigger" type="button" class="dnd-history-button" aria-haspopup="dialog" title="История изменений листа" @click="openPanel">
+  <button ref="trigger" type="button" class="dnd-history-button" aria-haspopup="dialog" title="История изменений листа и журнал бросков" @click="openPanel()">
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v2.6h2.6M8 5v3l2 1.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg>
     <span class="dnd-history-text">История</span>
   </button>
@@ -14,7 +14,11 @@
         <div class="dnd-history-filter" role="radiogroup" aria-label="Какие записи показать">
           <button v-for="option in filters" :key="option.key" type="button" role="radio" :aria-checked="filter === option.key" :class="{ on: filter === option.key }" @click="filter = option.key">{{ option.label }}</button>
         </div>
-        <p v-if="loading" class="dnd-history-note">Загружаем…</p>
+        <template v-if="filter === 'rolls'">
+          <DndRollList :history="rolls ?? []" @damage="(rollId, option) => emit('damage', rollId, option)" />
+          <p class="dnd-history-note dnd-history-rolls-note">Последние 30 бросков этой вкладки. Бросков других участников здесь нет — они в чате доски.</p>
+        </template>
+        <p v-else-if="loading" class="dnd-history-note">Загружаем…</p>
         <p v-else-if="error" class="dnd-history-note is-error" role="alert">{{ error }}</p>
         <p v-else-if="!visible.length" class="dnd-history-note">Записей пока нет.</p>
         <ol v-else>
@@ -47,20 +51,29 @@ import { computed, nextTick, ref } from 'vue';
 import { interactiveTemplates, type SheetHistoryEntry } from '../api/client';
 import { describeHistoryEntry, HISTORY_NOTE_LABEL } from '../dnd/sheetHistoryText';
 import { useBackHandler } from '../composables/useBackHandler';
+import type { SheetRoll } from '../dnd/useSheetRolls';
+import DndRollList from './DndRollList.vue';
 
 /**
  * The sheet's history (docs/character-sheet-edit-modes.md, part 3): setup
  * edits and play events, newest first; setup entries can be restored to.
  */
-const props = defineProps<{ sheetId: string; canRestore: boolean }>();
-const emit = defineEmits<{ restored: [rolledBack: number] }>();
+const props = defineProps<{
+  sheetId: string;
+  canRestore: boolean;
+  /** This tab's rolls: shown as the "Броски" list. Left out, the list is not offered. */
+  rolls?: SheetRoll[];
+}>();
+const emit = defineEmits<{ restored: [rolledBack: number]; damage: [rollId: string, option: number] }>();
 
-type Filter = 'all' | 'setup' | 'play';
-const filters: Array<{ key: Filter; label: string }> = [
+type Filter = 'all' | 'setup' | 'play' | 'rolls';
+const filters = computed<Array<{ key: Filter; label: string }>>(() => [
   { key: 'all', label: 'Все записи' },
   { key: 'setup', label: 'Только настройка' },
   { key: 'play', label: 'Только игра' },
-];
+  // Rolls are this tab's own and are not stored with the sheet, so they are a list of their own.
+  ...(props.rolls ? [{ key: 'rolls' as const, label: props.rolls.length ? `Броски · ${props.rolls.length}` : 'Броски' }] : []),
+]);
 
 const open = ref(false);
 // Closed when the page goes to sleep in a background tab (it is teleported to <body>).
@@ -98,9 +111,9 @@ const load = async () => {
     loading.value = false;
   }
 };
-const openPanel = async () => {
+const openPanel = async (show: Filter = 'all') => {
   open.value = true;
-  filter.value = 'all';
+  filter.value = show;
   confirming.value = null;
   await nextTick();
   closeButton.value?.focus();
@@ -151,5 +164,6 @@ defineExpose({ openPanel });
 .dnd-history-lines { margin: 4px 0 0; padding: 0 0 0 16px; font-size: 14px; overflow-wrap: anywhere; }
 .dnd-history-restore { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; }
 .dnd-history-note { font-size: 13px; color: var(--ui-text-secondary); }
+.dnd-history-rolls-note { margin: 12px 0 0; }
 .dnd-history-note.is-error { color: var(--ui-danger-foreground); }
 </style>

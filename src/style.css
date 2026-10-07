@@ -10500,3 +10500,16 @@ textarea:focus-visible {
     padding-top: calc(var(--text-doc-topbar-height) + 12px);
   }
 }
+
+/* ===== Press feedback on touch screens =====
+   The system's tap highlight (a blue rectangle that ignores rounded corners)
+   is off. In its place a pressed control gets a soft accent ring that follows
+   its shape. `:where()` keeps this at zero specificity, so a control with its
+   own pressed state keeps it. Touch only: a mouse has hover and focus rings. */
+html { -webkit-tap-highlight-color: transparent; }
+@media (hover: none) {
+  :where(button, [role='button'], [role='tab'], [role='option'], [role='menuitem'], [role='radio'], [role='combobox'], a[class], summary):active:not(:disabled) {
+    outline: 3px solid var(--ui-glass-accent-border);
+    outline-offset: 1px;
+  }
+}

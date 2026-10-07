@@ -4,7 +4,7 @@
       <section class="dnd-catalog" role="dialog" aria-modal="true" aria-label="Оружие из списка" @keydown.esc.prevent.stop="emit('close')">
         <header>
           <h2>Оружие из списка</h2>
-          <button type="button" class="dnd-catalog-close" aria-label="Закрыть список оружия" @click="emit('close')">×</button>
+          <button ref="closeButton" type="button" class="dnd-catalog-close" aria-label="Закрыть список оружия" @click="emit('close')">×</button>
         </header>
         <input ref="search" v-model="query" type="search" class="dnd-catalog-search" placeholder="Поиск: меч, лук, рубящий…" aria-label="Поиск оружия" autocomplete="off" />
         <p v-if="!groups.length" class="dnd-catalog-empty">Ничего не нашлось. Оружие можно добавить и вручную: обычный предмет + кнопка ⚔.</p>
@@ -26,13 +26,16 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { searchWeaponCatalog, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { useBackHandler } from '../composables/useBackHandler';
+import { isCoarsePointer } from '../composables/pointer';
 
 const emit = defineEmits<{ close: []; pick: [weapon: CatalogWeapon] }>();
 const query = ref('');
 const groups = computed(() => searchWeaponCatalog(query.value));
 const search = ref<HTMLInputElement | null>(null);
+const closeButton = ref<HTMLButtonElement | null>(null);
 const previousFocus = document.activeElement as HTMLElement | null;
-onMounted(() => search.value?.focus());
+// On a touch screen focusing the search would raise the keyboard over the list.
+onMounted(() => (isCoarsePointer() ? closeButton.value : search.value)?.focus());
 onBeforeUnmount(() => previousFocus?.isConnected && previousFocus.focus());
 useBackHandler(() => { emit('close'); return true; });
 </script>

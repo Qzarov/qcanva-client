@@ -167,8 +167,36 @@ describe('DndCharacterSheet interactions', () => {
     expect(track.attributes('aria-valuenow')).toBe('50');
     await track.get('[aria-label="Опыт"]').setValue('1200');
     expect(track.attributes('aria-valuenow')).toBe('100');
+    // Clearing the hand-set value goes back to the rule for the level (300 at level 1).
     await track.get('[aria-label="Опыт до следующего уровня"]').setValue('0');
-    expect(track.attributes('aria-valuenow')).toBe('0');
+    expect(data.identity.nextLevelExperience).toBe(0);
+    expect((track.get('[aria-label="Опыт до следующего уровня"]').element as HTMLInputElement).value).toBe('300');
+    expect(track.attributes('aria-valuenow')).toBe('100');
+  });
+
+  it('takes the experience for the next level from the level, unless it was set by hand', async () => {
+    const { data, wrapper } = mountSheet();
+    const next = () => (wrapper.get('[aria-label="Опыт до следующего уровня"]').element as HTMLInputElement).value;
+    expect(next()).toBe('300');
+    data.identity.level = 5;
+    await wrapper.vm.$nextTick();
+    expect(next()).toBe('14000');
+    data.identity.level = 20;
+    await wrapper.vm.$nextTick();
+    expect(next()).toBe('355000');
+    // The rule's own number, typed in, is not stored - it must keep following the level.
+    data.identity.level = 2;
+    await wrapper.vm.$nextTick();
+    await wrapper.get('[aria-label="Опыт до следующего уровня"]').setValue('900');
+    expect(data.identity.nextLevelExperience).toBe(0);
+    data.identity.level = 3;
+    await wrapper.vm.$nextTick();
+    expect(next()).toBe('2700');
+    // A hand-set value stays through a level change.
+    await wrapper.get('[aria-label="Опыт до следующего уровня"]').setValue('5000');
+    data.identity.level = 4;
+    await wrapper.vm.$nextTick();
+    expect(next()).toBe('5000');
   });
 
   it('renders all 6 abilities, 18 skills and 7 tabs', () => {

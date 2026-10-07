@@ -4,7 +4,7 @@
       <section class="dnd-spellbook" role="dialog" aria-modal="true" aria-label="Заклинания из списка">
         <header>
           <h2>Заклинания из списка</h2>
-          <button type="button" class="dnd-spellbook-close" aria-label="Закрыть список заклинаний" @click="emit('close')">×</button>
+          <button ref="closeButton" type="button" class="dnd-spellbook-close" aria-label="Закрыть список заклинаний" @click="emit('close')">×</button>
         </header>
         <input ref="search" v-model="query" type="search" class="dnd-spellbook-search" placeholder="Поиск: огненный шар, fireball, иллюзия…" aria-label="Поиск заклинания" autocomplete="off" />
         <div class="dnd-spellbook-levels" role="group" aria-label="Уровень заклинания">
@@ -40,6 +40,7 @@ import {
   type CatalogSpell,
 } from '../dnd/spellCatalog';
 import { useBackHandler } from '../composables/useBackHandler';
+import { isCoarsePointer } from '../composables/pointer';
 
 /**
  * Picks spells from the SRD catalog. With a spellcasting class chosen it
@@ -86,10 +87,12 @@ const onKeydown = (event: KeyboardEvent) => {
 };
 
 const search = ref<HTMLInputElement | null>(null);
+const closeButton = ref<HTMLButtonElement | null>(null);
 const previousFocus = document.activeElement as HTMLElement | null;
 onMounted(() => {
   document.addEventListener('keydown', onKeydown, true);
-  search.value?.focus();
+  // On a touch screen focusing the search would raise the keyboard over the list.
+  (isCoarsePointer() ? closeButton.value : search.value)?.focus();
   loadSpellCatalog()
     .then((spells) => { catalog.value = spells; })
     .catch(() => { failed.value = true; })
