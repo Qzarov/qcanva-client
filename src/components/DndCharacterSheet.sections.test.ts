@@ -33,7 +33,7 @@ const tabNames = () => wrapper!.findAll('.dnd-cs-tabs [role="tab"]').map((tab) =
 describe('the sheet\'s sections', () => {
   it('on a wide screen has four tabs next to the abilities, which are always in view', async () => {
     const data = open();
-    expect(tabNames()).toEqual(['combat:Атаки и умения', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
+    expect(tabNames()).toEqual(['combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
     for (const key of ['equipment', 'spells', 'info', 'combat']) {
       await section(key);
       expect(wrapper!.get('.dnd-cs-tabs .active').attributes('data-tab')).toBe(key);
@@ -51,7 +51,10 @@ describe('the sheet\'s sections', () => {
   it('on a phone has five tabs: the abilities are a section of their own, apart from attacks and features', async () => {
     screenWidth(390);
     const data = open((sheet) => { sheet.activeTab = 'abilities'; sheet.features = [{ id: 'f', name: 'Ярость', maxUses: 2, currentUses: 2 }]; });
-    expect(tabNames()).toEqual(['abilities:Характеристики', 'combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
+    // Five equal segments: short names under the icons, the full ones as the tabs' labels.
+    expect(tabNames()).toEqual(['abilities:Статы', 'combat:Атаки', 'equipment:Вещи', 'spells:Магия', 'info:Инфо']);
+    expect(wrapper!.findAll('.dnd-cs-tabs [role="tab"]').map((tab) => tab.attributes('aria-label'))).toEqual(['Характеристики', 'Атаки и умения', 'Снаряжение', 'Заклинания', 'Инфо']);
+    expect(wrapper!.findAll('.dnd-cs-tabs .dnd-cs-tab-icon')).toHaveLength(5);
     expect(wrapper!.get('.dnd-cs-body').classes()).toEqual(expect.arrayContaining(['is-abilities', 'is-phone']));
     // Only the abilities: no panel under them, so nothing to scroll past.
     expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(true);
@@ -74,11 +77,10 @@ describe('the sheet\'s sections', () => {
     expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(true);
   });
 
-  it('shortens the longest name where five would not fit in a row', () => {
-    screenWidth(320);
+  it('spells the names out where five equal segments are wide enough for them', () => {
+    screenWidth(700);
     open();
-    expect(tabNames()).toEqual(['abilities:Хар-ки', 'combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
-    expect(wrapper!.get('.dnd-cs-body').classes()).toContain('is-tiny');
+    expect(tabNames()).toEqual(['abilities:Характеристики', 'combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
   });
 
   it('puts the wallet above the items in the equipment section', async () => {

@@ -83,9 +83,14 @@
     <!-- ===== BODY: sections. Wide: the abilities on the left, always; four tabs
          and their panel on the right. Phone: five tabs in one row on top, the
          abilities being the first of them. ===== -->
-    <div class="dnd-cs-body" :class="['is-' + section, { 'is-phone': phone, 'is-tiny': tiny }]">
+    <div class="dnd-cs-body" :class="['is-' + section, { 'is-phone': phone }]">
+      <!-- One bar, equal segments, an icon in each: read as tabs, not as chips.
+           The name under an icon may be the short one; the full one is the tab's label. -->
       <nav class="dnd-cs-tabs" role="tablist" aria-label="Разделы листа">
-        <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :data-tab="tab.key" :class="{ active: section === tab.key }" :aria-selected="section === tab.key" @click="setSection(tab.key)">{{ tab.label }}</button>
+        <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :data-tab="tab.key" :class="{ active: section === tab.key }" :aria-selected="section === tab.key" :aria-label="tab.name" :title="tab.label === tab.name ? undefined : tab.name" @click="setSection(tab.key)">
+          <component :is="tab.icon" class="dnd-cs-tab-icon" :size="18" :stroke-width="1.8" aria-hidden="true" />
+          <span class="dnd-cs-tab-label">{{ tab.label }}</span>
+        </button>
       </nav>
 
       <div v-show="!phone || section === 'abilities'" class="dnd-cs-left">
@@ -288,7 +293,7 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch, type PropType } from 'vue';
+import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch, type Component, type PropType } from 'vue';
 import {
   DND_ABILITIES, DND_SKILLS,
   abilityModifier, formatModifier, savingThrowBonus, skillModifier,
@@ -314,6 +319,7 @@ import DndSpellFields from './DndSpellFields.vue';
 import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import DndWallet from './DndWallet.vue';
+import { Backpack, ScrollText, Sparkles, Swords, UserRound } from '@lucide/vue';
 import type { DndCoins } from '../dnd/coins';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
@@ -341,7 +347,15 @@ const SECTION_OF: Record<DndTab, SheetSection> = {
   abilities: 'abilities', attacks: 'combat', features: 'combat', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
 };
 const SECTION_TAB: Record<SheetSection, DndTab> = { abilities: 'abilities', combat: 'attacks', equipment: 'equipment', spells: 'spells', info: 'personality' };
-type SectionTab = { key: SheetSection; label: string };
+/** `name` is the section's full name (the tab's accessible label); `label` is what fits under the icon. */
+type SectionTab = { key: SheetSection; name: string; label: string; icon: Component };
+const SECTION_TABS: Array<{ key: SheetSection; name: string; short: string; icon: Component }> = [
+  { key: 'abilities', name: 'Характеристики', short: 'Статы', icon: UserRound },
+  { key: 'combat', name: 'Атаки и умения', short: 'Атаки', icon: Swords },
+  { key: 'equipment', name: 'Снаряжение', short: 'Вещи', icon: Backpack },
+  { key: 'spells', name: 'Заклинания', short: 'Магия', icon: Sparkles },
+  { key: 'info', name: 'Инфо', short: 'Инфо', icon: ScrollText },
+];
 /** Follows a media query; `false` where there is none to ask (tests, server). */
 function useMedia(query: string) {
   const list = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query) : null;
@@ -545,17 +559,16 @@ export default defineComponent({
 
     // The sheet's one breakpoint (see the styles), and the width under which five names stop fitting in a row.
     const phone = useMedia('(max-width: 760px)');
-    const tiny = useMedia('(max-width: 379px)');
+    // Five equal segments are narrower than the longest names up to this width: short names there.
+    const narrow = useMedia('(max-width: 559px)');
     // On a wide screen the abilities are always in view on the left and have no tab: the attacks open instead.
     const section = computed<SheetSection>(() => {
       const stored = SECTION_OF[props.data.activeTab] ?? 'abilities';
       return stored === 'abilities' && !phone.value ? 'combat' : stored;
     });
-    const tabs = computed<SectionTab[]>(() => [
-      ...(phone.value ? [{ key: 'abilities' as const, label: tiny.value ? 'Хар-ки' : 'Характеристики' }] : []),
-      { key: 'combat', label: phone.value ? 'Атаки' : 'Атаки и умения' },
-      { key: 'equipment', label: 'Снаряжение' }, { key: 'spells', label: 'Заклинания' }, { key: 'info', label: 'Инфо' },
-    ]);
+    const tabs = computed<SectionTab[]>(() => SECTION_TABS
+      .filter((tab) => phone.value || tab.key !== 'abilities')
+      .map((tab) => ({ key: tab.key, name: tab.name, icon: tab.icon, label: narrow.value || tab.key === 'combat' ? tab.short : tab.name })));
     const setSection = (next: SheetSection) => {
       if (section.value === next) return;
       props.data.activeTab = SECTION_TAB[next];
@@ -726,7 +739,7 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
-      tabs, phone, tiny, section, setSection, setCoins,
+      tabs, phone, section, setSection, setCoins,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -1060,17 +1073,25 @@ export default defineComponent({
 .dnd-cs-add { margin-top: 6px; }
 
 /* ===== TABS ===== */
-.dnd-cs-tabs { grid-area: tabs; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.dnd-cs-tabs button {
-  padding: 7px 14px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
-  background: rgba(var(--dnd-fill-rgb), 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
-  transition: all 160ms ease;
+/* One bar with equal segments: the sheet's navigation, not a row of chips. */
+.dnd-cs-tabs {
+  grid-area: tabs; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px; min-width: 0;
+  padding: 3px; border: 1px solid var(--dnd-glass-border); border-radius: 14px; background: rgba(var(--dnd-fill-rgb), 0.03);
 }
-.dnd-cs-tabs button:hover { color: var(--ui-text); }
+.dnd-cs-tabs button {
+  display: flex; align-items: center; justify-content: center; gap: 7px; min-width: 0; min-height: 38px; padding: 6px 8px;
+  border: 1px solid transparent; border-radius: 11px; background: transparent; color: var(--dnd-text-dim);
+  font: inherit; font-size: 12px; cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+.dnd-cs-tab-icon { flex: none; }
+.dnd-cs-tab-label { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dnd-cs-tabs button:hover { color: var(--ui-text); background: rgba(var(--dnd-fill-rgb), 0.04); }
+.dnd-cs-tabs button:focus-visible { outline: 2px solid color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); outline-offset: 1px; }
 .dnd-cs-tabs button.active {
   border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent);
-  color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft);
-  box-shadow: 0 0 16px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
+  color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft); font-weight: 700;
+  box-shadow: 0 0 14px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
 }
 .dnd-cs-tab-panel { grid-area: panel; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
 /* A second block inside one section stands apart from the first. */
@@ -1154,10 +1175,8 @@ export default defineComponent({
   .dnd-cs-subline input { padding-inline: 1px; }
   /* Phone: the tabs in one row on top, then the one section chosen (the abilities are a section here). */
   .dnd-cs-body { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
-  .dnd-cs-tabs { flex-wrap: nowrap; gap: 4px; }
-  .dnd-cs-tabs button { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 6px 5px; font-size: 11px; white-space: nowrap; }
-  .dnd-cs-body.is-tiny .dnd-cs-tabs { gap: 3px; }
-  .dnd-cs-body.is-tiny .dnd-cs-tabs button { padding-inline: 3px; }
+  /* The icon over its name: five segments stay equal and readable down to 320 px. */
+  .dnd-cs-tabs button { flex-direction: column; gap: 3px; min-height: 52px; padding: 6px 2px 5px; font-size: 11px; }
   .dnd-cs-tab-panel { padding: 12px; }
   .dnd-cs-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .dnd-cs-ability { padding: 6px; min-width: 0; }

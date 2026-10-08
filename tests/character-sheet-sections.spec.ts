@@ -49,8 +49,18 @@ for (const width of [320, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await openSheet(page);
     const tabs = page.getByRole('tab');
-    expect(await tabs.allInnerTexts()).toEqual([width < 380 ? 'Хар-ки' : 'Характеристики', 'Атаки', 'Снаряжение', 'Заклинания', 'Инфо']);
+    // Short names under the icons; the full ones are what a tab is called.
+    expect((await tabs.allInnerTexts()).map((text) => text.trim())).toEqual(['Статы', 'Атаки', 'Вещи', 'Магия', 'Инфо']);
+    for (const name of ['Характеристики', 'Атаки и умения', 'Снаряжение', 'Заклинания', 'Инфо']) await expect(page.getByRole('tab', { name, exact: true })).toBeVisible();
+    await expect(page.locator('.dnd-cs-tabs svg')).toHaveCount(5);
     const boxes = await Promise.all((await tabs.all()).map(async (item) => (await item.boundingBox())!));
+    // One bar, segments of one size.
+    const widths = boxes.map((box) => box.width);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+    const bar = (await page.locator('.dnd-cs-tabs').boundingBox())!;
+    expect(boxes[0]!.x - bar.x).toBeLessThanOrEqual(6);
+    expect(bar.x + bar.width - (boxes[4]!.x + boxes[4]!.width)).toBeLessThanOrEqual(6);
+    for (const label of await page.locator('.dnd-cs-tab-label').all()) expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     // One row without scrolling, nothing clipped, full touch targets.
     expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(1);
     for (const item of await tabs.all()) expect(await item.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
@@ -109,7 +119,11 @@ for (const width of [320, 390]) {
 test('on a wide screen the abilities stay in view next to every section', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await openSheet(page);
-  expect(await page.getByRole('tab').allInnerTexts()).toEqual(['Атаки и умения', 'Снаряжение', 'Заклинания', 'Инфо']);
+  expect((await page.getByRole('tab').allInnerTexts()).map((text) => text.trim())).toEqual(['Атаки', 'Снаряжение', 'Заклинания', 'Инфо']);
+  await expect(page.getByRole('tab', { name: 'Атаки и умения', exact: true })).toBeVisible();
+  const wide = await Promise.all((await page.getByRole('tab').all()).map(async (item) => (await item.boundingBox())!.width));
+  expect(Math.max(...wide) - Math.min(...wide)).toBeLessThanOrEqual(1);
+  for (const label of await page.locator('.dnd-cs-tab-label').all()) expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   // The abilities have no tab here: a new sheet opens on the attacks.
   await expect(tab(page, 'combat')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByLabel('Название атаки')).toHaveValue('Булава');
