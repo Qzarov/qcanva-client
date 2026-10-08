@@ -13,7 +13,8 @@ export type DndAbilityKey = typeof DND_ABILITIES[number]['key'];
 export type DndDisplayMode = 'full' | 'compact';
 /** "play" during a session, "setup" for the rare edits; per viewer, never synced. */
 export type DndSheetMode = 'play' | 'setup';
-export type DndTab = 'attacks' | 'features' | 'equipment' | 'personality' | 'goals' | 'notes' | 'spells';
+/** `abilities` is the sheet page's own section; the canvas card knows only the other seven. */
+export type DndTab = 'abilities' | 'attacks' | 'features' | 'equipment' | 'personality' | 'goals' | 'notes' | 'spells';
 export type SkillProficiency = 'none' | 'half' | 'proficient' | 'expertise';
 
 /**
@@ -263,7 +264,7 @@ export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetDa
   // One hit die per level: never more spent than the character has.
   base.combat.hitDiceSpent = clamp(Math.trunc(asNumber(data.combat?.hitDiceSpent, 0)), 0, clamp(Math.trunc(base.identity.level), 1, 20));
   base.displayMode = data.displayMode === 'compact' ? 'compact' : 'full';
-  base.activeTab = ['attacks', 'features', 'equipment', 'personality', 'goals', 'notes', 'spells'].includes(data.activeTab) ? data.activeTab : base.activeTab;
+  base.activeTab = ['abilities', 'attacks', 'features', 'equipment', 'personality', 'goals', 'notes', 'spells'].includes(data.activeTab) ? data.activeTab : base.activeTab;
   for (const key of ['skills', 'passiveBonuses', 'personality', 'proficiencies'] as const) Object.assign(base[key], data[key] || {});
   for (const key of ['attacks', 'features', 'equipment', 'spells', 'goals'] as const) base[key] = Array.isArray(data[key]) ? data[key] : [];
   base.spellcasting = normalizeSpellcasting(data.spellcasting);

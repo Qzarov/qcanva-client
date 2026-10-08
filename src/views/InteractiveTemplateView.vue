@@ -116,7 +116,11 @@ export default defineComponent({
         modeChosen = true;
         if (isBlankSheet(next)) mode.value = 'setup';
       }
+      // Nothing chosen by this viewer yet and the sheet still has the tab it was
+      // created with: start on the abilities (a wide screen shows the attacks
+      // for that - the abilities are on its left anyway).
       if (prefs.activeTab) next.activeTab = prefs.activeTab;
+      else if (next.activeTab === 'attacks') next.activeTab = 'abilities';
       if (prefs.displayMode) next.displayMode = prefs.displayMode;
       const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
       const typing = active && dirtyInputs.has(active) && editorRoot.value?.contains(active)

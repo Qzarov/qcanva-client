@@ -45,65 +45,64 @@ const tab = (page: Page, key: string) => page.locator(`.dnd-cs-tabs [data-tab="$
 const noSideScroll = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
 for (const width of [320, 390]) {
-  test(`on a phone the four tabs fit in one row above the abilities (${width}px)`, async ({ page }) => {
+  test(`on a phone five tabs fit in one row, and each section stands alone (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openSheet(page);
     const tabs = page.getByRole('tab');
-    // innerText: the wide-screen name of the first tab is in the DOM too, hidden.
-    expect(await tabs.allInnerTexts()).toEqual(['Характеристики', 'Снаряжение', 'Заклинания', 'Инфо']);
+    expect(await tabs.allInnerTexts()).toEqual([width < 380 ? 'Хар-ки' : 'Характеристики', 'Атаки', 'Снаряжение', 'Заклинания', 'Инфо']);
     const boxes = await Promise.all((await tabs.all()).map(async (item) => (await item.boundingBox())!));
-    // One row, nothing clipped, full touch targets.
+    // One row without scrolling, nothing clipped, full touch targets.
     expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(1);
     for (const item of await tabs.all()) expect(await item.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    expect(await page.locator('.dnd-cs-tabs').evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     for (const box of boxes) {
       expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(width);
     }
+    const tabsBottom = boxes[0]!.y + boxes[0]!.height;
     const abilities = page.locator('.dnd-cs-abilities');
+    const panel = page.locator('.dnd-cs-tab-panel');
+
+    // A sheet opens on the abilities, and that section is the abilities alone.
+    await expect(tab(page, 'abilities')).toHaveAttribute('aria-selected', 'true');
     await expect(abilities).toBeVisible();
-    expect((await abilities.boundingBox())!.y).toBeGreaterThan(boxes[0]!.y + boxes[0]!.height);
-    // The first section goes on: attacks and features under the abilities.
+    await expect(panel).toHaveCount(0);
+    expect((await abilities.boundingBox())!.y - tabsBottom).toBeLessThan(24);
+    expect(await noSideScroll(page)).toBe(true);
+    if (SHOTS) await page.waitForTimeout(300);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-abilities-${width}.png`, fullPage: true });
+
+    const expectSection = async (key: string) => {
+      await tab(page, key).click();
+      await expect(tab(page, key)).toHaveAttribute('aria-selected', 'true');
+      await expect(page.locator('.dnd-cs-tabs .active')).toHaveCount(1);
+      await expect(abilities).toBeHidden();
+      expect((await panel.boundingBox())!.y - tabsBottom).toBeLessThan(24);
+      expect(await noSideScroll(page)).toBe(true);
+      if (SHOTS) await page.waitForTimeout(300);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-${key}-${width}.png`, fullPage: true });
+    };
+
+    await expectSection('combat');
     await expect(page.getByLabel('Название атаки')).toHaveValue('Булава');
     await expect(page.getByLabel('Название умения')).toHaveValue('Божественный канал');
-    expect((await page.getByLabel('Название атаки').boundingBox())!.y).toBeGreaterThan((await abilities.boundingBox())!.y);
-    expect(await noSideScroll(page)).toBe(true);
-    if (SHOTS) await page.waitForTimeout(300);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-main-${width}.png`, fullPage: true });
 
-    // The other sections take the abilities' place.
-    await tab(page, 'equipment').click();
-    await expect(tab(page, 'equipment')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.dnd-cs-tabs .active')).toHaveCount(1);
-    await expect(abilities).toBeHidden();
+    await expectSection('equipment');
     await expect(page.getByRole('region', { name: 'Монеты' })).toBeVisible();
     await expect(page.getByLabel('Название предмета').first()).toHaveValue('Кольчуга');
-    const panelTop = (await page.locator('.dnd-cs-tab-panel').boundingBox())!.y;
-    expect(panelTop - (boxes[0]!.y + boxes[0]!.height)).toBeLessThan(24);
-    expect(await noSideScroll(page)).toBe(true);
-    if (SHOTS) await page.waitForTimeout(300);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-equipment-${width}.png`, fullPage: true });
 
-    await tab(page, 'spells').click();
-    await expect(tab(page, 'spells')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.dnd-cs-tabs .active')).toHaveCount(1);
-    await expect(abilities).toBeHidden();
+    await expectSection('spells');
     await expect(page.getByLabel('Название заклинания').first()).toHaveValue('Священное пламя');
-    expect(await noSideScroll(page)).toBe(true);
 
-    await tab(page, 'info').click();
-    await expect(tab(page, 'info')).toHaveAttribute('aria-selected', 'true');
-    await expect(page.locator('.dnd-cs-tabs .active')).toHaveCount(1);
-    await expect(abilities).toBeHidden();
+    await expectSection('info');
     await expect(page.locator('.dnd-cs-tab-panel h4')).toHaveText(['Цели', 'Характер', 'Заметки', 'Владения']);
     await expect(page.getByLabel('Заметки персонажа')).toHaveValue('Должна гильдии 20 зм.');
     await expect(page.locator('.dnd-cs-proficiencies')).toContainText('Языки и прочее');
-    expect(await noSideScroll(page)).toBe(true);
-    if (SHOTS) await page.waitForTimeout(300);
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-info-${width}.png`, fullPage: true });
 
-    await tab(page, 'main').click();
+    await tab(page, 'abilities').click();
     await expect(abilities).toBeVisible();
+    await expect(panel).toHaveCount(0);
   });
 }
 
@@ -111,8 +110,11 @@ test('on a wide screen the abilities stay in view next to every section', async 
   await page.setViewportSize({ width: 1280, height: 900 });
   await openSheet(page);
   expect(await page.getByRole('tab').allInnerTexts()).toEqual(['Атаки и умения', 'Снаряжение', 'Заклинания', 'Инфо']);
+  // The abilities have no tab here: a new sheet opens on the attacks.
+  await expect(tab(page, 'combat')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByLabel('Название атаки')).toHaveValue('Булава');
   const abilities = page.locator('.dnd-cs-abilities');
-  for (const key of ['equipment', 'spells', 'info', 'main']) {
+  for (const key of ['equipment', 'spells', 'info', 'combat']) {
     await tab(page, key).click();
     await expect(tab(page, key)).toHaveAttribute('aria-selected', 'true');
     await expect(abilities).toBeVisible();
@@ -124,6 +126,19 @@ test('on a wide screen the abilities stay in view next to every section', async 
   }
   // The proficiencies moved out of the left column.
   await expect(page.locator('.dnd-cs-left .dnd-cs-proficiencies')).toHaveCount(0);
+});
+
+test('a phone and a wide screen share the stored section', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await openSheet(page);
+  await expect(tab(page, 'abilities')).toHaveAttribute('aria-selected', 'true');
+  // The same page turned wide: the abilities move to the left and the attacks open.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await expect(tab(page, 'abilities')).toHaveCount(0);
+  await expect(tab(page, 'combat')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.dnd-cs-abilities')).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 800 });
+  await expect(tab(page, 'abilities')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('the chosen section survives a reload and is not synced', async ({ page }) => {

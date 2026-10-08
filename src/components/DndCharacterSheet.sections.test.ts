@@ -20,23 +20,65 @@ const section = (key: string) => wrapper!.get(`.dnd-cs-tabs [data-tab="${key}"]`
 const headings = () => wrapper!.findAll('.dnd-cs-tab-panel h4').map((heading) => heading.text());
 const snapshot = (data: DndCharacterSheetData) => JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
 
-describe('the sheet\'s four sections', () => {
-  it('has four tabs; the first is named after the abilities on a phone and after what it adds on a wide screen', () => {
-    open();
-    const tabs = wrapper!.findAll('.dnd-cs-tabs [role="tab"]');
-    expect(tabs.map((tab) => tab.attributes('data-tab'))).toEqual(['main', 'equipment', 'spells', 'info']);
-    expect(tabs[0]!.get('.dnd-cs-tab-narrow').text()).toBe('Характеристики');
-    expect(tabs[0]!.get('.dnd-cs-tab-wide').text()).toBe('Атаки и умения');
-    expect(tabs.slice(1).map((tab) => tab.text())).toEqual(['Снаряжение', 'Заклинания', 'Инфо']);
-    expect(tabs[0]!.attributes('aria-selected')).toBe('true');
-    expect(wrapper!.get('.dnd-cs-body').classes()).toContain('is-main');
+/** Makes the sheet believe the screen is this wide (jsdom has no layout and no media queries). */
+function screenWidth(width: number) {
+  window.matchMedia = ((query: string) => {
+    const max = Number(/max-width:\s*(\d+)px/.exec(query)?.[1] ?? 0);
+    return { matches: width <= max, media: query, addEventListener() {}, removeEventListener() {} };
+  }) as unknown as typeof window.matchMedia;
+}
+afterEach(() => { delete (window as { matchMedia?: unknown }).matchMedia; });
+const tabNames = () => wrapper!.findAll('.dnd-cs-tabs [role="tab"]').map((tab) => `${tab.attributes('data-tab')}:${tab.text()}`);
+
+describe('the sheet\'s sections', () => {
+  it('on a wide screen has four tabs next to the abilities, which are always in view', async () => {
+    const data = open();
+    expect(tabNames()).toEqual(['combat:Атаки и умения', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
+    for (const key of ['equipment', 'spells', 'info', 'combat']) {
+      await section(key);
+      expect(wrapper!.get('.dnd-cs-tabs .active').attributes('data-tab')).toBe(key);
+      expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(true);
+      expect(wrapper!.find('.dnd-cs-tab-panel').exists()).toBe(true);
+    }
+    // "Abilities" stored by a phone: here the attacks open, and nothing is rewritten.
+    data.activeTab = 'abilities';
+    await wrapper!.vm.$nextTick();
+    expect(wrapper!.get('.dnd-cs-tabs .active').attributes('data-tab')).toBe('combat');
+    expect(wrapper!.find('.dnd-cs-attack-row, .dnd-cs-add').exists()).toBe(true);
+    expect(data.activeTab).toBe('abilities');
   });
 
-  it('keeps attacks and features together in the first section', () => {
-    open((data) => { data.features = [{ id: 'f', name: 'Ярость', maxUses: 2, currentUses: 2 }]; });
+  it('on a phone has five tabs: the abilities are a section of their own, apart from attacks and features', async () => {
+    screenWidth(390);
+    const data = open((sheet) => { sheet.activeTab = 'abilities'; sheet.features = [{ id: 'f', name: 'Ярость', maxUses: 2, currentUses: 2 }]; });
+    expect(tabNames()).toEqual(['abilities:Характеристики', 'combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
+    expect(wrapper!.get('.dnd-cs-body').classes()).toEqual(expect.arrayContaining(['is-abilities', 'is-phone']));
+    // Only the abilities: no panel under them, so nothing to scroll past.
+    expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(true);
+    expect(wrapper!.find('.dnd-cs-tab-panel').exists()).toBe(false);
+    expect(wrapper!.find('.dnd-cs-feature-row').exists()).toBe(false);
+
+    await section('combat');
+    expect(data.activeTab).toBe('attacks');
+    expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(false);
     expect(headings()).toEqual(['Экипированное оружие', 'Другие атаки', 'Умения']);
     expect(wrapper!.find('.dnd-cs-feature-row').exists()).toBe(true);
     expect(wrapper!.findAll('.dnd-cs-add').map((button) => button.text())).toEqual(['+ Добавить атаку', '+ Добавить умение']);
+
+    await section('equipment');
+    expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(false);
+    expect(headings()).toEqual(['Монеты', 'Предметы']);
+
+    await section('abilities');
+    expect(data.activeTab).toBe('abilities');
+    expect(wrapper!.get('.dnd-cs-left').isVisible()).toBe(true);
+  });
+
+  it('shortens the longest name where five would not fit in a row', () => {
+    screenWidth(320);
+    open();
+    expect(tabNames()).toEqual(['abilities:Хар-ки', 'combat:Атаки', 'equipment:Снаряжение', 'spells:Заклинания', 'info:Инфо']);
+    expect(wrapper!.get('.dnd-cs-body').classes()).toContain('is-tiny');
   });
 
   it('puts the wallet above the items in the equipment section', async () => {
@@ -44,7 +86,6 @@ describe('the sheet\'s four sections', () => {
     await section('equipment');
     expect(wrapper!.get('.dnd-cs-body').classes()).toContain('is-equipment');
     expect(headings()).toEqual(['Монеты', 'Предметы']);
-    expect(wrapper!.find('.dnd-cs-abilities').exists()).toBe(true); // still there: only a phone hides it, by CSS
   });
 
   it('gathers goals, personality, notes and proficiencies in "Инфо"', async () => {
@@ -61,8 +102,9 @@ describe('the sheet\'s four sections', () => {
   });
 
   it('opens the right section for every stored tab, and stores a section as its first tab', async () => {
+    screenWidth(390);
     const expected: Record<DndTab, string> = {
-      attacks: 'main', features: 'main', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
+      abilities: 'abilities', attacks: 'combat', features: 'combat', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
     };
     for (const [tab, key] of Object.entries(expected)) {
       open((data) => { data.activeTab = tab as DndTab; });
@@ -73,7 +115,7 @@ describe('the sheet\'s four sections', () => {
     // Already in "Инфо": choosing it again must not rewrite the stored tab.
     await section('info');
     expect(data.activeTab).toBe('notes');
-    await section('main');
+    await section('combat');
     expect(data.activeTab).toBe('attacks');
     await section('info');
     expect(data.activeTab).toBe('personality');

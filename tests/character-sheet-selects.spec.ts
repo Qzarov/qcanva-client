@@ -120,7 +120,7 @@ test('every list on the sheet opens, fits a phone and takes a choice', async ({ 
   };
 
   await pick('Класс', 'Волшебник'); // twelve options: the longest list, scrolls inside itself
-  await page.locator('.dnd-cs-tabs [data-tab="main"]').click();
+  await page.locator('.dnd-cs-tabs [data-tab="combat"]').click();
   await pick('Когда восстанавливаются заряды', 'Длинный отдых');
   await page.getByRole('tab', { name: 'Снаряжение', exact: true }).click();
   await pick('Категория оружия', 'Воинское');

@@ -203,7 +203,7 @@ describe('DndCharacterSheet interactions', () => {
     const { wrapper } = mountSheet();
     expect(wrapper.findAll('.dnd-cs-ability')).toHaveLength(6);
     expect(wrapper.findAll('.dnd-cs-skills li')).toHaveLength(18);
-    expect(wrapper.findAll('.dnd-cs-tabs button').map((b) => b.attributes('data-tab'))).toEqual(['main', 'equipment', 'spells', 'info']);
+    expect(wrapper.findAll('.dnd-cs-tabs button').map((b) => b.attributes('data-tab'))).toEqual(['combat', 'equipment', 'spells', 'info']);
   });
 
   // Regression: the input @change handlers referenced a `$ev(...)` helper, but

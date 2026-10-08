@@ -46,7 +46,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
 
   it('lets uses be spent but not the maximum or recharge changed; hides list composition', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
-    await tab('Характеристики');
+    await tab('Атаки');
     expect(isReadonly('[aria-label="Название умения"]')).toBe(true);
     expect(isReadonly('[aria-label="Описание умения"]')).toBe(true);
     expect(isReadonly('[aria-label="Максимум использований"]')).toBe(true);
@@ -68,7 +68,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     expect(wrapper.find('.dnd-weapon-fields').exists()).toBe(false);
     expect(wrapper.find('.dnd-cs-add-row').exists()).toBe(false);
     // The weapon itself still attacks.
-    await tab('Характеристики');
+    await tab('Атаки');
     expect(wrapper.find('[aria-label="Атака: Топор"]').exists()).toBe(true);
   });
 
@@ -80,10 +80,30 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     expect(isReadonly('[aria-label="Всего ячеек 1 уровня"]')).toBe(true);
     expect(isDisabled('[aria-label="Потратить ячейку 1 уровня"]')).toBe(false);
     expect(isReadonly('[aria-label="Название заклинания"]')).toBe(true);
-    expect(isReadonly('[aria-label="Уровень заклинания"]')).toBe(true);
+    // The level is the heading of the group; the row does not repeat it.
+    expect(wrapper.find('[aria-label="Уровень заклинания"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Бросок и урон заклинания"]').exists()).toBe(false);
     expect(wrapper.find('[aria-label="Удалить заклинание"]').exists()).toBe(false);
     expect(wrapper.find('.dnd-cs-add-row').exists()).toBe(false);
+  });
+
+  it('shows a row\'s notes only when there are some, and all the fields again in setup', async () => {
+    const data = filled();
+    data.spells.push({ id: 'ward', name: 'Щит', level: 1, description: 'Реакция' } as any);
+    data.equipment.push({ id: 'rope', name: 'Верёвка', quantity: 1, description: '50 футов' } as any);
+    wrapper = mount(DndCharacterSheet, { props: { data, mode: 'play' }, attachTo: document.body });
+    await tab('Заклинания');
+    const spellNotes = wrapper.findAll('[aria-label="Заметки заклинания"]');
+    expect(spellNotes.map((input) => (input.element as HTMLInputElement).value)).toEqual(['Реакция']);
+    expect(spellNotes[0]!.attributes('readonly')).toBeDefined();
+    await tab('Снаряжение');
+    expect(wrapper.findAll('[aria-label="Заметки"]').map((input) => (input.element as HTMLInputElement).value)).toEqual(['50 футов']);
+
+    await wrapper.setProps({ mode: 'setup' });
+    expect(wrapper.findAll('[aria-label="Заметки"]')).toHaveLength(2);
+    await tab('Заклинания');
+    expect(wrapper.findAll('[aria-label="Заметки заклинания"]')).toHaveLength(2);
+    expect(wrapper.findAll('[aria-label="Уровень заклинания"]')).toHaveLength(2);
   });
 
   it('ticks goals off but does not rename or remove them; notes stay editable', async () => {

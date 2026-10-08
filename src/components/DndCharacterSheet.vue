@@ -82,18 +82,15 @@
       <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
     </div>
 
-    <!-- ===== BODY: four sections. Wide: the abilities on the left, the tabs and
-         their panel on the right. Phone: the tabs on top, and the abilities are
-         a part of the first section. ===== -->
-    <div class="dnd-cs-body" :class="'is-' + section">
+    <!-- ===== BODY: sections. Wide: the abilities on the left, always; four tabs
+         and their panel on the right. Phone: five tabs in one row on top, the
+         abilities being the first of them. ===== -->
+    <div class="dnd-cs-body" :class="['is-' + section, { 'is-phone': phone, 'is-tiny': tiny }]">
       <nav class="dnd-cs-tabs" role="tablist" aria-label="Разделы листа">
-        <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :data-tab="tab.key" :class="{ active: section === tab.key }" :aria-selected="section === tab.key" @click="setSection(tab.key)">
-          <template v-if="tab.wideLabel"><span class="dnd-cs-tab-narrow">{{ tab.label }}</span><span class="dnd-cs-tab-wide">{{ tab.wideLabel }}</span></template>
-          <template v-else>{{ tab.label }}</template>
-        </button>
+        <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :data-tab="tab.key" :class="{ active: section === tab.key }" :aria-selected="section === tab.key" @click="setSection(tab.key)">{{ tab.label }}</button>
       </nav>
 
-      <div class="dnd-cs-left">
+      <div v-show="!phone || section === 'abilities'" class="dnd-cs-left">
         <!-- Abilities + their skills -->
         <section class="dnd-cs-abilities">
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
@@ -125,9 +122,9 @@
       </div>
 
       <!-- ===== THE SECTION'S PANEL ===== -->
-        <div class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
-          <!-- Main: attacks and features (on a phone the abilities stand above) -->
-          <template v-if="section === 'main'">
+        <div v-if="section !== 'abilities'" class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
+          <!-- Combat: attacks and features -->
+          <template v-if="section === 'combat'">
             <DndWeaponAttacks :attacks="weaponAttacks" @attack="attackWithWeapon" @damage="weaponDamage" />
             <h4 v-if="data.attacks.length || !locked" class="dnd-cs-subheading">Другие атаки</h4>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
@@ -179,7 +176,7 @@
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.equipped" :disabled="readonly" aria-label="Экипировано" @change="toggleItem('equipment', item.id, 'equipped')" /></label>
               <input :readonly="locked" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
               <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', evVal($event))" />
-              <input :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" @change="setItem('equipment', item.id, 'description', evVal($event))" />
+              <input v-if="!locked || item.description?.trim()" :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки" :title="locked ? item.description : undefined" @change="setItem('equipment', item.id, 'description', evVal($event))" />
               <button v-if="!locked" type="button" class="dnd-cs-weapon-toggle" :class="{ on: isWeapon(item) }" :disabled="readonly" :aria-pressed="isWeapon(item)" :aria-label="isWeapon(item) ? 'Это оружие: убрать боевые параметры' : 'Сделать оружием'" :title="isWeapon(item) ? 'Оружие' : 'Сделать оружием'" @click="toggleWeapon(item)">⚔</button>
               <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
               <DndWeaponFields v-if="isWeapon(item) && !locked" :item="item" :sheet="data" :readonly="locked" @change="change" />
@@ -261,7 +258,7 @@
                 <label v-if="group.level && showPrepared" class="dnd-cs-equip-check"><input type="checkbox" :checked="item.prepared" :disabled="readonly" aria-label="Подготовлено" @change="toggleItem('spells', item.id, 'prepared')" /></label>
                 <span v-else aria-hidden="true"></span>
                 <input :readonly="locked" :value="item.name" placeholder="Название" aria-label="Название заклинания" @change="setItem('spells', item.id, 'name', evVal($event))" />
-                <input class="dnd-cs-qty" type="number" min="0" max="9" :readonly="locked" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
+                <input v-if="!locked" class="dnd-cs-qty" type="number" min="0" max="9" :value="item.level || 0" aria-label="Уровень заклинания" title="Уровень заклинания, 0 — заговор" @change="setSpellLevel(item.id, evVal($event))" />
                 <button v-if="!locked" type="button" class="dnd-cs-weapon-toggle" :class="{ on: openSpells.has(item.id) }" :aria-expanded="openSpells.has(item.id)" aria-label="Бросок и урон заклинания" title="Бросок и урон" @click="toggleSpell(item.id)">✦</button>
                 <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить заклинание" @click="removeItem('spells', item.id)">×</button>
                 <div v-if="spellRollKind(item) || item.damage?.trim()" class="dnd-cs-attack-rolls dnd-cs-spell-notes">
@@ -270,7 +267,7 @@
                   <DndFormulaButton v-if="item.damage?.trim()" :formula="parseFormula(item.damage)" :source="item.damage" :prefix="spellRollKind(item) || item.damageType?.trim() ? 'Урон' : 'Бросок'" @roll="spellDamage(item)" />
                 </div>
                 <DndSpellFields v-if="openSpells.has(item.id) && !locked" :item="item" :has-ability="Boolean(data.spellcasting.ability)" :readonly="locked" @change="change" />
-                <input class="dnd-cs-spell-notes" :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" @change="setItem('spells', item.id, 'description', evVal($event))" />
+                <input v-if="!locked || item.description?.trim()" class="dnd-cs-spell-notes" :readonly="locked" :value="item.description || ''" placeholder="Заметки" aria-label="Заметки заклинания" :title="locked ? item.description : undefined" @change="setItem('spells', item.id, 'description', evVal($event))" />
               </div>
             </template>
             <div v-if="!locked" class="dnd-cs-add-row">
@@ -341,11 +338,21 @@ type RollKind = 'check' | 'save' | 'skill' | 'initiative';
  * values (the canvas card still uses them as list names): several of them
  * open the same section, and choosing a section stores its first one.
  */
-type SheetSection = 'main' | 'equipment' | 'spells' | 'info';
+type SheetSection = 'abilities' | 'combat' | 'equipment' | 'spells' | 'info';
 const SECTION_OF: Record<DndTab, SheetSection> = {
-  attacks: 'main', features: 'main', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
+  abilities: 'abilities', attacks: 'combat', features: 'combat', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
 };
-const SECTION_TAB: Record<SheetSection, DndTab> = { main: 'attacks', equipment: 'equipment', spells: 'spells', info: 'personality' };
+const SECTION_TAB: Record<SheetSection, DndTab> = { abilities: 'abilities', combat: 'attacks', equipment: 'equipment', spells: 'spells', info: 'personality' };
+type SectionTab = { key: SheetSection; label: string };
+/** Follows a media query; `false` where there is none to ask (tests, server). */
+function useMedia(query: string) {
+  const list = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query) : null;
+  const matches = ref(Boolean(list?.matches));
+  const update = () => { matches.value = Boolean(list?.matches); };
+  onMounted(() => list?.addEventListener?.('change', update));
+  onBeforeUnmount(() => list?.removeEventListener?.('change', update));
+  return matches;
+}
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
@@ -538,7 +545,19 @@ export default defineComponent({
       emit('op', { type: 'uses-change', itemId: id, delta });
     };
 
-    const section = computed<SheetSection>(() => SECTION_OF[props.data.activeTab] ?? 'main');
+    // The sheet's one breakpoint (see the styles), and the width under which five names stop fitting in a row.
+    const phone = useMedia('(max-width: 760px)');
+    const tiny = useMedia('(max-width: 379px)');
+    // On a wide screen the abilities are always in view on the left and have no tab: the attacks open instead.
+    const section = computed<SheetSection>(() => {
+      const stored = SECTION_OF[props.data.activeTab] ?? 'abilities';
+      return stored === 'abilities' && !phone.value ? 'combat' : stored;
+    });
+    const tabs = computed<SectionTab[]>(() => [
+      ...(phone.value ? [{ key: 'abilities' as const, label: tiny.value ? 'Хар-ки' : 'Характеристики' }] : []),
+      { key: 'combat', label: phone.value ? 'Атаки' : 'Атаки и умения' },
+      { key: 'equipment', label: 'Снаряжение' }, { key: 'spells', label: 'Заклинания' }, { key: 'info', label: 'Инфо' },
+    ]);
     const setSection = (next: SheetSection) => {
       if (section.value === next) return;
       props.data.activeTab = SECTION_TAB[next];
@@ -709,12 +728,7 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
-      // On a wide screen the abilities are always in view on the left, so the first tab is named after what it adds.
-      tabs: [
-        { key: 'main', label: 'Характеристики', wideLabel: 'Атаки и умения' }, { key: 'equipment', label: 'Снаряжение' },
-        { key: 'spells', label: 'Заклинания' }, { key: 'info', label: 'Инфо' },
-      ] as { key: SheetSection; label: string; wideLabel?: string }[],
-      section, setSection, setCoins,
+      tabs, phone, tiny, section, setSection, setCoins,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -1049,7 +1063,6 @@ export default defineComponent({
 
 /* ===== TABS ===== */
 .dnd-cs-tabs { grid-area: tabs; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.dnd-cs-tab-narrow { display: none; }
 .dnd-cs-tabs button {
   padding: 7px 14px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
   background: rgba(var(--dnd-fill-rgb), 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
@@ -1115,6 +1128,19 @@ export default defineComponent({
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-notes { min-height: 160px; text-transform: none; }
 
+/* ===== Play mode: the lists are read and rolled from, not edited - a row is one line ===== */
+.dnd-cs-play .dnd-cs-tab-panel { gap: 6px; }
+.dnd-cs-play .dnd-cs-spell-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 4px 8px; }
+.dnd-cs-play .dnd-cs-spell-row > .dnd-cs-equip-check,
+.dnd-cs-play .dnd-cs-spell-row > span[aria-hidden='true'] { flex: 0 0 22px; }
+.dnd-cs-play .dnd-cs-spell-row > input[aria-label='Название заклинания'] { flex: 1 1 130px; width: auto; font-weight: 600; }
+.dnd-cs-play .dnd-cs-spell-row > .dnd-cs-attack-rolls { flex: 0 1 auto; }
+/* Notes are a quiet second line; an empty one is not rendered at all. */
+.dnd-cs-play .dnd-cs-spell-row > input.dnd-cs-spell-notes,
+.dnd-cs-play .dnd-cs-equip-row > input[aria-label='Заметки'] { font-size: 12px; padding-block: 0 2px; color: var(--dnd-text-dim); text-overflow: ellipsis; }
+.dnd-cs-play .dnd-cs-spell-row > input.dnd-cs-spell-notes { flex: 1 1 100%; padding-left: 34px; }
+/* No columns kept for the hidden "weapon" and "remove" buttons: the name gets the room. */
+.dnd-cs-play .dnd-cs-equip-row { grid-template-columns: 28px minmax(0, 2fr) 52px minmax(0, 2fr); padding: 4px 8px; row-gap: 0; }
 
 /* ===== Mobile ===== */
 @media (max-width: 760px) {
@@ -1128,14 +1154,12 @@ export default defineComponent({
   .dnd-cs-identity-line.is-multiline { grid-template-columns:minmax(0,1fr) minmax(0,70px); }
   .dnd-cs-subline { font-size: 12px; gap: 2px; }
   .dnd-cs-subline input { padding-inline: 1px; }
-  /* Phone: the tabs on top; the abilities belong to the first section and leave with it. */
-  .dnd-cs-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tabs" "left" "panel"; grid-template-rows: auto; }
-  .dnd-cs-body:not(.is-main) .dnd-cs-left { display: none; }
-  .dnd-cs-body:not(.is-main) { grid-template-areas: "tabs" "panel"; }
-  .dnd-cs-tab-narrow { display: inline; }
-  .dnd-cs-tab-wide { display: none; }
+  /* Phone: the tabs in one row on top, then the one section chosen (the abilities are a section here). */
+  .dnd-cs-body { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
   .dnd-cs-tabs { flex-wrap: nowrap; gap: 4px; }
   .dnd-cs-tabs button { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 6px 5px; font-size: 11px; white-space: nowrap; }
+  .dnd-cs-body.is-tiny .dnd-cs-tabs { gap: 3px; }
+  .dnd-cs-body.is-tiny .dnd-cs-tabs button { padding-inline: 3px; }
   .dnd-cs-tab-panel { padding: 12px; }
   .dnd-cs-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .dnd-cs-ability { padding: 6px; min-width: 0; }
@@ -1177,5 +1201,7 @@ export default defineComponent({
   .dnd-cs-attack-row .dnd-cs-row-remove { grid-column: 2; justify-self: end; }
   .dnd-cs-equip-row { grid-template-columns: 28px minmax(0, 1fr) 52px 30px 26px; }
   .dnd-cs-equip-row input[aria-label='Заметки'] { grid-column: 2 / -1; grid-row: 2; }
+  .dnd-cs-play .dnd-cs-equip-row { grid-template-columns: 28px minmax(0, 1fr) 48px; }
+  .dnd-cs-play .dnd-cs-spell-row > input[aria-label='Название заклинания'] { font-size: 14px; padding-inline: 3px; }
 }
 </style>
