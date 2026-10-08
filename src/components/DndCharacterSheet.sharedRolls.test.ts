@@ -111,7 +111,7 @@ describe('rolls of a sheet connected to a canvas', () => {
     const tired = (sheet: DndCharacterSheetData) => { sheet.identity.level = 3; sheet.combat = { ...sheet.combat, currentHp: 2, maxHp: 30 }; };
     const rolled = mountSheet((spec) => Promise.resolve(serverRoll(spec, 0)), tired);
     try {
-      await rolled.wrapper.findAll('button').find((button) => button.text() === 'Короткий отдых')!.trigger('click');
+      await rolled.wrapper.findAll('button').find((button) => button.text() === 'Отдых')!.trigger('click');
       await rolled.wrapper.get('.dnd-rest-spend').trigger('click');
       await flushPromises();
       expect(rolled.ops()).toEqual([{ type: 'hit-die', heal: 3 }]);
@@ -120,7 +120,7 @@ describe('rolls of a sheet connected to a canvas', () => {
 
     const offline = mountSheet(() => Promise.reject(new Error('offline')), tired);
     try {
-      await offline.wrapper.findAll('button').find((button) => button.text() === 'Короткий отдых')!.trigger('click');
+      await offline.wrapper.findAll('button').find((button) => button.text() === 'Отдых')!.trigger('click');
       await offline.wrapper.get('.dnd-rest-spend').trigger('click');
       await flushPromises();
       expect(offline.ops()).toEqual([]);

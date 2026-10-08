@@ -3,7 +3,21 @@
     <div class="dnd-rest-backdrop" @click.self="emit('close')">
       <section class="dnd-rest-dialog" role="dialog" aria-modal="true" :aria-label="title" @keydown.esc.prevent.stop="emit('close')" @keydown.tab="trapTab">
         <form @submit.prevent="emit('apply')">
-          <h2>{{ title }}</h2>
+          <h2>Отдых</h2>
+          <div class="dnd-rest-kinds" role="radiogroup" aria-label="Вид отдыха" @keydown.left.prevent="pick('short')" @keydown.right.prevent="pick('long')">
+            <button
+              v-for="option in kinds"
+              :key="option.kind"
+              :ref="(el) => { if (option.kind === kind) checkedKind = el as HTMLButtonElement | null; }"
+              type="button"
+              role="radio"
+              :aria-checked="kind === option.kind"
+              :tabindex="kind === option.kind ? 0 : -1"
+              :class="{ 'is-on': kind === option.kind }"
+              @click="pick(option.kind)"
+            >{{ option.label }}</button>
+          </div>
+          <p class="dnd-rest-about">{{ kind === 'short' ? 'Час передышки: можно потратить кости хитов.' : 'Ночь сна: HP, ячейки и умения восстанавливаются.' }}</p>
 
           <div v-if="kind === 'short'" class="dnd-rest-dice">
             <div class="dnd-rest-dice-head">
@@ -23,7 +37,7 @@
           </ul>
 
           <div class="dnd-rest-actions">
-            <button ref="cancelButton" type="button" class="btn-ghost" @click="emit('close')">Отмена</button>
+            <button type="button" class="btn-ghost" @click="emit('close')">Отмена</button>
             <button type="submit" class="btn-primary dnd-rest-apply">{{ title }}</button>
           </div>
         </form>
@@ -33,7 +47,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import {
   HIT_DICE, abilityModifier, hitDiceRegainedOnLongRest, hitDiceRemaining,
   type DndCharacterSheetData, type RestKind,
@@ -45,12 +59,21 @@ import DndSelect from './DndSelect.vue';
 const hitDieOptions = HIT_DICE.map((sides) => ({ value: String(sides), label: `к${sides}` }));
 
 /**
- * A rest, confirmed before it happens: the dialog lists what will change. On
- * a short rest hit dice are spent here too, one roll at a time.
+ * A rest, chosen and confirmed before it happens: short or long is picked at
+ * the top, and the dialog lists what that rest will change. On a short rest
+ * hit dice are spent here too, one roll at a time.
  */
 // The hit die is set-once data: in play mode it is shown, not chosen.
 const props = defineProps<{ kind: RestKind; data: DndCharacterSheetData; hitDieLocked?: boolean }>();
-const emit = defineEmits<{ close: []; apply: []; 'spend-hit-die': []; 'set-hit-die': [sides: number] }>();
+const emit = defineEmits<{ close: []; apply: []; 'set-kind': [kind: RestKind]; 'spend-hit-die': []; 'set-hit-die': [sides: number] }>();
+
+const kinds: Array<{ kind: RestKind; label: string }> = [{ kind: 'short', label: 'Короткий' }, { kind: 'long', label: 'Длинный' }];
+const checkedKind = ref<HTMLButtonElement | null>(null);
+const pick = async (kind: RestKind) => {
+  if (kind !== props.kind) emit('set-kind', kind);
+  await nextTick();
+  checkedKind.value?.focus();
+};
 
 const title = computed(() => (props.kind === 'short' ? 'Короткий отдых' : 'Длинный отдых'));
 const level = computed(() => Math.min(20, Math.max(1, Math.trunc(Number(props.data.identity.level) || 1))));
@@ -84,9 +107,9 @@ const effects = computed(() => {
   return lines;
 });
 
-const cancelButton = ref<HTMLButtonElement | null>(null);
 const previousFocus = document.activeElement as HTMLElement | null;
-onMounted(() => cancelButton.value?.focus());
+// On the choice itself: the arrows switch the rest, Tab goes on to its buttons.
+onMounted(() => checkedKind.value?.focus());
 onBeforeUnmount(() => previousFocus?.isConnected && previousFocus.focus());
 useBackHandler(() => { emit('close'); return true; });
 const trapTab = (event: KeyboardEvent) => {
@@ -100,7 +123,13 @@ const trapTab = (event: KeyboardEvent) => {
 <style scoped>
 .dnd-rest-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.45); }
 .dnd-rest-dialog { width: min(360px, 100%); max-height: 90dvh; overflow-y: auto; box-sizing: border-box; padding: 20px; border-radius: 16px; border: 1px solid var(--ui-border); background: var(--ui-surface-solid); color: var(--ui-text); box-shadow: var(--ui-glass-shadow); }
-.dnd-rest-dialog h2 { margin: 0 0 16px; font-size: 18px; }
+.dnd-rest-dialog h2 { margin: 0 0 12px; font-size: 18px; }
+/* Segments in one pill; the chosen one carries the accent. */
+.dnd-rest-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px; padding: 2px; border: 1px solid var(--ui-glass-border); border-radius: 999px; background: var(--ui-glass-btn-bg); }
+.dnd-rest-kinds button { min-height: 40px; padding: 6px 10px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--ui-text-secondary); font: inherit; font-size: 14px; cursor: pointer; transition: background-color .15s, border-color .15s, color .15s; }
+.dnd-rest-kinds button.is-on { background: var(--ui-glass-accent-bg); border-color: var(--ui-glass-accent-border); color: var(--ui-glass-accent-text); font-weight: 700; box-shadow: var(--ui-glass-accent-glow); }
+.dnd-rest-kinds button:focus-visible { outline: 2px solid var(--ui-glass-accent-border); outline-offset: 2px; }
+.dnd-rest-about { margin: 8px 0 14px; font-size: 13px; color: var(--ui-text-secondary); }
 .dnd-rest-dice { display: grid; gap: 8px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--ui-border); border-radius: 10px; background: var(--ui-surface-subtle); }
 .dnd-rest-dice-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 14px; }
 .dnd-rest-dice-head b { font-variant-numeric: tabular-nums; }

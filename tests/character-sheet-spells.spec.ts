@@ -80,7 +80,8 @@ for (const width of [320, 1280]) {
     expect(fieldBox.x + fieldBox.width).toBeLessThanOrEqual(frame.x + frame.width + 0.5);
 
     // A long rest gives the slots back.
-    await page.getByRole('button', { name: 'Длинный отдых', exact: true }).click();
+    await page.getByRole('button', { name: 'Отдых', exact: true }).click();
+    await page.getByRole('radio', { name: 'Длинный', exact: true }).click();
     const rest = page.getByRole('dialog', { name: 'Длинный отдых', exact: true });
     await expect(rest).toContainText('Ячейки заклинаний: возвращается 1');
     await rest.getByRole('button', { name: 'Длинный отдых', exact: true }).click();

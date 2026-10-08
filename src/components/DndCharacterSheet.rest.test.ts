@@ -74,7 +74,7 @@ describe('death saves', () => {
     try {
       expect(wrapper.get('[aria-label="Провал 1 из 3"]').attributes('disabled')).toBeDefined();
       expect(button(wrapper, 'Спасбросок от смерти').attributes('disabled')).toBeDefined();
-      expect(button(wrapper, 'Длинный отдых').attributes('disabled')).toBeDefined();
+      expect(button(wrapper, 'Отдых').attributes('disabled')).toBeDefined();
       expect(data.combat.deathSaves).toEqual({ successes: 0, failures: 0 });
       expect(ops()).toEqual([]);
     } finally { wrapper.unmount(); }
@@ -95,7 +95,17 @@ describe('rests', () => {
   it('a long rest lists what will change and applies it as one operation', async () => {
     const { data, wrapper, ops } = mountSheet(tired);
     try {
-      await button(wrapper, 'Длинный отдых').trigger('click');
+      await button(wrapper, 'Отдых').trigger('click');
+      // The arrows switch the rest as well as a click does.
+      const group = wrapper.get('[role="radiogroup"]');
+      await group.trigger('keydown', { key: 'ArrowRight' });
+      expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Длинный отдых');
+      await wrapper.get('[role="radiogroup"]').trigger('keydown', { key: 'ArrowLeft' });
+      // It opens on the short rest; the long one is chosen in the dialog.
+      expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Короткий отдых');
+      await button(wrapper, 'Длинный').trigger('click');
+      expect(button(wrapper, 'Длинный').attributes('aria-checked')).toBe('true');
+      expect(button(wrapper, 'Короткий').attributes('aria-checked')).toBe('false');
       const dialog = wrapper.get('[role="dialog"][aria-label="Длинный отдых"]');
       const text = dialog.get('.dnd-rest-effects').text();
       expect(text).toContain('HP: 6 → 30');
@@ -114,7 +124,7 @@ describe('rests', () => {
   it('a short rest spends hit dice one roll at a time and restores short-rest features', async () => {
     const { data, wrapper, ops } = mountSheet(tired);
     try {
-      await button(wrapper, 'Короткий отдых').trigger('click');
+      await button(wrapper, 'Отдых').trigger('click');
       const dialog = wrapper.get('[role="dialog"][aria-label="Короткий отдых"]');
       expect(dialog.text()).toContain('Кости хитов: 1 из 4');
       const spend = dialog.get('.dnd-rest-spend');
@@ -140,7 +150,7 @@ describe('rests', () => {
   it('changes the hit die and closes on system Back without resting', async () => {
     const { data, wrapper, ops } = mountSheet(tired);
     try {
-      await button(wrapper, 'Короткий отдых').trigger('click');
+      await button(wrapper, 'Отдых').trigger('click');
       await choose(wrapper, 'Кость хитов', '12');
       expect(data.combat.hitDie).toBe(12);
       expect(wrapper.get('.dnd-rest-spend').text()).toBe('Потратить кость: 1d12+2');

@@ -40,7 +40,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     expect(wrapper.find('.dnd-cs-prof-list .dnd-cs-add-sm').exists()).toBe(false);
     for (const label of ['Текущие HP', 'Максимум HP', 'Временные HP', 'Опыт']) expect(isReadonly(`[aria-label="${label}"]`), label).toBe(false);
     expect(isDisabled('button[aria-label="Урон"]')).toBe(false);
-    expect(wrapper.findAll('.dnd-cs-rest-actions button').every((b) => b.attributes('disabled') === undefined)).toBe(true);
+    expect(wrapper.get('.dnd-cs-rest-button').attributes('disabled')).toBeUndefined();
     expect(wrapper.findAll('.dnd-cs-roll').length).toBeGreaterThan(0);
   });
 
@@ -118,7 +118,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
 
   it('shows the hit die as text in the short rest dialog', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
-    await wrapper.findAll('.dnd-cs-rest-actions button').find((b) => b.text() === 'Короткий отдых')!.trigger('click');
+    await wrapper.get('.dnd-cs-rest-button').trigger('click');
     expect(document.querySelector(selectSelector('Кость хитов'))).toBeNull();
     expect(document.querySelector('.dnd-rest-hit-die')?.textContent).toContain('к8');
   });

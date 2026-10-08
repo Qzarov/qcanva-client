@@ -61,10 +61,8 @@
       <div class="dnd-cs-hp-actions">
         <button type="button" :disabled="readonly" aria-label="Лечение" @click="hpMode = 'heal'">Лечение</button>
         <button type="button" :disabled="readonly" aria-label="Урон" @click="hpMode = 'damage'">Урон</button>
-      </div>
-      <div class="dnd-cs-hp-actions dnd-cs-rest-actions">
-        <button type="button" :disabled="readonly" :title="'Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Короткий отдых</button>
-        <button type="button" :disabled="readonly" @click="restKind = 'long'">Длинный отдых</button>
+        <!-- One button for both rests: which one is chosen in the dialog. -->
+        <button type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
       </div>
       <div class="dnd-cs-combat-stats">
         <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
@@ -280,7 +278,7 @@
     </div>
 
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
-    <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" :hit-die-locked="locked" @close="restKind = null" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
+    <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" :hit-die-locked="locked" @close="restKind = null" @set-kind="restKind = $event" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
     <DndRollToasts v-if="onScreen" :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
     <DndSpellCatalog v-if="spellCatalogOpen && !locked" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
@@ -955,8 +953,8 @@ export default defineComponent({
 .dnd-cs-hp-actions button { flex:1; padding:7px 10px; border:1px solid var(--dnd-glass-border); border-radius:8px; font:inherit; font-size:12px; background:var(--dnd-glass-accent-soft); color:var(--ui-text); cursor:pointer; }
 .dnd-cs-hp-actions button:disabled { opacity:.45; cursor:default; }
 /* Rests: the same action buttons, one step quieter than heal / damage. */
-.dnd-cs-rest-actions button { background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
-.dnd-cs-rest-actions button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); color: var(--ui-text); }
+.dnd-cs-hp-actions .dnd-cs-rest-button { background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
+.dnd-cs-hp-actions .dnd-cs-rest-button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); color: var(--ui-text); }
 /* Death saves: shown only at 0 HP, inside the combat column (no panel of its own). */
 .dnd-cs-death { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--dnd-danger) 40%, transparent); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); }
 .dnd-cs-death-track { display: flex; align-items: center; gap: 2px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
@@ -1179,7 +1177,7 @@ export default defineComponent({
   .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
   .dnd-cs-combat { gap: 8px; }
   /* Used every turn at 0 HP / every rest: full touch targets. */
-  .dnd-cs-rest-actions button, .dnd-cs-death-roll { min-height: 44px; }
+  .dnd-cs-hp-actions button, .dnd-cs-death-roll { min-height: 44px; }
   .dnd-cs-death { justify-content: space-between; }
   .dnd-cs-death-roll { flex: 1 1 100%; justify-content: center; margin-left: 0; font-size: 12px; }
   .dnd-cs-death-result { flex: 1 1 100%; margin-left: 0; text-align: center; }

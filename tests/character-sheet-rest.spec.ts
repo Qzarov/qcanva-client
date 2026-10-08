@@ -37,7 +37,7 @@ for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     const saved = await openSheet(page);
 
-    const shortRest = page.getByRole('button', { name: 'Короткий отдых', exact: true });
+    const shortRest = page.getByRole('button', { name: 'Отдых', exact: true });
     await shortRest.click();
     const dialog = page.getByRole('dialog', { name: 'Короткий отдых', exact: true });
     await expect(dialog).toContainText('Кости хитов: 3 из 4');
@@ -67,7 +67,8 @@ for (const width of [320, 1280]) {
     await expect(shortRest).toBeFocused();
     await expect.poll(() => saved().data.features.map((item: any) => item.currentUses)).toEqual([1, 0]);
 
-    await page.getByRole('button', { name: 'Длинный отдых', exact: true }).click();
+    await page.getByRole('button', { name: 'Отдых', exact: true }).click();
+    await page.getByRole('radio', { name: 'Длинный', exact: true }).click();
     const long = page.getByRole('dialog', { name: 'Длинный отдых', exact: true });
     await expect(long).toContainText(`HP: ${healed} → 30`);
     await expect(long).toContainText('Истощение снимается');
@@ -75,7 +76,8 @@ for (const width of [320, 1280]) {
     await expect(long).toHaveCount(0);
     expect(saved().data.combat.currentHp).toBe(healed);
 
-    await page.getByRole('button', { name: 'Длинный отдых', exact: true }).click();
+    await page.getByRole('button', { name: 'Отдых', exact: true }).click();
+    await page.getByRole('radio', { name: 'Длинный', exact: true }).click();
     await long.getByRole('button', { name: 'Длинный отдых', exact: true }).click();
     await expect.poll(() => saved().data.combat).toMatchObject({ currentHp: 30, temporaryHp: 0, hitDiceSpent: 0, conditions: [] });
     await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('30');
@@ -141,10 +143,11 @@ if (SHOTS) {
         await page.getByRole('button', { name: 'Успех 1 из 3' }).click();
         await page.getByRole('button', { name: 'Провал 2 из 3' }).click();
         await page.locator('.dnd-cs').screenshot({ path: `${SHOTS}/stage1-${theme}-${width}.png` });
-        await page.getByRole('button', { name: 'Короткий отдых', exact: true }).click();
+        await page.getByRole('button', { name: 'Отдых', exact: true }).click();
         await page.screenshot({ path: `${SHOTS}/stage1-short-${theme}-${width}.png` });
         await page.keyboard.press('Escape');
-        await page.getByRole('button', { name: 'Длинный отдых', exact: true }).click();
+        await page.getByRole('button', { name: 'Отдых', exact: true }).click();
+        await page.getByRole('radio', { name: 'Длинный', exact: true }).click();
         await page.screenshot({ path: `${SHOTS}/stage1-long-${theme}-${width}.png` });
       });
     }

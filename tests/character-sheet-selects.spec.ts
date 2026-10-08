@@ -130,7 +130,7 @@ test('every list on the sheet opens, fits a phone and takes a choice', async ({ 
   await pick('Бросок заклинания', 'Спасбросок цели');
   await pick('Характеристика спасброска', 'Ловкость');
   // In a dialog too: the list sits above it.
-  await page.getByRole('button', { name: 'Короткий отдых', exact: true }).click();
+  await page.getByRole('button', { name: 'Отдых', exact: true }).click();
   await chooseOption(page, 'Кость хитов', 'к12');
   await expect(page.getByRole('dialog', { name: 'Короткий отдых' })).toContainText('1d12');
 });

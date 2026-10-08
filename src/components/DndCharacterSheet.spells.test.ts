@@ -83,7 +83,8 @@ describe('spell slots', () => {
   it('come back on a long rest, which says so beforehand', async () => {
     const { data, wrapper } = mountSheet((sheet) => { cleric(sheet); sheet.spellcasting.slots.l1.spent = 3; });
     try {
-      await wrapper.findAll('button').find((button) => button.text() === 'Длинный отдых')!.trigger('click');
+      await wrapper.findAll('button').find((button) => button.text() === 'Отдых')!.trigger('click');
+      await wrapper.findAll('[role="radio"]').find((button) => button.text() === 'Длинный')!.trigger('click');
       const dialog = wrapper.get('[role="dialog"][aria-label="Длинный отдых"]');
       expect(dialog.text()).toContain('Ячейки заклинаний: возвращается 3');
       await dialog.get('form').trigger('submit');
