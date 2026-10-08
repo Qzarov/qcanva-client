@@ -16,6 +16,7 @@ import {
   type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type SkillProficiency, type SpellClassKey,
 } from './characterSheet';
 import { classOption, raceOption } from './identityOptions';
+import { COIN_KEYS, MAX_COINS, formatCoins, hasCoins } from './coins';
 import { classSlots, spellcasterClass } from './spellCatalog';
 
 export class CharacterImportError extends Error {}
@@ -42,9 +43,6 @@ const ABILITY_CODES: Record<string, DndAbilityKey> = {
   str: 'strength', dex: 'dexterity', con: 'constitution', int: 'intelligence', wis: 'wisdom', cha: 'charisma',
 };
 const SKILL_NAMES: Record<string, string> = { 'sleight of hand': 'sleightOfHand', 'animal handling': 'animalHandling' };
-const COINS: Array<[key: string, label: string]> = [
-  ['pp', 'Платиновые монеты'], ['gp', 'Золотые монеты'], ['ep', 'Электрумовые монеты'], ['sp', 'Серебряные монеты'], ['cp', 'Медные монеты'],
-];
 const APPEARANCE: Array<[key: string, label: string]> = [
   ['age', 'Возраст'], ['height', 'Рост'], ['weight', 'Вес'], ['eyes', 'Глаза'], ['skin', 'Кожа'], ['hair', 'Волосы'],
 ];
@@ -279,10 +277,7 @@ export function importLongStoryShort(source: string): CharacterImport {
     });
   }
   const coins = isObject(sheet.coins) ? sheet.coins : {};
-  for (const [key, label] of COINS) {
-    const amount = whole(coins[key], 0, 9_999_999, 0);
-    if (amount > 0 && !full(draft.equipment)) draft.equipment.push({ id: newId(), name: label, quantity: amount });
-  }
+  for (const key of COIN_KEYS) draft.coins[key] = whole(coins[key], 0, MAX_COINS, 0);
   for (const item of Array.isArray(sheet.attunementsList) ? sheet.attunementsList : []) {
     const name = isObject(item) ? text(item.value) : '';
     if (name && !full(draft.equipment)) draft.equipment.push({ id: newId(), name, quantity: 1, description: 'Предмет с настройкой', equipped: item.checked === true });
@@ -290,6 +285,7 @@ export function importLongStoryShort(source: string): CharacterImport {
   if (draft.features.length) imported.push(`Умения: ${draft.features.length}`);
   if (draft.equipment.length) imported.push(`Снаряжение: ${draft.equipment.length}`);
   if (draft.attacks.length) imported.push(`Атаки: ${draft.attacks.length}`);
+  if (hasCoins(draft.coins)) imported.push(`Монеты: ${formatCoins(draft.coins)}`);
 
   // ----- spellcasting
   const spellsInfo = isObject(sheet.spellsInfo) ? sheet.spellsInfo : {};

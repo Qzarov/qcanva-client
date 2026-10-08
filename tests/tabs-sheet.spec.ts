@@ -79,7 +79,7 @@ test('a sheet left for another comes back as it was: text, scroll, no reload, no
   await expect(page.getByRole('textbox', { name: 'Имя персонажа', exact: true })).toHaveValue('Герой a');
 
   // Half-typed notes (not committed) and a scrolled page.
-  await page.getByRole('tab', { name: 'Заметки' }).click();
+  await page.getByRole('tab', { name: 'Инфо' }).click();
   const notes = page.getByLabel('Заметки персонажа');
   await notes.click();
   await notes.pressSequentially('Должен гильдии');

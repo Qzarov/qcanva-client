@@ -1,3 +1,5 @@
+import { emptyCoins, normalizeCoins, type DndCoins } from './coins';
+
 export const DND_ABILITIES = [
   { key: 'strength', short: 'СИЛ', label: 'Сила' },
   { key: 'dexterity', short: 'ЛОВ', label: 'Ловкость' },
@@ -115,6 +117,8 @@ export interface DndCharacterSheetData {
   personality: { traits: string; ideals: string; bonds: string; flaws: string };
   proficiencies: { armor: string[]; weapons: string[]; tools: string[]; languages: string[]; other: string[] };
   spellcasting: DndSpellcasting;
+  /** The character's money, by kind of coin. */
+  coins: DndCoins;
   /** The canvas this character plays on: its rolls go to that canvas's chat. Empty = not connected. */
   campaign: { canvasId: string };
   /** Free-text "Attacks & Spellcasting" notes shown alongside the attack list. */
@@ -193,6 +197,7 @@ export const createDndCharacterSheet = (): DndCharacterSheetData => ({
   personality: { traits: '', ideals: '', bonds: '', flaws: '' },
   proficiencies: { armor: [], weapons: [], tools: [], languages: [], other: [] },
   spellcasting: createSpellcasting(),
+  coins: emptyCoins(),
   campaign: { canvasId: '' },
   attacksNotes: '',
   notes: '',
@@ -262,6 +267,7 @@ export const normalizeDndCharacterSheet = (source: unknown): DndCharacterSheetDa
   for (const key of ['skills', 'passiveBonuses', 'personality', 'proficiencies'] as const) Object.assign(base[key], data[key] || {});
   for (const key of ['attacks', 'features', 'equipment', 'spells', 'goals'] as const) base[key] = Array.isArray(data[key]) ? data[key] : [];
   base.spellcasting = normalizeSpellcasting(data.spellcasting);
+  base.coins = normalizeCoins(data.coins);
   base.campaign = { canvasId: typeof data.campaign?.canvasId === 'string' ? data.campaign.canvasId.slice(0, 64) : '' };
   base.attacksNotes = typeof data.attacksNotes === 'string' ? data.attacksNotes : '';
   base.notes = typeof data.notes === 'string' ? data.notes : '';

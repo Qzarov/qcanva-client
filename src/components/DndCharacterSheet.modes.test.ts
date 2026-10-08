@@ -23,7 +23,7 @@ function filled() {
 let wrapper: VueWrapper | undefined;
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; });
 
-const tab = async (label: string) => { await wrapper!.findAll('.dnd-cs-tabs button').find((b) => b.text() === label)!.trigger('click'); };
+const tab = async (label: string) => { await wrapper!.findAll('.dnd-cs-tabs button').find((b) => b.text().startsWith(label))!.trigger('click'); };
 const isReadonly = (selector: string) => wrapper!.get(selector).attributes('readonly') !== undefined;
 const isDisabled = (selector: string) => wrapper!.get(selector).attributes('disabled') !== undefined;
 
@@ -46,7 +46,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
 
   it('lets uses be spent but not the maximum or recharge changed; hides list composition', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
-    await tab('Умения');
+    await tab('Характеристики');
     expect(isReadonly('[aria-label="Название умения"]')).toBe(true);
     expect(isReadonly('[aria-label="Описание умения"]')).toBe(true);
     expect(isReadonly('[aria-label="Максимум использований"]')).toBe(true);
@@ -68,7 +68,7 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     expect(wrapper.find('.dnd-weapon-fields').exists()).toBe(false);
     expect(wrapper.find('.dnd-cs-add-row').exists()).toBe(false);
     // The weapon itself still attacks.
-    await tab('Атаки');
+    await tab('Характеристики');
     expect(wrapper.find('[aria-label="Атака: Топор"]').exists()).toBe(true);
   });
 
@@ -88,11 +88,11 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
 
   it('ticks goals off but does not rename or remove them; notes stay editable', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: filled(), mode: 'play' }, attachTo: document.body });
-    await tab('Цели');
+    await tab('Инфо');
     expect(isDisabled('[aria-label="Выполнено"]')).toBe(false);
     expect(isReadonly('[aria-label="Название цели"]')).toBe(true);
     expect(wrapper.find('[aria-label="Удалить цель"]').exists()).toBe(false);
-    await tab('Заметки');
+    await tab('Инфо');
     expect(isReadonly('[aria-label="Заметки персонажа"]')).toBe(false);
   });
 

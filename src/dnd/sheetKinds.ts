@@ -23,6 +23,7 @@ const PLAY_PATHS = [
   'combat.conditions',
   'combat.deathSaves',
   'combat.hitDiceSpent',
+  'coins',
   'personality',
   'notes',
   'attacksNotes',

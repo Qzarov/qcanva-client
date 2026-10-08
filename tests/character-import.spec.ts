@@ -77,7 +77,7 @@ for (const theme of ['dark', 'light'] as const) {
     const dialog = page.getByRole('dialog', { name: 'Импорт персонажа' });
     await expect(dialog.locator('.template-import-who')).toContainText('Мирра');
     await expect(dialog.locator('.template-import-who')).toContainText('Полуорк · Друид 3 ур.');
-    await expect(dialog.locator('[data-import-list="imported"] li')).toHaveCount(7);
+    await expect(dialog.locator('[data-import-list="imported"] li')).toHaveCount(8);
     await expect(dialog.locator('[data-import-list="skipped"]')).toContainText('Заклинания (3)');
     const box = (await dialog.boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(390);

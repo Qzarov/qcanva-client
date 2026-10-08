@@ -1,5 +1,6 @@
 import { DND_ABILITIES, DND_SKILLS, FEATURE_RECHARGE_OPTIONS } from './characterSheet';
 import { conditionLabel } from './conditions';
+import { COINS } from './coins';
 import { spellcasterClass } from './spellCatalog';
 import type { SheetHistoryEntry } from '../api/client';
 
@@ -51,6 +52,7 @@ function fieldLabel(path: string[]): string | null {
   if (root === 'spellcasting' && a === 'slots' && c === 'max') return `Ячейки ${b!.slice(1)} уровня`;
   if (root === 'spellcasting' && a === 'slots' && c === 'spent') return `Потрачено ячеек ${b!.slice(1)} уровня`;
   if (root === 'passiveBonuses') return 'Бонус пассивной характеристики';
+  if (root === 'coins') return a ? `${COINS.find((coin) => coin.key === a)?.label ?? a} монеты` : 'Монеты';
   return null;
 }
 

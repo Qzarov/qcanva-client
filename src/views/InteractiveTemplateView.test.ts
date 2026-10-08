@@ -84,10 +84,10 @@ describe('character sheet page', () => {
 
   it('keeps the selected tab local to this viewer', async () => {
     await open();
-    await wrapper.findAll('.dnd-cs-tabs button').find((button) => button.text() === 'Заметки')!.trigger('click');
+    await wrapper.get('.dnd-cs-tabs [data-tab="info"]').trigger('click');
     await flushPromises();
     expect(sentOps()).toEqual([]);
-    expect(JSON.parse(localStorage.getItem('dnd-sheet-view:hero')!)).toMatchObject({ activeTab: 'notes' });
+    expect(JSON.parse(localStorage.getItem('dnd-sheet-view:hero')!)).toMatchObject({ activeTab: 'personality' });
   });
 
   it('shows a remote edit live without wiping what the user is typing', async () => {

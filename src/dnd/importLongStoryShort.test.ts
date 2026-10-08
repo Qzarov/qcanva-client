@@ -59,15 +59,16 @@ describe('importLongStoryShort', () => {
     expect(new Set(data.features.map((item) => item.id)).size).toBe(4);
   });
 
-  it('turns counters of the equipment block, coins and attuned items into equipment', () => {
+  it('turns counters of the equipment block and attuned items into equipment, and coins into the wallet', () => {
     const { data } = importLongStoryShort(lssExport());
     expect(data.equipment.map(({ id, ...rest }) => rest)).toEqual([
       { name: 'Сухпаёк', quantity: 4 },
       { name: 'Верёвка 50 футов', quantity: 1 },
-      { name: 'Золотые монеты', quantity: 15 },
-      { name: 'Медные монеты', quantity: 40 },
       { name: 'Посох леса', quantity: 1, description: 'Предмет с настройкой', equipped: true },
     ]);
+    const { data: withCoins, imported } = importLongStoryShort(lssExport());
+    expect(withCoins.coins).toEqual({ pp: 0, gp: 15, ep: 0, sp: 0, cp: 40 });
+    expect(imported).toContain('Монеты: 15 зм 40 мм');
   });
 
   it('reads weapons, splitting the damage into a formula and a type', () => {

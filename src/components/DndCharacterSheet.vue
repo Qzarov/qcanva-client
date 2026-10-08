@@ -82,8 +82,17 @@
       <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
     </div>
 
-    <!-- ===== BODY: abilities+skills (left) | tabs (right) ===== -->
-    <div class="dnd-cs-body">
+    <!-- ===== BODY: four sections. Wide: the abilities on the left, the tabs and
+         their panel on the right. Phone: the tabs on top, and the abilities are
+         a part of the first section. ===== -->
+    <div class="dnd-cs-body" :class="'is-' + section">
+      <nav class="dnd-cs-tabs" role="tablist" aria-label="Разделы листа">
+        <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :data-tab="tab.key" :class="{ active: section === tab.key }" :aria-selected="section === tab.key" @click="setSection(tab.key)">
+          <template v-if="tab.wideLabel"><span class="dnd-cs-tab-narrow">{{ tab.label }}</span><span class="dnd-cs-tab-wide">{{ tab.wideLabel }}</span></template>
+          <template v-else>{{ tab.label }}</template>
+        </button>
+      </nav>
+
       <div class="dnd-cs-left">
         <!-- Abilities + their skills -->
         <section class="dnd-cs-abilities">
@@ -113,37 +122,12 @@
           </article>
         </section>
 
-        <!-- Proficiencies -->
-        <section class="dnd-cs-proficiencies">
-          <h4>Владения</h4>
-          <div class="dnd-cs-prof-group">
-            <span class="dnd-cs-prof-label">Доспехи</span>
-            <label v-for="opt in armorOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.armor.includes(opt)" :disabled="locked" @change="toggleProf('armor', opt)" /> {{ opt }}</label>
-          </div>
-          <div class="dnd-cs-prof-group">
-            <span class="dnd-cs-prof-label">Оружие</span>
-            <label v-for="opt in weaponOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.weapons.includes(opt)" :disabled="locked" @change="toggleProf('weapons', opt)" /> {{ opt }}</label>
-          </div>
-          <div class="dnd-cs-prof-list">
-            <span class="dnd-cs-prof-label">Языки и прочее</span>
-            <div v-for="(val, i) in data.proficiencies.languages" :key="'lang' + i" class="dnd-cs-prof-row">
-              <input :readonly="locked" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, evVal($event))" />
-              <button v-if="!locked" type="button" aria-label="Удалить" @click="removeProfListItem('languages', i)">×</button>
-            </div>
-            <button v-if="!locked" type="button" class="dnd-cs-add-sm" @click="addProfListItem('languages')">+ Добавить</button>
-          </div>
-        </section>
       </div>
 
-      <!-- ===== TABS ===== -->
-      <div class="dnd-cs-right">
-        <nav class="dnd-cs-tabs" role="tablist">
-          <button v-for="tab in tabs" :key="tab.key" type="button" role="tab" :class="{ active: data.activeTab === tab.key }" :aria-selected="data.activeTab === tab.key" @click="setTab(tab.key)">{{ tab.label }}</button>
-        </nav>
-
+      <!-- ===== THE SECTION'S PANEL ===== -->
         <div class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
-          <!-- Attacks -->
-          <template v-if="data.activeTab === 'attacks'">
+          <!-- Main: attacks and features (on a phone the abilities stand above) -->
+          <template v-if="section === 'main'">
             <DndWeaponAttacks :attacks="weaponAttacks" @attack="attackWithWeapon" @damage="weaponDamage" />
             <h4 v-if="data.attacks.length || !locked" class="dnd-cs-subheading">Другие атаки</h4>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
@@ -165,10 +149,9 @@
             <label class="dnd-cs-freetext">Атаки и заклинания
               <textarea :readonly="readonly" :value="data.attacksNotes" placeholder="Свободные заметки по атакам и заклинаниям" @change="setField('attacksNotes', evVal($event))"></textarea>
             </label>
-          </template>
 
-          <!-- Features -->
-          <template v-else-if="data.activeTab === 'features'">
+            <h4 class="dnd-cs-subheading dnd-cs-section-gap">Умения</h4>
+            <p v-if="locked && !data.features.length" class="dnd-cs-empty">Умений пока нет.</p>
             <div v-for="item in data.features" :key="item.id" class="dnd-cs-feature-row">
               <div class="dnd-cs-feature-main">
                 <input :readonly="locked" :value="item.name" placeholder="Название" aria-label="Название умения" @change="setItem('features', item.id, 'name', evVal($event))" />
@@ -188,7 +171,10 @@
           </template>
 
           <!-- Equipment -->
-          <template v-else-if="data.activeTab === 'equipment'">
+          <template v-else-if="section === 'equipment'">
+            <DndWallet :coins="data.coins" :readonly="readonly" @update="setCoins" />
+            <h4 class="dnd-cs-subheading dnd-cs-section-gap">Предметы</h4>
+            <p v-if="locked && !data.equipment.length" class="dnd-cs-empty">Предметов пока нет.</p>
             <div v-for="item in data.equipment" :key="item.id" class="dnd-cs-equip-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.equipped" :disabled="readonly" aria-label="Экипировано" @change="toggleItem('equipment', item.id, 'equipped')" /></label>
               <input :readonly="locked" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
@@ -204,15 +190,10 @@
             </div>
           </template>
 
-          <!-- Personality -->
-          <template v-else-if="data.activeTab === 'personality'">
-            <label v-for="field in personalityFields" :key="field.key" class="dnd-cs-freetext">{{ field.label }}
-              <textarea :readonly="readonly" :value="data.personality[field.key]" :aria-label="field.label" @change="setPersonality(field.key, evVal($event))"></textarea>
-            </label>
-          </template>
-
-          <!-- Goals -->
-          <template v-else-if="data.activeTab === 'goals'">
+          <!-- Info: goals, personality, notes, proficiencies -->
+          <template v-else-if="section === 'info'">
+            <h4 class="dnd-cs-subheading">Цели</h4>
+            <p v-if="locked && !data.goals.length" class="dnd-cs-empty">Целей пока нет.</p>
             <div v-for="item in data.goals" :key="item.id" class="dnd-cs-goal-row">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.completed" :disabled="readonly" aria-label="Выполнено" @change="toggleItem('goals', item.id, 'completed')" /></label>
               <div class="dnd-cs-goal-main">
@@ -222,15 +203,38 @@
               <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить цель" @click="removeItem('goals', item.id)">×</button>
             </div>
             <button v-if="!locked" type="button" class="dnd-cs-add" @click="addItem('goals')">+ Добавить цель</button>
-          </template>
 
-          <!-- Notes -->
-          <template v-else-if="data.activeTab === 'notes'">
+            <h4 class="dnd-cs-subheading dnd-cs-section-gap">Характер</h4>
+            <label v-for="field in personalityFields" :key="field.key" class="dnd-cs-freetext">{{ field.label }}
+              <textarea :readonly="readonly" :value="data.personality[field.key]" :aria-label="field.label" @change="setPersonality(field.key, evVal($event))"></textarea>
+            </label>
+
+            <h4 class="dnd-cs-subheading dnd-cs-section-gap">Заметки</h4>
             <textarea class="dnd-cs-notes" :readonly="readonly" :value="data.notes" placeholder="Заметки персонажа" aria-label="Заметки персонажа" @change="setField('notes', evVal($event))"></textarea>
+
+            <section class="dnd-cs-proficiencies dnd-cs-section-gap">
+              <h4>Владения</h4>
+              <div class="dnd-cs-prof-group">
+                <span class="dnd-cs-prof-label">Доспехи</span>
+                <label v-for="opt in armorOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.armor.includes(opt)" :disabled="locked" @change="toggleProf('armor', opt)" /> {{ opt }}</label>
+              </div>
+              <div class="dnd-cs-prof-group">
+                <span class="dnd-cs-prof-label">Оружие</span>
+                <label v-for="opt in weaponOptions" :key="opt"><input type="checkbox" :checked="data.proficiencies.weapons.includes(opt)" :disabled="locked" @change="toggleProf('weapons', opt)" /> {{ opt }}</label>
+              </div>
+              <div class="dnd-cs-prof-list">
+                <span class="dnd-cs-prof-label">Языки и прочее</span>
+                <div v-for="(val, i) in data.proficiencies.languages" :key="'lang' + i" class="dnd-cs-prof-row">
+                  <input :readonly="locked" :value="val" placeholder="Язык / владение" @change="setProfListItem('languages', i, evVal($event))" />
+                  <button v-if="!locked" type="button" aria-label="Удалить" @click="removeProfListItem('languages', i)">×</button>
+                </div>
+                <button v-if="!locked" type="button" class="dnd-cs-add-sm" @click="addProfListItem('languages')">+ Добавить</button>
+              </div>
+            </section>
           </template>
 
           <!-- Spells -->
-          <template v-else-if="data.activeTab === 'spells'">
+          <template v-else-if="section === 'spells'">
             <div class="dnd-cs-spell-summary">
               <label class="dnd-cs-recharge">Класс
                 <DndSelect :value="data.spellcasting.casterClass" :options="casterClassOptions" label="Заклинательный класс" :disabled="locked" @change="setCasterClass" />
@@ -276,7 +280,6 @@
             </div>
           </template>
         </div>
-      </div>
     </div>
 
     <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
@@ -315,6 +318,8 @@ import DndWeaponFields from './DndWeaponFields.vue';
 import DndSpellFields from './DndSpellFields.vue';
 import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
+import DndWallet from './DndWallet.vue';
+import type { DndCoins } from '../dnd/coins';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
 import { useSheetRolls, type DamageOption, type RemoteRoller, type SheetRolls } from '../dnd/useSheetRolls';
@@ -331,12 +336,22 @@ import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type W
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
 type RollKind = 'check' | 'save' | 'skill' | 'initiative';
+/**
+ * The sheet's four sections. The stored `activeTab` keeps its older, finer
+ * values (the canvas card still uses them as list names): several of them
+ * open the same section, and choosing a section stores its first one.
+ */
+type SheetSection = 'main' | 'equipment' | 'spells' | 'info';
+const SECTION_OF: Record<DndTab, SheetSection> = {
+  attacks: 'main', features: 'main', equipment: 'equipment', spells: 'spells', personality: 'info', goals: 'info', notes: 'info',
+};
+const SECTION_TAB: Record<SheetSection, DndTab> = { main: 'attacks', equipment: 'equipment', spells: 'spells', info: 'personality' };
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog },
+  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog, DndWallet },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -523,7 +538,13 @@ export default defineComponent({
       emit('op', { type: 'uses-change', itemId: id, delta });
     };
 
-    const setTab = (tab: DndTab) => { props.data.activeTab = tab; change(); };
+    const section = computed<SheetSection>(() => SECTION_OF[props.data.activeTab] ?? 'main');
+    const setSection = (next: SheetSection) => {
+      if (section.value === next) return;
+      props.data.activeTab = SECTION_TAB[next];
+      change();
+    };
+    const setCoins = (next: DndCoins) => { if (!props.readonly) { props.data.coins = next; change(); } };
 
     // ===== Dice rolls =====
     const rolls = props.rolls ?? useSheetRolls({ remote: (spec) => props.remoteRoll?.(spec) ?? null });
@@ -688,10 +709,12 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
+      // On a wide screen the abilities are always in view on the left, so the first tab is named after what it adds.
       tabs: [
-        { key: 'attacks', label: 'Атаки' }, { key: 'features', label: 'Умения' }, { key: 'equipment', label: 'Снаряжение' },
-        { key: 'personality', label: 'Характер' }, { key: 'goals', label: 'Цели' }, { key: 'notes', label: 'Заметки' }, { key: 'spells', label: 'Заклинания' },
-      ] as { key: DndTab; label: string }[],
+        { key: 'main', label: 'Характеристики', wideLabel: 'Атаки и умения' }, { key: 'equipment', label: 'Снаряжение' },
+        { key: 'spells', label: 'Заклинания' }, { key: 'info', label: 'Инфо' },
+      ] as { key: SheetSection; label: string; wideLabel?: string }[],
+      section, setSection, setCoins,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -715,7 +738,7 @@ export default defineComponent({
       spellCatalogOpen, addCatalogSpell,
       spellLevelLabel, spellRollKind, spellSaveAbility, abilityShort,
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
-      addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses, setTab,
+      addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses,
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
       attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon, weaponCatalogOpen, addCatalogWeapon,
       rollMode: rolls.mode, setRollMode: rolls.setMode, rollHistory: rolls.history, rollToasts: rolls.toasts, dismissRoll: rolls.dismiss,
@@ -934,10 +957,9 @@ export default defineComponent({
 .dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
 
 /* ===== BODY ===== */
-.dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); gap: 14px; align-items: start; }
+.dnd-cs-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 0.92fr); grid-template-areas: "left tabs" "left panel"; grid-template-rows: auto 1fr; gap: 12px 14px; align-items: start; }
 .dnd-cs-status-row { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1fr); gap:14px; align-items:stretch; }
-.dnd-cs-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.dnd-cs-right { min-width: 0; }
+.dnd-cs-left { grid-area: left; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 /* Abilities + skills */
 .dnd-cs-abilities { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
@@ -1026,7 +1048,8 @@ export default defineComponent({
 .dnd-cs-add { margin-top: 6px; }
 
 /* ===== TABS ===== */
-.dnd-cs-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.dnd-cs-tabs { grid-area: tabs; display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.dnd-cs-tab-narrow { display: none; }
 .dnd-cs-tabs button {
   padding: 7px 14px; border: 1px solid var(--dnd-glass-border); border-radius: 999px;
   background: rgba(var(--dnd-fill-rgb), 0.03); color: var(--dnd-text-dim); cursor: pointer; font-size: 12px;
@@ -1038,7 +1061,10 @@ export default defineComponent({
   color: var(--dnd-glass-accent); background: var(--dnd-glass-accent-soft);
   box-shadow: 0 0 16px var(--dnd-glass-accent-glow), inset 0 1px 0 var(--dnd-glass-highlight);
 }
-.dnd-cs-tab-panel { padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+.dnd-cs-tab-panel { grid-area: panel; min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: 8px; min-height: 200px; }
+/* A second block inside one section stands apart from the first. */
+.dnd-cs-section-gap { margin-top: 14px; }
+.dnd-cs-empty { margin: 0; font-size: 12px; color: var(--dnd-text-dim); }
 
 /* Rows */
 .dnd-cs-spell-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
@@ -1087,7 +1113,7 @@ export default defineComponent({
 /* The popup follows the theme (same as the app's share form): tokens, not a literal. */
 .dnd-cs-recharge select option { background: var(--ui-surface-solid); color: var(--ui-text); }
 .dnd-cs-freetext { display: flex; flex-direction: column; gap: 5px; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--dnd-text-dim); }
-.dnd-cs-notes { min-height: 240px; text-transform: none; }
+.dnd-cs-notes { min-height: 160px; text-transform: none; }
 
 
 /* ===== Mobile ===== */
@@ -1102,7 +1128,15 @@ export default defineComponent({
   .dnd-cs-identity-line.is-multiline { grid-template-columns:minmax(0,1fr) minmax(0,70px); }
   .dnd-cs-subline { font-size: 12px; gap: 2px; }
   .dnd-cs-subline input { padding-inline: 1px; }
-  .dnd-cs-body { grid-template-columns: 1fr; }
+  /* Phone: the tabs on top; the abilities belong to the first section and leave with it. */
+  .dnd-cs-body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tabs" "left" "panel"; grid-template-rows: auto; }
+  .dnd-cs-body:not(.is-main) .dnd-cs-left { display: none; }
+  .dnd-cs-body:not(.is-main) { grid-template-areas: "tabs" "panel"; }
+  .dnd-cs-tab-narrow { display: inline; }
+  .dnd-cs-tab-wide { display: none; }
+  .dnd-cs-tabs { flex-wrap: nowrap; gap: 4px; }
+  .dnd-cs-tabs button { flex: 1 1 auto; min-width: 0; min-height: 44px; padding: 6px 5px; font-size: 11px; white-space: nowrap; }
+  .dnd-cs-tab-panel { padding: 12px; }
   .dnd-cs-abilities { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .dnd-cs-ability { padding: 6px; min-width: 0; }
   .dnd-cs-ability-head { gap: 3px; flex-direction:row; align-items:center; }

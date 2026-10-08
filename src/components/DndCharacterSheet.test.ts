@@ -199,11 +199,11 @@ describe('DndCharacterSheet interactions', () => {
     expect(next()).toBe('5000');
   });
 
-  it('renders all 6 abilities, 18 skills and 7 tabs', () => {
+  it('renders all 6 abilities, 18 skills and 4 sections', () => {
     const { wrapper } = mountSheet();
     expect(wrapper.findAll('.dnd-cs-ability')).toHaveLength(6);
     expect(wrapper.findAll('.dnd-cs-skills li')).toHaveLength(18);
-    expect(wrapper.findAll('.dnd-cs-tabs button')).toHaveLength(7);
+    expect(wrapper.findAll('.dnd-cs-tabs button').map((b) => b.attributes('data-tab'))).toEqual(['main', 'equipment', 'spells', 'info']);
   });
 
   // Regression: the input @change handlers referenced a `$ev(...)` helper, but
@@ -217,7 +217,7 @@ describe('DndCharacterSheet interactions', () => {
     await score.trigger('change');
     expect(data.abilities.strength.score).toBe(18);
 
-    const equipTab = wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Характер')!;
+    const equipTab = wrapper.get('.dnd-cs-tabs [data-tab="info"]');
     await equipTab.trigger('click');
     const traits = wrapper.get('.dnd-cs-tab-panel textarea');
     (traits.element as HTMLTextAreaElement).value = 'Храбрый';
@@ -247,9 +247,8 @@ describe('DndCharacterSheet interactions', () => {
 
   it('clamps feature uses between 0 and max', async () => {
     const { data, wrapper } = mountSheet();
-    const featuresTab = wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Умения')!;
-    await featuresTab.trigger('click');
-    await wrapper.get('.dnd-cs-add').trigger('click');
+    // Features share the first section with the attacks.
+    await wrapper.findAll('.dnd-cs-add').find((b) => b.text() === '+ Добавить умение')!.trigger('click');
     const feature = data.features[0]!;
     feature.maxUses = 2;
     feature.currentUses = 1;

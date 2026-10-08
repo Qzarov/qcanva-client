@@ -44,7 +44,7 @@ describe('weapons and attack rolls', () => {
     expect(diffSheet(before, JSON.parse(JSON.stringify(data)))).toEqual([
       { type: 'list-update', list: 'equipment', itemId: 'axe', changes: expect.objectContaining({ equipped: true, weapon: expect.objectContaining({ damage: '1d12' }) }) },
     ]);
-    await wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Атаки')!.trigger('click');
+    await wrapper.get('.dnd-cs-tabs [data-tab="main"]').trigger('click');
     expect(wrapper.get('.dnd-weapon-attacks').text()).toContain('Топор');
 
     // Un-marking it as a weapon must reach the server: null, not a missing key.

@@ -14,6 +14,8 @@ describe('describeHistoryEntry', () => {
     [{ type: 'set', path: ['spellcasting', 'casterClass'], value: 'wizard' }, '', 'wizard', 'Заклинательный класс: — → Волшебник'],
     [{ type: 'set', path: ['spellcasting', 'slots', 'l2', 'max'], value: 3 }, 2, 3, 'Ячейки 2 уровня: 2 → 3'],
     [{ type: 'set', path: ['combat', 'hitDie'], value: 10 }, 8, 10, 'Кость хитов: к8 → к10'],
+    [{ type: 'set', path: ['coins', 'gp'], value: 25 }, 15, 25, 'Золотые монеты: 15 → 25'],
+    [{ type: 'set', path: ['coins', 'cp'], value: 0 }, 7, 0, 'Медные монеты: 7 → 0'],
     [{ type: 'set', path: ['notes'], value: 'долгий текст' }, '', 'долгий текст', 'Заметки: изменено'],
     [{ type: 'list-add', list: 'spells', item: { id: 's', name: 'Огненный шар' } }, null, {}, 'Добавлено заклинание: Огненный шар'],
     [{ type: 'list-remove', list: 'equipment', itemId: 'r' }, { id: 'r', name: 'Верёвка' }, null, 'Удалён предмет: Верёвка'],
