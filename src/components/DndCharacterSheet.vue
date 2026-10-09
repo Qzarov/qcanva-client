@@ -38,7 +38,7 @@
 
     <!-- ===== COMBAT STRIP ===== -->
     <div class="dnd-cs-combat">
-      <div class="dnd-cs-stat dnd-cs-hp">
+      <div class="dnd-cs-stat dnd-cs-hp" :class="{ 'is-tiny': tiny }">
         <!-- Hit points are not typed over: the button opens damage, healing and temporary HP. -->
         <button type="button" class="dnd-cs-hp-button" :disabled="readonly" aria-label="HP: урон, лечение, временные" title="Урон, лечение, временные HP" @click="hpOpen = true">HP</button>
         <input type="number" readonly tabindex="-1" :value="data.combat.currentHp" :style="{ width: numberWidth(data.combat.currentHp) }" aria-label="Текущие HP" />
@@ -48,7 +48,7 @@
         <label class="dnd-cs-temp-hp" :class="{ 'is-none': !data.combat.temporaryHp }" title="Временные HP">(+<input type="number" readonly tabindex="-1" :value="data.combat.temporaryHp" :style="{ width: numberWidth(data.combat.temporaryHp, 2) }" aria-label="Временные HP" /><span>врем.</span>)</label>
         <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>{{ tiny ? 'Иниц.' : 'Инициатива' }}</span><b>{{ formatModifier(initiative) }}</b></button>
         <!-- Phone: the rest ends the HP line (a wide screen keeps it among the states). One button for both rests: which one is chosen in the dialog. -->
-        <button v-if="phone" type="button" class="dnd-cs-rest-button dnd-cs-rest-inline" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
+        <button v-if="phone" type="button" class="dnd-cs-rest-button dnd-cs-rest-inline" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'"><span>Отдых</span><Moon :size="15" :stroke-width="1.9" aria-hidden="true" /></button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
       <div v-if="deathStatus !== 'none'" class="dnd-cs-death" role="group" aria-label="Спасброски от смерти">
@@ -98,15 +98,8 @@
       </nav>
 
       <div v-show="!phone || section === 'abilities'" class="dnd-cs-left">
-        <!-- Phone: armor class, speed, proficiency and the passive scores open the abilities section. -->
-        <template v-if="phone">
-          <div class="dnd-cs-combat-stats dnd-cs-combat-stats-tab dnd-glass">
-            <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
-            <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="locked" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
-            <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
-          </div>
-          <DndPassiveScores :items="passives" />
-        </template>
+        <!-- Phone: armor class, speed, proficiency and the passive scores open the abilities section, as one row of icons with values. -->
+        <DndStatStrip v-if="phone" :items="statStrip" :locked="locked" @set="setStat" />
         <!-- Abilities + their skills -->
         <section class="dnd-cs-abilities">
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
@@ -332,7 +325,8 @@ import DndSpellFields from './DndSpellFields.vue';
 import DndSpellCatalog from './DndSpellCatalog.vue';
 import DndWeaponCatalog from './DndWeaponCatalog.vue';
 import DndWallet from './DndWallet.vue';
-import { Backpack, ScrollText, Sparkles, Swords, UserRound } from '@lucide/vue';
+import { Award, Backpack, Brain, Eye, Footprints, Moon, ScrollText, Search, Shield, Sparkles, Swords, UserRound } from '@lucide/vue';
+import DndStatStrip, { type StatStripItem } from './DndStatStrip.vue';
 import type { DndCoins } from '../dnd/coins';
 import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
@@ -383,7 +377,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog, DndWallet },
+  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog, DndWallet, DndStatStrip, Moon },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -494,6 +488,17 @@ export default defineComponent({
       { key: 'investigation', label: 'Анализ', ariaLabel: 'О пассивном анализе', help: 'находить закономерности и подсказки без броска.', value: passiveScore(skillModifier(props.data, 'investigation', proficiencyBonus.value), props.data.passiveBonuses.investigation) },
       { key: 'insight', label: 'Проницательность', ariaLabel: 'О пассивной проницательности', help: 'понимать намерения и эмоции без броска.', value: passiveScore(skillModifier(props.data, 'insight', proficiencyBonus.value), props.data.passiveBonuses.insight) },
     ]);
+
+    // Phone: what is looked up, as one row of icons with values (DndStatStrip). The passive scores keep their own labels and help.
+    const PASSIVE_ICONS: Record<string, Component> = { perception: Eye, investigation: Search, insight: Brain };
+    const PASSIVE_NAMES: Record<string, string> = { perception: 'Пассивное восприятие', investigation: 'Пассивный анализ', insight: 'Пассивная проницательность' };
+    const statStrip = computed<StatStripItem[]>(() => [
+      { key: 'armorClass', name: 'Класс доспеха', value: props.data.combat.armorClass, help: 'столько нужно выбросить атакой, чтобы попасть по персонажу.', ariaLabel: 'О классе доспеха', icon: Shield, editable: true },
+      { key: 'speed', name: 'Скорость', value: props.data.combat.speed, help: 'сколько футов персонаж проходит за ход.', ariaLabel: 'О скорости', icon: Footprints, editable: true },
+      { key: 'proficiency', name: 'Бонус мастерства', value: formatModifier(proficiencyBonus.value), help: 'добавляется к броскам, которыми персонаж владеет; растёт с уровнем.', ariaLabel: 'О бонусе мастерства', icon: Award },
+      ...passives.value.map((item) => ({ key: item.key, name: PASSIVE_NAMES[item.key] ?? item.label, value: item.value, help: item.help, ariaLabel: item.ariaLabel, icon: PASSIVE_ICONS[item.key] ?? Eye })),
+    ]);
+    const setStat = (key: string, value: string) => { if (key === 'armorClass' || key === 'speed') setNumber(props.data.combat, key, value, 0); };
 
     const clamp = (n: number, min: number, max = Number.MAX_SAFE_INTEGER) => Math.min(max, Math.max(min, n));
 
@@ -758,7 +763,7 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
-      tabs, phone, tiny, section, setSection, setCoins,
+      tabs, phone, tiny, section, setSection, setCoins, statStrip, setStat,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -965,7 +970,6 @@ export default defineComponent({
 /* Combat values sit right of identity on desktop and below it on mobile. */
 .dnd-cs-combat { display: flex; flex-direction: column; gap: 8px; align-items: stretch; align-self: start; min-width: 0; }
 .dnd-cs-combat-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.dnd-cs-combat-stats-tab { padding: 8px 12px; }
 .dnd-cs-combat-stats .dnd-cs-stat { flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; text-align: center; padding: 5px 0; }
 .dnd-cs-combat-stats .dnd-cs-stat span { white-space: normal; overflow-wrap: anywhere; font-size: 9px; line-height: 1.2; letter-spacing: 0; text-transform: none; }
 .dnd-cs-combat-stats input[type='number'] { width: 100%; min-width: 0; text-align: center; appearance: textfield; -moz-appearance: textfield; }
@@ -1226,15 +1230,21 @@ export default defineComponent({
   /* Used every turn at 0 HP / every rest: full touch targets. */
   /* Used every turn: full touch targets. The initiative's name stands over its modifier to leave the HP line its room. */
   .dnd-cs-hp-button, .dnd-cs-init-button, .dnd-cs-rest-button, .dnd-cs-death-roll { min-height: 44px; }
-  .dnd-cs-init-button { flex-direction: column; gap: 1px; padding-inline: 6px; }
-  .dnd-cs-init-button span { font-size: 9px; line-height: 1.2; }
-  .dnd-cs-init-button b { font-size: 14px; line-height: 1.1; }
+  /* The two buttons that end the HP line are one kind of thing: the same box, a caption over a glyph. */
+  .dnd-cs-init-button, .dnd-cs-rest-inline {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex: none; box-sizing: border-box;
+    width: 62px; height: 44px; padding: 3px 2px; border: 1px solid var(--dnd-glass-border); border-radius: 8px;
+    background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim);
+  }
+  .dnd-cs-init-button span, .dnd-cs-rest-inline span { font-size: 9px; line-height: 1.2; white-space: nowrap; }
+  .dnd-cs-init-button b { font-size: 14px; line-height: 15px; }
+  .dnd-cs-rest-inline svg { flex: none; color: var(--ui-text); }
+  .dnd-cs-hp.is-tiny .dnd-cs-init-button, .dnd-cs-hp.is-tiny .dnd-cs-rest-inline { width: 44px; }
   /* HP, the numbers, initiative, rest: one row down to 320 px. If it ever does not fit, it wraps instead of clipping. */
   .dnd-cs-hp { gap: 3px; flex-wrap: wrap; row-gap: 6px; }
   .dnd-cs-hp-button { min-width: 40px; padding-inline: 6px; }
   .dnd-cs-hp input[type='number'] { font-size: 18px; }
   .dnd-cs-hp b { font-size: 16px; }
-  .dnd-cs-rest-inline { flex: none; justify-content: center; padding: 5px; border-radius: 8px; background: rgba(var(--dnd-fill-rgb), 0.05); }
   /* Room for the numbers: temporary HP are "(+12)" here, and are not shown at all while there are none. */
   .dnd-cs-temp-hp span { display: none; }
   .dnd-cs-temp-hp.is-none { display: none; }

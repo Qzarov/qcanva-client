@@ -252,7 +252,9 @@ describe('what is looked up, and the initiative roll', () => {
     await wrapper!.vm.$nextTick();
     const order = Array.from(wrapper!.get('.dnd-cs-state-list').element.children).map((child) => child.textContent!.replace(/\s+/g, ' ').trim());
     // (A sheet used on its own, as here, keeps its roll log button next to the roll mode; the page moves it to the header.)
-    expect(order).toEqual(['Преим.ПомехаЖурнал', '✦ Вдохновение', 'Отдых', 'Отравлен ×', '+ состояние']);
+    expect(order).toEqual(['Преим.ПомехаЖурнал', '✦Вдохновение', 'Отдых', 'Отравлен ×', '+ состояние']);
+    // The star's name is its label too: on a phone the word is hidden and only the star shows.
+    expect(states.get('.dnd-cs-toggle').attributes('aria-label')).toBe('Вдохновение');
     data.combat.conditions = [];
     await wrapper!.vm.$nextTick();
     expect(wrapper!.findAll('.dnd-roll-mode')).toHaveLength(1);
@@ -295,23 +297,56 @@ describe('what is looked up, and the initiative roll', () => {
     expect(wrapper!.findAll('.dnd-cs-passives')).toHaveLength(1);
   });
 
-  it('on a phone moves them into the abilities section', async () => {
+  it('on a phone moves them into the abilities section, as one row of icons with values', async () => {
     screenWidth(390);
-    const data = open((sheet) => { sheet.activeTab = 'abilities'; });
+    const data = open((sheet) => { sheet.activeTab = 'abilities'; sheet.combat.armorClass = 16; sheet.abilities.wisdom.score = 14; });
     expect(wrapper!.find('.dnd-cs-topcard .dnd-cs-combat-stats').exists()).toBe(false);
-    expect(wrapper!.find('.dnd-cs-status-row .dnd-cs-passives').exists()).toBe(false);
+    expect(wrapper!.find('.dnd-cs-passives').exists()).toBe(false);
     expect(wrapper!.find('.dnd-cs-status-row').exists()).toBe(true); // the conditions stay on top
     const left = wrapper!.get('.dnd-cs-left');
-    expect(left.findAll('.dnd-cs-combat-stats .dnd-cs-stat span').map((label) => label.text())).toEqual(['КД', 'Скорость', 'Мастерство']);
-    expect(left.find('.dnd-cs-passives').exists()).toBe(true);
-    // They come before the abilities.
-    expect(left.element.firstElementChild!.classList.contains('dnd-cs-combat-stats')).toBe(true);
-
+    // One block, before the abilities; six cells, each an icon and a value.
+    expect(left.element.firstElementChild!.classList.contains('dnd-stat-strip')).toBe(true);
+    expect(wrapper!.findAll('.dnd-stat-strip')).toHaveLength(1);
+    const cells = left.findAll('.dnd-stat-cell');
+    expect(cells).toHaveLength(6);
+    expect(cells.every((cell) => cell.find('svg').exists())).toBe(true);
+    expect(left.findAll('.dnd-stat-button').map((button) => button.attributes('aria-label'))).toEqual([
+      'О классе доспеха', 'О скорости', 'О бонусе мастерства', 'О пассивном восприятии', 'О пассивном анализе', 'О пассивной проницательности',
+    ]);
+    // Setup mode (the default here): armor class and speed are fields; the rest are read.
+    expect(cells.map((cell) => (cell.find('input').exists() ? (cell.get('input').element as HTMLInputElement).value : cell.get('strong').text()))).toEqual(['16', '30', '+2', '12', '10', '12']);
     await left.get('[aria-label="Класс доспеха"]').setValue('17');
     expect(data.combat.armorClass).toBe(17);
-    // Still one of each, and gone with the section.
+    await left.get('[aria-label="Скорость"]').setValue('25');
+    expect(data.combat.speed).toBe(25);
     expect(wrapper!.findAll('[aria-label="Класс доспеха"]')).toHaveLength(1);
+
+    // A tap explains the icon: "Name: what it is for".
+    await left.get('[aria-label="О классе доспеха"]').trigger('click');
+    expect(document.body.querySelector('[role="tooltip"]')!.textContent).toBe('Класс доспеха: столько нужно выбросить атакой, чтобы попасть по персонажу.');
+    await left.get('[aria-label="О пассивном восприятии"]').trigger('click');
+    expect(document.body.querySelector('[role="tooltip"]')!.textContent).toBe('Пассивное восприятие: замечать скрытое без броска.');
+    expect(document.body.querySelectorAll('[role="tooltip"]')).toHaveLength(1);
+    await left.get('[aria-label="О пассивном восприятии"]').trigger('click');
+    expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
+
+    // Play mode: nothing to type, six values.
+    await wrapper!.setProps({ mode: 'play' });
+    expect(left.find('.dnd-stat-strip input').exists()).toBe(false);
+    expect(left.findAll('.dnd-stat-cell strong').map((value) => value.text())).toEqual(['17', '25', '+2', '12', '10', '12']);
+
     await section('equipment');
     expect(left.isVisible()).toBe(false);
+  });
+
+  it('ends the HP line on a phone with two buttons of one kind: a caption over a glyph', () => {
+    screenWidth(390);
+    open((sheet) => { sheet.abilities.dexterity.score = 14; });
+    const initiative = wrapper!.get('.dnd-cs-init-button');
+    const rest = wrapper!.get('.dnd-cs-rest-inline');
+    expect(initiative.findAll('span, b').map((part) => part.text())).toEqual(['Инициатива', '+2']);
+    expect(rest.get('span').text()).toBe('Отдых');
+    expect(rest.find('svg').exists()).toBe(true);
+    expect(rest.text()).toBe('Отдых');
   });
 });

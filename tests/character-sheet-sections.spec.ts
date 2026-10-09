@@ -294,18 +294,61 @@ for (const width of [320, 390]) {
     // The top card has no armor class, speed or proficiency; the passive scores are not above the tabs.
     await expect(page.locator('.dnd-cs-topcard .dnd-cs-combat-stats')).toHaveCount(0);
     const tabsTop = (await page.locator('.dnd-cs-tabs').boundingBox())!.y;
-    const stats = page.locator('.dnd-cs-left .dnd-cs-combat-stats');
-    const passives = page.getByRole('region', { name: 'Пассивные характеристики' });
-    await expect(stats.locator('.dnd-cs-stat span')).toHaveText(['КД', 'Скорость', 'Мастерство']);
-    await expect(passives).toHaveCount(1);
+    // One block, one row: armor class, speed, proficiency and the three passive scores, each an icon with its value.
+    const stats = page.getByRole('region', { name: 'Показатели' });
+    const passives = stats;
+    await expect(page.getByRole('region', { name: 'Пассивные характеристики' })).toHaveCount(0);
+    await expect(page.locator('.dnd-cs-left .dnd-cs-combat-stats')).toHaveCount(0);
+    const cells = stats.locator('.dnd-stat-cell');
+    await expect(cells).toHaveCount(6);
+    await expect(cells).toHaveText(['10', '30', '+3', '13', '10', '13']);
+    await expect(cells.locator('svg')).toHaveCount(6);
+    const cellBoxes = await Promise.all((await cells.all()).map(async (cell) => (await cell.boundingBox())!));
+    expect(new Set(cellBoxes.map((box) => Math.round(box.y))).size).toBe(1);
+    const cellWidths = cellBoxes.map((box) => box.width);
+    expect(Math.max(...cellWidths) - Math.min(...cellWidths)).toBeLessThanOrEqual(1);
+    for (const box of cellBoxes) expect(box.height).toBeGreaterThanOrEqual(44);
+    for (const cell of await cells.all()) expect(await cell.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
     const statsBox = (await stats.boundingBox())!;
-    const passivesBox = (await passives.boundingBox())!;
     const abilitiesBox = (await page.locator('.dnd-cs-abilities').boundingBox())!;
     expect(statsBox.y).toBeGreaterThan(tabsTop);
-    expect(passivesBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height);
-    expect(abilitiesBox.y).toBeGreaterThanOrEqual(passivesBox.y + passivesBox.height);
+    expect(abilitiesBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height);
+    expect(statsBox.x).toBeGreaterThanOrEqual(0);
     expect(statsBox.x + statsBox.width).toBeLessThanOrEqual(width);
-    for (const cell of await stats.locator('.dnd-cs-stat').all()) expect(await cell.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+
+    // A tap explains an icon - "Name: what it is for" - above it, inside the screen, moving nothing; it goes away on a second tap.
+    for (const [label, text] of [
+      ['О классе доспеха', 'Класс доспеха: столько нужно выбросить атакой, чтобы попасть по персонажу.'],
+      ['О скорости', 'Скорость: сколько футов персонаж проходит за ход.'],
+      ['О бонусе мастерства', 'Бонус мастерства: добавляется к броскам, которыми персонаж владеет; растёт с уровнем.'],
+      ['О пассивном восприятии', 'Пассивное восприятие: замечать скрытое без броска.'],
+    ] as const) {
+      const button = stats.getByRole('button', { name: label, exact: true });
+      await button.click();
+      const hint = page.getByRole('tooltip');
+      await expect(hint).toHaveText(text);
+      const hintBox = (await hint.boundingBox())!;
+      expect(hintBox.x).toBeGreaterThanOrEqual(0);
+      expect(hintBox.x + hintBox.width).toBeLessThanOrEqual(width);
+      expect(hintBox.y + hintBox.height).toBeLessThanOrEqual((await button.boundingBox())!.y + 1);
+      expect(await stats.boundingBox()).toEqual(statsBox);
+      if (SHOTS && label === 'О классе доспеха') await page.screenshot({ path: `${SHOTS}/stat-strip-hint-${width}.png` });
+      await button.click();
+      await expect(hint).toHaveCount(0);
+    }
+
+    // The two buttons that end the HP line are one size.
+    const initBox = (await page.locator('.dnd-cs-init-button').boundingBox())!;
+    const restBox = (await page.locator('.dnd-cs-hp .dnd-cs-rest-button').boundingBox())!;
+    expect(Math.abs(initBox.width - restBox.width)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(initBox.height - restBox.height)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(initBox.y - restBox.y)).toBeLessThanOrEqual(0.5);
+    // Inspiration is a star the size of a touch target; its name is its label.
+    const star = page.getByRole('region', { name: 'Состояния' }).getByRole('button', { name: 'Вдохновение', exact: true });
+    const starBox = (await star.boundingBox())!;
+    expect(starBox.width).toBeLessThanOrEqual(46);
+    expect(starBox.height).toBeGreaterThanOrEqual(44);
+    expect((await star.innerText()).trim()).toBe('✦');
     expect(await noSideScroll(page)).toBe(true);
     if (SHOTS) await page.waitForTimeout(300);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/batch3-stats-${width}.png`, fullPage: true });
@@ -314,6 +357,7 @@ for (const width of [320, 390]) {
     await tab(page, 'combat').click();
     await expect(stats).toBeHidden();
     await expect(passives).toBeHidden();
+    void abilitiesBox;
     await expect(page.getByRole('button', { name: /состояние/ })).toBeVisible();
   });
 }

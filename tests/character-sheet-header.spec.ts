@@ -158,11 +158,11 @@ for (const width of [320, 390, 760, 1280]) {
     expect(hpBar.height).toBeLessThanOrEqual(10);
     expect(ac.y).toBeGreaterThanOrEqual(hp.y + hp.height);
     expect(ac.y).toBeGreaterThanOrEqual(hpBar.y + hpBar.height);
-    const combatCells = await page.locator('.dnd-cs-combat-stats > *').evaluateAll(elements => elements.map(element => {
+    // Wide: armor class, speed, proficiency in the top card. Phone: those and the passive scores, six cells of one strip.
+    const combatCells = await page.locator(width > 760 ? '.dnd-cs-combat-stats > *' : '.dnd-stat-strip > .dnd-stat-cell').evaluateAll(elements => elements.map(element => {
       const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, right: b.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
     }));
-    // Armor class, speed, proficiency (in the abilities section on a phone); the initiative is a button among the actions.
-    expect(combatCells).toHaveLength(3);
+    expect(combatCells).toHaveLength(width > 760 ? 3 : 6);
     expect(Math.max(...combatCells.map(c => c.y)) - Math.min(...combatCells.map(c => c.y))).toBeLessThanOrEqual(1);
     expect(combatCells.every(c => c.x >= 0 && c.right <= width && c.scrollWidth <= c.clientWidth + 1)).toBe(true);
     await expect(page.getByLabel('Бонус инициативы', { exact: true })).toHaveCount(0);
@@ -176,7 +176,8 @@ for (const width of [320, 390, 760, 1280]) {
     expect(tiles).toHaveLength(6);
     expect(Math.abs(tiles[0]!.y - tiles[1]!.y)).toBeLessThanOrEqual(1);
     expect(tiles[1]!.x).toBeGreaterThan(tiles[0]!.x);
-    const passives = await page.locator('.dnd-cs-passive').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+    // The passive scores: their own block on a wide screen, the last three cells of the strip on a phone.
+    const passives = await page.locator(width > 760 ? '.dnd-cs-passive' : '.dnd-stat-cell:nth-child(n+4)').evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
     expect(passives).toHaveLength(3);
     expect(Math.max(...passives) - Math.min(...passives)).toBeLessThanOrEqual(1);
     await expect(page.locator('.dnd-cs-passives').getByRole('heading')).toHaveCount(0);
@@ -280,7 +281,8 @@ for (const width of [320, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     const saved = await openSheet(page);
     const states = page.getByRole('region', { name: 'Состояния', exact: true });
-    const passives = page.getByRole('region', { name: 'Пассивные характеристики', exact: true });
+    // On a phone the passive scores are three of the six cells of the strip in the abilities section.
+    const passives = page.getByRole('region', { name: width > 760 ? 'Пассивные характеристики' : 'Показатели', exact: true });
     const stateBox = (await states.boundingBox())!;
     const passiveBox = (await passives.boundingBox())!;
     if (width > 760) {
@@ -325,7 +327,8 @@ for (const width of [320, 1280]) {
       const passiveBefore = await passives.boundingBox();
       const stateBefore = await states.boundingBox();
       await button.click();
-      await expect(page.getByRole('tooltip')).toContainText('Пассивная характеристика:');
+      // "Name: what it is for" - the general name on a wide screen, the score's own on a phone, where it has no caption.
+      await expect(page.getByRole('tooltip')).toHaveText(width > 760 ? /^Пассивная характеристика: / : /^Пассивн\S+ \S+: /);
       await expect(page.getByRole('tooltip')).toContainText('без броска');
       const bounds = (await page.getByRole('tooltip').boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(0);
