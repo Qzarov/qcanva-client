@@ -252,7 +252,8 @@ describe('what is looked up, and the initiative roll', () => {
     await wrapper!.vm.$nextTick();
     const order = Array.from(wrapper!.get('.dnd-cs-state-list').element.children).map((child) => child.textContent!.replace(/\s+/g, ' ').trim());
     // (A sheet used on its own, as here, keeps its roll log button next to the roll mode; the page moves it to the header.)
-    expect(order).toEqual(['Преим.ПомехаЖурнал', '✦Вдохновение', 'Отдых', 'Отравлен ×', '+ состояние']);
+    // (Both captions of inspiration are in the markup; CSS shows the short one on the narrowest phones only.)
+    expect(order).toEqual(['Преим.ПомехаЖурнал', '✦ВдохновениеВдохн.', 'Отдых', 'Отравлен ×', '+ состояние']);
     // The star's name is its label too: on a phone the word is hidden and only the star shows.
     expect(states.get('.dnd-cs-toggle').attributes('aria-label')).toBe('Вдохновение');
     data.combat.conditions = [];

@@ -1230,9 +1230,10 @@ export default defineComponent({
   /* Used every turn at 0 HP / every rest: full touch targets. */
   /* Used every turn: full touch targets. The initiative's name stands over its modifier to leave the HP line its room. */
   .dnd-cs-hp-button, .dnd-cs-init-button, .dnd-cs-rest-button, .dnd-cs-death-roll { min-height: 44px; }
-  /* The two buttons that end the HP line are one kind of thing: the same box, a caption over a glyph. */
+  /* The two buttons that end the HP line are one kind of thing: the same box, a glyph over its caption
+     (the caption comes first in the markup, as it is the button's name). */
   .dnd-cs-init-button, .dnd-cs-rest-inline {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; flex: none; box-sizing: border-box;
+    display: flex; flex-direction: column-reverse; align-items: center; justify-content: center; gap: 2px; flex: none; box-sizing: border-box;
     width: 62px; height: 44px; padding: 3px 2px; border: 1px solid var(--dnd-glass-border); border-radius: 8px;
     background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim);
   }

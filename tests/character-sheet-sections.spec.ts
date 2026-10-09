@@ -343,12 +343,27 @@ for (const width of [320, 390]) {
     expect(Math.abs(initBox.width - restBox.width)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(initBox.height - restBox.height)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(initBox.y - restBox.y)).toBeLessThanOrEqual(0.5);
-    // Inspiration is a star the size of a touch target; its name is its label.
+    // Inspiration is a box of the same kind: the star over its caption, cut short where the word does not fit.
     const star = page.getByRole('region', { name: 'Состояния' }).getByRole('button', { name: 'Вдохновение', exact: true });
     const starBox = (await star.boundingBox())!;
-    expect(starBox.width).toBeLessThanOrEqual(46);
-    expect(starBox.height).toBeGreaterThanOrEqual(44);
-    expect((await star.innerText()).trim()).toBe('✦');
+    expect(starBox.height).toBe(restBox.height);
+    expect(starBox.width).toBeLessThanOrEqual(width < 380 ? 44 : 68);
+    expect((await star.innerText()).split(/\s+/).filter(Boolean)).toEqual(['✦', width < 380 ? 'Вдохн.' : 'Вдохновение']);
+    expect(await star.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    const starIcon = (await star.locator('.dnd-cs-toggle-icon').boundingBox())!;
+    const starCaption = (await star.locator(width < 380 ? '.dnd-cs-toggle-short' : '.dnd-cs-toggle-label').boundingBox())!;
+    expect(starCaption.y).toBeGreaterThanOrEqual(starIcon.y + starIcon.height - 1);
+    // The initiative and the rest read the same way: the glyph on top, its caption under it.
+    for (const [glyph, caption] of [['.dnd-cs-init-button b', '.dnd-cs-init-button span'], ['.dnd-cs-rest-inline svg', '.dnd-cs-rest-inline span']] as const) {
+      const top = (await page.locator(glyph).boundingBox())!;
+      const bottom = (await page.locator(caption).boundingBox())!;
+      expect(bottom.y).toBeGreaterThanOrEqual(top.y + top.height - 1);
+    }
+    await star.click();
+    await expect(star).toHaveAttribute('aria-pressed', 'true');
+    if (SHOTS) await page.waitForTimeout(250);
+    if (SHOTS) await page.locator('.dnd-cs').screenshot({ path: `${SHOTS}/inspiration-${width}.png`, clip: undefined });
+    await star.click();
     expect(await noSideScroll(page)).toBe(true);
     if (SHOTS) await page.waitForTimeout(300);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/batch3-stats-${width}.png`, fullPage: true });
@@ -365,6 +380,8 @@ for (const width of [320, 390]) {
 test('the HP line holds three-digit hit points with temporary ones on a 320 px screen', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openSheet(page, { combat: { currentHp: 127, maxHp: 144, temporaryHp: 12 } });
+  // Measured in the sheet's own font: until it loads, the fallback's wider digits can wrap the line for a moment.
+  await page.evaluate(() => document.fonts.ready);
   const line = page.locator('.dnd-cs-hp');
   const lineBox = (await line.boundingBox())!;
   expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(320);

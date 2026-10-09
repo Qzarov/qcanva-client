@@ -3,7 +3,7 @@
     <div class="dnd-cs-state-list">
       <!-- How the next d20 is rolled comes first (the sheet puts advantage / disadvantage here). -->
       <slot name="before" />
-      <button type="button" class="dnd-cs-toggle" :class="{ on: combat.inspiration }" :disabled="readonly" :aria-pressed="combat.inspiration" aria-label="Вдохновение" title="Вдохновение" @click="toggleInspiration"><span aria-hidden="true">✦</span><span class="dnd-cs-toggle-label">Вдохновение</span></button>
+      <button type="button" class="dnd-cs-toggle" :class="{ on: combat.inspiration }" :disabled="readonly" :aria-pressed="combat.inspiration" aria-label="Вдохновение" title="Вдохновение" @click="toggleInspiration"><span class="dnd-cs-toggle-icon" aria-hidden="true">✦</span><span class="dnd-cs-toggle-label">Вдохновение</span><span class="dnd-cs-toggle-short">Вдохн.</span></button>
       <!-- What else a turn is set up with (the sheet puts advantage / disadvantage and the rest here).
            Before the conditions: these stay put while the list of conditions grows after them. -->
       <slot />
@@ -87,13 +87,21 @@ watch(() => props.readonly, value => { if (value) close(); });
 .dnd-cs-state-list > button:disabled { opacity:.5; cursor:default; }
 /* Inspiration is a small switch: the star alone on a phone, a compact pill on a wide screen. */
 .dnd-cs-state-list > .dnd-cs-toggle { padding:5px 9px; gap:5px; font-size:11px; }
+.dnd-cs-toggle-short { display:none; }
 .dnd-cs-state-list .on, .dnd-cs-state-list .dnd-cs-condition { color:var(--dnd-glass-accent); background:var(--dnd-glass-accent-soft); }
 .dnd-cs-condition-menu { position:fixed; z-index:1000; display:grid; gap:2px; width:min(240px,calc(100vw - 24px)); max-height:min(280px,calc(100dvh - 24px)); box-sizing:border-box; overflow-y:auto; padding:6px; border:1px solid var(--ui-border); border-radius:12px; background:var(--ui-surface-solid); box-shadow:var(--ui-glass-shadow); }
 .dnd-cs-condition-menu button { padding:10px 12px; border:0; border-radius:8px; text-align:left; font:inherit; font-size:13px; color:var(--ui-text); background:transparent; cursor:pointer; }
 .dnd-cs-condition-menu button:hover, .dnd-cs-condition-menu button:focus-visible { background:var(--ui-brand-soft); }
 @media (max-width:760px) {
-  /* Phone: the star alone, a full touch target; its name is the button's label. */
+  /* Phone: the same box as the buttons that end the HP line - a glyph over its caption. */
+  .dnd-cs-state-list > .dnd-cs-toggle { flex-direction:column; justify-content:center; gap:2px; box-sizing:border-box; width:68px; height:44px; padding:3px 2px; border-radius:8px; }
+  .dnd-cs-toggle-icon { font-size:15px; line-height:15px; }
+  .dnd-cs-toggle-label, .dnd-cs-toggle-short { font-size:9px; line-height:1.2; white-space:nowrap; }
+}
+@media (max-width:379px) {
+  /* The narrowest phones: the word does not fit the box, its beginning does. */
+  .dnd-cs-state-list > .dnd-cs-toggle { width:44px; }
   .dnd-cs-toggle-label { display:none; }
-  .dnd-cs-state-list > .dnd-cs-toggle { justify-content:center; width:44px; height:44px; padding:0; font-size:16px; }
+  .dnd-cs-toggle-short { display:inline; }
 }
 </style>
