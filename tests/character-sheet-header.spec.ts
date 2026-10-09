@@ -42,9 +42,21 @@ for (const width of [320, 1280]) {
     const hpLine = (await page.locator('.dnd-cs-hp').boundingBox())!;
     const hpButtonBox = (await hpButton.boundingBox())!;
     const initiative = (await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).boundingBox())!;
-    // HP on the left of the line, the initiative roll on its right, nothing clipped.
+    // HP on the left of the line, the initiative roll on its right (on a phone the rest follows it), nothing clipped.
     expect(hpButtonBox.x - hpLine.x).toBeLessThanOrEqual(1);
-    expect(hpLine.x + hpLine.width - (initiative.x + initiative.width)).toBeLessThanOrEqual(1);
+    const rest = page.getByRole('button', { name: 'Отдых', exact: true });
+    await expect(rest).toHaveCount(1);
+    const restBox = (await rest.boundingBox())!;
+    if (width <= 760) {
+      // One row: HP ... initiative, rest.
+      expect(Math.abs(restBox.y + restBox.height / 2 - (initiative.y + initiative.height / 2))).toBeLessThanOrEqual(2);
+      expect(restBox.x).toBeGreaterThanOrEqual(initiative.x + initiative.width);
+      expect(hpLine.x + hpLine.width - (restBox.x + restBox.width)).toBeLessThanOrEqual(1);
+      expect(restBox.height).toBeGreaterThanOrEqual(44);
+    } else {
+      expect(hpLine.x + hpLine.width - (initiative.x + initiative.width)).toBeLessThanOrEqual(1);
+      await expect(page.getByRole('region', { name: 'Состояния' }).getByRole('button', { name: 'Отдых', exact: true })).toBeVisible();
+    }
     expect(Math.abs(hpButtonBox.y + hpButtonBox.height / 2 - (initiative.y + initiative.height / 2))).toBeLessThanOrEqual(2);
     expect(hpLine.x + hpLine.width).toBeLessThanOrEqual(width);
     for (const field of [current, page.getByLabel('Максимум HP', { exact: true })]) expect(await field.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);

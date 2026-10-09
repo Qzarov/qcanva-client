@@ -9,7 +9,7 @@ import { serveCharacterSheet } from './support/fake-character-sheet-server';
 
 const SHOTS = process.env.SHOT_DIR;
 
-async function openSheet(page: Page, options: { theme?: 'dark' | 'light'; role?: 'owner' | 'read'; coins?: Record<string, number> } = {}) {
+async function openSheet(page: Page, options: { theme?: 'dark' | 'light'; role?: 'owner' | 'read'; coins?: Record<string, number>; combat?: Record<string, number> } = {}) {
   const data = createDndCharacterSheet();
   data.identity = { ...data.identity, name: 'Арвен', race: 'Эльф', className: 'Жрец', level: 5 };
   data.abilities.wisdom.score = 16;
@@ -26,6 +26,7 @@ async function openSheet(page: Page, options: { theme?: 'dark' | 'light'; role?:
   data.proficiencies.armor = ['Лёгкие', 'Средние', 'Щиты'];
   data.proficiencies.languages = ['Общий', 'Эльфийский'];
   Object.assign(data.coins, options.coins ?? { gp: 15, sp: 4, cp: 2 });
+  Object.assign(data.combat, options.combat ?? {});
   const saved = await serveCharacterSheet(
     page,
     { id: 'hero', title: 'x', templateType: 'dnd-character', data: data as unknown as Record<string, unknown>, createdAt: '', updatedAt: '' },
@@ -256,10 +257,10 @@ for (const width of [320, 390]) {
     await openSheet(page);
     // The top card has no row of actions: the HP button and the initiative roll end the HP line.
     await expect(page.locator('.dnd-cs-hp-actions')).toHaveCount(0);
-    await expect(page.locator('.dnd-cs-topcard').getByRole('button', { name: /Лечение|Урон|Отдых|Атака/ })).toHaveCount(0);
+    await expect(page.locator('.dnd-cs-topcard').getByRole('button', { name: /Лечение|Урон|Атака/ })).toHaveCount(0);
     const line = (await page.locator('.dnd-cs-hp').boundingBox())!;
     expect(line.x + line.width).toBeLessThanOrEqual(width);
-    for (const selector of ['.dnd-cs-hp-button', '.dnd-cs-init-button']) {
+    for (const selector of ['.dnd-cs-hp-button', '.dnd-cs-init-button', '.dnd-cs-hp .dnd-cs-rest-button']) {
       const box = (await page.locator(selector).boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.x).toBeGreaterThanOrEqual(line.x - 1);
@@ -269,10 +270,15 @@ for (const width of [320, 390]) {
     await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).click();
     await expect(page.locator('.dnd-cs-toast')).toContainText('Инициатива');
 
-    // Advantage / disadvantage and the rest live among the states, inside the screen.
+    // HP, the numbers, the initiative and the rest: one row.
+    const rowOf = async (selector: string) => { const box = (await page.locator(selector).boundingBox())!; return Math.round(box.y + box.height / 2); };
+    const rows = [await rowOf('.dnd-cs-hp-button'), await rowOf('.dnd-cs-init-button'), await rowOf('.dnd-cs-hp .dnd-cs-rest-button')];
+    expect(Math.max(...rows) - Math.min(...rows)).toBeLessThanOrEqual(2);
+
+    // Advantage / disadvantage live among the states, inside the screen; the rest is in the HP line here.
     const states = page.getByRole('region', { name: 'Состояния' });
     await expect(states.locator('.dnd-roll-mode button')).toHaveText(['Преим.', 'Помеха']);
-    await expect(states.getByRole('button', { name: 'Отдых', exact: true })).toBeVisible();
+    await expect(states.getByRole('button', { name: 'Отдых', exact: true })).toHaveCount(0);
     for (const control of await states.getByRole('button').all()) {
       const box = (await control.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
@@ -281,7 +287,7 @@ for (const width of [320, 390]) {
     }
     await states.getByRole('button', { name: 'Преим.' }).click();
     await expect(states.getByRole('button', { name: 'Преим.' })).toHaveAttribute('aria-pressed', 'true');
-    await states.getByRole('button', { name: 'Отдых', exact: true }).click();
+    await page.getByRole('button', { name: 'Отдых', exact: true }).click();
     await expect(page.getByRole('dialog', { name: 'Короткий отдых' })).toBeVisible();
     await page.keyboard.press('Escape');
 
@@ -311,6 +317,31 @@ for (const width of [320, 390]) {
     await expect(page.getByRole('button', { name: /состояние/ })).toBeVisible();
   });
 }
+
+test('the HP line holds three-digit hit points with temporary ones on a 320 px screen', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await openSheet(page, { combat: { currentHp: 127, maxHp: 144, temporaryHp: 12 } });
+  const line = page.locator('.dnd-cs-hp');
+  const lineBox = (await line.boundingBox())!;
+  expect(lineBox.x + lineBox.width).toBeLessThanOrEqual(320);
+  const parts = await line.locator(':scope > *').evaluateAll((elements) => elements.map((element) => {
+    const box = element.getBoundingClientRect();
+    return { name: element.getAttribute('aria-label') ?? element.textContent, left: box.left, right: box.right, middle: Math.round(box.top + box.height / 2), clipped: element.scrollWidth > element.clientWidth + 1 };
+  }));
+  // Nothing clipped, nothing outside the line, and - with room found for it - still one row.
+  for (const part of parts) {
+    expect(part.clipped, String(part.name)).toBe(false);
+    expect(part.left, String(part.name)).toBeGreaterThanOrEqual(lineBox.x - 1);
+    expect(part.right, String(part.name)).toBeLessThanOrEqual(lineBox.x + lineBox.width + 1);
+  }
+  const middles = parts.map((part) => part.middle);
+  expect(Math.max(...middles) - Math.min(...middles)).toBeLessThanOrEqual(2);
+  await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('127');
+  await expect(page.getByLabel('Временные HP', { exact: true })).toBeVisible();
+  await expect(page.locator('.dnd-cs-init-button span')).toHaveText('Иниц.');
+  expect(await noSideScroll(page)).toBe(true);
+  if (SHOTS) await page.locator('.dnd-cs-topcard').screenshot({ path: `${SHOTS}/hp-line-320-worst.png` });
+});
 
 test('on a wide screen armor class, speed, proficiency and the passive scores stay at the top', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });

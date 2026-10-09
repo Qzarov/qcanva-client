@@ -1,6 +1,8 @@
 <template>
   <section ref="root" class="dnd-cs-states dnd-glass" aria-label="Состояния">
     <div class="dnd-cs-state-list">
+      <!-- How the next d20 is rolled comes first (the sheet puts advantage / disadvantage here). -->
+      <slot name="before" />
       <button type="button" class="dnd-cs-toggle" :class="{ on: combat.inspiration }" :disabled="readonly" :aria-pressed="combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
       <!-- What else a turn is set up with (the sheet puts advantage / disadvantage and the rest here).
            Before the conditions: these stay put while the list of conditions grows after them. -->

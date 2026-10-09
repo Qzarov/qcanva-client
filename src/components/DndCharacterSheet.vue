@@ -46,7 +46,9 @@
         <!-- The maximum is set once (and on a level-up): a field in setup mode only. -->
         <input type="number" min="1" :readonly="locked" :tabindex="locked ? -1 : undefined" :value="data.combat.maxHp" :style="{ width: numberWidth(data.combat.maxHp) }" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', evVal($event), 1)" />
         <label class="dnd-cs-temp-hp" :class="{ 'is-none': !data.combat.temporaryHp }" title="Временные HP">(+<input type="number" readonly tabindex="-1" :value="data.combat.temporaryHp" :style="{ width: numberWidth(data.combat.temporaryHp, 2) }" aria-label="Временные HP" /><span>врем.</span>)</label>
-        <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><b>{{ formatModifier(initiative) }}</b></button>
+        <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>{{ tiny ? 'Иниц.' : 'Инициатива' }}</span><b>{{ formatModifier(initiative) }}</b></button>
+        <!-- Phone: the rest ends the HP line (a wide screen keeps it among the states). One button for both rests: which one is chosen in the dialog. -->
+        <button v-if="phone" type="button" class="dnd-cs-rest-button dnd-cs-rest-inline" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
       <div v-if="deathStatus !== 'none'" class="dnd-cs-death" role="group" aria-label="Спасброски от смерти">
@@ -74,9 +76,11 @@
     <div class="dnd-cs-status-row">
       <DndPassiveScores v-if="!phone" :items="passives" />
       <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change">
-        <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @open-log="rollLogOpen = true" />
+        <template #before>
+          <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @open-log="rollLogOpen = true" />
+        </template>
         <!-- One button for both rests: which one is chosen in the dialog. -->
-        <button type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
+        <button v-if="!phone" type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
       </DndCharacterStates>
     </div>
 
@@ -516,7 +520,7 @@ export default defineComponent({
     };
 
     // The numbers of the HP line take the room their digits need and no more: the line must fit a 320 px screen.
-    const numberWidth = (value: unknown, padding = 8) => `calc(${String(Math.trunc(Number(value) || 0)).length}ch + ${padding}px)`;
+    const numberWidth = (value: unknown, padding = 6) => `calc(${String(Math.trunc(Number(value) || 0)).length}ch + ${padding}px)`;
     const hpOpen = ref(false);
     const applyHp = (action: HpAction, amount: number) => {
       if (props.readonly || !hpOpen.value || !isHpAmount(amount)) return;
@@ -574,6 +578,8 @@ export default defineComponent({
     const phone = useMedia('(max-width: 760px)');
     // Five equal segments are narrower than the longest names up to this width: short names there.
     const narrow = useMedia('(max-width: 559px)');
+    // The HP line holds five things on a phone; under this width the initiative's name is cut short to keep them in one row.
+    const tiny = useMedia('(max-width: 379px)');
     // On a wide screen the abilities are always in view on the left and have no tab: the attacks open instead.
     const section = computed<SheetSection>(() => {
       const stored = SECTION_OF[props.data.activeTab] ?? 'abilities';
@@ -752,7 +758,7 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
-      tabs, phone, section, setSection, setCoins,
+      tabs, phone, tiny, section, setSection, setCoins,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -1223,7 +1229,12 @@ export default defineComponent({
   .dnd-cs-init-button { flex-direction: column; gap: 1px; padding-inline: 6px; }
   .dnd-cs-init-button span { font-size: 9px; line-height: 1.2; }
   .dnd-cs-init-button b { font-size: 14px; line-height: 1.1; }
-  .dnd-cs-hp { gap: 4px; }
+  /* HP, the numbers, initiative, rest: one row down to 320 px. If it ever does not fit, it wraps instead of clipping. */
+  .dnd-cs-hp { gap: 3px; flex-wrap: wrap; row-gap: 6px; }
+  .dnd-cs-hp-button { min-width: 40px; padding-inline: 6px; }
+  .dnd-cs-hp input[type='number'] { font-size: 18px; }
+  .dnd-cs-hp b { font-size: 16px; }
+  .dnd-cs-rest-inline { flex: none; justify-content: center; padding: 5px; border-radius: 8px; background: rgba(var(--dnd-fill-rgb), 0.05); }
   /* Room for the numbers: temporary HP are "(+12)" here, and are not shown at all while there are none. */
   .dnd-cs-temp-hp span { display: none; }
   .dnd-cs-temp-hp.is-none { display: none; }

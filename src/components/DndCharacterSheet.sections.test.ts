@@ -247,12 +247,12 @@ describe('what is looked up, and the initiative roll', () => {
     const states = wrapper!.get('[aria-label="Состояния"]');
     expect(states.findAll('.dnd-roll-mode button').map((button) => button.text())).toEqual(['Преим.', 'Помеха']);
     expect(states.get('.dnd-cs-rest-button').text()).toBe('Отдых');
-    // The fixed controls come first; conditions and "+ состояние" follow, so adding one moves nothing before it.
+    // How the next d20 is rolled, then inspiration and the rest: the fixed controls come first; conditions and "+ состояние" follow, so adding one moves nothing before it.
     data.combat.conditions = ['poisoned'];
     await wrapper!.vm.$nextTick();
     const order = Array.from(wrapper!.get('.dnd-cs-state-list').element.children).map((child) => child.textContent!.replace(/\s+/g, ' ').trim());
     // (A sheet used on its own, as here, keeps its roll log button next to the roll mode; the page moves it to the header.)
-    expect(order).toEqual(['✦ Вдохновение', 'Преим.ПомехаЖурнал', 'Отдых', 'Отравлен ×', '+ состояние']);
+    expect(order).toEqual(['Преим.ПомехаЖурнал', '✦ Вдохновение', 'Отдых', 'Отравлен ×', '+ состояние']);
     data.combat.conditions = [];
     await wrapper!.vm.$nextTick();
     expect(wrapper!.findAll('.dnd-roll-mode')).toHaveLength(1);
@@ -263,6 +263,28 @@ describe('what is looked up, and the initiative roll', () => {
     await states.get('.dnd-cs-rest-button').trigger('click');
     expect(document.body.querySelector('.dnd-rest-dialog')).not.toBeNull();
     expect(data.combat.conditions).toEqual([]);
+  });
+
+  it('on a phone ends the HP line with the rest, after the initiative roll', async () => {
+    screenWidth(390);
+    open((sheet) => { sheet.activeTab = 'abilities'; });
+    const line = Array.from(wrapper!.get('.dnd-cs-hp').element.children);
+    expect(line[line.length - 2]!.getAttribute('aria-label')).toBe('Бросить инициативу');
+    expect(line[line.length - 1]!.textContent).toBe('Отдых');
+    expect(line[line.length - 1]!.classList.contains('dnd-cs-rest-inline')).toBe(true);
+    // One rest button, and it is not among the states here.
+    expect(wrapper!.findAll('.dnd-cs-rest-button')).toHaveLength(1);
+    expect(wrapper!.find('[aria-label="Состояния"] .dnd-cs-rest-button').exists()).toBe(false);
+    expect(wrapper!.get('.dnd-cs-init-button span').text()).toBe('Инициатива');
+    await wrapper!.get('.dnd-cs-rest-button').trigger('click');
+    expect(document.body.querySelector('.dnd-rest-dialog')).not.toBeNull();
+  });
+
+  it('cuts the initiative\'s name short on the narrowest phones, keeping its label', () => {
+    screenWidth(320);
+    open();
+    expect(wrapper!.get('.dnd-cs-init-button span').text()).toBe('Иниц.');
+    expect(wrapper!.get('.dnd-cs-init-button').attributes('aria-label')).toBe('Бросить инициативу');
   });
 
   it('on a wide screen keeps armor class, speed, proficiency and the passive scores at the top', () => {
