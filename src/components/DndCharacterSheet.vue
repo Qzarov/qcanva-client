@@ -63,12 +63,14 @@
         <button type="button" :disabled="readonly" aria-label="Урон" @click="hpMode = 'damage'">Урон</button>
         <!-- One button for both rests: which one is chosen in the dialog. -->
         <button type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
+        <!-- A roll, not a value to look up: it sits with the actions. -->
+        <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><b>{{ formatModifier(initiative) }}</b></button>
       </div>
-      <div class="dnd-cs-combat-stats">
+      <!-- On a phone these three are looked up, not used every turn: they live in the abilities section. -->
+      <div v-if="!phone" class="dnd-cs-combat-stats">
         <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="locked" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
-        <button type="button" class="dnd-cs-stat readonly-stat dnd-cs-initiative" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><strong>{{ formatModifier(initiative) }}</strong></button>
       </div>
       <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :weapons="weaponAttacks" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @attack="attackWithWeapon" @open-log="rollLogOpen = true" />
     </div>
@@ -76,7 +78,7 @@
 
     <!-- ===== PASSIVE SCORES (compact, up top) ===== -->
     <div class="dnd-cs-status-row">
-      <DndPassiveScores :items="passives" />
+      <DndPassiveScores v-if="!phone" :items="passives" />
       <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
     </div>
 
@@ -94,6 +96,15 @@
       </nav>
 
       <div v-show="!phone || section === 'abilities'" class="dnd-cs-left">
+        <!-- Phone: armor class, speed, proficiency and the passive scores open the abilities section. -->
+        <template v-if="phone">
+          <div class="dnd-cs-combat-stats dnd-cs-combat-stats-tab dnd-glass">
+            <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
+            <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="locked" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
+            <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
+          </div>
+          <DndPassiveScores :items="passives" />
+        </template>
         <!-- Abilities + their skills -->
         <section class="dnd-cs-abilities">
           <article v-for="ability in abilities" :key="ability.key" class="dnd-cs-ability">
@@ -945,14 +956,12 @@ export default defineComponent({
 
 /* Combat values sit right of identity on desktop and below it on mobile. */
 .dnd-cs-combat { display: flex; flex-direction: column; gap: 8px; align-items: stretch; align-self: start; min-width: 0; }
-.dnd-cs-combat-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.dnd-cs-combat-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.dnd-cs-combat-stats-tab { padding: 8px 12px; }
 .dnd-cs-combat-stats .dnd-cs-stat { flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; text-align: center; padding: 5px 0; }
 .dnd-cs-combat-stats .dnd-cs-stat span { white-space: normal; overflow-wrap: anywhere; font-size: 9px; line-height: 1.2; letter-spacing: 0; text-transform: none; }
 .dnd-cs-combat-stats input[type='number'] { width: 100%; min-width: 0; text-align: center; appearance: textfield; -moz-appearance: textfield; }
 .dnd-cs-combat-stats input::-webkit-inner-spin-button, .dnd-cs-combat-stats input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.dnd-cs-initiative { border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb), .04); font: inherit; cursor: pointer; transition: background 150ms, border-color 150ms; }
-.dnd-cs-initiative:hover, .dnd-cs-initiative:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); }
-.dnd-cs-initiative:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
 .dnd-cs-stat { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
 .dnd-cs-stat span { white-space: nowrap; }
 .dnd-cs-stat input { width: 50px; font-size: 14px; font-weight: 700; color: var(--ui-text); text-transform: none; letter-spacing: 0; }
@@ -968,6 +977,11 @@ export default defineComponent({
 /* Rests: the same action buttons, one step quieter than heal / damage. */
 .dnd-cs-hp-actions .dnd-cs-rest-button { background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
 .dnd-cs-hp-actions .dnd-cs-rest-button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); color: var(--ui-text); }
+/* Initiative: a roll in the row of actions - its name, quiet, and the modifier it rolls with. */
+.dnd-cs-hp-actions .dnd-cs-init-button { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
+.dnd-cs-hp-actions .dnd-cs-init-button b { color: var(--ui-text); font-weight: 800; font-variant-numeric: tabular-nums; }
+.dnd-cs-hp-actions .dnd-cs-init-button:hover, .dnd-cs-hp-actions .dnd-cs-init-button:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); color: var(--ui-text); }
+.dnd-cs-hp-actions .dnd-cs-init-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
 /* Death saves: shown only at 0 HP, inside the combat column (no panel of its own). */
 .dnd-cs-death { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--dnd-danger) 40%, transparent); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); }
 .dnd-cs-death-track { display: flex; align-items: center; gap: 2px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
@@ -1197,6 +1211,12 @@ export default defineComponent({
   .dnd-cs-combat { gap: 8px; }
   /* Used every turn at 0 HP / every rest: full touch targets. */
   .dnd-cs-hp-actions button, .dnd-cs-death-roll { min-height: 44px; }
+  /* Four in a row down to 320 px: less padding, and the initiative's name over its modifier. */
+  .dnd-cs-hp-actions { gap: 6px; }
+  .dnd-cs-hp-actions button { min-width: 0; padding-inline: 2px; }
+  .dnd-cs-hp-actions .dnd-cs-init-button { flex-direction: column; gap: 1px; }
+  .dnd-cs-hp-actions .dnd-cs-init-button span { font-size: 9px; line-height: 1.2; }
+  .dnd-cs-hp-actions .dnd-cs-init-button b { font-size: 14px; line-height: 1.1; }
   .dnd-cs-death { justify-content: space-between; }
   .dnd-cs-death-roll { flex: 1 1 100%; justify-content: center; margin-left: 0; font-size: 12px; }
   .dnd-cs-death-result { flex: 1 1 100%; margin-left: 0; text-align: center; }

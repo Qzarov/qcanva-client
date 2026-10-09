@@ -108,7 +108,8 @@ for (const width of [320, 390, 760, 1280]) {
     const combatCells = await page.locator('.dnd-cs-combat-stats > *').evaluateAll(elements => elements.map(element => {
       const b = element.getBoundingClientRect(); return { x: b.x, y: b.y, width: b.width, right: b.right, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth };
     }));
-    expect(combatCells).toHaveLength(4);
+    // Armor class, speed, proficiency (in the abilities section on a phone); the initiative is a button among the actions.
+    expect(combatCells).toHaveLength(3);
     expect(Math.max(...combatCells.map(c => c.y)) - Math.min(...combatCells.map(c => c.y))).toBeLessThanOrEqual(1);
     expect(combatCells.every(c => c.x >= 0 && c.right <= width && c.scrollWidth <= c.clientWidth + 1)).toBe(true);
     await expect(page.getByLabel('Бонус инициативы', { exact: true })).toHaveCount(0);
@@ -231,7 +232,8 @@ for (const width of [320, 1280]) {
       expect(Math.abs(stateBox.y - passiveBox.y)).toBeLessThanOrEqual(1);
       expect(stateBox.x).toBeGreaterThanOrEqual(passiveBox.x + passiveBox.width);
     } else {
-      expect(stateBox.y).toBeGreaterThanOrEqual(passiveBox.y + passiveBox.height);
+      // On a phone the passive scores are in the abilities section, under the tabs; the conditions stay on top.
+      expect(passiveBox.y).toBeGreaterThanOrEqual(stateBox.y + stateBox.height);
       expect(passiveBox.height).toBeLessThanOrEqual(62);
     }
     await expect(states.getByRole('heading')).toHaveCount(0);

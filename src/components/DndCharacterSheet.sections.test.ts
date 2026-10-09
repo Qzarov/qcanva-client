@@ -125,103 +125,145 @@ describe('the sheet\'s sections', () => {
 });
 
 describe('the wallet', () => {
-  const openWallet = async (coins: Partial<DndCharacterSheetData['coins']>, props: Record<string, unknown> = {}) => {
-    const data = open((sheet) => { sheet.activeTab = 'equipment'; Object.assign(sheet.coins, coins); }, props);
-    return data;
-  };
+  const openWallet = async (coins: Partial<DndCharacterSheetData['coins']>, props: Record<string, unknown> = {}) =>
+    open((sheet) => { sheet.activeTab = 'equipment'; Object.assign(sheet.coins, coins); }, props);
   const dialog = () => document.body.querySelector<HTMLElement>('.dnd-coins-dialog');
+  const coin = (label: string) => wrapper!.findAll('.dnd-wallet-coin').find((button) => button.attributes('aria-label')!.startsWith(label))!;
   const type = async (label: string, value: string) => {
     const input = dialog()!.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)!;
     input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));
     await wrapper!.vm.$nextTick();
   };
-  const submit = async () => {
-    dialog()!.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  const press = async (selector: string) => {
+    dialog()!.querySelector<HTMLButtonElement>(selector)!.click();
     await wrapper!.vm.$nextTick();
   };
+  const results = () => Array.from(dialog()!.querySelectorAll('.dnd-coins-results li')).map((line) => line.textContent!.replace(/\s+/g, ' ').trim());
 
-  it('shows the five kinds of coins and what they are worth', async () => {
+  it('shows the five kinds of coins as buttons, with no fields and no total', async () => {
     await openWallet({ gp: 15, sp: 4, cp: 2 });
-    expect(wrapper!.findAll('.dnd-wallet-coin span').map((label) => label.text())).toEqual(['пм', 'зм', 'эм', 'см', 'мм']);
-    expect(wrapper!.findAll('.dnd-wallet-coin input').map((input) => (input.element as HTMLInputElement).value)).toEqual(['0', '15', '0', '4', '2']);
-    expect(wrapper!.get('.dnd-wallet-total').text()).toBe('Всего 15,42 зм');
+    const coins = wrapper!.findAll('.dnd-wallet-coin');
+    expect(coins.map((button) => button.element.tagName)).toEqual(['BUTTON', 'BUTTON', 'BUTTON', 'BUTTON', 'BUTTON']);
+    expect(coins.map((button) => button.text())).toEqual(['пм0', 'зм15', 'эм0', 'см4', 'мм2']);
+    expect(coins.map((button) => button.attributes('aria-label'))).toEqual([
+      'Платиновые монеты: 0', 'Золотые монеты: 15', 'Электрумовые монеты: 0', 'Серебряные монеты: 4', 'Медные монеты: 2',
+    ]);
+    expect(wrapper!.find('.dnd-wallet input').exists()).toBe(false);
+    expect(wrapper!.find('.dnd-wallet-total').exists()).toBe(false);
+    expect(wrapper!.get('.dnd-wallet').text()).not.toContain('Всего');
+    expect(wrapper!.find('.dnd-wallet-actions').exists()).toBe(false);
   });
 
-  it('lets a number be typed over, and syncs it as play data on its own path', async () => {
+  it('opens one dialog from a coin, on that coin\'s field, with "spend" and "gain"', async () => {
+    await openWallet({ gp: 15 });
+    await coin('Серебряные').trigger('click');
+    expect(dialog()!.getAttribute('aria-label')).toBe('Монеты');
+    expect(dialog()!.querySelector('.dnd-coins-now')!.textContent).toBe('В кошельке: 15 зм');
+    expect(document.activeElement).toBe(dialog()!.querySelector('input[aria-label="Серебряные"]'));
+    expect(Array.from(dialog()!.querySelectorAll('.dnd-coins-actions button')).map((button) => button.textContent)).toEqual(['Потратить', 'Получить']);
+    // Nothing entered: neither action is available.
+    expect(Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('.dnd-coins-actions button')).map((button) => button.disabled)).toEqual([true, true]);
+    expect(results()).toEqual(['Получить: —', 'Потратить: —']);
+  });
+
+  it('adds coins gained, several kinds at once, and syncs them as play data', async () => {
     const data = await openWallet({ gp: 15 });
     const before = snapshot(data);
-    await wrapper!.get('[aria-label="Золотые монеты"]').setValue('20');
-    expect(data.coins.gp).toBe(20);
-    const ops = diffSheet(before, snapshot(data));
-    expect(ops).toEqual([{ type: 'set', path: ['coins', 'gp'], value: 20 }]);
-    expect(actionKind(ops)).toBe('play');
-
-    // A cleared or negative field is not money: zero, and the field says so.
-    const silver = wrapper!.get('[aria-label="Серебряные монеты"]');
-    await silver.setValue('-5');
-    expect(data.coins.sp).toBe(0);
-    expect((silver.element as HTMLInputElement).value).toBe('0');
-  });
-
-  it('adds coins gained, several kinds at once, showing the wallet before it is applied', async () => {
-    const data = await openWallet({ gp: 15 });
-    await wrapper!.findAll('.dnd-wallet-actions button')[0]!.trigger('click');
-    expect(dialog()!.getAttribute('aria-label')).toBe('Получить монеты');
-    expect(dialog()!.querySelector<HTMLButtonElement>('.dnd-coins-apply')!.disabled).toBe(true);
+    await coin('Золотые').trigger('click');
     await type('Золотые', '10');
     await type('Серебряные', '5');
-    expect(dialog()!.querySelector('p')!.textContent).toBe('После: 25 зм 5 см');
-    await submit();
+    expect(results()).toEqual(['Получить: 25 зм 5 см', 'Потратить: 4 зм 5 см · с разменом']);
+    await press('.dnd-coins-gain');
     expect(dialog()).toBeNull();
     expect(data.coins).toEqual({ pp: 0, gp: 25, ep: 0, sp: 5, cp: 0 });
+    const ops = diffSheet(before, snapshot(data));
+    expect(ops).toEqual([{ type: 'set', path: ['coins', 'gp'], value: 25 }, { type: 'set', path: ['coins', 'sp'], value: 5 }]);
+    expect(actionKind(ops)).toBe('play');
   });
 
   it('spends with change made automatically, and refuses a price the wallet is not worth', async () => {
     const data = await openWallet({ gp: 1 });
-    const before = snapshot(data);
-    await wrapper!.findAll('.dnd-wallet-actions button')[1]!.trigger('click');
-    expect(dialog()!.getAttribute('aria-label')).toBe('Потратить монеты');
-
+    await coin('Золотые').trigger('click');
     await type('Золотые', '2');
-    expect(dialog()!.querySelector('p')!.textContent).toBe('Не хватает 1 зм. В кошельке: 1 зм');
-    expect(dialog()!.querySelector<HTMLButtonElement>('.dnd-coins-apply')!.disabled).toBe(true);
-    await submit();
+    expect(results()).toEqual(['Получить: 3 зм', 'Потратить: не хватает 1 зм']);
+    expect(dialog()!.querySelector<HTMLButtonElement>('.dnd-coins-spend')!.disabled).toBe(true);
+    expect(dialog()!.querySelector<HTMLButtonElement>('.dnd-coins-gain')!.disabled).toBe(false);
+    await press('.dnd-coins-spend');
     expect(data.coins.gp).toBe(1);
 
     await type('Золотые', '');
     await type('Серебряные', '5');
-    expect(dialog()!.querySelector('p')!.textContent).toBe('После: 5 см · с разменом');
-    await submit();
+    expect(results()).toEqual(['Получить: 1 зм 5 см', 'Потратить: 5 см · с разменом']);
+    await press('.dnd-coins-spend');
+    expect(dialog()).toBeNull();
     expect(data.coins).toEqual({ pp: 0, gp: 0, ep: 0, sp: 5, cp: 0 });
-    expect(diffSheet(before, snapshot(data))).toEqual([
-      { type: 'set', path: ['coins', 'gp'], value: 0 },
-      { type: 'set', path: ['coins', 'sp'], value: 5 },
-    ]);
   });
 
-  it('does not accept anything but whole numbers', async () => {
-    await openWallet({ gp: 5 });
-    await wrapper!.findAll('.dnd-wallet-actions button')[0]!.trigger('click');
+  it('does not decide between gaining and spending on Enter, and takes whole numbers only', async () => {
+    const data = await openWallet({ gp: 5 });
+    await coin('Золотые').trigger('click');
+    await type('Золотые', '3');
+    dialog()!.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await wrapper!.vm.$nextTick();
+    expect(dialog()).not.toBeNull();
+    expect(data.coins.gp).toBe(5);
+
     await type('Золотые', '1.5');
     expect(dialog()!.querySelector('input[aria-label="Золотые"]')!.getAttribute('aria-invalid')).toBe('true');
-    expect(dialog()!.querySelector<HTMLButtonElement>('.dnd-coins-apply')!.disabled).toBe(true);
+    expect(Array.from(dialog()!.querySelectorAll<HTMLButtonElement>('.dnd-coins-actions button')).every((button) => button.disabled)).toBe(true);
+    await press('.dnd-coins-close');
+    expect(dialog()).toBeNull();
   });
 
-  it('stays live in play mode, is read-only for a viewer, and has nothing to spend when empty', async () => {
+  it('stays live in play mode and is only read by a viewer', async () => {
     await openWallet({ gp: 3 }, { mode: 'play' });
-    expect(wrapper!.get('[aria-label="Золотые монеты"]').attributes('readonly')).toBeUndefined();
-    expect(wrapper!.findAll('.dnd-wallet-actions button').map((button) => button.attributes('disabled'))).toEqual([undefined, undefined]);
+    expect(coin('Золотые').attributes('disabled')).toBeUndefined();
+    await coin('Золотые').trigger('click');
+    expect(dialog()).not.toBeNull();
     wrapper!.unmount();
 
     await openWallet({ gp: 3 }, { readonly: true });
-    expect(wrapper!.get('[aria-label="Золотые монеты"]').attributes('readonly')).toBeDefined();
-    expect(wrapper!.findAll('.dnd-wallet-actions button').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
-    wrapper!.unmount();
+    expect(wrapper!.findAll('.dnd-wallet-coin').every((button) => button.attributes('disabled') !== undefined)).toBe(true);
+    expect(coin('Золотые').text()).toBe('зм3');
+    await coin('Золотые').trigger('click');
+    expect(dialog()).toBeNull();
+  });
+});
 
-    await openWallet({});
-    const [gain, spend] = wrapper!.findAll('.dnd-wallet-actions button');
-    expect(gain!.attributes('disabled')).toBeUndefined();
-    expect(spend!.attributes('disabled')).toBeDefined();
+describe('what is looked up, and the initiative roll', () => {
+  it('puts the initiative roll in the row of actions, on every screen', () => {
+    open((sheet) => { sheet.abilities.dexterity.score = 14; });
+    expect(wrapper!.findAll('.dnd-cs-hp-actions button').map((button) => button.text())).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива+2']);
+    expect(wrapper!.get('.dnd-cs-hp-actions [aria-label="Бросить инициативу"]').classes()).toContain('dnd-cs-init-button');
+    expect(wrapper!.find('.dnd-cs-combat-stats button').exists()).toBe(false);
+  });
+
+  it('on a wide screen keeps armor class, speed, proficiency and the passive scores at the top', () => {
+    open();
+    expect(wrapper!.findAll('.dnd-cs-topcard .dnd-cs-combat-stats .dnd-cs-stat span').map((label) => label.text())).toEqual(['КД', 'Скорость', 'Мастерство']);
+    expect(wrapper!.find('.dnd-cs-status-row .dnd-cs-passives').exists()).toBe(true);
+    expect(wrapper!.find('.dnd-cs-left .dnd-cs-combat-stats').exists()).toBe(false);
+    expect(wrapper!.findAll('.dnd-cs-passives')).toHaveLength(1);
+  });
+
+  it('on a phone moves them into the abilities section', async () => {
+    screenWidth(390);
+    const data = open((sheet) => { sheet.activeTab = 'abilities'; });
+    expect(wrapper!.find('.dnd-cs-topcard .dnd-cs-combat-stats').exists()).toBe(false);
+    expect(wrapper!.find('.dnd-cs-status-row .dnd-cs-passives').exists()).toBe(false);
+    expect(wrapper!.find('.dnd-cs-status-row').exists()).toBe(true); // the conditions stay on top
+    const left = wrapper!.get('.dnd-cs-left');
+    expect(left.findAll('.dnd-cs-combat-stats .dnd-cs-stat span').map((label) => label.text())).toEqual(['КД', 'Скорость', 'Мастерство']);
+    expect(left.find('.dnd-cs-passives').exists()).toBe(true);
+    // They come before the abilities.
+    expect(left.element.firstElementChild!.classList.contains('dnd-cs-combat-stats')).toBe(true);
+
+    await left.get('[aria-label="Класс доспеха"]').setValue('17');
+    expect(data.combat.armorClass).toBe(17);
+    // Still one of each, and gone with the section.
+    expect(wrapper!.findAll('[aria-label="Класс доспеха"]')).toHaveLength(1);
+    await section('equipment');
+    expect(left.isVisible()).toBe(false);
   });
 });

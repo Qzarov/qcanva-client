@@ -78,7 +78,8 @@ for (const width of [320, 390]) {
     await expect(tab(page, 'abilities')).toHaveAttribute('aria-selected', 'true');
     await expect(abilities).toBeVisible();
     await expect(panel).toHaveCount(0);
-    expect((await abilities.boundingBox())!.y - tabsBottom).toBeLessThan(24);
+    // The section starts right under the tabs (with the looked-up numbers; the abilities follow them).
+    expect((await page.locator('.dnd-cs-left').boundingBox())!.y - tabsBottom).toBeLessThan(24);
     expect(await noSideScroll(page)).toBe(true);
     if (SHOTS) await page.waitForTimeout(300);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/sections-abilities-${width}.png`, fullPage: true });
@@ -165,54 +166,77 @@ test('the chosen section survives a reload and is not synced', async ({ page }) 
 });
 
 for (const theme of ['dark', 'light'] as const) {
-  test(`coins are gained and spent from the wallet, with change (${theme})`, async ({ page }) => {
+  test(`coins are gained and spent from a coin's dialog, with change (${theme})`, async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     const saved = await openSheet(page, { theme });
     await tab(page, 'equipment').click();
     const wallet = page.getByRole('region', { name: 'Монеты' });
-    await expect(wallet.locator('.dnd-wallet-total')).toHaveText('Всего 15,42 зм');
-    // Five coins in one row, inside the screen.
-    const cells = await Promise.all((await wallet.locator('.dnd-wallet-coin').all()).map(async (cell) => (await cell.boundingBox())!));
-    expect(cells).toHaveLength(5);
+    // The coins are buttons: no fields to type over, no total, no buttons under them.
+    await expect(wallet.getByRole('textbox')).toHaveCount(0);
+    await expect(wallet.getByRole('spinbutton')).toHaveCount(0);
+    await expect(wallet).not.toContainText('Всего');
+    const coins = wallet.getByRole('button');
+    await expect(coins).toHaveCount(5);
+    await expect(coins).toHaveText(['пм0', 'зм15', 'эм0', 'см4', 'мм2']);
+    const cells = await Promise.all((await coins.all()).map(async (cell) => (await cell.boundingBox())!));
     expect(new Set(cells.map((cell) => Math.round(cell.y))).size).toBe(1);
     expect(cells[4]!.x + cells[4]!.width).toBeLessThanOrEqual(390);
-    for (const button of await wallet.getByRole('button').all()) expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    for (const cell of cells) expect(cell.height).toBeGreaterThanOrEqual(44);
     if (SHOTS) await wallet.screenshot({ path: `${SHOTS}/wallet-${theme}.png` });
 
-    await wallet.getByRole('button', { name: 'Получить' }).click();
-    const gain = page.getByRole('dialog', { name: 'Получить монеты' });
-    const box = (await gain.boundingBox())!;
+    // A coin opens the one dialog, on that coin's field.
+    await wallet.getByRole('button', { name: 'Золотые монеты: 15' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Монеты' });
+    const box = (await dialog.boundingBox())!;
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
-    await expect(gain.getByRole('button', { name: 'Получить' })).toBeDisabled();
-    await gain.getByLabel('Золотые').fill('10');
-    await gain.getByLabel('Серебряные').fill('6');
-    await expect(gain.locator('p')).toHaveText('После: 25 зм 10 см 2 мм');
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/coins-gain-${theme}.png` });
-    await gain.getByRole('button', { name: 'Получить' }).click();
-    await expect(gain).toHaveCount(0);
-    await expect(wallet.getByLabel('Золотые монеты')).toHaveValue('25');
+    await expect(dialog.getByLabel('Золотые')).toBeFocused();
+    await expect(dialog.locator('.dnd-coins-now')).toHaveText('В кошельке: 15 зм 4 см 2 мм');
+    const gain = dialog.getByRole('button', { name: 'Получить' });
+    const spend = dialog.getByRole('button', { name: 'Потратить' });
+    await expect(gain).toBeDisabled();
+    await expect(spend).toBeDisabled();
+    for (const button of [gain, spend]) {
+      const bounds = (await button.boundingBox())!;
+      expect(bounds.height).toBeGreaterThanOrEqual(44);
+      expect(bounds.x).toBeGreaterThanOrEqual(box.x);
+      expect(bounds.x + bounds.width).toBeLessThanOrEqual(box.x + box.width);
+    }
+    await dialog.getByLabel('Золотые').fill('10');
+    await dialog.getByLabel('Серебряные').fill('6');
+    await expect(dialog.locator('.dnd-coins-results li')).toHaveText(['Получить: 25 зм 10 см 2 мм', /Потратить:\s*4 зм 8 см 2 мм · с разменом/]);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/coins-dialog-${theme}.png` });
+    // Enter must not pick an action.
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await gain.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(wallet.getByRole('button', { name: 'Золотые монеты: 25' })).toBeFocused();
     await expect.poll(() => saved().data.coins).toEqual({ pp: 0, gp: 25, ep: 0, sp: 10, cp: 2 });
 
-    // 8 copper with 2 in the purse: a silver piece is broken, the change comes back.
-    await wallet.getByRole('button', { name: 'Потратить' }).click();
-    const spend = page.getByRole('dialog', { name: 'Потратить монеты' });
-    await spend.getByLabel('Золотые').fill('99');
-    await expect(spend.locator('p')).toContainText('Не хватает 72,98 зм');
-    await expect(spend.getByRole('button', { name: 'Потратить' })).toBeDisabled();
+    // More than the wallet is worth: spending is refused, gaining is not.
+    await wallet.getByRole('button', { name: /Медные монеты/ }).click();
+    await expect(dialog.getByLabel('Медные')).toBeFocused();
+    await dialog.getByLabel('Золотые').fill('99');
+    await expect(dialog.locator('.dnd-coins-results li').nth(1)).toContainText('не хватает 72,98 зм');
+    await expect(spend).toBeDisabled();
+    await expect(gain).toBeEnabled();
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/coins-short-${theme}.png` });
-    await spend.getByLabel('Золотые').fill('');
-    await spend.getByLabel('Медные').fill('8');
-    await expect(spend.locator('p')).toHaveText('После: 25 зм 9 см 4 мм · с разменом');
-    await page.keyboard.press('Enter');
-    await expect(spend).toHaveCount(0);
-    await expect(wallet.locator('.dnd-wallet-total')).toHaveText('Всего 25,94 зм');
+    // 8 copper with 2 in the purse: a silver piece is broken, the change comes back.
+    await dialog.getByLabel('Золотые').fill('');
+    await dialog.getByLabel('Медные').fill('8');
+    await expect(dialog.locator('.dnd-coins-results li').nth(1)).toHaveText(/Потратить:\s*25 зм 9 см 4 мм · с разменом/);
+    await spend.click();
+    await expect(dialog).toHaveCount(0);
+    await expect(coins).toHaveText(['пм0', 'зм25', 'эм0', 'см9', 'мм4']);
     await expect.poll(() => saved().data.coins).toEqual({ pp: 0, gp: 25, ep: 0, sp: 9, cp: 4 });
 
-    // A number typed over is saved too.
-    await wallet.getByLabel('Платиновые монеты').fill('3');
-    await wallet.getByLabel('Платиновые монеты').blur();
-    await expect.poll(() => saved().data.coins.pp).toBe(3);
+    // Closing changes nothing.
+    await wallet.getByRole('button', { name: /Платиновые монеты/ }).click();
+    await dialog.getByLabel('Платиновые').fill('3');
+    await dialog.getByRole('button', { name: 'Закрыть' }).click();
+    await expect(dialog).toHaveCount(0);
+    expect(saved().data.coins.pp).toBe(0);
   });
 }
 
@@ -221,8 +245,62 @@ test('a viewer sees the wallet and cannot change it', async ({ page }) => {
   await openSheet(page, { role: 'read' });
   await tab(page, 'equipment').click();
   const wallet = page.getByRole('region', { name: 'Монеты' });
-  await expect(wallet.getByLabel('Золотые монеты')).toHaveValue('15');
-  await expect(wallet.getByLabel('Золотые монеты')).toHaveAttribute('readonly', '');
-  await expect(wallet.getByRole('button', { name: 'Получить' })).toBeDisabled();
-  await expect(wallet.getByRole('button', { name: 'Потратить' })).toBeDisabled();
+  await expect(wallet.getByRole('button')).toHaveText(['пм0', 'зм15', 'эм0', 'см4', 'мм2']);
+  for (const coin of await wallet.getByRole('button').all()) await expect(coin).toBeDisabled();
+  await expect(page.getByRole('dialog', { name: 'Монеты' })).toHaveCount(0);
+});
+
+for (const width of [320, 390]) {
+  test(`on a phone the looked-up numbers live in the abilities section, and four actions fit in a row (${width}px)`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await openSheet(page);
+    // Heal, damage, rest and the initiative roll: one row, nothing clipped, full touch targets.
+    const actions = page.locator('.dnd-cs-hp-actions button');
+    expect((await actions.allInnerTexts()).map((text) => text.replace(/\s+/g, ''))).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива0']);
+    const boxes = await Promise.all((await actions.all()).map(async (button) => (await button.boundingBox())!));
+    expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(1);
+    for (const box of boxes) {
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+    }
+    for (const button of await actions.all()) expect(await button.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).click();
+    await expect(page.locator('.dnd-cs-toast')).toContainText('Инициатива');
+
+    // The top card has no armor class, speed or proficiency; the passive scores are not above the tabs.
+    await expect(page.locator('.dnd-cs-topcard .dnd-cs-combat-stats')).toHaveCount(0);
+    const tabsTop = (await page.locator('.dnd-cs-tabs').boundingBox())!.y;
+    const stats = page.locator('.dnd-cs-left .dnd-cs-combat-stats');
+    const passives = page.getByRole('region', { name: 'Пассивные характеристики' });
+    await expect(stats.locator('.dnd-cs-stat span')).toHaveText(['КД', 'Скорость', 'Мастерство']);
+    await expect(passives).toHaveCount(1);
+    const statsBox = (await stats.boundingBox())!;
+    const passivesBox = (await passives.boundingBox())!;
+    const abilitiesBox = (await page.locator('.dnd-cs-abilities').boundingBox())!;
+    expect(statsBox.y).toBeGreaterThan(tabsTop);
+    expect(passivesBox.y).toBeGreaterThanOrEqual(statsBox.y + statsBox.height);
+    expect(abilitiesBox.y).toBeGreaterThanOrEqual(passivesBox.y + passivesBox.height);
+    expect(statsBox.x + statsBox.width).toBeLessThanOrEqual(width);
+    for (const cell of await stats.locator('.dnd-cs-stat').all()) expect(await cell.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await noSideScroll(page)).toBe(true);
+    if (SHOTS) await page.waitForTimeout(300);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/batch3-stats-${width}.png`, fullPage: true });
+
+    // They leave with the section; the conditions stay on top.
+    await tab(page, 'combat').click();
+    await expect(stats).toBeHidden();
+    await expect(passives).toBeHidden();
+    await expect(page.getByRole('button', { name: /состояние/ })).toBeVisible();
+  });
+}
+
+test('on a wide screen armor class, speed, proficiency and the passive scores stay at the top', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await openSheet(page);
+  await expect(page.locator('.dnd-cs-topcard .dnd-cs-combat-stats .dnd-cs-stat span')).toHaveText(['КД', 'Скорость', 'Мастерство']);
+  await expect(page.locator('.dnd-cs-status-row').getByRole('region', { name: 'Пассивные характеристики' })).toBeVisible();
+  await expect(page.locator('.dnd-cs-left .dnd-cs-combat-stats')).toHaveCount(0);
+  expect((await page.locator('.dnd-cs-hp-actions button').allInnerTexts()).map((text) => text.replace(/\s+/g, ''))).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива0']);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/batch3-wide.png` });
 });
