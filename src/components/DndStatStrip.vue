@@ -1,5 +1,5 @@
 <template>
-  <section ref="root" class="dnd-stat-strip dnd-glass" aria-label="Показатели">
+  <section ref="root" class="dnd-stat-strip" aria-label="Показатели">
     <div v-for="item in items" :key="item.key" class="dnd-stat-cell" :class="{ 'is-open': open === item.key }">
       <!-- The whole cell explains itself on a tap; a value that can be set (setup mode) is a field under its icon. -->
       <button
@@ -91,18 +91,21 @@ onBeforeUnmount(clearTimer);
 </script>
 
 <style scoped>
-.dnd-stat-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); min-width: 0; padding: 4px 6px; }
+/* Reference numbers, not controls: a quiet strip - a thin frame and a faint fill, no glass panel, no shadow. */
+.dnd-stat-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); min-width: 0; padding: 2px 6px; border: 1px solid var(--dnd-glass-border); border-radius: 14px; background: rgba(var(--dnd-fill-rgb, 255, 255, 255), .025); }
 /* One height in both modes: switching between play and setup must not move what stands below. */
 .dnd-stat-cell { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; height: 52px; }
 .dnd-stat-cell + .dnd-stat-cell { border-left: 1px solid var(--dnd-glass-border); }
 .dnd-stat-button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 0; height: 52px; box-sizing: border-box; padding: 4px 2px; border: 0; border-radius: 10px; background: none; color: var(--dnd-text-dim); font: inherit; cursor: pointer; transition: background-color 150ms, color 150ms; }
 .dnd-stat-button.has-field { height: 24px; padding-block: 2px 0; }
-.dnd-stat-button strong { font-size: 15px; line-height: 1.2; font-weight: 800; color: var(--ui-text); font-variant-numeric: tabular-nums; }
+.dnd-stat-button strong { font-size: 14px; line-height: 1.2; font-weight: 600; color: var(--dnd-text-dim); font-variant-numeric: tabular-nums; }
+.dnd-stat-icon { opacity: .7; }
+.dnd-stat-cell.is-open .dnd-stat-icon, .dnd-stat-button:hover .dnd-stat-icon { opacity: 1; }
 .dnd-stat-icon { flex: none; }
 .dnd-stat-cell.is-open .dnd-stat-button, .dnd-stat-button:hover { color: var(--dnd-glass-accent); }
 .dnd-stat-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: -2px; }
 /* The sheet's own field styles are scoped to it: a field here is dressed the same way by hand. */
-.dnd-stat-cell input { width: calc(100% - 6px); min-width: 0; height: 24px; box-sizing: border-box; margin-bottom: 2px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb, 255, 255, 255), .045); color: var(--ui-text); font: inherit; text-align: center; font-size: 15px; font-weight: 800; font-variant-numeric: tabular-nums; outline: none; appearance: textfield; -moz-appearance: textfield; transition: border-color 150ms, box-shadow 150ms, background-color 150ms; }
+.dnd-stat-cell input { width: calc(100% - 6px); min-width: 0; height: 24px; box-sizing: border-box; margin-bottom: 2px; padding: 0; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb, 255, 255, 255), .045); color: var(--ui-text); font: inherit; text-align: center; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; outline: none; appearance: textfield; -moz-appearance: textfield; transition: border-color 150ms, box-shadow 150ms, background-color 150ms; }
 .dnd-stat-cell input:focus { background: var(--dnd-field-focus-bg, var(--ui-surface-subtle)); border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); box-shadow: 0 0 0 3px var(--dnd-glass-accent-soft); }
 .dnd-stat-cell input::-webkit-inner-spin-button, .dnd-stat-cell input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .dnd-stat-help { position: fixed; bottom: auto; z-index: 1000; width: max-content; max-width: min(320px, calc(100vw - 24px)); box-sizing: border-box; margin: 0; white-space: normal; text-align: center; border-radius: 14px; }
