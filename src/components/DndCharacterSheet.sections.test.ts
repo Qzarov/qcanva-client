@@ -232,11 +232,29 @@ describe('the wallet', () => {
 });
 
 describe('what is looked up, and the initiative roll', () => {
-  it('puts the initiative roll in the row of actions, on every screen', () => {
+  it('puts the initiative roll at the end of the HP line, and leaves no row of actions in the top card', () => {
     open((sheet) => { sheet.abilities.dexterity.score = 14; });
-    expect(wrapper!.findAll('.dnd-cs-hp-actions button').map((button) => button.text())).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива+2']);
-    expect(wrapper!.get('.dnd-cs-hp-actions [aria-label="Бросить инициативу"]').classes()).toContain('dnd-cs-init-button');
-    expect(wrapper!.find('.dnd-cs-combat-stats button').exists()).toBe(false);
+    const line = wrapper!.get('.dnd-cs-hp');
+    expect(line.element.firstElementChild!.classList.contains('dnd-cs-hp-button')).toBe(true);
+    expect(line.element.lastElementChild!.getAttribute('aria-label')).toBe('Бросить инициативу');
+    expect(line.get('.dnd-cs-init-button').text()).toBe('Инициатива+2');
+    expect(wrapper!.find('.dnd-cs-hp-actions').exists()).toBe(false);
+    expect(wrapper!.findAll('.dnd-cs-topcard button').map((button) => button.attributes('aria-label') ?? button.text()).filter((name) => /Лечение|Урон|Отдых|Атака/.test(name))).toEqual([]);
+  });
+
+  it('keeps advantage / disadvantage and the rest among the states', async () => {
+    const data = open();
+    const states = wrapper!.get('[aria-label="Состояния"]');
+    expect(states.findAll('.dnd-roll-mode button').map((button) => button.text())).toEqual(['Преим.', 'Помеха']);
+    expect(states.get('.dnd-cs-rest-button').text()).toBe('Отдых');
+    expect(wrapper!.findAll('.dnd-roll-mode')).toHaveLength(1);
+    expect(wrapper!.findAll('.dnd-cs-rest-button')).toHaveLength(1);
+
+    await states.findAll('.dnd-roll-mode button')[0]!.trigger('click');
+    expect(states.findAll('.dnd-roll-mode button')[0]!.attributes('aria-pressed')).toBe('true');
+    await states.get('.dnd-cs-rest-button').trigger('click');
+    expect(document.body.querySelector('.dnd-rest-dialog')).not.toBeNull();
+    expect(data.combat.conditions).toEqual([]);
   });
 
   it('on a wide screen keeps armor class, speed, proficiency and the passive scores at the top', () => {

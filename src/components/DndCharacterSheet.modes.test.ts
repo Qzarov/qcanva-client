@@ -38,8 +38,10 @@ describe('play mode (docs/character-sheet-edit-modes.md)', () => {
     expect(wrapper.findAll('.dnd-cs-skill-pip').every((b) => b.attributes('disabled') !== undefined)).toBe(true);
     expect(wrapper.findAll('.dnd-cs-prof-group input').every((i) => i.attributes('disabled') !== undefined)).toBe(true);
     expect(wrapper.find('.dnd-cs-prof-list .dnd-cs-add-sm').exists()).toBe(false);
-    for (const label of ['Текущие HP', 'Максимум HP', 'Временные HP', 'Опыт']) expect(isReadonly(`[aria-label="${label}"]`), label).toBe(false);
-    expect(isDisabled('button[aria-label="Урон"]')).toBe(false);
+    expect(isReadonly('[aria-label="Опыт"]')).toBe(false);
+    // Hit points are never typed over; in play they change through the HP button, and the maximum is locked.
+    for (const label of ['Текущие HP', 'Максимум HP', 'Временные HP']) expect(isReadonly(`[aria-label="${label}"]`), label).toBe(true);
+    expect(isDisabled('.dnd-cs-hp-button')).toBe(false);
     expect(wrapper.get('.dnd-cs-rest-button').attributes('disabled')).toBeUndefined();
     expect(wrapper.findAll('.dnd-cs-roll').length).toBeGreaterThan(0);
   });

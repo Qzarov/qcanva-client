@@ -251,22 +251,39 @@ test('a viewer sees the wallet and cannot change it', async ({ page }) => {
 });
 
 for (const width of [320, 390]) {
-  test(`on a phone the looked-up numbers live in the abilities section, and four actions fit in a row (${width}px)`, async ({ page }) => {
+  test(`on a phone the looked-up numbers live in the abilities section; HP and initiative share a line (${width}px)`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await openSheet(page);
-    // Heal, damage, rest and the initiative roll: one row, nothing clipped, full touch targets.
-    const actions = page.locator('.dnd-cs-hp-actions button');
-    expect((await actions.allInnerTexts()).map((text) => text.replace(/\s+/g, ''))).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива0']);
-    const boxes = await Promise.all((await actions.all()).map(async (button) => (await button.boundingBox())!));
-    expect(new Set(boxes.map((box) => Math.round(box.y))).size).toBe(1);
-    for (const box of boxes) {
+    // The top card has no row of actions: the HP button and the initiative roll end the HP line.
+    await expect(page.locator('.dnd-cs-hp-actions')).toHaveCount(0);
+    await expect(page.locator('.dnd-cs-topcard').getByRole('button', { name: /Лечение|Урон|Отдых|Атака/ })).toHaveCount(0);
+    const line = (await page.locator('.dnd-cs-hp').boundingBox())!;
+    expect(line.x + line.width).toBeLessThanOrEqual(width);
+    for (const selector of ['.dnd-cs-hp-button', '.dnd-cs-init-button']) {
+      const box = (await page.locator(selector).boundingBox())!;
       expect(box.height).toBeGreaterThanOrEqual(44);
-      expect(box.x).toBeGreaterThanOrEqual(0);
-      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.x).toBeGreaterThanOrEqual(line.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(line.x + line.width + 1);
+      expect(await page.locator(selector).evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     }
-    for (const button of await actions.all()) expect(await button.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).click();
     await expect(page.locator('.dnd-cs-toast')).toContainText('Инициатива');
+
+    // Advantage / disadvantage and the rest live among the states, inside the screen.
+    const states = page.getByRole('region', { name: 'Состояния' });
+    await expect(states.locator('.dnd-roll-mode button')).toHaveText(['Преим.', 'Помеха']);
+    await expect(states.getByRole('button', { name: 'Отдых', exact: true })).toBeVisible();
+    for (const control of await states.getByRole('button').all()) {
+      const box = (await control.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.height).toBeGreaterThanOrEqual(30);
+    }
+    await states.getByRole('button', { name: 'Преим.' }).click();
+    await expect(states.getByRole('button', { name: 'Преим.' })).toHaveAttribute('aria-pressed', 'true');
+    await states.getByRole('button', { name: 'Отдых', exact: true }).click();
+    await expect(page.getByRole('dialog', { name: 'Короткий отдых' })).toBeVisible();
+    await page.keyboard.press('Escape');
 
     // The top card has no armor class, speed or proficiency; the passive scores are not above the tabs.
     await expect(page.locator('.dnd-cs-topcard .dnd-cs-combat-stats')).toHaveCount(0);
@@ -301,6 +318,12 @@ test('on a wide screen armor class, speed, proficiency and the passive scores st
   await expect(page.locator('.dnd-cs-topcard .dnd-cs-combat-stats .dnd-cs-stat span')).toHaveText(['КД', 'Скорость', 'Мастерство']);
   await expect(page.locator('.dnd-cs-status-row').getByRole('region', { name: 'Пассивные характеристики' })).toBeVisible();
   await expect(page.locator('.dnd-cs-left .dnd-cs-combat-stats')).toHaveCount(0);
-  expect((await page.locator('.dnd-cs-hp-actions button').allInnerTexts()).map((text) => text.replace(/\s+/g, ''))).toEqual(['Лечение', 'Урон', 'Отдых', 'Инициатива0']);
+  // HP on the left of its line, the initiative roll on the right; the rest and the roll mode among the states.
+  await expect(page.locator('.dnd-cs-hp > :first-child')).toHaveText('HP');
+  await expect(page.locator('.dnd-cs-hp > :last-child')).toHaveAttribute('aria-label', 'Бросить инициативу');
+  await expect(page.locator('.dnd-cs-hp-actions')).toHaveCount(0);
+  const states = page.getByRole('region', { name: 'Состояния' });
+  await expect(states.locator('.dnd-roll-mode button')).toHaveText(['Преим.', 'Помеха']);
+  await expect(states.getByRole('button', { name: 'Отдых', exact: true })).toBeVisible();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/batch3-wide.png` });
 });

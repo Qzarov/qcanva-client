@@ -74,9 +74,9 @@ describe('character sheet page', () => {
 
   it('sends HP changes as deltas', async () => {
     await open();
-    await wrapper.get('button[aria-label="Урон"]').trigger('click');
+    await wrapper.get('.dnd-cs-hp-button').trigger('click');
     await wrapper.get('[aria-label="Количество HP"]').setValue('4');
-    await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+    await wrapper.get('.dnd-hp-damage').trigger('click');
     await flushPromises();
     expect(sentOps()).toEqual([{ type: 'hp-change', mode: 'damage', amount: 4 }]);
     expect((wrapper.get('[aria-label="Текущие HP"]').element as HTMLInputElement).value).toBe('6');
@@ -141,9 +141,9 @@ describe('character sheet page', () => {
       expect(wrapper.find('.dnd-cs-portrait-actions').exists()).toBe(false);
       expect(wrapper.findAll('.dnd-cs-add').length).toBe(0);
       // Still live in play: HP, experience, rolls.
-      expect(wrapper.get('[aria-label="Текущие HP"]').attributes('readonly')).toBeUndefined();
+      expect(wrapper.get('[aria-label="Текущие HP"]').attributes('readonly')).toBeDefined();
       expect(wrapper.get('[aria-label="Опыт"]').attributes('readonly')).toBeUndefined();
-      expect(wrapper.get('button[aria-label="Урон"]').attributes('disabled')).toBeUndefined();
+      expect(wrapper.get('.dnd-cs-hp-button').attributes('disabled')).toBeUndefined();
       expect(wrapper.get('[aria-label="Бросить инициативу"]').attributes('disabled')).toBeUndefined();
     });
 
@@ -213,9 +213,9 @@ describe('character sheet page', () => {
     it('does not record play actions, even in setup mode', async () => {
       await open();
       await toSetup();
-      await wrapper.get('button[aria-label="Урон"]').trigger('click');
+      await wrapper.get('.dnd-cs-hp-button').trigger('click');
       await wrapper.get('[aria-label="Количество HP"]').setValue('4');
-      await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+      await wrapper.get('.dnd-hp-damage').trigger('click');
       await wrapper.get('[aria-label="Опыт"]').setValue('300');
       await flushPromises();
       expect(wrapper.get('[aria-label="Отменить"]').attributes('disabled')).toBeDefined();

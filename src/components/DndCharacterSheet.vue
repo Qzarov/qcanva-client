@@ -39,11 +39,14 @@
     <!-- ===== COMBAT STRIP ===== -->
     <div class="dnd-cs-combat">
       <div class="dnd-cs-stat dnd-cs-hp">
-        <span>HP</span>
-        <input type="number" min="0" :readonly="readonly" :value="data.combat.currentHp" aria-label="Текущие HP" @change="setNumber(data.combat, 'currentHp', evVal($event), 0)" />
+        <!-- Hit points are not typed over: the button opens damage, healing and temporary HP. -->
+        <button type="button" class="dnd-cs-hp-button" :disabled="readonly" aria-label="HP: урон, лечение, временные" title="Урон, лечение, временные HP" @click="hpOpen = true">HP</button>
+        <input type="number" readonly tabindex="-1" :value="data.combat.currentHp" :style="{ width: numberWidth(data.combat.currentHp) }" aria-label="Текущие HP" />
         <b>/</b>
-        <input type="number" min="1" :readonly="readonly" :value="data.combat.maxHp" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', evVal($event), 1)" />
-        <label class="dnd-cs-temp-hp">(+<input type="number" min="0" :readonly="readonly" :value="data.combat.temporaryHp" aria-label="Временные HP" @change="setNumber(data.combat, 'temporaryHp', evVal($event), 0)" /><span>врем.</span>)</label>
+        <!-- The maximum is set once (and on a level-up): a field in setup mode only. -->
+        <input type="number" min="1" :readonly="locked" :tabindex="locked ? -1 : undefined" :value="data.combat.maxHp" :style="{ width: numberWidth(data.combat.maxHp) }" aria-label="Максимум HP" @change="setNumber(data.combat, 'maxHp', evVal($event), 1)" />
+        <label class="dnd-cs-temp-hp" :class="{ 'is-none': !data.combat.temporaryHp }" title="Временные HP">(+<input type="number" readonly tabindex="-1" :value="data.combat.temporaryHp" :style="{ width: numberWidth(data.combat.temporaryHp, 2) }" aria-label="Временные HP" /><span>врем.</span>)</label>
+        <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><b>{{ formatModifier(initiative) }}</b></button>
       </div>
       <div class="dnd-cs-hp-bar" role="progressbar" :aria-valuenow="hpPercent" aria-valuemin="0" aria-valuemax="100"><span :style="{ width: hpPercent + '%' }"></span></div>
       <div v-if="deathStatus !== 'none'" class="dnd-cs-death" role="group" aria-label="Спасброски от смерти">
@@ -58,28 +61,23 @@
         <button v-if="deathStatus === 'dying'" type="button" class="dnd-cs-roll dnd-cs-death-roll" :disabled="readonly" title="Спасбросок от смерти: d20, 10 и выше — успех" @click="rollDeathSave">Спасбросок от смерти</button>
         <strong v-else class="dnd-cs-death-result" :class="{ 'is-dead': deathStatus === 'dead' }" aria-live="polite">{{ deathStatus === 'dead' ? 'Мёртв' : 'Стабилен' }}</strong>
       </div>
-      <div class="dnd-cs-hp-actions">
-        <button type="button" :disabled="readonly" aria-label="Лечение" @click="hpMode = 'heal'">Лечение</button>
-        <button type="button" :disabled="readonly" aria-label="Урон" @click="hpMode = 'damage'">Урон</button>
-        <!-- One button for both rests: which one is chosen in the dialog. -->
-        <button type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
-        <!-- A roll, not a value to look up: it sits with the actions. -->
-        <button type="button" class="dnd-cs-init-button" aria-label="Бросить инициативу" title="Бросить инициативу: d20 + модификатор" @click="roll('initiative', 'Инициатива', initiative)"><span>Инициатива</span><b>{{ formatModifier(initiative) }}</b></button>
-      </div>
       <!-- On a phone these three are looked up, not used every turn: they live in the abilities section. -->
       <div v-if="!phone" class="dnd-cs-combat-stats">
         <div class="dnd-cs-stat"><span>КД</span><input type="number" min="0" :readonly="locked" :value="data.combat.armorClass" aria-label="Класс доспеха" @change="setNumber(data.combat, 'armorClass', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat"><span>Скорость</span><input type="number" min="0" :readonly="locked" :value="data.combat.speed" aria-label="Скорость" @change="setNumber(data.combat, 'speed', evVal($event), 0)" /></div>
         <div class="dnd-cs-stat readonly-stat"><span>Мастерство</span><strong>{{ formatModifier(proficiencyBonus) }}</strong></div>
       </div>
-      <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :weapons="weaponAttacks" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @attack="attackWithWeapon" @open-log="rollLogOpen = true" />
     </div>
     </section>
 
     <!-- ===== PASSIVE SCORES (compact, up top) ===== -->
     <div class="dnd-cs-status-row">
       <DndPassiveScores v-if="!phone" :items="passives" />
-      <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change" />
+      <DndCharacterStates :combat="data.combat" :readonly="readonly" @change="change">
+        <DndRollBar class="dnd-cs-roll-bar" :mode="rollMode" :history-count="rollHistory.length" :show-log="!rolls" @set-mode="setRollMode" @open-log="rollLogOpen = true" />
+        <!-- One button for both rests: which one is chosen in the dialog. -->
+        <button type="button" class="dnd-cs-rest-button" :disabled="readonly" :title="'Короткий или длинный отдых. Кости хитов: ' + hitDiceLeft + ' из ' + data.identity.level" @click="restKind = 'short'">Отдых</button>
+      </DndCharacterStates>
     </div>
 
     <!-- ===== BODY: sections. Wide: the abilities on the left, always; four tabs
@@ -293,7 +291,7 @@
         </div>
     </div>
 
-    <DndHpDialog v-if="hpMode && !readonly" :mode="hpMode" :combat="data.combat" @close="hpMode = null" @apply="applyHpAmount" />
+    <DndHpDialog v-if="hpOpen && !readonly" :combat="data.combat" @close="hpOpen = false" @apply="applyHp" />
     <DndRestDialog v-if="restKind && !readonly" :kind="restKind" :data="data" :hit-die-locked="locked" @close="restKind = null" @set-kind="restKind = $event" @apply="applyRest" @spend-hit-die="spendHitDie" @set-hit-die="setHitDie" />
 
     <DndRollToasts v-if="onScreen" :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
@@ -313,7 +311,7 @@ import {
   FEATURE_RECHARGE_OPTIONS, HIT_DICE, deathSaveStatus, hitDiceRemaining, spellSlotKey, type RestKind,
   type DndAbilityKey, type DndCharacterSheetData, type DndSheetMode, type DndListItem, type DndSkillKey, type DndTab, type SkillProficiency,
 } from '../dnd/characterSheet';
-import DndHpDialog from './DndHpDialog.vue';
+import DndHpDialog, { type HpAction } from './DndHpDialog.vue';
 import { useViewActivity } from '../composables/useViewActivity';
 import DndIdentitySelect from './DndIdentitySelect.vue';
 import DndSelect from './DndSelect.vue';
@@ -517,13 +515,17 @@ export default defineComponent({
       change();
     };
 
-    const hpMode = ref<'heal' | 'damage' | null>(null);
-    const applyHpAmount = (amount: number) => {
-      if (props.readonly || !hpMode.value || !isHpAmount(amount)) return;
-      emit('op', { type: 'hp-change', mode: hpMode.value, amount });
-      hpMode.value = null;
+    // The numbers of the HP line take the room their digits need and no more: the line must fit a 320 px screen.
+    const numberWidth = (value: unknown, padding = 8) => `calc(${String(Math.trunc(Number(value) || 0)).length}ch + ${padding}px)`;
+    const hpOpen = ref(false);
+    const applyHp = (action: HpAction, amount: number) => {
+      if (props.readonly || !hpOpen.value || !isHpAmount(amount)) return;
+      // Damage and healing are deltas (two people hitting at once must add up); temporary HP are a value that replaces the old one.
+      if (action === 'temp') { props.data.combat.temporaryHp = amount; change(); }
+      else emit('op', { type: 'hp-change', mode: action, amount });
+      hpOpen.value = false;
     };
-    watch(() => props.readonly, value => { if (value) { hpMode.value = null; restKind.value = null; spellCatalogOpen.value = false; } });
+    watch(() => props.readonly, value => { if (value) { hpOpen.value = false; restKind.value = null; spellCatalogOpen.value = false; } });
 
     // ===== Death saves, hit dice, rests =====
     const deathStatus = computed(() => deathSaveStatus(props.data.combat));
@@ -726,7 +728,7 @@ export default defineComponent({
     // back with the sheet (a pending attack keeps its damage roll).
     const { active: onScreen } = useViewActivity({
       onHide: () => {
-        hpMode.value = null;
+        hpOpen.value = false;
         restKind.value = null;
         spellCatalogOpen.value = false;
         weaponCatalogOpen.value = false;
@@ -762,7 +764,7 @@ export default defineComponent({
       nameInput, nameDraft, nameMeasure, nameMultiline, resizeName, evVal, setIdentity, setNumber, setField, setPersonality,
       setAbilityScore, toggleSave, savingThrow,
       skillMod, skillProf, skillProfTitle, cycleSkill,
-      hpMode, applyHpAmount, change,
+      hpOpen, applyHp, numberWidth, change,
       deathStatus, setDeathSaves, rollDeathSave, restKind, hitDiceLeft, applyRest, setHitDie, spendHitDie,
       rechargeOptions: FEATURE_RECHARGE_OPTIONS.map((option) => ({ value: option.value as string, label: option.label as string })),
       casterClassOptions: [{ value: '', label: 'Не выбран' }, ...SPELLCASTER_CLASSES.map((caster) => ({ value: caster.key as string, label: caster.label }))],
@@ -969,19 +971,25 @@ export default defineComponent({
 .dnd-cs-hp { gap: 8px; }
 .dnd-cs-hp > span:first-child { font-size: 11px; }
 .dnd-cs-temp-hp { display:flex; align-items:center; gap:1px; color:var(--dnd-text-dim); font-size:11px; text-transform:none; letter-spacing:0; white-space:nowrap; }
-.dnd-cs-hp .dnd-cs-temp-hp input[type='number'] { flex:none; width:34px; padding:2px 0; font-size:14px; appearance:textfield; -moz-appearance:textfield; }
+.dnd-cs-hp .dnd-cs-temp-hp input[type='number'] { flex:none; padding:2px 0; font-size:14px; }
 .dnd-cs-temp-hp input::-webkit-inner-spin-button, .dnd-cs-temp-hp input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
-.dnd-cs-hp-actions { display:flex; gap:8px; }
-.dnd-cs-hp-actions button { flex:1; padding:7px 10px; border:1px solid var(--dnd-glass-border); border-radius:8px; font:inherit; font-size:12px; background:var(--dnd-glass-accent-soft); color:var(--ui-text); cursor:pointer; }
-.dnd-cs-hp-actions button:disabled { opacity:.45; cursor:default; }
-/* Rests: the same action buttons, one step quieter than heal / damage. */
-.dnd-cs-hp-actions .dnd-cs-rest-button { background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
-.dnd-cs-hp-actions .dnd-cs-rest-button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); color: var(--ui-text); }
-/* Initiative: a roll in the row of actions - its name, quiet, and the modifier it rolls with. */
-.dnd-cs-hp-actions .dnd-cs-init-button { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); }
-.dnd-cs-hp-actions .dnd-cs-init-button b { color: var(--ui-text); font-weight: 800; font-variant-numeric: tabular-nums; }
-.dnd-cs-hp-actions .dnd-cs-init-button:hover, .dnd-cs-hp-actions .dnd-cs-init-button:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); color: var(--ui-text); }
-.dnd-cs-hp-actions .dnd-cs-init-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
+/* HP: the label is the button for everything that changes hit points. */
+.dnd-cs-hp-button { flex: none; min-width: 44px; min-height: 32px; padding: 5px 10px; border: 1px solid color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); border-radius: 8px; background: var(--dnd-glass-accent-soft); color: var(--ui-text); font: inherit; font-size: 12px; font-weight: 800; letter-spacing: .04em; cursor: pointer; transition: background 150ms, border-color 150ms, box-shadow 150ms; }
+.dnd-cs-hp-button:hover:not(:disabled) { border-color: var(--dnd-glass-accent); box-shadow: 0 0 12px var(--dnd-glass-accent-glow); }
+.dnd-cs-hp-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
+.dnd-cs-hp-button:disabled { opacity: .45; cursor: default; }
+/* The numbers of the HP line are read, not typed (the maximum - in setup mode only). */
+.dnd-cs-hp input[readonly] { cursor: default; }
+/* Initiative: a roll at the right end of the HP line - its name, quiet, and the modifier it rolls with. */
+.dnd-cs-init-button { display: flex; align-items: center; justify-content: center; gap: 5px; flex: none; min-height: 32px; margin-left: auto; padding: 5px 10px; border: 1px solid var(--dnd-glass-border); border-radius: 8px; background: rgba(var(--dnd-fill-rgb), 0.05); color: var(--dnd-text-dim); font: inherit; font-size: 12px; letter-spacing: 0; text-transform: none; cursor: pointer; transition: background 150ms, border-color 150ms, color 150ms; }
+.dnd-cs-init-button b { color: var(--ui-text); font-weight: 800; font-variant-numeric: tabular-nums; }
+.dnd-cs-init-button:hover, .dnd-cs-init-button:focus-visible { background: var(--dnd-glass-accent-soft); border-color: var(--dnd-glass-accent); color: var(--ui-text); }
+.dnd-cs-init-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
+/* Rest: a quiet pill among the states. */
+.dnd-cs-rest-button { display: inline-flex; align-items: center; padding: 7px 11px; border: 1px solid var(--dnd-glass-border); border-radius: 999px; background: rgba(var(--dnd-fill-rgb), 0.03); color: var(--dnd-text-dim); font: inherit; font-size: 12px; cursor: pointer; transition: background 150ms, border-color 150ms, color 150ms; }
+.dnd-cs-rest-button:hover:not(:disabled) { background: var(--dnd-glass-accent-soft); border-color: color-mix(in srgb, var(--dnd-glass-accent) 55%, transparent); color: var(--ui-text); }
+.dnd-cs-rest-button:focus-visible { outline: 2px solid var(--dnd-glass-accent); outline-offset: 2px; }
+.dnd-cs-rest-button:disabled { opacity: .5; cursor: default; }
 /* Death saves: shown only at 0 HP, inside the combat column (no panel of its own). */
 .dnd-cs-death { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 8px 10px; border: 1px solid color-mix(in srgb, var(--dnd-danger) 40%, transparent); border-radius: 12px; background: rgba(var(--dnd-fill-rgb), 0.04); }
 .dnd-cs-death-track { display: flex; align-items: center; gap: 2px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
@@ -992,7 +1000,8 @@ export default defineComponent({
 .dnd-cs-death-roll:disabled { opacity: .45; cursor: default; }
 .dnd-cs-death-result { margin-left: auto; font-size: 13px; font-weight: 800; color: var(--dnd-glass-accent); }
 .dnd-cs-death-result.is-dead { color: var(--dnd-danger); }
-.dnd-cs-hp input[type='number'] { flex: 1; min-width: 0; width: 58px; font-size: 20px; font-weight: 800; text-align: center; }
+.dnd-cs-hp input[type='number'] { flex: none; min-width: 0; padding-inline: 0; font-size: 20px; font-weight: 800; text-align: center; appearance: textfield; -moz-appearance: textfield; }
+.dnd-cs-hp input::-webkit-inner-spin-button, .dnd-cs-hp input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .dnd-cs-hp b { color: var(--dnd-text-dim); font-size: 18px; }
 
 /* ===== BODY ===== */
@@ -1140,7 +1149,6 @@ export default defineComponent({
 .dnd-cs-weapon-toggle:disabled { cursor: default; }
 .dnd-cs-attack-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
 .dnd-cs-subheading { margin: 4px 0 0; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dnd-text-dim); }
-.dnd-cs-roll-bar { margin-top: 2px; }
 .dnd-cs-goal-row { display: grid; grid-template-columns: 28px 1fr 26px; gap: 6px; align-items: start; }
 .dnd-cs-goal-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .dnd-cs-goal-main input.done { text-decoration: line-through; color: var(--dnd-text-dim); }
@@ -1210,13 +1218,15 @@ export default defineComponent({
   .dnd-cs-skill-roll { padding-inline: 3px; gap: 3px; }
   .dnd-cs-combat { gap: 8px; }
   /* Used every turn at 0 HP / every rest: full touch targets. */
-  .dnd-cs-hp-actions button, .dnd-cs-death-roll { min-height: 44px; }
-  /* Four in a row down to 320 px: less padding, and the initiative's name over its modifier. */
-  .dnd-cs-hp-actions { gap: 6px; }
-  .dnd-cs-hp-actions button { min-width: 0; padding-inline: 2px; }
-  .dnd-cs-hp-actions .dnd-cs-init-button { flex-direction: column; gap: 1px; }
-  .dnd-cs-hp-actions .dnd-cs-init-button span { font-size: 9px; line-height: 1.2; }
-  .dnd-cs-hp-actions .dnd-cs-init-button b { font-size: 14px; line-height: 1.1; }
+  /* Used every turn: full touch targets. The initiative's name stands over its modifier to leave the HP line its room. */
+  .dnd-cs-hp-button, .dnd-cs-init-button, .dnd-cs-rest-button, .dnd-cs-death-roll { min-height: 44px; }
+  .dnd-cs-init-button { flex-direction: column; gap: 1px; padding-inline: 6px; }
+  .dnd-cs-init-button span { font-size: 9px; line-height: 1.2; }
+  .dnd-cs-init-button b { font-size: 14px; line-height: 1.1; }
+  .dnd-cs-hp { gap: 4px; }
+  /* Room for the numbers: temporary HP are "(+12)" here, and are not shown at all while there are none. */
+  .dnd-cs-temp-hp span { display: none; }
+  .dnd-cs-temp-hp.is-none { display: none; }
   .dnd-cs-death { justify-content: space-between; }
   .dnd-cs-death-roll { flex: 1 1 100%; justify-content: center; margin-left: 0; font-size: 12px; }
   .dnd-cs-death-result { flex: 1 1 100%; margin-left: 0; text-align: center; }

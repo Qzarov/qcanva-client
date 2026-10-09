@@ -93,24 +93,15 @@ describe('weapons and attack rolls', () => {
     expect(toastTexts()[0]).toContain('d20 (9)');
   });
 
-  it('asks which weapon to use when several are equipped', async () => {
+  it('has no attack button in the top card: every equipped weapon is rolled from the attacks section', async () => {
     const data = sheet();
     data.equipment.push({ id: 'dagger', name: 'Кинжал', equipped: true, weapon: { damage: '1d4', finesse: true } } as any);
     wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
-    dice([10, 20]);
-    await wrapper.get('.dnd-roll-attack').trigger('click');
-    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-roll-weapon-menu button'));
-    expect(items.map((item) => item.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['Длинный меч +6', 'Кинжал +6']);
-    items[1]!.click();
-    await nextTick();
-    expect(toastTexts()[0]).toContain('Атака · Кинжал');
-  });
-
-  it('disables the Attack button with nothing equipped', () => {
-    const data = sheet();
-    data.equipment[0]!.equipped = false;
-    wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
-    expect(wrapper.get('.dnd-roll-attack').attributes('disabled')).toBeDefined();
+    expect(wrapper.find('.dnd-roll-attack').exists()).toBe(false);
+    expect(wrapper.find('.dnd-cs-topcard .dnd-roll-bar').exists()).toBe(false);
+    const attacks = wrapper.get('.dnd-weapon-attacks').text();
+    expect(attacks).toContain('Длинный меч');
+    expect(attacks).toContain('Кинжал');
   });
 
   it('shows an unparsable formula as text with a hint instead of a roll button', async () => {

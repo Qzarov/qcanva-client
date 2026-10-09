@@ -30,42 +30,83 @@ for (const width of [320, 1280]) {
     await page.locator('[data-account-menu-trigger]').click();
     await expect(page.locator('[data-account-menu] a[href="/plugins"]')).toHaveCount(0);
     await page.keyboard.press('Escape');
+    // Hit points are read on the sheet and changed through the HP button: damage, healing, temporary.
     const temp = page.getByLabel('Временные HP', { exact: true });
-    await temp.fill('5'); await temp.blur();
-    const damage = page.getByRole('button', { name: 'Урон', exact: true });
-    await damage.click();
-    const dialog = page.getByRole('dialog', { name: 'Урон', exact: true });
+    const current = page.getByLabel('Текущие HP', { exact: true });
+    await expect(current).toHaveAttribute('readonly', '');
+    await expect(temp).toHaveAttribute('readonly', '');
+    await expect(page.getByRole('button', { name: 'Урон', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Лечение', exact: true })).toHaveCount(0);
+    const hpButton = page.getByRole('button', { name: 'HP: урон, лечение, временные', exact: true });
+    await expect(hpButton).toHaveText('HP');
+    const hpLine = (await page.locator('.dnd-cs-hp').boundingBox())!;
+    const hpButtonBox = (await hpButton.boundingBox())!;
+    const initiative = (await page.getByRole('button', { name: 'Бросить инициативу', exact: true }).boundingBox())!;
+    // HP on the left of the line, the initiative roll on its right, nothing clipped.
+    expect(hpButtonBox.x - hpLine.x).toBeLessThanOrEqual(1);
+    expect(hpLine.x + hpLine.width - (initiative.x + initiative.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(hpButtonBox.y + hpButtonBox.height / 2 - (initiative.y + initiative.height / 2))).toBeLessThanOrEqual(2);
+    expect(hpLine.x + hpLine.width).toBeLessThanOrEqual(width);
+    for (const field of [current, page.getByLabel('Максимум HP', { exact: true })]) expect(await field.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    if (width <= 760) expect(hpButtonBox.height).toBeGreaterThanOrEqual(44);
+
+    await hpButton.click();
+    const dialog = page.getByRole('dialog', { name: 'HP', exact: true });
     const amount = dialog.getByLabel('Количество HP', { exact: true });
     await expect(amount).toBeFocused();
+    await expect(dialog.locator('.dnd-hp-now')).toHaveText('Сейчас: 10 / 10 (+0 врем.)');
     const frame = (await dialog.boundingBox())!;
+    expect(frame.x).toBeGreaterThanOrEqual(0);
+    expect(frame.x + frame.width).toBeLessThanOrEqual(width);
+    const actions = dialog.locator('.dnd-hp-dialog-actions button');
+    await expect(actions).toHaveText(['Урон', 'Лечение', 'Временные']);
     for (const control of await dialog.getByRole('button').all()) {
       const bounds = (await control.boundingBox())!;
       expect(bounds.x).toBeGreaterThanOrEqual(frame.x);
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(frame.x + frame.width + 0.5);
+      expect(await control.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
     }
-    await amount.fill('8');
-    await expect(dialog).toContainText('После: 7 / 10 (+0 врем.)');
-    const apply = dialog.getByRole('button', { name: 'Урон', exact: true });
-    await apply.focus(); await page.keyboard.press('Tab'); await expect(amount).toBeFocused();
+    for (const action of await actions.all()) await expect(action).toBeDisabled();
+
+    // Temporary HP first: they replace what there was.
+    await amount.fill('5');
+    await expect(dialog.locator('.dnd-hp-results li')).toHaveText(['Урон: 5 / 10 (+0 врем.)', 'Лечение: 10 / 10 (+0 врем.)', 'Временные: 10 / 10 (+5 врем.)']);
+    // Enter does not choose between damage and healing.
     await page.keyboard.press('Enter');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Временные', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    await expect(damage).toBeFocused();
-    await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('7');
+    await expect(hpButton).toBeFocused();
+    await expect(temp).toHaveValue('5');
+    await expect.poll(() => saved().data.combat.temporaryHp).toBe(5);
+
+    // Damage eats the temporary HP first.
+    await hpButton.click();
+    await amount.fill('8');
+    await expect(dialog.locator('.dnd-hp-results li').first()).toHaveText('Урон: 7 / 10 (+0 врем.)');
+    // Tab stays inside the dialog.
+    await dialog.getByRole('button', { name: 'Временные', exact: true }).focus();
+    await page.keyboard.press('Tab');
+    await expect(dialog.getByRole('button', { name: 'Закрыть' })).toBeFocused();
+    await dialog.getByRole('button', { name: 'Урон', exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(current).toHaveValue('7');
     await expect(temp).toHaveValue('0');
     await expect.poll(() => saved().data.combat.currentHp).toBe(7);
-    await page.getByRole('button', { name: 'Лечение', exact: true }).click();
-    const healing = page.getByRole('dialog', { name: 'Лечение', exact: true });
-    const actions = (await healing.locator('.dnd-hp-dialog-actions').boundingBox())!;
-    const cancel = (await healing.getByRole('button', { name: 'Отмена' }).boundingBox())!;
-    const healingApply = (await healing.getByRole('button', { name: 'Лечение', exact: true }).boundingBox())!;
-    expect(Math.abs((cancel.x + healingApply.x + healingApply.width) / 2 - (actions.x + actions.width / 2))).toBeLessThanOrEqual(1);
-    await healing.getByLabel('Количество HP', { exact: true }).fill('100');
-    await healing.getByRole('button', { name: 'Лечение', exact: true }).click();
-    await expect(page.getByLabel('Текущие HP', { exact: true })).toHaveValue('10');
-    await damage.click(); await page.keyboard.press('Escape');
-    await expect(dialog).toHaveCount(0); await expect(damage).toBeFocused();
-    await damage.click();
+
+    await hpButton.click();
+    await amount.fill('100');
+    await dialog.getByRole('button', { name: 'Лечение', exact: true }).click();
+    await expect(current).toHaveValue('10');
+
+    // Closing applies nothing: Escape, the backdrop, the cross.
+    await hpButton.click(); await amount.fill('3'); await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0); await expect(hpButton).toBeFocused();
+    await hpButton.click(); await amount.fill('3');
     await page.locator('.dnd-hp-backdrop').click({ position: { x: 2, y: 2 } });
+    await expect(dialog).toHaveCount(0);
+    await hpButton.click(); await amount.fill('3');
+    await dialog.getByRole('button', { name: 'Закрыть' }).click();
     await expect(dialog).toHaveCount(0);
     await expect.poll(() => saved().data.combat.currentHp).toBe(10);
     await page.reload();
@@ -167,6 +208,8 @@ for (const width of [320, 390, 760, 1280]) {
     }
     const overflows = await page.locator('.dnd-cs-topcard input, .dnd-cs-topcard textarea, .dnd-cs-ability button, .dnd-cs-ability input').evaluateAll(elements => elements.filter(element => {
       const bounds = element.getBoundingClientRect();
+      // Not rendered (temporary HP are hidden on a phone while there are none): nothing to overflow.
+      if (!bounds.width && !bounds.height) return false;
       const parent = element.closest('.dnd-cs-ability, .dnd-cs-topcard')!.getBoundingClientRect();
       return bounds.x < parent.x || bounds.right > parent.right || bounds.x < 0 || bounds.right > innerWidth;
     }).map(element => element.outerHTML));
@@ -355,16 +398,15 @@ test('condition choices escape card stacking contexts and track viewport changes
   await expect(page.getByRole('button', { name: 'Удалить состояние: Отравлен', exact: true })).toBeVisible();
 });
 
-test('mobile HP action buttons center their contents consistently', async ({ page }) => {
+test('the HP dialog\'s buttons center their contents on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openSheet(page);
-  for (const mode of ['Лечение', 'Урон']) {
-    await page.getByRole('button', { name: mode, exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: mode, exact: true });
-    for (const button of await dialog.getByRole('button').all()) {
-      expect(await button.evaluate(element => getComputedStyle(element).justifyContent)).toBe('center');
-      expect(await button.evaluate(element => getComputedStyle(element).textAlign)).toBe('center');
-    }
-    await page.keyboard.press('Escape');
+  await page.locator('.dnd-cs-hp-button').click();
+  const dialog = page.getByRole('dialog', { name: 'HP', exact: true });
+  for (const button of await dialog.locator('.dnd-hp-dialog-actions button').all()) {
+    expect(await button.evaluate(element => getComputedStyle(element).justifyContent)).toBe('center');
+    expect(await button.evaluate(element => getComputedStyle(element).textAlign)).toBe('center');
   }
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
 });

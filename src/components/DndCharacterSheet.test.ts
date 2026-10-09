@@ -71,10 +71,14 @@ describe('DndCharacterSheet interactions', () => {
     Object.assign(data.combat, { currentHp: 10, maxHp: 20, temporaryHp: 5, exhaustion: 3 });
     const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
     try {
-      await wrapper.get(`button[aria-label="${mode}"]`).trigger('click');
+      // One button opens the dialog; what the amount is gets chosen there.
+      await wrapper.get('.dnd-cs-hp-button').trigger('click');
       await wrapper.get('[aria-label="Количество HP"]').setValue(amount);
       expect(data.combat.currentHp).toBe(10);
+      // Enter does not choose between damage and healing.
       await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+      expect(wrapper.emitted('op')).toBeUndefined();
+      await wrapper.get(mode === 'Лечение' ? '.dnd-hp-heal' : '.dnd-hp-damage').trigger('click');
       // HP travels as a delta so the DM's and the player's damage add up;
       // the sheet itself is updated by whoever applies the operation.
       const ops = wrapper.emitted('op') as [SheetOperation][];
@@ -89,18 +93,52 @@ describe('DndCharacterSheet interactions', () => {
     } finally { wrapper.unmount(); }
   });
 
+  it('shows hit points as numbers that are not typed over, and sets temporary HP from the dialog', async () => {
+    const data = reactive(createDndCharacterSheet());
+    Object.assign(data.combat, { currentHp: 10, maxHp: 20, temporaryHp: 5 });
+    const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
+    try {
+      expect(wrapper.get('.dnd-cs-hp-button').text()).toBe('HP');
+      for (const label of ['Текущие HP', 'Временные HP']) expect(wrapper.get(`[aria-label="${label}"]`).attributes('readonly'), label).toBeDefined();
+      // The maximum is set-once data: a field in setup mode, text in play.
+      expect(wrapper.get('[aria-label="Максимум HP"]').attributes('readonly')).toBeUndefined();
+      await wrapper.setProps({ mode: 'play' });
+      expect(wrapper.get('[aria-label="Максимум HP"]').attributes('readonly')).toBeDefined();
+
+      await wrapper.get('.dnd-cs-hp-button').trigger('click');
+      const dialog = wrapper.get('.dnd-hp-dialog');
+      expect(dialog.get('.dnd-hp-now').text()).toBe('Сейчас: 10 / 20 (+5 врем.)');
+      expect(dialog.findAll('.dnd-hp-dialog-actions button').map((button) => button.text())).toEqual(['Урон', 'Лечение', 'Временные']);
+      await wrapper.get('[aria-label="Количество HP"]').setValue('8');
+      // Asked again from the wrapper: with Teleport stubbed, an element found before a re-render goes stale.
+      expect(wrapper.findAll('.dnd-hp-results li').map((line) => line.text())).toEqual([
+        'Урон: 7 / 20 (+0 врем.)', 'Лечение: 18 / 20 (+5 врем.)', 'Временные: 10 / 20 (+8 врем.)',
+      ]);
+      // Temporary HP replace what there was; they are a value, not a delta.
+      await wrapper.get('.dnd-hp-temp').trigger('click');
+      expect(data.combat.temporaryHp).toBe(8);
+      expect(data.combat.currentHp).toBe(10);
+      expect(wrapper.emitted('op')).toBeUndefined();
+      expect(wrapper.emitted('change')).toHaveLength(1);
+      expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
+    } finally { wrapper.unmount(); }
+  });
+
   it('rejects invalid HP amounts and cancels without mutating HP', async () => {
     const data = reactive(createDndCharacterSheet());
     const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
     try {
-      await wrapper.get('[aria-label="Урон"]').trigger('click');
+      await wrapper.get('.dnd-cs-hp-button').trigger('click');
       for (const amount of ['', '0', '-1', '1.5', 'Infinity', '9007199254740992']) {
         await wrapper.get('[aria-label="Количество HP"]').setValue(amount);
-        expect(wrapper.get('.dnd-hp-apply').attributes('disabled')).toBeDefined();
-        await wrapper.get('.dnd-hp-dialog form').trigger('submit');
+        for (const action of ['.dnd-hp-damage', '.dnd-hp-heal', '.dnd-hp-temp']) {
+          expect(wrapper.get(action).attributes('disabled')).toBeDefined();
+          await wrapper.get(action).trigger('click');
+        }
         expect(data.combat.currentHp).toBe(10);
+        expect(wrapper.emitted('op')).toBeUndefined();
       }
-      await wrapper.get('.dnd-hp-cancel').trigger('click');
+      await wrapper.get('.dnd-hp-close').trigger('click');
       expect(wrapper.find('.dnd-hp-dialog').exists()).toBe(false);
       expect(wrapper.emitted('change')).toBeUndefined();
     } finally { wrapper.unmount(); }
@@ -109,7 +147,7 @@ describe('DndCharacterSheet interactions', () => {
     const data = reactive(createDndCharacterSheet());
     const wrapper = mount(DndCharacterSheet, { props: { data }, global: { stubs: { Teleport: true } } });
     try {
-      await wrapper.get('[aria-label="Урон"]').trigger('click');
+      await wrapper.get('.dnd-cs-hp-button').trigger('click');
       await wrapper.get('[aria-label="Количество HP"]').setValue('5');
       expect(runBackHandlers()).toBe(true);
       await wrapper.vm.$nextTick();
@@ -296,8 +334,8 @@ describe('DndCharacterSheet interactions', () => {
     const data = reactive(createDndCharacterSheet());
     const wrapper = mount(DndCharacterSheet, { props: { data, readonly: true } });
     expect(wrapper.find('.dnd-cs-add').exists()).toBe(false);
-    expect(wrapper.get('[aria-label="Лечение"]').attributes('disabled')).toBeDefined();
-    expect(wrapper.get('[aria-label="Урон"]').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('.dnd-cs-hp-button').attributes('disabled')).toBeDefined();
+    expect(wrapper.get('.dnd-cs-rest-button').attributes('disabled')).toBeDefined();
     wrapper.unmount();
   });
 });

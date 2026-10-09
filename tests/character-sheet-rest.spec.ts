@@ -91,9 +91,9 @@ for (const width of [320, 1280]) {
     const saves = page.getByRole('group', { name: 'Спасброски от смерти' });
     await expect(saves).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Урон', exact: true }).click();
+    await page.locator('.dnd-cs-hp-button').click();
     await page.getByLabel('Количество HP', { exact: true }).fill('50');
-    await page.keyboard.press('Enter');
+    await page.getByRole('dialog', { name: 'HP' }).getByRole('button', { name: 'Урон', exact: true }).click();
     await expect(saves).toBeVisible();
     const box = (await saves.boundingBox())!;
     expect(box.x + box.width).toBeLessThanOrEqual(width);
@@ -110,9 +110,9 @@ for (const width of [320, 1280]) {
       await saves.getByRole('button', { name: 'Провал 3 из 3' }).click();
       await expect(saves).toContainText('Мёртв');
       if (SHOTS) await page.locator('.dnd-cs-topcard').screenshot({ path: `${SHOTS}/death-${width}.png` });
-      await page.getByRole('button', { name: 'Лечение', exact: true }).click();
+      await page.locator('.dnd-cs-hp-button').click();
       await page.getByLabel('Количество HP', { exact: true }).fill('4');
-      await page.keyboard.press('Enter');
+      await page.getByRole('dialog', { name: 'HP' }).getByRole('button', { name: 'Лечение', exact: true }).click();
     }
     await expect(saves).toHaveCount(0);
     await expect.poll(() => saved().data.combat.deathSaves).toEqual({ successes: 0, failures: 0 });
@@ -137,9 +137,9 @@ if (SHOTS) {
       test(`screenshots ${theme} ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: width > 500 ? 900 : 1500 });
         await openSheet(page, theme);
-        await page.getByRole('button', { name: 'Урон', exact: true }).click();
+        await page.locator('.dnd-cs-hp-button').click();
         await page.getByLabel('Количество HP', { exact: true }).fill('50');
-        await page.keyboard.press('Enter');
+        await page.getByRole('dialog', { name: 'HP' }).getByRole('button', { name: 'Урон', exact: true }).click();
         await page.getByRole('button', { name: 'Успех 1 из 3' }).click();
         await page.getByRole('button', { name: 'Провал 2 из 3' }).click();
         await page.locator('.dnd-cs').screenshot({ path: `${SHOTS}/stage1-${theme}-${width}.png` });
