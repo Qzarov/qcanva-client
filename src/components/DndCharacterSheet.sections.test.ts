@@ -247,6 +247,14 @@ describe('what is looked up, and the initiative roll', () => {
     const states = wrapper!.get('[aria-label="Состояния"]');
     expect(states.findAll('.dnd-roll-mode button').map((button) => button.text())).toEqual(['Преим.', 'Помеха']);
     expect(states.get('.dnd-cs-rest-button').text()).toBe('Отдых');
+    // The fixed controls come first; conditions and "+ состояние" follow, so adding one moves nothing before it.
+    data.combat.conditions = ['poisoned'];
+    await wrapper!.vm.$nextTick();
+    const order = Array.from(wrapper!.get('.dnd-cs-state-list').element.children).map((child) => child.textContent!.replace(/\s+/g, ' ').trim());
+    // (A sheet used on its own, as here, keeps its roll log button next to the roll mode; the page moves it to the header.)
+    expect(order).toEqual(['✦ Вдохновение', 'Преим.ПомехаЖурнал', 'Отдых', 'Отравлен ×', '+ состояние']);
+    data.combat.conditions = [];
+    await wrapper!.vm.$nextTick();
     expect(wrapper!.findAll('.dnd-roll-mode')).toHaveLength(1);
     expect(wrapper!.findAll('.dnd-cs-rest-button')).toHaveLength(1);
 

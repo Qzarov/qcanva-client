@@ -2,12 +2,13 @@
   <section ref="root" class="dnd-cs-states dnd-glass" aria-label="Состояния">
     <div class="dnd-cs-state-list">
       <button type="button" class="dnd-cs-toggle" :class="{ on: combat.inspiration }" :disabled="readonly" :aria-pressed="combat.inspiration" @click="toggleInspiration">✦ Вдохновение</button>
+      <!-- What else a turn is set up with (the sheet puts advantage / disadvantage and the rest here).
+           Before the conditions: these stay put while the list of conditions grows after them. -->
+      <slot />
       <button v-for="condition in combat.conditions" :key="condition" type="button" class="dnd-cs-condition" :disabled="readonly" :aria-label="'Удалить состояние: ' + conditionLabel(condition)" @click="remove(condition)">
         {{ conditionLabel(condition) }} <span aria-hidden="true">×</span>
       </button>
       <button type="button" class="dnd-cs-add-condition" aria-label="Добавить состояние" :aria-expanded="Boolean(open)" :disabled="readonly || !available.length" @click="toggleMenu">+ состояние</button>
-      <!-- What else a turn is set up with (the sheet puts advantage / disadvantage and the rest here). -->
-      <slot />
     </div>
     <Teleport to="body">
       <div v-if="open && !readonly" ref="popup" class="dnd-cs-condition-menu" :style="menuStyle" role="group" aria-label="Доступные состояния">
