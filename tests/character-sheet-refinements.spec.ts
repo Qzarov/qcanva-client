@@ -147,10 +147,10 @@ test.describe('on a phone', () => {
     await catalog.getByRole('button', { name: 'Закрыть список заклинаний' }).tap();
 
     await page.getByRole('tab', { name: 'Снаряжение', exact: true }).tap();
-    await page.getByRole('button', { name: '+ Оружие из списка' }).tap();
-    const weapons = page.getByRole('dialog', { name: 'Оружие из списка' });
-    await expect(weapons.getByLabel('Поиск оружия')).not.toBeFocused();
-    await weapons.getByRole('button', { name: 'Закрыть список оружия' }).tap();
+    await page.getByRole('button', { name: '+ Добавить', exact: true }).tap();
+    const items = page.getByRole('dialog', { name: 'Добавить в снаряжение' });
+    await expect(items.getByLabel('Поиск предмета')).not.toBeFocused();
+    await items.getByRole('button', { name: 'Закрыть', exact: true }).tap();
 
     await page.locator('[data-account-menu-trigger]').tap();
     await page.locator('.dnd-link-row').tap();

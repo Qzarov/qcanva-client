@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick, reactive } from 'vue';
 import DndCharacterSheet from './DndCharacterSheet.vue';
 import { createDndCharacterSheet } from '../dnd/characterSheet';
@@ -170,31 +170,92 @@ describe('weapons and attack rolls', () => {
     expect(document.querySelector('.dnd-roll-log-actions')).toBeNull();
   });
 
+  const openCatalog = async () => {
+    await wrapper!.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Снаряжение')!.trigger('click');
+    await wrapper!.findAll('.dnd-cs-add').find((b) => b.text() === '+ Добавить')!.trigger('click');
+  };
+  const searchCatalog = async (text: string) => {
+    const search = document.querySelector<HTMLInputElement>('[aria-label="Поиск предмета"]')!;
+    search.value = text;
+    search.dispatchEvent(new Event('input'));
+    await nextTick();
+    return Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-catalog-item'));
+  };
+
+  it('explains how a weapon gets to the attacks behind the heading, not in a paragraph', async () => {
+    wrapper = mount(DndCharacterSheet, { props: { data: reactive(createDndCharacterSheet()) }, attachTo: document.body });
+    expect(wrapper.text()).not.toContain('Отметьте оружие');
+    expect(wrapper.find('.dnd-weapon-attacks-empty').text()).toBe('Нет экипированного оружия');
+    const heading = wrapper.get('.dnd-weapon-attacks-help');
+    await heading.trigger('click');
+    const hint = document.querySelector('[role="tooltip"].ui-explain-hint')!;
+    expect(hint.textContent).toContain('вкладке «Снаряжение»');
+    expect(heading.attributes('aria-expanded')).toBe('true');
+    expect(heading.attributes('aria-describedby')).toBe(hint.id);
+    await heading.trigger('click');
+    expect(document.querySelector('.ui-explain-hint')).toBeNull();
+  });
+
   it('adds a weapon from the catalog as one synced item', async () => {
     const data = reactive(createDndCharacterSheet());
     const before = JSON.parse(JSON.stringify(data));
     wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
-    await wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Снаряжение')!.trigger('click');
-    await wrapper.findAll('.dnd-cs-add').find((b) => b.text() === '+ Оружие из списка')!.trigger('click');
-    const search = document.querySelector<HTMLInputElement>('[aria-label="Поиск оружия"]')!;
-    expect(document.activeElement).toBe(search);
-    search.value = 'рапира';
-    search.dispatchEvent(new Event('input'));
-    await nextTick();
-    const items = Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-catalog-item'));
+    await openCatalog();
+    expect(document.activeElement).toBe(document.querySelector('[aria-label="Поиск предмета"]'));
+    const items = await searchCatalog('рапира');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual(['Добавить: Рапира']);
     items[0]!.click();
     await nextTick();
-    expect(document.querySelector('.dnd-catalog')).toBeNull();
+    // The dialog stays open: a backpack is filled several things at a time.
+    expect(document.querySelector('.dnd-catalog')).not.toBeNull();
+    expect(items[0]!.textContent).toContain('в листе ×1');
     expect(data.equipment).toHaveLength(1);
     const ops = diffSheet(before, JSON.parse(JSON.stringify(data)));
-    expect(ops).toEqual([{ type: 'list-add', list: 'equipment', index: 0, item: expect.objectContaining({ name: 'Рапира', weapon: expect.objectContaining({ damage: '1d8', finesse: true, category: 'martial' }) }) }]);
+    expect(ops).toEqual([{ type: 'list-add', list: 'equipment', index: 0, item: expect.objectContaining({ name: 'Рапира', catalogKey: 'weapon:rapier', weapon: expect.objectContaining({ damage: '1d8', finesse: true, category: 'martial' }) }) }]);
     expect(wrapper.find('[aria-label="Кость урона"]').exists()).toBe(true);
+  });
+
+  it('adds to the quantity on a second pick, and a pack adds its contents', async () => {
+    const data = reactive(createDndCharacterSheet());
+    wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
+    await openCatalog();
+    (await searchCatalog('факел'))[0]!.click();
+    await nextTick();
+    expect(data.equipment.map((item) => [item.name, item.quantity])).toEqual([['Факел', 10]]);
+    (await searchCatalog('путешественника'))[0]!.click();
+    await nextTick();
+    const rows = Object.fromEntries(data.equipment.map((item) => [item.name, item.quantity]));
+    expect(rows['Факел']).toBe(20);
+    expect(rows['Рацион (1 день)']).toBe(10);
+    expect(rows['Рюкзак']).toBe(1);
+    expect(data.equipment.some((item) => item.name === 'Набор путешественника')).toBe(false);
+  });
+
+  it('filters by category', async () => {
+    wrapper = mount(DndCharacterSheet, { props: { data: reactive(createDndCharacterSheet()) }, attachTo: document.body });
+    await openCatalog();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-catalog-filters button')).find((b) => b.textContent === 'Зелья')!.click();
+    await nextTick();
+    const names = Array.from(document.querySelectorAll('.dnd-catalog-name')).map((el) => el.textContent);
+    expect(names).toContain('Зелье лечения');
+    expect(names).not.toContain('Рапира');
+  });
+
+  it('adds a weapon of ones own, closes the dialog and puts the focus on its name', async () => {
+    const data = reactive(createDndCharacterSheet());
+    wrapper = mount(DndCharacterSheet, { props: { data }, attachTo: document.body });
+    await openCatalog();
+    Array.from(document.querySelectorAll<HTMLButtonElement>('.dnd-catalog-custom button')).find((b) => b.textContent === '+ Своё оружие')!.click();
+    await flushPromises();
+    expect(document.querySelector('.dnd-catalog')).toBeNull();
+    expect(data.equipment).toHaveLength(1);
+    expect((data.equipment[0] as { weapon?: unknown }).weapon).toBeTruthy();
+    expect(document.activeElement?.getAttribute('aria-label')).toBe('Название предмета');
   });
 
   it('hides the catalog button for read-only viewers', async () => {
     wrapper = mount(DndCharacterSheet, { props: { data: sheet(), readonly: true }, attachTo: document.body });
     await wrapper.findAll('.dnd-cs-tabs button').find((b) => b.text() === 'Снаряжение')!.trigger('click');
-    expect(wrapper.findAll('.dnd-cs-add').some((b) => b.text() === '+ Оружие из списка')).toBe(false);
+    expect(wrapper.findAll('.dnd-cs-add').some((b) => b.text() === '+ Добавить')).toBe(false);
   });
 });

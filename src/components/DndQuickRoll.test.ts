@@ -5,7 +5,7 @@ import DndQuickRoll from './DndQuickRoll.vue';
 import DndRollList from './DndRollList.vue';
 import DndSheetHistory from './DndSheetHistory.vue';
 import DndSpellCatalog from './DndSpellCatalog.vue';
-import DndWeaponCatalog from './DndWeaponCatalog.vue';
+import DndItemCatalog from './DndItemCatalog.vue';
 import DndCanvasLink from './DndCanvasLink.vue';
 import { createDndCharacterSheet, defaultNextLevelExperience, nextLevelExperienceOf, normalizeDndCharacterSheet } from '../dnd/characterSheet';
 import { rollSpecLocally, type SheetRoll } from '../dnd/useSheetRolls';
@@ -92,7 +92,7 @@ describe('dialogs with a search field', () => {
 
   it.each([
     ['the spell catalog', () => mount(DndSpellCatalog, { props: { sheet: sheet() }, global: { stubs }, attachTo: document.body }), 'input[aria-label="Поиск заклинания"]'],
-    ['the weapon catalog', () => mount(DndWeaponCatalog, { global: { stubs }, attachTo: document.body }), 'input[aria-label="Поиск оружия"]'],
+    ['the item catalog', () => mount(DndItemCatalog, { global: { stubs }, attachTo: document.body }), 'input[aria-label="Поиск предмета"]'],
   ])('%s focuses its search with a mouse but not on a touch screen', async (_name, mountDialog, selector) => {
     // Checked right after mounting, where the focus is set - before a catalog's data
     // arrives: the stubbed Teleport re-renders its content then and drops the focus.

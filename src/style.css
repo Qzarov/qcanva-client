@@ -9206,6 +9206,26 @@ textarea:focus-visible {
   .mobile-modebar-tap-hint { animation: none; }
 }
 
+/* An explanation that opens on tap next to its button (useAnchoredHint):
+   a full sentence or two, so a solid card like a menu, not a glass pill.
+   Teleported to <body>, so it only uses the global --ui-* tokens. */
+.ui-explain-hint {
+  position: fixed;
+  z-index: 3100; /* above the sheet's roll toasts */
+  margin: 0;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+  box-shadow: var(--ui-glass-shadow);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 /* ===== Mobile Node Toolbar ===== */
 .mobile-node-toolbar {
   position: fixed;
