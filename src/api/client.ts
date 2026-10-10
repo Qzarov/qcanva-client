@@ -1,4 +1,5 @@
 import { clearTabs } from '../tabs/registry';
+import { isPlanLimit, reportPlanLimit } from './planLimit';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -156,11 +157,15 @@ async function request<T>(path: string, options: ApiRequestInit = {}): Promise<T
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    if (isPlanLimit(res.status, body)) reportPlanLimit(body);
     throw new ApiError(res.status, body.message || `HTTP ${res.status}`, body);
   }
 
   return res.json();
 }
+
+/** For API modules kept in their own files (billing). */
+export const apiRequest = request;
 
 function isMissingRouteError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -554,6 +559,7 @@ export async function uploadImage(file: File): Promise<{ key: string; url: strin
   if (!res.ok) {
     let body: any = {};
     try { body = await res.json(); } catch { /* ignore */ }
+    if (isPlanLimit(res.status, body)) reportPlanLimit(body);
     if (res.status === 413) {
       throw new ApiError(413, 'Файл слишком большой. Максимальный размер — 50 МБ.', body);
     }

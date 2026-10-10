@@ -53,6 +53,9 @@
         <router-link v-if="showPlugins" to="/plugins" class="account-menu-item" @click="close(false)">
           <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
         </router-link>
+        <router-link v-if="billingEnabled" to="/billing" class="account-menu-item" @click="close(false)">
+          <CreditCard :size="17" aria-hidden="true" />{{ t('plan') }}
+        </router-link>
         <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
           <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
         </router-link>
@@ -66,12 +69,13 @@
 
 <script setup lang="ts">
 import { useViewActivity } from '../composables/useViewActivity';
-import { LogOut, Puzzle, Settings } from '@lucide/vue';
+import { CreditCard, LogOut, Puzzle, Settings } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
+import { useBillingEnabled } from '../composables/useBilling';
 import ThemeSelector from './ThemeSelector.vue';
 
 const emit = defineEmits<{ opened: [] }>();
@@ -97,6 +101,8 @@ const props = withDefaults(defineProps<{
 const router = useRouter();
 const { t } = useI18n();
 const { reset: resetPlugins } = usePlugins();
+// Only when billing is on: otherwise there is no plan to look at.
+const billingEnabled = useBillingEnabled();
 const open = ref(false);
 const currentUser = getCurrentUser();
 const userLabel = computed(() => currentUser?.name || currentUser?.email || 'User');

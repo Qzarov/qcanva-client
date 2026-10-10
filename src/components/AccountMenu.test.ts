@@ -14,6 +14,11 @@ vi.mock('../api/client', () => ({
 vi.mock('../composables/usePlugins', () => ({
   usePlugins: () => ({ reset: resetPlugins }),
 }));
+const billingEnabled = vi.hoisted(() => ({ value: false }));
+vi.mock('../composables/useBilling', async () => {
+  const { ref } = await import('vue');
+  return { useBillingEnabled: () => ref(billingEnabled.value) };
+});
 
 describe('AccountMenu', () => {
   beforeEach(() => {
@@ -23,6 +28,19 @@ describe('AccountMenu', () => {
     push.mockClear();
     resetPlugins.mockClear();
     vi.mocked(clearToken).mockClear();
+  });
+
+  it('has a "Тариф" item only when billing is on', async () => {
+    const stubs = { RouterLink: { props: ['to'], template: '<a :data-to="to"><slot /></a>' } };
+    billingEnabled.value = false;
+    const off = mount(AccountMenu, { global: { stubs } });
+    await off.get('[data-account-menu-trigger]').trigger('click');
+    expect(off.find('[data-to="/billing"]').exists()).toBe(false);
+    billingEnabled.value = true;
+    const on = mount(AccountMenu, { global: { stubs } });
+    await on.get('[data-account-menu-trigger]').trigger('click');
+    expect(on.get('[data-to="/billing"]').text()).toMatch(/Тариф|Plan/);
+    billingEnabled.value = false;
   });
 
   it('opens theme choices from the user icon', async () => {

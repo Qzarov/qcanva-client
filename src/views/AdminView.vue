@@ -22,6 +22,8 @@
         </div>
       </div>
 
+      <AdminBillingPanel />
+
       <h2 class="admin-section-title">Users</h2>
       <table class="admin-table">
         <thead>
@@ -98,6 +100,7 @@ import { defineComponent, ref, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
+import AdminBillingPanel from '../components/admin/AdminBillingPanel.vue';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 function getToken() { return localStorage.getItem('token'); }
@@ -117,7 +120,7 @@ async function adminRequest<T>(path: string, options: RequestInit = {}): Promise
 }
 
 export default defineComponent({
-  components: { AccountMenu },
+  components: { AccountMenu, AdminBillingPanel },
   setup() {
     const { show: showToast } = useToast();
     const users = ref<any[]>([]);

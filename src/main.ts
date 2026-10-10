@@ -7,11 +7,13 @@ import './style.css'
 import { applyInitialLocale, useI18n } from './composables/useI18n'
 import { confirmDialog } from './composables/appDialog'
 import { runBackHandlers } from './composables/useBackHandler'
+import { installPlanLimitDialog } from './composables/useBilling'
 
 applyInitialLocale()
 const app = createApp(App)
 app.use(router)
 app.mount('#app')
+installPlanLimitDialog(router)
 
 // Android's system back button otherwise closes the WebView as soon as the
 // browser history is exhausted. Keep navigation inside QCanva predictable:

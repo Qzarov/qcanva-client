@@ -55,6 +55,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/billing',
+      name: 'billing',
+      component: () => import('../views/BillingView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/admin',
       name: 'admin',
       component: () => import('../views/AdminView.vue'),
