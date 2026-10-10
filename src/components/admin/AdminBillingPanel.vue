@@ -13,6 +13,7 @@
         <label>Год, ₽ <input v-model.number="form.priceYear" type="number" min="0" step="1" aria-label="Цена Pro за год, рубли" /></label>
         <label>Льготные дни <input v-model.number="form.graceDays" type="number" min="0" max="30" step="1" aria-label="Льготные дни после неудачного продления" /></label>
       </fieldset>
+      <div class="admin-billing-scroll">
       <table class="admin-table admin-billing-limits">
         <thead>
           <tr><th>Лимит (0 — без ограничений)</th><th>Free</th><th>Pro</th></tr>
@@ -25,6 +26,7 @@
           </tr>
         </tbody>
       </table>
+      </div>
       <div class="admin-billing-buttons">
         <button type="submit" class="btn-primary" :disabled="busy || !dirty">Сохранить тарифы</button>
         <button type="button" class="btn-ghost" :disabled="busy" @click="reset">Вернуть значения по умолчанию</button>
@@ -167,7 +169,12 @@ const formatDate = (value: string) => new Date(value).toLocaleDateString('ru-RU'
 .admin-billing-plans legend { padding: 0 6px; font-size: 13px; color: var(--ui-text-secondary); }
 .admin-billing-plans label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
 .admin-billing input { width: 120px; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: 8px; background: var(--ui-surface-subtle); color: var(--ui-text); font: inherit; }
+.admin-billing-scroll { max-width: 100%; overflow-x: auto; }
 .admin-billing-limits input { width: 100px; }
+@media (max-width: 600px) {
+  .admin-billing-limits input { width: 64px; }
+  .admin-billing-limits th, .admin-billing-limits td { padding-left: 6px; padding-right: 6px; }
+}
 .admin-billing-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .admin-billing-note { font-size: 12px; color: var(--ui-text-secondary); }
 .admin-billing-grant { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
