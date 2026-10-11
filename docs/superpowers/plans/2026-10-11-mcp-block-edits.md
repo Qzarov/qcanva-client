@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Branch `feat/mcp-block-edits` in BOTH repos, cut from `dev`. Never commit to `dev`/`main` directly.
-- Back repo: `~/nocode/pet/canvas-server-back`. Front repo: `~/nocode/pet/canvas-server-front`.
+- Back repo: `~/Devin/pet/canvas-server-back`. Front repo: `~/Devin/pet/canvas-server-front`.
 - Back tests: `npx jest <path>`; full suite `npx jest`. 7 tests in `CanvasGateway ruler` already fail on clean `dev` — not ours, do not fix here.
 - Front tests: `npx vitest run <path>`; full suite `npm run test:unit`.
 - Nodes that get `blockId`: `paragraph, heading, listItem, taskItem, blockquote, callout, codeBlock, image, table, horizontalRule`. Lists, table rows and cells do NOT.
@@ -23,7 +23,7 @@
 - Error codes surfaced over MCP: `block_not_found`, `invalid_target`, `invalid_request`, `capacity_exceeded`, `permission_denied`, `not_found`.
 - Mentions in Markdown: `@[Label](doc:<id>)`; heading links: `@[Label](#<headingId>)`. Raw HTML in incoming Markdown becomes text, except `<u>…</u>`.
 - The schema contract (`EXPECTED_SCHEMA`) must be byte-identical in both repos after this work.
-- Commit messages end with `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.
+- Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Deploy order: back first, then front. Server access only with the user's explicit go-ahead.
 
 ## Review Focus
@@ -81,7 +81,7 @@ Front (`canvas-server-front`):
 - [ ] **Step 1: Branch**
 
 ```bash
-cd ~/nocode/pet/canvas-server-back && git switch dev && git pull --ff-only && git switch -c feat/mcp-block-edits
+cd ~/Devin/pet/canvas-server-back && git switch dev && git pull --ff-only && git switch -c feat/mcp-block-edits
 ```
 
 - [ ] **Step 2: Write the failing tests** — append to the `describe("a document written back from its own html", …)` block in `src/text-documents/text-document-projection.spec.ts`:
@@ -242,7 +242,7 @@ Expected: only tests whose fixtures already carry a `blockId` would change; ther
 git add src/text-documents
 git commit -m "feat(text-documents): stable blockId on blocks, carried through html
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -432,7 +432,7 @@ export function assignMissingBlockIds(root: Y.XmlFragment | Y.XmlElement): strin
 git add src/text-documents/blocks
 git commit -m "feat(text-documents): assign and de-duplicate block ids over Yjs
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -624,7 +624,7 @@ Note for the implementer: `marked` v16 calls `listitem` with the token and, for 
 git add src/text-documents/blocks
 git commit -m "feat(text-documents): markdown to document blocks for MCP edits
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -874,7 +874,7 @@ export function blockMarkdown(element: Y.XmlElement): string {
 git add src/text-documents/blocks
 git commit -m "feat(text-documents): render document blocks as markdown for MCP outline
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1120,7 +1120,7 @@ export function outlineBlocks(fragment: Y.XmlFragment, section?: string): Outlin
 git add src/text-documents/blocks
 git commit -m "feat(text-documents): block outline, lookup and sections over Yjs
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1464,7 +1464,7 @@ Note: `markdownToInline` clones children of a detached element (Task 3). If that
 git add src/text-documents/blocks
 git commit -m "feat(text-documents): set_checked, insert, update and delete blocks over Yjs
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1669,7 +1669,7 @@ Check `TextDocument` is the entity type name used by `applyUpdateUnlocked`'s fir
 git add src/text-documents
 git commit -m "feat(text-documents): block outline and edits through the editor write path
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1909,7 +1909,7 @@ Also update the `listTools` expectation at the top of `mcp-tools.service.spec.ts
 git add src/mcp
 git commit -m "feat(mcp): block-addressed text document tools
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -1918,11 +1918,18 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 **Files:** none committed. Scratch spec lives at `src/zz-tmp-blocks.spec.ts` and is deleted at the end.
 
-- [ ] **Step 1: Real backlog round trip.** The backup from 11.10.2026 is at `~/nocode/backups/qcanva/2026-10-11/data.sqlite.backup.gz`. Extract the backlog's latest state into a scratch file (never into the repo):
+- [ ] **Step 1: Real backlog round trip.** There is no backup on this machine. Ask the user to copy a fresh one from prod into the job's scratch dir (server access is the user's; never commit it, never keep it after this task):
+
+```bash
+ssh root@194.5.79.26 'cd /var/www/qcanva.qzarov.pro/back && node scripts/backup-database.mjs --keep 14'
+scp root@194.5.79.26:<printed backup path> "$CLAUDE_JOB_DIR/tmp/data.sqlite.backup.gz"
+```
+
+Extract the backlog's latest state into a scratch file (never into the repo):
 
 ```bash
 S=$(mktemp -d)
-gunzip -c ~/nocode/backups/qcanva/2026-10-11/data.sqlite.backup.gz > $S/db.sqlite
+gunzip -c "$CLAUDE_JOB_DIR/tmp/data.sqlite.backup.gz" > $S/db.sqlite
 python3 - "$S" <<'E'
 import sqlite3, sys
 s = sys.argv[1]
@@ -1989,7 +1996,7 @@ Expected: PASS. A failure names a real formatting case the unit tests missed —
 - Consumes: the back's `EXPECTED_SCHEMA` literal from Task 1 Step 7.
 - Produces: `BLOCK_ID_TYPES: readonly string[]`, `blocksNeedingId(doc): { pos: number }[]`, `ensureBlockIds(editor)`, `BlockId` extension.
 
-- [ ] **Step 1: Branch** — `cd ~/nocode/pet/canvas-server-front && git switch dev && git pull --ff-only && git switch feat/mcp-block-edits && git merge --ff-only dev` (the branch already holds the spec and this plan).
+- [ ] **Step 1: Branch** — `cd ~/Devin/pet/canvas-server-front && git switch dev && git pull --ff-only && git switch feat/mcp-block-edits && git merge --ff-only dev` (the branch already holds the spec and this plan).
 
 - [ ] **Step 2: Schema** — add `"blockId"` as the last `attrs` entry of the same 10 nodes in `src/documents/document-nodes.ts` (exact same order and placement as the back). Paste the back's `EXPECTED_SCHEMA` literal into `src/documents/schema-contract.ts`. Run `npx vitest run src/documents/schema-contract.test.ts` → PASS. Then diff the two literals:
 
@@ -2183,7 +2190,7 @@ export const BlockId = Extension.create({
 git add src/documents src/text-documents/block-id.ts src/text-documents/block-id.test.ts src/views/TextDocumentView.vue
 git commit -m "feat(text-documents): stable blockId per block in the editor
 
-Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
 ---
@@ -2192,16 +2199,16 @@ Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 
 Requires the user's explicit go-ahead before touching the server (see memory `feedback_no_server_access`). Deploy procedure: memory `reference_canvas_server_prod`.
 
-- [ ] **Step 1: Merge both branches into `dev`** — in each repo: `git switch dev && git pull --ff-only && git merge --no-ff feat/mcp-block-edits`, run the full test suite, push `dev`.
+- [ ] **Step 1: Merge both branches into `dev`** — in each repo: `git switch dev && git pull --ff-only && git merge --no-ff feat/mcp-block-edits`, run the full test suite. Pushing (`dev`, then `main` = `dev` for prod) is done by the user: the agent's `git push` is blocked in these sessions. Hand over the exact commands.
 
-- [ ] **Step 2: Back up, then deploy back** (on `root@194.5.79.26`):
+- [ ] **Step 2: Back up, then deploy back** (on `root@194.5.79.26`; the user runs it, the agent hands over the command and checks the result after):
 
 ```bash
 cd /var/www/qcanva.qzarov.pro/back && node scripts/backup-database.mjs --keep 14 \
-  && git pull && npm run build && pm2 restart canvas-back
+  && git pull && npm ci && npm run build && pm2 restart canvas-back
 ```
 
-(No `npm install`: no dependency changed.)
+`npm ci` is REQUIRED this time: `marked` went from 16 to 15 (Task 3). Prod's `node_modules` still holds 16, which is ESM-only and cannot be `require`d by the CommonJS build on Node 20 - without `npm ci` the back crashes at startup.
 
 - [ ] **Step 3: Deploy front**
 
@@ -2211,6 +2218,6 @@ cd /var/www/qcanva.qzarov.pro/front/repo && BACK_CONTRACT=/var/www/qcanva.qzarov
 
 Check: `curl -s https://qcanva.qzarov.pro/ | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js'` shows a new hash.
 
-- [ ] **Step 4: Live check on a test document** (never the backlog): create a text document "MCP block edits test" via `text_doc_create`, open it in a browser, then via MCP: `text_doc_outline`; `text_doc_insert_blocks` `{ at: "end", markdown: "## Tasks\n\n- [ ] one\n- [ ] two" }`; `text_doc_set_checked` on "one"; `text_doc_insert_blocks` `{ appendToSection: <Tasks blockId>, markdown: "- [ ] three" }`; `text_doc_update_block` "two" → `"**two** done"`. Each change must appear in the open editor without reload. Delete the test document afterwards.
+- [ ] **Step 4: Live check on a test document** (never the backlog; needs the owner's QCanva login token for MCP — ask the user): create a text document "MCP block edits test" via `text_doc_create`, open it in a browser, then via MCP: `text_doc_outline`; `text_doc_insert_blocks` `{ at: "end", markdown: "## Tasks\n\n- [ ] one\n- [ ] two" }`; `text_doc_set_checked` on "one"; `text_doc_insert_blocks` `{ appendToSection: <Tasks blockId>, markdown: "- [ ] three" }`; `text_doc_update_block` "two" → `"**two** done"`. Each change must appear in the open editor without reload. Delete the test document afterwards.
 
-- [ ] **Step 5: Docs** — update the MCP HTML doc (id `96018d8d-b055-43f2-8f33-f270b3ad5cc6`, https://qcanva.qzarov.pro/html/mcp) through `html_doc_update`: add the five tools to the Text document section and recommend them over `text_doc_update` for partial edits. In `docs/roadmap.html` (front repo) and the QCanva roadmap (id `d3cd6935-f5fc-4c36-aa25-db6750a65d13`), mark "Точечные правки документов через MCP" done.
+- [ ] **Step 5: Docs** — update the MCP HTML doc (id `96018d8d-b055-43f2-8f33-f270b3ad5cc6`, https://qcanva.qzarov.pro/html/mcp) through `html_doc_update`: add the five tools to the Text document section and recommend them over `text_doc_update` for partial edits. Roadmap, both copies (`docs/roadmap.html` in the front repo and the QCanva doc id `d3cd6935-f5fc-4c36-aa25-db6750a65d13`): move "Точечные правки документов через MCP" from «В работе» into «Выполнено» as its own collapsed `<details class="done-block">` (title, "N из N", date, merge commit; items checked with `data-check-id`), add it to «Содержание», update the counts there. In QCanva the checked state is stored per `data-check-id`: after `html_doc_update`, tick each item with `PUT /api/html-documents/<id>/checklist` — the server drops a hardcoded `checked`.

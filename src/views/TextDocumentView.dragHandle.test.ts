@@ -34,6 +34,7 @@ import { base64ToUint8Array } from '../text-documents/projection';
 import { foldEnd, headingBlocks } from '../text-documents/collapsible-heading';
 import { messages } from '../composables/useI18n';
 import { useI18n } from '../composables/useI18n';
+import { withoutBlockIds } from '../test-support/block-id';
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -523,7 +524,7 @@ describe('reordering a block under the CRDT', () => {
     expect(doc.child(1).type.name).toBe('callout');
     expect(doc.child(1).attrs.variant).toBe('warning');
     expect(doc.child(1).childCount).toBe(1);
-    expect(editor.getHTML()).toContain('<aside data-variant="warning"><p>careful</p></aside>');
+    expect(withoutBlockIds(editor.getHTML())).toContain('<aside data-variant="warning"><p>careful</p></aside>');
 
     wrapper.unmount();
   });

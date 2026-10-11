@@ -744,6 +744,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
+import { BlockId } from '../text-documents/block-id';
 import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
@@ -2546,6 +2547,8 @@ export default defineComponent({
         // heading-id.ts's file comment for why this is separate from the
         // derived, text-based anchor collapsibleHeading/TableOfContents use.
         HeadingId,
+        // Stable blockId per block: the address MCP block edits use (block-id.ts).
+        BlockId,
         HeadingLink.configure({
           onNavigate: navigateToHeadingLink,
           labels: headingLinkNodeLabels,
