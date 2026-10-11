@@ -2205,10 +2205,10 @@ Requires the user's explicit go-ahead before touching the server (see memory `fe
 
 ```bash
 cd /var/www/qcanva.qzarov.pro/back && node scripts/backup-database.mjs --keep 14 \
-  && git pull && npm run build && pm2 restart canvas-back
+  && git pull && npm ci && npm run build && pm2 restart canvas-back
 ```
 
-(No `npm install`: no dependency changed.)
+`npm ci` is REQUIRED this time: `marked` went from 16 to 15 (Task 3). Prod's `node_modules` still holds 16, which is ESM-only and cannot be `require`d by the CommonJS build on Node 20 - without `npm ci` the back crashes at startup.
 
 - [ ] **Step 3: Deploy front**
 
