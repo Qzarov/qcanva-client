@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QCanva roadmap</title>
+<style>
+  :root { --bg:#f7f7f5; --panel:#ffffff; --text:#1f2328; --muted:#6b6f76; --line:#e4e4e0; --accent:#5b6cff; --tag:#eef0ff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#16171a; --panel:#1f2024; --text:#e8e8ea; --muted:#9a9ca3; --line:#2e3036; --accent:#8b97ff; --tag:#2a2d45; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:820px; margin:0 auto; padding:40px 16px 64px; }
+  h1 { font-size:32px; margin:0 0 6px; }
+  .lead { color:var(--muted); margin:0 0 28px; }
+  h2 { font-size:20px; margin:32px 0 10px; }
+  h3 { font-size:15px; margin:22px 0 8px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  p.why { margin:0 0 10px; }
+  ul.tasks { list-style:none; margin:0; padding:0; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+  ul.tasks li { display:flex; gap:10px; align-items:flex-start; padding:12px 14px; border-top:1px solid var(--line); }
+  ul.tasks li:first-child { border-top:0; }
+  ul.tasks input { margin-top:4px; accent-color:var(--accent); width:16px; height:16px; flex:none; }
+  .title { font-weight:600; }
+  .why { color:var(--muted); font-size:14px; margin-top:2px; }
+  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:999px; background:var(--tag); color:var(--accent); margin-left:6px; vertical-align:1px; }
+  code { font:13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background:var(--tag); padding:1px 5px; border-radius:4px; overflow-wrap:anywhere; }
+</style>
+</head>
+<body>
+<main>
+  <h1>QCanva roadmap</h1>
+  <p class="lead">Что сознательно отложено, чтобы не потерять.</p>
+
+  <h2>Бэклог</h2>
+
+  <h3>MCP: точечные правки текстовых документов</h3>
+  <p class="why">Не вошло в первую версию инструментов <code>text_doc_outline</code>, <code>text_doc_set_checked</code>, <code>text_doc_insert_blocks</code>, <code>text_doc_update_block</code>, <code>text_doc_delete_block</code> (спека от 11.10.2026).</p>
+  <ul class="tasks">
+    <li><input type="checkbox" data-check-id="mcp-doc-batch"><div><div class="title">Пакетные операции <span class="tag">MCP</span></div><div class="why"><code>text_doc_batch</code>: несколько правок одной ревизией, как <code>canvas_batch</code>.</div></div></li>
+    <li><input type="checkbox" data-check-id="mcp-doc-move"><div><div class="title">Перенос блоков <span class="tag">MCP</span></div><div class="why"><code>text_doc_move_block</code>: переставить блок или пункт в другое место документа.</div></div></li>
+    <li><input type="checkbox" data-check-id="mcp-doc-sections"><div><div class="title">Перестройка разделов <span class="tag">MCP</span></div><div class="why">Удалить или перенести раздел целиком, вместе со всем, что под заголовком.</div></div></li>
+    <li><input type="checkbox" data-check-id="mcp-doc-tables"><div><div class="title">Правка таблиц по ячейкам <span class="tag">MCP</span></div><div class="why">Сейчас таблица — один блок, адресовать её строки и ячейки нельзя.</div></div></li>
+  </ul>
+
+  <h3>Отложено по ходу работ</h3>
+  <ul class="tasks">
+    <li><input type="checkbox" data-check-id="mcp-character-sheet"><div><div class="title">Карточка персонажа через MCP <span class="tag">MCP</span></div><div class="why">Инструменты чтения и изменения листа: характеристики, ХП, снаряжение, заклинания, монеты. Сейчас <code>resource_folder_list</code> отдаёт только метаданные шаблона.</div></div></li>
+    <li><input type="checkbox" data-check-id="mcp-token-scopes"><div><div class="title">Токены MCP с правами и сроком жизни <span class="tag">MCP</span></div><div class="why">Страница <code>/mcp</code> в стиле приложения: выпуск токенов с правами чтение / редактирование / создание / удаление, выбор срока, отзыв. Идёт следующей после точечных правок.</div></div></li>
+    <li><input type="checkbox" data-check-id="db-history-pruning"><div><div class="title">Чистка истории документов <span class="tag">бэк</span></div><div class="why">База выросла с 29 МБ (3.09) до 152 МБ (11.10): снимок каждые 50 правок, у бэклога около 21 600 ревизий. Нужен прунинг старых снимков.</div></div></li>
+    <li><input type="checkbox" data-check-id="ruler-tests"><div><div class="title">Починить тесты линейки канваса <span class="tag">бэк</span></div><div class="why">7 тестов <code>CanvasGateway ruler</code> падают на чистом dev.</div></div></li>
+  </ul>
+</main>
+</body>
+</html>
