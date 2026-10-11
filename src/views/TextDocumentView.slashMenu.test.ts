@@ -11,6 +11,7 @@ import TextDocumentView from './TextDocumentView.vue';
 import { SLASH_MENU_ITEMS, SlashMenuPluginKey, isInCodeContext } from '../text-documents/slash-menu';
 import { CALLOUT_VARIANTS, DOCUMENT_NODES } from '../documents/document-nodes';
 import { messages } from '../composables/useI18n';
+import { withoutBlockIds } from '../test-support/block-id';
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -575,7 +576,7 @@ describe('every slash menu item inserts a node the shared inventory declares', (
     expect(node).toBeTruthy();
     expect(CALLOUT_VARIANTS).toContain(node.attrs.variant);
     // The projected html a callout becomes: an <aside data-variant>, no icon.
-    expect(editor.getHTML()).toContain('<aside data-variant="info">');
+    expect(withoutBlockIds(editor.getHTML())).toContain('<aside data-variant="info">');
     expect(editor.getHTML()).not.toContain('<svg');
 
     wrapper.unmount();
@@ -595,7 +596,7 @@ describe('every slash menu item inserts a node the shared inventory declares', (
     await flushPromises();
 
     expect(findNode(editor.getJSON(), 'horizontalRule')).toBeTruthy();
-    expect(editor.getHTML()).toContain('<hr>');
+    expect(withoutBlockIds(editor.getHTML())).toContain('<hr>');
 
     wrapper.unmount();
   });

@@ -86,7 +86,10 @@ vi.mock('../composables/useToast', () => ({
 function renderCodeBlockOpenTag(node: { attrs?: Record<string, unknown> }): string {
   const spec = nodeSpec('codeBlock');
   if (!spec?.tag) throw new Error('codeBlock has no tag in the shared node inventory');
+  // blockId is every block's identity (block-id.ts), not part of what makes
+  // a code block's projection: left out here.
   const attrParts = (spec.attrs ?? [])
+    .filter((attr) => attr !== 'blockId')
     .map((attr) => {
       const value = node.attrs?.[attr];
       if (value === undefined || value === null || value === '') return '';

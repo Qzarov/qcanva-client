@@ -15,7 +15,7 @@ describe('schema contract', () => {
     // paragraph's textSeparator ("\n", a real newline) is escaped to the two
     // literal characters backslash-n within its field, not a real newline, so
     // this whole record is one line ending in a literal "\n".
-    expect(lines).toContain('paragraph|block|p|||\\n');
+    expect(lines).toContain('paragraph|block|p||blockId|\\n');
     expect(lines).toContain('bold=strong');
   });
 
