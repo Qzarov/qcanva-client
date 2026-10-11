@@ -564,6 +564,11 @@ body {
   overflow: hidden;
 }
 .dashboard-central-shell .app-main {
+  /* Always the 1fr row, even when the header above is hidden (desktop):
+     otherwise main took the auto row, was only as tall as its content, and
+     its overflow clipped a menu opened near the bottom of a short page
+     (a near-empty folder's "⋯"). */
+  grid-row: 2;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
