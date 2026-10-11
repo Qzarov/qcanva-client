@@ -82,7 +82,9 @@
       @touchend="onDashboardPullEnd"
       @touchcancel="resetDashboardPull"
     >
-    <div class="dashboard-shell">
+    <!-- One grid/list choice for the whole dashboard: every feed section
+         and every folder (the switch sits in Recents' and the folder's heading). -->
+    <div ref="dashboardShell" class="dashboard-shell" :class="{ 'dashboard-list-view': recentViewMode === 'list' }">
     <section
       v-if="isLoggedIn && activeSection.kind === 'recent'"
       class="resource-control-panel"
@@ -230,10 +232,10 @@
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recent-head-controls">
           <div class="control-menu dash-sort-menu-mobile">
-            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('recent')">
               <ArrowUpDown :size="15" aria-hidden="true" />
             </button>
-            <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+            <div v-if="openControlMenu === 'mobile-sort:recent'" class="mobile-action-popover mobile-sort-popover" @click.stop>
               <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
                 <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
                 <span>{{ t('newest') }}</span>
@@ -252,26 +254,7 @@
               </button>
             </div>
           </div>
-          <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('recentResources')">
-            <button
-              type="button"
-              :class="{ active: recentViewMode === 'grid' }"
-              :aria-label="t('gridView')"
-              :title="t('gridView')"
-              :aria-pressed="recentViewMode === 'grid'"
-              data-recent-view="grid"
-              @click="setRecentViewMode('grid')"
-            ><LayoutGridIcon :size="17" aria-hidden="true" /></button>
-            <button
-              type="button"
-              :class="{ active: recentViewMode === 'list' }"
-              :aria-label="t('listView')"
-              :title="t('listView')"
-              :aria-pressed="recentViewMode === 'list'"
-              data-recent-view="list"
-              @click="setRecentViewMode('list')"
-            ><ListIcon :size="17" aria-hidden="true" /></button>
-          </div>
+          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
         </div>
       </div>
       <div
@@ -294,7 +277,10 @@
           <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
         </button>
       </div>
-      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">{{ t('noRecentMatches') }}</div>
+      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
+        {{ t('noRecentMatches') }}
+        <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+      </div>
       <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
       <button
         v-if="recentShowAllAvailable"
@@ -396,12 +382,13 @@
                   <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
                 </span>
               </div>
+              <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
               <!-- Sort button in folder header -->
               <div class="control-menu dash-sort-menu-mobile folder-header-sort">
-                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('folder')">
                   <ArrowUpDown :size="15" aria-hidden="true" />
                 </button>
-                <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+                <div v-if="openControlMenu === 'mobile-sort:folder'" class="mobile-action-popover mobile-sort-popover" @click.stop>
                   <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
                     <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
                     <span>{{ t('newest') }}</span>
@@ -496,6 +483,10 @@
                     <span class="subfolder-card-name">{{ child.name }}</span>
                     <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
                   </button>
+                </div>
+                <div v-if="!activeFolder.items.length && (hasActiveFilter || !activeSubfolders.length)" class="dash-empty" data-folder-empty>
+                  {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
+                  <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
                 </div>
                 <div class="dash-grid">
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
@@ -647,7 +638,7 @@
         </section>
 
       <div
-        v-if="isLoggedIn && (activeSection.kind === 'shared' || (isHomeFeed && sharedFiltered.length))"
+        v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-shared' : undefined"
         class="dash-section"
         :class="{ 'dashboard-feed-section': isHomeFeed }"
@@ -655,9 +646,9 @@
         :data-feed-section="isHomeFeed ? 'shared' : undefined"
         data-section="shared"
       >
-        <h2>{{ t('sharedWithMe') }}</h2>
+        <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
         <div class="dash-grid">
-          <template v-for="item in feedItems(sharedFiltered)" :key="'shared-' + item.type + '-' + item.id">
+          <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -729,18 +720,26 @@
           </article>
           </template>
         </div>
-        <div v-if="!sharedFiltered.length" class="dash-empty">{{ t('noSharedResources') }}</div>
+        <div v-if="!sharedFiltered.length" class="dash-empty" data-feed-empty="shared">
+          {{ hasActiveFilter ? t('noFilterMatches') : t('noSharedResources') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
         <button
-          v-if="isHomeFeed && sharedFiltered.length > FEED_LIMIT"
+          v-if="isHomeFeed && sharedFiltered.length > feedLimit('shared')"
           type="button"
           class="dashboard-recent-show-all"
-          data-feed-show-all
-          @click="selectDashboardSection({ kind: 'shared' })"
-        >{{ t('showAll') }} {{ sharedFiltered.length }}</button>
+          :data-feed-show-all="'shared'"
+          :aria-expanded="isFeedSectionExpanded('shared')"
+          @click="toggleFeedSectionExpanded('shared')"
+        >
+          <span>{{ isFeedSectionExpanded('shared') ? t('showLess') : `${t('showAll')} ${sharedFiltered.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('shared')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
       </div>
 
       <section
-        v-if="isLoggedIn && (activeSection.kind === 'interactive' || (isHomeFeed && visibleInteractiveTemplateItems.length))"
+        v-if="isLoggedIn && (activeSection.kind === 'interactive' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-interactive' : undefined"
         class="dash-section"
         :class="{ 'dashboard-feed-section': isHomeFeed }"
@@ -750,7 +749,7 @@
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid">
-          <article v-for="item in feedItems(visibleInteractiveTemplateItems)" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
             <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
@@ -760,18 +759,26 @@
             </div>
           </article>
         </div>
-        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty">{{ t('noInteractiveTemplates') }}</div>
+        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty" data-feed-empty="interactive">
+          {{ hasActiveFilter ? t('noFilterMatches') : t('noInteractiveTemplates') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
         <button
-          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > FEED_LIMIT"
+          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > feedLimit('interactive')"
           type="button"
           class="dashboard-recent-show-all"
-          data-feed-show-all
-          @click="selectDashboardSection({ kind: 'interactive' })"
-        >{{ t('showAll') }} {{ visibleInteractiveTemplateItems.length }}</button>
+          :data-feed-show-all="'interactive'"
+          :aria-expanded="isFeedSectionExpanded('interactive')"
+          @click="toggleFeedSectionExpanded('interactive')"
+        >
+          <span>{{ isFeedSectionExpanded('interactive') ? t('showLess') : `${t('showAll')} ${visibleInteractiveTemplateItems.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('interactive')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
       </section>
 
       <div
-        v-if="activeSection.kind === 'public' || (isHomeFeed && publicFiltered.length)"
+        v-if="activeSection.kind === 'public' || isHomeFeed"
         :id="isHomeFeed ? 'feed-public' : undefined"
         class="dash-section"
         :class="{ 'dashboard-feed-section': isHomeFeed }"
@@ -796,10 +803,10 @@
               >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
             </div>
             <div class="control-menu dash-sort-menu-mobile">
-              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu">
+              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('public')">
                 <ArrowUpDown :size="15" aria-hidden="true" />
               </button>
-              <div v-if="openControlMenu === 'mobile-sort'" class="mobile-action-popover mobile-sort-popover" @click.stop>
+              <div v-if="openControlMenu === 'mobile-sort:public'" class="mobile-action-popover mobile-sort-popover" @click.stop>
                 <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
                   <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
                   <span>{{ t('newest') }}</span>
@@ -821,7 +828,7 @@
           </div>
         </div>
         <div class="dash-grid">
-          <template v-for="item in feedItems(publicFiltered)" :key="'public-' + item.type + '-' + item.id">
+          <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
             class="canvas-card"
@@ -898,19 +905,24 @@
           </article>
           </template>
         </div>
-        <div v-if="!publicFiltered.length" class="dash-empty">{{ t('noPublicResources') }}</div>
+        <div v-if="!publicFiltered.length" class="dash-empty" data-public-empty data-feed-empty="public">
+          {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
         <button
-          v-if="isHomeFeed && publicFiltered.length > FEED_LIMIT"
+          v-if="isHomeFeed && publicFiltered.length > feedLimit('public')"
           type="button"
           class="dashboard-recent-show-all"
-          data-feed-show-all
-          @click="selectDashboardSection({ kind: 'public' })"
-        >{{ t('showAll') }} {{ publicFiltered.length }}</button>
+          :data-feed-show-all="'public'"
+          :aria-expanded="isFeedSectionExpanded('public')"
+          @click="toggleFeedSectionExpanded('public')"
+        >
+          <span>{{ isFeedSectionExpanded('public') ? t('showLess') : `${t('showAll')} ${publicFiltered.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('public')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
       </div>
 
-      <div v-if="isLoggedIn && activeSection.kind === 'home' && !folderSummaries.length && !sharedFiltered.length" class="dash-empty">
-        No resources yet. Create your first one!
-      </div>
     </template>
     </div>
     </main>
@@ -1255,7 +1267,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutGrid as LayoutGridIcon, LayoutTemplate, List as ListIcon, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { confirmDelete } from '../composables/appDialog';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -1268,6 +1280,8 @@ import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
+import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
 import TabsButton from '../components/tabs/TabsButton.vue';
@@ -1384,6 +1398,7 @@ export default defineComponent({
   components: {
     TabsButton,
     DashboardSidebar,
+    DashboardViewToggle,
     InteractiveTemplatePicker,
     LanguageToggle,
     ArrowLeft,
@@ -1398,9 +1413,7 @@ export default defineComponent({
     Folder,
     FolderInput,
     FolderPlus,
-    LayoutGridIcon,
     LayoutTemplate,
-    ListIcon,
     Menu,
     Plus,
     ShieldCheck,
@@ -1787,7 +1800,9 @@ export default defineComponent({
 
     const sharedFiltered = computed(() => sortFolderItems(
       [...shared.value, ...sharedHtmlDocuments.value, ...sharedTextDocuments.value]
-        .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesPublicItem(item)),
+        // Not matchesPublicItem: that one searches the word "Public" too, so
+        // searching "public" listed every shared document.
+        .filter((item) => item.type === 'canvas' ? matchesCanvas(item) : matchesFolderItem(item, String(('folder' in item && item.folder) || ''))),
     ));
     // Public lists every public resource, wherever it is filed: unlike
     // Shared (whose foldered items already show in their folder), a public
@@ -1818,16 +1833,13 @@ export default defineComponent({
       ...allHtmlDocumentsRaw.value.filter((d: any) => isOwnPublic(d, !!d.shared)),
       ...allTextDocumentsRaw.value.filter((d: any) => isOwnPublic(d, false)),
     ]);
-    const publicFiltered = computed(() => {
+    const publicAnyOwner = computed(() => {
       const listed = [...publicCanvases.value, ...publicHtmlDocuments.value, ...publicTextDocuments.value];
       const seen = new Set(listed.map((item) => `${item.type}:${item.id}`));
       const extra = ownPublicResources.value.filter((item) => !seen.has(`${item.type}:${item.id}`));
-      return sortFolderItems(
-        [...listed, ...extra]
-          .filter(matchesPublicItem)
-          .filter(matchesPublicOwner),
-      );
+      return [...listed, ...extra].filter(matchesPublicItem);
     });
+    const publicFiltered = computed(() => sortFolderItems(publicAnyOwner.value.filter(matchesPublicOwner)));
 
     /**
      * Every resource the user can see and filter, folder-nested or not, goes
@@ -2072,17 +2084,18 @@ export default defineComponent({
       items,
     });
 
+    /**
+     * The sidebar's folder tree. It is navigation, so search / type / tags
+     * leave it alone: filtering it made folders (and Inbox) blink in and out
+     * of the sidebar as filters changed. The filters narrow what a folder
+     * shows once opened, and the Folders tiles' counts on the feed.
+     */
     const folderSummaries = computed<FolderSummary[]>(() => {
       const folders = allFolderSummaries.value
-      .map((folder) => ({
-        ...folder,
-        items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
-      }))
       .filter((folder) => {
-        const hasActiveFilter = Boolean(searchQuery.value.trim() || selectedTags.value.length);
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
         return folder.items.length
-          || (!hasActiveFilter && folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
+          || (folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -2113,10 +2126,8 @@ export default defineComponent({
         }
       }
 
-      const fallbackSourceItems = legacyInboxSourceItems.value;
-      const fallbackItems = sortFolderItems(fallbackSourceItems.filter((item) => matchesFolderItem(item, 'Inbox')));
-      if (fallbackItems.length || (contentFilter.value === 'all' && fallbackSourceItems.length)) {
-        folders.push(buildLegacyInboxFolder(fallbackItems));
+      if (legacyInboxSourceItems.value.length) {
+        folders.push(buildLegacyInboxFolder(sortFolderItems(legacyInboxSourceItems.value)));
       }
       return buildFolderTree(folders);
     });
@@ -2222,22 +2233,48 @@ export default defineComponent({
       return sortMode.value === 'updated-asc' ? a.openedAt - b.openedAt : b.openedAt - a.openedAt;
     }));
 
-    const RECENT_COLLAPSED_LIMIT = 4;
+    /**
+     * Columns the feed's card grid has right now (see feed-rows.ts): each
+     * section shows whole rows of it before "Show all", not a fixed 4.
+     */
+    const dashboardShell = ref<HTMLElement | null>(null);
+    const feedColumns = ref(FEED_FALLBACK_COLUMNS);
+    let feedResizeObserver: ResizeObserver | null = null;
+    let feedPhoneMedia: MediaQueryList | null = null;
+    const measureFeedColumns = () => {
+      feedColumns.value = feedColumnCount(dashboardShell.value?.clientWidth ?? 0, !!feedPhoneMedia?.matches);
+    };
+    onMounted(() => {
+      feedPhoneMedia = typeof window.matchMedia === 'function' ? window.matchMedia(FEED_PHONE_QUERY) : null;
+      feedPhoneMedia?.addEventListener?.('change', measureFeedColumns);
+      if (typeof ResizeObserver !== 'undefined' && dashboardShell.value) {
+        feedResizeObserver = new ResizeObserver(measureFeedColumns);
+        feedResizeObserver.observe(dashboardShell.value);
+      }
+      measureFeedColumns();
+    });
+    onBeforeUnmount(() => {
+      feedResizeObserver?.disconnect();
+      feedPhoneMedia?.removeEventListener?.('change', measureFeedColumns);
+    });
+    const feedLimit = (section: FeedRowSection) => feedSectionLimit(section, feedColumns.value);
+
     const recentExpanded = ref(false);
     const recentTotal = computed(() => sortedRecentResources.value.length);
     const visibleRecent = computed(() =>
-      recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, RECENT_COLLAPSED_LIMIT),
+      recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, feedLimit('recent')),
     );
-    const recentShowAllAvailable = computed(() => recentTotal.value > RECENT_COLLAPSED_LIMIT);
+    const recentShowAllAvailable = computed(() => recentTotal.value > feedLimit('recent'));
 
     /**
      * HOME AS ONE FEED. Shared / Interactive / Public render on Home too,
      * below Recent and Folders, as the SAME blocks their own sections use,
-     * capped at FEED_LIMIT cards with "Show all N" opening the full section.
-     * Empty ones are left out of the feed. The sticky bar above lists the
-     * sections present, scrolls to one on click, and marks the one in view.
+     * capped at whole rows of cards (feedLimit); "Show all N" unfolds the
+     * rest in place.
+     * A signed-in user never leaves the feed for a page of one section: the
+     * sections stay on it even when empty (or emptied by the filters, with a
+     * note saying so), so the sidebar always has somewhere to scroll to.
      */
-    const FEED_LIMIT = 4;
     const FEED_SECTION_LABELS = {
       recent: 'recents',
       folders: 'folders',
@@ -2247,14 +2284,22 @@ export default defineComponent({
     } as const;
     type FeedSection = keyof typeof FEED_SECTION_LABELS;
     const isHomeFeed = computed(() => isLoggedIn && activeSection.value.kind === 'recent');
-    const feedItems = <T,>(items: T[]): T[] => (isHomeFeed.value ? items.slice(0, FEED_LIMIT) : items);
+    type ExpandableFeedSection = 'shared' | 'interactive' | 'public';
+    const expandedFeedSections = ref<ExpandableFeedSection[]>([]);
+    const isFeedSectionExpanded = (section: ExpandableFeedSection) => expandedFeedSections.value.includes(section);
+    const toggleFeedSectionExpanded = (section: ExpandableFeedSection) => {
+      expandedFeedSections.value = isFeedSectionExpanded(section)
+        ? expandedFeedSections.value.filter((item) => item !== section)
+        : [...expandedFeedSections.value, section];
+    };
+    const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
+      isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
+    );
     const feedNavSections = computed<FeedSection[]>(() => {
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
-      if (sharedFiltered.value.length) sections.push('shared');
-      if (visibleInteractiveTemplateItems.value.length) sections.push('interactive');
-      if (publicFiltered.value.length) sections.push('public');
+      sections.push('shared', 'interactive', 'public');
       return sections;
     });
     const activeFeedSection = ref<FeedSection>('recent');
@@ -3485,10 +3530,13 @@ export default defineComponent({
       cardMenuStyle.value = null;
     };
 
-    const toggleMobileSortMenu = () => {
+    // One key per sort button: Recents and Public both sit on the feed, and a
+    // shared key opened both popovers from either button.
+    const toggleMobileSortMenu = (where: 'recent' | 'folder' | 'public') => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      openControlMenu.value = openControlMenu.value === 'mobile-sort' ? '' : 'mobile-sort';
+      const key = `mobile-sort:${where}`;
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
     const selectSortMode = (mode: typeof sortMode.value) => {
@@ -3561,13 +3609,19 @@ export default defineComponent({
           count:
             (folder.canvasCount || 0) +
             (folder.htmlDocumentCount || 0) +
-            (folder.textDocumentCount || 0),
+            (folder.textDocumentCount || 0) +
+            (folder.interactiveTemplateCount || 0),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
     /** True once any of search/type/tags actually narrows the result set. */
     const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentFilter.value !== 'all'));
+    const resetFilters = () => {
+      searchQuery.value = '';
+      selectedTags.value = [];
+      contentFilter.value = 'all';
+    };
 
     /**
      * Top-level folders shown as tiles below Recent. Unlike the sidebar tree,
@@ -3829,12 +3883,10 @@ export default defineComponent({
     };
 
     /**
-     * The sidebar's Shared / Templates / Public / Recents scroll the home
-     * feed to that section rather than swapping the dashboard for a page of
-     * its own - the feed already shows them all, one under the other. Only a
-     * section the feed has nothing in (so nothing to scroll to) still opens
-     * on its own, where its empty state says why. A guest has no feed: their
-     * dashboard is Public itself.
+     * The sidebar's Home / Shared / Templates / Public scroll the home feed
+     * to that section rather than swapping the dashboard for a page of its
+     * own - the feed always shows them all, one under the other, empty or
+     * not. A guest has no feed: their dashboard is Public itself.
      */
     const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
@@ -3847,8 +3899,7 @@ export default defineComponent({
       closeCardMenu();
       mobileSidebarOpen.value = false;
       await nextTick();
-      if (target === 'recent' || feedNavSections.value.includes(target)) scrollToFeedSection(target);
-      else selectDashboardSection(section);
+      scrollToFeedSection(target);
     };
 
     /** One level up: parent folder, or Home from a top-level folder. False when not in a folder. */
@@ -4152,6 +4203,7 @@ export default defineComponent({
       resetDashboardPull,
       sharedFiltered,
       publicFiltered,
+      publicAnyOwner,
       publicOwnerFilter,
       PUBLIC_OWNER_FILTERS,
       PUBLIC_OWNER_FILTER_LABELS,
@@ -4240,7 +4292,13 @@ export default defineComponent({
       openMoveFolderModal,
       isHomeFeed,
       feedItems,
-      FEED_LIMIT,
+      feedLimit,
+      feedColumns,
+      dashboardShell,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+      resetFilters,
+      hasActiveFilter,
       feedNavSections,
       activeFeedSection,
       scrollToFeedSection,

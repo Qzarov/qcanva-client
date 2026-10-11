@@ -182,18 +182,20 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.get('.dashboard-sidebar .dashboard-sidebar-brand img').attributes('alt')).toBe('QCanva');
   });
 
-  it('starts on Recent while Home stays collapsed and shows one central section at a time', async () => {
+  it('starts on the feed with Home collapsed, and the sidebar never swaps the feed for a page', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
-    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
 
+    // Nothing is shared with this user: Shared is still a feed section.
     await wrapper.get('[data-dashboard-section="shared"]').trigger('click');
+    await flushPromises();
 
-    expect(wrapper.get('[data-dashboard-view="shared"]').isVisible()).toBe(true);
-    expect(wrapper.find('[data-dashboard-view="recent"]').exists()).toBe(false);
+    expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
+    expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
+    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Nothing has been shared with you yet.');
   });
 
   it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
@@ -248,13 +250,13 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-grid');
-    expect(wrapper.get('[data-recent-view="grid"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-view-mode="grid"]').attributes('aria-pressed')).toBe('true');
     expect(wrapper.get('.dashboard-recent-card').text()).toContain('MVP board');
 
-    await wrapper.get('[data-recent-view="list"]').trigger('click');
+    await wrapper.get('[data-view-mode="list"]').trigger('click');
 
     expect(wrapper.get('[data-recent-layout]').classes()).toContain('dashboard-recents-list');
-    expect(wrapper.get('[data-recent-view="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
     expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('list');
 
     await wrapper.get('.dashboard-recent-card').trigger('click');
@@ -267,7 +269,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    expect(wrapper.get('[data-recent-view="list"]').attributes('aria-pressed')).toBe('true');
+    expect(wrapper.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
     expect((wrapper.vm as any).recentViewMode).toBe('list');
   });
 
@@ -368,8 +370,9 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     const order = wrapper.findAll('[data-feed-section]').map((el) => el.attributes('data-feed-section'));
-    // Interactive is empty, so it isn't in the feed.
-    expect(order).toEqual(['recent', 'shared', 'public']);
+    // Interactive is empty, yet stays in the feed with its empty note.
+    expect(order).toEqual(['recent', 'shared', 'interactive', 'public']);
+    expect(wrapper.get('[data-feed-empty="interactive"]').text()).toBe('No interactive templates yet.');
     const shared = wrapper.get('[data-feed-section="shared"]');
     const cards = (el: any) => el.findAll('.dash-grid > *').length;
     expect(cards(shared)).toBe(4);
@@ -379,8 +382,41 @@ describe('dashboard sidebar navigation', () => {
     const showAll = shared.get('[data-feed-show-all]');
     expect(showAll.text()).toContain('6');
     await showAll.trigger('click');
-    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'shared' });
-    expect(wrapper.findAll('[data-section="shared"] .dash-grid > *').length).toBe(6);
+    // Unfolds in place: still the feed, not a page of Shared.
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect(wrapper.findAll('[data-feed-section="shared"] .dash-grid > *').length).toBe(6);
+    expect(showAll.text()).toContain('Show less');
+    await showAll.trigger('click');
+    expect(cards(wrapper.get('[data-feed-section="shared"]'))).toBe(4);
+  });
+
+  it('shows one row of cards per feed section and four rows of Public, sized to the grid', async () => {
+    withDefaultFolders();
+    const doc = (i: number, owner: string, extra: Record<string, unknown> = {}) => ({
+      id: `r-${owner}-${i}`, title: `Doc ${owner} ${i}`, ownerId: owner, visibility: 'private', ...extra,
+    });
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({ documents: Array.from({ length: 7 }, (_, i) => doc(i, 'user-9')) } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: Array.from({ length: 12 }, (_, i) => doc(i, 'user-7', { visibility: 'public' })),
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    const cards = (section: string) => wrapper.findAll(`[data-feed-section="${section}"] .dash-grid > *`).length;
+
+    vm.feedColumns = 5;
+    await nextTick();
+    expect(cards('shared')).toBe(5);
+    expect(wrapper.find('[data-feed-show-all="shared"]').text()).toContain('7');
+    // Four rows of five: all 12 fit, so no "Show all".
+    expect(cards('public')).toBe(12);
+    expect(wrapper.find('[data-feed-show-all="public"]').exists()).toBe(false);
+
+    vm.feedColumns = 2;
+    await nextTick();
+    expect(cards('shared')).toBe(2);
+    expect(cards('public')).toBe(8);
+    expect(wrapper.find('[data-feed-show-all="public"]').text()).toContain('12');
   });
 
   it('has no horizontal section bar on the home feed (web and mobile)', async () => {
@@ -527,11 +563,15 @@ describe('dashboard sidebar navigation', () => {
     vm.searchQuery = 'missing title';
     await nextTick();
 
-    expect(wrapper.find('[data-dashboard-folder="folder-b"]').exists()).toBe(false);
+    // The sidebar tree is navigation: search doesn't hide folders from it.
+    expect(wrapper.find('[data-dashboard-folder="folder-b"]').exists()).toBe(true);
     expect(vm.activeSection).toEqual({ kind: 'folder', folderId: 'folder-b' });
     expect(vm.selectedFolderId).toBe('folder-b');
     expect(vm.activeFolder.items).toEqual([]);
     expect(wrapper.get('[data-dashboard-view="folder"]').text()).toContain('Target');
+    expect(wrapper.get('[data-folder-empty]').text()).toContain('Nothing matches the current filters.');
+    await wrapper.get('[data-folder-empty] [data-reset-filters]').trigger('click');
+    expect(vm.searchQuery).toBe('');
   });
 
   it('reconciles the active folder destination after the selected folder is deleted', async () => {
@@ -561,7 +601,7 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('.dashboard-folder-nav').exists()).toBe(false);
   });
 
-  it('keeps shared, interactive, and public resources in separate destinations', async () => {
+  it('scrolls to Interactive templates on the feed from the sidebar', async () => {
     vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
       templates: [{
         id: 'template-1',
@@ -577,10 +617,10 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
+    await flushPromises();
 
-    expect(wrapper.find('[data-section="interactive-templates"]').exists()).toBe(true);
-    expect(wrapper.find('[data-section="shared"]').exists()).toBe(false);
-    expect(wrapper.find('[data-section="public"]').exists()).toBe(false);
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect(wrapper.get('[data-section="interactive-templates"]').text()).toContain('MVP board');
   });
 
   it('uses the character name in dashboard cards and search without renaming kanban boards', async () => {
@@ -680,6 +720,169 @@ describe('dashboard sidebar navigation', () => {
     expect(section().text()).toContain('My public doc');
     expect(section().text()).toContain('Their public doc');
     vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+  });
+
+  it('never leaves the feed for a section page, whatever the filters, from the sidebar or "Show all"', async () => {
+    const doc = (i: number, owner: string, extra: Record<string, unknown> = {}) => ({
+      id: `d-${owner}-${i}`, title: `Doc ${owner} ${i}`, ownerId: owner, visibility: 'private', tags: [{ name: 'work', color: '#888' }], ...extra,
+    });
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: Array.from({ length: 6 }, (_, i) => doc(i, 'user-9')) } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({
+      documents: Array.from({ length: 6 }, (_, i) => doc(i, 'user-7', { visibility: 'public' })),
+    } as never);
+    vi.mocked(interactiveTemplates.list).mockResolvedValue({
+      templates: Array.from({ length: 6 }, (_, i) => ({ id: `tpl-${i}`, title: `Board ${i}`, templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '' })),
+    } as never);
+    const scrollIntoView = vi.spyOn(Element.prototype, 'scrollIntoView').mockImplementation(() => {});
+    const wrapper = mountDashboard({ attachTo: document.body });
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    const filters: Array<() => void> = [
+      () => { vm.contentFilter = 'canvas'; },
+      () => { vm.contentFilter = 'interactive-template'; },
+      () => { vm.contentFilter = 'text-document'; },
+      () => { vm.selectedTags = ['work']; },
+      () => { vm.searchQuery = 'no such title'; },
+    ];
+    for (const apply of filters) {
+      vm.resetFilters();
+      apply();
+      await nextTick();
+      for (const section of ['shared', 'interactive', 'public'] as const) {
+        scrollIntoView.mockClear();
+        await wrapper.get(`[data-dashboard-section="${section}"]`).trigger('click');
+        await flushPromises();
+        expect(vm.activeSection).toEqual({ kind: 'recent' });
+        expect(scrollIntoView.mock.contexts.some((el) => (el as Element).id === `feed-${section}`)).toBe(true);
+      }
+      for (const button of wrapper.findAll('[data-feed-show-all]')) {
+        await button.trigger('click');
+        expect(vm.activeSection).toEqual({ kind: 'recent' });
+      }
+    }
+    vm.resetFilters();
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [] } as never);
+    vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
+    scrollIntoView.mockRestore();
+    wrapper.unmount();
+  });
+
+  it('says a section is empty because of the filters, and resets them from there', async () => {
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({
+      templates: [{ id: 'tpl-1', title: 'MVP board', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '' }],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.contentFilter = 'canvas';
+    await nextTick();
+    const empty = wrapper.get('[data-feed-empty="interactive"]');
+    expect(empty.text()).toContain('Nothing matches the current filters.');
+
+    await empty.get('[data-reset-filters]').trigger('click');
+    expect(vm.contentFilter).toBe('all');
+    expect(wrapper.get('[data-section="interactive-templates"]').text()).toContain('MVP board');
+  });
+
+  it('searches Shared by what the items are called, not by the word "Public"', async () => {
+    vi.mocked(textDocuments.list).mockResolvedValueOnce({
+      documents: [{ id: 'notes', title: 'Notes', ownerId: 'user-9', visibility: 'private' }],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vm.searchQuery = 'public';
+    await nextTick();
+    expect(wrapper.get('[data-section="shared"]').text()).not.toContain('Notes');
+    vm.searchQuery = 'note';
+    await nextTick();
+    expect(wrapper.get('[data-section="shared"]').text()).toContain('Notes');
+  });
+
+  it('keeps the sidebar folder tree the same under any filter', async () => {
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+    const folderIds = () => wrapper.findAll('[data-dashboard-folder]').map((el) => el.attributes('data-dashboard-folder'));
+    const before = folderIds();
+    expect(before.length).toBeGreaterThan(0);
+
+    vm.selectedTags = ['no-such-tag'];
+    await nextTick();
+    expect(folderIds()).toEqual(before);
+    vm.searchQuery = 'no such title';
+    vm.contentFilter = 'html-document';
+    await nextTick();
+    expect(folderIds()).toEqual(before);
+  });
+
+  it('opens one sort popover per sort button on the feed', async () => {
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: [{ id: 'doc-theirs', title: 'Their public doc', ownerId: 'user-9', visibility: 'public' }],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    await wrapper.get('[data-feed-section="recent"] .dash-sort-button-mobile').trigger('click');
+    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
+    expect(wrapper.find('[data-feed-section="recent"] .mobile-sort-popover').exists()).toBe(true);
+
+    await wrapper.get('[data-section="public"] .dash-sort-button-mobile').trigger('click');
+    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
+    expect(wrapper.find('[data-section="public"] .mobile-sort-popover').exists()).toBe(true);
+  });
+
+  it('keeps Public and its Mine/Others switch in the feed when "Mine" has nothing', async () => {
+    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
+      documents: [{ id: 'doc-theirs', title: 'Their public doc', ownerId: 'user-9', visibility: 'public' }],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect(wrapper.get('[data-section="public"]').text()).toContain('Their public doc');
+
+    await wrapper.get('[data-public-owner-filter="mine"]').trigger('click');
+
+    // Still the feed, still a Public section with its switch - only empty.
+    expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
+    expect(wrapper.get('[data-section="public"]').text()).not.toContain('Their public doc');
+    expect(wrapper.get('[data-public-empty]').text()).toBe('No public resources match this filter.');
+    expect((wrapper.vm as any).feedNavSections).toContain('public');
+
+    await wrapper.get('[data-public-owner-filter="all"]').trigger('click');
+    expect(wrapper.get('[data-section="public"]').text()).toContain('Their public doc');
+  });
+
+  it('lays out the whole dashboard, folders included, as the grid/list switch says', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [{ id: 'shared-1', title: 'From a teammate', tags: [], ownerId: 'someone-else' }],
+      public: [],
+      welcome: null,
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const shell = () => wrapper.get('.dashboard-shell');
+
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(wrapper.find('[data-section="shared"]').exists()).toBe(true);
+
+    await wrapper.get('[data-view-mode="list"]').trigger('click');
+    expect(shell().classes()).toContain('dashboard-list-view');
+
+    // A folder follows the same choice, and has the switch in its heading.
+    await wrapper.get('[data-recent-folder-tile="folder-b"]').trigger('click');
+    expect(shell().classes()).toContain('dashboard-list-view');
+    const folderToggle = wrapper.get('[data-dashboard-view="folder"] .folder-view-toggle');
+    expect(folderToggle.get('[data-view-mode="list"]').attributes('aria-pressed')).toBe('true');
+    await folderToggle.get('[data-view-mode="grid"]').trigger('click');
+    expect(shell().classes()).not.toContain('dashboard-list-view');
+    expect(localStorage.getItem('qcanva:dashboard-recents-view:v1')).toBe('grid');
   });
 
   it('adds my own public resources to Public even when the server list (latest 100) left them out', async () => {
@@ -926,7 +1129,7 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard({ attachTo: document.body });
     await flushPromises();
     const opener = wrapper.get('[data-mobile-sidebar-open]').element as HTMLButtonElement;
-    const desktopFallback = wrapper.get('[data-home-disclosure]').element as HTMLButtonElement;
+    const desktopFallback = wrapper.get('[data-home-link]').element as HTMLButtonElement;
 
     opener.focus();
     await wrapper.get('[data-mobile-sidebar-open]').trigger('click');
@@ -2402,7 +2605,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     vm2.contentFilter = 'html-document';
     await nextTick();
 
-    expect(wrapper2.get('.dashboard-recents-empty').text()).toBe(t('noRecentMatches'));
+    expect(wrapper2.get('.dashboard-recents-empty').text()).toContain(t('noRecentMatches'));
   });
 
   it('collapses Recent to 4 items with a Show all/Show less toggle', async () => {
@@ -2626,6 +2829,6 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     // everything or crashing on an unknown tag.
     const { t } = useI18n();
     expect(wrapper.find('.dashboard-recent-title').exists()).toBe(false);
-    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentMatches'));
+    expect(wrapper.get('.dashboard-recents-empty').text()).toContain(t('noRecentMatches'));
   });
 });
