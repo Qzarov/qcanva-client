@@ -37,42 +37,44 @@
 
     <div class="dashboard-sidebar-scroll">
       <nav class="dashboard-sidebar-navigation" :aria-label="t('dashboard')">
-        <button
-          type="button"
-          class="btn-ghost dashboard-sidebar-item dashboard-sidebar-home-disclosure"
-          :class="{ active: homeGroupActive }"
-          :aria-expanded="homeExpanded"
-          :aria-controls="homeChildrenId"
-          :aria-label="t('home')"
-          :title="compactPresentation ? t('home') : undefined"
-          data-home-disclosure
-          @click="homeExpanded = !homeExpanded"
-        >
-          <span class="dashboard-sidebar-icon" aria-hidden="true"><House :size="18" /></span>
-          <span class="dashboard-sidebar-label">{{ t('home') }}</span>
-          <ChevronDown
-            class="dashboard-sidebar-home-chevron"
-            :class="{ collapsed: !homeExpanded }"
-            :size="16"
-            aria-hidden="true"
-          />
-        </button>
-
-        <div v-if="homeExpanded" :id="homeChildrenId" class="dashboard-sidebar-home-children" data-home-children>
+        <!-- Home is the feed itself (Recent, Folders, Shared, Public one under
+             the other), so the row opens it; only the chevron folds the
+             folder tree in and out. -->
+        <div class="dashboard-sidebar-home-row">
           <button
             type="button"
-            class="btn-ghost dashboard-sidebar-item dashboard-sidebar-recent"
-            :class="{ active: activeSection.kind === 'recent' && !feedTopLevelInView }"
-            :aria-current="activeSection.kind === 'recent' && !feedTopLevelInView ? 'page' : undefined"
-            :aria-label="t('recents')"
-            :title="compactPresentation ? t('recents') : undefined"
+            class="btn-ghost dashboard-sidebar-item dashboard-sidebar-home"
+            :class="{ active: homeGroupActive && activeSection.kind !== 'folder' }"
+            :aria-current="homeGroupActive && activeSection.kind !== 'folder' ? 'page' : undefined"
+            :aria-label="t('home')"
+            :title="compactPresentation ? t('home') : undefined"
             data-dashboard-section="recent"
+            data-home-link
             @click="emit('select', { kind: 'recent' })"
           >
-            <span class="dashboard-sidebar-icon" aria-hidden="true"><Clock3 :size="18" /></span>
-            <span class="dashboard-sidebar-label">{{ t('recents') }}</span>
+            <span class="dashboard-sidebar-icon" aria-hidden="true"><House :size="18" /></span>
+            <span class="dashboard-sidebar-label">{{ t('home') }}</span>
           </button>
+          <button
+            type="button"
+            class="dashboard-sidebar-home-disclosure"
+            :aria-expanded="homeExpanded"
+            :aria-controls="homeChildrenId"
+            :aria-label="homeExpanded ? t('hideFolders') : t('showFolders')"
+            :title="homeExpanded ? t('hideFolders') : t('showFolders')"
+            data-home-disclosure
+            @click="homeExpanded = !homeExpanded"
+          >
+            <ChevronDown
+              class="dashboard-sidebar-home-chevron"
+              :class="{ collapsed: !homeExpanded }"
+              :size="16"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
 
+        <div v-if="homeExpanded" :id="homeChildrenId" class="dashboard-sidebar-home-children" data-home-children>
           <section class="dashboard-sidebar-folders" :aria-labelledby="foldersHeadingId">
             <div class="dashboard-sidebar-section-heading">
               <h2 :id="foldersHeadingId" class="dashboard-sidebar-label">{{ t('folders') }}</h2>
@@ -188,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, Clock3, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import { ChevronDown, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import packageJson from '../../../package.json';

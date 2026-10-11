@@ -113,16 +113,17 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('.dashboard-sidebar-version').text()).toContain('QCanva v');
   });
 
-  it('renders Home as a collapsed disclosure before the remaining top-level destinations', async () => {
+  it('renders Home as the feed link with its folders folded away behind a chevron', async () => {
     const wrapper = mountSidebar({ activeSection: { kind: 'recent' } });
 
     expect(wrapper.get('.dashboard-sidebar-brand img').attributes('src')).toBe('/qcanva-logo.png');
-    expect(wrapper.find('[data-home-disclosure] svg.lucide-house').exists()).toBe(true);
+    expect(wrapper.find('[data-home-link] svg.lucide-house').exists()).toBe(true);
+    expect(wrapper.get('[data-home-link]').text()).toContain('Home');
+    expect(wrapper.get('[data-home-link]').attributes('aria-current')).toBe('page');
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
     expect(wrapper.find('[data-home-children]').exists()).toBe(false);
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(0);
     expect(wrapper.find('[data-dashboard-section="shared"] svg.lucide-users').exists()).toBe(true);
-    expect(wrapper.get('[data-home-disclosure]').text()).toContain('Home');
     expect(wrapper.get('[data-dashboard-section="shared"]').text()).toContain('Shared with me');
     expect(wrapper.get('[data-dashboard-section="interactive"]').text()).toContain('Interactive template');
     expect(wrapper.get('[data-dashboard-section="public"]').text()).toContain('Public');
@@ -131,10 +132,21 @@ describe('DashboardSidebar', () => {
 
     expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('true');
     expect(wrapper.get('[data-home-children]').isVisible()).toBe(true);
-    expect(wrapper.get('[data-dashboard-section="recent"]').text()).toContain('Recent');
-    expect(wrapper.get('[data-dashboard-section="recent"]').attributes('aria-current')).toBe('page');
+    // No separate Recent entry: it was the very same feed as Home.
+    expect(wrapper.find('[data-home-children] [data-dashboard-section="recent"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-dashboard-section="recent"]')).toHaveLength(1);
     expect(wrapper.findAll('[data-dashboard-folder]')).toHaveLength(3);
     expect(wrapper.get('[data-dashboard-folder="default"]').text()).toContain('default');
+    expect(wrapper.emitted('select')).toBeUndefined();
+  });
+
+  it('opens the feed from Home without unfolding its folders', async () => {
+    const wrapper = mountSidebar({ activeSection: { kind: 'shared' } });
+
+    await wrapper.get('[data-home-link]').trigger('click');
+
+    expect(wrapper.emitted('select')?.[0]).toEqual([{ kind: 'recent' }]);
+    expect(wrapper.get('[data-home-disclosure]').attributes('aria-expanded')).toBe('false');
   });
 
   it('selects Recent without opening Home automatically', async () => {
