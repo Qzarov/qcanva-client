@@ -784,7 +784,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
 import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
-import Collaboration from '@tiptap/extension-collaboration';
+import Collaboration from '../text-documents/collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
 import { TextSelection } from '@tiptap/pm/state';
