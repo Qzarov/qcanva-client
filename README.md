@@ -107,6 +107,17 @@ npx playwright test  # браузерные тесты из tests/ (подним
 - Тег `v*` запускает сборку Android — см. [`docs/release-tagging.md`](docs/release-tagging.md).
 - История версий — в [GitHub Releases](https://github.com/Qzarov/qcanva-client/releases).
 
+## План работ
+
+План ведём в двух местах, и они должны совпадать:
+
+- [`docs/roadmap.html`](docs/roadmap.html) в этой репе;
+- документ «QCanva roadmap» в самой QCanva: https://qcanva.qzarov.pro/html/qcanva-roadmap.
+
+Когда фича уходит в работу, она переносится в раздел «В работе». Когда её влили в `dev`, она отмечается выполненной. Что сознательно отложили, записывается в «Бэклог», чтобы не потерять. Правка роадмапа идёт в обоих местах одновременно; отметки чекбоксов хранит версия в QCanva.
+
+Готовая работа сразу вливается в `dev` из своей ветки, не дожидаясь пачки фич.
+
 ## Production deploy
 
 На сервере сайт лежит в `/var/www/qcanva.qzarov.pro/` (оба домена,
@@ -165,6 +176,7 @@ npm run android:open
 - [`docs/release-tagging.md`](docs/release-tagging.md) — релизные теги и версии
 - [`docs/google-play-release.md`](docs/google-play-release.md) — публикация в Google Play
 - [`COLLABORATION_PROTOCOL.md`](COLLABORATION_PROTOCOL.md) — протокол совместного редактирования канваса
+- [`docs/roadmap.html`](docs/roadmap.html) — роадмап: что в работе и что отложено (см. «План работ»)
 - `docs/superpowers/` — проектные спеки и планы по отдельным фичам
 - [`TODO.md`](TODO.md) — чек-лист возможностей канваса
 
