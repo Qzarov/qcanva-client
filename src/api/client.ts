@@ -534,6 +534,40 @@ export const tags = {
     request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };
 
+export type McpTokenAction = 'read' | 'edit' | 'create' | 'delete' | 'share';
+export type McpTokenResourceType = 'canvas' | 'html-document' | 'text-document';
+export type McpTokenScopeInput =
+  | { kind: 'all' }
+  | { kind: 'limited'; folders: string[]; resources: { type: McpTokenResourceType; id: string }[] };
+export type McpTokenRecord = {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  actions: McpTokenAction[];
+  scope:
+    | { kind: 'all' }
+    | {
+        kind: 'limited';
+        folders: { id: string; name: string | null }[];
+        resources: { type: McpTokenResourceType; id: string; title: string | null }[];
+      };
+  expiresAt: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+  revokedAt: string | null;
+  status: 'active' | 'expired' | 'revoked';
+};
+
+/** Personal MCP tokens (qcv_…): actions, scope and a lifetime; see the /mcp page. */
+export const mcpTokens = {
+  list: () => request<{ tokens: McpTokenRecord[] }>('/mcp-tokens'),
+  issue: (input: { name: string; actions: McpTokenAction[]; scope: McpTokenScopeInput; expiresInDays: number }) =>
+    request<{ token: string; record: McpTokenRecord }>('/mcp-tokens', { method: 'POST', body: JSON.stringify(input) }),
+  rename: (id: string, name: string) =>
+    request<McpTokenRecord>(`/mcp-tokens/${id}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  revoke: (id: string) => request<McpTokenRecord>(`/mcp-tokens/${id}`, { method: 'DELETE' }),
+};
+
 export const recentResources = {
   list: (limit = 12) =>
     request<Array<{ id: string; resourceType: 'canvas' | 'html-document' | 'text-document' | 'interactive-template'; resourceId: string; updatedAt: string }>>(`/recent-resources?limit=${limit}`),

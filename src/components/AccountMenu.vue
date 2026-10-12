@@ -53,6 +53,9 @@
         <router-link v-if="showPlugins" to="/plugins" class="account-menu-item" @click="close(false)">
           <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
         </router-link>
+        <router-link to="/mcp" class="account-menu-item" data-account-menu-mcp @click="close(false)">
+          <KeyRound :size="17" aria-hidden="true" />{{ t('mcpTokensTitle') }}
+        </router-link>
         <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
           <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
         </router-link>
@@ -66,7 +69,7 @@
 
 <script setup lang="ts">
 import { useViewActivity } from '../composables/useViewActivity';
-import { LogOut, Puzzle, Settings } from '@lucide/vue';
+import { KeyRound, LogOut, Puzzle, Settings } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
