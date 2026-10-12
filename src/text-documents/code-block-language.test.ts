@@ -4,9 +4,9 @@
 
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { CodeBlockWithLanguage, CODE_LANGUAGE_OPTIONS } from './code-block-language';
-import { lowlight } from './code-highlighting';
+import { ensureCodeLanguages, lowlight } from './code-highlighting';
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -30,6 +30,9 @@ const picker = (ed: Editor) => ed.view.dom.querySelector('select[data-code-langu
 const language = (ed: Editor) => ed.state.doc.firstChild!.attrs.language;
 
 describe('code block language picker', () => {
+  // Picker tests assume the languages are available; lazy arrival has its
+  // own real-editor scenarios in code-block-lazy.test.ts.
+  beforeAll(ensureCodeLanguages);
   it('shows the block\'s language, "Auto" when none is set', () => {
     const ed = makeEditor('<pre><code class="language-python">print(1)</code></pre>');
     expect(picker(ed).value).toBe('python');
