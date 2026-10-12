@@ -1,32 +1,32 @@
-// A fixed, small set of syntax-highlighting grammars for the text document
-// code block. This view's chunk is already the largest in the app, so
-// grammars are imported one at a time from highlight.js's own language
-// files rather than pulling lowlight's "all" bundle (hundreds of KB more).
-//
-// Registering a language also registers its highlight.js aliases (e.g.
-// "xml" also answers to "html", "javascript" also answers to "js"), so a
-// code block whose language is one of those aliases still highlights.
+// The lightweight registry is synchronous, as required by TipTap. The fixed
+// grammar set is asynchronous and shared by every editor on this page.
 import { createLowlight } from 'lowlight';
-import bash from 'highlight.js/lib/languages/bash';
-import plaintext from 'highlight.js/lib/languages/plaintext';
-import css from 'highlight.js/lib/languages/css';
-import javascript from 'highlight.js/lib/languages/javascript';
-import json from 'highlight.js/lib/languages/json';
-import python from 'highlight.js/lib/languages/python';
-import sql from 'highlight.js/lib/languages/sql';
-import typescript from 'highlight.js/lib/languages/typescript';
-import xml from 'highlight.js/lib/languages/xml';
+import type { LanguageFn } from 'highlight.js';
 
-export const lowlight = createLowlight();
+type LanguageModule = { grammars: Readonly<Record<string, LanguageFn>> };
 
-lowlight.register({
-  bash,
-  plaintext,
-  css,
-  javascript,
-  json,
-  python,
-  sql,
-  typescript,
-  xml,
-});
+export function createCodeHighlighter(importLanguages: () => Promise<LanguageModule> = () => import('./code-highlighting-languages')) {
+  const lowlight = createLowlight();
+  let ready = false;
+  let loading: Promise<void> | undefined;
+
+  const ensureReady = (): Promise<void> => {
+    if (ready) return Promise.resolve();
+    if (!loading) {
+      loading = Promise.resolve().then(importLanguages).then(({ grammars }) => {
+        // Registration also preserves aliases such as js, ts, py, sh and html.
+        lowlight.register(grammars);
+        ready = true;
+      }).catch((error: unknown) => {
+        loading = undefined;
+        throw error;
+      });
+    }
+    return loading;
+  };
+  return { lowlight, ensureReady };
+}
+
+const sharedHighlighter = createCodeHighlighter();
+export const lowlight = sharedHighlighter.lowlight;
+export const ensureCodeLanguages = sharedHighlighter.ensureReady;
