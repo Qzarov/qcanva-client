@@ -864,7 +864,7 @@ import { registerBackHandler } from "../composables/useBackHandler";
 import { computeResizedRect } from "../canvas/resizeMath";
 import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
-import { type Drawing, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { type Drawing, type ActiveDrawingTool, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
@@ -906,6 +906,9 @@ interface CanvasNode {
   templateId?: string;
   templateData?: Record<string, unknown>;
 }
+
+// A missing selection is already treated as a no-op by node lookup methods.
+type NodeTarget = string | null | undefined;
 
 interface CanvasEdge {
   id: string;
@@ -1022,14 +1025,13 @@ export default defineComponent({
     const drawings = ref<Drawing[]>([]);
     const draftDrawing = ref<Drawing | null>(null);
 
-    type ActiveDrawTool = "select" | Drawing["tool"] | "eraser";
-    const drawTool = ref<ActiveDrawTool>("select");
+    const drawTool = ref<ActiveDrawingTool>("select");
     const drawColor = ref("#e03131");
     const drawWidth = ref(4);
     let drawErasing = false;
     let drawGestureStarted = false;
 
-    const setDrawTool = (t: ActiveDrawTool) => { drawTool.value = t; };
+    const setDrawTool = (t: ActiveDrawingTool) => { drawTool.value = t; };
     const setDrawColor = (c: string) => { drawColor.value = c; };
     const setDrawWidth = (w: number) => { drawWidth.value = w; };
 
@@ -2594,45 +2596,45 @@ export default defineComponent({
       contextMenu.visible = true;
     };
 
-    const setNodeColor = (nodeId: string, color: string | undefined) => {
+    const setNodeColor = (nodeId: NodeTarget, color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.color = color;
         // JSON drops `undefined`, so clearing a fill must be encoded explicitly.
-        emitOp({ type: 'node-update', id: nodeId, changes: { color: color ?? null } });
+        emitOp({ type: 'node-update', id: node.id, changes: { color: color ?? null } });
       }
     };
 
-    const getNodeColor = (nodeId: string): string | undefined => {
+    const getNodeColor = (nodeId: NodeTarget): string | undefined => {
       return nodes.value.find((n) => n.id === nodeId)?.color;
     };
 
-    const getNodeAlign = (nodeId: string) => {
+    const getNodeAlign = (nodeId: NodeTarget) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.textAlign || "left";
     };
 
-    const getNodeFirstLineAlign = (nodeId: string) => {
+    const getNodeFirstLineAlign = (nodeId: NodeTarget) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.firstLineTextAlign || node?.textAlign || "left";
     };
 
-    const setNodeFirstLineAlign = (nodeId: string, align: "left" | "center" | "right" | "justify") => {
+    const setNodeFirstLineAlign = (nodeId: NodeTarget, align: "left" | "center" | "right" | "justify") => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.firstLineTextAlign = align;
-        emitOp({ type: 'node-update', id: nodeId, changes: { firstLineTextAlign: align } });
+        emitOp({ type: 'node-update', id: node.id, changes: { firstLineTextAlign: align } });
       }
     };
 
-    const setNodeAlign = (nodeId: string, align: "left" | "center" | "right" | "justify") => {
+    const setNodeAlign = (nodeId: NodeTarget, align: "left" | "center" | "right" | "justify") => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.textAlign = align;
-        emitOp({ type: 'node-update', id: nodeId, changes: { textAlign: align } });
+        emitOp({ type: 'node-update', id: node.id, changes: { textAlign: align } });
       }
     };
 
@@ -2690,60 +2692,60 @@ export default defineComponent({
       return normalizeFontColorKey(nodeColor) === paletteKey;
     };
 
-    const getNodeFillStyle = (nodeId: string): "gradient" | "solid" => {
+    const getNodeFillStyle = (nodeId: NodeTarget): "gradient" | "solid" => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.fillStyle || "gradient";
     };
 
-    const toggleNodeFillStyle = (nodeId: string) => {
+    const toggleNodeFillStyle = (nodeId: NodeTarget) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.fillStyle = (node.fillStyle || "gradient") === "gradient" ? "solid" : "gradient";
-        emitOp({ type: 'node-update', id: nodeId, changes: { fillStyle: node.fillStyle } });
+        emitOp({ type: 'node-update', id: node.id, changes: { fillStyle: node.fillStyle } });
       }
     };
 
-    const getNodeBorderColor = (nodeId: string): string | undefined => {
+    const getNodeBorderColor = (nodeId: NodeTarget): string | undefined => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.borderColor;
     };
 
-    const setNodeBorderColor = (nodeId: string, color: string | undefined) => {
+    const setNodeBorderColor = (nodeId: NodeTarget, color: string | undefined) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.borderColor = color;
         // JSON drops `undefined`, so clearing a border must be encoded explicitly.
-        emitOp({ type: 'node-update', id: nodeId, changes: { borderColor: color ?? null } });
+        emitOp({ type: 'node-update', id: node.id, changes: { borderColor: color ?? null } });
       }
     };
 
-    const getNodeBorderStyle = (nodeId: string): string => {
+    const getNodeBorderStyle = (nodeId: NodeTarget): string => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.borderStyle || "solid";
     };
 
-    const setNodeBorderStyle = (nodeId: string, style: string) => {
+    const setNodeBorderStyle = (nodeId: NodeTarget, style: string) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.borderStyle = style;
-        emitOp({ type: 'node-update', id: nodeId, changes: { borderStyle: style } });
+        emitOp({ type: 'node-update', id: node.id, changes: { borderStyle: style } });
       }
     };
 
-    const getNodeBorderWidth = (nodeId: string): number => {
+    const getNodeBorderWidth = (nodeId: NodeTarget): number => {
       const node = nodes.value.find((n) => n.id === nodeId);
       return node?.borderWidth || 2;
     };
 
-    const setNodeBorderWidth = (nodeId: string, width: number) => {
+    const setNodeBorderWidth = (nodeId: NodeTarget, width: number) => {
       const node = nodes.value.find((n) => n.id === nodeId);
       if (node) {
         pushUndo();
         node.borderWidth = width;
-        emitOp({ type: 'node-update', id: nodeId, changes: { borderWidth: width } });
+        emitOp({ type: 'node-update', id: node.id, changes: { borderWidth: width } });
       }
     };
 
@@ -3378,13 +3380,13 @@ export default defineComponent({
     };
 
     // Hide/show toggle methods (owner only)
-    const isNodeHidden = (id: string) => !!(nodes.value.find((n) => n.id === id))?.hidden;
-    const toggleNodeHidden = (id: string) => {
+    const isNodeHidden = (id: NodeTarget) => !!(nodes.value.find((n) => n.id === id))?.hidden;
+    const toggleNodeHidden = (id: NodeTarget) => {
       const n = nodes.value.find((x) => x.id === id); if (!n) return;
       const hidden = !n.hidden;
       pushUndo();
       n.hidden = hidden;
-      emitOp({ type: "node-update", id, changes: { hidden } });
+      emitOp({ type: "node-update", id: n.id, changes: { hidden } });
       closeContextMenu();
     };
     const areSelectedNodesHidden = () => {
@@ -4348,7 +4350,7 @@ export default defineComponent({
       drawings.value = data.drawings || [];
     };
 
-    const getCanvasData = () => ({
+    const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
       edges: JSON.parse(JSON.stringify(edges.value)),
       drawings: JSON.parse(JSON.stringify(drawings.value)),

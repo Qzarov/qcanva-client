@@ -29,8 +29,9 @@ import { computed, shallowRef } from 'vue';
 import { useI18n } from '../composables/useI18n';
 import CanvasColorMenu from './CanvasColorMenu.vue';
 import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
-const props = defineProps<{ tool: string; color: string; width: number; popup: 'tools' | 'color' | 'width' | null; includeSelect?: boolean }>();
-const emit = defineEmits<{ 'update:tool': [string]; 'update:color': [string]; 'update:width': [number]; 'update:popup': ['tools' | 'color' | 'width' | null] }>();
+import type { ActiveDrawingTool } from './drawing';
+const props = defineProps<{ tool: ActiveDrawingTool; color: string; width: number; popup: 'tools' | 'color' | 'width' | null; includeSelect?: boolean }>();
+const emit = defineEmits<{ 'update:tool': [ActiveDrawingTool]; 'update:color': [string]; 'update:width': [number]; 'update:popup': ['tools' | 'color' | 'width' | null] }>();
 const { t } = useI18n();
 const anchor = shallowRef<HTMLElement | null>(null);
 const entries = [

@@ -906,6 +906,7 @@ import { useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import CanvasLoader from '../components/CanvasLoader.vue';
+import type { CanvasLoaderApi, CanvasTextAlignment } from '../canvas/loaderApi';
 import MobileModebar from '../canvas/MobileModebar.vue';
 import MobileNodeToolbar from '../canvas/MobileNodeToolbar.vue';
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
@@ -974,7 +975,7 @@ export default defineComponent({
     const diceSides = ref(20);
     const diceCount = ref(1);
     const diceModifier = ref(0);
-    const canvasRef = ref<any>(null);
+    const canvasRef = ref<CanvasLoaderApi | null>(null);
     const modebarRef = ref<{ $el?: HTMLElement } | null>(null);
     const showShortcuts = ref(false);
     const menuOpen = ref(false);
@@ -1040,7 +1041,7 @@ export default defineComponent({
       }
     };
 
-    const aligns = [
+    const aligns: { v: CanvasTextAlignment; l: string; icon: string }[] = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
       { v: 'center', l: 'Center', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>' },
       { v: 'right', l: 'Right', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>' },
@@ -1720,14 +1721,14 @@ export default defineComponent({
       searchMatches.value = canvasRef.value?.searchNodes?.(searchQuery.value) || [];
       searchIndex.value = 0;
       if (searchMatches.value.length) {
-        canvasRef.value?.focusNode?.(searchMatches.value[0]);
+        canvasRef.value?.focusNode?.(searchMatches.value[0]!);
       }
     };
 
     const focusNextSearchResult = () => {
       if (!searchMatches.value.length) return;
       searchIndex.value = (searchIndex.value + 1) % searchMatches.value.length;
-      canvasRef.value?.focusNode?.(searchMatches.value[searchIndex.value]);
+      canvasRef.value?.focusNode?.(searchMatches.value[searchIndex.value]!);
     };
 
     // --- History ---

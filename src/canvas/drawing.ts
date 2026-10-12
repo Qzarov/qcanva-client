@@ -8,6 +8,9 @@ export type DrawingTool =
   | "line"
   | "arrow";
 
+/** Drawing controls also offer selection and erasing, neither is persisted. */
+export type ActiveDrawingTool = DrawingTool | "select" | "eraser";
+
 export interface Drawing {
   id: string;
   tool: DrawingTool;
