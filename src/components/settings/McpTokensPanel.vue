@@ -1,16 +1,5 @@
 <template>
-  <div class="dashboard mcp-tokens-page">
-    <header class="dash-header">
-      <div>
-        <h1>{{ t('mcpTokensTitle') }}</h1>
-        <p class="dash-subtitle mcp-lead">{{ t('mcpTokensLead') }}</p>
-      </div>
-      <div class="dash-actions">
-        <router-link :to="{ name: 'dashboard' }" class="btn-ghost">{{ t('back') }}</router-link>
-        <AccountMenu />
-      </div>
-    </header>
-
+  <div class="mcp-panel">
     <section class="mcp-endpoint">
       <span class="mcp-label">{{ t('mcpEndpoint') }}</span>
       <code data-mcp-endpoint>{{ endpoint }}</code>
@@ -120,7 +109,7 @@
     </form>
 
     <section class="mcp-list">
-      <p v-if="!tokens.length && !loading" class="dash-subtitle">{{ t('mcpNoTokens') }}</p>
+      <p v-if="!tokens.length && !loading" class="mcp-empty">{{ t('mcpNoTokens') }}</p>
       <article v-for="token in tokens" :key="token.id" class="mcp-card mcp-token" :class="`is-${token.status}`" :data-mcp-token="token.id">
         <div class="mcp-token-head">
           <div class="mcp-token-title">
@@ -155,7 +144,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Copy, FileText, Folder as FolderIcon, Plus } from '@lucide/vue';
-import AccountMenu from '../components/AccountMenu.vue';
 import {
   canvas,
   htmlDocuments,
@@ -166,11 +154,11 @@ import {
   type McpTokenRecord,
   type McpTokenResourceType,
   type ResourceFolderSummary,
-} from '../api/client';
-import { getPublicOrigin } from '../api/public-origin';
-import { confirmDialog, promptDialog } from '../composables/appDialog';
-import { useI18n } from '../composables/useI18n';
-import { useToast } from '../composables/useToast';
+} from '../../api/client';
+import { getPublicOrigin } from '../../api/public-origin';
+import { confirmDialog, promptDialog } from '../../composables/appDialog';
+import { useI18n } from '../../composables/useI18n';
+import { useToast } from '../../composables/useToast';
 
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 type PickResource = { key: string; type: McpTokenResourceType; id: string; title: string };
@@ -370,51 +358,58 @@ onMounted(load);
 </script>
 
 <style scoped>
-.mcp-tokens-page { max-width: 880px; }
-.mcp-lead { max-width: 640px; }
-.mcp-label { font-size: 12px; font-weight: 600; color: var(--ui-text-secondary); text-transform: uppercase; letter-spacing: 0.03em; }
-.mcp-endpoint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 0 0 18px; }
-.mcp-endpoint code { padding: 4px 8px; border-radius: 6px; background: var(--ui-surface-subtle); overflow-wrap: anywhere; }
+/* Liquid Glass, like the rest of the settings page: cards are glass without
+   blur (the page header and the menus are the blurred layer), fields and
+   pills are inset glass panes, the chosen segment is accent glass. */
+.mcp-panel { display: grid; gap: 14px; }
+.mcp-label { font-size: 11px; font-weight: 600; color: var(--ui-text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+.mcp-endpoint { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.mcp-endpoint code { padding: 5px 10px; border: 1px solid var(--ui-glass-border); border-radius: 10px; background: var(--ui-glass-btn-bg); box-shadow: inset 0 1px 0 var(--ui-glass-highlight); overflow-wrap: anywhere; font-size: 13px; }
 .mcp-endpoint .btn-primary { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
-.mcp-card { display: grid; gap: 12px; margin-bottom: 14px; padding: 16px; border: 1px solid var(--ui-border); border-radius: var(--radius-lg); background: var(--ui-surface); }
-.mcp-card h2, .mcp-card h3 { margin: 0; }
-.mcp-card h2 { font-size: 18px; }
-.mcp-card h3 { font-size: 16px; }
+.mcp-card {
+  display: grid; gap: 12px; padding: 16px 18px;
+  border: 1px solid var(--ui-glass-border); border-radius: 18px;
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.mcp-card h2, .mcp-card h3 { margin: 0; color: var(--ui-text); }
+.mcp-card h2 { font-size: 17px; }
+.mcp-card h3 { font-size: 15px; }
 .mcp-field { display: grid; gap: 6px; margin: 0; padding: 0; border: 0; min-width: 0; }
-.mcp-check { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 3px 0; cursor: pointer; }
+.mcp-check { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 0; cursor: pointer; color: var(--ui-text); }
+.mcp-check input { accent-color: var(--color-brands); }
 .mcp-check small, .mcp-hint { color: var(--ui-text-secondary); font-size: 12px; }
 .mcp-scope-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 6px; }
 .mcp-scope-column { display: grid; gap: 6px; align-content: start; min-width: 0; }
-.mcp-pick-list { max-height: 240px; overflow-y: auto; padding: 6px 8px; border: 1px solid var(--ui-border); border-radius: var(--radius-md); }
-.mcp-type { font-size: 11px; padding: 1px 6px; border-radius: 999px; background: var(--ui-surface-subtle); color: var(--ui-text-secondary); }
-.mcp-segments { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--ui-border); border-radius: var(--radius-sm); width: fit-content; }
-.mcp-segments button { padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--ui-text-secondary); font: inherit; cursor: pointer; }
-.mcp-segments button.active { background: var(--color-brands); color: var(--color-brand-on); }
+.mcp-pick-list { max-height: 240px; overflow-y: auto; padding: 6px 10px; border: 1px solid var(--ui-glass-border); border-radius: 14px; background: var(--ui-glass-btn-bg); box-shadow: inset 0 1px 0 var(--ui-glass-highlight); }
+.mcp-type { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--ui-glass-border); color: var(--ui-text-secondary); }
+.mcp-segments { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--ui-glass-border); border-radius: 999px; background: var(--ui-glass-btn-bg); box-shadow: inset 0 1px 0 var(--ui-glass-highlight); width: fit-content; }
+.mcp-segments button { min-height: 32px; padding: 0 14px; border: 1px solid transparent; border-radius: 999px; background: transparent; color: var(--ui-text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.mcp-segments button:hover:not(.active) { background: var(--ui-glass-btn-hover); }
+.mcp-segments button.active { border-color: var(--ui-glass-accent-border); background: var(--ui-glass-accent-bg); color: var(--ui-glass-accent-text); box-shadow: var(--ui-glass-accent-glow); }
 .mcp-row-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .mcp-row-actions .btn-ghost, .mcp-row-actions .btn-primary { display: inline-flex; align-items: center; gap: 6px; }
-.mcp-error { margin: 0; color: var(--ui-danger-foreground, #d33); }
-.mcp-warning { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--ui-brand-soft); }
+.mcp-error { margin: 0; color: var(--ui-danger-foreground); }
+.mcp-warning { margin: 0; padding: 10px 14px; border: 1px solid var(--ui-glass-accent-border); border-radius: 14px; background: var(--ui-glass-accent-bg); color: var(--ui-text); }
 .mcp-secret { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.mcp-secret code { flex: 1 1 280px; padding: 8px 10px; border-radius: 6px; background: var(--ui-surface-subtle); font-size: 13px; overflow-wrap: anywhere; user-select: all; }
-.mcp-config { margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--ui-surface-subtle); font-size: 12px; overflow-x: auto; }
+.mcp-secret code { flex: 1 1 280px; padding: 9px 12px; border: 1px solid var(--ui-glass-border); border-radius: 12px; background: var(--ui-glass-btn-bg); font-size: 13px; overflow-wrap: anywhere; user-select: all; }
+.mcp-config { margin: 0; padding: 12px 14px; border: 1px solid var(--ui-glass-border); border-radius: 14px; background: var(--ui-glass-btn-bg); font-size: 12px; overflow-x: auto; }
+.mcp-list { display: grid; gap: 12px; }
+.mcp-empty { margin: 0; padding: 18px; border: 1px dashed var(--ui-glass-border); border-radius: 18px; color: var(--ui-text-secondary); text-align: center; }
 .mcp-token-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mcp-token-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
 .mcp-token-title code { font-size: 12px; color: var(--ui-text-secondary); }
-.mcp-status { flex: none; font-size: 12px; padding: 2px 9px; border-radius: 999px; background: var(--ui-brand-soft); color: var(--ui-accent-strong); }
-.mcp-status.is-expired, .mcp-status.is-revoked { background: var(--ui-surface-subtle); color: var(--ui-text-secondary); }
-.mcp-token.is-expired, .mcp-token.is-revoked { opacity: 0.7; }
+.mcp-status { flex: none; font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ui-glass-accent-border); background: var(--ui-glass-accent-bg); color: var(--ui-glass-accent-text); }
+.mcp-status.is-expired, .mcp-status.is-revoked { border-color: var(--ui-glass-border); background: var(--ui-glass-btn-bg); color: var(--ui-text-secondary); }
+.mcp-token.is-expired, .mcp-token.is-revoked { opacity: 0.68; }
 .mcp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.mcp-chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; border: 1px solid var(--ui-border); }
-.mcp-scope-line { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 0; font-size: 14px; }
-.mcp-scope-item { display: inline-flex; align-items: center; gap: 4px; }
+.mcp-chip { font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--ui-glass-border); background: var(--ui-glass-btn-bg); color: var(--ui-text); }
+.mcp-scope-line { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; font-size: 14px; color: var(--ui-text); }
+.mcp-scope-item { display: inline-flex; align-items: center; gap: 5px; }
 .mcp-meta { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; color: var(--ui-text-secondary); font-size: 13px; }
-.mcp-danger { color: var(--ui-danger-foreground, #d33); }
+.mcp-danger { color: var(--ui-danger-foreground) !important; }
 @media (max-width: 640px) {
-  /* The shared settings header stacks its actions; one row reads better here. */
-  .dash-header .dash-actions { display: flex; flex-direction: row; align-items: center; gap: 8px; }
-  .dash-header .dash-actions > * { width: auto; }
   .mcp-endpoint .btn-primary { margin-left: 0; width: 100%; justify-content: center; }
-  .mcp-row-actions { justify-content: stretch; }
   .mcp-row-actions > * { flex: 1; justify-content: center; }
 }
 </style>

@@ -1,19 +1,19 @@
 // @vitest-environment jsdom
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import McpTokensView from './McpTokensView.vue';
-import { mcpTokens } from '../api/client';
-import { confirmDialog } from '../composables/appDialog';
+import McpTokensPanel from './McpTokensPanel.vue';
+import { mcpTokens } from '../../api/client';
+import { confirmDialog } from '../../composables/appDialog';
 
-vi.mock('../api/client', () => ({
+vi.mock('../../api/client', () => ({
   mcpTokens: { list: vi.fn(), issue: vi.fn(), rename: vi.fn(), revoke: vi.fn() },
   resourceFolders: { list: vi.fn().mockResolvedValue({ own: [{ id: 'f-work', name: 'Work', parentId: null }, { id: 'f-sub', name: 'Sub', parentId: 'f-work' }], shared: [] }) },
   canvas: { list: vi.fn().mockResolvedValue({ own: [{ id: 'c-1', title: 'Board' }], shared: [], public: [] }) },
   htmlDocuments: { list: vi.fn().mockResolvedValue({ groups: [], documents: [] }) },
   textDocuments: { list: vi.fn().mockResolvedValue({ documents: [{ id: 'd-1', title: 'Backlog' }] }) },
 }));
-vi.mock('../composables/appDialog', () => ({ confirmDialog: vi.fn(), promptDialog: vi.fn() }));
-vi.mock('../api/public-origin', () => ({ getPublicOrigin: () => 'https://qcanva.qzarov.pro' }));
+vi.mock('../../composables/appDialog', () => ({ confirmDialog: vi.fn(), promptDialog: vi.fn() }));
+vi.mock('../../api/public-origin', () => ({ getPublicOrigin: () => 'https://qcanva.qzarov.pro' }));
 
 const record = (overrides: Record<string, unknown> = {}) => ({
   id: 't-1', name: 'Claude', tokenPrefix: 'qcv_Ab12Cd34', actions: ['read', 'edit'],
@@ -23,10 +23,10 @@ const record = (overrides: Record<string, unknown> = {}) => ({
 });
 
 function mountView() {
-  return mount(McpTokensView, { global: { stubs: { AccountMenu: true, RouterLink: { template: '<a><slot /></a>' } } } });
+  return mount(McpTokensPanel, { global: { stubs: { AccountMenu: true, RouterLink: { template: '<a><slot /></a>' } } } });
 }
 
-describe('McpTokensView', () => {
+describe('McpTokensPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(mcpTokens.list).mockResolvedValue({ tokens: [record() as never, record({ id: 't-2', name: 'Old', status: 'revoked' }) as never] });

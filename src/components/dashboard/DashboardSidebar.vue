@@ -173,7 +173,7 @@
           data-source-link
         >{{ t('sourceCode') }}</a>
       </div>
-      <AccountMenu placement="sidebar" :compact="compactPresentation" :show-plugins="false" />
+      <AccountMenu placement="sidebar" :compact="compactPresentation" :show-plugins="false" glass />
       <button
         type="button"
         class="btn-ghost btn-sm dashboard-sidebar-width-toggle"
