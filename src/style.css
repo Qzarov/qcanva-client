@@ -10640,3 +10640,51 @@ html { -webkit-tap-highlight-color: transparent; }
 .folder-manager-top .dash-sort-menu-mobile {
   align-self: center;
 }
+
+/* ===== Settings: Liquid Glass =====
+   Same recipe and tokens as the dashboard and the documents: the page on the
+   ambient light, the sticky bar and the section list as blurred glass, cards
+   as glass without blur (SettingsView / McpTokensPanel), fields and standalone
+   buttons as inset panes, primary actions as accent glass. */
+.settings-page {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.settings-page :is(.settings-topbar, .settings-nav) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.settings-page .settings-topbar {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+}
+.settings-page :is(.btn-ghost, .account-menu-trigger),
+.settings-page .dashboard-modal-input {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.settings-page .dashboard-modal-input {
+  border-radius: 12px;
+}
+.settings-page .dashboard-modal-input:focus {
+  outline: none;
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 0 0 3px var(--ui-glass-focus-glow);
+}
+@media (hover: hover) {
+  .settings-page :is(.btn-ghost, .account-menu-trigger):hover:not(:disabled) {
+    background: var(--ui-glass-btn-hover);
+  }
+}
+.settings-page .btn-primary {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.settings-page .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
