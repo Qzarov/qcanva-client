@@ -1280,6 +1280,7 @@ import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
+import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -2685,6 +2686,7 @@ export default defineComponent({
     const deleteInteractiveTemplate = async (template: InteractiveTemplate) => {
       if (!(await confirmDelete('deleteTemplateTitle', template.title))) return;
       await runAction('delete-interactive-template', () => interactiveTemplates.delete(template.id), 'Шаблон удалён');
+      forgetResourceTab('template', template.id);
       interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => item.id !== template.id);
       await load({ showLoading: false });
     };
@@ -3363,6 +3365,7 @@ export default defineComponent({
       const confirmed = await confirmDelete('deleteCanvasTitle', title);
       if (!confirmed) return;
       await runAction('delete-canvas', () => canvas.delete(canvasRecord.id), `Deleted ${title}`);
+      forgetResourceTab('canvas', canvasRecord.id);
       own.value = own.value.filter((c) => c.id !== canvasRecord.id);
       await load();
     };
@@ -3372,6 +3375,7 @@ export default defineComponent({
       const confirmed = await confirmDelete('deleteHtmlDocumentTitle', title);
       if (!confirmed) return;
       await runAction('delete-html-document', () => htmlDocuments.delete(doc.id), `Deleted ${title}`);
+      forgetResourceTab('html', doc.id);
       await load();
     };
 
@@ -3380,6 +3384,7 @@ export default defineComponent({
       const confirmed = await confirmDelete('deleteDocumentTitle', title);
       if (!confirmed) return;
       await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
+      forgetResourceTab('doc', doc.id);
       await load();
     };
 

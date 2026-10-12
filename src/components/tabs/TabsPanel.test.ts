@@ -24,15 +24,23 @@ const rows = () => Array.from(document.querySelectorAll('.tabs-panel-list > li')
 const click = async (el: Element | null | undefined) => { (el as HTMLElement).click(); await flushPromises(); };
 
 describe('TabsPanel', () => {
-  it('lists the dashboard and the tabs, newest first, marking the current one', () => {
+  it('lists only the open tabs - no dashboard row - newest first, marking the current one', () => {
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    expect(rows().map((row) => row.querySelector('.tabs-panel-title')?.textContent)).toEqual(['Дашборд', 'Арвен', 'Карта']);
-    expect(rows()[1]!.classList.contains('is-current')).toBe(true);
+    expect(rows().map((row) => row.querySelector('.tabs-panel-title')?.textContent)).toEqual(['Арвен', 'Карта']);
+    expect(rows()[0]!.classList.contains('is-current')).toBe(true);
+    expect(document.querySelector('[data-tabs-empty]')).toBeNull();
+  });
+
+  it('says so when no tab is open', () => {
+    resetTabsForTests();
+    wrapper = mount(TabsPanel, { attachTo: document.body });
+    expect(rows()).toHaveLength(0);
+    expect(document.querySelector('[data-tabs-empty]')?.textContent).toBe('Открытых вкладок нет');
   });
 
   it('switches to a tab by its last address and closes', async () => {
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    await click(rows()[2]!.querySelector('.tabs-panel-item'));
+    await click(rows()[1]!.querySelector('.tabs-panel-item'));
     expect(push).toHaveBeenCalledWith('/canvas/map');
     expect(wrapper.emitted('close')).toHaveLength(1);
   });
@@ -40,12 +48,12 @@ describe('TabsPanel', () => {
   it('asks before closing a tab with unsent edits', async () => {
     updateTab('canvas:map', { unsent: true });
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    await click(rows()[2]!.querySelector('.tabs-panel-close'));
+    await click(rows()[1]!.querySelector('.tabs-panel-close'));
     expect(currentAppDialog.value).toMatchObject({ kind: 'confirm', title: 'Закрыть вкладку?', confirmLabel: 'Закрыть' });
     currentAppDialog.value!.settle(false);
     await flushPromises();
     expect(tabs.value).toHaveLength(2);
-    await click(rows()[2]!.querySelector('.tabs-panel-close'));
+    await click(rows()[1]!.querySelector('.tabs-panel-close'));
     currentAppDialog.value!.settle(true);
     await flushPromises();
     expect(tabs.value.map((tab) => tab.key)).toEqual(['template:hero']);
@@ -55,12 +63,12 @@ describe('TabsPanel', () => {
 
   it('closing the current tab shows the next one, or the dashboard when none is left', async () => {
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    await click(rows()[1]!.querySelector('.tabs-panel-close'));
+    await click(rows()[0]!.querySelector('.tabs-panel-close'));
     expect(push).toHaveBeenLastCalledWith('/canvas/map');
     wrapper.unmount();
     showTab({ name: 'canvas', params: { id: 'map' }, fullPath: '/canvas/map' }, 5);
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    await click(rows()[1]!.querySelector('.tabs-panel-close'));
+    await click(rows()[0]!.querySelector('.tabs-panel-close'));
     expect(push).toHaveBeenLastCalledWith({ name: 'dashboard' });
   });
 
@@ -68,7 +76,7 @@ describe('TabsPanel', () => {
     let listedDuringNavigation: string[] = [];
     push.mockImplementation(async () => { listedDuringNavigation = tabs.value.map((tab) => tab.key); });
     wrapper = mount(TabsPanel, { attachTo: document.body });
-    await click(rows()[1]!.querySelector('.tabs-panel-close'));
+    await click(rows()[0]!.querySelector('.tabs-panel-close'));
     expect(listedDuringNavigation).toContain('template:hero'); // still there while navigating away
     expect(tabs.value.map((tab) => tab.key)).toEqual(['canvas:map']);
   });

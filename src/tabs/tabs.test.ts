@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { defineComponent, h, KeepAlive, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
+import { computed, defineComponent, h, KeepAlive, nextTick, onActivated, onDeactivated, onMounted, onUnmounted, ref } from 'vue';
 import { mount } from '@vue/test-utils';
 import { createMemoryHistory, createRouter, RouterView, useRoute } from 'vue-router';
 import {
   clearTabs, closeTab, ensureTabsFor, LIVE_LIMIT, liveTabKeys, registerAlias, resetTabsForTests, restoreTabs, showTab, TAB_LIMIT, tabKeyFor, tabs, updateTab,
 } from './registry';
 import { hostFor, hostName } from './TabHost';
-import { useTab } from './tabContext';
+import { forgetResourceTab } from './forget';
+import { createTabContext, useTab } from './tabContext';
 import { useViewActivity } from '../composables/useViewActivity';
 
 const route = (name: string, id: string, fullPath = `/${name}/${id}`) => ({ name, params: { id }, fullPath });
@@ -72,6 +73,25 @@ describe('tab registry', () => {
     showTab(route('text-document', 'd1'), 3);
     showTab(route('html-document', 'h1'), 4); // cold: never hosted
     expect([...liveTabKeys.value].sort()).toEqual(['canvas:c1', 'doc:d1', 'template:s1']);
+  });
+
+  it('forgets a deleted resource\'s tab by its id, even when the tab was opened by slug', () => {
+    showTab(route('html-document', 'roadmap', '/edit/html/roadmap'));
+    registerAlias('html:roadmap', 'uuid-9');
+    showTab(route('canvas', 'keep'));
+    forgetResourceTab('html', 'uuid-9');
+    expect(tabs.value.map((tab) => tab.key)).toEqual(['canvas:keep']);
+    forgetResourceTab('doc', 'never-opened'); // nothing to do, nothing breaks
+    expect(tabs.value).toHaveLength(1);
+  });
+
+  it('a page forgets its own tab through its context', () => {
+    showTab(route('text-document', 'gone'));
+    const forgotten: string[] = [];
+    const context = createTabContext('doc:gone', computed(() => true), () => forgotten.push('host'));
+    context.forget();
+    expect(tabs.value).toHaveLength(0);
+    expect(forgotten).toEqual(['host']);
   });
 
   it('closing a tab removes it and its aliases', () => {

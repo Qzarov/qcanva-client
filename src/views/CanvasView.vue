@@ -1454,6 +1454,8 @@ export default defineComponent({
           return;
         }
         console.warn('Canvas is not available, redirecting to dashboard', e);
+        // Deleted (or never was): its tab must not stay in the list.
+        if (e instanceof ApiError && e.status === 404) tab.forget();
         // From a background tab this would pull the user off the page they are on.
         if (tab.active.value) await router.replace('/dashboard');
         return;

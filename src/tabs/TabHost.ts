@@ -33,7 +33,7 @@ export function hostFor(key: string): Component {
         if (ownsRoute()) Object.assign(frozen, real);
       });
       provide(routeLocationKey, frozen);
-      provide(TAB_CONTEXT, createTabContext(key, computed(() => ownsRoute())));
+      provide(TAB_CONTEXT, createTabContext(key, computed(() => ownsRoute()), () => forgetHost(key)));
       // Scroll containers come back where they were (see scrollMemory).
       onActivated(() => { void nextTick(() => requestAnimationFrame(restoreScrollPositions)); });
       return () => slots.default?.();

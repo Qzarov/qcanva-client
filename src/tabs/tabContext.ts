@@ -1,5 +1,5 @@
 import { computed, inject, type ComputedRef, type InjectionKey } from 'vue';
-import { registerAlias, updateTab, type TabStatus } from './registry';
+import { closeTab, registerAlias, updateTab, type TabStatus } from './registry';
 
 /**
  * What a page knows about the tab it lives in. Outside tab mode (the web,
@@ -14,6 +14,8 @@ export type TabContext = {
   setTitle(title: string): void;
   setStatus(status: TabStatus): void;
   setUnsent(unsent: boolean): void;
+  /** The resource is gone: drop this tab from the list. */
+  forget(): void;
 };
 
 export const TAB_CONTEXT: InjectionKey<TabContext> = Symbol('tab-context');
@@ -26,11 +28,13 @@ const NO_TAB: TabContext = {
   setTitle: () => {},
   setStatus: () => {},
   setUnsent: () => {},
+  forget: () => {},
 };
 
 export const useTab = (): TabContext => inject(TAB_CONTEXT, NO_TAB);
 
-export function createTabContext(key: string, active: ComputedRef<boolean>): TabContext {
+/** `onForget`: what else goes with the tab (a kept-alive page's host). */
+export function createTabContext(key: string, active: ComputedRef<boolean>, onForget?: () => void): TabContext {
   return {
     key,
     active,
@@ -38,5 +42,9 @@ export function createTabContext(key: string, active: ComputedRef<boolean>): Tab
     setTitle: (title) => updateTab(key, { title }),
     setStatus: (status) => updateTab(key, { status }),
     setUnsent: (unsent) => updateTab(key, { unsent }),
+    forget: () => {
+      closeTab(key);
+      onForget?.();
+    },
   };
 }

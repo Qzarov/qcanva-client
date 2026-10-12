@@ -2946,6 +2946,8 @@ export default defineComponent({
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
+          // Deleted (or never was): its tab must not stay in the list.
+          tab.forget();
           if (tab.active.value) await router.replace({ name: 'dashboard', query: { type: 'text-document' } });
           return;
         }

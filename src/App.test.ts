@@ -123,3 +123,36 @@ describe('viewKeyFor', () => {
     expect([...REMOUNT_ON_PATH_CHANGE]).toEqual(['text-document']);
   });
 });
+
+describe('App in tab mode', () => {
+  it('gives a page that is a tab but never sleeps (an HTML document) its tab, so it can name it', async () => {
+    const { resetTabsFlagForTests } = await import('./tabs/flag');
+    const { resetTabsForTests, showTab, tabs } = await import('./tabs/registry');
+    const { useTab } = await import('./tabs/tabContext');
+    localStorage.setItem('qcanva:tabs', '1');
+    localStorage.setItem('qcanva:tabs-web', '1');
+    resetTabsFlagForTests();
+    resetTabsForTests();
+    const HtmlView = defineComponent({
+      setup() {
+        useTab().setTitle('Roadmap');
+        return () => h('div');
+      },
+    });
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/edit/html/:id', name: 'html-document', component: HtmlView }],
+    });
+    await router.push('/edit/html/roadmap');
+    await router.isReady();
+    showTab(router.currentRoute.value);
+    const wrapper = mount(App, { global: { plugins: [router], stubs: { ToastContainer: true } } });
+    await wrapper.vm.$nextTick();
+
+    expect(tabs.value.map((tab) => [tab.key, tab.title])).toEqual([['html:roadmap', 'Roadmap']]);
+    wrapper.unmount();
+    localStorage.clear();
+    resetTabsFlagForTests();
+    resetTabsForTests();
+  });
+});
