@@ -192,6 +192,7 @@
             :srcdoc="selectedHistory.html"
             class="html-browser-preview"
             sandbox="allow-same-origin allow-scripts allow-forms"
+            @load="onHistoryPreviewLoad"
           ></iframe>
         </template>
       </div>
@@ -252,6 +253,7 @@ import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '..
 import { downloadHtmlDocument } from '../html/htmlDocumentExport';
 import { serializeDocumentWithFormState } from '../html/formStateSerialization';
 import { captureFrameScroll, restoreFrameScroll } from '../html/scrollRestoration';
+import { bindInPageLinks } from '../html/inPageLinks';
 import type { FrameScrollPosition } from '../html/scrollRestoration';
 import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
@@ -739,8 +741,18 @@ export default defineComponent({
       });
     }
 
+    function bindFrameInPageLinks(event: Event) {
+      const doc = (event.target as HTMLIFrameElement).contentDocument;
+      if (doc) bindInPageLinks(doc);
+    }
+
+    function onHistoryPreviewLoad(event: Event) {
+      bindFrameInPageLinks(event);
+    }
+
     function onPreviewLoad(event: Event) {
       bindPreviewChecklist(event);
+      bindFrameInPageLinks(event);
       const iframe = event.target as HTMLIFrameElement;
       const scroll = pendingPreviewScroll;
       if (!scroll) return;
@@ -848,7 +860,7 @@ export default defineComponent({
       shareRole, permissions, checkingResourcePassword,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, saving, previewFrame, sourceEditor,
       showHistory, showHtmlActions, showExportMenu, historyLoading, historyItems, selectedHistory, restoringHistory,
-      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, doShare,
+      save, saveAccessSettings, savePasswordAccess, onPreviewChange, bindPreviewChecklist, onPreviewLoad, onHistoryPreviewLoad, doShare,
       slug, slugInput, savingSlug, saveSlug, publicUrl, copyPublicLink,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet, notifyReadOnlyEditAttempt,
       downloadDocument, exportPdfDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
