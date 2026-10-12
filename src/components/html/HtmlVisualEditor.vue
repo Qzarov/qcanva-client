@@ -129,6 +129,7 @@
       class="html-browser-preview"
       :srcdoc="previewHtml"
       sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+      @load="onPreviewFrameLoad"
     ></iframe>
   </div>
 </template>
@@ -136,6 +137,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InlineRichText from './InlineRichText.vue';
+import { bindInPageLinks } from '../../html/inPageLinks';
 import {
   createBlock,
   duplicateBlock,
@@ -380,5 +382,11 @@ function blockLabel(block: VisualBlock) {
   if (block.type === 'heading') return `H${block.level || 2}: ${block.text || 'Heading'}`;
   if (block.type === 'raw') return 'Raw HTML';
   return `${block.type}: ${block.text || block.body || block.href || block.src || 'Untitled'}`;
+}
+
+/** `#anchor` links in the preview scroll it instead of loading the app into it. */
+function onPreviewFrameLoad(event: Event) {
+  const doc = (event.target as HTMLIFrameElement).contentDocument;
+  if (doc) bindInPageLinks(doc);
 }
 </script>
