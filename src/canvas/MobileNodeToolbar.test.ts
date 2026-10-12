@@ -5,8 +5,9 @@ import { config, enableAutoUnmount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
+import { createCanvasLoaderApi } from '../test-support/canvas-loader-api';
 
-const canvasRef = {
+const canvasRef = createCanvasLoaderApi({
   selectedNodeId: 'n1',
   selectedNodeIds: ['n1'],
   selectedEdgeId: null,
@@ -18,11 +19,11 @@ const canvasRef = {
   isNodeTransparent: () => false,
   getNodeShape: () => 'rect',
   getNodeFontColor: () => undefined,
-  getNodeFontColorSwatch: (c: string) => c,
+  getNodeFontColorSwatch: (c: string | undefined) => c ?? '',
   getNodeAlign: () => 'left',
   getNodeFirstLineAlign: () => 'left',
   isNodeFontColorActive: () => false,
-};
+});
 
 // Keep the real palette component while making its teleported controls queryable.
 config.global.stubs.teleport = true;
@@ -188,10 +189,12 @@ describe('MobileNodeToolbar system Back', () => {
 
   it('uses the shared colour menu for a selected drawing', async () => {
     const setSelectedDrawingColor = vi.fn();
-    const wrapper = mount(MobileNodeToolbar, { props: { role: 'owner', canvasRef: {
-      selectedNodeIds: [], selectedDrawingIds: ['d1'], selectedDrawingObj: { color: '#e03131', width: 4 },
+    const wrapper = mount(MobileNodeToolbar, { props: { role: 'owner', canvasRef: createCanvasLoaderApi({
+      selectedNodeIds: [], selectedDrawingIds: ['d1'], selectedDrawingObj: {
+        id: 'd1', tool: 'pen', color: '#e03131', width: 4, createdBy: 'user-1', createdAt: '2026-10-12T00:00:00.000Z',
+      },
       setSelectedDrawingColor,
-    } } });
+    }) } });
     await wrapper.get('[aria-label="Color"]').trigger('click');
     const menu = wrapper.get('.canvas-color-menu');
     expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(true);
