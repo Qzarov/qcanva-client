@@ -170,27 +170,27 @@
         :style="{ left: selectedEdgeMidpoint.x + 'px', top: selectedEdgeMidpoint.y + 'px' }"
         @dblclick.stop
       >
-        <button class="edge-action-btn edge-delete-btn" @mousedown.stop="onDeleteEdge" title="Delete">
+        <button class="edge-action-btn edge-delete-btn" @mousedown.stop="onDeleteEdge" :title="t('delete')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
           </svg>
         </button>
-        <button class="edge-action-btn edge-label-btn" @mousedown.stop="onEdgeDblClick(selectedEdgeId!)" title="Add label">
+        <button class="edge-action-btn edge-label-btn" @mousedown.stop="onEdgeDblClick(selectedEdgeId!)" :title="t('edgeAddLabel')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
           </svg>
         </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeToggleStyle" title="Toggle style">
+        <button class="edge-action-btn" @mousedown.stop="onEdgeToggleStyle" :title="t('lineStyle')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="3" y1="12" x2="7" y2="12"/><line x1="10" y1="12" x2="14" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/>
           </svg>
         </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleArrow" title="Arrow type">
+        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleArrow" :title="t('arrowType')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="5" y1="12" x2="19" y2="12"/><polyline points="15 8 19 12 15 16"/>
           </svg>
         </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleColor" title="Change color">
+        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleColor" :title="t('edgeChangeColor')">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>
           </svg>
@@ -216,7 +216,7 @@
           @blur="onEdgeLabelEnd"
           @keydown.enter="onEdgeLabelEnd"
           @keydown.escape="onEdgeLabelEnd"
-          placeholder="Label..."
+          :placeholder="t('edgeLabelPlaceholder')"
           @mousedown.stop
         />
       </div>
@@ -426,7 +426,7 @@
         </div>
         <div class="embed-preview">
           <div v-if="getEmbeddedCanvasData(node.canvasId!).loading" class="embed-loading">Loading...</div>
-          <div v-else-if="getEmbeddedCanvasData(node.canvasId!).error" class="embed-error">Cannot load canvas</div>
+          <div v-else-if="getEmbeddedCanvasData(node.canvasId!).error" class="embed-error">{{ t('cannotLoadCanvas') }}</div>
           <svg v-else class="embed-minimap" :viewBox="embeddedCanvasViewBox(node.canvasId!)" preserveAspectRatio="xMidYMid meet">
             <rect
               v-for="en in getEmbeddedCanvasData(node.canvasId!).nodes"
@@ -722,7 +722,7 @@
     >
       <template v-if="contextMenu.kind === 'node'">
         <div class="ctx-colors">
-          <span class="ctx-label">Fill</span>
+          <span class="ctx-label">{{ t('background') }}</span>
           <button class="ctx-color-btn" :class="getContextNode()?.color ? 'ctx-color-'+getContextNode()?.color : 'ctx-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="contextColorPopup === 'fill'" @click="toggleContextColorMenu('fill', $event)" />
         </div>
         <CanvasColorMenu :open="contextColorPopup === 'fill'" :anchor="contextColorAnchor" :label="t('backgroundColor')" @close="contextColorPopup = null">
@@ -735,11 +735,11 @@
             :aria-label="t('backgroundColor')+' '+c"
             @click="onCtxSetColor(c)"
           ></button>
-          <button class="ctx-color-btn ctx-color-none" title="No color" @click="onCtxSetColor(undefined)">✕</button>
+          <button class="ctx-color-btn ctx-color-none" :title="t('clearColor')" @click="onCtxSetColor(undefined)">✕</button>
           <button class="tb-btn" :class="{ active: isNodeTransparent(contextMenu.nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="isNodeTransparent(contextMenu.nodeId)" @click="toggleNodeTransparent(contextMenu.nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
         </CanvasColorMenu>
         <div class="ctx-colors">
-          <span class="ctx-label">Text</span>
+          <span class="ctx-label">{{ t('text') }}</span>
           <button class="ctx-color-btn" :style="{ background: getNodeFontColorSwatch(getContextNode()?.fontColor) }" :aria-label="t('textColor')" :aria-expanded="contextColorPopup === 'text'" @click="toggleContextColorMenu('text', $event)" />
         </div>
         <CanvasColorMenu :open="contextColorPopup === 'text'" :anchor="contextColorAnchor" :label="t('textColor')" @close="contextColorPopup = null">
@@ -752,16 +752,16 @@
             :title="'Text ' + c"
             @click="onCtxSetFontColor(c)"
           ></button>
-          <button class="ctx-color-btn ctx-color-none" title="Default text color" @click="onCtxSetFontColor(undefined)">✕</button>
+          <button class="ctx-color-btn ctx-color-none" :title="t('defaultTextColor')" @click="onCtxSetFontColor(undefined)">✕</button>
         </CanvasColorMenu>
-        <button class="ctx-item" @click="onCtxSendBackward">Send backward</button>
-        <button class="ctx-item" @click="onCtxBringForward">Bring forward</button>
-        <button class="ctx-item" @click="onCtxSendToBack">Send to back</button>
-        <button class="ctx-item" @click="onCtxBringToFront">Bring to front</button>
-        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? 'Unlock position' : 'Lock position' }}</button>
+        <button class="ctx-item" @click="onCtxSendBackward">{{ t('layerDown') }}</button>
+        <button class="ctx-item" @click="onCtxBringForward">{{ t('layerUp') }}</button>
+        <button class="ctx-item" @click="onCtxSendToBack">{{ t('sendToBack') }}</button>
+        <button class="ctx-item" @click="onCtxBringToFront">{{ t('bringToFront') }}</button>
+        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? t('unlockPosition') : t('lockPosition') }}</button>
         <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item" @click="onCtxDuplicate">Duplicate</button>
-        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">Delete</button>
+        <button class="ctx-item" @click="onCtxDuplicate">{{ t('duplicate') }}</button>
+        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">{{ t('delete') }}</button>
       </template>
       <template v-else-if="contextMenu.kind === 'edge'">
         <button class="ctx-item" @click="onEdgeToggleStyle(); closeContextMenu()">Стиль линии</button>
@@ -787,15 +787,15 @@
 
     <!-- Controls -->
     <div class="canvas-controls">
-      <button @click="zoomIn" title="Zoom in">+</button>
+      <button @click="zoomIn" :title="t('zoomIn')">+</button>
       <span class="zoom-level">{{ zoomPercent }}%</span>
-      <button @click="zoomOut" title="Zoom out">−</button>
-      <button @click="resetView" title="Reset view">⌂</button>
+      <button @click="zoomOut" :title="t('zoomOut')">−</button>
+      <button @click="resetView" :title="t('resetView')">⌂</button>
       <span class="controls-divider"></span>
-      <button @click="undo" :disabled="!canUndo" title="Undo">
+      <button @click="undo" :disabled="!canUndo" :title="t('textUndo')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
       </button>
-      <button @click="redo" :disabled="!canRedo" title="Redo">
+      <button @click="redo" :disabled="!canRedo" :title="t('textRedo')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
       </button>
       <span class="controls-divider"></span>
@@ -824,11 +824,11 @@
           </button>
         </div>
       </div>
-      <button @click="duplicateSelection" title="Duplicate selection">
+      <button @click="duplicateSelection" :title="t('duplicateSelection')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
       </button>
       <span class="controls-divider"></span>
-      <button @click="onExportCanvas" title="Export .canvas file">
+      <button @click="onExportCanvas" :title="t('exportCanvas')">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       </button>
     </div>
@@ -1473,7 +1473,7 @@ export default defineComponent({
         const data = JSON.parse(res.canvas.data || '{"nodes":[],"edges":[]}');
         embeddedCanvasCache[canvasId] = { title: res.canvas.title || 'Untitled', nodes: data.nodes || [], edges: data.edges || [], loading: false, error: false };
       } catch {
-        embeddedCanvasCache[canvasId] = { title: 'Error', nodes: [], edges: [], loading: false, error: true };
+        embeddedCanvasCache[canvasId] = { title: t('cannotLoadCanvas'), nodes: [], edges: [], loading: false, error: true };
       }
     };
 

@@ -1,3 +1,5 @@
+import type { MessageKey } from '../composables/useI18n';
+
 export type NodeActionKey =
   | 'edit-text' | 'fill' | 'text-color' | 'border-color' | 'border-style'
   | 'alignment' | 'duplicate' | 'lock' | 'layer-up' | 'layer-down'
@@ -8,7 +10,8 @@ export type NodeActionKey =
 
 export type NodeAction = {
   key: NodeActionKey;
-  label: string;
+  /** A message key: the component translates it (see useI18n). */
+  labelKey: MessageKey;
   handler: () => void;
   disabled?: boolean;
   danger?: boolean;
@@ -86,63 +89,63 @@ export function buildNodeActions(p: BuildActionsParams): NodeAction[] {
 
   if (p.kind === 'edge') {
     return [
-      { key: 'edge-style', label: 'Line style', handler: p.handlers.edgeToggleStyle, disabled: r },
-      { key: 'edge-arrow', label: 'Arrow type', handler: p.handlers.edgeCycleArrow, disabled: r },
-      { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
+      { key: 'edge-style', labelKey: 'lineStyle', handler: p.handlers.edgeToggleStyle, disabled: r },
+      { key: 'edge-arrow', labelKey: 'arrowType', handler: p.handlers.edgeCycleArrow, disabled: r },
+      { key: 'delete', labelKey: 'delete', handler: p.handlers.delete, danger: true, disabled: r },
     ];
   }
 
   if (p.kind === 'drawing') {
     return [
-      { key: 'drawing-color', label: 'Color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
-      { key: 'drawing-stroke-width', label: 'Width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
-      { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
-      { key: 'drawing-delete', label: 'Delete', handler: p.handlers.drawingDelete, danger: true, disabled: r },
+      { key: 'drawing-color', labelKey: 'color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-stroke-width', labelKey: 'width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-duplicate', labelKey: 'duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
+      { key: 'drawing-delete', labelKey: 'delete', handler: p.handlers.drawingDelete, danger: true, disabled: r },
     ];
   }
 
   if (p.kind === 'multi-drawing' || p.kind === 'mixed') {
     return [
-      { key: 'drawing-color', label: 'Color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
-      { key: 'drawing-stroke-width', label: 'Width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
-      { key: 'drawing-duplicate', label: 'Duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
-      { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
+      { key: 'drawing-color', labelKey: 'color', handler: p.handlers.drawingColorSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-stroke-width', labelKey: 'width', handler: p.handlers.drawingStrokeWidthSection, isSectionToggle: true, disabled: r },
+      { key: 'drawing-duplicate', labelKey: 'duplicate', handler: p.handlers.drawingDuplicate, disabled: r },
+      { key: 'delete', labelKey: 'delete', handler: p.handlers.delete, danger: true, disabled: r },
     ];
   }
 
   if (p.kind === 'multi-node') {
     return [
-      { key: 'layer-up', label: 'Bring forward', handler: p.handlers.layerUp, disabled: r },
-      { key: 'layer-down', label: 'Send backward', handler: p.handlers.layerDown, disabled: r },
-      { key: 'lock', label: p.isLocked ? 'Unlock' : 'Lock', handler: p.handlers.toggleLock, disabled: r },
-      { key: 'duplicate', label: 'Duplicate', handler: p.handlers.duplicate, disabled: r },
-      { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
+      { key: 'layer-up', labelKey: 'layerUp', handler: p.handlers.layerUp, disabled: r },
+      { key: 'layer-down', labelKey: 'layerDown', handler: p.handlers.layerDown, disabled: r },
+      { key: 'lock', labelKey: p.isLocked ? 'toolbarUnlock' : 'toolbarLock', handler: p.handlers.toggleLock, disabled: r },
+      { key: 'duplicate', labelKey: 'duplicate', handler: p.handlers.duplicate, disabled: r },
+      { key: 'delete', labelKey: 'delete', handler: p.handlers.delete, danger: true, disabled: r },
     ];
   }
 
   // Keep common settings on the icon row; object operations live in overflow.
   const editText: NodeAction[] = p.isTextNode && !r && p.handlers.editText
-    ? [{ key: 'edit-text', label: 'Edit text', handler: p.handlers.editText }]
+    ? [{ key: 'edit-text', labelKey: 'toolbarEdit', handler: p.handlers.editText }]
     : [];
   const textSettings = p.isTextNode !== false;
   return [
     ...editText,
-    ...(!textSettings ? [{ key: 'image-title' as NodeActionKey, label: 'Title', handler: p.handlers.imageTitleSection, isSectionToggle: true, disabled: r }] : []),
-    { key: 'fill', label: 'Background', handler: p.handlers.fillSection, isSectionToggle: true, disabled: r },
-    ...(textSettings ? [{ key: 'text-color' as NodeActionKey, label: 'Text color', handler: p.handlers.textColorSection, isSectionToggle: true, disabled: r }] : []),
-    ...(!textSettings ? [{ key: 'border-color' as NodeActionKey, label: 'Border color', handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
-    { key: 'border-style', label: 'Border', handler: p.handlers.borderStyleSection, isSectionToggle: true, disabled: r },
-    ...(textSettings ? [{ key: 'alignment' as NodeActionKey, label: 'Alignment', handler: p.handlers.alignSection, isSectionToggle: true, disabled: r }] : []),
-    { key: 'duplicate', label: 'Duplicate', handler: p.handlers.duplicate, disabled: r },
-    { key: 'lock', label: p.isLocked ? 'Unlock' : 'Lock', handler: p.handlers.toggleLock, disabled: r },
-    { key: 'delete', label: 'Delete', handler: p.handlers.delete, danger: true, disabled: r },
+    ...(!textSettings ? [{ key: 'image-title' as NodeActionKey, labelKey: 'toolbarTitle' as MessageKey, handler: p.handlers.imageTitleSection, isSectionToggle: true, disabled: r }] : []),
+    { key: 'fill', labelKey: 'background', handler: p.handlers.fillSection, isSectionToggle: true, disabled: r },
+    ...(textSettings ? [{ key: 'text-color' as NodeActionKey, labelKey: 'textColor' as MessageKey, handler: p.handlers.textColorSection, isSectionToggle: true, disabled: r }] : []),
+    ...(!textSettings ? [{ key: 'border-color' as NodeActionKey, labelKey: 'borderColor' as MessageKey, handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
+    { key: 'border-style', labelKey: 'border', handler: p.handlers.borderStyleSection, isSectionToggle: true, disabled: r },
+    ...(textSettings ? [{ key: 'alignment' as NodeActionKey, labelKey: 'alignment' as MessageKey, handler: p.handlers.alignSection, isSectionToggle: true, disabled: r }] : []),
+    { key: 'duplicate', labelKey: 'duplicate', handler: p.handlers.duplicate, disabled: r },
+    { key: 'lock', labelKey: p.isLocked ? 'toolbarUnlock' : 'toolbarLock', handler: p.handlers.toggleLock, disabled: r },
+    { key: 'delete', labelKey: 'delete', handler: p.handlers.delete, danger: true, disabled: r },
     // overflow items
-    ...(textSettings ? [{ key: 'border-color' as NodeActionKey, label: 'Border color', handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
-    { key: 'layer-up', label: 'Bring forward', handler: p.handlers.layerUp, disabled: r },
-    { key: 'layer-down', label: 'Send backward', handler: p.handlers.layerDown, disabled: r },
-    { key: 'bring-front', label: 'Bring to front', handler: p.handlers.bringFront, disabled: r },
-    { key: 'send-back', label: 'Send to back', handler: p.handlers.sendBack, disabled: r },
-    ...(p.isOwner ? [{ key: 'hide' as NodeActionKey, label: 'Hide/Show', handler: p.handlers.toggleHide, disabled: r }] : []),
+    ...(textSettings ? [{ key: 'border-color' as NodeActionKey, labelKey: 'borderColor' as MessageKey, handler: p.handlers.borderColorSection, isSectionToggle: true, disabled: r }] : []),
+    { key: 'layer-up', labelKey: 'layerUp', handler: p.handlers.layerUp, disabled: r },
+    { key: 'layer-down', labelKey: 'layerDown', handler: p.handlers.layerDown, disabled: r },
+    { key: 'bring-front', labelKey: 'bringToFront', handler: p.handlers.bringFront, disabled: r },
+    { key: 'send-back', labelKey: 'sendToBack', handler: p.handlers.sendBack, disabled: r },
+    ...(p.isOwner ? [{ key: 'hide' as NodeActionKey, labelKey: 'hide' as MessageKey, handler: p.handlers.toggleHide, disabled: r }] : []),
   ];
 }
 

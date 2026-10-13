@@ -263,6 +263,16 @@ export const messages = {
     settingsKeySaved: 'Ключ сохранён — введите новый, чтобы заменить',
     settingsSave: 'Сохранить',
     settingsSaved: 'Сохранено',
+    lineStyle: 'Стиль линии',
+    arrowType: 'Тип стрелки',
+    edgeAddLabel: 'Добавить подпись',
+    edgeChangeColor: 'Цвет связи',
+    edgeLabelPlaceholder: 'Подпись…',
+    cannotLoadCanvas: 'Не удалось загрузить канвас',
+    defaultTextColor: 'Цвет текста по умолчанию',
+    zoomIn: 'Приблизить',
+    zoomOut: 'Отдалить',
+    duplicateSelection: 'Дублировать выделенное',
   },
   en: {
     toolbarTitle: 'Title', toolbarEdit: 'Edit text', toolbarLock: 'Lock', toolbarUnlock: 'Unlock',
@@ -500,8 +510,21 @@ export const messages = {
     settingsKeySaved: 'Key saved — type a new one to replace it',
     settingsSave: 'Save',
     settingsSaved: 'Saved',
+    lineStyle: 'Line style',
+    arrowType: 'Arrow type',
+    edgeAddLabel: 'Add label',
+    edgeChangeColor: 'Change color',
+    edgeLabelPlaceholder: 'Label…',
+    cannotLoadCanvas: 'Cannot load canvas',
+    defaultTextColor: 'Default text color',
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    duplicateSelection: 'Duplicate selection',
   },
 } as const;
+
+/** Any interface message, for modules that hand a label to a component to translate. */
+export type MessageKey = keyof typeof messages.en;
 
 export function useI18n() {
   const setLocale = (value: UiLocale) => {

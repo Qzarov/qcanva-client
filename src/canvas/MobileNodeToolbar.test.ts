@@ -3,6 +3,7 @@
 import { mount } from '@vue/test-utils';
 import { config, enableAutoUnmount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useI18n } from '../composables/useI18n';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
 import { createCanvasLoaderApi } from '../test-support/canvas-loader-api';
@@ -56,7 +57,8 @@ describe('MobileNodeToolbar system Back', () => {
   it('replaces node actions with labelled settings and returns one level at a time', async () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, fontColors: ['#44cf6e'] }, role: 'owner' } });
     const actions = wrapper.findAll('.mobile-toolbar-btn').map(b => b.attributes('aria-label'));
-    expect(actions.indexOf('Hide/Show')).toBeLessThan(actions.indexOf('Delete'));
+    expect(actions.indexOf('Hide')).toBeGreaterThanOrEqual(0);
+    expect(actions.indexOf('Hide')).toBeLessThan(actions.indexOf('Delete'));
     await wrapper.get('.mobile-toolbar-btn[aria-label="Text"]').trigger('click');
     expect(wrapper.find('.mobile-node-toolbar-row').exists()).toBe(false);
     await wrapper.get('[aria-label="Text color"]').trigger('click');
@@ -70,7 +72,7 @@ describe('MobileNodeToolbar system Back', () => {
   it('shows labelled node actions directly without More', () => {
     const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
     expect(wrapper.find('[aria-label="More"]').exists()).toBe(false);
-    for (const label of ['Duplicate', 'Delete', 'Hide/Show']) {
+    for (const label of ['Duplicate', 'Delete', 'Hide']) {
       expect(wrapper.get(`.mobile-toolbar-btn[aria-label="${label}"]`).text()).toBeTruthy();
     }
   });
@@ -182,9 +184,19 @@ describe('MobileNodeToolbar system Back', () => {
 
   it('keeps visibility owner-only and shows the current visibility action', () => {
     const editor = mount(MobileNodeToolbar, { props: { canvasRef, role: 'edit' } });
-    expect(editor.find('[aria-label="Hide/Show"]').exists()).toBe(false);
+    expect(editor.find('[aria-label="Hide"]').exists()).toBe(false);
+    // Caption and tooltip both name what the button will do now.
     const owner = mount(MobileNodeToolbar, { props: { canvasRef: { ...canvasRef, areSelectedNodesHidden: () => true }, role: 'owner' } });
-    expect(owner.get('[aria-label="Hide/Show"]').text()).toBe('Show');
+    expect(owner.get('[aria-label="Show"]').text()).toBe('Show');
+  });
+
+  it('labels every action in the interface language: captions, tooltips and the layer buttons', async () => {
+    useI18n().setLocale('ru');
+    const wrapper = mount(MobileNodeToolbar, { props: { canvasRef, role: 'owner' } });
+    const tooltips = wrapper.findAll('.mobile-toolbar-btn').map((b) => b.attributes('aria-label') ?? '');
+    expect(tooltips).toEqual(expect.arrayContaining(['Дублировать', 'Удалить', 'Скрыть']));
+    expect(tooltips.join(' ')).not.toMatch(/[A-Za-z]{3,}/);
+    useI18n().setLocale('en');
   });
 
   it('uses the shared colour menu for a selected drawing', async () => {
