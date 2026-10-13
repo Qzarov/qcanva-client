@@ -14,6 +14,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useSheetPopup } from '../composables/useSheetPopup';
 
 /**
@@ -64,7 +65,7 @@ watch(hint, () => { if (open.value) void nextTick(place); });
 
 // A notice is a message, not a state: on a phone nobody would see it behind a
 // dot, so it opens the hint by itself for as long as it lasts.
-const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 760px)').matches;
+const isPhone = () => matchesMedia(LAYOUT.phone);
 watch(() => (props.kind === 'notice' ? props.text : ''), (message) => {
   if (!message || !isPhone()) return;
   if (open.value) {

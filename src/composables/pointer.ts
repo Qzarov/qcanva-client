@@ -1,3 +1,5 @@
+import { COARSE_POINTER, matchesMedia } from './layoutMedia';
+
 /**
  * True when the main way in is a finger (a phone or a tablet). Dialogs use it
  * to decide where the focus goes when they open: on a touch screen, focusing a
@@ -5,9 +7,5 @@
  * has asked to type anything.
  */
 export function isCoarsePointer(): boolean {
-  try {
-    return typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
-  } catch {
-    return false;
-  }
+  return matchesMedia(COARSE_POINTER);
 }

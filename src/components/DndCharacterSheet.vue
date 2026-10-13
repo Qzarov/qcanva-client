@@ -336,6 +336,7 @@ import {
   SPELLCASTER_CLASSES, catalogSpellItem, classSlots, preparedLimit, preparesSpells, slotsDifferFromClass, spellcasterClass,
   type CatalogSpell,
 } from '../dnd/spellCatalog';
+import { LAYOUT, useMediaQuery } from '../composables/layoutMedia';
 import { DND_CLASSES, DND_RACES, classOption, raceOption } from '../dnd/identityOptions';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
 
@@ -360,15 +361,6 @@ const SECTION_TABS: Array<{ key: SheetSection; name: string; short: string; icon
   { key: 'spells', name: 'Заклинания', short: 'Магия', icon: Sparkles },
   { key: 'info', name: 'Инфо', short: 'Инфо', icon: ScrollText },
 ];
-/** Follows a media query; `false` where there is none to ask (tests, server). */
-function useMedia(query: string) {
-  const list = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? window.matchMedia(query) : null;
-  const matches = ref(Boolean(list?.matches));
-  const update = () => { matches.value = Boolean(list?.matches); };
-  onMounted(() => list?.addEventListener?.('change', update));
-  onBeforeUnmount(() => list?.removeEventListener?.('change', update));
-  return matches;
-}
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
@@ -577,11 +569,11 @@ export default defineComponent({
     };
 
     // The sheet's one breakpoint (see the styles), and the width under which five names stop fitting in a row.
-    const phone = useMedia('(max-width: 760px)');
+    const phone = useMediaQuery(LAYOUT.phone);
     // Five equal segments are narrower than the longest names up to this width: short names there.
-    const narrow = useMedia('(max-width: 559px)');
+    const narrow = useMediaQuery('(max-width: 559px)');
     // The HP line holds five things on a phone; under this width the initiative's name is cut short to keep them in one row.
-    const tiny = useMedia('(max-width: 379px)');
+    const tiny = useMediaQuery('(max-width: 379px)');
     // On a wide screen the abilities are always in view on the left and have no tab: the attacks open instead.
     const section = computed<SheetSection>(() => {
       const stored = SECTION_OF[props.data.activeTab] ?? 'abilities';

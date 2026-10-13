@@ -10525,7 +10525,7 @@ textarea:focus-visible {
    top, instead of starting under the header. The header is transparent, so
    the glass Back button floats over the panel's top - and the panel's own
    content starts below it, so the button never covers an outline entry.
-   Desktop only: below 1100px the outline is a drawer (OUTLINE_DESKTOP_MIN_WIDTH). */
+   Desktop only: below 1100px the outline is a drawer (LAYOUT.outlineDocked in layoutMedia.ts). */
 @media (min-width: 1100px) {
   .text-doc-page {
     --text-doc-topbar-height: 64px;

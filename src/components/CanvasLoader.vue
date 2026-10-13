@@ -857,6 +857,8 @@ import { alertFailure } from "../composables/appDialog";
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
+import { LAYOUT, useMediaQuery } from "../composables/layoutMedia";
+import { isCoarsePointer } from "../composables/pointer";
 import { useTheme } from "../composables/useTheme";
 import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
 import { useMinimapPreference } from "../composables/useMinimapPreference";
@@ -1000,17 +1002,12 @@ export default defineComponent({
     const { t } = useI18n();
     const { effectiveTheme } = useTheme();
     const { mode: mobileInteractionMode } = useMobileCanvasMode();
-    const isTouchDevice = typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+    const isTouchDevice = isCoarsePointer();
     const isHandMode = computed(() => isTouchDevice && mobileInteractionMode.value === 'hand');
     // Phone layout - the same breakpoint that shows .mobile-only UI (style.css).
     // There a text card is never edited inline: only the bottom toolbar's
     // "edit text" action opens it, in a full-screen editor.
-    const mobileLayoutQuery = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-      ? window.matchMedia('(max-width: 640px), (max-height: 500px) and (orientation: landscape)')
-      : null;
-    const isMobileLayout = ref(mobileLayoutQuery?.matches ?? false);
-    const onMobileLayoutChange = (e: MediaQueryListEvent) => { isMobileLayout.value = e.matches; };
-    mobileLayoutQuery?.addEventListener?.('change', onMobileLayoutChange);
+    const isMobileLayout = useMediaQuery(LAYOUT.canvasCompact);
     const { enabled: minimapEnabled, size: minimapSize } = useMinimapPreference();
     const viewport = ref<HTMLDivElement | null>(null);
     const viewportSize = reactive({ width: 0, height: 0 });
@@ -4401,7 +4398,6 @@ export default defineComponent({
       viewportObserver?.disconnect();
       if (editSaveTimer) clearTimeout(editSaveTimer);
       unregisterEditorBack?.();
-      mobileLayoutQuery?.removeEventListener?.('change', onMobileLayoutChange);
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
     });
 
