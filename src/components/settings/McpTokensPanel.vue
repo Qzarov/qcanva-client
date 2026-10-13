@@ -78,7 +78,7 @@
             <div class="mcp-pick-list">
               <label v-for="resource in shownResources" :key="resource.key" class="mcp-check">
                 <input type="checkbox" :checked="isPicked(resource)" :data-mcp-resource="resource.key" @change="toggleResource(resource)" />
-                <span class="mcp-type">{{ typeLabel(resource.type) }}</span><span>{{ resource.title }}</span>
+                <span class="mcp-type">{{ typeLabel(resource) }}</span><span>{{ resource.title }}</span>
               </label>
             </div>
           </div>
@@ -147,6 +147,7 @@ import { Copy, FileText, Folder as FolderIcon, Plus } from '@lucide/vue';
 import {
   canvas,
   htmlDocuments,
+  interactiveTemplates,
   mcpTokens,
   resourceFolders,
   textDocuments,
@@ -161,7 +162,8 @@ import { useI18n } from '../../composables/useI18n';
 import { useToast } from '../../composables/useToast';
 
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
-type PickResource = { key: string; type: McpTokenResourceType; id: string; title: string };
+/** `templateType` tells a board from a character sheet: both are interactive templates to a token. */
+type PickResource = { key: string; type: McpTokenResourceType; id: string; title: string; templateType?: string };
 
 const ACTIONS: { key: McpTokenAction; label: MessageKey; hint?: MessageKey }[] = [
   { key: 'read', label: 'mcpActionRead', hint: 'mcpActionReadHint' },
@@ -255,7 +257,12 @@ function toggleResource(resource: PickResource) {
 }
 
 const actionLabel = (action: McpTokenAction) => ACTIONS.find((entry) => entry.key === action)?.label ?? 'mcpActionRead';
-const typeLabel = (type: McpTokenResourceType) => (type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : t('document'));
+const typeLabel = (resource: PickResource) => {
+  if (resource.type === 'canvas') return t('canvas');
+  if (resource.type === 'html-document') return 'HTML';
+  if (resource.type === 'interactive-template') return t(resource.templateType === 'trello-board' ? 'mcpTypeBoard' : 'mcpTypeSheet');
+  return t('document');
+};
 
 const formatDate = (value: string) => new Date(value).toLocaleDateString(locale.value);
 const formatDateTime = (value: string) =>
@@ -271,11 +278,13 @@ async function load() {
 }
 
 async function loadPickers() {
-  const [folderList, canvases, htmlList, textList] = await Promise.all([
+  const [folderList, canvases, htmlList, textList, templateList] = await Promise.all([
     resourceFolders.list(),
     canvas.list(),
     htmlDocuments.list(),
     textDocuments.list(),
+    // Boards and character sheets; a failure here must not empty the whole picker.
+    interactiveTemplates.list().catch(() => ({ templates: [] as { id: string; title?: string; templateType?: string }[] })),
   ]);
   folders.value = [...folderList.own, ...folderList.shared];
   const entry = (type: McpTokenResourceType, item: { id: string; title?: string }) => ({
@@ -289,6 +298,7 @@ async function loadPickers() {
     ...[...canvases.own, ...canvases.shared].map((item) => entry('canvas', item)),
     ...htmlList.documents.map((item) => entry('html-document', item)),
     ...textList.documents.map((item) => entry('text-document', item)),
+    ...templateList.templates.map((item) => ({ ...entry('interactive-template', item), templateType: item.templateType })),
   ].filter((item) => (seen.has(item.key) ? false : (seen.add(item.key), true)));
 }
 

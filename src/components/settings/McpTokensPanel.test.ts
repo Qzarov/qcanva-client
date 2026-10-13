@@ -11,6 +11,7 @@ vi.mock('../../api/client', () => ({
   canvas: { list: vi.fn().mockResolvedValue({ own: [{ id: 'c-1', title: 'Board' }], shared: [], public: [] }) },
   htmlDocuments: { list: vi.fn().mockResolvedValue({ groups: [], documents: [] }) },
   textDocuments: { list: vi.fn().mockResolvedValue({ documents: [{ id: 'd-1', title: 'Backlog' }] }) },
+  interactiveTemplates: { list: vi.fn().mockResolvedValue({ templates: [{ id: 'b-1', title: 'Sprint board', templateType: 'trello-board' }, { id: 's-1', title: 'Arwen', templateType: 'dnd-character' }] }) },
 }));
 vi.mock('../../composables/appDialog', () => ({ confirmDialog: vi.fn(), promptDialog: vi.fn() }));
 vi.mock('../../api/public-origin', () => ({ getPublicOrigin: () => 'https://qcanva.qzarov.pro' }));
@@ -58,6 +59,13 @@ describe('McpTokensPanel', () => {
     await wrapper.get('[data-mcp-folder="f-sub"]').trigger('change');
     await wrapper.get('[data-mcp-resource-search]').setValue('back');
     await wrapper.get('[data-mcp-resource="text-document:d-1"]').trigger('change');
+    // Boards and character sheets can be picked one by one too, each named for what it is.
+    const typeOf = (key: string) => wrapper.get(`[data-mcp-resource="${key}"]`).element.parentElement!.querySelector('.mcp-type')!.textContent;
+    await wrapper.get('[data-mcp-resource-search]').setValue('arw');
+    expect(typeOf('interactive-template:s-1')).toBe('Character');
+    await wrapper.get('[data-mcp-resource-search]').setValue('sprint');
+    expect(typeOf('interactive-template:b-1')).toBe('Board');
+    await wrapper.get('[data-mcp-resource="interactive-template:b-1"]').trigger('change');
     await wrapper.get('[data-mcp-days="90"]').trigger('click');
     await wrapper.get('[data-mcp-form]').trigger('submit');
     await flushPromises();
@@ -65,7 +73,7 @@ describe('McpTokensPanel', () => {
     expect(mcpTokens.issue).toHaveBeenCalledWith({
       name: 'Laptop',
       actions: ['read', 'edit', 'share'],
-      scope: { kind: 'limited', folders: ['f-sub'], resources: [{ type: 'text-document', id: 'd-1' }] },
+      scope: { kind: 'limited', folders: ['f-sub'], resources: [{ type: 'text-document', id: 'd-1' }, { type: 'interactive-template', id: 'b-1' }] },
       expiresInDays: 90,
     });
     expect(wrapper.get('[data-mcp-secret]').text()).toBe('qcv_secret');

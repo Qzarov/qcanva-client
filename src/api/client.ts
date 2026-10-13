@@ -535,7 +535,7 @@ export const tags = {
 };
 
 export type McpTokenAction = 'read' | 'edit' | 'create' | 'delete' | 'share';
-export type McpTokenResourceType = 'canvas' | 'html-document' | 'text-document';
+export type McpTokenResourceType = 'canvas' | 'html-document' | 'text-document' | 'interactive-template';
 export type McpTokenScopeInput =
   | { kind: 'all' }
   | { kind: 'limited'; folders: string[]; resources: { type: McpTokenResourceType; id: string }[] };
