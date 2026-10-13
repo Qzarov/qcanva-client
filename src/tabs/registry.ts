@@ -109,6 +109,15 @@ export function closeTab(key: string) {
   persist();
 }
 
+/**
+ * The tab showing a resource, by the id or slug it was opened with or by any
+ * alias registered since (a tab opened by slug knows the id after loading).
+ */
+export function tabKeyForResource(type: TabType, id: string): string | null {
+  const key = state.aliases[aliasKey(type, id)] ?? aliasKey(type, id);
+  return find(key) ? key : null;
+}
+
 /** Newest first, as the panel lists them. */
 export const tabs = computed(() => [...state.tabs].sort((a, b) => b.lastShownAt - a.lastShownAt));
 export const activeTabKey = computed(() => state.activeKey);

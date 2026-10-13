@@ -20,8 +20,9 @@
 </template>
 
 <script lang="ts">
-import { computed, defineComponent, type Component } from 'vue';
-import type { RouteLocationNormalizedLoaded } from 'vue-router';
+import { computed, defineComponent, provide, type Component } from 'vue';
+import { useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
+import { createTabContext, TAB_CONTEXT } from './tabs/tabContext';
 import ToastContainer from './components/ToastContainer.vue';
 import AppDialogHost from './components/AppDialogHost.vue';
 import { viewKeyFor } from './router/view-remount';
@@ -30,8 +31,20 @@ import { hostFor, hostName } from './tabs/TabHost';
 import { installScrollMemory } from './tabs/scrollMemory';
 import { isSleepReady, liveTabKeys, tabKeyFor, tabs } from './tabs/registry';
 
-/** A plain pass-through for pages that are not tabs (or cannot sleep yet). */
-const Passthrough: Component = { name: 'TabPassthrough', setup: (_: unknown, { slots }: any) => () => slots.default?.() };
+/**
+ * A plain pass-through for pages that are not kept alive. One that is still a
+ * tab (an HTML document) gets its tab context all the same - always on
+ * screen, since it never sleeps - so it can name its tab and register its
+ * aliases; without it its tab only ever read "HTML-документ".
+ */
+const Passthrough: Component = {
+  name: 'TabPassthrough',
+  setup: (_: unknown, { slots }: any) => {
+    const key = tabKeyFor(useRoute());
+    if (key) provide(TAB_CONTEXT, createTabContext(key, computed(() => true)));
+    return () => slots.default?.();
+  },
+};
 
 export default defineComponent({
   components: { ToastContainer, AppDialogHost },

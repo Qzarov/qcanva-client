@@ -242,6 +242,7 @@ import { useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { accessRequests, ApiError, auth, getCurrentUser, htmlDocuments, isAuthenticated, setToken } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
+import { useTab } from '../tabs/tabContext';
 import HtmlVisualEditor from '../components/html/HtmlVisualEditor.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessGate from '../components/AccessGate.vue';
@@ -280,6 +281,7 @@ export default defineComponent({
     const { t } = useI18n();
     const title = ref('');
     useDocumentTitle(title);
+    const tab = useTab();
     const html = ref('');
     const savedSnapshot = ref({ title: '', html: '' });
     const revision = ref(0);
@@ -380,6 +382,9 @@ export default defineComponent({
         resolvedId.value = res.document.id;
         markResourceOpened('html-document', res.document.id);
         slug.value = res.document.slug || null;
+        // Both addresses are this one tab (and a delete by id finds it).
+        tab.registerAlias(res.document.id);
+        if (slug.value) tab.registerAlias(slug.value);
         slugInput.value = slug.value || '';
         title.value = res.document.title;
         folderId.value = res.document.folderId || null;
@@ -433,6 +438,8 @@ export default defineComponent({
           return;
         }
         if (e instanceof ApiError && e.status === 404) {
+          // Deleted (or never was): its tab must not stay in the list.
+          tab.forget();
           await router.replace({ name: 'dashboard', query: { type: 'html' } });
           return;
         }

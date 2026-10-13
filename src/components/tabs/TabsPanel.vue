@@ -4,6 +4,7 @@
       <section
         ref="panel"
         class="tabs-panel"
+        tabindex="-1"
         :class="{ 'is-dragging': dragging }"
         :style="dragStyle"
         role="dialog"
@@ -16,15 +17,10 @@
         @touchcancel="onTouchEnd"
       >
         <div class="tabs-panel-handle" aria-hidden="true"></div>
+        <p v-if="!tabs.length" class="tabs-panel-empty" data-tabs-empty>Открытых вкладок нет</p>
         <ul class="tabs-panel-list">
-          <li>
-            <button ref="first" type="button" class="tabs-panel-item tabs-panel-home" @click="goDashboard">
-              <span class="tabs-panel-icon" aria-hidden="true">⌂</span>
-              <span class="tabs-panel-title">Дашборд</span>
-            </button>
-          </li>
-          <li v-for="tab in tabs" :key="tab.key" :class="{ 'is-current': tab.key === activeTabKey }">
-            <button type="button" class="tabs-panel-item" :aria-current="tab.key === activeTabKey ? 'page' : undefined" @click="switchTo(tab)">
+          <li v-for="(tab, index) in tabs" :key="tab.key" :class="{ 'is-current': tab.key === activeTabKey }">
+            <button :ref="(el) => { if (index === 0) first = el as HTMLButtonElement | null; }" type="button" class="tabs-panel-item" :aria-current="tab.key === activeTabKey ? 'page' : undefined" @click="switchTo(tab)">
               <span class="tabs-panel-icon" aria-hidden="true">{{ ICONS[tab.type] }}</span>
               <span class="tabs-panel-title">{{ tab.title || TYPE_LABEL[tab.type] }}</span>
               <span v-if="tab.unsent" class="tabs-panel-unsent" title="Есть неотправленные изменения">не отправлено</span>
@@ -58,10 +54,6 @@ const STATUS_LABEL: Record<TabStatus, string> = { online: 'На связи', rec
 const switchTo = (tab: Tab) => {
   emit('close');
   if (tab.key !== activeTabKey.value) void router.push(tab.path);
-};
-const goDashboard = () => {
-  emit('close');
-  void router.push({ name: 'dashboard' });
 };
 const close = async (tab: Tab) => {
   if (tab.unsent && !(await confirmDialog({ title: 'Закрыть вкладку?', message: 'На ней есть неотправленные изменения.', confirmLabel: 'Закрыть', cancelLabel: 'Отмена' }))) return;
@@ -131,7 +123,7 @@ const onTouchEnd = () => {
 useBackHandler(() => { dismiss(); return true; });
 onMounted(() => {
   void nextTick(() => {
-    first.value?.focus({ preventScroll: true });
+    (first.value ?? panel.value)?.focus({ preventScroll: true });
     // The next frame, so the closed position is painted first and the slide has somewhere to start.
     if (animated) requestAnimationFrame(() => { shown.value = true; });
   });
@@ -151,6 +143,7 @@ onBeforeUnmount(() => { if (closeTimer) clearTimeout(closeTimer); });
 }
 .tabs-panel { width: min(520px, 100%); max-height: 75dvh; overflow-y: auto; padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); box-sizing: border-box; border-radius: 18px 18px 0 0; border: 1px solid var(--ui-border); border-bottom: 0; background: var(--ui-surface-solid); color: var(--ui-text); box-shadow: var(--ui-glass-shadow); }
 .tabs-panel-handle { width: 40px; height: 4px; margin: 4px auto 10px; border-radius: 999px; background: var(--ui-text-muted); opacity: .6; }
+.tabs-panel-empty { margin: 8px 4px 12px; color: var(--ui-text-secondary); font-size: 14px; text-align: center; }
 .tabs-panel-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
 .tabs-panel-list > li { display: flex; align-items: center; gap: 4px; border-radius: 12px; }
 .tabs-panel-list > li.is-current { background: var(--ui-glass-accent-bg); }
