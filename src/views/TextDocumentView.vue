@@ -801,6 +801,8 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
+import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
+import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
@@ -1180,7 +1182,7 @@ export default defineComponent({
      * the header's outline button as a bottom-sheet-style overlay, closed
      * again by the backdrop, Escape, or picking a heading.
      */
-    const OUTLINE_DESKTOP_MIN_WIDTH = 1100;
+    const OUTLINE_DESKTOP_MIN_WIDTH = BREAKPOINTS.outlineDocked;
     const OUTLINE_COLLAPSED_STORAGE_KEY = 'qcanva-outline-collapsed';
     const OUTLINE_WIDTH_STORAGE_KEY = 'qcanva-outline-width';
     // "Использовать значения, лучше соответствующие текущему layout" - 240
@@ -1570,10 +1572,7 @@ export default defineComponent({
     // with a larger `offset` so the native menu fits in the gap BETWEEN the
     // selection and our bubble instead of stacking on top of it. Applied on
     // every platform now, since desktop hits the same overlap.
-    const isTouchPointer =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(pointer: coarse)').matches;
+    const isTouchPointer = isCoarsePointer();
     // `:update-delay="0"` on the bubble (template): the extension's default
     // 250ms delay left the bubble sitting at the PREVIOUS selection while a
     // new one was made, then jumping over - it read as a random position.
@@ -1977,10 +1976,7 @@ export default defineComponent({
       slashCommand(item);
     };
 
-    const isMobileEditorLayout = () =>
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(max-width: 760px)').matches;
+    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
 
     const slashController: SlashMenuController = {
       onOpen: (render) => {
@@ -2723,7 +2719,7 @@ export default defineComponent({
         // width first, so the table's right edge follows the drag. See
         // table-column-widths.ts.
         PinColumnWidthsOnLastColumnResize,
-        TableMoveHandles.configure({ columnLabel: () => t('tableDragColumn'), rowLabel: () => t('tableDragRow'), mobileMaxWidth: 760 }),
+        TableMoveHandles.configure({ columnLabel: () => t('tableDragColumn'), rowLabel: () => t('tableDragRow'), mobileMaxWidth: BREAKPOINTS.phone }),
         // Refuses a transaction that would add a top-level block past the
         // ceiling, and NOTHING else - never a Yjs transaction, never an edit
         // or a deletion. See capacity-guard.ts.

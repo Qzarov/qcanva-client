@@ -1,3 +1,5 @@
+import { LAYOUT } from '../composables/layoutMedia';
+
 /**
  * How many cards a feed section shows before "Show all": whole rows of the
  * card grid, not a fixed count. Mirrors the grid in style.css:
@@ -8,7 +10,7 @@
  */
 export const FEED_CARD_MIN_WIDTH = 210;
 export const FEED_CARD_GAP = 12;
-export const FEED_PHONE_QUERY = '(max-width: 720px)';
+export const FEED_PHONE_QUERY = LAYOUT.dashboardPhone;
 export const FEED_PHONE_COLUMNS = 2;
 /** Before the feed has been measured (or with no layout at all, as in tests). */
 export const FEED_FALLBACK_COLUMNS = 4;

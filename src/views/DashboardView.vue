@@ -1277,6 +1277,7 @@ import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
 import { characterSheetTitle } from '../dnd/characterSheet';
 import { useI18n } from '../composables/useI18n';
+import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
@@ -1487,7 +1488,7 @@ export default defineComponent({
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
     let previousBodyOverflow: string | null = null;
-    const SIDEBAR_DESKTOP_QUERY = '(min-width: 769px)';
+    const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
     let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
@@ -3443,10 +3444,8 @@ export default defineComponent({
     const CARD_MENU_GAP = 6;
     const CARD_MENU_MIN_SPACE = 200;
 
-    const isFloatingMenuLayout = () =>
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(min-width: 721px)').matches;
+    // Above the dashboard's phone width a card menu floats by its trigger; below it is a sheet.
+    const isFloatingMenuLayout = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && !matchesMedia(LAYOUT.dashboardPhone);
 
     const computeCardMenuStyle = (trigger: EventTarget | null) => {
       if (!isFloatingMenuLayout()) return null;

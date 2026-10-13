@@ -897,6 +897,7 @@ import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { CANVAS_ORIGIN_QUERY, useResourceBackTarget } from '../composables/useResourceBackTarget';
 import { useI18n } from '../composables/useI18n';
+import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useMinimapPreference } from '../composables/useMinimapPreference';
 import { useCanvasFullscreen } from '../composables/useCanvasFullscreen';
 import { useMobileCanvasMode } from '../composables/useMobileCanvasMode';
@@ -2254,7 +2255,7 @@ export default defineComponent({
     const toggleDice = () => {
       closeRuler();
       const opening = !diceOpen.value;
-      if (opening && window.matchMedia?.('(max-width: 640px), (max-height: 500px) and (orientation: landscape)').matches) {
+      if (opening && matchesMedia(LAYOUT.canvasCompact)) {
         drawMobilePopup.value = null;
         closeNodeEditingPanels();
         showPlugins.value = false;
