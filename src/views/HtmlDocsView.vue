@@ -21,7 +21,7 @@
           </svg>
           HTML Docs
         </router-link>
-        <router-link v-if="canManageDocs" to="/html-settings" class="sidebar-item">
+        <router-link v-if="canManageDocs" :to="{ name: 'settings', query: { section: 'html' } }" class="sidebar-item">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 0 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1A2 2 0 0 1 4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1A2 2 0 0 1 7 4.2l.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1A2 2 0 0 1 19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.1a2 2 0 0 1 0 4H21a1.7 1.7 0 0 0-1.6 1Z" />
@@ -64,13 +64,13 @@
             <div v-if="showMobileActions" class="mobile-action-popover" @click.stop>
               <button class="card-menu-item" @click="uploadInput?.click()">Upload HTML</button>
               <button class="card-menu-item" @click="createGroup">+ Group</button>
-              <router-link to="/html-settings" class="card-menu-item">Settings</router-link>
+              <router-link :to="{ name: 'settings', query: { section: 'html' } }" class="card-menu-item">Settings</router-link>
             </div>
           </div>
           <div class="dash-actions-secondary">
             <button class="btn-ghost" @click.stop="uploadInput?.click()">Upload HTML</button>
             <button class="btn-ghost" @click.stop="createGroup">+ Group</button>
-            <router-link to="/html-settings" class="btn-ghost">Settings</router-link>
+            <router-link :to="{ name: 'settings', query: { section: 'html' } }" class="btn-ghost">Settings</router-link>
           </div>
         </template>
       </div>

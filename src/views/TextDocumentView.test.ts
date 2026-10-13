@@ -68,7 +68,7 @@ vi.mock("@tiptap/extension-task-item", () => ({
     configure: vi.fn(() => ({})),
   },
 }));
-vi.mock("@tiptap/extension-collaboration", () => ({
+vi.mock("../text-documents/collaboration", () => ({
   default: { configure: vi.fn(() => ({})) },
 }));
 vi.mock("@tiptap/extension-collaboration-cursor", () => ({

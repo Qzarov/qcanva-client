@@ -280,6 +280,7 @@ describe('DndCharacterSheet interactions', () => {
     await equipTab.trigger('click');
     expect(data.activeTab).toBe('equipment');
     await wrapper.get('.dnd-cs-add').trigger('click');
+    await wrapper.findAll('.dnd-catalog-custom button').find((b) => b.text() === '+ Свой предмет')!.trigger('click');
     expect(data.equipment).toHaveLength(1);
   });
 

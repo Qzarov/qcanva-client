@@ -744,6 +744,7 @@ import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
 import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
+import { BlockId } from '../text-documents/block-id';
 import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
@@ -783,7 +784,7 @@ import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacit
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
 import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
-import Collaboration from '@tiptap/extension-collaboration';
+import Collaboration from '../text-documents/collaboration';
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
 import { yUndoPluginKey } from 'y-prosemirror';
 import { TextSelection } from '@tiptap/pm/state';
@@ -2546,6 +2547,8 @@ export default defineComponent({
         // heading-id.ts's file comment for why this is separate from the
         // derived, text-based anchor collapsibleHeading/TableOfContents use.
         HeadingId,
+        // Stable blockId per block: the address MCP block edits use (block-id.ts).
+        BlockId,
         HeadingLink.configure({
           onNavigate: navigateToHeadingLink,
           labels: headingLinkNodeLabels,

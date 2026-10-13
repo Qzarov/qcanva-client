@@ -134,7 +134,7 @@
         <div v-if="section !== 'abilities'" class="dnd-cs-tab-panel dnd-glass" role="tabpanel">
           <!-- Combat: attacks and features -->
           <template v-if="section === 'combat'">
-            <DndWeaponAttacks :attacks="weaponAttacks" @attack="attackWithWeapon" @damage="weaponDamage" />
+            <DndWeaponAttacks :attacks="weaponAttacks" :equipment-label="equipmentTabLabel" @attack="attackWithWeapon" @damage="weaponDamage" />
             <h4 v-if="data.attacks.length || !locked" class="dnd-cs-subheading">Другие атаки</h4>
             <div v-for="item in data.attacks" :key="item.id" class="dnd-cs-attack-row">
               <div class="dnd-cs-attack-top">
@@ -181,7 +181,7 @@
             <DndWallet :coins="data.coins" :readonly="readonly" @update="setCoins" />
             <h4 class="dnd-cs-subheading dnd-cs-section-gap">Предметы</h4>
             <p v-if="locked && !data.equipment.length" class="dnd-cs-empty">Предметов пока нет.</p>
-            <div v-for="item in data.equipment" :key="item.id" class="dnd-cs-equip-row">
+            <div v-for="item in data.equipment" :key="item.id" class="dnd-cs-equip-row" :data-item-id="item.id">
               <label class="dnd-cs-equip-check"><input type="checkbox" :checked="item.equipped" :disabled="readonly" aria-label="Экипировано" @change="toggleItem('equipment', item.id, 'equipped')" /></label>
               <input :readonly="locked" :value="item.name" placeholder="Предмет" aria-label="Название предмета" @change="setItem('equipment', item.id, 'name', evVal($event))" />
               <input class="dnd-cs-qty" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" aria-label="Количество" @change="setItemNumber('equipment', item.id, 'quantity', evVal($event))" />
@@ -190,10 +190,7 @@
               <button v-if="!locked" type="button" class="dnd-cs-row-remove" aria-label="Удалить предмет" @click="removeItem('equipment', item.id)">×</button>
               <DndWeaponFields v-if="isWeapon(item) && !locked" :item="item" :sheet="data" :readonly="locked" @change="change" />
             </div>
-            <div v-if="!locked" class="dnd-cs-add-row">
-              <button type="button" class="dnd-cs-add" @click="addItem('equipment')">+ Добавить предмет</button>
-              <button type="button" class="dnd-cs-add" @click="weaponCatalogOpen = true">+ Оружие из списка</button>
-            </div>
+            <button v-if="!locked" type="button" class="dnd-cs-add" @click="itemCatalogOpen = true">+ Добавить</button>
           </template>
 
           <!-- Info: goals, personality, notes, proficiencies -->
@@ -293,7 +290,7 @@
 
     <DndRollToasts v-if="onScreen" :history="rollHistory" :toasts="rollToasts" @dismiss="dismissRoll" @damage="damageFromToast" />
     <DndSpellCatalog v-if="spellCatalogOpen && !locked" :sheet="data" @close="spellCatalogOpen = false" @pick="addCatalogSpell" />
-    <DndWeaponCatalog v-if="weaponCatalogOpen && !locked" @close="weaponCatalogOpen = false" @pick="addCatalogWeapon" />
+    <DndItemCatalog v-if="itemCatalogOpen && !locked" :added="catalogAdded" @close="itemCatalogOpen = false" @pick="addCatalogItem" @custom="addCustomItem" />
     <DndRollLog v-if="rollLogOpen" :history="rollHistory" @close="rollLogOpen = false" @damage="damageFromToast" />
   </div>
 </template>
@@ -323,12 +320,12 @@ import DndWeaponAttacks from './DndWeaponAttacks.vue';
 import DndWeaponFields from './DndWeaponFields.vue';
 import DndSpellFields from './DndSpellFields.vue';
 import DndSpellCatalog from './DndSpellCatalog.vue';
-import DndWeaponCatalog from './DndWeaponCatalog.vue';
+import DndItemCatalog from './DndItemCatalog.vue';
 import DndWallet from './DndWallet.vue';
 import { Award, Backpack, Brain, Eye, Footprints, Moon, ScrollText, Search, Shield, Sparkles, Swords, UserRound } from '@lucide/vue';
 import DndStatStrip, { type StatStripItem } from './DndStatStrip.vue';
 import type { DndCoins } from '../dnd/coins';
-import { catalogEquipmentItem, type CatalogWeapon } from '../dnd/weaponCatalog';
+import { catalogListItem, catalogPickContents, type CatalogItem } from '../dnd/itemCatalog';
 import { formatSigned, parseFormula } from '../dnd/dice';
 import { useSheetRolls, type DamageOption, type RemoteRoller, type SheetRolls } from '../dnd/useSheetRolls';
 import {
@@ -377,7 +374,7 @@ const newId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   name: 'DndCharacterSheet',
-  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndWeaponCatalog, DndWallet, DndStatStrip, Moon },
+  components: { DndHpDialog, DndIdentitySelect, DndSelect, DndRestDialog, DndPassiveScores, DndCharacterStates, DndFormulaButton, DndRollBar, DndRollLog, DndRollToasts, DndWeaponAttacks, DndWeaponFields, DndSpellFields, DndSpellCatalog, DndItemCatalog, DndWallet, DndStatStrip, Moon },
   props: {
     data: { type: Object as PropType<DndCharacterSheetData>, required: true },
     readonly: { type: Boolean, default: false },
@@ -593,6 +590,7 @@ export default defineComponent({
     const tabs = computed<SectionTab[]>(() => SECTION_TABS
       .filter((tab) => phone.value || tab.key !== 'abilities')
       .map((tab) => ({ key: tab.key, name: tab.name, icon: tab.icon, label: narrow.value || tab.key === 'combat' ? tab.short : tab.name })));
+    const equipmentTabLabel = computed(() => tabs.value.find((tab) => tab.key === 'equipment')?.label ?? 'Снаряжение');
     const setSection = (next: SheetSection) => {
       if (section.value === next) return;
       props.data.activeTab = SECTION_TAB[next];
@@ -733,7 +731,7 @@ export default defineComponent({
       const [option] = spellDamageOption(item);
       if (option) void rolls.rollDamage(spellName(item), option);
     };
-    const weaponCatalogOpen = ref(false);
+    const itemCatalogOpen = ref(false);
     // Dialogs and toasts are teleported to <body>: a sheet asleep in a
     // background tab must not leave them over the page on screen. Toasts come
     // back with the sheet (a pending attack keeps its damage roll).
@@ -742,14 +740,38 @@ export default defineComponent({
         hpOpen.value = false;
         restKind.value = null;
         spellCatalogOpen.value = false;
-        weaponCatalogOpen.value = false;
+        itemCatalogOpen.value = false;
         rollLogOpen.value = false;
       },
     });
-    const addCatalogWeapon = (weapon: CatalogWeapon) => {
-      props.data.equipment.push(catalogEquipmentItem(weapon, newId()));
-      weaponCatalogOpen.value = false;
+    /** How many of each catalog entry the equipment already holds. */
+    const catalogAdded = computed(() => {
+      const counts = new Map<string, number>();
+      for (const item of props.data.equipment) {
+        if (item.catalogKey) counts.set(item.catalogKey, (counts.get(item.catalogKey) ?? 0) + (item.quantity ?? 1));
+      }
+      return counts;
+    });
+    // Picking again adds to the quantity of the row already there; a pack adds its contents.
+    const addCatalogItem = (entry: CatalogItem) => {
+      if (props.readonly) return;
+      for (const { item, quantity } of catalogPickContents(entry)) {
+        const existing = props.data.equipment.find((row) => row.catalogKey === item.key);
+        if (existing) existing.quantity = (existing.quantity ?? 1) + quantity;
+        else props.data.equipment.push(catalogListItem(item, newId(), quantity));
+      }
       change();
+    };
+    const addCustomItem = async (kind: 'item' | 'weapon') => {
+      if (props.readonly) return;
+      const item: DndListItem & { weapon?: unknown } = { id: newId(), name: '', quantity: 1, equipped: false };
+      if (kind === 'weapon') item.weapon = createWeapon();
+      props.data.equipment.push(item);
+      itemCatalogOpen.value = false;
+      change();
+      // The dialog gives the focus back as it closes; the new row's name takes it after that.
+      await nextTick();
+      document.querySelector<HTMLInputElement>(`[data-item-id="${item.id}"] [aria-label="Название предмета"]`)?.focus();
     };
     const toggleWeapon = (item: DndListItem) => {
       // null, not delete: the sync diff only sends keys that are present.
@@ -763,7 +785,7 @@ export default defineComponent({
       // each being stretched to a tall neighbour's height.
       abilities: (['strength', 'constitution', 'dexterity', 'intelligence', 'wisdom', 'charisma'] as const)
         .map((k) => DND_ABILITIES.find((a) => a.key === k)!),
-      tabs, phone, tiny, section, setSection, setCoins, statStrip, setStat,
+      tabs, equipmentTabLabel, phone, tiny, section, setSection, setCoins, statStrip, setStat,
       personalityFields: [
         { key: 'traits', label: 'Черты характера' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
       ] as { key: keyof DndCharacterSheetData['personality']; label: string }[],
@@ -789,7 +811,7 @@ export default defineComponent({
       toggleProf, setProfListItem, addProfListItem, removeProfListItem,
       addItem, removeItem, setItem, setItemNumber, toggleItem, changeUses,
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
-      attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon, weaponCatalogOpen, addCatalogWeapon,
+      attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon, itemCatalogOpen, catalogAdded, addCatalogItem, addCustomItem,
       rollMode: rolls.mode, setRollMode: rolls.setMode, rollHistory: rolls.history, rollToasts: rolls.toasts, dismissRoll: rolls.dismiss,
     };
   },

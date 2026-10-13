@@ -564,6 +564,11 @@ body {
   overflow: hidden;
 }
 .dashboard-central-shell .app-main {
+  /* Always the 1fr row, even when the header above is hidden (desktop):
+     otherwise main took the auto row, was only as tall as its content, and
+     its overflow clipped a menu opened near the bottom of a short page
+     (a near-empty folder's "⋯"). */
+  grid-row: 2;
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
@@ -667,8 +672,40 @@ body {
   color: var(--ui-text-secondary);
   text-align: left;
 }
+.dashboard-sidebar-home-row {
+  position: relative;
+  min-width: 0;
+}
+.dashboard-sidebar .dashboard-sidebar-home {
+  padding-right: 40px;
+}
+/* The chevron sits over the Home row's right end: a button of its own, so
+   the row opens the feed and only the chevron folds the folders. */
 .dashboard-sidebar .dashboard-sidebar-home-disclosure {
-  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  position: absolute;
+  top: 50%;
+  right: 5px;
+  width: 30px;
+  height: 30px;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-sidebar .dashboard-sidebar-home-disclosure:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dashboard-sidebar-home-disclosure:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
 }
 .dashboard-sidebar-home-chevron {
   display: block;
@@ -874,10 +911,10 @@ body {
   justify-items: center;
   padding-inline: 4px;
 }
-.dashboard-sidebar.collapsed .dashboard-sidebar-home-disclosure {
-  grid-template-columns: 1fr;
+.dashboard-sidebar.collapsed .dashboard-sidebar-home {
+  padding-right: 4px;
 }
-.dashboard-sidebar.collapsed:not(.mobile-open) .dashboard-sidebar-home-chevron,
+.dashboard-sidebar.collapsed:not(.mobile-open) .dashboard-sidebar-home-disclosure,
 .dashboard-sidebar.collapsed:not(.mobile-open) .dashboard-sidebar-home-children {
   display: none;
 }
@@ -2089,15 +2126,10 @@ body {
   background: var(--ui-danger-soft);
   border-color: color-mix(in srgb, var(--ui-danger) 28%, transparent);
 }
+/* A folder's contents run down the page like the feed does: no box of its
+   own with a scrollbar inside the page's. */
 .folder-manager-body {
   width: 100%;
-  /* A group stays compact: three rows are visible, the rest scroll inside it. */
-  min-height: 330px;
-  max-height: 330px;
-  overflow-y: auto;
-  /* Let a swipe continue to the dashboard once this list reaches an edge. */
-  overscroll-behavior: auto;
-  padding-right: 2px;
 }
 .folder-collapse-enter-active,
 .folder-collapse-leave-active {
@@ -3069,6 +3101,10 @@ body {
     padding-inline: 8px;
   }
 
+  .dashboard-sidebar.collapsed .dashboard-sidebar-home {
+    padding-right: 40px;
+  }
+
   .dashboard-sidebar.collapsed .dashboard-sidebar-section-heading {
     justify-content: space-between;
     padding-inline: 6px;
@@ -3691,10 +3727,6 @@ body {
   }
 
   .folder-nav-name { max-width: none; }
-  .folder-manager-body {
-    min-height: 360px;
-    max-height: 360px;
-  }
 
   .dashboard-recents { margin-top: 22px; }
   /* A fixed 2 columns, not auto-fill: the collapsed grid must read as a
@@ -3856,13 +3888,8 @@ body {
     font-size: 12px;
   }
 
-  .dashboard-folder-content .folder-manager-body {
-    max-height: none;
-    overflow: visible;
-    padding-right: 0;
-  }
 
-  .dashboard-folder-content .dash-grid {
+  .dashboard .dashboard-list-view .dashboard-folder-content .dash-grid {
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -3874,11 +3901,12 @@ body {
     padding-bottom: 4px;
   }
 
-  /* Documents inside a folder read as glass rounded tiles too (front task) -
+  /* List view on a phone. Documents inside a folder read as glass rounded
+     tiles too (front task) -
      the same card language as the main dashboard - instead of a flat,
      separator-ruled list. The compact row layout is kept for scanning; only
      the surface becomes a spaced, rounded glass tile. */
-  .dashboard-folder-content .canvas-card {
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card {
     display: grid;
     grid-template-columns: 22px minmax(0, 1fr) 32px;
     align-items: start;
@@ -3890,18 +3918,18 @@ body {
     background: var(--ui-glass-tint), var(--ui-glass-card-bg);
   }
 
-  .dashboard-folder-content .card-title-with-icon {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-with-icon {
     grid-column: 1 / 3;
     grid-row: 1;
     display: flex;
     align-items: flex-start;
     gap: 8px;
   }
-  .dashboard-folder-content .card-title-with-icon .resource-title-icon {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-with-icon .resource-title-icon {
     flex: 0 0 auto;
     margin-top: 2px;
   }
-  .dashboard-folder-content .card-title {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title {
     font-size: 14px;
   }
   /* Clamped on its own span, not the icon+title flex row itself - that row
@@ -3910,22 +3938,22 @@ body {
      .dashboard .card-title-text rule sets (same specificity, this one wins
      purely on being later - explicit here so it doesn't look accidental):
      line-clamp needs the text free to actually wrap across its 2 lines. */
-  .dashboard-folder-content .card-title-text {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-text {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
     white-space: normal;
   }
-  .dashboard-folder-content .card-title-input {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-input {
     font-size: 14px;
   }
 
-  .dashboard-folder-content .card-meta {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-meta {
     display: none;
   }
 
-  .dashboard-folder-content .card-meta-mobile {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-meta-mobile {
     grid-column: 2;
     display: block;
     margin-top: 4px;
@@ -3933,7 +3961,7 @@ body {
     font-size: 12px;
   }
 
-  .dashboard-folder-content .card-date-mobile {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-date-mobile {
     grid-column: 2;
     display: block;
     margin-top: 2px;
@@ -3941,24 +3969,25 @@ body {
     font-size: 12px;
   }
 
-  .dashboard-folder-content .card-tags {
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-tags {
     display: none;
   }
 
-  .dashboard-folder-content .canvas-card .card-manage {
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card .card-manage {
     grid-column: 3;
     grid-row: 1;
     position: static;
     width: 32px;
     height: 32px;
+    transform: none;
   }
   /* The desktop "reveal the kebab on hover" pattern has nothing to reveal it
      on a touch device - keep it visible here regardless of hover/focus. */
-  .dashboard-folder-content .canvas-card:not(:hover):not(:focus-within) .card-manage {
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card:not(:hover):not(:focus-within) .card-manage {
     opacity: 1;
   }
 
-  .dashboard-folder-content .html-doc-card .card-open-link {
+  .dashboard .dashboard-list-view .dashboard-folder-content .html-doc-card .card-open-link {
     grid-column: 1 / -1;
     grid-row: 1 / -1;
   }
@@ -9206,6 +9235,26 @@ textarea:focus-visible {
   .mobile-modebar-tap-hint { animation: none; }
 }
 
+/* An explanation that opens on tap next to its button (useAnchoredHint):
+   a full sentence or two, so a solid card like a menu, not a glass pill.
+   Teleported to <body>, so it only uses the global --ui-* tokens. */
+.ui-explain-hint {
+  position: fixed;
+  z-index: 3100; /* above the sheet's roll toasts */
+  margin: 0;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+  box-shadow: var(--ui-glass-shadow);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 /* ===== Mobile Node Toolbar ===== */
 .mobile-node-toolbar {
   position: fixed;
@@ -10512,4 +10561,130 @@ html { -webkit-tap-highlight-color: transparent; }
     outline: 3px solid var(--ui-glass-accent-border);
     outline-offset: 1px;
   }
+}
+
+/* List view (the dashboard's grid/list switch): Folders, Shared, Templates,
+   Public and an open folder's contents turn into one-column rows like
+   Recents' own list. Kept late so it beats the phone 2-column grid of equal
+   specificity; the phone folder rows below are more specific still. */
+.dashboard .dashboard-list-view .dash-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.dashboard .dashboard-list-view .canvas-card {
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 42px 10px 14px;
+}
+.dashboard .dashboard-list-view .card-title {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.dashboard .dashboard-list-view :is(.card-owner, .card-folder, .card-tags) {
+  margin-top: 0;
+}
+.dashboard .dashboard-list-view .canvas-card > .card-manage {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* "Reset filters" link inside a filtered-empty state. */
+.dash-empty-reset {
+  display: block;
+  margin: 8px auto 0;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-brands-light);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dash-empty-reset:hover { text-decoration: underline; }
+.dash-empty-reset:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+/* On the feed every section stays, empty or not: a one-line note each,
+   not the 60px block a whole page's empty state gets. */
+.dashboard-feed-section .dash-empty {
+  padding: 18px 12px;
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+/* Folders lives inside the Recents block: give its heading the gap every
+   other feed section gets from .dash-section. */
+.dashboard-recent-folders-head {
+  margin-top: 28px;
+}
+
+/* An open folder is a heading and its contents on the page, not a framed
+   card: the frame came with the old fixed-height scroll box. */
+.dashboard-view .dashboard-folder-content .folder-manager-row {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+.folder-view-toggle {
+  flex: 0 0 auto;
+}
+/* In the folder heading the phone sort button lines up with the grid/list
+   switch and the menus next to it. */
+.folder-manager-top .dash-sort-menu-mobile {
+  align-self: center;
+}
+
+/* ===== Settings: Liquid Glass =====
+   Same recipe and tokens as the dashboard and the documents: the page on the
+   ambient light, the sticky bar and the section list as blurred glass, cards
+   as glass without blur (SettingsView / McpTokensPanel), fields and standalone
+   buttons as inset panes, primary actions as accent glass. */
+.settings-page {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.settings-page :is(.settings-topbar, .settings-nav) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.settings-page .settings-topbar {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+}
+.settings-page :is(.btn-ghost, .account-menu-trigger),
+.settings-page .dashboard-modal-input {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.settings-page .dashboard-modal-input {
+  border-radius: 12px;
+}
+.settings-page .dashboard-modal-input:focus {
+  outline: none;
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 0 0 3px var(--ui-glass-focus-glow);
+}
+@media (hover: hover) {
+  .settings-page :is(.btn-ghost, .account-menu-trigger):hover:not(:disabled) {
+    background: var(--ui-glass-btn-hover);
+  }
+}
+.settings-page .btn-primary {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.settings-page .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12);
 }

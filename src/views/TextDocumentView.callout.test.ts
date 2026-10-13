@@ -10,6 +10,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TextDocumentView from './TextDocumentView.vue';
 import { CALLOUT_VARIANTS, nodeSpec } from '../documents/document-nodes';
 import { CALLOUT_INPUT_RULE } from '../text-documents/callout';
+import { withoutBlockIds } from '../test-support/block-id';
 
 const push = vi.fn();
 const replace = vi.fn();
@@ -136,7 +137,7 @@ describe('TextDocumentView callout', () => {
     editor.commands.setContent('<p>careful</p>');
     editor.chain().focus().toggleCallout('warning').run();
 
-    const html = editor.getHTML();
+    const html = withoutBlockIds(editor.getHTML());
     // The shared inventory says a callout is an <aside>; this is the same
     // entry canvas-server-back's renderHtml reads for its tag.
     expect(nodeSpec('callout')?.tag).toBe('aside');
@@ -190,7 +191,7 @@ describe('TextDocumentView callout', () => {
 
     editor.commands.setContent(source);
 
-    expect(editor.getHTML()).toBe(source);
+    expect(withoutBlockIds(editor.getHTML())).toBe(source);
     const callout = findCallout(editor.getJSON());
     expect(callout.content).toHaveLength(2);
 
@@ -344,7 +345,7 @@ describe('TextDocumentView callout', () => {
     typeText(editor, `:::${variant} `);
 
     expect(findCallout(editor.getJSON()).attrs.variant).toBe(variant);
-    expect(editor.getHTML()).toContain(`<aside data-variant="${variant}">`);
+    expect(withoutBlockIds(editor.getHTML())).toContain(`<aside data-variant="${variant}">`);
 
     wrapper.unmount();
   });

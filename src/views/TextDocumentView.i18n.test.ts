@@ -66,7 +66,7 @@ vi.mock('@tiptap/extension-link', () => ({ default: { configure: vi.fn(() => ({}
 vi.mock('@tiptap/extension-task-list', () => ({ default: {} }));
 vi.mock('@tiptap/extension-image', () => ({ default: { configure: vi.fn(() => ({})) } }));
 vi.mock('@tiptap/extension-task-item', () => ({ default: { extend: vi.fn(() => ({ configure: vi.fn(() => ({})) })), configure: vi.fn(() => ({})) } }));
-vi.mock('@tiptap/extension-collaboration', () => ({ default: { configure: vi.fn(() => ({})) } }));
+vi.mock('../text-documents/collaboration', () => ({ default: { configure: vi.fn(() => ({})) } }));
 vi.mock('@tiptap/extension-collaboration-cursor', () => ({ default: { configure: vi.fn(() => ({})) } }));
 
 vi.mock('../api/client', () => ({

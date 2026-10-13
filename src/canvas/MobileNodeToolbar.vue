@@ -138,6 +138,7 @@ import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeAction } from './nodeActions';
 import { useI18n } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
+import type { CanvasLoaderApi, CanvasTextAlignment } from './loaderApi';
 
 type ToolbarAction = Omit<NodeAction, 'key'> & { key: string };
 
@@ -196,7 +197,7 @@ export default defineComponent({
   name: 'MobileNodeToolbar',
   components: { CanvasColorMenu, CanvasStrokeWidth, CanvasPanelPage },
   props: {
-    canvasRef: { type: Object as PropType<any>, default: null },
+    canvasRef: { type: Object as PropType<CanvasLoaderApi | null>, default: null },
     role: { type: String as PropType<string>, default: 'read' },
   },
   setup(props) {
@@ -221,7 +222,7 @@ export default defineComponent({
 
     const DRAWING_SECTIONS = ['drawing-color', 'drawing-stroke-width'];
 
-    const aligns = [
+    const aligns: { v: CanvasTextAlignment; l: string; icon: string }[] = [
       { v: 'left', l: 'Left', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>' },
       { v: 'center', l: 'Center', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="5" y1="18" x2="19" y2="18"/></svg>' },
       { v: 'right', l: 'Right', icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>' },
@@ -276,8 +277,8 @@ export default defineComponent({
           borderStyleSection: () => triggerSection('border-style'),
           alignSection: () => triggerSection('alignment'),
           imageTitleSection: () => triggerSection('image-title'),
-          edgeToggleStyle: () => cr.onEdgeToggleStyle?.(cr.selectedEdgeId),
-          edgeCycleArrow: () => cr.onEdgeCycleArrow?.(cr.selectedEdgeId),
+          edgeToggleStyle: () => cr.onEdgeToggleStyle?.(),
+          edgeCycleArrow: () => cr.onEdgeCycleArrow?.(),
           drawingDuplicate: () => cr.duplicateSelectedDrawing?.(),
           drawingDelete: () => cr.deleteSelectedDrawing?.(),
           drawingColorSection: () => triggerSection('drawing-color'),

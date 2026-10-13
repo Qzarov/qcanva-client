@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { lowlight } from './code-highlighting';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { createCodeHighlighter, ensureCodeLanguages, lowlight } from './code-highlighting';
 
 // `lowlight.registered(name)` asks the underlying highlight.js core
 // directly whether a grammar answers to that name - no auto-detect
@@ -8,6 +8,7 @@ import { lowlight } from './code-highlighting';
 // precise place to pin which languages are actually registered: removing
 // one of these registrations fails exactly the matching case below.
 describe('code-highlighting language registry', () => {
+  beforeAll(ensureCodeLanguages);
   it.each(['javascript', 'typescript', 'python', 'bash', 'json', 'sql', 'xml', 'css'])(
     'registers %s',
     (language) => {
@@ -37,5 +38,32 @@ describe('code-highlighting language registry', () => {
     // unregistered name throws, which is why the plugin falls back to
     // highlightAuto instead for such languages.
     expect(() => lowlight.highlight('rust', 'fn main() {}')).toThrow(/not registered/i);
+  });
+});
+
+describe('lazy language loading', () => {
+  it('starts empty and shares one pending import between callers', async () => {
+    const importLanguages = vi.fn(() => import('./code-highlighting-languages'));
+    const highlighter = createCodeHighlighter(importLanguages);
+    expect(highlighter.lowlight.listLanguages()).toEqual([]);
+    expect(importLanguages).not.toHaveBeenCalled();
+    const first = highlighter.ensureReady();
+    const second = highlighter.ensureReady();
+    expect(first).toBe(second);
+    await Promise.all([first, second]);
+    expect(highlighter.lowlight.listLanguages()).toEqual(['bash', 'plaintext', 'css', 'javascript', 'json', 'python', 'sql', 'typescript', 'xml']);
+    expect(highlighter.lowlight.highlight('js', 'const value = 42;').data?.language).toBe('js');
+    await highlighter.ensureReady();
+    expect(importLanguages).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a failed import to be retried without losing highlighting support', async () => {
+    const importLanguages = vi.fn(() => import('./code-highlighting-languages'));
+    importLanguages.mockRejectedValueOnce(new Error('offline'));
+    const highlighter = createCodeHighlighter(importLanguages);
+    await expect(highlighter.ensureReady()).rejects.toThrow('offline');
+    expect(highlighter.lowlight.listLanguages()).toEqual([]);
+    await highlighter.ensureReady();
+    expect(highlighter.lowlight.highlight('typescript', 'interface Foo { bar: string }').data?.language).toBe('typescript');
   });
 });

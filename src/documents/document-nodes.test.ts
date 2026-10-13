@@ -18,7 +18,7 @@ describe('the shared node inventory: callout', () => {
     const spec = nodeSpec('callout');
     expect(spec?.group).toBe('block');
     expect(spec?.tag).toBe('aside');
-    expect(spec?.attrs).toEqual(['variant']);
+    expect(spec?.attrs).toEqual(['variant', 'blockId']);
     expect(spec?.selfClosing).toBeUndefined();
   });
 

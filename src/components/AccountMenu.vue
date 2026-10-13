@@ -53,7 +53,7 @@
         <router-link v-if="showPlugins" to="/plugins" class="account-menu-item" @click="close(false)">
           <Puzzle :size="17" aria-hidden="true" />{{ t('plugins') }}
         </router-link>
-        <router-link to="/html-settings" class="account-menu-item" @click="close(false)">
+        <router-link to="/settings" class="account-menu-item" data-account-menu-settings @click="close(false)">
           <Settings :size="17" aria-hidden="true" />{{ t('settings') }}
         </router-link>
         <button type="button" class="account-menu-item account-menu-sign-out" data-account-menu-sign-out @click="signOut">
@@ -290,7 +290,15 @@ defineExpose({ close });
   padding: 10px;
   border: 1px solid var(--ui-glass-border);
   border-radius: 20px;
-  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  /* The bottom layer, the page colour nearly opaque, keeps the menu readable
+     where its blur cannot work: inside a glass bar or sidebar (both blurred
+     themselves), a nested backdrop-filter only sees that bar, so whatever the
+     menu overhangs - the dashboard's content - showed through sharp. */
+  /* Only the last layer may be a plain colour, so the glass colour rides as a gradient. */
+  background:
+    var(--ui-glass-tint),
+    linear-gradient(var(--ui-glass-bg), var(--ui-glass-bg)),
+    color-mix(in srgb, var(--ui-page) 94%, transparent);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
@@ -321,6 +329,7 @@ defineExpose({ close });
 }
 .account-menu--glass :deep(.theme-selector-option) {
   min-height: 32px;
+  padding-inline: 8px;
   border-radius: 999px;
 }
 .account-menu--glass :deep(.theme-selector-option:hover:not(.active)) {

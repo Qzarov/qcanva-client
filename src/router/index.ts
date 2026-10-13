@@ -38,11 +38,14 @@ const router = createRouter({
       component: () => import('../views/HtmlDocumentView.vue'),
     },
     {
-      path: '/html-settings',
-      name: 'html-settings',
-      component: () => import('../views/HtmlSettingsView.vue'),
+      path: '/settings',
+      name: 'settings',
+      component: () => import('../views/SettingsView.vue'),
       meta: { requiresAuth: true },
     },
+    // Old addresses, kept working: the MCP guide and the back's login-token
+    // notice link to /mcp.
+    { path: '/html-settings', redirect: { name: 'settings', query: { section: 'html' } } },
     {
       path: '/docs/:id',
       name: 'text-document',
@@ -54,6 +57,7 @@ const router = createRouter({
       component: () => import('../views/BoardTemplateView.vue'),
       meta: { requiresAuth: true },
     },
+    { path: '/mcp', redirect: { name: 'settings', query: { section: 'mcp' } } },
     {
       path: '/admin',
       name: 'admin',

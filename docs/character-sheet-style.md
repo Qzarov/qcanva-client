@@ -207,9 +207,9 @@
 
 | Что | Вид |
 |---|---|
-| Диалог (`DndHpDialog`, `DndRestDialog`, `DndRollLog`, `DndWeaponCatalog`, `DndSpellCatalog`, общий `AppDialogHost`) | затемнение `rgba(0,0,0,.45)`, окно `--ui-surface-solid`, рамка `--ui-border`, радиус 16, тень `--ui-glass-shadow`, ширина до 340–480 px; кнопки — общие `.btn-ghost` и `.btn-primary`, по центру |
+| Диалог (`DndHpDialog`, `DndRestDialog`, `DndRollLog`, `DndItemCatalog`, `DndSpellCatalog`, общий `AppDialogHost`) | затемнение `rgba(0,0,0,.45)`, окно `--ui-surface-solid`, рамка `--ui-border`, радиус 16, тень `--ui-glass-shadow`, ширина до 340–480 px (каталоги — до 560 px, высота до 720 px; фильтры — пилюли, выбранная залита акцентом); кнопки — общие `.btn-ghost` и `.btn-primary`, по центру |
 | Меню и список вариантов (`AccountMenu glass`, `.dnd-select-list`) | стекло — см. «Меню» ниже |
-| Подсказка-пояснение (`.dnd-formula-hint`) | как меню: `--ui-surface-solid`, рамка, радиус 12, текст 13 px, ширина до 300 px |
+| Подсказка-пояснение (общий класс `.ui-explain-hint` в `style.css` + `useAnchoredHint`) | как меню: `--ui-surface-solid`, рамка, радиус 12, текст 13 px, ширина до 300 px. Открывается нажатием, встаёт под кнопкой (или над ней, если внизу нет места), закрывается сама через 6 с. Где: неразобранная формула (`DndFormulaButton`), заголовок «Экипированное оружие» (`DndWeaponAttacks`, кнопка со значком «i») |
 | Подсказка-пилюля (`.dnd-cs-passive-help`) | общий класс `.mobile-modebar-tap-hint`: стекло на `--ui-glass-*`, текст 11 px по центру, радиус 14, ширина до 320 px |
 | Тост броска (`DndRollToasts`) | стекло с акцентной рамкой, радиус 14, размытие 14 px; свои токены `--toast-*` на `.dnd-cs-toasts` для обеих тем; крит — усиленное свечение, провал — красная рамка |
 

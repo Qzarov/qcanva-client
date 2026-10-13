@@ -7,7 +7,7 @@
       <span v-if="prefix" class="dnd-formula-prefix">{{ prefix }}</span>{{ source || '—' }} <span aria-hidden="true">?</span>
     </button>
     <Teleport to="body">
-      <p v-if="open && !formula.ok" :id="tooltipId" ref="popup" role="tooltip" class="dnd-formula-hint" :style="hintStyle">
+      <p v-if="open && !formula.ok" :id="tooltipId" ref="popup" role="tooltip" class="ui-explain-hint dnd-formula-hint" :style="hintStyle">
         {{ formula.reason }} {{ FORMULA_HINT }}
       </p>
     </Teleport>
@@ -15,8 +15,8 @@
 </template>
 
 <script setup lang="ts">
-import { useActiveListener } from '../composables/useViewActivity';
-import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { computed, useId } from 'vue';
+import { useAnchoredHint } from '../composables/useAnchoredHint';
 import { FORMULA_HINT, type FormulaParse } from '../dnd/dice';
 import { useSheetPopup } from '../composables/useSheetPopup';
 
@@ -40,34 +40,7 @@ const tooltipId = useId();
 const display = computed(() => props.label ?? (props.formula.ok ? props.formula.text : ''));
 const ariaLabel = computed(() => `${props.prefix ? props.prefix + ' ' : ''}${display.value}: бросить`);
 
-const position = ref<{ left: number; top: number } | null>(null);
-const hintStyle = computed(() => position.value
-  ? { left: `${position.value.left}px`, top: `${position.value.top}px` }
-  : { visibility: 'hidden' as const });
-const place = () => {
-  const anchor = root.value?.getBoundingClientRect();
-  const bounds = popup.value?.getBoundingClientRect();
-  if (!anchor || !bounds) return;
-  const margin = 12;
-  const below = anchor.bottom + 8;
-  position.value = {
-    left: Math.max(margin, Math.min(window.innerWidth - margin - bounds.width, anchor.left)),
-    top: below + bounds.height + margin > window.innerHeight ? Math.max(margin, anchor.top - bounds.height - 8) : below,
-  };
-};
-const HINT_MS = 6000;
-let timer: ReturnType<typeof setTimeout> | null = null;
-watch(open, async (key) => {
-  if (timer) { clearTimeout(timer); timer = null; }
-  position.value = null;
-  if (!key) return;
-  timer = setTimeout(() => close(), HINT_MS);
-  await nextTick();
-  place();
-});
-useActiveListener(window, 'resize', place);
-useActiveListener(document, 'scroll', place, true);
-onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
+const { hintStyle } = useAnchoredHint({ anchor: () => root.value, popup, open, close });
 </script>
 
 <style scoped>
@@ -83,5 +56,4 @@ onBeforeUnmount(() => { if (timer) clearTimeout(timer); });
 @media (max-width:760px) {
   .dnd-formula button { min-height:44px; padding-inline:12px; }
 }
-.dnd-formula-hint { position:fixed; z-index:3100; /* above roll toasts */ margin:0; width:max-content; max-width:min(300px, calc(100vw - 24px)); box-sizing:border-box; padding:10px 12px; border-radius:12px; border:1px solid var(--ui-border); background:var(--ui-surface-solid); color:var(--ui-text); box-shadow:var(--ui-glass-shadow); font-size:13px; line-height:1.35; }
 </style>

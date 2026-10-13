@@ -3,8 +3,10 @@ import { mount, enableAutoUnmount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import MobileNodeToolbar from './MobileNodeToolbar.vue';
 import { runBackHandlers } from '../composables/useBackHandler';
+import { createCanvasLoaderApi } from '../test-support/canvas-loader-api';
+import type { CanvasLoaderApi } from './loaderApi';
 enableAutoUnmount(afterEach);
-const cr = {
+const cr = createCanvasLoaderApi({
   selectedNodeId: 'n1', selectedNodeIds: ['n1'], selectedDrawingIds: [], selectedEdgeId: null,
   isTextNode: () => true, getNodeShape: () => 'rect', getNodeFillStyle: () => 'gradient',
   getNodeColor: () => undefined, isNodeTransparent: () => false,
@@ -13,8 +15,8 @@ const cr = {
   getNodeAlign: () => 'left', getNodeFirstLineAlign: () => 'left',
   fontColors: ['1', '2'], getNodeFontColorSwatch: () => '#44cf6e',
   borderStyles: [{ value: 'solid', label: 'Solid', svg: '<line x1="0" y1="5" x2="24" y2="5" />' }],
-};
-function setup(extra = {}) {
+});
+function setup(extra: Partial<CanvasLoaderApi> = {}) {
   return mount(MobileNodeToolbar, { props: { canvasRef: { ...cr, ...extra }, role: 'owner' }, global: { stubs: { teleport: true } } });
 }
 describe('mobile node floating menus', () => {

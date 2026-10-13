@@ -18,6 +18,8 @@
 
 import CodeBlockLowlight, { type CodeBlockLowlightOptions } from '@tiptap/extension-code-block-lowlight';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { ensureCodeLanguages } from './code-highlighting';
+import { withLazyCodeHighlighting } from './lazy-code-highlighting';
 
 export const CODE_LANGUAGE_OPTIONS: ReadonlyArray<{ value: string; label: string | null }> = [
   // label null = the localized "Plain text" label from the options.
@@ -41,6 +43,7 @@ export interface CodeBlockLanguageLabels {
 
 export interface CodeBlockWithLanguageOptions extends CodeBlockLowlightOptions {
   labels: CodeBlockLanguageLabels;
+  ensureLanguages: () => Promise<void>;
 }
 
 export const CodeBlockWithLanguage = CodeBlockLowlight.extend<CodeBlockWithLanguageOptions>({
@@ -48,7 +51,12 @@ export const CodeBlockWithLanguage = CodeBlockLowlight.extend<CodeBlockWithLangu
     return {
       ...(this.parent?.() as CodeBlockLowlightOptions),
       labels: { auto: 'Auto', plaintext: 'Plain text', choose: 'Code language' },
+      ensureLanguages: ensureCodeLanguages,
     };
+  },
+
+  addProseMirrorPlugins() {
+    return withLazyCodeHighlighting(this.parent?.() ?? [], this.name, this.options.ensureLanguages);
   },
 
   addNodeView() {

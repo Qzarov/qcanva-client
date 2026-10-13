@@ -12,6 +12,7 @@
 
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ySyncPluginKey } from 'y-prosemirror';
 import TextDocumentView from './TextDocumentView.vue';
 
 vi.mock('vue-router', () => ({
@@ -106,6 +107,38 @@ beforeEach(() => {
 });
 
 describe('Undo/Redo header buttons', () => {
+  it.each(['focus', 'selection'])('keeps redo intact after a %s transaction on the emptied document', async (event) => {
+    const wrapper = await mountEditableDoc();
+    const editor = wrapper.vm.editor;
+    try {
+      editor.chain().focus().insertContent('hello').run();
+      await flushPromises();
+      expect(editor.getText()).toBe('hello');
+      wrapper.vm.undoEdit();
+      await flushPromises();
+      expect(editor.getText()).toBe('');
+
+      // TipTap's focus command schedules this metadata-only transaction
+      // in requestAnimationFrame. Dispatch it explicitly so the regression
+      // cannot depend on whether a frame happens between undo and redo.
+      const tr = editor.state.tr;
+      if (event === 'focus') tr.setMeta('focus', {}).setMeta('addToHistory', false);
+      else tr.setSelection(editor.state.selection);
+      expect(tr.docChanged).toBe(false);
+      editor.view.dispatch(tr);
+      expect(ySyncPluginKey.getState(editor.state).type.length).toBe(0);
+      expect(wrapper.vm.canRedo).toBe(true);
+
+      wrapper.vm.redoEdit();
+      await flushPromises();
+      expect(editor.getText()).toBe('hello');
+      expect(editor.state.doc.childCount).toBe(1);
+      expect(wrapper.vm.canRedo).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('disables both buttons on a fresh empty document', async () => {
     const wrapper = await mountEditableDoc();
 
@@ -116,15 +149,8 @@ describe('Undo/Redo header buttons', () => {
   });
 
   it('undoes and redoes typed text', async () => {
-    // setContent and insertContent land in the same ~500ms capture window
-    // (like TextDocumentView.table.test.ts's own undo test documents) and
-    // are captured as ONE combined step here, deliberately - not split
-    // across a real-time gap the way the table test does: that split proved
-    // flaky specifically for plain-text content under a full `vitest run`,
-    // for reasons that didn't reproduce live in a real browser across two
-    // separate manual undo/redo cycles (verified by hand). Treating the two
-    // calls as one atomic unit sidesteps the flake while still proving the
-    // real thing this test is for: a text edit is undo/redo-able at all.
+    // Also cover replacing the initial paragraph before typing; the focus
+    // regression above types directly into the paragraph loaded by the view.
     const wrapper = await mountEditableDoc();
     const editor = wrapper.vm.editor;
     editor.commands.setContent('<p></p>');
@@ -136,12 +162,13 @@ describe('Undo/Redo header buttons', () => {
 
     wrapper.vm.undoEdit();
     await flushPromises();
-    expect(editor.getText()).not.toContain('hello');
+    expect(editor.getText()).toBe('');
     expect(wrapper.vm.canRedo).toBe(true);
 
     wrapper.vm.redoEdit();
     await flushPromises();
     expect(editor.getText()).toBe('hello');
+    expect(editor.state.doc.childCount).toBe(1);
 
     wrapper.unmount();
   });

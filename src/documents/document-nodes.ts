@@ -45,9 +45,16 @@ export type NodeSpec = {
  */
 export const CALLOUT_VARIANTS = ["info", "warning", "success", "danger"];
 
+/**
+ * `blockId` is a STABLE per-block identity, the address MCP block edits use
+ * (text_doc_outline / update_block / ...). Assigned by the BlockId extension
+ * (block-id.ts) or by the server, never derived from content. Lists, table
+ * rows and cells carry none: agents address items and whole tables, not their
+ * containers.
+ */
 export const DOCUMENT_NODES: NodeSpec[] = [
   { name: "doc", group: "block" },
-  { name: "paragraph", group: "block", tag: "p", textSeparator: "\n" },
+  { name: "paragraph", group: "block", tag: "p", attrs: ["blockId"], textSeparator: "\n" },
   {
     name: "heading",
     group: "block",
@@ -68,26 +75,26 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     // survives its target being retitled or moved: a slug-based reference
     // would silently point at the wrong heading (or none) the moment the
     // text it was built from changed.
-    attrs: ["level", "collapsed", "headingId"],
+    attrs: ["level", "collapsed", "headingId", "blockId"],
     textSeparator: "\n",
   },
   { name: "bulletList", group: "block", tag: "ul" },
   { name: "orderedList", group: "block", tag: "ol", attrs: ["start"] },
-  { name: "listItem", group: "block", tag: "li", textSeparator: "\n" },
+  { name: "listItem", group: "block", tag: "li", attrs: ["blockId"], textSeparator: "\n" },
   { name: "taskList", group: "block", tag: "ul" },
   {
     name: "taskItem",
     group: "block",
     tag: "li",
-    attrs: ["checked"],
+    attrs: ["checked", "blockId"],
     textSeparator: "\n",
   },
-  { name: "blockquote", group: "block", tag: "blockquote" },
+  { name: "blockquote", group: "block", tag: "blockquote", attrs: ["blockId"] },
   {
     name: "callout",
     group: "block",
     tag: "aside",
-    attrs: ["variant"],
+    attrs: ["variant", "blockId"],
     // `aside` is the honest semantic element for a callout, and the variant
     // rides in a data attribute rather than a class so the projection stays
     // independent of styling: the stored html says WHAT the callout is, and
@@ -103,7 +110,7 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     name: "codeBlock",
     group: "block",
     tag: "pre",
-    attrs: ["language"],
+    attrs: ["language", "blockId"],
     textSeparator: "\n",
   },
   // TABLE. Four node types, one per @tiptap/extension-table-* package, mapped
@@ -116,7 +123,7 @@ export const DOCUMENT_NODES: NodeSpec[] = [
   // does not read or emit them (v1 has no merged cells or column resizing -
   // see the Table extension's own registration comment in
   // TextDocumentView.vue for the full v1 scope).
-  { name: "table", group: "block", tag: "table" },
+  { name: "table", group: "block", tag: "table", attrs: ["blockId"] },
   { name: "tableRow", group: "block", tag: "tr" },
   { name: "tableHeader", group: "block", tag: "th" },
   { name: "tableCell", group: "block", tag: "td" },
@@ -137,13 +144,13 @@ export const DOCUMENT_NODES: NodeSpec[] = [
     // document, so repeating it here would put every heading into the search
     // index twice.
   },
-  { name: "horizontalRule", group: "block", tag: "hr", selfClosing: true },
+  { name: "horizontalRule", group: "block", tag: "hr", selfClosing: true, attrs: ["blockId"] },
   {
     name: "image",
     group: "block",
     tag: "img",
     selfClosing: true,
-    attrs: ["src", "alt", "title"],
+    attrs: ["src", "alt", "title", "blockId"],
     // An image is a block: its alt text must not run into the next block's
     // text, or "Schema" followed by "After" becomes the unsearchable
     // "SchemaAfter".
