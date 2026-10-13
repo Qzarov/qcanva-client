@@ -32,7 +32,7 @@
         <button v-for="shape in ['rect', 'round']" :key="shape" :class="{ active: canvasRef?.getNodeShape(nodeId) === shape }" :aria-label="shape === 'round' ? t('round') : t('rectangular')" :aria-pressed="canvasRef?.getNodeShape(nodeId) === shape" @click="canvasRef?.getNodeShape(nodeId) !== shape && canvasRef?.toggleNodeShape(nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle v-if="shape === 'round'" cx="10" cy="10" r="7" /><rect v-else x="3" y="3" width="14" height="14" rx="2" /></svg><span>{{ shape === 'round' ? t('round') : t('rectangular') }}</span></button>
       </template>
       <template v-if="colorPopup === 'layers'">
-        <button v-for="action in layerActions" :key="action.key" :disabled="action.disabled" :aria-label="action.label" @click="action.handler()"><svg v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" /><span>{{ action.label }}</span></button>
+        <button v-for="action in layerActions" :key="action.key" :disabled="action.disabled" :aria-label="label(action)" @click="action.handler()"><svg v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" /><span>{{ label(action) }}</span></button>
       </template>
       <template v-if="colorPopup === 'border-style'">
         <button v-for="bs in canvasRef?.borderStyles ?? []" :key="bs.value" :class="{ active: canvasRef?.getNodeBorderStyle(nodeId) === bs.value }" :aria-pressed="canvasRef?.getNodeBorderStyle(nodeId) === bs.value" :aria-label="t('style') + ': ' + bs.label" @click="canvasRef?.setNodeBorderStyle(nodeId, bs.value)"><svg width="24" height="10" viewBox="0 0 24 10" v-html="bs.svg" aria-hidden="true" /><span>{{ bs.label }}</span></button>
@@ -73,13 +73,13 @@
             'mobile-toolbar-btn-active': action.isSectionToggle && (activeSection === action.key || drawingSection === action.key),
           }"
           :disabled="action.disabled"
-          :title="action.label"
-          :aria-label="action.label"
+          :title="label(action)"
+          :aria-label="label(action)"
           :aria-pressed="action.isSectionToggle ? (activeSection === action.key || drawingSection === action.key) : undefined"
           @click="onActionClick(action, $event)"
         >
           <component :is="'svg'" v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
-          <span class="mobile-toolbar-caption">{{ caption(action) }}</span>
+          <span class="mobile-toolbar-caption">{{ label(action) }}</span>
         </button>
       </template>
 
@@ -122,7 +122,7 @@
             @click="onOverflowActionClick(action)"
           >
             <component :is="'svg'" v-bind="iconProps(action.key)" v-html="iconPath(action.key)" aria-hidden="true" />
-            <span>{{ action.label }}</span>
+            <span>{{ label(action) }}</span>
           </button>
         </div>
       </div>
@@ -136,11 +136,12 @@ import CanvasColorMenu from './CanvasColorMenu.vue';
 import CanvasPanelPage from './CanvasPanelPage.vue';
 import CanvasStrokeWidth from './CanvasStrokeWidth.vue';
 import { buildNodeActions, getSelectionKind, MAX_VISIBLE_ACTIONS, type NodeAction } from './nodeActions';
-import { useI18n } from '../composables/useI18n';
+import { useI18n, type MessageKey } from '../composables/useI18n';
 import { useBackHandler } from '../composables/useBackHandler';
 import type { CanvasLoaderApi, CanvasTextAlignment } from './loaderApi';
 
-type ToolbarAction = Omit<NodeAction, 'key'> & { key: string };
+/** A node action, or one of the toolbar's own section buttons (which carry a ready label). */
+type ToolbarAction = Omit<NodeAction, 'key' | 'labelKey'> & { key: string; labelKey?: MessageKey; label?: string };
 
 const ICON_PATHS: Record<string, string> = {
   'shape': '<rect x="3" y="3" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><circle cx="16" cy="16" r="6" stroke="currentColor" stroke-width="1.8" fill="var(--ui-surface)"/>',
@@ -287,11 +288,14 @@ export default defineComponent({
       });
     });
 
-    const caption = (action: ToolbarAction) => {
-      if (action.key === 'lock') return t(action.label === 'Unlock' ? 'toolbarUnlock' : 'toolbarLock');
+    /**
+     * Every caption, tooltip and menu row of an action, in the interface
+     * language. "Hide" reads the current state, so it is worked out here on
+     * each render rather than once when the list is built.
+     */
+    const label = (action: ToolbarAction): string => {
       if (action.key === 'hide') return t(props.canvasRef?.areSelectedNodesHidden?.() ? 'show' : 'hide');
-      const labels: Record<string, Parameters<typeof t>[0]> = { 'edit-text': 'toolbarEdit', 'image-title': 'toolbarTitle', 'fill': 'background', 'duplicate': 'duplicate', 'delete': 'delete', 'drawing-color': 'color', 'drawing-stroke-width': 'width', 'drawing-duplicate': 'duplicate', 'drawing-delete': 'delete' };
-      return labels[action.key] ? t(labels[action.key]!) : action.label;
+      return action.label ?? (action.labelKey ? t(action.labelKey) : action.key);
     };
 
     const layerActions = computed(() => actions.value.filter(action => ['layer-up', 'layer-down', 'bring-front', 'send-back'].includes(action.key)));
@@ -441,7 +445,7 @@ export default defineComponent({
     };
 
     return {
-      t, caption, pageLabel, backToMenu, toolbarElement, paletteOpen, popupLabel,
+      t, label, pageLabel, backToMenu, toolbarElement, paletteOpen, popupLabel,
       selectionKind,
       nodeId,
       visibleActions,

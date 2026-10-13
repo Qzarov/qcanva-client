@@ -118,7 +118,8 @@ describe('buildNodeActions — single node', () => {
   it('lock label changes when locked', () => {
     const unlocked = buildNodeActions(singleNode).find((a) => a.key === 'lock');
     const locked = buildNodeActions({ ...singleNode, isLocked: true }).find((a) => a.key === 'lock');
-    expect(unlocked?.label).not.toBe(locked?.label);
+    expect(unlocked?.labelKey).toBe('toolbarLock');
+    expect(locked?.labelKey).toBe('toolbarUnlock');
   });
 
   it('hide action present for owner', () => {
