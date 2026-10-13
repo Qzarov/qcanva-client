@@ -7,7 +7,19 @@
       </header>
 
       <div class="board-card-dialog__body">
-        <label class="board-field board-field--wide">
+        <!-- A card that stands for a text document: named after it, opens it, can be unlinked. -->
+        <div v-if="card.documentId" class="board-field board-field--wide board-card-document" data-testid="card-document">
+          <span>Документ</span>
+          <div class="board-card-document__row">
+            <FileText :size="16" aria-hidden="true" />
+            <strong>{{ documentName }}</strong>
+            <button type="button" class="board-button board-button--primary" data-testid="card-document-open" @click="emit('open-document', card.documentId)">Открыть</button>
+            <button v-if="!readOnly" type="button" class="board-button board-button--ghost" data-testid="card-document-unlink" title="Карточка останется, но перестанет быть связана с документом" @click="unlinkDocument">Отвязать</button>
+          </div>
+          <small v-if="!documentTitle" class="board-field-hint">Название взято на момент добавления: документ недоступен или удалён.</small>
+        </div>
+
+        <label v-else class="board-field board-field--wide">
           <span>Название</span>
           <input v-model="draft.title" data-testid="card-title" :disabled="readOnly" @input="markDirty('title')" />
         </label>
@@ -118,6 +130,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
+import { FileText } from '@lucide/vue';
 import type { BoardCard, BoardChecklistItem, BoardLabel, BoardOperation, BoardParticipant } from '../../boards/types';
 
 type Participant = BoardParticipant;
@@ -129,12 +142,17 @@ const props = withDefaults(defineProps<{
   labels: BoardLabel[];
   participants: Participant[];
   readOnly?: boolean;
+  /** The linked document's current name, when the board could read it. */
+  documentTitle?: string;
 }>(), { readOnly: false });
 
 const emit = defineEmits<{
   operation: [operation: BoardOperation];
+  'open-document': [documentId: string];
   close: [];
 }>();
+
+const documentName = computed(() => props.documentTitle || props.card.title || 'Без названия');
 
 const draft = reactive({
   title: '',
@@ -390,6 +408,12 @@ function save() {
   emit('close');
 }
 
+/** The card stays, under the document's name, as an ordinary card. */
+function unlinkDocument() {
+  operation({ type: 'card-update', cardId: props.card.id, changes: { documentId: null, title: documentName.value } });
+  draft.title = documentName.value;
+}
+
 function removeCard() {
   operation({ type: 'card-remove', cardId: props.card.id });
   emit('close');
@@ -402,6 +426,9 @@ function createId(prefix: string): string {
 </script>
 
 <style scoped>
+.board-card-document__row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.board-card-document__row > svg { flex:none; color:var(--ui-text-secondary); }
+.board-card-document__row > strong { flex:1 1 140px; min-width:0; overflow-wrap:anywhere; font-size:14px; }
 .board-dialog-backdrop { position:fixed; z-index:90; inset:0; display:grid; place-items:center; padding:20px; background:var(--ui-overlay); backdrop-filter:blur(3px); }
 .board-card-dialog { display:flex; flex-direction:column; width:min(680px, 100%); max-height:min(820px, calc(100vh - 40px)); overflow:hidden; border:1px solid var(--ui-border); border-radius:15px; background:var(--ui-surface-elevated); color:var(--ui-text); box-shadow:var(--ui-shadow); }
 .board-card-dialog__header,.board-card-dialog__footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; border-color:var(--ui-border); }

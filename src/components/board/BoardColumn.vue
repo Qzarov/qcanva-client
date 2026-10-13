@@ -61,7 +61,9 @@
           :card="card"
           :labels="labels"
           :editable="editable"
+          :document-title="card.documentId ? documentTitles?.[card.documentId] : undefined"
           @open="emit('open-card', card.id)"
+          @open-document="emit('open-document', $event)"
           @dragstart="emit('drag-card', card.id)"
           @dragend="onCardDragEnd"
         />
@@ -74,18 +76,28 @@
       >Здесь пока нет карточек</p>
     </div>
 
-    <button
-      v-if="editable"
-      type="button"
-      class="board-column__add-card"
-      data-testid="add-card"
-      @click="emit('add-card')"
-    >＋ Добавить карточку</button>
+    <div v-if="editable" class="board-column__add">
+      <button
+        type="button"
+        class="board-column__add-card"
+        data-testid="add-card"
+        @click="emit('add-card')"
+      >＋ Добавить карточку</button>
+      <button
+        type="button"
+        class="board-column__add-card board-column__add-document"
+        data-testid="add-document-card"
+        title="Добавить документ как карточку"
+        aria-label="Добавить документ как карточку"
+        @click="emit('add-document')"
+      ><FileText :size="15" aria-hidden="true" /><span>Документ</span></button>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue';
+import { FileText } from '@lucide/vue';
 import type { BoardCard as BoardCardType, BoardColumn, BoardLabel } from '../../boards/types';
 import BoardCard from './BoardCard.vue';
 
@@ -94,6 +106,8 @@ defineProps<{
   cards: BoardCardType[];
   labels: BoardLabel[];
   editable: boolean;
+  /** Current names of the documents the cards stand for, by document id. */
+  documentTitles?: Record<string, string>;
   dragOffsetX?: number;
   dragging?: boolean;
 }>();
@@ -101,6 +115,8 @@ defineProps<{
 const emit = defineEmits<{
   'open-card': [cardId: string];
   'add-card': [];
+  'add-document': [];
+  'open-document': [documentId: string];
   'remove-column': [];
   'update-column': [title: string];
   'drag-card': [cardId: string];
@@ -166,6 +182,9 @@ function onCardDragEnd() {
 .board-column__card-slot--over-top::before { content:''; position:absolute; top:-5px; left:0; right:0; height:3px; background:var(--ui-brand); border-radius:999px; z-index:2; box-shadow:0 0 8px var(--ui-brand); }
 .board-column__card-slot--over-bottom::after { content:''; position:absolute; bottom:-5px; left:0; right:0; height:3px; background:var(--ui-brand); border-radius:999px; z-index:2; box-shadow:0 0 8px var(--ui-brand); }
 .board-column__empty { margin:6px 8px 10px; color:var(--ui-text-secondary); font-size:12px; text-align:center; }
+.board-column__add { display:flex; gap:4px; margin-top:2px; }
+.board-column__add > .board-column__add-card:first-child { flex:1; min-width:0; }
+.board-column__add-document { display:inline-flex; align-items:center; gap:5px; flex:none; }
 .board-column__add-card { margin-top:2px; padding:9px; border:0; border-radius:8px; background:transparent; color:var(--ui-text-secondary); text-align:left; cursor:pointer; }
 .board-column__add-card:hover { background:var(--ui-surface-subtle); color:var(--ui-text); }
 </style>

@@ -23,7 +23,21 @@
         }"
       >{{ label.title }}</span>
     </div>
-    <h3>{{ card.title || 'Без названия' }}</h3>
+    <h3 :class="{ 'board-card__title--document': card.documentId }">
+      <FileText v-if="card.documentId" class="board-card__doc-icon" :size="15" aria-hidden="true" />
+      <span>{{ shownTitle }}</span>
+      <!-- The card opens its own dialog; this opens the document it stands for. -->
+      <button
+        v-if="card.documentId"
+        type="button"
+        class="board-card__open-doc"
+        data-testid="card-open-document"
+        aria-label="Открыть документ"
+        title="Открыть документ"
+        @click.stop="emit('open-document', card.documentId)"
+        @keydown.enter.stop
+      ><ArrowUpRight :size="15" aria-hidden="true" /></button>
+    </h3>
     <div v-if="card.dueAt || card.assigneeName || card.checklist.length" class="board-card__meta">
       <span v-if="card.dueAt" class="board-card__due">{{ formattedDueAt }}</span>
       <span v-if="card.assigneeName" class="board-card__assignee" :title="card.assigneeName">
@@ -37,21 +51,27 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { ArrowUpRight, FileText } from '@lucide/vue';
 import type { BoardCard, BoardLabel } from '../../boards/types';
 
 const props = defineProps<{
   card: BoardCard;
   labels: BoardLabel[];
   editable: boolean;
+  /** The linked document's current name, when the board could read it. */
+  documentTitle?: string;
 }>();
 
 const emit = defineEmits<{
   open: [];
+  'open-document': [documentId: string];
   dragstart: [event: DragEvent];
   dragend: [];
 }>();
 
 const isDragging = ref(false);
+// A document card is named after its document: the live name if known, the one it was linked under otherwise.
+const shownTitle = computed(() => (props.card.documentId && props.documentTitle) || props.card.title || 'Без названия');
 let dragSuppressClickTimer: ReturnType<typeof setTimeout> | null = null;
 let suppressClick = false;
 
@@ -105,6 +125,11 @@ function onClick() {
 .board-card--dragging { opacity: 0.45; }
 .board-card--overdue { border-color:var(--ui-danger); box-shadow:inset 3px 0 var(--ui-danger), 0 2px 6px color-mix(in srgb, var(--ui-text) 18%, transparent); }
 .board-card h3 { margin:0; font-size:14px; line-height:1.35; overflow-wrap:anywhere; }
+.board-card__title--document { display:flex; align-items:flex-start; gap:6px; }
+.board-card__title--document > span { flex:1; min-width:0; }
+.board-card__doc-icon { flex:none; margin-top:2px; color:var(--ui-text-secondary); }
+.board-card__open-doc { display:inline-grid; place-items:center; flex:none; width:26px; height:26px; margin:-3px -4px 0 0; padding:0; border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ui-text-secondary); cursor:pointer; }
+.board-card__open-doc:hover,.board-card__open-doc:focus-visible { border-color:var(--ui-focus); background:var(--ui-surface-subtle); color:var(--ui-text); outline:none; }
 .board-card__labels { display:flex; flex-wrap:wrap; gap:5px; }
 .board-card__label { padding:2px 7px; border-radius:999px; background:color-mix(in srgb, var(--label-color) 32%, var(--label-content-surface)); color:var(--label-content-text); font-size:10px; font-weight:650; }
 .board-card__meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; color:var(--ui-text-secondary); font-size:11px; }

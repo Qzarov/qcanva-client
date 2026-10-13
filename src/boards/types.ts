@@ -13,6 +13,12 @@ export type BoardCard = {
   assigneeName: string | null;
   assigneeUserId: string | null;
   checklist: BoardChecklistItem[];
+  /**
+   * A card that stands for a text document: its id. The card's `title` is the
+   * document's name when it was linked; the board shows the current one where
+   * it can read the document.
+   */
+  documentId?: string | null;
 };
 
 export type BoardLabel = { id: string; title: string; color: string };

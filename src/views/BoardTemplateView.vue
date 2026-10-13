@@ -37,7 +37,10 @@
         :data="data"
         :role="role"
         :participants="editorParticipants"
+        :document-titles="documentTitles"
         @operation="submitOperation"
+        @open-document="openDocument"
+        @document-linked="documentTitles = { ...documentTitles, [$event.id]: $event.title }"
         @manage-access="shareDialogOpen = true"
       />
     </main>
@@ -54,9 +57,9 @@
 
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { markResourceOpened } from '../composables/useRecentResource';
-import { interactiveTemplates, type InteractiveTemplate } from '../api/client';
+import { interactiveTemplates, textDocuments, type InteractiveTemplate } from '../api/client';
 import type { BoardOperation, BoardParticipant } from '../boards/types';
 import BoardEditor from '../components/board/BoardEditor.vue';
 import BoardShareDialog from '../components/board/BoardShareDialog.vue';
@@ -71,6 +74,7 @@ import { useLivenessChecks } from '../tabs/useLivenessChecks';
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 
 const route = useRoute();
+const router = useRouter();
 const boardId = computed(() => String(route.params.id));
 const template = ref<InteractiveTemplate | null>(null);
 const { backTarget } = useResourceBackTarget();
@@ -98,6 +102,35 @@ const {
   requestSnapshot,
   probe: probeBoard,
 } = useBoardSocket(boardId);
+
+// Cards may stand for text documents: the board shows each under the document's current
+// name. Loaded once per set of linked documents; a document the user cannot read (or one
+// that is gone) keeps the name its card was linked under.
+const documentTitles = ref<Record<string, string>>({});
+const requestedDocumentIds = new Set<string>();
+const linkedDocumentIds = computed(() => [...new Set((data.value?.cards ?? []).map((card) => card.documentId).filter((id): id is string => Boolean(id)))].sort());
+watch(() => linkedDocumentIds.value.join(','), async () => {
+  const missing = linkedDocumentIds.value.filter((id) => !(id in documentTitles.value) && !requestedDocumentIds.has(id));
+  if (!missing.length) return;
+  missing.forEach((id) => requestedDocumentIds.add(id));
+  const found: Record<string, string> = {};
+  try {
+    const { documents } = await textDocuments.list();
+    for (const doc of documents) if (missing.includes(doc?.id) && typeof doc.title === 'string') found[doc.id] = doc.title;
+  } catch { /* the list is a shortcut; each document is asked for below */ }
+  // Not in the user's own list: shared by link or public documents are still readable one by one.
+  await Promise.all(missing.filter((id) => !(id in found)).slice(0, 20).map(async (id) => {
+    try {
+      const { document } = await textDocuments.get(id);
+      if (typeof document?.title === 'string') found[id] = document.title;
+    } catch { /* no access or deleted: the card keeps its own title */ }
+  }));
+  if (Object.keys(found).length) documentTitles.value = { ...documentTitles.value, ...found };
+}, { immediate: true });
+
+function openDocument(documentId: string) {
+  void router.push({ name: 'text-document', params: { id: documentId } });
+}
 
 const editorParticipants = computed<BoardParticipant[]>(() => {
   const participants = new Map(boardParticipants.value.map((participant) => [participant.userId, {

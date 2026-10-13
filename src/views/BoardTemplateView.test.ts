@@ -3,7 +3,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { computed, reactive, ref } from 'vue';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { interactiveTemplates } from '../api/client';
+import { interactiveTemplates, textDocuments } from '../api/client';
 import { useI18n } from '../composables/useI18n';
 import BoardTemplateView from './BoardTemplateView.vue';
 
@@ -24,6 +24,8 @@ const routeState = vi.hoisted(() => ({
   query: {} as Record<string, unknown>,
 }));
 
+const routerPush = vi.hoisted(() => vi.fn());
+
 vi.mock('vue-router', () => {
   return {
     // Stable WITHIN a test, fresh BETWEEN tests — the way the real `useRoute`
@@ -36,11 +38,13 @@ vi.mock('vue-router', () => {
     // it and answer a route change by consuming this test's queued mock
     // values. `beforeEach` therefore hands out a fresh object per test.
     useRoute: () => ({ params: routeState.params, query: routeState.query }),
+    useRouter: () => ({ push: routerPush }),
   };
 });
 
 vi.mock('../api/client', () => ({
   uploadImage: vi.fn(),
+  textDocuments: { list: vi.fn().mockResolvedValue({ documents: [] }), get: vi.fn().mockRejectedValue(new Error('no access')) },
   interactiveTemplates: {
     get: vi.fn(),
     update: vi.fn(),
@@ -295,5 +299,41 @@ describe('BoardTemplateView', () => {
     expect(socketState.data.value).toBeNull();
     expect(socketState.role.value).toBeNull();
     expect(wrapper.text()).toContain('Новая доска не найдена');
+  });
+
+  it('shows document cards under the documents\' current names and opens a document from its card', async () => {
+    vi.mocked(interactiveTemplates.get).mockResolvedValue({
+      id: 'template-1', title: 'Команда', templateType: 'trello-board', data: {}, createdAt: '', updatedAt: '',
+    });
+    const card = (id: string, title: string, documentId: string) => ({
+      id, columnId: 'todo', position: 0, title, description: '', dueAt: null, labelIds: [], assigneeName: null, assigneeUserId: null, checklist: [], documentId,
+    });
+    requestSnapshot.mockImplementation(async () => {
+      socketState.data.value = {
+        version: 1, columns: [{ id: 'todo', title: 'К выполнению', position: 0 }], labels: [],
+        cards: [card('c-own', 'ТЗ (старое)', 'doc-own'), card('c-shared', 'Чужой (старое)', 'doc-shared'), card('c-gone', 'Удалённый', 'doc-gone')],
+      };
+      socketState.role.value = 'edit';
+      socketState.syncStatus.value = 'synced';
+      return socketState.data.value;
+    });
+    // One is in the user's own list, one is readable only by id, one is gone.
+    vi.mocked(textDocuments.list).mockResolvedValue({ documents: [{ id: 'doc-own', title: 'ТЗ на вход' }] });
+    vi.mocked(textDocuments.get).mockImplementation(async (id: string) => {
+      if (id === 'doc-shared') return { document: { id, title: 'Документ коллеги' }, role: 'read' };
+      throw new Error('not found');
+    });
+
+    const wrapper = mount(BoardTemplateView, { global: { stubs: { RouterLink: { template: '<a><slot /></a>' } } } });
+    await flushPromises();
+
+    const title = (cardId: string) => wrapper.get(`[data-card-id="${cardId}"] h3 span`).text();
+    expect([title('c-own'), title('c-shared'), title('c-gone')]).toEqual(['ТЗ на вход', 'Документ коллеги', 'Удалённый']);
+    // Only what the list did not answer is asked for one by one. (Boards mounted by the tests above
+    // are still alive in this file and ask too, so the calls are compared as a set.)
+    expect([...new Set(vi.mocked(textDocuments.get).mock.calls.map(([id]) => id))].sort()).toEqual(['doc-gone', 'doc-shared']);
+
+    await wrapper.get('[data-card-id="c-own"] [data-testid="card-open-document"]').trigger('click');
+    expect(routerPush).toHaveBeenCalledWith({ name: 'text-document', params: { id: 'doc-own' } });
   });
 });

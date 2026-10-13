@@ -66,7 +66,10 @@
           :drag-offset-x="columnDragOffset(column.id)"
           :dragging="dragPayload?.kind === 'column' && dragPayload.id === column.id && columnDragMoved"
           @open-card="selectedCardId = $event"
+          :document-titles="documentTitles"
           @add-card="addCard(column.id)"
+          @add-document="documentColumnId = column.id"
+          @open-document="emit('open-document', $event)"
           @remove-column="requestColumnRemoval(column.id)"
           @update-column="updateColumn(column.id, $event)"
           @drag-card="startCardDrag($event)"
@@ -101,8 +104,17 @@
       :labels="data.labels"
       :participants="availableParticipants"
       :read-only="!editable"
+      :document-title="selectedCard.documentId ? documentTitles?.[selectedCard.documentId] : undefined"
       @operation="forwardOperation"
+      @open-document="emit('open-document', $event)"
       @close="selectedCardId = null"
+    />
+
+    <BoardDocumentPicker
+      v-if="documentColumnId && editable"
+      :taken-ids="linkedDocumentIds"
+      @pick="addDocumentCard"
+      @close="documentColumnId = null"
     />
 
     <div
@@ -144,6 +156,7 @@ import { computed, onUnmounted, ref } from 'vue';
 import type { BoardCard, BoardColumn as BoardColumnData, BoardData, BoardOperation, BoardParticipant, BoardRole } from '../../boards/types';
 import BoardCardDialog from './BoardCardDialog.vue';
 import BoardColumn from './BoardColumn.vue';
+import BoardDocumentPicker, { type PickedDocument } from './BoardDocumentPicker.vue';
 
 type Participant = BoardParticipant;
 type DragPayload = { kind: 'card'; id: string } | { kind: 'column'; id: string };
@@ -153,11 +166,16 @@ const props = defineProps<{
   data: BoardData;
   role: BoardRole;
   participants: Participant[];
+  /** Current names of the text documents cards stand for, by document id (the page loads them). */
+  documentTitles?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
   operation: [operation: BoardOperation];
   'manage-access': [];
+  'open-document': [documentId: string];
+  /** A document was just linked: its name is known without asking the server. */
+  'document-linked': [document: PickedDocument];
 }>();
 
 const editable = computed(() => props.role === 'owner' || props.role === 'edit');
@@ -322,6 +340,31 @@ function addCard(columnId: string) {
   };
   forwardOperation({ type: 'card-add', card });
   selectedCardId.value = card.id;
+}
+
+// The column a document card is being added to, while its picker is open.
+const documentColumnId = ref<string | null>(null);
+const linkedDocumentIds = computed(() => props.data.cards.map((card) => card.documentId).filter((id): id is string => Boolean(id)));
+
+function addDocumentCard(document: PickedDocument) {
+  const columnId = documentColumnId.value;
+  documentColumnId.value = null;
+  if (!editable.value || !columnId) return;
+  const card: BoardCard = {
+    id: createId('card'),
+    columnId,
+    position: cardsInColumn(columnId).length,
+    title: document.title,
+    description: '',
+    dueAt: null,
+    labelIds: [],
+    assigneeName: null,
+    assigneeUserId: null,
+    checklist: [],
+    documentId: document.id,
+  };
+  emit('document-linked', document);
+  forwardOperation({ type: 'card-add', card });
 }
 
 function startCardDrag(cardId: string) {
