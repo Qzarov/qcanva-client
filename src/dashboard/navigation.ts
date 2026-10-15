@@ -1,4 +1,4 @@
-export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public';
+export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'public' | 'drive';
 
 export type DashboardSection =
   | { kind: DashboardTopLevelSection }
