@@ -27,6 +27,18 @@ const router = createRouter({
       component: () => import('../views/DashboardView.vue'),
     },
     {
+      path: '/drive',
+      name: 'drive',
+      component: () => import('../views/DriveView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/drive/:folderId',
+      name: 'drive-folder',
+      component: () => import('../views/DriveView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/html-docs',
       name: 'html-docs',
       redirect: { name: 'dashboard', query: { type: 'html' } },
