@@ -849,6 +849,8 @@
         :text-sync-status="editorSyncStatus"
         :readonly="role === 'read'"
         :is-owner="role === 'owner'"
+        :canvas-id="resolvedId"
+        :image-token="imageToken"
         :remote-cursors="remoteCursorsArray"
         :ruler-active="rulerActive"
         :ruler-measurements="rulerMeasurements"
@@ -869,6 +871,7 @@
         @node-edit-start="closeNodeEditingPanels"
         @template-roll="onTemplateRoll"
         @readonly-action="notifyReadOnlyEditAttempt"
+        @image-error="onCanvasImageError"
       />
     </template>
   </div>
@@ -886,6 +889,7 @@ import AccessGate from '../components/AccessGate.vue';
 import { createSyncEventStore, syncReasonLabel, type SyncRejectReason } from '../canvas/syncEvents';
 import { shouldRetryCanvasReject } from '../canvas/syncRetry';
 import { useCanvasSocket } from '../composables/useCanvasSocket';
+import { useCanvasImageTokens } from '../composables/useCanvasImageTokens';
 import {useCanvasRuler} from '../composables/useCanvasRuler';
 import CanvasRulerSettings from '../components/CanvasRulerSettings.vue';
 import type {RulerSettings} from '../canvas/ruler';
@@ -1206,9 +1210,28 @@ export default defineComponent({
       sendRoll,
       onChatMessage,
       onChatError,
+      onRoomState,
       sendRulerUpdate,sendRulerClear,getRulerActor,onRulerState,onRulerUpdate,onRulerClear,onRulerSettings,onRulerError,
       probe: probeSocket,
     } = useCanvasSocket(resolvedId);
+
+    const {
+      imageToken,
+      setImageToken,
+      handleImageError,
+    } = useCanvasImageTokens({
+      getCanvasId: () => resolvedId.value,
+    });
+
+    onRoomState?.((data) => {
+      if (data.imageToken) {
+        setImageToken(data.imageToken, data.imageTokenExpiresAt);
+      }
+    });
+
+    const onCanvasImageError = (payload: { id: string; file?: string | null }) => {
+      void handleImageError(payload.id, payload.file);
+    };
 
     watch(() => wsConnected.value, (on) => tab.setStatus(on ? 'online' : 'reconnecting'), { immediate: true });
     useLivenessChecks(probeSocket, () => { void resyncCanvas(); });
@@ -1355,6 +1378,9 @@ export default defineComponent({
       try {
         accessDenied.value = false;
         const res = await canvasApi.get(resolvedId.value);
+        if (res.imageToken) {
+          setImageToken(res.imageToken, res.imageTokenExpiresAt);
+        }
         writeNativeResourceCache('canvas', [canvasId, res.canvas.id, res.canvas.slug || ''], res);
         // Canonicalize to the real id (the URL may have been a slug) so the WS
         // room and all mutations use it.
@@ -1514,6 +1540,9 @@ export default defineComponent({
       syncEventStore.resyncStarted();
       try {
         const res = await canvasApi.resync(resolvedId.value, revision.value);
+        if (res.imageToken) {
+          setImageToken(res.imageToken, res.imageTokenExpiresAt);
+        }
         const parsed = JSON.parse(res.canvas.data);
         isApplyingRemote = true;
         // applyRemoteData only - not also `canvasData.value = parsed`: that
@@ -2316,6 +2345,7 @@ export default defineComponent({
       openMobileAddSheet, closeMobileSheets, onMobileModeChange,
       chatOpen, chatMessages, toggleChat, onChatSend, onTemplateRoll,
       attachedNode, onAttachNode, onClearNode, onJumpNode, pickingNodeForChat, onCancelPickNode,
+      imageToken, onCanvasImageError, resolvedId,
     };
   },
 });
