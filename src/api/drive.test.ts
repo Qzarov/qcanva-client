@@ -6,6 +6,8 @@ import {
   downloadDriveFile,
   formatFileSize,
   getFileExtension,
+  isDeviceOnline,
+  liveReplicas,
   resolveDownloadUrl,
   uploadFile,
 } from './drive';
@@ -219,6 +221,58 @@ describe('drive API and utilities', () => {
       vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
       await driveApi.getTrash({ cursor: 'cur-1', limit: 20 });
       expect(request).toHaveBeenCalledWith('/drive/trash?cursor=cur-1&limit=20');
+    });
+  });
+
+  describe('devices and replication', () => {
+    it('listDevices unwraps the hub {nodes} envelope', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ nodes: [{ id: 'd1' }] });
+      await expect(driveApi.listDevices()).resolves.toEqual([{ id: 'd1' }]);
+      expect(request).toHaveBeenCalledWith('/drive/devices');
+    });
+
+    it('updateDevice sends PATCH with keeper', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ id: 'd1', keeper: true });
+      await driveApi.updateDevice('d1', { keeper: true });
+      expect(request).toHaveBeenCalledWith('/drive/devices/d1', {
+        method: 'PATCH',
+        body: JSON.stringify({ keeper: true }),
+      });
+    });
+
+    it('revokeDevice sends DELETE to the device-management route', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ revoked: true });
+      await driveApi.revokeDevice('d1');
+      expect(request).toHaveBeenCalledWith('/drive/nodes/d1', { method: 'DELETE' });
+    });
+
+    it('setDevicePolicy replaces the rules with PUT', async () => {
+      const rules = [{ folderId: null, mode: 'on_demand' as const }];
+      vi.mocked(request).mockResolvedValueOnce({ defaultMode: 'full', rules });
+      await driveApi.setDevicePolicy('d1', rules);
+      expect(request).toHaveBeenCalledWith('/drive/devices/d1/policy', {
+        method: 'PUT',
+        body: JSON.stringify({ rules }),
+      });
+    });
+
+    it('getUnderReplicated pages with cursor and limit', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
+      await driveApi.getUnderReplicated({ cursor: 'c1', limit: 50 });
+      expect(request).toHaveBeenCalledWith('/drive/replication/under?cursor=c1&limit=50');
+    });
+
+    it('isDeviceOnline uses a ten-minute window', () => {
+      const now = Date.parse('2026-10-17T12:00:00Z');
+      expect(isDeviceOnline('2026-10-17T11:55:00Z', now)).toBe(true);
+      expect(isDeviceOnline('2026-10-17T11:40:00Z', now)).toBe(false);
+      expect(isDeviceOnline(null, now)).toBe(false);
+    });
+
+    it('liveReplicas drops evicting and evicted copies', () => {
+      const r = (state: string) => ({ nodeId: state, name: state, kind: 'pc', state, verifiedAt: null });
+      expect(liveReplicas(['present', 'verified', 'evicting', 'evicted'].map(r)).map((x) => x.state))
+        .toEqual(['present', 'verified']);
     });
   });
 });

@@ -51,6 +51,15 @@
         <Trash2 :size="18" aria-hidden="true" />
         <span>Корзина</span>
       </router-link>
+      <!-- Q CUP: devices, keepers, storage rules -->
+      <router-link
+        to="/drive/devices"
+        class="drive-sidebar-root-item"
+        data-sidebar-devices
+      >
+        <MonitorSmartphone :size="18" aria-hidden="true" />
+        <span>{{ t('cupTitle') }}</span>
+      </router-link>
     </aside>
 
     <!-- Main Content Area -->
@@ -191,6 +200,7 @@
 import {
   ArrowLeft,
   HardDrive,
+  MonitorSmartphone,
   RotateCcw,
   Trash2,
 } from '@lucide/vue';

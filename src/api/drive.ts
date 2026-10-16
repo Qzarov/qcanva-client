@@ -86,6 +86,88 @@ export interface DriveSearchQuery {
   limit?: number;
 }
 
+export type DriveDeviceKind = 'cloud' | 'home' | 'pc' | 'phone';
+export type DriveStorageMode = 'full' | 'on_demand' | 'none';
+
+/** A storage device of the owner, as the hub lists it (revoked devices are never listed). */
+export interface DriveDevice {
+  id: string;
+  name: string;
+  kind: DriveDeviceKind;
+  folderId: string | null;
+  endpointId: string | null;
+  relayUrl: string | null;
+  keeper: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export interface DriveStorageRule {
+  /** null is the device root (its bound folder, or the whole drive). */
+  folderId: string | null;
+  mode: DriveStorageMode;
+}
+
+export interface DriveDevicePolicy {
+  /** Derived by the hub from the device kind; a root rule overrides it. */
+  defaultMode: 'full' | 'on_demand';
+  rules: DriveStorageRule[];
+}
+
+export interface DriveUnderReplicatedItem {
+  fileId: string;
+  name: string;
+  folderId: string | null;
+  hash: string;
+  sizeBytes: number;
+}
+
+export interface DriveUnderReplicatedResponse {
+  items: DriveUnderReplicatedItem[];
+  nextCursor: string | null;
+}
+
+export type DriveReplicaState = 'present' | 'verified' | 'evicting' | 'evicted';
+
+export interface DriveFileReplica {
+  nodeId: string;
+  name: string;
+  kind: DriveDeviceKind | string;
+  state: DriveReplicaState | string;
+  verifiedAt: string | null;
+}
+
+export interface DriveFileMeta {
+  id: string;
+  ownerId: string;
+  folderId: string | null;
+  name: string;
+  hash: string;
+  mime: string | null;
+  sizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  replicas: DriveFileReplica[];
+}
+
+/** A device counts as online when the hub heard from it within this window. */
+export const DEVICE_ONLINE_WINDOW_MS = 10 * 60 * 1000;
+
+export function isDeviceOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
+  if (!lastSeenAt) return false;
+  const seen = Date.parse(lastSeenAt);
+  return Number.isFinite(seen) && now - seen <= DEVICE_ONLINE_WINDOW_MS;
+}
+
+/**
+ * Replicas that actually hold the bytes. `evicting` is already promised away
+ * and `evicted` is gone, so neither may be shown as a copy.
+ */
+export function liveReplicas(replicas: DriveFileReplica[] | null | undefined): DriveFileReplica[] {
+  return (replicas ?? []).filter((r) => r.state === 'present' || r.state === 'verified');
+}
+
 export interface UploadHandle {
   promise: Promise<{ items: DriveItem[] }>;
   abort: () => void;
@@ -277,8 +359,8 @@ export const driveApi = {
     return request<DriveSearchResponse>(`/drive/search${qs}`);
   },
 
-  getFileMeta(id: string): Promise<DriveItem> {
-    return request<DriveItem>(`/drive/files/${encodeURIComponent(id)}/meta`);
+  getFileMeta(id: string): Promise<DriveFileMeta> {
+    return request<DriveFileMeta>(`/drive/files/${encodeURIComponent(id)}/meta`);
   },
 
   renameFile(id: string, name: string): Promise<DriveItem> {
@@ -332,6 +414,41 @@ export const driveApi = {
     return request<{ url: string; expiresAt: string }>(`/drive/files/${encodeURIComponent(id)}/download-link`, {
       method: 'POST',
     });
+  },
+
+  async listDevices(): Promise<DriveDevice[]> {
+    const res = await request<{ nodes: DriveDevice[] } | DriveDevice[]>('/drive/devices');
+    return Array.isArray(res) ? res : res?.nodes ?? [];
+  },
+
+  updateDevice(id: string, updates: { keeper: boolean }): Promise<DriveDevice> {
+    return request<DriveDevice>(`/drive/devices/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  /** Revocation lives on the device-management controller, not under /drive/devices. */
+  revokeDevice(id: string): Promise<{ revoked: true }> {
+    return request<{ revoked: true }>(`/drive/nodes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getDevicePolicy(id: string): Promise<DriveDevicePolicy> {
+    return request<DriveDevicePolicy>(`/drive/devices/${encodeURIComponent(id)}/policy`);
+  },
+
+  setDevicePolicy(id: string, rules: DriveStorageRule[]): Promise<DriveDevicePolicy> {
+    return request<DriveDevicePolicy>(`/drive/devices/${encodeURIComponent(id)}/policy`, {
+      method: 'PUT',
+      body: JSON.stringify({ rules }),
+    });
+  },
+
+  getUnderReplicated(params: { cursor?: string | null; limit?: number } = {}): Promise<DriveUnderReplicatedResponse> {
+    const qs = buildQueryString({ cursor: params.cursor, limit: params.limit });
+    return request<DriveUnderReplicatedResponse>(`/drive/replication/under${qs}`);
   },
 
   uploadFile,
