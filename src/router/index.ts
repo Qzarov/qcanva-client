@@ -33,6 +33,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/drive/trash',
+      name: 'drive-trash',
+      component: () => import('../views/DriveTrashView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/drive/:folderId',
       name: 'drive-folder',
       component: () => import('../views/DriveView.vue'),
