@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { resolveCanvasImageUrl, isCanvasImageUrl } from './imageUrls';
+import {
+  resolveCanvasImageUrl,
+  isCanvasImageUrl,
+  resolveResourceImageUrl,
+  isResourceImageUrl,
+  mapHtmlImageUrls,
+  unmapResourceImageUrl,
+  unmapHtmlImageUrls,
+} from './imageUrls';
 
 describe('imageUrls helper', () => {
   const canvasId = 'c-12345';
@@ -94,5 +102,88 @@ describe('imageUrls helper', () => {
     expect(isCanvasImageUrl(`/api/canvas/files/images/${uuid}.jpg`)).toBe(true);
     expect(isCanvasImageUrl('https://external.com/photo.png')).toBe(false);
     expect(isCanvasImageUrl(null)).toBe(false);
+  });
+
+  describe('resolveResourceImageUrl per resource type', () => {
+    it('maps text-document image URLs', () => {
+      const docId = 'doc-xyz';
+      const oldUrl = `/api/canvas/files/images/${uuid}.png`;
+      const mapped = resolveResourceImageUrl(oldUrl, 'text-documents', docId, token);
+      expect(mapped).toBe(`http://localhost:3001/api/text-documents/${docId}/images/${uuid}.png?t=${token}`);
+
+      const mappedSingular = resolveResourceImageUrl(oldUrl, 'text-document', docId, token);
+      expect(mappedSingular).toBe(`http://localhost:3001/api/text-documents/${docId}/images/${uuid}.png?t=${token}`);
+    });
+
+    it('maps html-document image URLs', () => {
+      const docId = 'html-123';
+      const oldUrl = `http://localhost:3001/api/canvas/files/images/${uuid}.webp`;
+      const mapped = resolveResourceImageUrl(oldUrl, 'html-documents', docId, token);
+      expect(mapped).toBe(`http://localhost:3001/api/html-documents/${docId}/images/${uuid}.webp?t=${token}`);
+
+      const mappedSingular = resolveResourceImageUrl(oldUrl, 'html-document', docId, token);
+      expect(mappedSingular).toBe(`http://localhost:3001/api/html-documents/${docId}/images/${uuid}.webp?t=${token}`);
+    });
+
+    it('maps interactive-template image URLs (e.g. D&D portrait)', () => {
+      const sheetId = 'sheet-456';
+      const oldUrl = `/api/canvas/files/images/${uuid}.jpg`;
+      const mapped = resolveResourceImageUrl(oldUrl, 'interactive-templates', sheetId, token);
+      expect(mapped).toBe(`http://localhost:3001/api/interactive-templates/${sheetId}/images/${uuid}.jpg?t=${token}`);
+
+      const mappedSingular = resolveResourceImageUrl(oldUrl, 'interactive-template', sheetId, token);
+      expect(mappedSingular).toBe(`http://localhost:3001/api/interactive-templates/${sheetId}/images/${uuid}.jpg?t=${token}`);
+    });
+
+    it('maps canvas image URLs through resolveResourceImageUrl', () => {
+      const oldUrl = `/api/canvas/files/images/${uuid}.gif`;
+      const mapped = resolveResourceImageUrl(oldUrl, 'canvas', canvasId, token);
+      expect(mapped).toBe(`http://localhost:3001/api/canvas/${canvasId}/images/${uuid}.gif?t=${token}`);
+    });
+
+    it('isResourceImageUrl identifies both old and tokenized resource URLs', () => {
+      expect(isResourceImageUrl(`/api/canvas/files/images/${uuid}.png`)).toBe(true);
+      expect(isResourceImageUrl(`http://localhost:3001/api/text-documents/doc-1/images/${uuid}.png?t=abc`)).toBe(true);
+      expect(isResourceImageUrl(`/api/html-documents/h-1/images/${uuid}.webp`)).toBe(true);
+      expect(isResourceImageUrl(`/api/interactive-templates/s-1/images/${uuid}.jpg?t=xyz`)).toBe(true);
+      expect(isResourceImageUrl('https://external.com/photo.jpg')).toBe(false);
+    });
+  });
+
+  describe('mapHtmlImageUrls and unmapHtmlImageUrls', () => {
+    it('maps img src attributes within HTML string to resource tokenized route', () => {
+      const rawHtml = `
+        <div class="content">
+          <h1>Title</h1>
+          <img src="/api/canvas/files/images/${uuid}.png" alt="Test 1">
+          <p>Text</p>
+          <img src="https://example.com/other.jpg" alt="External">
+        </div>
+      `;
+      const mapped = mapHtmlImageUrls(rawHtml, 'html-documents', 'doc-99', token);
+      expect(mapped).toContain(`src="http://localhost:3001/api/html-documents/doc-99/images/${uuid}.png?t=${token}"`);
+      expect(mapped).toContain('src="https://example.com/other.jpg"');
+    });
+
+    it('unmaps tokenized resource URLs back to original stored format', () => {
+      const tokenized = `http://localhost:3001/api/html-documents/doc-99/images/${uuid}.png?t=${token}`;
+      const unmapped = unmapResourceImageUrl(tokenized);
+      expect(unmapped).toBe(`http://localhost:3001/api/canvas/files/images/${uuid}.png`);
+
+      const relativeTokenized = `/api/text-documents/doc-77/images/${uuid}.jpg?t=tok123`;
+      expect(unmapResourceImageUrl(relativeTokenized)).toBe(`/api/canvas/files/images/${uuid}.jpg`);
+    });
+
+    it('unmaps tokenized HTML img src back to original stored format', () => {
+      const tokenizedHtml = `
+        <div>
+          <img src="http://localhost:3001/api/html-documents/doc-99/images/${uuid}.png?t=${token}" alt="Test">
+          <img src="https://external.com/cat.png">
+        </div>
+      `;
+      const unmapped = unmapHtmlImageUrls(tokenizedHtml);
+      expect(unmapped).toContain(`src="http://localhost:3001/api/canvas/files/images/${uuid}.png"`);
+      expect(unmapped).toContain('src="https://external.com/cat.png"');
+    });
   });
 });

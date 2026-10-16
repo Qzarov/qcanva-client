@@ -24,6 +24,9 @@
         :readonly="readonly"
         :mode="readonly ? 'play' : mode"
         :rolls="rolls"
+        :template-id="template?.id || sheetId"
+        :image-token="imageToken"
+        :on-image-error="handleImageError"
         @change="commitEdits"
         @op="sendOperation"
         @request-portrait="portraitInput?.click()"
@@ -65,6 +68,7 @@ import AccountMenu from '../components/AccountMenu.vue';
 import DndCharacterSheet from '../components/DndCharacterSheet.vue';
 import BackButton from '../components/BackButton.vue';
 import { useResourceBackTarget } from '../composables/useResourceBackTarget';
+import { useResourceImageTokens } from '../composables/useResourceImageTokens';
 
 type ViewPrefs = Pick<DndCharacterSheetData, 'activeTab' | 'displayMode'>;
 
@@ -77,6 +81,14 @@ export default defineComponent({
     const sheetId = String(route.params.id);
     const { backTarget } = useResourceBackTarget();
     const template = ref<InteractiveTemplate | null>(null);
+    const {
+      imageToken,
+      setImageToken,
+      handleImageError,
+    } = useResourceImageTokens({
+      getResourceId: () => sheetId,
+      resourceType: 'interactive-template',
+    });
     const error = ref('');
     const data = reactive(createDndCharacterSheet());
     const sync = useCharacterSheetSocket(sheetId);
@@ -341,6 +353,11 @@ export default defineComponent({
       try {
         template.value = await interactiveTemplates.get(sheetId);
         markResourceOpened('interactive-template', template.value?.id);
+        const token = template.value.imageToken;
+        const expiresAt = template.value.imageTokenExpiresAt;
+        if (token) {
+          setImageToken(token, expiresAt);
+        }
         sync.seed(template.value.data as Record<string, unknown>);
         sync.connect();
       } catch (e: any) {
@@ -360,6 +377,7 @@ export default defineComponent({
       rollTarget: sync.rollTarget, linkCanvas, linkDialog, focusAccountMenu,
       rolls, rollHistory: rolls.history, rollByFormula, rollDamageFromLog, setMode, modeToast,
       portraitInput, uploadPortrait, removePortrait, backTarget,
+      sheetId, imageToken, handleImageError,
     };
   },
 });

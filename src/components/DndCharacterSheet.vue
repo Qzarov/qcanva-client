@@ -4,7 +4,7 @@
     <section class="dnd-cs-topcard dnd-glass">
     <header class="dnd-cs-header">
       <div class="dnd-cs-portrait" :class="{ empty: !data.identity.portraitUrl }">
-        <img v-if="data.identity.portraitUrl" :src="data.identity.portraitUrl" alt="Портрет персонажа" />
+        <img v-if="data.identity.portraitUrl" :src="portraitSrc" alt="Портрет персонажа" @error="onPortraitError" />
         <span v-else>{{ initial }}</span>
         <div v-if="!locked" class="dnd-cs-portrait-actions">
           <button type="button" title="Загрузить портрет" aria-label="Загрузить портрет" @click="$emit('request-portrait')">▣</button>
@@ -339,6 +339,7 @@ import {
 import { LAYOUT, useMediaQuery } from '../composables/layoutMedia';
 import { DND_CLASSES, DND_RACES, classOption, raceOption } from '../dnd/identityOptions';
 import { createWeapon, equippedWeaponAttacks, isWeapon, parseAttackBonus, type WeaponAttack } from '../dnd/weapons';
+import { resolveResourceImageUrl } from '../canvas/imageUrls';
 
 type ListKey = 'attacks' | 'features' | 'equipment' | 'goals' | 'spells';
 type RollKind = 'check' | 'save' | 'skill' | 'initiative';
@@ -382,6 +383,9 @@ export default defineComponent({
     // The page's own rolling state. Given it, the sheet rolls into it and shows
     // no log button of its own: the page puts the log in its history panel.
     rolls: { type: Object as PropType<SheetRolls>, default: undefined },
+    templateId: { type: String, default: '' },
+    imageToken: { type: String as PropType<string | null>, default: null },
+    onImageError: { type: Function as PropType<(imageId: string, src: string) => Promise<boolean>>, default: undefined },
   },
   // `op` carries changes that must merge with other people's as deltas (HP,
   // feature uses) or that touch several fields at once (rests, hit dice, death
@@ -389,6 +393,20 @@ export default defineComponent({
   emits: ['change', 'op', 'request-portrait', 'remove-portrait'],
   setup(props, { emit }) {
     const change = () => emit('change');
+    const portraitSrc = computed(() => {
+      const raw = props.data.identity.portraitUrl;
+      if (!raw) return '';
+      return resolveResourceImageUrl(raw, 'interactive-template', props.templateId, props.imageToken);
+    });
+    const onPortraitError = async (event: Event) => {
+      const target = event.target as HTMLImageElement;
+      const src = target?.getAttribute?.('src') || target?.src || props.data.identity.portraitUrl || '';
+      const match = src.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+      const imageId = match ? match[1] : (src || 'portrait');
+      if (imageId && props.onImageError) {
+        await props.onImageError(imageId, src);
+      }
+    };
     // `<input @change>` gives a buffered value (fires on blur), matching the
     // parent's own buffered autosave - no per-keystroke saves.
     const evVal = (event: Event) => (event.target as HTMLInputElement | HTMLTextAreaElement).value;
@@ -805,6 +823,7 @@ export default defineComponent({
       roll, rollLogOpen, weaponAttacks, attackWithWeapon, weaponDamage, attackWithCustom, customDamage, damageFromToast,
       attackBonusText, parseAttackBonus, parseFormula, isWeapon, toggleWeapon, itemCatalogOpen, catalogAdded, addCatalogItem, addCustomItem,
       rollMode: rolls.mode, setRollMode: rolls.setMode, rollHistory: rolls.history, rollToasts: rolls.toasts, dismissRoll: rolls.dismiss,
+      portraitSrc, onPortraitError,
     };
   },
 });

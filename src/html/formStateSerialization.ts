@@ -1,10 +1,25 @@
+import { unmapResourceImageUrl } from '../canvas/imageUrls';
+
 export function serializeDocumentWithFormState(source: Document): string {
   const clone = source.documentElement.cloneNode(true) as HTMLElement;
   syncInputState(source, clone);
   syncTextareaState(source, clone);
   syncSelectState(source, clone);
   syncStateBackedChecklist(source, clone);
+  syncImageState(clone);
   return `<!DOCTYPE html>\n${clone.outerHTML}`;
+}
+
+function syncImageState(clone: HTMLElement) {
+  clone.querySelectorAll('img').forEach((img) => {
+    const src = img.getAttribute('src');
+    if (src) {
+      const unmapped = unmapResourceImageUrl(src);
+      if (unmapped !== src) {
+        img.setAttribute('src', unmapped);
+      }
+    }
+  });
 }
 
 function syncInputState(source: Document, clone: HTMLElement) {

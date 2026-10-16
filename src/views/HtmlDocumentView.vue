@@ -189,7 +189,7 @@
             </button>
           </div>
           <iframe
-            :srcdoc="selectedHistory.html"
+            :srcdoc="historyPreviewSrcdoc"
             class="html-browser-preview"
             sandbox="allow-same-origin allow-scripts allow-forms"
             @load="onHistoryPreviewLoad"
@@ -198,11 +198,18 @@
       </div>
     </section>
     <main class="html-editor-main">
-      <HtmlVisualEditor v-if="viewMode === 'visual' && canEditContent" v-model="html" @op="pendingVisualOp = $event" />
+      <HtmlVisualEditor
+        v-if="viewMode === 'visual' && canEditContent"
+        v-model="html"
+        :document-id="resolvedId"
+        :image-token="imageToken"
+        :on-image-error="handleImageError"
+        @op="pendingVisualOp = $event"
+      />
       <iframe
         v-if="viewMode === 'preview'"
         ref="previewFrame"
-        :srcdoc="html"
+        :srcdoc="previewSrcdoc"
         class="html-browser-preview"
         sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
         @load="onPreviewLoad"
@@ -215,7 +222,7 @@
           spellcheck="false"
         ></textarea>
         <iframe
-          :srcdoc="html"
+          :srcdoc="previewSrcdoc"
           class="html-browser-preview"
           sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
           @load="onPreviewLoad"
@@ -260,6 +267,8 @@ import type { HtmlVisualOp } from '../html/visualHtmlOps';
 import { useI18n } from '../composables/useI18n';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
+import { useResourceImageTokens } from '../composables/useResourceImageTokens';
+import { mapHtmlImageUrls } from '../canvas/imageUrls';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
@@ -273,6 +282,14 @@ export default defineComponent({
     // holds the real document id after load (used for the WS room + mutations).
     const id = route.params.id as string;
     const resolvedId = ref(id);
+    const {
+      imageToken,
+      setImageToken,
+      handleImageError,
+    } = useResourceImageTokens({
+      getResourceId: () => resolvedId.value,
+      resourceType: 'html-document',
+    });
     const slug = ref<string | null>(null);
     const slugInput = ref('');
     const savingSlug = ref(false);
@@ -313,6 +330,12 @@ export default defineComponent({
     const historyLoading = ref(false);
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
+    const previewSrcdoc = computed(() => {
+      return mapHtmlImageUrls(html.value, 'html-document', resolvedId.value, imageToken.value);
+    });
+    const historyPreviewSrcdoc = computed(() => {
+      return mapHtmlImageUrls(selectedHistory.value?.html || '', 'html-document', resolvedId.value, imageToken.value);
+    });
     const restoringHistory = ref(false);
     const showSyncEvents = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
@@ -380,6 +403,11 @@ export default defineComponent({
         writeNativeResourceCache('html', [id, res.document.id, res.document.slug || ''], res);
         // Canonicalize to the real id (URL may have been a slug).
         resolvedId.value = res.document.id;
+        const token = res.imageToken || (res as any).document?.imageToken;
+        const expiresAt = res.imageTokenExpiresAt || (res as any).document?.imageTokenExpiresAt;
+        if (token) {
+          setImageToken(token, expiresAt);
+        }
         markResourceOpened('html-document', res.document.id);
         slug.value = res.document.slug || null;
         // Both addresses are this one tab (and a delete by id finds it).
@@ -753,14 +781,32 @@ export default defineComponent({
       if (doc) bindInPageLinks(doc);
     }
 
+    function attachFrameImageErrors(iframe: HTMLIFrameElement) {
+      const doc = iframe?.contentDocument;
+      if (!doc) return;
+      doc.addEventListener('error', async (event: Event) => {
+        const target = event.target;
+        if (target instanceof HTMLImageElement) {
+          const src = target.getAttribute('src') || '';
+          const match = src.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+          const imageId = match ? match[1] : '';
+          if (imageId) {
+            await handleImageError(imageId, src);
+          }
+        }
+      }, true);
+    }
+
     function onHistoryPreviewLoad(event: Event) {
       bindFrameInPageLinks(event);
+      attachFrameImageErrors(event.target as HTMLIFrameElement);
     }
 
     function onPreviewLoad(event: Event) {
       bindPreviewChecklist(event);
       bindFrameInPageLinks(event);
       const iframe = event.target as HTMLIFrameElement;
+      attachFrameImageErrors(iframe);
       const scroll = pendingPreviewScroll;
       if (!scroll) return;
       pendingPreviewScroll = null;
@@ -832,6 +878,11 @@ export default defineComponent({
       if (cached?.value?.document) {
         const res = cached.value;
         resolvedId.value = res.document.id;
+        const token = res.imageToken || (res as any).document?.imageToken;
+        const expiresAt = res.imageTokenExpiresAt || (res as any).document?.imageTokenExpiresAt;
+        if (token) {
+          setImageToken(token, expiresAt);
+        }
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title;
@@ -871,6 +922,7 @@ export default defineComponent({
       slug, slugInput, savingSlug, saveSlug, publicUrl, copyPublicLink,
       doRevoke, requestHtmlAccess, loginWithHtmlPassword, formatHtml, wrapSelection, insertSnippet, notifyReadOnlyEditAttempt,
       downloadDocument, exportPdfDocument, loadHistory, toggleHistory, openHistoryEntry, restoreSelectedHistory,
+      imageToken, resolvedId, previewSrcdoc, historyPreviewSrcdoc, handleImageError,
     };
   },
 });
