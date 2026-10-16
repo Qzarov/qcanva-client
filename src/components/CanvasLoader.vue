@@ -356,7 +356,7 @@
         @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
       >
         <div v-if="node.label" class="node-image-title">{{ node.label }}</div>
-        <img class="node-image" :src="node.file" :alt="node.label || 'Image'" draggable="false" />
+        <img class="node-image" :src="getImageSrc(node.file)" :alt="node.label || 'Image'" draggable="false" @error="onImageError(node.id, node.file)" />
         <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
           <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
           <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
@@ -383,7 +383,7 @@
             <button class="dnd-mode-toggle" type="button" :class="{ active: isDndInteracting(node) }" :title="isDndInteracting(node) ? 'Завершить взаимодействие (Esc)' : 'Редактировать карточку (Enter)'" :aria-label="isDndInteracting(node) ? 'Завершить взаимодействие' : 'Редактировать карточку'" @mousedown.stop @click.stop="toggleDndInteraction(node)">{{ isDndInteracting(node) ? '✓' : '✎' }}</button>
             <div class="dnd-sheet-content" :inert="!isDndInteracting(node)">
             <header class="dnd-sheet-head">
-              <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="dndSheet(node).identity.portraitUrl" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
+              <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="getImageSrc(dndSheet(node).identity.portraitUrl)" @error="onImageError(node.id + '-portrait', dndSheet(node).identity.portraitUrl)" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
               <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
               <label class="dnd-level">ур.<input aria-label="Уровень" type="number" min="1" :readonly="readonly" :value="dndSheet(node).identity.level" @change="setDndNumber(node, 'level', ($event.target as HTMLInputElement).value)" /></label>
               <button class="dnd-collapse" :aria-label="dndSheet(node).displayMode === 'compact' ? 'Развернуть карточку' : 'Свернуть карточку'" :disabled="readonly" @click.stop="toggleDndMode(node)">{{ dndSheet(node).displayMode === 'compact' ? '⤢' : '⤡' }}</button>
@@ -873,6 +873,7 @@ import BoardPreview from './board/BoardPreview.vue';
 import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
+import { resolveCanvasImageUrl } from '../canvas/imageUrls';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -994,9 +995,25 @@ export default defineComponent({
       type: Array as PropType<Array<{ socketId: string; userId: string; userName: string; x: number; y: number; color: string }>>,
       default: () => [],
     },
+    canvasId: {
+      type: String,
+      default: '',
+    },
+    imageToken: {
+      type: String,
+      default: '',
+    },
   },
-  emits: ["ruler-exit","ruler-begin","ruler-move","ruler-finish","ruler-cancel","change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action"],
+  emits: ["ruler-exit","ruler-begin","ruler-move","ruler-finish","ruler-cancel","change", "cursor-move", "op", "open-canvas", "open-embed", "open-board", "open-document", "open-doc-embed", "node-edit-start", "template-roll", "readonly-action", "image-error"],
   setup(props, { emit }) {
+    const getImageSrc = (url?: string | null) => {
+      return resolveCanvasImageUrl(url, props.canvasId, props.imageToken);
+    };
+
+    const onImageError = (id: string, file?: string | null) => {
+      emit('image-error', { id, file });
+    };
+
     // Only the new add menu is localised here; the rest of this component still
     // carries hardcoded labels from before i18n existed.
     const { t } = useI18n();
@@ -4653,6 +4670,8 @@ export default defineComponent({
       toggleEdgeHidden,
       isSelectedDrawingHidden,
       toggleSelectedDrawingHidden,
+      getImageSrc,
+      onImageError,
     };
   },
 });

@@ -1,5 +1,5 @@
 import { clearTabs } from '../tabs/registry';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -170,9 +170,9 @@ function isMissingRouteError(error: unknown): boolean {
   return error.message.includes('Cannot POST') || error.message.includes('HTTP 404');
 }
 
-async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canvas: { id: string; data: string; revision: number } }> {
+async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canvas: { id: string; data: string; revision: number }; imageToken?: string; imageTokenExpiresAt?: string }> {
   try {
-    return await request<{ canvas: { id: string; data: string; revision: number } }>(`/canvas/${id}/resync`, {
+    return await request<{ canvas: { id: string; data: string; revision: number }; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}/resync`, {
       method: 'POST',
       body: JSON.stringify({ knownRevision: knownRevision?.toString() }),
     });
@@ -181,13 +181,15 @@ async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canva
       throw error;
     }
 
-    const snapshot = await request<{ canvas: { id: string; data: string; revision?: number } }>(`/canvas/${id}`);
+    const snapshot = await request<{ canvas: { id: string; data: string; revision?: number }; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}`);
     return {
       canvas: {
         id: snapshot.canvas.id,
         data: snapshot.canvas.data,
         revision: snapshot.canvas.revision ?? 0,
       },
+      imageToken: snapshot.imageToken,
+      imageTokenExpiresAt: snapshot.imageTokenExpiresAt,
     };
   }
 }
@@ -288,7 +290,9 @@ export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string, folderId?: string | null, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folderId, tags }) }),
-  get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
+  get: (id: string) => request<{ canvas: any; role: string; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
+  refreshImageToken: (id: string) =>
+    request<{ imageToken: string; imageTokenExpiresAt: string }>(`/canvas/${id}/image-token`, { method: 'POST' }),
   update: (
     id: string,
     updates: {
