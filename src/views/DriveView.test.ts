@@ -6,7 +6,7 @@ import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { promptDialog } from '../composables/appDialog';
+import { confirmDialog, promptDialog } from '../composables/appDialog';
 
 const route = reactive({ params: {} as Record<string, string>, path: '/drive' });
 const push = vi.fn();
@@ -16,28 +16,47 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push }),
 }));
 
-vi.mock('../api/drive', () => ({
-  driveApi: {
-    getFolder: vi.fn(),
-    getFolderItems: vi.fn(),
-    search: vi.fn(),
-  },
-}));
+vi.mock('../api/drive', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/drive')>();
+  return {
+    ...actual,
+    driveApi: {
+      ...actual.driveApi,
+      getFolder: vi.fn(),
+      getFolderItems: vi.fn(),
+      search: vi.fn(),
+      uploadFile: vi.fn(),
+      getDownloadLink: vi.fn(),
+      renameFile: vi.fn(),
+      trashFile: vi.fn(),
+      deleteFilePermanently: vi.fn(),
+      restoreFile: vi.fn(),
+      getTrash: vi.fn(),
+    },
+  };
+});
 
-vi.mock('../api/client', () => ({
-  resourceFolders: {
-    create: vi.fn(),
-  },
-  canvas: {
-    create: vi.fn(),
-  },
-  textDocuments: {
-    create: vi.fn(),
-  },
-}));
+vi.mock('../api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/client')>();
+  return {
+    ...actual,
+    resourceFolders: {
+      create: vi.fn(),
+    },
+    canvas: {
+      create: vi.fn(),
+    },
+    textDocuments: {
+      create: vi.fn(),
+    },
+  };
+});
 
 vi.mock('../composables/appDialog', () => ({
   promptDialog: vi.fn(),
+  confirmDialog: vi.fn(),
+  alertDialog: vi.fn(),
+  confirmDelete: vi.fn(),
 }));
 
 vi.mock('../composables/useDocumentTitle', () => ({
@@ -117,6 +136,45 @@ const mockItems: DriveItemsResponse = {
   nextCursor: null,
 };
 
+const mockFileItems: DriveItemsResponse = {
+  items: [
+    {
+      kind: 'file',
+      id: 'file-doc-1',
+      name: 'Contract.pdf',
+      mime: 'application/pdf',
+      sizeBytes: 1536,
+      sortDate: '2026-10-15T10:00:00Z',
+      updatedAt: '2026-10-15T10:00:00Z',
+      ownerId: 'user-1',
+      folderId: 'folder-altay',
+    },
+    {
+      kind: 'file',
+      id: 'file-img-1',
+      name: 'Photo.png',
+      mime: 'image/png',
+      sizeBytes: 2560000,
+      sortDate: '2026-10-15T11:00:00Z',
+      updatedAt: '2026-10-15T11:00:00Z',
+      ownerId: 'user-1',
+      folderId: 'folder-altay',
+    },
+    {
+      kind: 'file',
+      id: 'file-vid-1',
+      name: 'Video.mp4',
+      mime: 'video/mp4',
+      sizeBytes: 52428800,
+      sortDate: '2026-10-15T12:00:00Z',
+      updatedAt: '2026-10-15T12:00:00Z',
+      ownerId: 'user-1',
+      folderId: 'folder-altay',
+    },
+  ],
+  nextCursor: null,
+};
+
 function mountDriveView() {
   return mount(DriveView, {
     global: {
@@ -140,6 +198,26 @@ describe('DriveView', () => {
     vi.mocked(driveApi.getFolder).mockResolvedValue(mockRootFolder);
     vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockItems);
     vi.mocked(driveApi.search).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(driveApi.uploadFile).mockReturnValue({
+      promise: Promise.resolve({ items: [] }),
+      abort: vi.fn(),
+    });
+    vi.mocked(driveApi.getDownloadLink).mockResolvedValue({
+      url: '/api/drive/files/file-doc-1?token=test-download-token',
+      expiresAt: '2026-10-16T12:00:00Z',
+    });
+    vi.mocked(driveApi.renameFile).mockResolvedValue({
+      kind: 'file',
+      id: 'file-doc-1',
+      name: 'RenamedContract.pdf',
+      mime: 'application/pdf',
+      sizeBytes: 1536,
+      sortDate: '',
+      updatedAt: '',
+      ownerId: 'user-1',
+      folderId: 'folder-altay',
+    });
+    vi.mocked(driveApi.trashFile).mockResolvedValue({ success: true, id: 'file-doc-1' });
   });
 
   afterEach(() => {
@@ -581,5 +659,238 @@ describe('DriveView', () => {
     });
 
     vi.useRealTimers();
+  });
+
+  it('shows «Загрузить» button next to «Создать» and hides it on photos tab', async () => {
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-upload-button]').exists()).toBe(true);
+    expect(wrapper.get('[data-upload-button]').text()).toContain('Загрузить');
+
+    // Switch to Photos tab
+    await wrapper.get('[data-tab="photos"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-upload-button]').exists()).toBe(false);
+  });
+
+  it('renders «Корзина» entry in the sidebar linking to /drive/trash', async () => {
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const trashLink = wrapper.find('[data-sidebar-trash]');
+    expect(trashLink.exists()).toBe(true);
+    expect(trashLink.attributes('href')).toBe('/drive/trash');
+  });
+
+  it('gives «Создать» menu items accessible names', async () => {
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    await wrapper.get('[data-create-button]').trigger('click');
+    expect(wrapper.get('[data-create-folder]').attributes('aria-label')).toBe('Создать папку');
+    expect(wrapper.get('[data-create-canvas]').attributes('aria-label')).toBe('Создать канвас');
+    expect(wrapper.get('[data-create-doc]').attributes('aria-label')).toBe('Создать документ');
+  });
+
+  it('renders file cards with extension badge, human size, date, and distinct icons', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const fileCard = wrapper.get('[data-drive-item="file-doc-1"]');
+    expect(fileCard.text()).toContain('Contract.pdf');
+    expect(fileCard.text()).toContain('PDF');
+    expect(fileCard.text()).toContain('1,5 КБ');
+
+    const imgCard = wrapper.get('[data-drive-item="file-img-1"]');
+    expect(imgCard.text()).toContain('Photo.png');
+    expect(imgCard.text()).toContain('2,4 МБ');
+
+    const vidCard = wrapper.get('[data-drive-item="file-vid-1"]');
+    expect(vidCard.text()).toContain('Video.mp4');
+    expect(vidCard.text()).toContain('50 МБ');
+  });
+
+  it('clicking a file card downloads via download-link contract without /api/api', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+    vi.mocked(driveApi.getDownloadLink).mockResolvedValueOnce({
+      url: '/api/drive/files/file-doc-1?token=token-123',
+      expiresAt: '2026-10-16T12:00:00Z',
+    });
+
+    let clickedHref: string | null = null;
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      clickedHref = this.href;
+    });
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    await wrapper.get('[data-drive-item="file-doc-1"]').trigger('click');
+    await flushPromises();
+
+    expect(driveApi.getDownloadLink).toHaveBeenCalledWith('file-doc-1');
+    expect(clickedHref).toBe('http://localhost:3001/api/drive/files/file-doc-1?token=token-123');
+    expect(clickedHref).not.toContain('/api/api');
+    clickSpy.mockRestore();
+  });
+
+  it('file menu has accessible names, renames via promptDialog and PATCH, and trashes via confirmDialog and DELETE', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+    vi.mocked(promptDialog).mockResolvedValueOnce('NewContract.pdf');
+    vi.mocked(confirmDialog).mockResolvedValueOnce(true);
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    // Open file menu
+    const menuBtn = wrapper.get('[data-file-menu-btn="file-doc-1"]');
+    await menuBtn.trigger('click');
+    expect(wrapper.find('[data-file-menu]').exists()).toBe(true);
+
+    // Verify accessible labels
+    const dlAction = wrapper.get('[data-action="download"]');
+    const renameAction = wrapper.get('[data-action="rename"]');
+    const trashAction = wrapper.get('[data-action="trash"]');
+
+    expect(dlAction.attributes('aria-label')).toBe('Скачать файл');
+    expect(renameAction.attributes('aria-label')).toBe('Переименовать файл');
+    expect(trashAction.attributes('aria-label')).toBe('Переместить в корзину');
+
+    // Click rename
+    await renameAction.trigger('click');
+    await flushPromises();
+    expect(promptDialog).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Переименовать файл',
+      value: 'Contract.pdf',
+    }));
+    expect(driveApi.renameFile).toHaveBeenCalledWith('file-doc-1', 'NewContract.pdf');
+
+    // Re-open menu for trash
+    await wrapper.get('[data-file-menu-btn="file-doc-1"]').trigger('click');
+    await wrapper.get('[data-action="trash"]').trigger('click');
+    await flushPromises();
+    expect(confirmDialog).toHaveBeenCalledWith(expect.objectContaining({
+      title: 'Переместить «Contract.pdf» в корзину?',
+    }));
+    expect(driveApi.trashFile).toHaveBeenCalledWith('file-doc-1');
+  });
+
+  it('upload builds a multipart request to current folder, displays progress and hide button, refreshes folder', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+
+    let progressCb: ((p: number) => void) | undefined;
+    let resolvePromise: (val: any) => void;
+    const uploadPromise = new Promise((resolve) => {
+      resolvePromise = resolve;
+    });
+
+    vi.mocked(driveApi.uploadFile).mockImplementation((_folderId, _file, optionsOrProgress) => {
+      progressCb = typeof optionsOrProgress === 'function' ? optionsOrProgress : optionsOrProgress?.onProgress;
+      return {
+        promise: uploadPromise as Promise<any>,
+        abort: vi.fn(),
+      };
+    });
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const file = new File(['hello'], 'document.pdf', { type: 'application/pdf' });
+    const fileInput = wrapper.get<HTMLInputElement>('[data-file-input]');
+
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      writable: true,
+    });
+
+    await fileInput.trigger('change');
+    await flushPromises();
+
+    expect(driveApi.uploadFile).toHaveBeenCalledWith('folder-altay', file, expect.any(Function));
+    expect(wrapper.find('[data-upload-panel]').exists()).toBe(true);
+
+    // Update progress
+    progressCb?.(45);
+    await flushPromises();
+    expect(wrapper.get('[data-upload-panel]').text()).toContain('45%');
+
+    // Finish upload
+    resolvePromise!({ items: [{ kind: 'file', id: 'f-new', name: 'document.pdf' }] });
+    await flushPromises();
+
+    expect(wrapper.get('[data-upload-panel]').text()).toContain('Готово');
+
+    // Hide button visible
+    const hideBtn = wrapper.find('[data-upload-hide]');
+    expect(hideBtn.exists()).toBe(true);
+    await hideBtn.trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-upload-panel]').exists()).toBe(false);
+  });
+
+  it('upload 413 error displays «Файл больше 2 ГБ»', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+
+    const errPromise = Promise.reject(new Error('Файл больше 2 ГБ'));
+    errPromise.catch(() => {}); // prevent UnhandledPromiseRejection in Node
+    vi.mocked(driveApi.uploadFile).mockReturnValueOnce({
+      promise: errPromise,
+      abort: vi.fn(),
+    });
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const file = new File(['huge'], 'huge.iso');
+    const fileInput = wrapper.get<HTMLInputElement>('[data-file-input]');
+    Object.defineProperty(fileInput.element, 'files', {
+      value: [file],
+      writable: true,
+    });
+
+    await fileInput.trigger('change');
+    await flushPromises();
+
+    expect(wrapper.find('[data-upload-panel]').exists()).toBe(true);
+    expect(wrapper.get('[data-upload-panel]').text()).toContain('Файл больше 2 ГБ');
+  });
+
+  it('drag and drop of files onto main area shows overlay and triggers upload', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    const mainArea = wrapper.get('.drive-page');
+
+    // Drag enter with Files
+    await mainArea.trigger('dragenter', {
+      dataTransfer: { types: ['Files'] },
+    });
+    expect(wrapper.find('[data-drop-overlay]').exists()).toBe(true);
+
+    // Drop files
+    const file = new File(['dropped'], 'dropped.zip');
+    await mainArea.trigger('drop', {
+      dataTransfer: { files: [file] },
+    });
+    await flushPromises();
+
+    expect(wrapper.find('[data-drop-overlay]').exists()).toBe(false);
+    expect(driveApi.uploadFile).toHaveBeenCalledWith('folder-altay', file, expect.any(Function));
   });
 });

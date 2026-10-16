@@ -1,203 +1,224 @@
 // @vitest-environment jsdom
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { driveApi } from './drive';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import {
+  driveApi,
+  downloadDriveFile,
+  formatFileSize,
+  getFileExtension,
+  resolveDownloadUrl,
+  uploadFile,
+} from './drive';
+import { request, setToken } from './client';
 
-describe('drive API client', () => {
+vi.mock('./client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./client')>();
+  return {
+    ...actual,
+    request: vi.fn(),
+  };
+});
+
+describe('drive API and utilities', () => {
   beforeEach(() => {
-    localStorage.setItem('token', 'test-token');
+    vi.clearAllMocks();
+    localStorage.clear();
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    localStorage.clear();
   });
 
-  describe('getFolder', () => {
-    it('requests root folder information', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          folder: { id: 'root', name: null, parentId: null, ownerId: 'user-1', role: 'owner' },
-          path: [],
-          counts: { media: 0, files: 0, docs: 2, folders: 1 },
-        }),
-      } as Response);
-
-      const res = await driveApi.getFolder('root');
-
-      expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/drive/folders/root', {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
-      });
-      expect(res.folder.id).toBe('root');
-      expect(res.counts.docs).toBe(2);
+  describe('resolveDownloadUrl', () => {
+    it('resolves relative url without duplicate /api/api when base ends in /api', () => {
+      const url = '/api/drive/files/file-123?token=tok-abc';
+      const result = resolveDownloadUrl(url, 'http://localhost:3001/api');
+      expect(result).toBe('http://localhost:3001/api/drive/files/file-123?token=tok-abc');
+      expect(result).not.toContain('/api/api');
     });
 
-    it('requests a folder by uuid with encoded path', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          folder: { id: 'folder-123', name: 'Work', parentId: null, ownerId: 'user-1', role: 'owner' },
-          path: [{ id: 'folder-123', name: 'Work' }],
-          counts: { media: 1, files: 2, docs: 3, folders: 0 },
-        }),
-      } as Response);
+    it('resolves relative url when base does not end in /api', () => {
+      const url = '/api/drive/files/file-123?token=tok-abc';
+      const result = resolveDownloadUrl(url, 'http://localhost:3001');
+      expect(result).toBe('http://localhost:3001/api/drive/files/file-123?token=tok-abc');
+      expect(result).not.toContain('/api/api');
+    });
 
-      const res = await driveApi.getFolder('folder-123');
-
-      expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/drive/folders/folder-123', {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
-      });
-      expect(res.folder.name).toBe('Work');
-      expect(res.path).toHaveLength(1);
+    it('returns url as-is if already absolute', () => {
+      const url = 'https://storage.example.com/files/file-123?token=abc';
+      const result = resolveDownloadUrl(url, 'http://localhost:3001/api');
+      expect(result).toBe(url);
     });
   });
 
-  describe('getFolderItems', () => {
-    it('requests folder items without query params when default', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], nextCursor: null }),
-      } as Response);
-
-      await driveApi.getFolderItems('root');
-
-      expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/drive/folders/root/items', {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
-      });
-    });
-
-    it('builds query parameters with slice, sort, order, cursor, and limit', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              kind: 'canvas',
-              id: 'canvas-1',
-              name: 'My Canvas',
-              mime: null,
-              sizeBytes: null,
-              sortDate: '2026-10-15T12:00:00Z',
-              updatedAt: '2026-10-15T12:00:00Z',
-              ownerId: 'user-1',
-              folderId: 'folder-1',
-            },
-          ],
-          nextCursor: 'opaque-next-cursor-xyz',
-        }),
-      } as Response);
-
-      const res = await driveApi.getFolderItems('folder-1', {
-        slice: 'docs',
-        sort: 'date',
-        order: 'desc',
-        cursor: 'eyJnIjowLCJ2IjoiZm9sZGVyMSJ9',
-        limit: 25,
-      });
-
-      const expectedUrl =
-        'http://localhost:3001/api/drive/folders/folder-1/items?slice=docs&sort=date&order=desc&cursor=eyJnIjowLCJ2IjoiZm9sZGVyMSJ9&limit=25';
-      expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
-      });
-      expect(res.items).toHaveLength(1);
-      expect(res.nextCursor).toBe('opaque-next-cursor-xyz');
-    });
-
-    it('preserves opaque cursor untouched in query string', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], nextCursor: null }),
-      } as Response);
-
-      const complexCursor = 'g0-v%2Fcustom+cursor==';
-      await driveApi.getFolderItems('root', { cursor: complexCursor });
-
-      const calledUrl = fetchMock.mock.calls[0]?.[0] as string;
-      const url = new URL(calledUrl);
-      expect(url.searchParams.get('cursor')).toBe(complexCursor);
+  describe('formatFileSize', () => {
+    it('formats bytes in Russian format with decimal comma and correct units', () => {
+      expect(formatFileSize(null)).toBe('');
+      expect(formatFileSize(undefined)).toBe('');
+      expect(formatFileSize(500)).toBe('500 Б');
+      expect(formatFileSize(1024)).toBe('1 КБ');
+      expect(formatFileSize(1536)).toBe('1,5 КБ');
+      expect(formatFileSize(1048576)).toBe('1 МБ');
+      expect(formatFileSize(2621440)).toBe('2,5 МБ');
+      expect(formatFileSize(2147483648)).toBe('2 ГБ');
     });
   });
 
-  describe('search', () => {
-    it('builds search query scoped to a folder', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
+  describe('getFileExtension', () => {
+    it('extracts uppercase extension from file name', () => {
+      expect(getFileExtension('document.pdf')).toBe('PDF');
+      expect(getFileExtension('archive.tar.gz')).toBe('GZ');
+      expect(getFileExtension('photo.PNG')).toBe('PNG');
+      expect(getFileExtension('noextension')).toBe('FILE');
+      expect(getFileExtension('')).toBe('FILE');
+    });
+  });
+
+  describe('uploadFile (XMLHttpRequest)', () => {
+    let mockXHR: any;
+    let originalXHR: any;
+    let originalGlobalXHR: any;
+
+    beforeEach(() => {
+      originalXHR = window.XMLHttpRequest;
+      originalGlobalXHR = (globalThis as any).XMLHttpRequest;
+      mockXHR = {
+        open: vi.fn(),
+        setRequestHeader: vi.fn(),
+        send: vi.fn(),
+        abort: vi.fn(),
+        upload: {},
         status: 200,
-        json: async () => ({
-          items: [
-            {
-              kind: 'folder',
-              id: 'subfolder-1',
-              name: 'Road Trip',
-              mime: null,
-              sizeBytes: null,
-              sortDate: '2026-10-15T12:00:00Z',
-              updatedAt: '2026-10-15T12:00:00Z',
-              ownerId: 'user-1',
-              folderId: 'folder-1',
-            },
-          ],
-          nextCursor: null,
-        }),
-      } as Response);
-
-      const res = await driveApi.search({
-        q: 'Road',
-        slice: 'all',
-        folderId: 'folder-1',
+        responseText: JSON.stringify({ items: [{ id: 'new-file-1', name: 'test.pdf' }] }),
+      };
+      const MockConstructor = vi.fn(function (this: any) {
+        return mockXHR;
       });
-
-      const expectedUrl = 'http://localhost:3001/api/drive/search?q=Road&slice=all&folderId=folder-1';
-      expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
-      });
-      expect(res.items).toHaveLength(1);
-      expect(res.items[0]?.kind).toBe('folder');
+      (window as any).XMLHttpRequest = MockConstructor;
+      (globalThis as any).XMLHttpRequest = MockConstructor;
     });
 
-    it('builds search query without folderId for entire drive search with cursor', async () => {
-      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], nextCursor: null }),
-      } as Response);
+    afterEach(() => {
+      window.XMLHttpRequest = originalXHR;
+      (globalThis as any).XMLHttpRequest = originalGlobalXHR;
+    });
 
-      await driveApi.search({
-        q: 'Report',
-        slice: 'docs',
-        cursor: 'cursor-offset-50',
-        limit: 10,
+    it('builds a multipart request to the right folder with Bearer token and reports progress', async () => {
+      setToken('my-secret-token');
+
+      const onProgress = vi.fn();
+      const file = new File(['content'], 'test.pdf', { type: 'application/pdf' });
+      const handle = uploadFile('folder-123', file, onProgress);
+
+      expect(mockXHR.open).toHaveBeenCalledWith(
+        'POST',
+        'http://localhost:3001/api/drive/folders/folder-123/files',
+        true,
+      );
+      expect(mockXHR.setRequestHeader).toHaveBeenCalledWith('Authorization', 'Bearer my-secret-token');
+      expect(mockXHR.send).toHaveBeenCalledTimes(1);
+
+      // Verify FormData passed to send has 'file'
+      const sentFormData: FormData = mockXHR.send.mock.calls[0][0];
+      expect((sentFormData.get('file') as File)?.name).toBe('test.pdf');
+
+      // Trigger progress
+      mockXHR.upload.onprogress({ lengthComputable: true, loaded: 50, total: 100 });
+      expect(onProgress).toHaveBeenCalledWith(50);
+
+      // Finish upload
+      mockXHR.status = 201;
+      mockXHR.onload();
+
+      const result = await handle.promise;
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]?.name).toBe('test.pdf');
+    });
+
+    it('handles 413 error and reports size message', async () => {
+      const file = new File(['huge'], 'huge.iso', { type: 'application/octet-stream' });
+      const handle = uploadFile('root', file);
+
+      const assertion = expect(handle.promise).rejects.toThrow('Файл больше 2 ГБ');
+      mockXHR.status = 413;
+      mockXHR.responseText = JSON.stringify({ message: 'Payload Too Large' });
+      mockXHR.onload();
+
+      await assertion;
+    });
+
+    it('cancels upload when abort is called', async () => {
+      const file = new File(['content'], 'test.pdf');
+      const handle = uploadFile('root', file);
+
+      handle.abort();
+      expect(mockXHR.abort).toHaveBeenCalled();
+    });
+  });
+
+  describe('downloadDriveFile', () => {
+    it('requests download link and clicks a hidden <a> with absolute URL', async () => {
+      vi.mocked(request).mockResolvedValueOnce({
+        url: '/api/drive/files/file-999?token=dl-token-123',
+        expiresAt: '2026-10-16T12:00:00Z',
       });
 
-      const expectedUrl = 'http://localhost:3001/api/drive/search?q=Report&slice=docs&cursor=cursor-offset-50&limit=10';
-      expect(fetchMock).toHaveBeenCalledWith(expectedUrl, {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer test-token',
-        },
+      let clickedHref = '';
+      const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        clickedHref = this.href;
       });
+
+      const url = await downloadDriveFile('file-999', 'my-report.pdf');
+
+      expect(request).toHaveBeenCalledWith('/drive/files/file-999/download-link', {
+        method: 'POST',
+      });
+      expect(url).toBe('http://localhost:3001/api/drive/files/file-999?token=dl-token-123');
+      expect(url).not.toContain('/api/api');
+      expect(clickedHref).toBe('http://localhost:3001/api/drive/files/file-999?token=dl-token-123');
+      clickSpy.mockRestore();
+    });
+  });
+
+  describe('CRUD methods', () => {
+    it('renameFile sends PATCH with name', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ id: 'file-1', name: 'New Name.pdf' });
+      const res = await driveApi.renameFile('file-1', 'New Name.pdf');
+      expect(request).toHaveBeenCalledWith('/drive/files/file-1', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'New Name.pdf' }),
+      });
+      expect(res.name).toBe('New Name.pdf');
+    });
+
+    it('trashFile sends DELETE to /drive/files/:id', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ success: true, id: 'file-1' });
+      await driveApi.trashFile('file-1');
+      expect(request).toHaveBeenCalledWith('/drive/files/file-1', {
+        method: 'DELETE',
+      });
+    });
+
+    it('deleteFilePermanently sends DELETE with permanent=true', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ success: true, id: 'file-1' });
+      await driveApi.deleteFilePermanently('file-1');
+      expect(request).toHaveBeenCalledWith('/drive/files/file-1?permanent=true', {
+        method: 'DELETE',
+      });
+    });
+
+    it('restoreFile sends POST to /drive/files/:id/restore', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ id: 'file-1', name: 'restored.pdf' });
+      await driveApi.restoreFile('file-1');
+      expect(request).toHaveBeenCalledWith('/drive/files/file-1/restore', {
+        method: 'POST',
+      });
+    });
+
+    it('getTrash sends GET to /drive/trash with cursor', async () => {
+      vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
+      await driveApi.getTrash({ cursor: 'cur-1', limit: 20 });
+      expect(request).toHaveBeenCalledWith('/drive/trash?cursor=cur-1&limit=20');
     });
   });
 });

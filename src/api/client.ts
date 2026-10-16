@@ -1,5 +1,5 @@
 import { clearTabs } from '../tabs/registry';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);

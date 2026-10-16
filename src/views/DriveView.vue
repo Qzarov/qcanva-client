@@ -1,5 +1,35 @@
 <template>
-  <div class="drive-page" data-drive-view>
+  <div
+    class="drive-page"
+    data-drive-view
+    @dragenter.prevent="onDragEnter"
+    @dragover.prevent="onDragOver"
+    @dragleave.prevent="onDragLeave"
+    @drop.prevent="onDrop"
+  >
+    <!-- Drag & Drop Overlay -->
+    <div
+      v-if="isDraggingOver && activeTab !== 'photos'"
+      class="drive-drop-overlay"
+      data-drop-overlay
+      aria-hidden="true"
+    >
+      <div class="drive-drop-overlay-content">
+        <Upload :size="48" class="drive-drop-icon" />
+        <span class="drive-drop-text">Перетащите файлы сюда для загрузки</span>
+      </div>
+    </div>
+
+    <!-- Hidden Multi-file Input -->
+    <input
+      ref="fileInputRef"
+      type="file"
+      multiple
+      style="display: none"
+      data-file-input
+      @change="onFilesSelected"
+    />
+
     <!-- Left Sidebar (Desktop) -->
     <aside class="drive-sidebar" aria-label="Разделы диска">
       <div class="drive-sidebar-brand-row">
@@ -39,12 +69,24 @@
       <router-link
         to="/drive"
         class="drive-sidebar-root-item"
-        :class="{ active: currentFolderId === 'root' }"
-        :aria-current="currentFolderId === 'root' ? 'page' : undefined"
+        :class="{ active: currentFolderId === 'root' && route.path === '/drive' }"
+        :aria-current="currentFolderId === 'root' && route.path === '/drive' ? 'page' : undefined"
         data-sidebar-root
       >
         <HardDrive :size="18" aria-hidden="true" />
         <span>Диск</span>
+      </router-link>
+
+      <!-- Trash Link -->
+      <router-link
+        to="/drive/trash"
+        class="drive-sidebar-root-item drive-sidebar-trash-item"
+        :class="{ active: route.path === '/drive/trash' }"
+        data-sidebar-trash
+        aria-label="Корзина"
+      >
+        <Trash2 :size="18" aria-hidden="true" />
+        <span>Корзина</span>
       </router-link>
 
       <!-- Lazy Folder Tree -->
@@ -142,6 +184,17 @@
           </button>
           <h1 class="drive-mobile-title">{{ folderTitle }}</h1>
           <button
+            v-if="activeTab !== 'photos'"
+            type="button"
+            class="drive-mobile-header-btn"
+            aria-label="Загрузить файлы"
+            data-mobile-upload-button
+            title="Загрузить файлы"
+            @click="triggerFileInput"
+          >
+            <Upload :size="18" aria-hidden="true" />
+          </button>
+          <button
             type="button"
             class="drive-mobile-search-toggle"
             aria-label="Поиск"
@@ -237,6 +290,19 @@
             </label>
           </div>
 
+          <!-- Upload Button (Hidden on Photos tab) -->
+          <button
+            v-if="activeTab !== 'photos'"
+            type="button"
+            class="drive-btn drive-btn-primary"
+            data-upload-button
+            aria-label="Загрузить файлы"
+            @click="triggerFileInput"
+          >
+            <Upload :size="16" aria-hidden="true" />
+            <span>Загрузить</span>
+          </button>
+
           <!-- Create Button + Menu -->
           <div class="drive-create-dropdown-container">
             <button
@@ -263,6 +329,7 @@
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-folder
+                aria-label="Создать папку"
                 @click="onCreateFolder"
               >
                 <FolderPlus :size="16" aria-hidden="true" />
@@ -273,6 +340,7 @@
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-canvas
+                aria-label="Создать канвас"
                 @click="onCreateCanvas"
               >
                 <span class="resource-title-icon icon-canvas" aria-hidden="true"></span>
@@ -283,6 +351,7 @@
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-doc
+                aria-label="Создать документ"
                 @click="onCreateDocument"
               >
                 <span class="resource-title-icon icon-text-doc" aria-hidden="true"></span>
@@ -480,25 +549,96 @@
                   <div class="board-col"><div class="board-card"></div></div>
                   <div class="board-col"><div class="board-card"></div><div class="board-card"></div></div>
                 </div>
+                <div v-else-if="isMediaItem(item)" class="drive-card-file-mock" aria-hidden="true">
+                  <Video v-if="isVideoItem(item)" :size="38" class="drive-media-icon" />
+                  <Image v-else :size="38" class="drive-media-icon" />
+                </div>
                 <div v-else class="drive-card-file-mock" aria-hidden="true">
                   <File :size="36" aria-hidden="true" />
+                  <span class="drive-ext-badge drive-ext-badge-preview">{{ getFileExtension(item.name) }}</span>
                 </div>
               </div>
 
               <!-- Card Body -->
               <div class="drive-card-body">
                 <div class="drive-card-title-row">
+                  <Folder v-if="item.kind === 'folder'" :size="16" class="drive-folder-inline-icon" aria-hidden="true" />
+                  <Video v-else-if="isVideoItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
+                  <Image v-else-if="isImageItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
                   <span
-                    v-if="item.kind !== 'folder'"
+                    v-else-if="item.kind !== 'file'"
                     class="resource-title-icon"
                     :class="getItemIconClass(item.kind)"
                     aria-hidden="true"
                   ></span>
-                  <Folder v-else :size="16" class="drive-folder-inline-icon" aria-hidden="true" />
+                  <span v-else class="drive-ext-badge drive-ext-badge-sm">{{ getFileExtension(item.name) }}</span>
                   <span class="drive-card-name" :title="item.name">{{ item.name }}</span>
+
+                  <!-- File Context Menu Button -->
+                  <div v-if="isFileKind(item)" class="drive-item-menu-container">
+                    <button
+                      type="button"
+                      class="drive-item-menu-btn"
+                      :data-file-menu-btn="item.id"
+                      aria-haspopup="menu"
+                      :aria-expanded="activeFileMenuId === item.id"
+                      aria-label="Действия с файлом"
+                      title="Действия"
+                      @click.stop="toggleFileMenu(item.id)"
+                    >
+                      <MoreVertical :size="16" aria-hidden="true" />
+                    </button>
+
+                    <div
+                      v-if="activeFileMenuId === item.id"
+                      class="drive-item-dropdown-menu"
+                      role="menu"
+                      aria-label="Меню файла"
+                      data-file-menu
+                      @click.stop
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="drive-item-menu-action"
+                        data-action="download"
+                        aria-label="Скачать файл"
+                        @click="onDownloadFile(item)"
+                      >
+                        <Download :size="15" aria-hidden="true" />
+                        <span>Скачать</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="drive-item-menu-action"
+                        data-action="rename"
+                        aria-label="Переименовать файл"
+                        @click="onRenameFile(item)"
+                      >
+                        <Edit2 :size="15" aria-hidden="true" />
+                        <span>Переименовать</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="drive-item-menu-action drive-menu-danger"
+                        data-action="trash"
+                        aria-label="Переместить в корзину"
+                        @click="onTrashFile(item)"
+                      >
+                        <Trash2 :size="15" aria-hidden="true" />
+                        <span>В корзину</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
                 <div class="drive-card-meta">
-                  <span class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
+                  <span v-if="item.sizeBytes !== null && item.sizeBytes !== undefined" class="drive-size-meta">
+                    {{ formatFileSize(item.sizeBytes) }}
+                  </span>
+                  <span v-else class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
                   <span class="drive-date">{{ formatDate(item.updatedAt || item.sortDate) }}</span>
                 </div>
               </div>
@@ -525,21 +665,86 @@
             >
               <div class="drive-row-icon-col">
                 <Folder v-if="item.kind === 'folder'" :size="20" class="drive-folder-inline-icon" aria-hidden="true" />
+                <Video v-else-if="isVideoItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
+                <Image v-else-if="isImageItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
                 <span
-                  v-else
+                  v-else-if="item.kind !== 'file'"
                   class="resource-title-icon"
                   :class="getItemIconClass(item.kind)"
                   aria-hidden="true"
                 ></span>
+                <span v-else class="drive-ext-badge">{{ getFileExtension(item.name) }}</span>
               </div>
               <div class="drive-row-name-col">
                 <span class="drive-row-name">{{ item.name }}</span>
               </div>
-              <div class="drive-row-kind-col">
-                <span class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
+              <div class="drive-row-size-col">
+                <span v-if="item.sizeBytes !== null && item.sizeBytes !== undefined" class="drive-size">
+                  {{ formatFileSize(item.sizeBytes) }}
+                </span>
+                <span v-else class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
               </div>
               <div class="drive-row-date-col">
                 <span class="drive-date">{{ formatDate(item.updatedAt || item.sortDate) }}</span>
+              </div>
+              <div v-if="isFileKind(item)" class="drive-row-menu-col" @click.stop>
+                <div class="drive-item-menu-container">
+                  <button
+                    type="button"
+                    class="drive-item-menu-btn"
+                    :data-file-menu-btn="item.id"
+                    aria-haspopup="menu"
+                    :aria-expanded="activeFileMenuId === item.id"
+                    aria-label="Действия с файлом"
+                    title="Действия"
+                    @click.stop="toggleFileMenu(item.id)"
+                  >
+                    <MoreVertical :size="16" aria-hidden="true" />
+                  </button>
+
+                  <div
+                    v-if="activeFileMenuId === item.id"
+                    class="drive-item-dropdown-menu"
+                    role="menu"
+                    aria-label="Меню файла"
+                    data-file-menu
+                    @click.stop
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="drive-item-menu-action"
+                      data-action="download"
+                      aria-label="Скачать файл"
+                      @click="onDownloadFile(item)"
+                    >
+                      <Download :size="15" aria-hidden="true" />
+                      <span>Скачать</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="drive-item-menu-action"
+                      data-action="rename"
+                      aria-label="Переименовать файл"
+                      @click="onRenameFile(item)"
+                    >
+                      <Edit2 :size="15" aria-hidden="true" />
+                      <span>Переименовать</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      class="drive-item-menu-action drive-menu-danger"
+                      data-action="trash"
+                      aria-label="Переместить в корзину"
+                      @click="onTrashFile(item)"
+                    >
+                      <Trash2 :size="15" aria-hidden="true" />
+                      <span>В корзину</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -559,6 +764,84 @@
           </div>
         </div>
       </section>
+
+      <!-- Upload Panel (Bottom-right desktop, bottom-sheet mobile) -->
+      <aside
+        v-if="uploadPanelVisible && uploads.length > 0"
+        class="drive-upload-panel"
+        data-upload-panel
+        aria-label="Панель загрузок"
+      >
+        <div class="drive-upload-panel-header">
+          <div class="drive-upload-panel-title">
+            <Upload :size="16" aria-hidden="true" />
+            <span>Загрузка файлов</span>
+            <span class="drive-upload-panel-count">({{ uploads.length }})</span>
+          </div>
+          <button
+            v-if="allUploadsFinished"
+            type="button"
+            class="drive-upload-hide-btn"
+            data-upload-hide
+            aria-label="Скрыть панель загрузки"
+            @click="uploadPanelVisible = false"
+          >
+            Скрыть
+          </button>
+        </div>
+
+        <div class="drive-upload-list" data-upload-list>
+          <div
+            v-for="u in uploads"
+            :key="u.id"
+            class="drive-upload-item"
+            :class="`status-${u.status}`"
+            :data-upload-item="u.id"
+          >
+            <div class="drive-upload-item-top">
+              <span class="drive-upload-item-name" :title="u.name">{{ u.name }}</span>
+              <span class="drive-upload-item-size">{{ formatFileSize(u.size) }}</span>
+            </div>
+
+            <!-- Progress / Status Row -->
+            <div class="drive-upload-item-bottom">
+              <template v-if="u.status === 'uploading'">
+                <div class="drive-upload-progressbar">
+                  <div class="drive-upload-progressfill" :style="{ width: `${u.progress}%` }"></div>
+                </div>
+                <span class="drive-upload-percent">{{ u.progress }}%</span>
+                <button
+                  type="button"
+                  class="drive-upload-cancel-btn"
+                  :data-upload-cancel="u.id"
+                  aria-label="Отменить загрузку"
+                  title="Отменить"
+                  @click="cancelUpload(u)"
+                >
+                  <X :size="14" aria-hidden="true" />
+                </button>
+              </template>
+
+              <template v-else-if="u.status === 'done'">
+                <span class="drive-upload-status-done">
+                  <Check :size="14" aria-hidden="true" />
+                  Готово
+                </span>
+              </template>
+
+              <template v-else-if="u.status === 'error'">
+                <span class="drive-upload-status-error" :title="u.errorMessage">
+                  {{ u.errorMessage }}
+                </span>
+              </template>
+
+              <template v-else-if="u.status === 'cancelled'">
+                <span class="drive-upload-status-cancelled">Отменено</span>
+              </template>
+            </div>
+          </div>
+        </div>
+      </aside>
     </main>
   </div>
 </template>
@@ -568,8 +851,11 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
+  Check,
   ChevronDown,
   Code,
+  Download,
+  Edit2,
   File,
   FileText,
   Folder,
@@ -578,14 +864,21 @@ import {
   HardDrive,
   Image,
   List,
+  MoreVertical,
   Plus,
   Search,
+  Trash2,
+  Upload,
+  Video,
   X,
 } from '@lucide/vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   driveApi,
+  formatFileSize,
+  getFileExtension,
+  resolveDownloadUrl,
   type DriveFolderResponse,
   type DriveItem,
   type DriveItemKind,
@@ -594,7 +887,7 @@ import {
   type DriveSort,
 } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { promptDialog } from '../composables/appDialog';
+import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 
@@ -605,6 +898,17 @@ interface TreeNode {
   expanded: boolean;
   loaded: boolean;
   children: TreeNode[] | null;
+}
+
+interface UploadItem {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  progress: number;
+  status: 'uploading' | 'done' | 'error' | 'cancelled';
+  errorMessage?: string;
+  abort?: () => void;
 }
 
 const route = useRoute();
@@ -640,13 +944,25 @@ const searchNextCursor = ref<string | null>(null);
 const mobileSearchOpen = ref(false);
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Create menu
+// Menus
 const createMenuOpen = ref(false);
+const activeFileMenuId = ref<string | null>(null);
+
+// File input & Uploads
+const fileInputRef = ref<HTMLInputElement | null>(null);
+const uploads = ref<UploadItem[]>([]);
+const uploadPanelVisible = ref(false);
+const isDraggingOver = ref(false);
+let dragCounter = 0;
 
 // Sidebar Tree
 const treeFolders = ref<TreeNode[]>([]);
 
 const isSearching = computed(() => debouncedQuery.value.length > 0);
+
+const allUploadsFinished = computed(() => (
+  uploads.value.length > 0 && uploads.value.every((u) => u.status !== 'uploading')
+));
 
 const activeNextCursor = computed(() => (
   isSearching.value ? searchNextCursor.value : nextCursor.value
@@ -728,6 +1044,22 @@ function getItemIconClass(kind: DriveItemKind): string {
   }
 }
 
+function isFileKind(item: DriveItem): boolean {
+  return item.kind === 'file' || item.kind === 'photo' || item.kind === 'video';
+}
+
+function isImageItem(item: DriveItem): boolean {
+  return item.kind === 'photo' || (item.kind === 'file' && !!item.mime?.startsWith('image/'));
+}
+
+function isVideoItem(item: DriveItem): boolean {
+  return item.kind === 'video' || (item.kind === 'file' && !!item.mime?.startsWith('video/'));
+}
+
+function isMediaItem(item: DriveItem): boolean {
+  return isImageItem(item) || isVideoItem(item);
+}
+
 function formatDate(iso?: string | null): string {
   if (!iso) return '';
   try {
@@ -738,8 +1070,8 @@ function formatDate(iso?: string | null): string {
   }
 }
 
-// Navigation on click
-function onItemClick(item: DriveItem) {
+// Navigation or Download on click
+async function onItemClick(item: DriveItem) {
   switch (item.kind) {
     case 'folder':
       router.push(`/drive/${item.id}`);
@@ -756,6 +1088,11 @@ function onItemClick(item: DriveItem) {
     case 'board':
     case 'sheet':
       router.push(`/templates/${item.id}`);
+      break;
+    case 'file':
+    case 'photo':
+    case 'video':
+      await onDownloadFile(item);
       break;
     default:
       break;
@@ -992,6 +1329,190 @@ async function onCreateDocument() {
   await loadCurrentFolder();
 }
 
+// File actions: Download, Rename, Trash
+async function onDownloadFile(item: DriveItem) {
+  activeFileMenuId.value = null;
+  try {
+    const res = await driveApi.getDownloadLink(item.id);
+    const absoluteUrl = resolveDownloadUrl(res.url);
+    const link = document.createElement('a');
+    link.href = absoluteUrl;
+    link.style.display = 'none';
+    if (item.name) {
+      link.download = item.name;
+    }
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } catch (err: any) {
+    await alertDialog({
+      title: 'Не удалось скачать файл',
+      message: err.message || 'Ошибка получения ссылки на скачивание',
+    });
+  }
+}
+
+async function onRenameFile(item: DriveItem) {
+  activeFileMenuId.value = null;
+  const newName = await promptDialog({
+    title: 'Переименовать файл',
+    placeholder: 'Новое имя файла',
+    value: item.name,
+    confirmLabel: 'Сохранить',
+    cancelLabel: 'Отмена',
+  });
+  if (newName && newName.trim() && newName.trim() !== item.name) {
+    try {
+      await driveApi.renameFile(item.id, newName.trim());
+      await loadCurrentFolder();
+    } catch (err: any) {
+      await alertDialog({
+        title: 'Не удалось переименовать файл',
+        message: err.message || 'Ошибка переименования',
+      });
+    }
+  }
+}
+
+async function onTrashFile(item: DriveItem) {
+  activeFileMenuId.value = null;
+  const confirmed = await confirmDialog({
+    title: `Переместить «${item.name}» в корзину?`,
+    confirmLabel: 'В корзину',
+    cancelLabel: 'Отмена',
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await driveApi.trashFile(item.id);
+    await loadCurrentFolder();
+  } catch (err: any) {
+    await alertDialog({
+      title: 'Не удалось переместить файл в корзину',
+      message: err.message || 'Ошибка перемещения в корзину',
+    });
+  }
+}
+
+function toggleFileMenu(id: string) {
+  activeFileMenuId.value = activeFileMenuId.value === id ? null : id;
+}
+
+// Upload Handling
+function triggerFileInput() {
+  fileInputRef.value?.click();
+}
+
+function onFilesSelected(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  if (files.length > 0) {
+    handleFilesUpload(files);
+  }
+  target.value = '';
+}
+
+async function handleFilesUpload(files: File[]) {
+  if (files.length === 0) return;
+  uploadPanelVisible.value = true;
+
+  const targetFolder = currentFolderId.value;
+  const newItems: UploadItem[] = files.map((file) => ({
+    id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    file,
+    name: file.name,
+    size: file.size,
+    progress: 0,
+    status: 'uploading',
+  }));
+
+  uploads.value = [...newItems, ...uploads.value];
+
+  await Promise.all(
+    newItems.map(async (item) => {
+      try {
+        const handle = driveApi.uploadFile(targetFolder, item.file, (percent) => {
+          const found = uploads.value.find((u) => u.id === item.id);
+          if (found) {
+            found.progress = percent;
+          }
+        });
+        item.abort = () => handle.abort();
+        await handle.promise;
+        const found = uploads.value.find((u) => u.id === item.id);
+        if (found) {
+          found.progress = 100;
+          found.status = 'done';
+        }
+      } catch (err: any) {
+        const found = uploads.value.find((u) => u.id === item.id);
+        if (!found || found.status === 'cancelled') return;
+        found.status = 'error';
+        if (err.status === 413 || err.message?.includes('413') || err.message === 'Файл больше 2 ГБ') {
+          found.errorMessage = 'Файл больше 2 ГБ';
+        } else {
+          found.errorMessage = err.message || 'Ошибка загрузки';
+        }
+      }
+    }),
+  );
+
+  await loadCurrentFolder();
+}
+
+function cancelUpload(item: UploadItem) {
+  if (item.status === 'uploading') {
+    item.status = 'cancelled';
+    item.errorMessage = 'Загрузка отменена';
+    item.abort?.();
+  }
+}
+
+// Drag & Drop
+function onDragEnter(e: DragEvent) {
+  if (activeTab.value === 'photos') return;
+  if (e.dataTransfer?.types?.includes('Files')) {
+    dragCounter++;
+    isDraggingOver.value = true;
+  }
+}
+
+function onDragOver(e: DragEvent) {
+  if (activeTab.value === 'photos') return;
+  if (e.dataTransfer?.types?.includes('Files')) {
+    e.preventDefault();
+  }
+}
+
+function onDragLeave() {
+  if (activeTab.value === 'photos') return;
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    isDraggingOver.value = false;
+  }
+}
+
+function onDrop(e: DragEvent) {
+  dragCounter = 0;
+  isDraggingOver.value = false;
+  if (activeTab.value === 'photos') return;
+  const droppedFiles = e.dataTransfer?.files;
+  if (droppedFiles && droppedFiles.length > 0) {
+    handleFilesUpload(Array.from(droppedFiles));
+  }
+}
+
+function onDocumentClick(e: MouseEvent) {
+  const target = e.target as HTMLElement | null;
+  if (!target?.closest('.drive-create-dropdown-container')) {
+    createMenuOpen.value = false;
+  }
+  if (!target?.closest('.drive-item-menu-container')) {
+    activeFileMenuId.value = null;
+  }
+}
+
 // Watch folderId parameter changes
 watch(
   () => route.params.folderId,
@@ -1006,18 +1527,50 @@ watch(
 onMounted(() => {
   loadCurrentFolder();
   initSidebarTree();
+  document.addEventListener('click', onDocumentClick);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocumentClick);
 });
 </script>
 
 <style scoped>
 .drive-page {
+  position: relative;
   display: flex;
-  /* The app root clips overflow, so the drive scrolls its own columns. */
   height: 100%;
   background: var(--ui-page, #17181f);
   color: var(--ui-text, #f8fff8);
   font-family: 'Noto Sans', sans-serif;
   font-size: 14px;
+}
+
+/* Drop Overlay */
+.drive-drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 23, 16, 0.75);
+  backdrop-filter: blur(4px);
+  border: 2px dashed var(--ui-accent-strong, #8cff8c);
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.drive-drop-overlay-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  color: var(--ui-accent-strong, #8cff8c);
+}
+
+.drive-drop-text {
+  font-size: 18px;
+  font-weight: 600;
 }
 
 /* Sidebar */
@@ -1117,6 +1670,10 @@ onMounted(() => {
   font-weight: 600;
 }
 
+.drive-sidebar-trash-item {
+  margin-top: 2px;
+}
+
 .drive-tree {
   display: flex;
   flex-direction: column;
@@ -1197,8 +1754,6 @@ onMounted(() => {
   flex-direction: column;
   gap: 20px;
 }
-/* Content keeps its height and the column scrolls, instead of rows being
-   squeezed to fit. */
 .drive-main > * {
   flex-shrink: 0;
 }
@@ -1213,13 +1768,14 @@ onMounted(() => {
 .drive-mobile-top-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .drive-mobile-back-btn,
-.drive-mobile-search-toggle {
-  width: 40px;
-  height: 40px;
+.drive-mobile-search-toggle,
+.drive-mobile-header-btn {
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
   border: 0;
   background: transparent;
@@ -1343,7 +1899,7 @@ onMounted(() => {
   user-select: none;
 }
 
-/* Create Dropdown */
+/* Buttons */
 .drive-create-dropdown-container {
   position: relative;
 }
@@ -1358,7 +1914,17 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+
+.drive-btn-primary {
+  border: 0;
+  background: var(--ui-brand, #00ff00);
+  color: var(--color-brand-contrast, #06220c);
+}
+
+.drive-btn-primary:hover {
+  opacity: 0.9;
 }
 
 .drive-btn-secondary {
@@ -1600,6 +2166,42 @@ onMounted(() => {
   font-weight: 500;
 }
 
+/* Badges & Icons */
+.drive-ext-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ui-accent-strong, #8cff8c);
+  letter-spacing: 0.5px;
+}
+
+.drive-ext-badge-sm {
+  font-size: 10px;
+  padding: 1px 4px;
+}
+
+.drive-ext-badge-preview {
+  margin-top: 6px;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.drive-file-inline-icon {
+  color: var(--ui-accent-strong, #8cff8c);
+  flex-shrink: 0;
+}
+
+.drive-media-icon {
+  color: var(--ui-accent-strong, #8cff8c);
+  opacity: 0.85;
+}
+
 /* Items Grid */
 .drive-grid {
   display: grid;
@@ -1731,7 +2333,10 @@ onMounted(() => {
 
 .drive-card-file-mock {
   color: var(--ui-text-muted, #a8c6a8);
-  opacity: 0.7;
+  opacity: 0.9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 .drive-card-body {
@@ -1745,6 +2350,7 @@ onMounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+  position: relative;
 }
 
 .drive-folder-inline-icon {
@@ -1768,6 +2374,12 @@ onMounted(() => {
   gap: 8px;
   font-size: 12px;
   color: var(--ui-text-muted, #a8c6a8);
+}
+
+.drive-size-meta {
+  font-size: 12px;
+  color: var(--ui-text-secondary, #d6f2d6);
+  font-variant-numeric: tabular-nums;
 }
 
 .drive-kind-pill {
@@ -1828,14 +2440,260 @@ onMounted(() => {
   display: block;
 }
 
-.drive-row-kind-col {
+.drive-row-size-col {
   flex-shrink: 0;
+  min-width: 70px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--ui-text-muted, #a8c6a8);
 }
 
 .drive-row-date-col {
   flex-shrink: 0;
   font-size: 12px;
   color: var(--ui-text-muted, #a8c6a8);
+}
+
+.drive-row-menu-col {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* File Context Menu */
+.drive-item-menu-container {
+  position: relative;
+}
+
+.drive-item-menu-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.drive-item-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ui-text, #f8fff8);
+}
+
+.drive-item-dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  border-radius: 10px;
+  background: var(--ui-surface-elevated, #1a201c);
+  border: 1px solid var(--ui-border, #2a3a2e);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 120;
+}
+
+.drive-item-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.drive-item-menu-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.drive-item-menu-action.drive-menu-danger {
+  color: var(--ui-danger, #fb464c);
+}
+
+.drive-item-menu-action.drive-menu-danger:hover {
+  background: rgba(251, 70, 76, 0.15);
+}
+
+/* Upload Panel */
+.drive-upload-panel {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 340px;
+  max-height: 400px;
+  border-radius: 14px;
+  background: var(--ui-surface-elevated, #1a201c);
+  border: 1px solid var(--ui-border, #2a3a2e);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 200;
+}
+
+.drive-upload-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-border, #2a3a2e);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.drive-upload-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.drive-upload-panel-count {
+  color: var(--ui-text-muted, #a8c6a8);
+  font-size: 12px;
+}
+
+.drive-upload-hide-btn {
+  border: 0;
+  background: transparent;
+  color: var(--ui-accent-strong, #8cff8c);
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.drive-upload-hide-btn:hover {
+  background: rgba(0, 255, 0, 0.1);
+}
+
+.drive-upload-list {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 330px;
+  padding: 4px 0;
+}
+
+.drive-upload-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.drive-upload-item:last-child {
+  border-bottom: 0;
+}
+
+.drive-upload-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.drive-upload-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.drive-upload-item-size {
+  font-size: 11px;
+  color: var(--ui-text-muted, #a8c6a8);
+}
+
+.drive-upload-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.drive-upload-progressbar {
+  flex: 1;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.drive-upload-progressfill {
+  height: 100%;
+  background: var(--ui-brand, #00ff00);
+  transition: width 0.2s ease;
+}
+
+.drive-upload-percent {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  color: var(--ui-text-muted, #a8c6a8);
+  width: 32px;
+  text-align: right;
+}
+
+.drive-upload-cancel-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.drive-upload-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ui-text, #f8fff8);
+}
+
+.drive-upload-status-done {
+  color: var(--ui-success, #44cf6e);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.drive-upload-status-error {
+  color: var(--ui-danger, #fb464c);
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drive-upload-status-cancelled {
+  color: var(--ui-text-muted, #a8c6a8);
+  font-style: italic;
+  font-size: 12px;
 }
 
 /* Pagination */
@@ -1899,6 +2757,16 @@ onMounted(() => {
     padding: 0;
     flex: 1;
     min-width: 0;
+  }
+
+  .drive-upload-panel {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-height: 60vh;
+    border-radius: 16px 16px 0 0;
+    border-bottom: 0;
   }
 }
 </style>
