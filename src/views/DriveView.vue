@@ -89,6 +89,16 @@
         <span>Корзина</span>
       </router-link>
 
+      <!-- Q CUP: devices, keepers, storage rules -->
+      <router-link
+        to="/drive/devices"
+        class="drive-sidebar-root-item"
+        data-sidebar-devices
+      >
+        <MonitorSmartphone :size="18" aria-hidden="true" />
+        <span>{{ t('cupTitle') }}</span>
+      </router-link>
+
       <!-- Lazy Folder Tree -->
       <div class="drive-tree" role="tree" aria-label="Папки">
         <div
@@ -194,6 +204,15 @@
           >
             <Upload :size="18" aria-hidden="true" />
           </button>
+          <router-link
+            to="/drive/devices"
+            class="drive-mobile-header-btn"
+            :aria-label="t('cupTitle')"
+            :title="t('cupTitle')"
+            data-mobile-devices-link
+          >
+            <MonitorSmartphone :size="18" aria-hidden="true" />
+          </router-link>
           <button
             type="button"
             class="drive-mobile-search-toggle"
@@ -622,6 +641,17 @@
                       <button
                         type="button"
                         role="menuitem"
+                        class="drive-item-menu-action"
+                        data-action="properties"
+                        :aria-label="t('fileProperties')"
+                        @click="onShowProperties(item)"
+                      >
+                        <Info :size="15" aria-hidden="true" />
+                        <span>{{ t('fileProperties') }}</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
                         class="drive-item-menu-action drive-menu-danger"
                         data-action="trash"
                         aria-label="Переместить в корзину"
@@ -735,6 +765,17 @@
                     <button
                       type="button"
                       role="menuitem"
+                      class="drive-item-menu-action"
+                      data-action="properties"
+                      :aria-label="t('fileProperties')"
+                      @click="onShowProperties(item)"
+                    >
+                      <Info :size="15" aria-hidden="true" />
+                      <span>{{ t('fileProperties') }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
                       class="drive-item-menu-action drive-menu-danger"
                       data-action="trash"
                       aria-label="Переместить в корзину"
@@ -842,6 +883,13 @@
           </div>
         </div>
       </aside>
+
+      <DriveFileProperties
+        v-if="propertiesItem"
+        :file-id="propertiesItem.id"
+        :file-name="propertiesItem.name"
+        @close="propertiesItem = null"
+      />
     </main>
   </div>
 </template>
@@ -863,7 +911,9 @@ import {
   Grid,
   HardDrive,
   Image,
+  Info,
   List,
+  MonitorSmartphone,
   MoreVertical,
   Plus,
   Search,
@@ -890,6 +940,7 @@ import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
+import DriveFileProperties from '../components/DriveFileProperties.vue';
 
 interface TreeNode {
   id: string;
@@ -947,6 +998,7 @@ let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 // Menus
 const createMenuOpen = ref(false);
 const activeFileMenuId = ref<string | null>(null);
+const propertiesItem = ref<DriveItem | null>(null);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -1392,6 +1444,11 @@ async function onTrashFile(item: DriveItem) {
       message: err.message || 'Ошибка перемещения в корзину',
     });
   }
+}
+
+function onShowProperties(item: DriveItem) {
+  activeFileMenuId.value = null;
+  propertiesItem.value = item;
 }
 
 function toggleFileMenu(id: string) {

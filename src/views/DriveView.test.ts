@@ -32,6 +32,8 @@ vi.mock('../api/drive', async (importOriginal) => {
       deleteFilePermanently: vi.fn(),
       restoreFile: vi.fn(),
       getTrash: vi.fn(),
+      getFileMeta: vi.fn(),
+      listDevices: vi.fn(),
     },
   };
 });
@@ -218,6 +220,20 @@ describe('DriveView', () => {
       folderId: 'folder-altay',
     });
     vi.mocked(driveApi.trashFile).mockResolvedValue({ success: true, id: 'file-doc-1' });
+    vi.mocked(driveApi.getFileMeta).mockResolvedValue({
+      id: 'file-doc-1',
+      ownerId: 'user-1',
+      folderId: 'folder-altay',
+      name: 'Contract.pdf',
+      hash: 'abc123hash',
+      mime: 'application/pdf',
+      sizeBytes: 1536,
+      createdAt: '2026-10-15T10:00:00Z',
+      updatedAt: '2026-10-15T10:00:00Z',
+      deletedAt: null,
+      replicas: [],
+    });
+    vi.mocked(driveApi.listDevices).mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -892,5 +908,28 @@ describe('DriveView', () => {
 
     expect(wrapper.find('[data-drop-overlay]').exists()).toBe(false);
     expect(driveApi.uploadFile).toHaveBeenCalledWith('folder-altay', file, expect.any(Function));
+  });
+
+  it('opening a file menu and clicking properties action renders DriveFileProperties dialog', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    // Open file menu
+    const menuBtn = wrapper.get('[data-file-menu-btn="file-doc-1"]');
+    await menuBtn.trigger('click');
+    expect(wrapper.find('[data-file-menu]').exists()).toBe(true);
+
+    // Click properties action
+    const propsAction = wrapper.get('[data-action="properties"]');
+    await propsAction.trigger('click');
+    await flushPromises();
+
+    // Dialog is rendered
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
+    expect(wrapper.get('#drive-properties-title').text()).toBe('Contract.pdf');
   });
 });
