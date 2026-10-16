@@ -150,8 +150,14 @@ import {
 } from '../../html/visualHtml';
 import { createHistory } from '../../html/visualHtmlHistory';
 import { createHtmlVisualOp, type HtmlVisualOp, type HtmlVisualOpKind } from '../../html/visualHtmlOps';
+import { mapHtmlImageUrls } from '../../canvas/imageUrls';
 
-const props = defineProps<{ modelValue: string }>();
+const props = defineProps<{
+  modelValue: string;
+  documentId?: string;
+  imageToken?: string | null;
+  onImageError?: (imageId: string, src: string) => Promise<boolean>;
+}>();
 const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
   (event: 'op', op: HtmlVisualOp): void;
@@ -257,7 +263,11 @@ const history = (() => {
 
 const selectedIndex = computed(() => parsed.value.blocks.findIndex((block) => block.id === selectedId.value));
 const selectedBlock = computed(() => parsed.value.blocks[selectedIndex.value] || parsed.value.blocks[0]);
-const previewHtml = computed(() => serializeVisualHtml(parsed.value));
+const rawPreviewHtml = computed(() => serializeVisualHtml(parsed.value));
+const previewHtml = computed(() => {
+  const raw = rawPreviewHtml.value;
+  return mapHtmlImageUrls(raw, 'html-document', props.documentId, props.imageToken);
+});
 
 watch(() => props.modelValue, (value) => {
   if (syncingFromSelf.value) {
@@ -386,7 +396,22 @@ function blockLabel(block: VisualBlock) {
 
 /** `#anchor` links in the preview scroll it instead of loading the app into it. */
 function onPreviewFrameLoad(event: Event) {
-  const doc = (event.target as HTMLIFrameElement).contentDocument;
-  if (doc) bindInPageLinks(doc);
+  const iframe = event.target as HTMLIFrameElement;
+  const doc = iframe?.contentDocument;
+  if (!doc) return;
+  bindInPageLinks(doc);
+  if (props.onImageError) {
+    doc.addEventListener('error', async (errorEvent: Event) => {
+      const target = errorEvent.target;
+      if (target instanceof HTMLImageElement) {
+        const src = target.getAttribute?.('src') || target.src || '';
+        const match = src.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+        const imageId = match ? match[1] : (src || 'image');
+        if (imageId && props.onImageError) {
+          await props.onImageError(imageId, src);
+        }
+      }
+    }, true);
+  }
 }
 </script>
