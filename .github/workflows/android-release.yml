@@ -128,7 +128,10 @@ jobs:
             echo "keyPassword=$ANDROID_KEY_PASSWORD"
           } > android/keystore.properties
 
-      - name: Build signed AAB and APK
+      # Release builds split the APK by ABI (android/app/build.gradle): one for
+      # phones (arm64-v8a) and one for the x86_64 emulator, each carrying only
+      # its own native libraries. The AAB holds every ABI; Play splits it.
+      - name: Build signed AAB and per-ABI APKs
         env:
           VERSION_NAME: ${{ inputs.version || github.ref_name }}
           VERSION_CODE: ${{ github.run_number }}
@@ -140,7 +143,7 @@ jobs:
           # without it the stub is compiled in.
           QSPACE_MODE=auto
           if [ "$QSPACE_NATIVE" = "true" ]; then QSPACE_MODE=required; fi
-          ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon -PqspaceNative="$QSPACE_MODE"
+          ./gradlew :app:bundleRelease :app:assembleRelease --no-daemon -PqspaceNative="$QSPACE_MODE" -PabiSplits=true
 
       - name: Publish GitHub Release
         env:
@@ -158,4 +161,5 @@ jobs:
             --title "QCanva $VERSION_NAME" \
             --generate-notes \
             android/app/build/outputs/bundle/release/app-release.aab#qcanva-${VERSION_NAME}.aab \
-            android/app/build/outputs/apk/release/app-release.apk#qcanva-${VERSION_NAME}.apk
+            android/app/build/outputs/apk/release/app-arm64-v8a-release.apk#qcanva-${VERSION_NAME}-arm64-v8a.apk \
+            android/app/build/outputs/apk/release/app-x86_64-release.apk#qcanva-${VERSION_NAME}-x86_64-emulator.apk

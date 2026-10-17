@@ -31,6 +31,17 @@ if (qspaceNative) {
         'The app builds without it and QSpaceAgent.isAvailable() returns false.')
 }
 
+// One APK per ABI instead of a single APK carrying every native library: the
+// storage node's libqspace_ffi.so is the bulk of the app. Release builds split
+// by default; -PabiSplits=true|false overrides that, e.g. for a per-ABI debug
+// APK. Debug builds keep the single app-debug.apk that `npx cap run android`
+// and Android Studio install. The AAB is not affected: Play splits it itself.
+def splitAbis = ['arm64-v8a', 'x86_64']
+def abiSplitsProperty = findProperty('abiSplits')
+def abiSplits = abiSplitsProperty != null
+    ? abiSplitsProperty.toString().toBoolean()
+    : gradle.startParameter.taskNames.any { it.toLowerCase().contains('release') }
+
 def releasePropertiesFile = rootProject.file('keystore.properties')
 def releaseProperties = new Properties()
 def hasReleaseSigning = releasePropertiesFile.exists()
@@ -76,6 +87,14 @@ android {
             } else {
                 java.srcDirs += ['src/qspaceStub/java']
             }
+        }
+    }
+    splits {
+        abi {
+            enable abiSplits
+            reset()
+            include(*splitAbis)
+            universalApk false
         }
     }
     packaging {

@@ -1,12 +1,31 @@
 # Соглашение по релизным тегам
 
 Пуш тега `v*` в этот репозиторий запускает `.github/workflows/android-release.yml`:
-собирает подписанный Android-бандл (`.aab` + `.apk`) и публикует их в GitHub Releases
+собирает подписанный Android-бандл (`.aab`) и APK по ABI и публикует их в GitHub Releases
 под этим тегом. **В Google Play релиз не заливается автоматически** — это отдельный
 ручной шаг, см. [`docs/google-play-release.md`](./google-play-release.md).
 
 Веб (`qcanva.qzarov.pro`) деплоится отдельно, скриптом `scripts/deploy-production.sh`
 на сервере, и с тегами никак не связан — можно задеплоить веб без тега и наоборот.
+
+## Что попадает в релиз
+
+| Файл | Для чего |
+|---|---|
+| `qcanva-X.Y.Z-arm64-v8a.apk` | Телефоны (почти все Android-устройства). Его и ставить вручную |
+| `qcanva-X.Y.Z-x86_64-emulator.apk` | Эмулятор Android Studio на ПК |
+| `qcanva-X.Y.Z.aab` | Google Play: содержит все ABI, Play сам раздаёт нужную часть |
+
+APK разделены по ABI (`splits.abi` в `android/app/build.gradle`), потому что узел
+хранения Q Space (`libqspace_ffi.so`, ~14 МБ на ABI) — основная часть размера: общий
+APK весил ~37 МБ, APK под одну ABI — ~21 МБ (замер debug-сборки 17.10.2026).
+Старых 32-битных телефонов (`armeabi-v7a`) в релизе нет: узел хранения под них не
+собирается.
+
+Release-сборка делит APK по ABI сама. Debug-сборка по умолчанию остаётся одним
+`app-debug.apk` (его ставят `npx cap run android` и Android Studio); APK по ABI в
+debug: `./gradlew :app:assembleDebug -PabiSplits=true` →
+`app/build/outputs/apk/debug/app-arm64-v8a-debug.apk` и `app-x86_64-debug.apk`.
 
 ## Когда тегировать
 
