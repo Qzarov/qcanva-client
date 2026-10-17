@@ -48,7 +48,7 @@
           class="drive-tab-btn"
           :class="{ active: activeTab === 'files' }"
           data-tab="files"
-          @click="activeTab = 'files'"
+          @click="setTab('files')"
         >
           {{ t('driveFiles') }}
         </button>
@@ -59,7 +59,7 @@
           class="drive-tab-btn"
           :class="{ active: activeTab === 'photos' }"
           data-tab="photos"
-          @click="activeTab = 'photos'"
+          @click="setTab('photos')"
         >
           {{ t('drivePhotos') }}
         </button>
@@ -217,6 +217,7 @@
             type="button"
             class="drive-mobile-search-toggle"
             :aria-label="t('driveSearch')"
+            v-if="activeTab !== 'photos'"
             data-mobile-search-toggle
             @click="mobileSearchOpen = !mobileSearchOpen"
           >
@@ -225,7 +226,7 @@
         </div>
 
         <!-- Mobile Expandable Search -->
-        <div v-if="mobileSearchOpen" class="drive-mobile-search-row">
+        <div v-if="mobileSearchOpen && activeTab !== 'photos'" class="drive-mobile-search-row">
           <div class="drive-search-input-wrapper">
             <Search :size="16" class="drive-search-icon" aria-hidden="true" />
             <input
@@ -279,7 +280,7 @@
 
         <div class="drive-header-actions">
           <!-- Desktop Search -->
-          <div class="drive-search-container">
+          <div v-if="activeTab !== 'photos'" class="drive-search-container">
             <div class="drive-search-input-wrapper">
               <Search :size="16" class="drive-search-icon" aria-hidden="true" />
               <input
@@ -381,12 +382,46 @@
         </div>
       </header>
 
-      <!-- Photos Tab View (Stage 3 Stub) -->
+      <!-- Files / Photos switch: the photo slice of a folder is its album -->
+      <div
+        class="drive-view-switch"
+        :class="{ 'in-folder': currentFolderId !== 'root' }"
+        role="tablist"
+        :aria-label="t('driveViewSwitchAria')"
+        data-view-switch
+      >
+        <button
+          type="button"
+          role="tab"
+          class="drive-view-switch-btn"
+          :class="{ active: activeTab === 'files' }"
+          :aria-selected="activeTab === 'files'"
+          data-view-switch-files
+          @click="setTab('files')"
+        >
+          <Folder :size="15" aria-hidden="true" />
+          <span>{{ t('driveFiles') }}</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="drive-view-switch-btn"
+          :class="{ active: activeTab === 'photos' }"
+          :aria-selected="activeTab === 'photos'"
+          data-view-switch-photos
+          @click="setTab('photos')"
+        >
+          <Image :size="15" aria-hidden="true" />
+          <span>{{ t('drivePhotos') }}</span>
+        </button>
+      </div>
+
+      <!-- Photos Tab View: feed of the whole drive or of the folder subtree -->
       <section v-if="activeTab === 'photos'" class="drive-photos-tab" data-photos-tab>
-        <div class="drive-empty-placeholder">
-          <Image :size="48" class="drive-empty-icon" aria-hidden="true" />
-          <p class="drive-empty-text">{{ t('drivePhotosStage3') }}</p>
+        <div class="drive-title-bar drive-photos-title-bar">
+          <h1 class="drive-heading" data-photos-title>{{ photosTitle }}</h1>
         </div>
+        <DrivePhotos :folder-id="photosFolderId" @open-folder="openPhotoInFolder" />
       </section>
 
       <!-- Files Tab View -->
@@ -941,6 +976,7 @@ import { alertDialog, confirmDialog, promptDialog } from '../composables/appDial
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
+import DrivePhotos from '../components/photos/DrivePhotos.vue';
 
 interface TreeNode {
   id: string;
@@ -973,7 +1009,34 @@ const currentFolderId = computed<string>(() => {
 });
 
 // State
-const activeTab = ref<'files' | 'photos'>('files');
+type DriveTab = 'files' | 'photos';
+const tabFromQuery = (): DriveTab => (route.query?.view === 'photos' ? 'photos' : 'files');
+const activeTab = ref<DriveTab>(tabFromQuery());
+/** Folder whose photo slice (album) is shown; null at the root = the whole drive. */
+const photosFolderId = computed<string | null>(() => (currentFolderId.value === 'root' ? null : currentFolderId.value));
+const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t('drivePhotos')));
+
+/** Switches Files/Photos and mirrors it in `?view=photos`, so reload and back keep the mode. */
+function setTab(tab: DriveTab): void {
+  if (activeTab.value === tab) return;
+  activeTab.value = tab;
+  const query = { ...(route.query ?? {}) } as Record<string, unknown>;
+  if (tab === 'photos') query.view = 'photos';
+  else delete query.view;
+  void router.replace?.({ path: route.path, query: query as Record<string, string> })?.catch?.(() => undefined);
+}
+
+watch(
+  () => route.query?.view,
+  (view) => {
+    if (view === 'photos') activeTab.value = 'photos';
+  },
+);
+
+function openPhotoInFolder(folderId: string): void {
+  activeTab.value = 'files';
+  router.push(`/drive/${folderId}`);
+}
 const activeSlice = ref<DriveSlice>('all');
 const activeSort = ref<DriveSort>('name');
 const activeOrder = ref<DriveOrder>('asc');
@@ -1813,6 +1876,47 @@ onUnmounted(() => {
 }
 .drive-main > * {
   flex-shrink: 0;
+}
+
+/* Files / Photos switch: on desktop only inside a folder (album), always on mobile */
+.drive-view-switch {
+  display: none;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.14));
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
+}
+
+.drive-view-switch.in-folder {
+  display: inline-flex;
+}
+
+.drive-view-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--ui-text-secondary, #a3b3a3);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.drive-view-switch-btn.active {
+  background: var(--ui-surface-elevated, rgba(255, 255, 255, 0.1));
+  color: var(--ui-text, #f8fff8);
+  font-weight: 600;
+}
+
+/* The photo feed is virtualised against .drive-main's scroll position */
+.drive-photos-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* Mobile Header (Hidden on Desktop) */
@@ -2772,6 +2876,20 @@ onUnmounted(() => {
 /* Responsive: Mobile View (≤ 640px) */
 @media (max-width: 640px) {
   .drive-sidebar {
+    display: none;
+  }
+
+  .drive-view-switch {
+    display: inline-flex;
+    align-self: stretch;
+  }
+
+  .drive-view-switch-btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .drive-photos-title-bar {
     display: none;
   }
 

@@ -5,17 +5,33 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
+import { photosApi } from '../api/photos';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { confirmDialog, promptDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
 
-const route = reactive({ params: {} as Record<string, string>, path: '/drive' });
+const route = reactive({ params: {} as Record<string, string>, path: '/drive', query: {} as Record<string, string> });
 const push = vi.fn();
+const replace = vi.fn(() => Promise.resolve());
 
 vi.mock('vue-router', () => ({
   useRoute: () => route,
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, replace }),
 }));
+
+vi.mock('../api/photos', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/photos')>();
+  return {
+    ...actual,
+    isPhotosMock: vi.fn(() => false),
+    photosApi: {
+      getBuckets: vi.fn().mockResolvedValue({ buckets: [] }),
+      getBucket: vi.fn().mockResolvedValue({ month: '', items: [] }),
+      search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
+      getPeople: vi.fn().mockResolvedValue({ people: [] }),
+    },
+  };
+});
 
 vi.mock('../api/drive', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/drive')>();
@@ -198,6 +214,12 @@ describe('DriveView', () => {
     useI18n().setLocale('ru');
     route.params = {};
     route.path = '/drive';
+    route.query = {};
+    replace.mockClear();
+    vi.mocked(photosApi.getBuckets).mockResolvedValue({ buckets: [] });
+    vi.mocked(photosApi.getBucket).mockResolvedValue({ month: '', items: [] });
+    vi.mocked(photosApi.getPeople).mockResolvedValue({ people: [] });
+    vi.mocked(photosApi.search).mockResolvedValue({ items: [], nextCursor: null });
 
     vi.mocked(driveApi.getFolder).mockResolvedValue(mockRootFolder);
     vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockItems);
@@ -519,7 +541,7 @@ describe('DriveView', () => {
     expect(textDocuments.create).toHaveBeenCalledWith({ title: 'Untitled document', folderId: 'folder-altay' });
   });
 
-  it('shows empty state for Photos tab without Immich link', async () => {
+  it('renders DrivePhotos in Photos tab with correct folderId, supports tab switch and query view=photos', async () => {
     const wrapper = mountDriveView();
     await flushPromises();
 
@@ -528,8 +550,43 @@ describe('DriveView', () => {
     await flushPromises();
 
     expect(wrapper.find('[data-photos-tab]').exists()).toBe(true);
-    expect(wrapper.get('[data-photos-tab]').text()).toContain('Своя лента фото появится на этапе 3');
-    expect(wrapper.find('[data-photos-tab] a[href*="immich"]').exists()).toBe(false);
+    expect(wrapper.find('[data-drive-photos]').exists()).toBe(true);
+    expect(photosApi.getBuckets).toHaveBeenCalledWith({ folderId: null, personId: null });
+
+    // When route.params.folderId is set, photosApi.getBuckets is called with that folderId
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    const subfolderWrapper = mountDriveView();
+    await flushPromises();
+
+    await subfolderWrapper.get('[data-tab="photos"]').trigger('click');
+    await flushPromises();
+
+    expect(subfolderWrapper.find('[data-photos-tab]').exists()).toBe(true);
+    expect(subfolderWrapper.find('[data-drive-photos]').exists()).toBe(true);
+    expect(photosApi.getBuckets).toHaveBeenCalledWith({ folderId: 'folder-altay', personId: null });
+  });
+
+  it('clicking [data-view-switch-photos] calls router.replace with query {view:"photos"}', async () => {
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    await wrapper.get('[data-view-switch-photos]').trigger('click');
+    await flushPromises();
+
+    expect(replace).toHaveBeenCalledWith({
+      path: '/drive',
+      query: { view: 'photos' },
+    });
+  });
+
+  it('route.query.view="photos" on mount opens the photos tab', async () => {
+    route.query = { view: 'photos' };
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-photos-tab]').exists()).toBe(true);
+    expect(wrapper.find('[data-drive-photos]').exists()).toBe(true);
   });
 
   it('shows friendly empty state for media and files slices', async () => {
