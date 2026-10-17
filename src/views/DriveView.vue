@@ -16,7 +16,7 @@
     >
       <div class="drive-drop-overlay-content">
         <Upload :size="48" class="drive-drop-icon" />
-        <span class="drive-drop-text">Перетащите файлы сюда для загрузки</span>
+        <span class="drive-drop-text">{{ t('driveDropFilesHere') }}</span>
       </div>
     </div>
 
@@ -31,16 +31,16 @@
     />
 
     <!-- Left Sidebar (Desktop) -->
-    <aside class="drive-sidebar" aria-label="Разделы диска">
+    <aside class="drive-sidebar" :aria-label="t('driveSidebarSections')">
       <div class="drive-sidebar-brand-row">
-        <router-link to="/dashboard" class="drive-brand-link" title="Назад в дашборд">
+        <router-link to="/dashboard" class="drive-brand-link" :title="t('driveBackToDashboard')">
           <div class="drive-brand-badge">Q</div>
           <span class="drive-brand-name">Q Space</span>
         </router-link>
       </div>
 
       <!-- Top Tabs: Файлы / Фото -->
-      <div role="tablist" aria-label="Вкладки" class="drive-sidebar-tabs">
+      <div role="tablist" :aria-label="t('driveTabsAria')" class="drive-sidebar-tabs">
         <button
           type="button"
           role="tab"
@@ -50,7 +50,7 @@
           data-tab="files"
           @click="activeTab = 'files'"
         >
-          Файлы
+          {{ t('driveFiles') }}
         </button>
         <button
           type="button"
@@ -61,7 +61,7 @@
           data-tab="photos"
           @click="activeTab = 'photos'"
         >
-          Фото
+          {{ t('drivePhotos') }}
         </button>
       </div>
 
@@ -74,7 +74,7 @@
         data-sidebar-root
       >
         <HardDrive :size="18" aria-hidden="true" />
-        <span>Диск</span>
+        <span>{{ t('drive') }}</span>
       </router-link>
 
       <!-- Trash Link -->
@@ -83,10 +83,10 @@
         class="drive-sidebar-root-item drive-sidebar-trash-item"
         :class="{ active: route.path === '/drive/trash' }"
         data-sidebar-trash
-        aria-label="Корзина"
+        :aria-label="t('driveTrash')"
       >
         <Trash2 :size="18" aria-hidden="true" />
-        <span>Корзина</span>
+        <span>{{ t('driveTrash') }}</span>
       </router-link>
 
       <!-- Q CUP: devices, keepers, storage rules -->
@@ -100,7 +100,7 @@
       </router-link>
 
       <!-- Lazy Folder Tree -->
-      <div class="drive-tree" role="tree" aria-label="Папки">
+      <div class="drive-tree" role="tree" :aria-label="t('driveFolders')">
         <div
           v-for="node in treeFolders"
           :key="node.id"
@@ -114,7 +114,7 @@
             <button
               type="button"
               class="drive-tree-expand-btn"
-              :aria-label="node.expanded ? 'Свернуть' : 'Развернуть'"
+              :aria-label="node.expanded ? t('driveCollapse') : t('driveExpand')"
               :aria-expanded="node.expanded"
               :data-folder-expand="node.id"
               @click.stop="toggleTreeNode(node)"
@@ -150,7 +150,7 @@
               <button
                 type="button"
                 class="drive-tree-expand-btn"
-                :aria-label="child.expanded ? 'Свернуть' : 'Развернуть'"
+                :aria-label="child.expanded ? t('driveCollapse') : t('driveExpand')"
                 :aria-expanded="child.expanded"
                 :data-folder-expand="child.id"
                 @click.stop="toggleTreeNode(child)"
@@ -186,7 +186,7 @@
           <button
             type="button"
             class="drive-mobile-back-btn"
-            aria-label="Назад"
+            :aria-label="t('driveBack')"
             data-mobile-back
             @click="goBack"
           >
@@ -197,9 +197,9 @@
             v-if="activeTab !== 'photos'"
             type="button"
             class="drive-mobile-header-btn"
-            aria-label="Загрузить файлы"
+            :aria-label="t('driveUploadFiles')"
             data-mobile-upload-button
-            title="Загрузить файлы"
+            :title="t('driveUploadFiles')"
             @click="triggerFileInput"
           >
             <Upload :size="18" aria-hidden="true" />
@@ -216,7 +216,7 @@
           <button
             type="button"
             class="drive-mobile-search-toggle"
-            aria-label="Поиск"
+            :aria-label="t('driveSearch')"
             data-mobile-search-toggle
             @click="mobileSearchOpen = !mobileSearchOpen"
           >
@@ -232,14 +232,14 @@
               v-model="searchQuery"
               type="search"
               class="drive-search-input"
-              :placeholder="searchAllDrive ? 'Поиск по всему диску' : 'Поиск в этой папке'"
+              :placeholder="searchAllDrive ? t('driveSearchAllDrive') : t('driveSearchCurrentFolder')"
               data-drive-search-mobile
             />
             <button
               v-if="searchQuery"
               type="button"
               class="drive-search-clear"
-              aria-label="Очистить"
+              :aria-label="t('driveClearSearch')"
               @click="clearSearch"
             >
               <X :size="14" aria-hidden="true" />
@@ -251,7 +251,7 @@
               type="checkbox"
               data-search-scope-toggle-mobile
             />
-            <span>во всём диске</span>
+            <span>{{ t('driveScopeAllDrive') }}</span>
           </label>
         </div>
       </header>
@@ -259,8 +259,8 @@
       <!-- Desktop Header -->
       <header class="drive-desktop-header">
         <!-- Breadcrumbs -->
-        <nav aria-label="Путь" class="drive-breadcrumbs">
-          <router-link to="/drive" class="drive-breadcrumb-link" data-breadcrumb="root">Диск</router-link>
+        <nav :aria-label="t('driveBreadcrumbsAria')" class="drive-breadcrumbs">
+          <router-link to="/drive" class="drive-breadcrumb-link" data-breadcrumb="root">{{ t('drive') }}</router-link>
           <template v-for="(crumb, idx) in breadcrumbTrail" :key="crumb.id">
             <span class="drive-breadcrumb-sep" aria-hidden="true">›</span>
             <router-link
@@ -286,26 +286,26 @@
                 v-model="searchQuery"
                 type="search"
                 class="drive-search-input"
-                :placeholder="searchAllDrive ? 'Поиск по всему диску' : 'Поиск в этой папке'"
+                :placeholder="searchAllDrive ? t('driveSearchAllDrive') : t('driveSearchCurrentFolder')"
                 data-drive-search
               />
               <button
                 v-if="searchQuery"
                 type="button"
                 class="drive-search-clear"
-                aria-label="Очистить"
+                :aria-label="t('driveClearSearch')"
                 @click="clearSearch"
               >
                 <X :size="14" aria-hidden="true" />
               </button>
             </div>
-            <label class="drive-scope-checkbox-label" title="Искать по всему диску">
+            <label class="drive-scope-checkbox-label" :title="t('driveScopeAllDriveTitle')">
               <input
                 v-model="searchAllDrive"
                 type="checkbox"
                 data-search-scope-toggle
               />
-              <span>во всём диске</span>
+              <span>{{ t('driveScopeAllDrive') }}</span>
             </label>
           </div>
 
@@ -315,11 +315,11 @@
             type="button"
             class="drive-btn drive-btn-primary"
             data-upload-button
-            aria-label="Загрузить файлы"
+            :aria-label="t('driveUploadFiles')"
             @click="triggerFileInput"
           >
             <Upload :size="16" aria-hidden="true" />
-            <span>Загрузить</span>
+            <span>{{ t('driveUpload') }}</span>
           </button>
 
           <!-- Create Button + Menu -->
@@ -333,14 +333,14 @@
               @click="createMenuOpen = !createMenuOpen"
             >
               <Plus :size="16" aria-hidden="true" />
-              <span>Создать</span>
+              <span>{{ t('driveCreate') }}</span>
             </button>
 
             <div
               v-if="createMenuOpen"
               class="drive-create-menu"
               role="menu"
-              aria-label="Создать новый элемент"
+              :aria-label="t('driveCreateMenuAria')"
               data-create-menu
             >
               <button
@@ -348,33 +348,33 @@
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-folder
-                aria-label="Создать папку"
+                :aria-label="t('driveCreateFolder')"
                 @click="onCreateFolder"
               >
                 <FolderPlus :size="16" aria-hidden="true" />
-                <span>Папка</span>
+                <span>{{ t('driveFolder') }}</span>
               </button>
               <button
                 type="button"
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-canvas
-                aria-label="Создать канвас"
+                :aria-label="t('driveCreateCanvas')"
                 @click="onCreateCanvas"
               >
                 <span class="resource-title-icon icon-canvas" aria-hidden="true"></span>
-                <span>Канвас</span>
+                <span>{{ t('driveCanvas') }}</span>
               </button>
               <button
                 type="button"
                 role="menuitem"
                 class="drive-create-menu-item"
                 data-create-doc
-                aria-label="Создать документ"
+                :aria-label="t('driveCreateDocument')"
                 @click="onCreateDocument"
               >
                 <span class="resource-title-icon icon-text-doc" aria-hidden="true"></span>
-                <span>Документ</span>
+                <span>{{ t('driveDocument') }}</span>
               </button>
             </div>
           </div>
@@ -385,7 +385,7 @@
       <section v-if="activeTab === 'photos'" class="drive-photos-tab" data-photos-tab>
         <div class="drive-empty-placeholder">
           <Image :size="48" class="drive-empty-icon" aria-hidden="true" />
-          <p class="drive-empty-text">Своя лента фото появится на этапе 3</p>
+          <p class="drive-empty-text">{{ t('drivePhotosStage3') }}</p>
         </div>
       </section>
 
@@ -401,7 +401,7 @@
           </div>
 
           <!-- Slices (Всё / Фото и видео / Файлы / Канвасы и документы) -->
-          <div role="group" aria-label="Срез" class="drive-slice-group">
+          <div role="group" :aria-label="t('driveSliceAria')" class="drive-slice-group">
             <button
               v-for="s in sliceDefs"
               :key="s.id"
@@ -423,7 +423,7 @@
         <!-- Toolbar (Sort & Grid/List Toggle) -->
         <div class="drive-toolbar">
           <div class="drive-sort-controls">
-            <label class="drive-sort-label">Сортировка:</label>
+            <label class="drive-sort-label">{{ t('driveSortLabel') }}</label>
             <button
               type="button"
               class="drive-sort-btn"
@@ -431,7 +431,7 @@
               data-sort="name"
               @click="setSort('name')"
             >
-              Имя
+              {{ t('driveSortName') }}
             </button>
             <button
               type="button"
@@ -440,12 +440,12 @@
               data-sort="date"
               @click="setSort('date')"
             >
-              Дата
+              {{ t('driveSortDate') }}
             </button>
             <button
               type="button"
               class="drive-order-toggle"
-              :aria-label="activeOrder === 'asc' ? 'По возрастанию' : 'По убыванию'"
+              :aria-label="activeOrder === 'asc' ? t('driveOrderAsc') : t('driveOrderDesc')"
               data-order-toggle
               @click="toggleOrder"
             >
@@ -459,8 +459,8 @@
               type="button"
               class="drive-view-toggle"
               :class="{ active: viewMode === 'grid' }"
-              aria-label="Плитка"
-              title="Плитка"
+              :aria-label="t('driveViewGrid')"
+              :title="t('driveViewGrid')"
               data-view-mode="grid"
               @click="viewMode = 'grid'"
             >
@@ -470,8 +470,8 @@
               type="button"
               class="drive-view-toggle"
               :class="{ active: viewMode === 'list' }"
-              aria-label="Список"
-              title="Список"
+              :aria-label="t('driveViewList')"
+              :title="t('driveViewList')"
               data-view-mode="list"
               @click="viewMode = 'list'"
             >
@@ -483,13 +483,13 @@
         <!-- Main Body: Loading / Error / Empty / Grid / List -->
         <div v-if="loading" class="drive-loading-state" data-loading>
           <div class="drive-spinner" aria-hidden="true"></div>
-          <span>Загрузка…</span>
+          <span>{{ t('driveLoading') }}</span>
         </div>
 
         <div v-else-if="error" class="drive-error-state" data-error>
           <p class="drive-error-message">{{ error }}</p>
           <button type="button" class="drive-btn drive-btn-secondary" @click="loadCurrentFolder">
-            Попробовать снова
+            {{ t('driveTryAgain') }}
           </button>
         </div>
 
@@ -500,7 +500,7 @@
           data-empty="search"
         >
           <Search :size="40" class="drive-empty-icon" aria-hidden="true" />
-          <p class="drive-empty-text">Ничего не найдено</p>
+          <p class="drive-empty-text">{{ t('driveNothingFound') }}</p>
         </div>
 
         <!-- Slices empty placeholders -->
@@ -511,19 +511,19 @@
         >
           <template v-if="activeSlice === 'media'">
             <Image :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">Фото и видео появятся на этапе 3</p>
+            <p class="drive-empty-text">{{ t('driveEmptyMedia') }}</p>
           </template>
           <template v-else-if="activeSlice === 'files'">
             <File :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">Загрузка обычных файлов появится на этапе 2</p>
+            <p class="drive-empty-text">{{ t('driveEmptyFiles') }}</p>
           </template>
           <template v-else-if="activeSlice === 'docs'">
             <FileText :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">В этой папке пока нет канвасов и документов</p>
+            <p class="drive-empty-text">{{ t('driveEmptyDocs') }}</p>
           </template>
           <template v-else>
             <Folder :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">В этой папке пока ничего нет</p>
+            <p class="drive-empty-text">{{ t('driveEmptyFolder') }}</p>
           </template>
         </div>
 
@@ -601,8 +601,8 @@
                       :data-file-menu-btn="item.id"
                       aria-haspopup="menu"
                       :aria-expanded="activeFileMenuId === item.id"
-                      aria-label="Действия с файлом"
-                      title="Действия"
+                      :aria-label="t('driveFileActionsAria')"
+                      :title="t('driveActions')"
                       @click.stop="toggleFileMenu(item.id)"
                     >
                       <MoreVertical :size="16" aria-hidden="true" />
@@ -612,7 +612,7 @@
                       v-if="activeFileMenuId === item.id"
                       class="drive-item-dropdown-menu"
                       role="menu"
-                      aria-label="Меню файла"
+                      :aria-label="t('driveFileMenuAria')"
                       data-file-menu
                       @click.stop
                     >
@@ -621,22 +621,22 @@
                         role="menuitem"
                         class="drive-item-menu-action"
                         data-action="download"
-                        aria-label="Скачать файл"
+                        :aria-label="t('driveDownloadFileAria')"
                         @click="onDownloadFile(item)"
                       >
                         <Download :size="15" aria-hidden="true" />
-                        <span>Скачать</span>
+                        <span>{{ t('driveDownload') }}</span>
                       </button>
                       <button
                         type="button"
                         role="menuitem"
                         class="drive-item-menu-action"
                         data-action="rename"
-                        aria-label="Переименовать файл"
+                        :aria-label="t('driveRenameFileAria')"
                         @click="onRenameFile(item)"
                       >
                         <Edit2 :size="15" aria-hidden="true" />
-                        <span>Переименовать</span>
+                        <span>{{ t('driveRename') }}</span>
                       </button>
                       <button
                         type="button"
@@ -654,11 +654,11 @@
                         role="menuitem"
                         class="drive-item-menu-action drive-menu-danger"
                         data-action="trash"
-                        aria-label="Переместить в корзину"
+                        :aria-label="t('driveMoveToTrashAria')"
                         @click="onTrashFile(item)"
                       >
                         <Trash2 :size="15" aria-hidden="true" />
-                        <span>В корзину</span>
+                        <span>{{ t('driveMoveToTrash') }}</span>
                       </button>
                     </div>
                   </div>
@@ -725,8 +725,8 @@
                     :data-file-menu-btn="item.id"
                     aria-haspopup="menu"
                     :aria-expanded="activeFileMenuId === item.id"
-                    aria-label="Действия с файлом"
-                    title="Действия"
+                    :aria-label="t('driveFileActionsAria')"
+                    :title="t('driveActions')"
                     @click.stop="toggleFileMenu(item.id)"
                   >
                     <MoreVertical :size="16" aria-hidden="true" />
@@ -736,7 +736,7 @@
                     v-if="activeFileMenuId === item.id"
                     class="drive-item-dropdown-menu"
                     role="menu"
-                    aria-label="Меню файла"
+                    :aria-label="t('driveFileMenuAria')"
                     data-file-menu
                     @click.stop
                   >
@@ -745,22 +745,22 @@
                       role="menuitem"
                       class="drive-item-menu-action"
                       data-action="download"
-                      aria-label="Скачать файл"
+                      :aria-label="t('driveDownloadFileAria')"
                       @click="onDownloadFile(item)"
                     >
                       <Download :size="15" aria-hidden="true" />
-                      <span>Скачать</span>
+                      <span>{{ t('driveDownload') }}</span>
                     </button>
                     <button
                       type="button"
                       role="menuitem"
                       class="drive-item-menu-action"
                       data-action="rename"
-                      aria-label="Переименовать файл"
+                      :aria-label="t('driveRenameFileAria')"
                       @click="onRenameFile(item)"
                     >
                       <Edit2 :size="15" aria-hidden="true" />
-                      <span>Переименовать</span>
+                      <span>{{ t('driveRename') }}</span>
                     </button>
                     <button
                       type="button"
@@ -778,11 +778,11 @@
                       role="menuitem"
                       class="drive-item-menu-action drive-menu-danger"
                       data-action="trash"
-                      aria-label="Переместить в корзину"
+                      :aria-label="t('driveMoveToTrashAria')"
                       @click="onTrashFile(item)"
                     >
                       <Trash2 :size="15" aria-hidden="true" />
-                      <span>В корзину</span>
+                      <span>{{ t('driveMoveToTrash') }}</span>
                     </button>
                   </div>
                 </div>
@@ -799,8 +799,8 @@
               data-load-more
               @click="onLoadMore"
             >
-              <span v-if="loadingMore">Загрузка…</span>
-              <span v-else>Показать ещё</span>
+              <span v-if="loadingMore">{{ t('driveLoading') }}</span>
+              <span v-else>{{ t('driveShowMore') }}</span>
             </button>
           </div>
         </div>
@@ -811,12 +811,12 @@
         v-if="uploadPanelVisible && uploads.length > 0"
         class="drive-upload-panel"
         data-upload-panel
-        aria-label="Панель загрузок"
+        :aria-label="t('driveUploadPanelAria')"
       >
         <div class="drive-upload-panel-header">
           <div class="drive-upload-panel-title">
             <Upload :size="16" aria-hidden="true" />
-            <span>Загрузка файлов</span>
+            <span>{{ t('driveUploadingFiles') }}</span>
             <span class="drive-upload-panel-count">({{ uploads.length }})</span>
           </div>
           <button
@@ -824,10 +824,10 @@
             type="button"
             class="drive-upload-hide-btn"
             data-upload-hide
-            aria-label="Скрыть панель загрузки"
+            :aria-label="t('driveHideUploadPanelAria')"
             @click="uploadPanelVisible = false"
           >
-            Скрыть
+            {{ t('driveHide') }}
           </button>
         </div>
 
@@ -855,8 +855,8 @@
                   type="button"
                   class="drive-upload-cancel-btn"
                   :data-upload-cancel="u.id"
-                  aria-label="Отменить загрузку"
-                  title="Отменить"
+                  :aria-label="t('driveCancelUploadAria')"
+                  :title="t('driveCancel')"
                   @click="cancelUpload(u)"
                 >
                   <X :size="14" aria-hidden="true" />
@@ -866,7 +866,7 @@
               <template v-else-if="u.status === 'done'">
                 <span class="drive-upload-status-done">
                   <Check :size="14" aria-hidden="true" />
-                  Готово
+                  {{ t('driveUploadDone') }}
                 </span>
               </template>
 
@@ -877,7 +877,7 @@
               </template>
 
               <template v-else-if="u.status === 'cancelled'">
-                <span class="drive-upload-status-cancelled">Отменено</span>
+                <span class="drive-upload-status-cancelled">{{ t('driveUploadStatusCancelled') }}</span>
               </template>
             </div>
           </div>
@@ -964,7 +964,7 @@ interface UploadItem {
 
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const currentFolderId = computed<string>(() => {
   const raw = route.params.folderId;
@@ -1022,9 +1022,9 @@ const activeNextCursor = computed(() => (
 
 const folderTitle = computed(() => {
   if (currentFolderId.value === 'root') {
-    return 'Диск';
+    return t('drive');
   }
-  return folderInfo.value?.folder.name || 'Папка';
+  return folderInfo.value?.folder.name || t('driveFolder');
 });
 
 useDocumentTitle(computed(() => `${folderTitle.value} — ${t('drive')}`));
@@ -1032,8 +1032,8 @@ useDocumentTitle(computed(() => `${folderTitle.value} — ${t('drive')}`));
 const folderRoleLabel = computed(() => {
   const role = folderInfo.value?.folder.role;
   if (!role || role === 'owner') return null;
-  if (role === 'editor') return 'Редактор';
-  if (role === 'viewer') return 'Просмотр';
+  if (role === 'editor') return t('driveRoleEditor');
+  if (role === 'viewer') return t('driveRoleViewer');
   return null;
 });
 
@@ -1041,12 +1041,12 @@ const breadcrumbTrail = computed(() => (
   folderInfo.value?.path || []
 ));
 
-const sliceDefs: Array<{ id: DriveSlice; label: string }> = [
-  { id: 'all', label: 'Всё' },
-  { id: 'media', label: 'Фото и видео' },
-  { id: 'files', label: 'Файлы' },
-  { id: 'docs', label: 'Канвасы и документы' },
-];
+const sliceDefs = computed<Array<{ id: DriveSlice; label: string }>>(() => [
+  { id: 'all', label: t('driveSliceAll') },
+  { id: 'media', label: t('driveSliceMedia') },
+  { id: 'files', label: t('driveFiles') },
+  { id: 'docs', label: t('driveSliceDocs') },
+]);
 
 function getSliceCount(sliceId: DriveSlice): number | undefined {
   const counts = folderInfo.value?.counts;
@@ -1072,16 +1072,16 @@ const displayedItems = computed(() => {
 
 function getKindLabel(kind: DriveItemKind): string {
   switch (kind) {
-    case 'folder': return 'Папка';
-    case 'canvas': return 'Канвас';
-    case 'text-document': return 'Документ';
+    case 'folder': return t('driveFolder');
+    case 'canvas': return t('driveCanvas');
+    case 'text-document': return t('driveDocument');
     case 'html-document': return 'HTML';
-    case 'board': return 'Доска';
-    case 'sheet': return 'Лист';
-    case 'file': return 'Файл';
-    case 'photo': return 'Фото';
-    case 'video': return 'Видео';
-    default: return 'Файл';
+    case 'board': return t('driveBoard');
+    case 'sheet': return t('driveSheet');
+    case 'file': return t('driveFile');
+    case 'photo': return t('drivePhoto');
+    case 'video': return t('driveVideo');
+    default: return t('driveFile');
   }
 }
 
@@ -1116,7 +1116,7 @@ function formatDate(iso?: string | null): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
   } catch {
     return iso;
   }
@@ -1188,7 +1188,7 @@ async function loadCurrentFolder() {
     items.value = itemsRes.items;
     nextCursor.value = itemsRes.nextCursor;
   } catch (e: any) {
-    error.value = e.message || 'Ошибка загрузки папки';
+    error.value = e.message || t('driveFolderLoadFailed');
   } finally {
     loading.value = false;
   }
@@ -1208,7 +1208,7 @@ async function refetchItemsOnly() {
     items.value = res.items;
     nextCursor.value = res.nextCursor;
   } catch (e: any) {
-    error.value = e.message || 'Ошибка обновления списка';
+    error.value = e.message || t('driveRefreshFailed');
   }
 }
 
@@ -1256,7 +1256,7 @@ async function onLoadMore() {
       nextCursor.value = res.nextCursor;
     }
   } catch (e: any) {
-    error.value = e.message || 'Не удалось загрузить следующие элементы';
+    error.value = e.message || t('driveLoadMoreItemsFailed');
   } finally {
     loadingMore.value = false;
   }
@@ -1282,7 +1282,7 @@ async function performSearch() {
     searchResults.value = res.items;
     searchNextCursor.value = res.nextCursor;
   } catch (e: any) {
-    error.value = e.message || 'Ошибка поиска';
+    error.value = e.message || t('driveSearchFailed');
   } finally {
     loading.value = false;
   }
@@ -1354,10 +1354,10 @@ async function toggleTreeNode(node: TreeNode) {
 async function onCreateFolder() {
   createMenuOpen.value = false;
   const name = await promptDialog({
-    title: 'Новая папка',
-    placeholder: 'Название папки',
-    confirmLabel: 'Создать',
-    cancelLabel: 'Отмена',
+    title: t('driveNewFolderTitle'),
+    placeholder: t('driveNewFolderPlaceholder'),
+    confirmLabel: t('driveCreate'),
+    cancelLabel: t('driveCancel'),
   });
   if (name && name.trim()) {
     const parentId = currentFolderId.value === 'root' ? null : currentFolderId.value;
@@ -1398,8 +1398,8 @@ async function onDownloadFile(item: DriveItem) {
     document.body.removeChild(link);
   } catch (err: any) {
     await alertDialog({
-      title: 'Не удалось скачать файл',
-      message: err.message || 'Ошибка получения ссылки на скачивание',
+      title: t('driveDownloadFailedTitle'),
+      message: err.message || t('driveDownloadLinkFailed'),
     });
   }
 }
@@ -1407,11 +1407,11 @@ async function onDownloadFile(item: DriveItem) {
 async function onRenameFile(item: DriveItem) {
   activeFileMenuId.value = null;
   const newName = await promptDialog({
-    title: 'Переименовать файл',
-    placeholder: 'Новое имя файла',
+    title: t('driveRenameFileTitle'),
+    placeholder: t('driveRenameFilePlaceholder'),
     value: item.name,
-    confirmLabel: 'Сохранить',
-    cancelLabel: 'Отмена',
+    confirmLabel: t('driveSave'),
+    cancelLabel: t('driveCancel'),
   });
   if (newName && newName.trim() && newName.trim() !== item.name) {
     try {
@@ -1419,8 +1419,8 @@ async function onRenameFile(item: DriveItem) {
       await loadCurrentFolder();
     } catch (err: any) {
       await alertDialog({
-        title: 'Не удалось переименовать файл',
-        message: err.message || 'Ошибка переименования',
+        title: t('driveRenameFailedTitle'),
+        message: err.message || t('driveRenameFailedMessage'),
       });
     }
   }
@@ -1429,9 +1429,9 @@ async function onRenameFile(item: DriveItem) {
 async function onTrashFile(item: DriveItem) {
   activeFileMenuId.value = null;
   const confirmed = await confirmDialog({
-    title: `Переместить «${item.name}» в корзину?`,
-    confirmLabel: 'В корзину',
-    cancelLabel: 'Отмена',
+    title: t('driveMoveToTrashTitle').replace('{name}', item.name),
+    confirmLabel: t('driveMoveToTrash'),
+    cancelLabel: t('driveCancel'),
     danger: true,
   });
   if (!confirmed) return;
@@ -1440,8 +1440,8 @@ async function onTrashFile(item: DriveItem) {
     await loadCurrentFolder();
   } catch (err: any) {
     await alertDialog({
-      title: 'Не удалось переместить файл в корзину',
-      message: err.message || 'Ошибка перемещения в корзину',
+      title: t('driveMoveToTrashFailedTitle'),
+      message: err.message || t('driveMoveToTrashFailedMessage'),
     });
   }
 }
@@ -1505,10 +1505,10 @@ async function handleFilesUpload(files: File[]) {
         const found = uploads.value.find((u) => u.id === item.id);
         if (!found || found.status === 'cancelled') return;
         found.status = 'error';
-        if (err.status === 413 || err.message?.includes('413') || err.message === 'Файл больше 2 ГБ') {
-          found.errorMessage = 'Файл больше 2 ГБ';
+        if (err.status === 413 || err.message?.includes('413') || err.message === t('driveUploadTooLarge')) {
+          found.errorMessage = t('driveUploadTooLarge');
         } else {
-          found.errorMessage = err.message || 'Ошибка загрузки';
+          found.errorMessage = err.message || t('driveUploadFailed');
         }
       }
     }),
@@ -1520,7 +1520,7 @@ async function handleFilesUpload(files: File[]) {
 function cancelUpload(item: UploadItem) {
   if (item.status === 'uploading') {
     item.status = 'cancelled';
-    item.errorMessage = 'Загрузка отменена';
+    item.errorMessage = t('driveUploadCancelled');
     item.abort?.();
   }
 }

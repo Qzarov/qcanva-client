@@ -7,6 +7,7 @@ import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { confirmDialog, promptDialog } from '../composables/appDialog';
+import { useI18n } from '../composables/useI18n';
 
 const route = reactive({ params: {} as Record<string, string>, path: '/drive' });
 const push = vi.fn();
@@ -194,6 +195,7 @@ describe('DriveView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    useI18n().setLocale('ru');
     route.params = {};
     route.path = '/drive';
 
@@ -931,5 +933,61 @@ describe('DriveView', () => {
     // Dialog is rendered
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
     expect(wrapper.get('#drive-properties-title').text()).toBe('Contract.pdf');
+  });
+});
+
+describe('in English', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useRealTimers();
+    route.params = {};
+    route.path = '/drive';
+    useI18n().setLocale('en');
+
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockRootFolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue({
+      items: [
+        {
+          kind: 'folder',
+          id: 'subfolder-1',
+          name: 'Documents',
+          mime: null,
+          sizeBytes: null,
+          sortDate: '2026-10-15T10:00:00Z',
+          updatedAt: '2026-10-15T10:00:00Z',
+          ownerId: 'user-1',
+          folderId: 'root',
+        },
+        {
+          kind: 'file',
+          id: 'file-1',
+          name: 'Contract.pdf',
+          mime: 'application/pdf',
+          sizeBytes: 1536,
+          sortDate: '2026-10-15T11:00:00Z',
+          updatedAt: '2026-10-15T11:00:00Z',
+          ownerId: 'user-1',
+          folderId: 'root',
+        },
+      ],
+      nextCursor: null,
+    });
+    vi.mocked(driveApi.search).mockResolvedValue({ items: [], nextCursor: null });
+    vi.mocked(driveApi.uploadFile).mockReturnValue({
+      promise: Promise.resolve({ items: [] }),
+      abort: vi.fn(),
+    });
+    vi.mocked(driveApi.listDevices).mockResolvedValue([]);
+  });
+
+  it('renders English labels and has no Cyrillic in text', async () => {
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Files');
+    expect(wrapper.text()).toContain('Trash');
+    expect(wrapper.text()).toContain('Drive');
+    expect(wrapper.find('nav[aria-label="Path"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toMatch(/[Ѐ-ӿ]/);
   });
 });
