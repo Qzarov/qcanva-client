@@ -39,6 +39,12 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      path: '/drive/devices',
+      name: 'drive-devices',
+      component: () => import('../views/DriveDevicesView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
       path: '/drive/:folderId',
       name: 'drive-folder',
       component: () => import('../views/DriveView.vue'),
