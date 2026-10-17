@@ -2270,7 +2270,9 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   border-radius: 14px;
-  overflow: hidden;
+  /* Not overflow: hidden — it clipped the item menu to the card. The preview
+     clips itself to the rounded top instead. */
+  position: relative;
   background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
   border: 1px solid var(--ui-border, #2a3a2e);
   color: var(--ui-text, #f8fff8);
@@ -2287,6 +2289,8 @@ onUnmounted(() => {
 
 .drive-card-preview {
   height: 120px;
+  overflow: hidden;
+  border-radius: 13px 13px 0 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2539,6 +2543,11 @@ onUnmounted(() => {
 .drive-item-menu-btn:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--ui-text, #f8fff8);
+}
+
+/* The card with an open menu sits above its neighbours. */
+.drive-card:has(.drive-item-dropdown-menu) {
+  z-index: 5;
 }
 
 .drive-item-dropdown-menu {
