@@ -160,23 +160,66 @@ describe('DriveFileProperties', () => {
     expect(pcItem.find('[data-keeper]').exists()).toBe(false);
   });
 
-  it('empty live list shows [data-no-copies]', async () => {
-    const { t } = useI18n();
-    const metaNoReplicas: DriveFileMeta = {
-      ...mockMeta,
-      replicas: [],
-    };
-    vi.mocked(driveApi.getFileMeta).mockResolvedValue(metaNoReplicas);
+  async function mountWith(meta: Partial<DriveFileMeta>) {
+    vi.mocked(driveApi.getFileMeta).mockResolvedValue({ ...mockMeta, ...meta });
     vi.mocked(driveApi.listDevices).mockResolvedValue([]);
-
-    const wrapper = mount(DriveFileProperties, {
-      props: { fileId: 'file-123' },
-    });
+    const wrapper = mount(DriveFileProperties, { props: { fileId: 'file-123' } });
     await flushPromises();
+    return wrapper;
+  }
 
-    const noCopies = wrapper.find('[data-no-copies]');
-    expect(noCopies.exists()).toBe(true);
-    expect(noCopies.text()).toContain(t('fileNoDeviceCopies'));
+  it('no hub copy and no live replicas: warns that the bytes are nowhere', async () => {
+    const { t } = useI18n();
+    const wrapper = await mountWith({ replicas: [], hubCopy: false, availableFrom: [] });
+
+    const warning = wrapper.find('[data-no-bytes]');
+    expect(warning.exists()).toBe(true);
+    expect(warning.attributes('role')).toBe('alert');
+    expect(warning.text()).toContain(t('fileNoBytesAnywhere'));
+    expect(wrapper.find('[data-hub-copy]').exists()).toBe(false);
+    expect(wrapper.find('[data-no-copies]').exists()).toBe(false);
+  });
+
+  it('hub copy (boolean, as the hub sends it) with no replicas: hub row, no warning', async () => {
+    const { t } = useI18n();
+    const wrapper = await mountWith({ replicas: [], hubCopy: true, availableFrom: ['hub'] });
+
+    const hub = wrapper.find('[data-hub-copy]');
+    expect(hub.exists()).toBe(true);
+    expect(hub.text()).toContain(t('fileCopyHub'));
+    expect(wrapper.find('[data-no-bytes]').exists()).toBe(false);
+    expect(wrapper.find('[data-no-copies]').text()).toContain(t('fileNoDeviceCopies'));
+  });
+
+  it('hub copy as the raw "present" state shows the hub row', async () => {
+    const wrapper = await mountWith({ replicas: [], hubCopy: 'present' });
+    expect(wrapper.find('[data-hub-copy]').exists()).toBe(true);
+    expect(wrapper.find('[data-no-bytes]').exists()).toBe(false);
+  });
+
+  it('availableFrom with "hub" counts as a hub copy when hubCopy is missing', async () => {
+    const wrapper = await mountWith({ replicas: [], hubCopy: undefined, availableFrom: ['hub'] });
+    expect(wrapper.find('[data-hub-copy]').exists()).toBe(true);
+  });
+
+  it('"evicting" is not a hub copy: no hub row, warning when no replicas', async () => {
+    const wrapper = await mountWith({ replicas: [], hubCopy: 'evicting', availableFrom: ['hub'] });
+    expect(wrapper.find('[data-hub-copy]').exists()).toBe(false);
+    expect(wrapper.find('[data-no-bytes]').exists()).toBe(true);
+  });
+
+  it('live replicas without a hub copy: device rows only, no hub row, no warning', async () => {
+    const wrapper = await mountWith({ hubCopy: false, availableFrom: ['home', 'pc'] });
+    expect(wrapper.find('[data-replica="node-home"]').exists()).toBe(true);
+    expect(wrapper.find('[data-hub-copy]').exists()).toBe(false);
+    expect(wrapper.find('[data-no-bytes]').exists()).toBe(false);
+  });
+
+  it('live replicas and a hub copy: hub row after the devices', async () => {
+    const wrapper = await mountWith({ hubCopy: true, availableFrom: ['home', 'pc', 'hub'] });
+    const items = wrapper.findAll('.drive-properties-replica-item');
+    expect(items.length).toBeGreaterThan(1);
+    expect(items[items.length - 1]!.attributes('data-hub-copy')).toBeDefined();
   });
 
   it('getFileMeta rejection shows the error state', async () => {

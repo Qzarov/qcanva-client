@@ -247,7 +247,40 @@ describe('DriveDevicesView.vue', () => {
     expect(wrapperWithKeeper.find('[data-no-keeper]').exists()).toBe(false);
   });
 
-  it('under block count shows "N+" when nextCursor and load more appends', async () => {
+  it('under block count uses total from the hub, without "+"', async () => {
+    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
+      items: [
+        {
+          fileId: 'file-1',
+          name: 'First.pdf',
+          folderId: 'f-work',
+          hash: 'hash-1',
+          sizeBytes: 1024,
+        },
+      ],
+      nextCursor: 'cursor-page-2',
+      total: 137,
+    });
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const underSection = wrapper.find('[data-under]');
+    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '137'));
+    expect(underSection.text()).not.toContain('137+');
+    expect(underSection.text()).not.toContain('1+');
+
+    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
+      items: [{ fileId: 'file-2', name: 'Second.pdf', folderId: null, hash: 'hash-2', sizeBytes: 2048 }],
+      nextCursor: 'cursor-page-3',
+      total: 136,
+    });
+    await underSection.find('[data-under-more]').trigger('click');
+    await flushPromises();
+    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '136'));
+  });
+
+  it('under block count falls back to "N+" on a hub without total, load more appends', async () => {
     vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
       items: [
         {

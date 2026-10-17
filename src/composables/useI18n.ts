@@ -330,6 +330,9 @@ export const messages = {
     fileCopyVerified: 'проверена {name}',
     fileCopyUnverified: 'ещё не проверена',
     fileNoDeviceCopies: 'Копий на устройствах нет',
+    fileCopyHub: 'В облаке хаба',
+    fileCopyHubNote: 'копия хаба, пока её не заберёт хранитель',
+    fileNoBytesAnywhere: 'Байтов нет ни на одном устройстве',
     fileMetaFailed: 'Не удалось загрузить свойства файла',
   },
   en: {
@@ -635,6 +638,9 @@ export const messages = {
     fileCopyVerified: 'verified {name}',
     fileCopyUnverified: 'not verified yet',
     fileNoDeviceCopies: 'No copies on devices',
+    fileCopyHub: 'In the hub cloud',
+    fileCopyHubNote: 'the hub keeps it until the keeper takes it',
+    fileNoBytesAnywhere: 'The bytes are on no device',
     fileMetaFailed: 'Could not load file properties',
   },
 } as const;

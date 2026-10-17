@@ -57,7 +57,7 @@
 
         <div class="drive-properties-copies-section">
           <h3 class="drive-properties-copies-heading">{{ t('fileCopies') }}</h3>
-          <ul v-if="places.length > 0" class="drive-properties-replicas-list">
+          <ul v-if="places.length > 0 || hubCopy" class="drive-properties-replicas-list">
             <li
               v-for="rep in places"
               :key="rep.nodeId"
@@ -85,9 +85,22 @@
                 <span class="drive-properties-replica-state">{{ getReplicaStateText(rep) }}</span>
               </div>
             </li>
+            <li v-if="hubCopy" class="drive-properties-replica-item" data-hub-copy>
+              <div class="drive-properties-replica-top">
+                <Cloud :size="16" class="drive-properties-kind-icon" aria-hidden="true" />
+                <span class="drive-properties-place-label">{{ t('fileCopyHub') }}</span>
+              </div>
+              <div class="drive-properties-replica-bottom">
+                <span class="drive-properties-replica-state">{{ t('fileCopyHubNote') }}</span>
+              </div>
+            </li>
           </ul>
-          <p v-else class="drive-properties-no-copies" data-no-copies>
+          <p v-if="hubCopy && places.length === 0" class="drive-properties-no-copies" data-no-copies>
             {{ t('fileNoDeviceCopies') }}
+          </p>
+          <p v-else-if="!hubCopy && places.length === 0" class="drive-properties-no-bytes" role="alert" data-no-bytes>
+            <TriangleAlert :size="16" aria-hidden="true" />
+            <span>{{ t('fileNoBytesAnywhere') }}</span>
           </p>
         </div>
       </div>
@@ -97,8 +110,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { Cloud, HardDrive, House, Laptop, Smartphone, X } from '@lucide/vue';
-import { driveApi, formatFileSize, type DriveDevice, type DriveFileMeta } from '../api/drive';
+import { Cloud, HardDrive, House, Laptop, Smartphone, TriangleAlert, X } from '@lucide/vue';
+import { driveApi, formatFileSize, hubHoldsCopy, type DriveDevice, type DriveFileMeta } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
 import { replicaPlaces, type ReplicaPlace } from './driveReplicaPlaces';
 
@@ -180,6 +193,8 @@ const places = computed(() => {
   if (!meta.value) return [];
   return replicaPlaces(meta.value.replicas, devices.value);
 });
+
+const hubCopy = computed(() => hubHoldsCopy(meta.value));
 
 function formatDate(val: string | null | undefined): string {
   if (!val) return '—';
@@ -420,6 +435,22 @@ function getReplicaStateText(rep: ReplicaPlace): string {
   font-size: 14px;
   color: var(--ui-text-muted);
   padding: 8px 0;
+}
+
+.drive-properties-no-bytes {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--ui-warning-soft);
+  color: var(--ui-warning-foreground);
+}
+
+.drive-properties-no-bytes svg {
+  flex-shrink: 0;
 }
 
 @media (max-width: 640px) {

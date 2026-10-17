@@ -125,6 +125,8 @@ export interface DriveUnderReplicatedItem {
 export interface DriveUnderReplicatedResponse {
   items: DriveUnderReplicatedItem[];
   nextCursor: string | null;
+  /** All files without a keeper copy, independent of the cursor. Missing on older hubs. */
+  total?: number;
 }
 
 export type DriveReplicaState = 'present' | 'verified' | 'evicting' | 'evicted';
@@ -149,6 +151,13 @@ export interface DriveFileMeta {
   updatedAt: string;
   deletedAt: string | null;
   replicas: DriveFileReplica[];
+  /**
+   * Whether the hub's own storage holds the bytes. The hub sends a boolean;
+   * the raw `blob.hubCopy` states are accepted too, `evicting` meaning "no".
+   */
+  hubCopy?: boolean | 'present' | 'evicting' | 'absent' | null;
+  /** Where the bytes can come from now: device kinds with a live copy, then "hub". */
+  availableFrom?: string[];
 }
 
 /** A device counts as online when the hub heard from it within this window. */
@@ -166,6 +175,15 @@ export function isDeviceOnline(lastSeenAt: string | null | undefined, now: numbe
  */
 export function liveReplicas(replicas: DriveFileReplica[] | null | undefined): DriveFileReplica[] {
   return (replicas ?? []).filter((r) => r.state === 'present' || r.state === 'verified');
+}
+
+/** True when the hub itself holds the bytes; `evicting`, `absent` and `false` mean it does not. */
+export function hubHoldsCopy(meta: Pick<DriveFileMeta, 'hubCopy' | 'availableFrom'> | null | undefined): boolean {
+  if (!meta) return false;
+  const flag = meta.hubCopy;
+  if (flag === true || flag === 'present') return true;
+  if (flag === false || flag === 'evicting' || flag === 'absent') return false;
+  return Array.isArray(meta.availableFrom) && meta.availableFrom.includes('hub');
 }
 
 export interface UploadHandle {
@@ -428,9 +446,9 @@ export const driveApi = {
     });
   },
 
-  /** Revocation lives on the device-management controller, not under /drive/devices. */
+  /** Revoke a device; the hub also keeps the older DELETE /drive/nodes/:id. */
   revokeDevice(id: string): Promise<{ revoked: true }> {
-    return request<{ revoked: true }>(`/drive/nodes/${encodeURIComponent(id)}`, {
+    return request<{ revoked: true }>(`/drive/devices/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
