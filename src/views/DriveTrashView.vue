@@ -1,16 +1,16 @@
 <template>
   <div class="drive-page" data-drive-trash-view>
     <!-- Left Sidebar (Desktop) -->
-    <aside class="drive-sidebar" aria-label="Разделы диска">
+    <aside class="drive-sidebar" :aria-label="t('driveSidebarSections')">
       <div class="drive-sidebar-brand-row">
-        <router-link to="/dashboard" class="drive-brand-link" title="Назад в дашборд">
+        <router-link to="/dashboard" class="drive-brand-link" :title="t('driveBackToDashboard')">
           <div class="drive-brand-badge">Q</div>
           <span class="drive-brand-name">Q Space</span>
         </router-link>
       </div>
 
       <!-- Top Tabs: Файлы / Фото -->
-      <div role="tablist" aria-label="Вкладки" class="drive-sidebar-tabs">
+      <div role="tablist" :aria-label="t('driveTabsAria')" class="drive-sidebar-tabs">
         <router-link
           to="/drive"
           role="tab"
@@ -18,7 +18,7 @@
           class="drive-tab-btn active"
           data-tab="files"
         >
-          Файлы
+          {{ t('driveFiles') }}
         </router-link>
         <router-link
           to="/drive"
@@ -27,7 +27,7 @@
           class="drive-tab-btn"
           data-tab="photos"
         >
-          Фото
+          {{ t('drivePhotos') }}
         </router-link>
       </div>
 
@@ -38,7 +38,7 @@
         data-sidebar-root
       >
         <HardDrive :size="18" aria-hidden="true" />
-        <span>Диск</span>
+        <span>{{ t('drive') }}</span>
       </router-link>
 
       <!-- Trash Link -->
@@ -49,7 +49,7 @@
         data-sidebar-trash
       >
         <Trash2 :size="18" aria-hidden="true" />
-        <span>Корзина</span>
+        <span>{{ t('driveTrash') }}</span>
       </router-link>
       <!-- Q CUP: devices, keepers, storage rules -->
       <router-link
@@ -70,44 +70,44 @@
           <button
             type="button"
             class="drive-mobile-back-btn"
-            aria-label="Назад к диску"
+            :aria-label="t('driveBackToDrive')"
             data-mobile-back
             @click="router.push('/drive')"
           >
             <ArrowLeft :size="20" aria-hidden="true" />
           </button>
-          <h1 class="drive-mobile-title">Корзина</h1>
+          <h1 class="drive-mobile-title">{{ t('driveTrash') }}</h1>
         </div>
       </header>
 
       <!-- Desktop Header -->
       <header class="drive-desktop-header">
-        <nav aria-label="Путь" class="drive-breadcrumbs">
-          <router-link to="/drive" class="drive-breadcrumb-link" data-breadcrumb="root">Диск</router-link>
+        <nav :aria-label="t('driveBreadcrumbsAria')" class="drive-breadcrumbs">
+          <router-link to="/drive" class="drive-breadcrumb-link" data-breadcrumb="root">{{ t('drive') }}</router-link>
           <span class="drive-breadcrumb-sep" aria-hidden="true">›</span>
-          <span class="drive-breadcrumb-current" data-breadcrumb="trash">Корзина</span>
+          <span class="drive-breadcrumb-current" data-breadcrumb="trash">{{ t('driveTrash') }}</span>
         </nav>
       </header>
 
       <!-- Title Bar -->
       <div class="drive-title-bar">
         <div class="drive-title-meta">
-          <h1 class="drive-heading">Корзина</h1>
-          <p class="drive-trash-subtitle">Файлы, удалённые вами в корзину</p>
+          <h1 class="drive-heading">{{ t('driveTrash') }}</h1>
+          <p class="drive-trash-subtitle">{{ t('driveTrashSubtitle') }}</p>
         </div>
       </div>
 
       <!-- Loading State -->
       <div v-if="loading" class="drive-loading-state" data-loading>
         <div class="drive-spinner" aria-hidden="true"></div>
-        <span>Загрузка…</span>
+        <span>{{ t('driveLoading') }}</span>
       </div>
 
       <!-- Error State -->
       <div v-else-if="error" class="drive-error-state" data-error>
         <p class="drive-error-message">{{ error }}</p>
         <button type="button" class="drive-btn drive-btn-secondary" @click="loadTrash">
-          Попробовать снова
+          {{ t('driveTryAgain') }}
         </button>
       </div>
 
@@ -118,7 +118,7 @@
         data-empty="trash"
       >
         <Trash2 :size="48" class="drive-empty-icon" aria-hidden="true" />
-        <p class="drive-empty-text">Корзина пуста</p>
+        <p class="drive-empty-text">{{ t('driveTrashEmpty') }}</p>
       </div>
 
       <!-- Trashed Items List -->
@@ -156,23 +156,23 @@
                 type="button"
                 class="drive-btn drive-btn-secondary drive-btn-sm"
                 :data-restore-btn="item.id"
-                aria-label="Восстановить файл"
-                title="Восстановить"
+                :aria-label="t('driveRestoreFileAria')"
+                :title="t('driveRestore')"
                 @click="onRestore(item)"
               >
                 <RotateCcw :size="14" aria-hidden="true" />
-                <span>Восстановить</span>
+                <span>{{ t('driveRestore') }}</span>
               </button>
               <button
                 type="button"
                 class="drive-btn drive-btn-danger drive-btn-sm"
                 :data-delete-permanent-btn="item.id"
-                aria-label="Удалить навсегда"
-                title="Удалить навсегда"
+                :aria-label="t('driveDeleteForever')"
+                :title="t('driveDeleteForever')"
                 @click="onDeletePermanently(item)"
               >
                 <Trash2 :size="14" aria-hidden="true" />
-                <span>Удалить навсегда</span>
+                <span>{{ t('driveDeleteForever') }}</span>
               </button>
             </div>
           </div>
@@ -187,8 +187,8 @@
             data-load-more
             @click="onLoadMore"
           >
-            <span v-if="loadingMore">Загрузка…</span>
-            <span v-else>Показать ещё</span>
+            <span v-if="loadingMore">{{ t('driveLoading') }}</span>
+            <span v-else>{{ t('driveShowMore') }}</span>
           </button>
         </div>
       </div>
@@ -217,9 +217,9 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
-useDocumentTitle(computed(() => `Корзина — ${t('drive')}`));
+useDocumentTitle(computed(() => `${t('driveTrash')} — ${t('drive')}`));
 
 const items = ref<DriveItem[]>([]);
 const nextCursor = ref<string | null>(null);
@@ -231,7 +231,7 @@ function formatDate(iso?: string | null): string {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    return d.toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
   } catch {
     return iso;
   }
@@ -245,7 +245,7 @@ async function loadTrash() {
     items.value = res.items;
     nextCursor.value = res.nextCursor;
   } catch (err: any) {
-    error.value = err.message || 'Ошибка загрузки корзины';
+    error.value = err.message || t('driveTrashLoadFailed');
   } finally {
     loading.value = false;
   }
@@ -259,7 +259,7 @@ async function onLoadMore() {
     items.value = [...items.value, ...res.items];
     nextCursor.value = res.nextCursor;
   } catch (err: any) {
-    error.value = err.message || 'Ошибка загрузки следующих элементов';
+    error.value = err.message || t('driveLoadMoreFailed');
   } finally {
     loadingMore.value = false;
   }
@@ -270,7 +270,7 @@ async function onRestore(item: DriveItem) {
     await driveApi.restoreFile(item.id);
     items.value = items.value.filter((it) => it.id !== item.id);
   } catch (err: any) {
-    error.value = err.message || 'Не удалось восстановить файл';
+    error.value = err.message || t('driveRestoreFailed');
   }
 }
 
@@ -286,7 +286,7 @@ async function onDeletePermanently(item: DriveItem) {
     await driveApi.deleteFilePermanently(item.id);
     items.value = items.value.filter((it) => it.id !== item.id);
   } catch (err: any) {
-    error.value = err.message || 'Не удалось окончательно удалить файл';
+    error.value = err.message || t('driveDeletePermanentFailed');
   }
 }
 

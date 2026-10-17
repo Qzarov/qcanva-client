@@ -12,6 +12,7 @@ import {
   uploadFile,
 } from './drive';
 import { request, setToken } from './client';
+import { useI18n } from '../composables/useI18n';
 
 vi.mock('./client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./client')>();
@@ -25,6 +26,7 @@ describe('drive API and utilities', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    useI18n().setLocale('ru');
   });
 
   afterEach(() => {
@@ -63,6 +65,13 @@ describe('drive API and utilities', () => {
       expect(formatFileSize(1048576)).toBe('1 МБ');
       expect(formatFileSize(2621440)).toBe('2,5 МБ');
       expect(formatFileSize(2147483648)).toBe('2 ГБ');
+    });
+
+    it('formats bytes in English format with decimal dot and correct units', () => {
+      useI18n().setLocale('en');
+      expect(formatFileSize(500)).toBe('500 B');
+      expect(formatFileSize(1536)).toBe('1.5 KB');
+      expect(formatFileSize(2621440)).toBe('2.5 MB');
     });
   });
 

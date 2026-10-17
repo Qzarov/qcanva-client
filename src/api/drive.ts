@@ -1,4 +1,5 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
+import { useI18n } from '../composables/useI18n';
 
 export type DriveSlice = 'all' | 'media' | 'files' | 'docs';
 export type DriveSort = 'name' | 'date' | 'size';
@@ -241,15 +242,21 @@ export function downloadFileFromUrl(absoluteUrl: string, filename?: string): voi
 
 export function formatFileSize(bytes?: number | null): string {
   if (bytes === null || bytes === undefined || isNaN(bytes)) return '';
-  if (bytes < 1024) return `${bytes} Б`;
-  const units = ['КБ', 'МБ', 'ГБ', 'ТБ'];
+  const { t, locale } = useI18n();
+  if (bytes < 1024) return `${bytes} ${t('driveUnitB')}`;
+  const units = [
+    t('driveUnitKB'),
+    t('driveUnitMB'),
+    t('driveUnitGB'),
+    t('driveUnitTB'),
+  ];
   let u = -1;
   let size = bytes;
   while (size >= 1024 && u < units.length - 1) {
     size /= 1024;
     u++;
   }
-  const formatted = size.toLocaleString('ru-RU', {
+  const formatted = size.toLocaleString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   });
@@ -309,18 +316,18 @@ export function uploadFile(
         } catch {}
         let message = body?.message || `HTTP ${xhr.status}`;
         if (xhr.status === 413) {
-          message = 'Файл больше 2 ГБ';
+          message = useI18n().t('driveUploadTooLarge');
         }
         reject(new ApiError(xhr.status, message, body));
       }
     };
 
     xhr.onerror = () => {
-      reject(new ApiError(xhr.status || 0, 'Ошибка сети при загрузке'));
+      reject(new ApiError(xhr.status || 0, useI18n().t('driveUploadNetworkError')));
     };
 
     xhr.onabort = () => {
-      reject(new ApiError(0, 'Загрузка отменена'));
+      reject(new ApiError(0, useI18n().t('driveUploadCancelled')));
     };
 
     if (signal) {

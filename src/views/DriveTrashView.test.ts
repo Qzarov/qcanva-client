@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DriveTrashView from './DriveTrashView.vue';
 import { driveApi, type DriveItemsResponse } from '../api/drive';
 import { confirmDelete } from '../composables/appDialog';
+import { useI18n } from '../composables/useI18n';
 
 const push = vi.fn();
 
@@ -82,6 +83,7 @@ function mountDriveTrashView() {
 describe('DriveTrashView', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useI18n().setLocale('ru');
     vi.mocked(driveApi.getTrash).mockResolvedValue(mockTrashedItems);
   });
 
@@ -203,5 +205,24 @@ describe('DriveTrashView', () => {
     expect(driveApi.getTrash).toHaveBeenCalledWith({ cursor: 'cursor-p2' });
     expect(wrapper.findAll('[data-trash-item]')).toHaveLength(2);
     expect(wrapper.find('[data-load-more]').exists()).toBe(false);
+  });
+});
+
+describe('in English', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useI18n().setLocale('en');
+    vi.mocked(driveApi.getTrash).mockResolvedValue(mockTrashedItems);
+  });
+
+  it('renders English labels and has no Cyrillic in text', async () => {
+    const wrapper = mountDriveTrashView();
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Trash');
+    expect(wrapper.text()).toContain('Restore');
+    expect(wrapper.text()).toContain('Delete forever');
+    const htmlWithoutComments = wrapper.html().replace(/<!--[\s\S]*?-->/g, '');
+    expect(htmlWithoutComments).not.toMatch(/[Ѐ-ӿ]/);
   });
 });
