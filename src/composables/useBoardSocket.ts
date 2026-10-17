@@ -4,8 +4,9 @@ import { io, type Socket } from 'socket.io-client';
 import { interactiveTemplates } from '../api/client';
 import { applyBoardOperation } from '../boards/operations';
 import type { BoardData, BoardOperation, BoardParticipant, BoardRole } from '../boards/types';
+import { resolveWsOrigin } from '../api/hubOverride';
 
-const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
+const WS_URL = resolveWsOrigin();
 
 export type BoardSyncStatus = 'idle' | 'connecting' | 'synced' | 'resyncing' | 'forbidden' | 'error';
 export type BoardSnapshotGuard = { boardId: string; isCurrent: () => boolean };

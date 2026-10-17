@@ -638,6 +638,28 @@
                         <Edit2 :size="15" aria-hidden="true" />
                         <span>{{ t('driveRename') }}</span>
                       </button>
+                      <template v-if="phoneActive && itemDrivePath(item)">
+                        <button
+                          type="button"
+                          role="menuitem"
+                          class="drive-item-menu-action"
+                          data-action="phone-fetch"
+                          @click="onPhoneFetch(item)"
+                        >
+                          <Smartphone :size="15" aria-hidden="true" />
+                          <span>{{ t('phoneFetch') }}</span>
+                        </button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          class="drive-item-menu-action"
+                          data-action="phone-evict"
+                          @click="onPhoneEvict(item)"
+                        >
+                          <Eraser :size="15" aria-hidden="true" />
+                          <span>{{ t('phoneEvict') }}</span>
+                        </button>
+                      </template>
                       <button
                         type="button"
                         role="menuitem"
@@ -762,6 +784,28 @@
                       <Edit2 :size="15" aria-hidden="true" />
                       <span>{{ t('driveRename') }}</span>
                     </button>
+                    <template v-if="phoneActive && itemDrivePath(item)">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="drive-item-menu-action"
+                        data-action="phone-fetch"
+                        @click="onPhoneFetch(item)"
+                      >
+                        <Smartphone :size="15" aria-hidden="true" />
+                        <span>{{ t('phoneFetch') }}</span>
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        class="drive-item-menu-action"
+                        data-action="phone-evict"
+                        @click="onPhoneEvict(item)"
+                      >
+                        <Eraser :size="15" aria-hidden="true" />
+                        <span>{{ t('phoneEvict') }}</span>
+                      </button>
+                    </template>
                     <button
                       type="button"
                       role="menuitem"
@@ -888,6 +932,7 @@
         v-if="propertiesItem"
         :file-id="propertiesItem.id"
         :file-name="propertiesItem.name"
+        :drive-path="itemDrivePath(propertiesItem)"
         @close="propertiesItem = null"
       />
     </main>
@@ -904,6 +949,7 @@ import {
   Code,
   Download,
   Edit2,
+  Eraser,
   File,
   FileText,
   Folder,
@@ -917,6 +963,7 @@ import {
   MoreVertical,
   Plus,
   Search,
+  Smartphone,
   Trash2,
   Upload,
   Video,
@@ -941,6 +988,12 @@ import { alertDialog, confirmDialog, promptDialog } from '../composables/appDial
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
+import {
+  phoneErrorText,
+  phoneEvictText,
+  phoneFetchText,
+  usePhoneNode,
+} from '../composables/usePhoneNode';
 
 interface TreeNode {
   id: string;
@@ -1446,6 +1499,53 @@ async function onTrashFile(item: DriveItem) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// This phone as storage (Android app with the node switched on)
+// ---------------------------------------------------------------------------
+const phoneNode = usePhoneNode();
+const phoneActive = phoneNode.active;
+
+/**
+ * The item's path from the drive root by folder names, as the phone's node
+ * lays the drive out on disk. Unknown for search hits from other folders.
+ */
+function itemDrivePath(item: DriveItem): string | undefined {
+  const info = folderInfo.value;
+  if (!info || isSearching.value) return undefined;
+  const names = (info.path || []).map((crumb) => crumb.name);
+  const folder = info.folder;
+  if (folder.id !== 'root') {
+    if (!folder.name) return undefined;
+    if (info.path?.[info.path.length - 1]?.id !== folder.id) names.push(folder.name);
+  }
+  if (names.some((name) => !name)) return undefined;
+  return [...names, item.name].join('/');
+}
+
+async function onPhoneFetch(item: DriveItem) {
+  activeFileMenuId.value = null;
+  const path = itemDrivePath(item);
+  if (!path) return;
+  try {
+    const outcome = await phoneNode.fetchPath(path);
+    await alertDialog({ title: item.name, message: phoneFetchText(outcome, t, formatFileSize) });
+  } catch (err) {
+    await alertDialog({ title: t('phoneActionFailed'), message: phoneErrorText(err, t) });
+  }
+}
+
+async function onPhoneEvict(item: DriveItem) {
+  activeFileMenuId.value = null;
+  const path = itemDrivePath(item);
+  if (!path) return;
+  try {
+    const result = phoneEvictText(await phoneNode.evictPath(path), t, formatFileSize);
+    await alertDialog({ title: item.name, message: result.text });
+  } catch (err) {
+    await alertDialog({ title: t('phoneActionFailed'), message: phoneErrorText(err, t) });
+  }
+}
+
 function onShowProperties(item: DriveItem) {
   activeFileMenuId.value = null;
   propertiesItem.value = item;
@@ -1585,6 +1685,7 @@ onMounted(() => {
   loadCurrentFolder();
   initSidebarTree();
   document.addEventListener('click', onDocumentClick);
+  void phoneNode.ensureLoaded();
 });
 
 onUnmounted(() => {

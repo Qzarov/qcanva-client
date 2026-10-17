@@ -6,8 +6,21 @@ import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { confirmDialog, promptDialog } from '../composables/appDialog';
+import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
+import { resetPhoneNodeState } from '../composables/usePhoneNode';
+
+const phoneAgent = vi.hoisted(() => ({
+  isAvailable: vi.fn(),
+  status: vi.fn(),
+  permissionState: vi.fn(),
+  policy: vi.fn(),
+  fetch: vi.fn(),
+  evict: vi.fn(),
+  onEvent: vi.fn(),
+}));
+
+vi.mock('../native/qspaceAgent', () => ({ qspaceAgent: phoneAgent }));
 
 const route = reactive({ params: {} as Record<string, string>, path: '/drive' });
 const push = vi.fn();
@@ -236,6 +249,14 @@ describe('DriveView', () => {
       replicas: [],
     });
     vi.mocked(driveApi.listDevices).mockResolvedValue([]);
+    resetPhoneNodeState();
+    phoneAgent.isAvailable.mockResolvedValue({
+      available: false,
+      availability: 'not_android',
+      registered: false,
+      enabled: false,
+      running: false,
+    });
   });
 
   afterEach(() => {
@@ -978,6 +999,14 @@ describe('in English', () => {
       abort: vi.fn(),
     });
     vi.mocked(driveApi.listDevices).mockResolvedValue([]);
+    resetPhoneNodeState();
+    phoneAgent.isAvailable.mockResolvedValue({
+      available: false,
+      availability: 'not_android',
+      registered: false,
+      enabled: false,
+      running: false,
+    });
   });
 
   it('renders English labels and has no Cyrillic in text', async () => {
@@ -989,5 +1018,44 @@ describe('in English', () => {
     expect(wrapper.text()).toContain('Drive');
     expect(wrapper.find('nav[aria-label="Path"]').exists()).toBe(true);
     expect(wrapper.text()).not.toMatch(/[Ѐ-ӿ]/);
+  });
+
+  it('phone node on: the file menu downloads to the phone and frees space by the path from the drive root', async () => {
+    const on = { available: true, availability: 'available', registered: true, enabled: true, running: true };
+    phoneAgent.isAvailable.mockResolvedValue(on);
+    phoneAgent.status.mockResolvedValue({ ...on, lastError: null, node: { nodeId: 'n-phone' } });
+    phoneAgent.permissionState.mockResolvedValue({ allFiles: 'granted', notifications: 'granted', batteryExemption: 'granted' });
+    phoneAgent.policy.mockResolvedValue({ defaultMode: 'on_demand', rules: [] });
+    phoneAgent.fetch.mockResolvedValue({ path: 'x', queuedFiles: 1, queuedBytes: 1536 });
+    phoneAgent.evict.mockResolvedValue({ results: [{ path: 'x', success: false, bytes: 0, error: 'last_copy' }] });
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    await wrapper.get('[data-file-menu-btn="file-doc-1"]').trigger('click');
+    await wrapper.get('[data-action="phone-fetch"]').trigger('click');
+    await flushPromises();
+    expect(phoneAgent.fetch).toHaveBeenCalledWith({ path: 'Отпуск Алтай 2026/Contract.pdf' });
+
+    await wrapper.get('[data-file-menu-btn="file-doc-1"]').trigger('click');
+    await wrapper.get('[data-action="phone-evict"]').trigger('click');
+    await flushPromises();
+    expect(phoneAgent.evict).toHaveBeenCalledWith({ path: 'Отпуск Алтай 2026/Contract.pdf' });
+    expect(alertDialog).toHaveBeenLastCalledWith(expect.objectContaining({
+      message: useI18n().t('phoneEvictLastCopy'),
+    }));
+  });
+
+  it('phone node off: the file menu has no phone actions', async () => {
+    route.params = { folderId: 'folder-altay' };
+    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
+    vi.mocked(driveApi.getFolderItems).mockResolvedValue(mockFileItems);
+    const wrapper = mountDriveView();
+    await flushPromises();
+    await wrapper.get('[data-file-menu-btn="file-doc-1"]').trigger('click');
+    expect(wrapper.find('[data-action="phone-fetch"]').exists()).toBe(false);
   });
 });
