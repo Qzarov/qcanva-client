@@ -27,10 +27,15 @@ import { alertDialog, confirmDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFolderPicker from '../components/DriveFolderPicker.vue';
+import DrivePhoneStorage from '../components/DrivePhoneStorage.vue';
+import { usePhoneNode } from '../composables/usePhoneNode';
 
 const { t, locale } = useI18n();
 
 useDocumentTitle(computed(() => `${t('cupTitle')} — ${t('drive')}`));
+
+// The hub device that is this phone, when the app runs the storage node.
+const { nodeId: thisNodeId } = usePhoneNode();
 
 // ---------------------------------------------------------------------------
 // Devices state
@@ -403,6 +408,9 @@ onMounted(() => {
         </div>
       </header>
 
+      <!-- This phone as a storage device (Android app only) -->
+      <DrivePhoneStorage />
+
       <!-- Under-replicated block (ABOVE the device list) -->
       <section class="under-section" data-under>
         <!-- Hint when no keeper exists -->
@@ -507,6 +515,13 @@ onMounted(() => {
                 <div class="device-title-row">
                   <h3 class="device-name">{{ device.name }}</h3>
                   <span class="device-kind-pill">{{ getDeviceKindLabel(device.kind) }}</span>
+                  <span
+                    v-if="thisNodeId && device.id === thisNodeId"
+                    class="device-kind-pill this-device-pill"
+                    data-this-device
+                  >
+                    {{ t('phoneThisDevice') }}
+                  </span>
                 </div>
 
                 <div class="device-status-row">
@@ -941,6 +956,11 @@ onMounted(() => {
   font-size: 17px;
   font-weight: 600;
   color: var(--ui-text, #f8fff8);
+}
+
+.device-kind-pill.this-device-pill {
+  box-shadow: inset 0 0 0 1px var(--ui-brand);
+  color: var(--ui-brand);
 }
 
 .device-kind-pill {
