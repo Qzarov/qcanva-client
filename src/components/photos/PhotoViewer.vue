@@ -92,6 +92,7 @@
         :src="previewSrc"
         :alt="item.name"
         data-viewer-image
+        @error="previewSrc && failedSrcs.add(previewSrc)"
       />
       <div v-else class="photo-viewer-placeholder" data-viewer-not-processed>
         <Hourglass :size="40" aria-hidden="true" />
@@ -114,7 +115,7 @@
 
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight, Download, FolderOpen, Hourglass, Info, X } from '@lucide/vue';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { driveApi, resolveDownloadUrl } from '../../api/drive';
 import { resolvePhotoUrl, type PhotoItem } from '../../api/photos';
 import { isMockPhotoId } from '../../api/photos.mock';
@@ -141,7 +142,18 @@ const videoSrc = ref<string | null>(null);
 const videoError = ref('');
 
 const actionsDisabled = computed(() => isMockPhotoId(props.item.fileId));
-const previewSrc = computed(() => resolvePhotoUrl(props.item.previewUrl ?? props.item.thumbUrl));
+/**
+ * Sources that failed to load: the hub evicts previews (LRU) and answers 404,
+ * and view tokens expire after an hour. Fall back from the preview to the
+ * thumbnail, then to the "not processed" placeholder.
+ */
+const failedSrcs = reactive(new Set<string>());
+const previewSrc = computed(
+  () =>
+    [props.item.previewUrl, props.item.thumbUrl]
+      .map((url) => resolvePhotoUrl(url))
+      .find((url): url is string => !!url && !failedSrcs.has(url)) ?? null,
+);
 const takenLabel = computed(() => {
   const date = new Date(props.item.takenAt);
   if (Number.isNaN(date.getTime())) return '';

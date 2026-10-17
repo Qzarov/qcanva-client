@@ -167,4 +167,33 @@ describe('PhotoViewer', () => {
     await viewer.trigger('keydown', { key: 'ArrowLeft' });
     expect(wrapper.emitted('prev')).toHaveLength(1);
   });
+
+  it('falls back from a missing preview to the thumbnail, then to the placeholder', async () => {
+    const wrapper = mount(PhotoViewer, {
+      props: {
+        item: {
+          fileId: 'f-evicted',
+          assetId: 'a-evicted',
+          folderId: 'folder',
+          name: 'evicted.jpg',
+          mime: 'image/jpeg',
+          kind: 'photo',
+          takenAt: '2026-10-01T10:00:00Z',
+          width: 4,
+          height: 3,
+          thumbUrl: 'data:image/png;base64,thumb',
+          previewUrl: 'data:image/png;base64,preview',
+          processed: true,
+        },
+        hasPrev: false,
+        hasNext: false,
+      },
+    });
+    expect(wrapper.get('[data-viewer-image]').attributes('src')).toBe('data:image/png;base64,preview');
+    await wrapper.get('[data-viewer-image]').trigger('error');
+    expect(wrapper.get('[data-viewer-image]').attributes('src')).toBe('data:image/png;base64,thumb');
+    await wrapper.get('[data-viewer-image]').trigger('error');
+    expect(wrapper.find('[data-viewer-image]').exists()).toBe(false);
+    expect(wrapper.find('[data-viewer-not-processed]').exists()).toBe(true);
+  });
 });
