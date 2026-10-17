@@ -62,6 +62,8 @@ function resolveFolderName(folderId: string | null | undefined): string {
 // ---------------------------------------------------------------------------
 const underItems = ref<DriveUnderReplicatedItem[]>([]);
 const underNextCursor = ref<string | null>(null);
+/** Count from the hub over all pages; null on an older hub that does not send it. */
+const underTotal = ref<number | null>(null);
 const underLoading = ref(false);
 const underLoadingMore = ref(false);
 const underError = ref<string | null>(null);
@@ -69,8 +71,13 @@ const underError = ref<string | null>(null);
 const hasKeeper = computed(() => devices.value.some((d) => d.keeper));
 
 const underCountText = computed(() => {
+  if (underTotal.value !== null) return String(underTotal.value);
   return `${underItems.value.length}${underNextCursor.value ? '+' : ''}`;
 });
+
+function totalFrom(res: { total?: unknown }): number | null {
+  return typeof res.total === 'number' && Number.isFinite(res.total) ? res.total : null;
+}
 
 async function loadUnderReplicated() {
   underLoading.value = true;
@@ -79,6 +86,7 @@ async function loadUnderReplicated() {
     const res = await driveApi.getUnderReplicated({ limit: 50 });
     underItems.value = res.items ?? [];
     underNextCursor.value = res.nextCursor ?? null;
+    underTotal.value = totalFrom(res);
   } catch (err: any) {
     underError.value = err?.message || t('cupUnderLoadFailed');
   } finally {
@@ -96,6 +104,7 @@ async function loadMoreUnderReplicated() {
     });
     underItems.value = [...underItems.value, ...(res.items ?? [])];
     underNextCursor.value = res.nextCursor ?? null;
+    underTotal.value = totalFrom(res) ?? underTotal.value;
   } catch (err: any) {
     underError.value = err?.message || t('cupUnderLoadFailed');
   } finally {

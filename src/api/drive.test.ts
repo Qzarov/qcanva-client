@@ -240,10 +240,10 @@ describe('drive API and utilities', () => {
       });
     });
 
-    it('revokeDevice sends DELETE to the device-management route', async () => {
+    it('revokeDevice sends DELETE to /drive/devices/:id', async () => {
       vi.mocked(request).mockResolvedValueOnce({ revoked: true });
       await driveApi.revokeDevice('d1');
-      expect(request).toHaveBeenCalledWith('/drive/nodes/d1', { method: 'DELETE' });
+      expect(request).toHaveBeenCalledWith('/drive/devices/d1', { method: 'DELETE' });
     });
 
     it('setDevicePolicy replaces the rules with PUT', async () => {
