@@ -103,6 +103,42 @@
             <span>{{ t('fileNoBytesAnywhere') }}</span>
           </p>
         </div>
+
+        <!-- This phone runs the storage node: keep or drop the bytes here. -->
+        <div v-if="phoneActive && drivePath" class="drive-properties-phone-section" data-phone-actions>
+          <h3 class="drive-properties-copies-heading">{{ t('phoneOnThisPhone') }}</h3>
+          <div class="drive-properties-phone-actions">
+            <button
+              type="button"
+              class="drive-properties-phone-btn"
+              data-phone-fetch
+              :disabled="phoneBusy"
+              @click="onPhoneFetch"
+            >
+              <Download :size="15" aria-hidden="true" />
+              <span>{{ t('phoneFetch') }}</span>
+            </button>
+            <button
+              type="button"
+              class="drive-properties-phone-btn"
+              data-phone-evict
+              :disabled="phoneBusy"
+              @click="onPhoneEvict"
+            >
+              <Eraser :size="15" aria-hidden="true" />
+              <span>{{ t('phoneEvict') }}</span>
+            </button>
+          </div>
+          <p
+            v-if="phoneMessage"
+            class="drive-properties-phone-msg"
+            :class="{ refused: phoneRefused }"
+            :role="phoneRefused ? 'alert' : 'status'"
+            data-phone-msg
+          >
+            {{ phoneMessage }}
+          </p>
+        </div>
       </div>
     </div>
   </div>
@@ -110,14 +146,17 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { Cloud, HardDrive, House, Laptop, Smartphone, TriangleAlert, X } from '@lucide/vue';
+import { Cloud, Download, HardDrive, Eraser, House, Laptop, Smartphone, TriangleAlert, X } from '@lucide/vue';
 import { driveApi, formatFileSize, hubHoldsCopy, type DriveDevice, type DriveFileMeta } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
 import { replicaPlaces, type ReplicaPlace } from './driveReplicaPlaces';
+import { phoneErrorText, phoneEvictText, phoneFetchText, usePhoneNode } from '../composables/usePhoneNode';
 
 const props = defineProps<{
   fileId: string;
   fileName?: string;
+  /** The file's path from the drive root by folder names (`Photos/2026/a.jpg`), for the phone's node. */
+  drivePath?: string;
 }>();
 
 const emit = defineEmits<{
@@ -181,8 +220,47 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// This phone as storage: download the file here or free the space it takes.
+// ---------------------------------------------------------------------------
+const phone = usePhoneNode();
+const phoneActive = phone.active;
+const phoneBusy = ref(false);
+const phoneMessage = ref<string | null>(null);
+const phoneRefused = ref(false);
+
+async function phoneAction(action: (path: string) => Promise<{ text: string; refused: boolean }>) {
+  if (!props.drivePath) return;
+  phoneBusy.value = true;
+  phoneMessage.value = null;
+  phoneRefused.value = false;
+  try {
+    const result = await action(props.drivePath);
+    phoneMessage.value = result.text;
+    phoneRefused.value = result.refused;
+  } catch (err) {
+    phoneMessage.value = phoneErrorText(err, t);
+    phoneRefused.value = true;
+  } finally {
+    phoneBusy.value = false;
+  }
+}
+
+const onPhoneFetch = () => phoneAction(async (path) => ({
+  text: phoneFetchText(await phone.fetchPath(path), t, formatFileSize),
+  refused: false,
+}));
+
+const onPhoneEvict = () => phoneAction(async (path) => phoneEvictText(await phone.evictPath(path), t, formatFileSize));
+
+watch(() => props.fileId, () => {
+  phoneMessage.value = null;
+  phoneRefused.value = false;
+});
+
 onMounted(() => {
   window.addEventListener('keydown', onKeydown);
+  void phone.ensureLoaded();
 });
 
 onUnmounted(() => {
@@ -361,6 +439,45 @@ function getReplicaStateText(rep: ReplicaPlace): string {
 
 .drive-properties-copies-section {
   margin-top: 20px;
+}
+
+.drive-properties-phone-section {
+  margin-top: 20px;
+}
+
+.drive-properties-phone-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.drive-properties-phone-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.drive-properties-phone-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.drive-properties-phone-msg {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+}
+
+.drive-properties-phone-msg.refused {
+  color: var(--ui-danger);
 }
 
 .drive-properties-copies-heading {
