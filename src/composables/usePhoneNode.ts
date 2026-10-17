@@ -112,6 +112,17 @@ export function phoneEvictText(
   return { text: lines.join(' '), refused: summary.refused.length > 0 };
 }
 
+export const PHONE_HUB_STORAGE_KEY = 'qspace.phoneHubUrl';
+
+function readStoredPhoneHubUrl(): string | null {
+  try {
+    return localStorage.getItem(PHONE_HUB_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+const registeredHubUrl = ref<string | null>(readStoredPhoneHubUrl());
 const availability = ref<AgentAvailability | null>(null);
 const snapshot = ref<AgentSnapshot | null>(null);
 const permissions = ref<AgentPermissions | null>(null);
@@ -259,18 +270,26 @@ function subscribe(): () => void {
 
 /** Registers this phone on the hub as a `phone` device and starts the service. */
 async function enable(options: { root?: string; reconnect?: boolean } = {}): Promise<void> {
-  if (!registered.value || options.reconnect) {
+  const currentHub = hubUrlFromApiBase(API_BASE);
+  const hubMismatch = Boolean(registered.value && registeredHubUrl.value && registeredHubUrl.value !== currentHub);
+  if (!registered.value || options.reconnect || hubMismatch) {
     const userToken = getAccessToken();
     if (!userToken) {
       const err = new Error('Not signed in') as Error & { code: string };
       err.code = 'SIGNED_OUT';
       throw err;
     }
-    await qspaceAgent.register({
-      hubUrl: hubUrlFromApiBase(API_BASE),
+    const info = await qspaceAgent.register({
+      hubUrl: currentHub,
       userToken,
       root: options.root?.trim() || undefined,
     });
+    if (info && typeof info.hubUrl === 'string') {
+      try {
+        localStorage.setItem(PHONE_HUB_STORAGE_KEY, info.hubUrl);
+      } catch {}
+      registeredHubUrl.value = info.hubUrl;
+    }
   }
   await qspaceAgent.start();
   await refreshAvailability();
@@ -332,6 +351,7 @@ export function resetPhoneNodeState() {
   permissions.value = null;
   policy.value = null;
   lastCycle.value = null;
+  registeredHubUrl.value = readStoredPhoneHubUrl();
   liveDownloads.clear();
   loading = null;
   listener = null;
@@ -354,6 +374,8 @@ export function usePhoneNode() {
     running,
     active,
     nodeId,
+    hubUrl: hubUrlFromApiBase(API_BASE),
+    registeredHubUrl,
     ensureLoaded,
     subscribe,
     refreshAvailability,

@@ -6,6 +6,7 @@ import DrivePhoneStorage from './DrivePhoneStorage.vue';
 import { confirmDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
 import {
+  PHONE_HUB_STORAGE_KEY,
   hubUrlFromApiBase,
   phoneEvictText,
   resetPhoneNodeState,
@@ -255,6 +256,54 @@ describe('DrivePhoneStorage.vue', () => {
     await flushPromises();
     expect(agent.api.stop).toHaveBeenCalled();
     expect(wrapper.find('[data-phone-wizard]').exists()).toBe(true);
+  });
+
+  it('shows [data-phone-hub] with the current hub URL', async () => {
+    availableAs({ registered: false, enabled: false });
+    const wrapper = mount(DrivePhoneStorage);
+    await flushPromises();
+
+    const hubEl = wrapper.find('[data-phone-hub]');
+    expect(hubEl.exists()).toBe(true);
+    expect(hubEl.text()).toContain(hubUrlFromApiBase(import.meta.env.VITE_API_URL || 'http://localhost:3001/api'));
+  });
+
+  it('shows [data-phone-hub-mismatch] when registeredHubUrl differs from hubUrl', async () => {
+    availableAs({ registered: true, enabled: false });
+    localStorage.setItem(PHONE_HUB_STORAGE_KEY, 'http://192.168.1.100:8080');
+    resetPhoneNodeState();
+
+    const wrapper = mount(DrivePhoneStorage);
+    await flushPromises();
+
+    const mismatchEl = wrapper.find('[data-phone-hub-mismatch]');
+    expect(mismatchEl.exists()).toBe(true);
+    expect(mismatchEl.text()).toContain('http://192.168.1.100:8080');
+  });
+
+  it('re-registers on enable if already registered but hub URL has changed', async () => {
+    availableAs({ registered: true, enabled: false });
+    localStorage.setItem(PHONE_HUB_STORAGE_KEY, 'http://192.168.1.100:8080');
+    resetPhoneNodeState();
+
+    agent.api.status.mockResolvedValue(snapshot({ enabled: false, running: false }));
+    agent.api.start.mockResolvedValue(undefined);
+    const currentExpectedHub = hubUrlFromApiBase(import.meta.env.VITE_API_URL || 'http://localhost:3001/api');
+    agent.api.register.mockResolvedValue({
+      nodeId: 'node-phone',
+      name: 'Pixel',
+      root: '/x',
+      hubUrl: currentExpectedHub,
+    });
+
+    const wrapper = mount(DrivePhoneStorage);
+    await flushPromises();
+
+    await wrapper.find('[data-phone-enable]').trigger('click');
+    await flushPromises();
+
+    expect(agent.api.register).toHaveBeenCalledTimes(1);
+    expect(localStorage.getItem(PHONE_HUB_STORAGE_KEY)).toBe(currentExpectedHub);
   });
 });
 

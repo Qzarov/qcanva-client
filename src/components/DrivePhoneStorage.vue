@@ -9,6 +9,15 @@
       <h2 class="phone-storage-title">{{ t('phoneTitle') }}</h2>
     </header>
 
+    <p class="phone-muted" data-phone-hub>{{ t('phoneHub').replace('{hub}', hubUrl) }}</p>
+    <p
+      v-if="registeredHubUrl && registeredHubUrl !== hubUrl"
+      class="phone-error"
+      data-phone-hub-mismatch
+    >
+      {{ t('phoneHubMismatch').replace('{hub}', registeredHubUrl) }}
+    </p>
+
     <!-- The app on this phone cannot run the node: say why, briefly. -->
     <p v-if="!available" class="phone-muted" data-phone-unavailable>
       {{ unavailableText }}
@@ -199,6 +208,8 @@ const {
   registered,
   running,
   active,
+  hubUrl,
+  registeredHubUrl,
 } = phone;
 
 const busy = ref(false);
