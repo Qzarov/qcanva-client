@@ -756,7 +756,10 @@ onMounted(() => {
 
 <style scoped>
 .drive-devices-page {
-  min-height: 100vh;
+  /* A fixed height, not min-height: the app shell clips overflow, so the
+     page itself must be the scroll container (it did not scroll on Android). */
+  height: 100vh;
+  height: 100dvh;
   background: var(--ui-page, #0b140e);
   color: var(--ui-text, #f8fff8);
   box-sizing: border-box;
