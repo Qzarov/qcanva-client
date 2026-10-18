@@ -433,6 +433,7 @@ onUnmounted(() => {
 
 .phone-perm {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -607,5 +608,15 @@ onUnmounted(() => {
   font-size: 0.8rem;
   color: var(--ui-text-secondary);
   overflow-wrap: anywhere;
+}
+
+/* The text takes the row; the action wraps under it on narrow screens. */
+.phone-perm > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.phone-perm > :last-child {
+  flex: 0 0 auto;
 }
 </style>
