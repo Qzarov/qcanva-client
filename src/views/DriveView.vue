@@ -39,8 +39,8 @@
         </router-link>
       </div>
 
-      <!-- Top Tabs: Файлы / Фото -->
-      <div role="tablist" :aria-label="t('driveTabsAria')" class="drive-sidebar-tabs">
+      <!-- Top Tabs: Файлы / Фото (only in builds with VITE_PHOTOS_ENABLED=1) -->
+      <div v-if="photosEnabled" role="tablist" :aria-label="t('driveTabsAria')" class="drive-sidebar-tabs">
         <button
           type="button"
           role="tab"
@@ -384,6 +384,7 @@
 
       <!-- Files / Photos switch: the photo slice of a folder is its album -->
       <div
+        v-if="photosEnabled"
         class="drive-view-switch"
         :class="{ 'in-folder': currentFolderId !== 'root' }"
         role="tablist"
@@ -1023,6 +1024,8 @@ import { alertDialog, confirmDialog, promptDialog } from '../composables/appDial
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
+import DrivePhotos from '../components/photos/DrivePhotos.vue';
+import { isPhotosEnabled } from '../api/photos';
 import {
   phoneErrorText,
   phoneEvictText,
@@ -1062,7 +1065,9 @@ const currentFolderId = computed<string>(() => {
 
 // State
 type DriveTab = 'files' | 'photos';
-const tabFromQuery = (): DriveTab => (route.query?.view === 'photos' ? 'photos' : 'files');
+/** Photos is not part of v1: without the build flag it cannot be opened, not even by `?view=photos`. */
+const photosEnabled = isPhotosEnabled();
+const tabFromQuery = (): DriveTab => (photosEnabled && route.query?.view === 'photos' ? 'photos' : 'files');
 const activeTab = ref<DriveTab>(tabFromQuery());
 /** Folder whose photo slice (album) is shown; null at the root = the whole drive. */
 const photosFolderId = computed<string | null>(() => (currentFolderId.value === 'root' ? null : currentFolderId.value));
@@ -1070,6 +1075,7 @@ const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t
 
 /** Switches Files/Photos and mirrors it in `?view=photos`, so reload and back keep the mode. */
 function setTab(tab: DriveTab): void {
+  if (tab === 'photos' && !photosEnabled) return;
   if (activeTab.value === tab) return;
   activeTab.value = tab;
   const query = { ...(route.query ?? {}) } as Record<string, unknown>;
@@ -1081,7 +1087,7 @@ function setTab(tab: DriveTab): void {
 watch(
   () => route.query?.view,
   (view) => {
-    if (view === 'photos') activeTab.value = 'photos';
+    if (view === 'photos' && photosEnabled) activeTab.value = 'photos';
   },
 );
 

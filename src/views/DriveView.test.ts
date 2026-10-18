@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
-import { photosApi } from '../api/photos';
+import { isPhotosEnabled, photosApi } from '../api/photos';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
@@ -37,6 +37,8 @@ vi.mock('../api/photos', async (importOriginal) => {
   return {
     ...actual,
     isPhotosMock: vi.fn(() => false),
+    // Photos is behind VITE_PHOTOS_ENABLED; most tests here run the build that has it.
+    isPhotosEnabled: vi.fn(() => true),
     photosApi: {
       getBuckets: vi.fn().mockResolvedValue({ buckets: [] }),
       getBucket: vi.fn().mockResolvedValue({ month: '', items: [] }),
@@ -229,6 +231,7 @@ describe('DriveView', () => {
     route.path = '/drive';
     route.query = {};
     replace.mockClear();
+    vi.mocked(isPhotosEnabled).mockReturnValue(true);
     vi.mocked(photosApi.getBuckets).mockResolvedValue({ buckets: [] });
     vi.mocked(photosApi.getBucket).mockResolvedValue({ month: '', items: [] });
     vi.mocked(photosApi.getPeople).mockResolvedValue({ people: [] });
@@ -599,6 +602,18 @@ describe('DriveView', () => {
       path: '/drive',
       query: { view: 'photos' },
     });
+  });
+
+  it('without VITE_PHOTOS_ENABLED hides the Photos tab and switch and ignores ?view=photos', async () => {
+    vi.mocked(isPhotosEnabled).mockReturnValue(false);
+    route.query = { view: 'photos' };
+    const wrapper = mountDriveView();
+    await flushPromises();
+
+    expect(wrapper.find('[data-tab="photos"]').exists()).toBe(false);
+    expect(wrapper.find('[data-view-switch]').exists()).toBe(false);
+    expect(wrapper.find('[data-photos-tab]').exists()).toBe(false);
+    expect(wrapper.find('[data-drive-photos]').exists()).toBe(false);
   });
 
   it('route.query.view="photos" on mount opens the photos tab', async () => {
