@@ -12,59 +12,108 @@
       @request-access="requestHtmlAccess"
     />
     <template v-else>
-    <header class="html-editor-bar">
+    <!-- The editors' common top bar (as on text documents and character sheets):
+         no strip of its own - Back on the left, the controls float as glass on
+         the right. Only the title stays here: an HTML page has no first line
+         of its own to carry it. -->
+    <header class="html-editor-bar" :class="{ 'has-tabs': tabMode }">
       <BackButton :to="backTarget.to" :label="backTarget.label" />
-      <input v-if="canEditContent" v-model="title" class="html-title-input" />
-      <span v-else class="html-title-readonly">{{ title || 'Untitled HTML' }}</span>
-      <button v-if="role === 'owner'" class="btn-ghost html-desktop-action" @click="showShare = !showShare">{{ t('access') }}</button>
-      <div class="html-mode-tabs">
-        <button class="btn-ghost btn-sm" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'">{{ t('previewTab') }}</button>
-        <button v-if="canEditContent" class="btn-ghost btn-sm" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'">{{ t('sourceTab') }}</button>
-      </div>
-      <div class="html-export-wrap html-desktop-action">
-        <button class="btn-ghost" @click.stop="showExportMenu = !showExportMenu">{{ t('downloadBtn') }}</button>
-        <div v-if="showExportMenu" class="mobile-action-popover html-export-menu" @click.stop>
-          <button class="card-menu-item" @click="downloadDocument(); showExportMenu = false">{{ t('exportHtml') }}</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showExportMenu = false">{{ t('exportPdf') }}</button>
+      <input
+        v-if="canEditContent"
+        v-model="title"
+        class="html-title-input"
+        :placeholder="t('untitledHtml')"
+        :aria-label="t('documentTitle')"
+        spellcheck="false"
+      />
+      <span v-else class="html-title-readonly">{{ title || t('untitledHtml') }}</span>
+      <div class="html-editor-bar-actions">
+        <div class="html-mode-tabs html-desktop-action" role="group">
+          <button
+            type="button"
+            class="btn-ghost html-icon-btn"
+            :class="{ active: viewMode === 'preview' }"
+            :title="t('previewTab')"
+            :aria-label="t('previewTab')"
+            :aria-pressed="viewMode === 'preview'"
+            @click="viewMode = 'preview'"
+          ><Eye :size="17" aria-hidden="true" /></button>
+          <button
+            v-if="canEditContent"
+            type="button"
+            class="btn-ghost html-icon-btn"
+            :class="{ active: viewMode === 'source' }"
+            :title="t('sourceTab')"
+            :aria-label="t('sourceTab')"
+            :aria-pressed="viewMode === 'source'"
+            @click="viewMode = 'source'"
+          ><Code2 :size="17" aria-hidden="true" /></button>
         </div>
-      </div>
-      <button class="btn-ghost html-desktop-action" @click="toggleHistory">{{ t('history') }}</button>
-      <div v-if="canEditContent" class="html-sync-wrap html-desktop-action">
-        <button type="button" class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" :title="htmlSyncTitle" @click="showSyncEvents = !showSyncEvents">{{ htmlSyncStatus.label }}</button>
-        <div v-if="showSyncEvents" class="html-sync-popover">
-          <div class="html-sync-head">
-            <strong>{{ t('syncPopoverTitle') }}</strong>
-            <span>r{{ revision }}</span>
+        <div class="html-export-wrap html-desktop-action">
+          <button
+            type="button"
+            class="btn-ghost html-icon-btn"
+            :class="{ active: showExportMenu }"
+            :title="t('downloadBtn')"
+            :aria-label="t('downloadBtn')"
+            aria-haspopup="menu"
+            :aria-expanded="showExportMenu"
+            @click.stop="toggleBarMenu('export')"
+          ><Download :size="17" aria-hidden="true" /></button>
+          <div v-if="showExportMenu" class="mobile-action-popover html-export-menu" role="menu" @click.stop>
+            <button type="button" class="card-menu-item" role="menuitem" @click="downloadDocument(); closeBarMenus()">{{ t('exportHtml') }}</button>
+            <button type="button" class="card-menu-item" role="menuitem" @click="exportPdfDocument(); closeBarMenus()">{{ t('exportPdf') }}</button>
           </div>
-          <div v-if="syncEvents.length === 0" class="html-sync-empty">{{ t('noLocalSyncEventsYet') }}</div>
-          <div v-for="event in syncEvents" :key="event.id" class="html-sync-event" :class="'html-sync-event-' + event.status">
-            <div>
-              <strong>{{ event.label }}</strong>
-              <span v-if="event.reason">{{ syncReasonLabel(event.reason) }}</span>
+        </div>
+        <button v-if="role === 'owner'" type="button" class="btn-ghost btn-sm html-desktop-action html-share-btn" @click="showShare = !showShare">{{ t('share') }}</button>
+        <button type="button" class="btn-ghost btn-sm html-desktop-action html-history-btn" @click="toggleHistory">{{ t('history') }}</button>
+        <!-- On a phone the state shrinks to its dot (as on text documents); the dot still opens the log. -->
+        <div v-if="canEditContent" class="html-sync-wrap">
+          <button type="button" class="html-save-state" :class="'html-save-state-' + htmlSyncStatus.kind" :title="htmlSyncTitle" :aria-label="htmlSyncTitle" :aria-expanded="showSyncEvents" @click.stop="toggleBarMenu('sync')">{{ htmlSyncStatus.label }}</button>
+          <div v-if="showSyncEvents" class="html-sync-popover" @click.stop>
+            <div class="html-sync-head">
+              <strong>{{ t('syncPopoverTitle') }}</strong>
+              <span>r{{ revision }}</span>
             </div>
-            <time>{{ formatSyncEventTime(event.timestamp) }}</time>
+            <div v-if="syncEvents.length === 0" class="html-sync-empty">{{ t('noLocalSyncEventsYet') }}</div>
+            <div v-for="event in syncEvents" :key="event.id" class="html-sync-event" :class="'html-sync-event-' + event.status">
+              <div>
+                <strong>{{ event.label }}</strong>
+                <span v-if="event.reason">{{ syncReasonLabel(event.reason) }}</span>
+              </div>
+              <time>{{ formatSyncEventTime(event.timestamp) }}</time>
+            </div>
+          </div>
+        </div>
+        <!-- An HTML document is kept by hand (or Ctrl+S): the button stays, an icon on a phone. -->
+        <button v-if="canEditContent" type="button" class="btn-primary html-save-btn" :disabled="saving" :title="t('save')" :aria-label="saving ? t('savingEllipsis') : t('save')" @click="save">
+          <Save :size="16" aria-hidden="true" class="html-save-icon" />
+          <span class="html-save-label">{{ saving ? t('savingEllipsis') : t('save') }}</span>
+        </button>
+        <AccountMenu v-if="currentUser" :show-plugins="false" />
+        <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
+        <div class="html-mobile-actions">
+          <button
+            type="button"
+            class="btn-ghost btn-sm html-actions-trigger"
+            :class="{ active: showHtmlActions }"
+            :title="t('documentActionsAria')"
+            :aria-label="t('documentActionsAria')"
+            aria-haspopup="menu"
+            :aria-expanded="showHtmlActions"
+            @click.stop="toggleBarMenu('actions')"
+          ><MoreVertical :size="18" aria-hidden="true" /></button>
+          <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" role="menu" @click.stop>
+            <button type="button" class="card-menu-item" role="menuitem" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; closeBarMenus()">{{ t('previewTab') }}</button>
+            <button v-if="canEditContent" type="button" class="card-menu-item" role="menuitem" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; closeBarMenus()">{{ t('sourceTab') }}</button>
+            <button v-if="role === 'owner'" type="button" class="card-menu-item" role="menuitem" @click="showShare = !showShare; closeBarMenus()">{{ t('share') }}</button>
+            <button type="button" class="card-menu-item" role="menuitem" @click="toggleHistory(); closeBarMenus()">{{ t('history') }}</button>
+            <button type="button" class="card-menu-item" role="menuitem" @click="downloadDocument(); closeBarMenus()">{{ t('exportHtml') }}</button>
+            <button type="button" class="card-menu-item" role="menuitem" @click="exportPdfDocument(); closeBarMenus()">{{ t('exportPdf') }}</button>
+            <router-link v-if="!currentUser" :to="{ path: '/login', query: { redirect: route.fullPath } }" class="card-menu-item" role="menuitem">{{ t('login') }}</router-link>
           </div>
         </div>
       </div>
-      <div class="html-mobile-actions">
-        <button class="btn-ghost html-actions-trigger" :aria-label="t('documentActionsAria')" @click.stop="showHtmlActions = !showHtmlActions">⋯</button>
-        <div v-if="showHtmlActions" class="mobile-action-popover html-actions-popover" @click.stop>
-          <button class="card-menu-item" :class="{ active: viewMode === 'preview' }" @click="viewMode = 'preview'; showHtmlActions = false">{{ t('previewTab') }}</button>
-          <button v-if="canEditContent" class="card-menu-item" :class="{ active: viewMode === 'source' }" @click="viewMode = 'source'; showHtmlActions = false">{{ t('sourceTab') }}</button>
-          <button v-if="role === 'owner'" class="card-menu-item" @click="showShare = !showShare; showHtmlActions = false">{{ t('access') }}</button>
-          <button class="card-menu-item" @click="downloadDocument(); showHtmlActions = false">{{ t('exportHtml') }}</button>
-          <button class="card-menu-item" @click="exportPdfDocument(); showHtmlActions = false">{{ t('exportPdf') }}</button>
-          <button class="card-menu-item" @click="toggleHistory(); showHtmlActions = false">{{ t('history') }}</button>
-          <button v-if="canEditContent" class="card-menu-item" @click="showSyncEvents = !showSyncEvents; showHtmlActions = false">
-            {{ htmlSyncStatus.label }}
-          </button>
-        </div>
-      </div>
-      <button v-if="canEditContent" class="btn-primary" :disabled="saving" @click="save">
-        {{ saving ? t('savingEllipsis') : t('save') }}
-      </button>
-      <AccountMenu v-if="currentUser" :show-plugins="false" />
-      <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm html-desktop-action">{{ t('login') }}</router-link>
     </header>
     <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
     <section v-if="showShare && role === 'owner'" class="share-panel html-share-panel">
@@ -261,9 +310,11 @@ import { useI18n } from '../composables/useI18n';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
 import BackButton from '../components/BackButton.vue';
+import { tabsEnabled } from '../tabs/flag';
+import { Code2, Download, Eye, MoreVertical, Save } from '@lucide/vue';
 
 export default defineComponent({
-  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate },
+  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate, Code2, Download, Eye, MoreVertical, Save },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -315,6 +366,22 @@ export default defineComponent({
     const selectedHistory = ref<any | null>(null);
     const restoringHistory = ref(false);
     const showSyncEvents = ref(false);
+
+    // The top bar's three pop-ups: one open at a time, and a tap anywhere
+    // else (or Escape) closes it, as everywhere else in the app.
+    type BarMenu = 'export' | 'sync' | 'actions';
+    const barMenus: Record<BarMenu, typeof showSyncEvents> = { export: showExportMenu, sync: showSyncEvents, actions: showHtmlActions };
+    function closeBarMenus() {
+      for (const menu of Object.values(barMenus)) menu.value = false;
+    }
+    function toggleBarMenu(name: BarMenu) {
+      const open = !barMenus[name].value;
+      closeBarMenus();
+      barMenus[name].value = open;
+    }
+    function closeBarMenusOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && Object.values(barMenus).some((menu) => menu.value)) closeBarMenus();
+    }
     const syncIssue = ref<'conflict' | ''>('');
     const syncEventStore = createSyncEventStore(5);
     const syncEvents = syncEventStore.events;
@@ -852,12 +919,17 @@ export default defineComponent({
       }
       void load();
       window.addEventListener('keydown', onEditorKeydown);
+      window.addEventListener('keydown', closeBarMenusOnEscape);
+      window.addEventListener('click', closeBarMenus);
     });
     onBeforeUnmount(() => {
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
       window.removeEventListener('keydown', onEditorKeydown);
+      window.removeEventListener('keydown', closeBarMenusOnEscape);
+      window.removeEventListener('click', closeBarMenus);
     });
     return {
+      toggleBarMenu, closeBarMenus, tabMode: tabsEnabled(),
       t,
       backTarget,
       title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
