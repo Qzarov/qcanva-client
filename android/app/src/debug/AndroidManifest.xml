@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug builds only: the test stand on a laptop in the local network speaks
+  plain http (http://<laptop-ip>:8080), and its IP changes, so a per-domain
+  network security config cannot name it. Release keeps
+  usesCleartextTraffic="false" from src/main.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+
+</manifest>

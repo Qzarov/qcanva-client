@@ -9,6 +9,7 @@
         <p v-if="error" class="error">{{ error }}</p>
         <button type="submit" :disabled="loading">{{ loading ? 'Signing in...' : 'Sign In' }}</button>
       </form>
+      <HubOverrideField v-if="isHubOverrideAllowed()" />
       <p class="auth-link"><router-link to="/">Go to Home</router-link></p>
       <p class="auth-link">No account? <router-link to="/register">Register</router-link></p>
     </div>
@@ -20,9 +21,11 @@ import { defineComponent, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { auth, setToken } from '../api/client';
 import ThemeMenu from '../components/ThemeMenu.vue';
+import HubOverrideField from '../components/HubOverrideField.vue';
+import { isHubOverrideAllowed } from '../api/hubOverride';
 
 export default defineComponent({
-  components: { ThemeMenu },
+  components: { ThemeMenu, HubOverrideField },
   setup() {
     const router = useRouter();
     const route = useRoute();
@@ -45,7 +48,7 @@ export default defineComponent({
       }
     };
 
-    return { login, password, error, loading, onSubmit };
+    return { login, password, error, loading, onSubmit, isHubOverrideAllowed };
   },
 });
 </script>

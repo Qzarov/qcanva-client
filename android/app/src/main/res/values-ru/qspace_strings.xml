@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="qspace_channel_name">Хранилище Q Space</string>
+    <string name="qspace_channel_description">Состояние телефона как хранилища Q Space</string>
+    <string name="qspace_notification_title">Q Space: телефон как хранилище</string>
+    <string name="qspace_notification_starting">Запуск…</string>
+    <string name="qspace_notification_running">Файлов синхронизировано: %1$d / %2$d</string>
+    <string name="qspace_notification_paused">Пауза</string>
+    <string name="qspace_notification_error">Ошибка: %1$s</string>
+    <string name="qspace_action_pause">Пауза</string>
+    <string name="qspace_action_resume">Продолжить</string>
+    <string name="qspace_action_stop">Остановить</string>
+</resources>
