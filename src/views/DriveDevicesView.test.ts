@@ -12,6 +12,17 @@ import {
 import { resourceFolders } from '../api/client';
 import { alertDialog, confirmDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
+import { resetPhoneNodeState } from '../composables/usePhoneNode';
+
+const phoneAgent = vi.hoisted(() => ({
+  isAvailable: vi.fn(),
+  status: vi.fn(),
+  permissionState: vi.fn(),
+  policy: vi.fn(),
+  onEvent: vi.fn(),
+}));
+
+vi.mock('../native/qspaceAgent', () => ({ qspaceAgent: phoneAgent }));
 
 const push = vi.fn();
 
@@ -125,6 +136,15 @@ describe('DriveDevicesView.vue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetPhoneNodeState();
+    phoneAgent.isAvailable.mockResolvedValue({
+      available: false,
+      availability: 'not_android',
+      registered: false,
+      enabled: false,
+      running: false,
+    });
+    phoneAgent.onEvent.mockResolvedValue({ remove: vi.fn() });
     vi.mocked(driveApi.listDevices).mockResolvedValue(mockDevices);
     vi.mocked(resourceFolders.list).mockResolvedValue(mockFolders);
     vi.mocked(driveApi.getUnderReplicated).mockResolvedValue(mockUnderReplicated);
@@ -422,6 +442,40 @@ describe('DriveDevicesView.vue', () => {
     expect(alertMsg.exists()).toBe(true);
     expect(alertMsg.text()).toContain(t('cupRulesSaveFailed'));
     expect(alertMsg.text()).toContain('Folder outside subtree');
+  });
+
+  it('in a browser there is no phone block and no device is marked as this one', async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.find('[data-phone-storage]').exists()).toBe(false);
+    expect(wrapper.find('[data-this-device]').exists()).toBe(false);
+  });
+
+  it('in the Android app with the node on, the phone block shows and its hub device is marked "this device"', async () => {
+    phoneAgent.isAvailable.mockResolvedValue({
+      available: true,
+      availability: 'available',
+      registered: true,
+      enabled: true,
+      running: true,
+    });
+    phoneAgent.status.mockResolvedValue({
+      available: true,
+      availability: 'available',
+      registered: true,
+      enabled: true,
+      running: true,
+      lastError: null,
+      node: { nodeId: 'dev-2', paused: false, pauseReason: null, materializedFiles: 0, materializedBytes: 0, remoteOnlyFiles: 0, remoteOnlyBytes: 0, downloadQueueLen: 0, downloadBytesDone: 0, downloadBytesTotal: 0, downloadCurrentFiles: [], lastCycleAt: 0 },
+    });
+    phoneAgent.permissionState.mockResolvedValue({ allFiles: 'granted', notifications: 'granted', batteryExemption: 'granted' });
+    phoneAgent.policy.mockResolvedValue({ defaultMode: 'on_demand', rules: [] });
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.find('[data-phone-status]').exists()).toBe(true);
+    const marks = wrapper.findAll('[data-this-device]');
+    expect(marks).toHaveLength(1);
+    expect(wrapper.find('[data-device="dev-2"] [data-this-device]').text()).toBe(t('phoneThisDevice'));
   });
 
   it('empty device list shows cupNoDevices', async () => {

@@ -60,6 +60,14 @@
               </div>
             </div>
           </section>
+          <section
+            v-if="isHubOverrideAllowed()"
+            class="settings-card"
+            data-settings-hub
+          >
+            <h2>Хаб (отладка)</h2>
+            <HubOverrideField />
+          </section>
         </template>
 
         <template v-else-if="section === 'mcp'">
@@ -107,8 +115,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { ArrowLeft, FileCode2, KeyRound, SlidersHorizontal } from '@lucide/vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import ThemeSelector from '../components/ThemeSelector.vue';
+import HubOverrideField from '../components/HubOverrideField.vue';
 import McpTokensPanel from '../components/settings/McpTokensPanel.vue';
 import { getCurrentUser, htmlDocuments } from '../api/client';
+import { isHubOverrideAllowed } from '../api/hubOverride';
 import { useI18n, type UiLocale } from '../composables/useI18n';
 
 type SectionKey = 'general' | 'mcp' | 'html';

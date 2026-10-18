@@ -1,4 +1,5 @@
-export const API_BASE = (import.meta.env?.VITE_API_URL as string) || 'http://localhost:3001/api';
+import { resolveApiBase } from '../api/hubOverride';
+export const API_BASE = resolveApiBase();
 
 /**
  * Matches old stored URLs of canvas/resource images:
