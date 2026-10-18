@@ -28,6 +28,7 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFolderPicker from '../components/DriveFolderPicker.vue';
 import DrivePhoneStorage from '../components/DrivePhoneStorage.vue';
+import DrivePairDeviceDialog from '../components/DrivePairDeviceDialog.vue';
 import { usePhoneNode } from '../composables/usePhoneNode';
 
 const { t, locale } = useI18n();
@@ -44,6 +45,13 @@ const devices = ref<DriveDevice[]>([]);
 const loadingDevices = ref(true);
 const devicesError = ref<string | null>(null);
 const keeperLoading = reactive<Record<string, boolean>>({});
+const pairOpen = ref(false);
+const deviceIds = computed(() => devices.value.map((d) => d.id));
+
+function onPairDevices(list: DriveDevice[]) {
+  devices.value = list;
+  devicesError.value = null;
+}
 
 // ---------------------------------------------------------------------------
 // Folders state
@@ -469,7 +477,17 @@ onMounted(() => {
 
       <!-- Devices section -->
       <section class="devices-section">
-        <h2 class="devices-section-title">{{ t('cupDevices') }}</h2>
+        <div class="devices-section-head">
+          <h2 class="devices-section-title">{{ t('cupDevices') }}</h2>
+          <button
+            type="button"
+            class="btn-primary"
+            data-pair-open
+            @click="pairOpen = true"
+          >
+            {{ t('pairOpen') }}
+          </button>
+        </div>
 
         <!-- Loading state -->
         <div v-if="loadingDevices" class="state-box" data-loading>
@@ -715,6 +733,15 @@ onMounted(() => {
       </section>
     </div>
 
+    <!-- Pair a device by code -->
+    <DrivePairDeviceDialog
+      v-if="pairOpen"
+      :folders="ownFolders"
+      :known-device-ids="deviceIds"
+      @devices="onPairDevices"
+      @close="pairOpen = false"
+    />
+
     <!-- Folder Picker Modal -->
     <DriveFolderPicker
       v-if="activePickerDevice"
@@ -790,6 +817,14 @@ onMounted(() => {
   margin: 0;
   font-size: 14px;
   color: var(--ui-text-muted, #7ea582);
+}
+
+.devices-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 /* Under-replicated Section */
