@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, request } from './client';
+import { API_BASE, request } from './client';
 import { resolveDownloadUrl } from './drive';
 import { createPhotosMock } from './photos.mock';
 
@@ -11,10 +11,22 @@ import { createPhotosMock } from './photos.mock';
  * an album. Thumbnails and previews come from the hub media endpoint
  * (`GET /drive/media/:assetId/thumb?size=…&t=<view token>`, tokens from
  * `POST /drive/media/thumb-tokens`). The feed endpoints (`/drive/photos/*`,
- * track Х3) are not there yet, so this module also carries a mock that is used
- * when `VITE_PHOTOS_MOCK=1` or when the hub answers 404 on
- * `/drive/photos/buckets`.
+ * track Х3) are not there yet, so this module also carries a mock, used only
+ * when the build sets `VITE_PHOTOS_MOCK=1`: a production build never shows
+ * demo photos in place of a hub error.
+ *
+ * The whole Photos UI is behind `VITE_PHOTOS_ENABLED=1` (see `isPhotosEnabled`).
  */
+
+/** Build flag: the Photos tab and the Files/Photos switch exist only when it is `1`. */
+export function isPhotosEnabled(): boolean {
+  return String(import.meta.env.VITE_PHOTOS_ENABLED ?? '') === '1';
+}
+
+/** Build flag: generated demo data instead of the hub's photos API. */
+function photosMockFromEnv(): boolean {
+  return String(import.meta.env.VITE_PHOTOS_MOCK ?? '') === '1';
+}
 
 export type PhotoKind = 'photo' | 'video';
 export type PhotoMediaSize = 'thumbnail' | 'preview';
@@ -205,8 +217,7 @@ export async function withMediaUrls(items: PhotoItem[], now: number = Date.now()
   });
 }
 
-const envMock = String(import.meta.env.VITE_PHOTOS_MOCK ?? '') === '1';
-let mockMode: boolean = envMock;
+let mockMode: boolean = photosMockFromEnv();
 let mockApi: PhotosApi | null = null;
 
 function mock(): PhotosApi {
@@ -221,27 +232,17 @@ export function isPhotosMock(): boolean {
 
 /** Test hook: force or reset the mock decision. */
 export function setPhotosMock(value: boolean | null): void {
-  mockMode = value === null ? envMock : value;
+  mockMode = value === null ? photosMockFromEnv() : value;
   if (value === null) mockApi = null;
 }
 
 /**
- * Client used by the UI. The first `getBuckets` that gets 404 switches the
- * whole module to the mock (the hub does not have the photos API yet); any
- * other error is passed through so auth and server failures stay visible.
+ * Client used by the UI: the hub's API, or the mock when the build asked for
+ * it. Every hub error, 404 included, is passed through so it stays visible.
  */
 export const photosApi: PhotosApi = {
-  async getBuckets(filter) {
-    if (mockMode) return mock().getBuckets(filter);
-    try {
-      return await hubPhotosApi.getBuckets(filter);
-    } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        mockMode = true;
-        return mock().getBuckets(filter);
-      }
-      throw error;
-    }
+  getBuckets(filter) {
+    return mockMode ? mock().getBuckets(filter) : hubPhotosApi.getBuckets(filter);
   },
   async getBucket(month, filter) {
     if (mockMode) return mock().getBucket(month, filter);

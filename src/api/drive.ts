@@ -161,6 +161,16 @@ export interface DriveFileMeta {
   availableFrom?: string[];
 }
 
+/** Kinds a user can pair: home server, PC, phone. */
+export type DrivePairableKind = Exclude<DriveDeviceKind, 'cloud'>;
+
+export interface DrivePairingCode {
+  id: string;
+  /** `ABCD-EFGH`; shown once, the hub keeps only its hash. */
+  code: string;
+  expiresAt: string;
+}
+
 /** A device counts as online when the hub heard from it within this window. */
 export const DEVICE_ONLINE_WINDOW_MS = 10 * 60 * 1000;
 
@@ -450,6 +460,27 @@ export const driveApi = {
     return request<DriveDevice>(`/drive/devices/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       body: JSON.stringify(updates),
+    });
+  },
+
+  /**
+   * One-time code (XXXX-XXXX, ten minutes) that a device redeems without a
+   * login at `POST /drive/devices/pair`; the device lands on this account.
+   */
+  createPairingCode(body: {
+    name?: string;
+    kind?: DrivePairableKind;
+    folderId?: string | null;
+  }): Promise<DrivePairingCode> {
+    return request<DrivePairingCode>('/drive/devices/pairing-codes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+
+  cancelPairingCode(id: string): Promise<{ cancelled: true }> {
+    return request<{ cancelled: true }>(`/drive/devices/pairing-codes/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
     });
   },
 

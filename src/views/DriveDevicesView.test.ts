@@ -3,6 +3,7 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DriveDevicesView from './DriveDevicesView.vue';
+import DrivePairDeviceDialog from '../components/DrivePairDeviceDialog.vue';
 import {
   driveApi,
   type DriveDevice,
@@ -180,6 +181,26 @@ describe('DriveDevicesView.vue', () => {
     expect(dev2.find('[data-iroh="no"]').text()).toBe(t('cupIrohNo'));
     expect(dev2.text()).toContain(t('cupNeverSeen'));
     expect(dev2.text()).toContain(t('cupBoundFolder').replace('{name}', 'Work Folder'));
+  });
+
+  it('«Подключить устройство» opens the pairing dialog; its device list replaces the page list', async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.find('[data-pair-dialog]').exists()).toBe(false);
+
+    await wrapper.get('[data-pair-open]').trigger('click');
+    const dialog = wrapper.findComponent(DrivePairDeviceDialog);
+    expect(dialog.exists()).toBe(true);
+    expect(dialog.props('knownDeviceIds')).toEqual(mockDevices.map((d) => d.id));
+
+    const fresh: DriveDevice = { ...(mockDevices[0] as DriveDevice), id: 'dev-new', name: 'Laptop', keeper: false };
+    dialog.vm.$emit('devices', [...mockDevices, fresh]);
+    await flushPromises();
+    expect(wrapper.find('[data-device="dev-new"]').exists()).toBe(true);
+
+    dialog.vm.$emit('close');
+    await flushPromises();
+    expect(wrapper.find('[data-pair-dialog]').exists()).toBe(false);
   });
 
   it('keeper toggle calls updateDevice and reverts + alerts on failure', async () => {

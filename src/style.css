@@ -2470,14 +2470,21 @@ body {
   background: var(--dark-neutral-bg);
 }
 .html-editor-bar {
-  min-height: 52px;
+  position: relative;
+  z-index: 30;
+  flex: none;
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--dark-neutral-border);
-  background: var(--dark-neutral-bg);
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 18px;
+}
+.html-editor-bar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
 }
 .html-mode-tabs,
 .html-editor-tools {
@@ -2611,20 +2618,24 @@ body {
 .html-title-input {
   flex: 1;
   min-width: 0;
-  padding: 9px 11px;
-  border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-sm);
-  background: var(--dark-input-bg);
-  color: var(--dark-text-primary);
-  font-size: 15px;
-  font-weight: 600;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  outline: none;
 }
 .html-title-readonly {
   flex: 1;
   min-width: 0;
-  color: var(--dark-text-primary);
-  font-size: 15px;
-  font-weight: 600;
+  padding: 0 10px;
+  color: var(--ui-text);
+  font-size: 16px;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3407,91 +3418,6 @@ body {
 
   .html-generate-panel {
     grid-template-columns: 1fr;
-  }
-
-  .html-editor-bar {
-    min-height: 38px;
-    flex-wrap: nowrap;
-    gap: 4px;
-    padding: 4px 6px;
-    overflow: visible;
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .html-title-input {
-    flex: 1 1 0;
-    width: 0;
-    min-width: 0;
-    min-height: 28px;
-    padding: 3px 7px;
-    font-size: 14px;
-  }
-
-  .html-title-readonly {
-    flex: 1 1 0;
-    min-width: 0;
-    overflow-y: auto;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .html-mode-tabs {
-    display: none;
-  }
-
-  .html-mode-tabs .btn-ghost {
-    justify-content: center;
-  }
-
-  .html-editor-bar > .btn-primary,
-  .html-editor-bar > .btn-ghost,
-  .html-mobile-actions {
-    flex: 0 0 auto;
-  }
-
-  .html-editor-bar .btn-ghost,
-  .html-editor-bar .btn-primary {
-    min-height: 28px;
-    padding: 3px 7px;
-    font-size: 11px;
-    gap: 4px;
-    white-space: nowrap;
-  }
-
-  .html-desktop-action {
-    display: none !important;
-  }
-
-  .html-mobile-actions {
-    display: block;
-  }
-
-  .html-actions-trigger {
-    width: 28px;
-    min-width: 28px;
-    padding: 0;
-    justify-content: center;
-    font-size: 16px;
-    line-height: 1;
-  }
-
-  .html-actions-popover {
-    right: 0;
-    top: calc(100% + 6px);
-    width: min(190px, calc(100vw - 16px));
-  }
-
-  .html-actions-popover .card-menu-item {
-    min-height: 32px;
-    padding: 7px 8px;
-    font-size: 12px;
-  }
-
-  .html-actions-popover .card-menu-item.active {
-    border-color: color-mix(in srgb, var(--color-brands) 35%, transparent);
-    background: color-mix(in srgb, var(--color-brands) 16%, transparent);
-    color: var(--ui-accent-strong);
   }
 
   .html-editor-grid {
@@ -5992,10 +5918,6 @@ body {
   .html-editor-bar .btn-primary,
   .html-editor-bar .btn-ghost {
     width: auto;
-  }
-
-  .html-editor-bar .html-actions-trigger {
-    width: 28px;
   }
 
   .canvas-card {
@@ -10284,7 +10206,7 @@ textarea:focus-visible {
 .text-doc-bubble-link-input,
 .text-doc-link-sheet-input,
 .html-history-list,
-.html-editor-page :is(.html-title-input, .html-structure-item, .html-block-btn) {
+.html-editor-page :is(.html-structure-item, .html-block-btn) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
@@ -10380,9 +10302,10 @@ textarea:focus-visible {
 /* ===== Notion docs header: transparent + Liquid Glass controls (front task) =====
    The bar itself turns into a frosted, see-through strip (the page/ambiance
    shows through a blur instead of a near-solid panel); its controls float as
-   glass pills - the same language the canvas top bar already uses. Scoped to
-   text documents so the HTML editor keeps its current chrome. */
-.text-doc-page .text-doc-topbar {
+   glass pills - the same language the canvas top bar already uses. The HTML
+   document's bar shares it (its own sizes: "HTML document top bar" below). */
+.text-doc-page .text-doc-topbar,
+.html-editor-page .html-editor-bar {
   /* Fully transparent: no fill, no frost, no edge - only the controls float.
      The empty stretches between them pass taps through to the document. */
   background: transparent;
@@ -10402,7 +10325,8 @@ textarea:focus-visible {
 /* Floating glass pills (bg + blur + lift), readable against the transparent
    bar - an upgrade from the flat inset panes. `.text-doc-sync` is left out on
    purpose so the phone bare-dot rule above still holds. */
-.text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger) {
+.text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger),
+.html-editor-page .html-editor-bar :is(.back-btn, .btn-ghost, .account-menu-trigger) {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border: 1px solid var(--ui-glass-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
@@ -10411,8 +10335,202 @@ textarea:focus-visible {
   color: var(--ui-text);
 }
 @media (hover: hover) {
-  .text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger):hover:not(:disabled, .active) {
+  .text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger):hover:not(:disabled, .active),
+  .html-editor-page .html-editor-bar :is(.back-btn, .btn-ghost, .account-menu-trigger):hover:not(:disabled, .active) {
     background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+  }
+}
+
+/* ===== HTML document top bar: the editors' common bar =====
+   Same parts and sizes as the text documents' bar: round Back, 44px icon
+   buttons, small text buttons, the fixed-width sync pill, a "⋮" menu on a
+   phone. The bar itself is transparent (rules above); the title is a quiet
+   field that shows its edge only when hovered or typed in. */
+/* Unlike the text documents' bar it covers nothing (the page starts below
+   it), so it takes taps itself rather than passing them through. */
+.html-editor-page .html-editor-bar {
+  pointer-events: auto;
+}
+.html-editor-page .html-editor-bar .back-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 999px;
+}
+.html-editor-page .html-editor-bar .html-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+/* Preview / Source: one pill holding two icon buttons. */
+.html-editor-page .html-editor-bar .html-mode-tabs {
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.html-editor-page .html-editor-bar .html-mode-tabs .html-icon-btn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 999px;
+}
+.html-editor-page .html-editor-bar .html-mode-tabs .html-icon-btn:not(.active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.html-editor-page .html-editor-bar .html-title-input:hover:not(:focus) {
+  border-color: var(--ui-glass-border);
+}
+.html-editor-page .html-editor-bar .html-title-input:focus {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: 0 0 0 3px var(--ui-glass-accent-bg);
+}
+.html-editor-page .html-editor-bar .html-title-input::placeholder {
+  color: var(--ui-text-muted);
+}
+/* Same pill as .text-doc-sync: fixed width, so no state reflows the bar. */
+.html-editor-page .html-editor-bar .html-save-state {
+  width: 152px;
+  padding: 6px 10px;
+  font-weight: 650;
+}
+.html-editor-page .html-editor-bar .html-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+}
+.html-editor-page .html-editor-bar .html-save-icon {
+  display: none;
+}
+.html-editor-page .html-editor-bar .html-actions-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+.html-editor-page .html-export-menu {
+  left: auto;
+  right: 0;
+}
+/* "⋮" drops down under its button, as on text documents - not the bottom
+   sheet that .mobile-action-popover turns into on a phone. */
+.html-editor-page .html-editor-bar .html-actions-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  width: min(210px, calc(100vw - 16px));
+  max-height: none;
+}
+
+@media (max-width: 760px) {
+  .html-editor-page .html-editor-bar {
+    min-height: 0;
+    gap: 6px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+  .html-editor-page .html-editor-bar-actions {
+    gap: 2px;
+  }
+  .html-editor-page .html-editor-bar .html-title-input,
+  .html-editor-page .html-editor-bar .html-title-readonly {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 16px;
+  }
+  .html-editor-page .html-desktop-action {
+    display: none !important;
+  }
+  .html-editor-page .html-mobile-actions {
+    display: block;
+  }
+  /* The sync state is its dot alone, as on text documents. */
+  .html-editor-page .html-editor-bar .html-save-state {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    font-size: 0;
+  }
+  .html-editor-page .html-editor-bar .html-save-state::before {
+    width: 9px;
+    height: 9px;
+  }
+  /* The log it opens spans the screen instead of hanging off its right edge. */
+  .html-editor-page .html-sync-popover {
+    position: fixed;
+    top: calc(60px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+  /* Save as an icon: a 44px target, like the other buttons in the row. */
+  .html-editor-page .html-editor-bar .html-save-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    border-radius: 999px;
+  }
+  .html-editor-page .html-editor-bar .html-save-icon {
+    display: block;
+  }
+  .html-editor-page .html-editor-bar .html-save-label {
+    display: none;
+  }
+  .html-editor-page .html-editor-bar .account-menu-trigger.current-user-badge {
+    padding: 6px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .html-editor-page .html-editor-bar .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: none;
+  }
+  .html-editor-page .html-actions-popover .card-menu-item {
+    min-height: 40px;
+  }
+}
+
+/* Tab mode puts the tabs button next to Back: on the narrowest phones the
+   bar tightens, and below 340px the account menu (one tap away in the tabs
+   panel) goes - as on the character sheet. */
+@media (max-width: 360px) {
+  .html-editor-page .html-editor-bar.has-tabs {
+    gap: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .html-editor-page .html-editor-bar.has-tabs .back-group {
+    gap: 4px;
+  }
+}
+@media (max-width: 340px) {
+  .html-editor-page .html-editor-bar.has-tabs .account-menu {
+    display: none;
   }
 }
 

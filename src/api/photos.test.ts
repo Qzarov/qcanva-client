@@ -7,6 +7,7 @@ import {
   photoMediaUrl,
   withMediaUrls,
   type PhotoItem,
+  isPhotosEnabled,
   isPhotosMock,
   photosApi,
   resolvePhotoUrl,
@@ -75,23 +76,13 @@ describe('photos API', () => {
     });
   });
 
-  describe('photosApi fallback to mock', () => {
-    it('falls back to mock on ApiError 404 from getBuckets, switches isPhotosMock() to true, and getBucket no longer calls request', async () => {
+  describe('photosApi and the mock', () => {
+    it('passes a 404 from the hub through instead of switching to demo data', async () => {
       expect(isPhotosMock()).toBe(false);
-
       vi.mocked(request).mockRejectedValueOnce(new ApiError(404, 'Not Found'));
-      const bucketsRes = await photosApi.getBuckets();
 
-      expect(isPhotosMock()).toBe(true);
-      expect(bucketsRes.buckets.length).toBeGreaterThan(0);
-
-      vi.mocked(request).mockClear();
-      const firstMonth = bucketsRes.buckets[0]!.month;
-      const bucketRes = await photosApi.getBucket(firstMonth);
-
-      expect(request).not.toHaveBeenCalled();
-      expect(bucketRes.month).toBe(firstMonth);
-      expect(bucketRes.items.length).toBeGreaterThan(0);
+      await expect(photosApi.getBuckets()).rejects.toThrow('Not Found');
+      expect(isPhotosMock()).toBe(false);
     });
 
     it('rethrows 500 ApiError and mock stays off', async () => {
@@ -108,6 +99,38 @@ describe('photos API', () => {
 
       await expect(photosApi.getBuckets()).rejects.toThrow('Unauthorized');
       expect(isPhotosMock()).toBe(false);
+    });
+
+    it('uses the mock only when VITE_PHOTOS_MOCK=1', async () => {
+      vi.stubEnv('VITE_PHOTOS_MOCK', '1');
+      try {
+        setPhotosMock(null);
+        expect(isPhotosMock()).toBe(true);
+        const bucketsRes = await photosApi.getBuckets();
+        expect(request).not.toHaveBeenCalled();
+        expect(bucketsRes.buckets.length).toBeGreaterThan(0);
+        const firstMonth = bucketsRes.buckets[0]!.month;
+        const bucketRes = await photosApi.getBucket(firstMonth);
+        expect(request).not.toHaveBeenCalled();
+        expect(bucketRes.items.length).toBeGreaterThan(0);
+      } finally {
+        vi.unstubAllEnvs();
+        setPhotosMock(null);
+      }
+      expect(isPhotosMock()).toBe(false);
+    });
+  });
+
+  describe('isPhotosEnabled', () => {
+    afterEach(() => vi.unstubAllEnvs());
+
+    it('is on only when VITE_PHOTOS_ENABLED=1', () => {
+      vi.stubEnv('VITE_PHOTOS_ENABLED', '');
+      expect(isPhotosEnabled()).toBe(false);
+      vi.stubEnv('VITE_PHOTOS_ENABLED', 'true');
+      expect(isPhotosEnabled()).toBe(false);
+      vi.stubEnv('VITE_PHOTOS_ENABLED', '1');
+      expect(isPhotosEnabled()).toBe(true);
     });
   });
 
