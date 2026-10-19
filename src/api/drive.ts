@@ -127,6 +127,13 @@ export interface DriveDeviceFolder {
   /** null for the root rule and for a deleted or foreign folder. */
   name: string | null;
   mode: DriveStorageMode;
+  /**
+   * The top-level drive folder the rule folder sits in (itself when top-level);
+   * null for the root rule or an inaccessible folder. Missing on older hubs.
+   */
+  topFolderId?: string | null;
+  /** Folder names from the top-level folder down to the rule folder; null when unknown. */
+  path?: string[] | null;
 }
 
 export interface DriveStorageRule {

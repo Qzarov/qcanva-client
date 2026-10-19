@@ -3,7 +3,8 @@ import {
   filesPluralKey,
   formatBytes,
   formatRelativeTime,
-  summarizeFolders,
+  effectiveFolderMode,
+  topFolderStatus,
   syncStateKey,
 } from './deviceStatus';
 
@@ -57,58 +58,94 @@ describe('formatRelativeTime', () => {
   });
 });
 
-describe('summarizeFolders', () => {
+const rule = (folderId: string | null, mode: 'full' | 'on_demand' | 'none', extra = {}) => ({
+  folderId,
+  name: folderId,
+  mode,
+  ...extra,
+});
+
+describe('effectiveFolderMode', () => {
+  it('uses the own rule first', () => {
+    const device = { defaultMode: 'full' as const, folders: [rule(null, 'none'), rule('a', 'on_demand')] };
+    expect(effectiveFolderMode(device, 'a')).toEqual({ mode: 'on_demand', reason: 'own' });
+  });
+
+  it('falls back to the root rule: root none means not synced', () => {
+    const device = { defaultMode: 'full' as const, folders: [rule(null, 'none'), rule('a', 'full')] };
+    expect(effectiveFolderMode(device, 'b')).toEqual({ mode: 'none', reason: 'root' });
+  });
+
+  it('falls back to the device default without a root rule', () => {
+    expect(effectiveFolderMode({ defaultMode: 'on_demand', folders: [] }, 'a')).toEqual({
+      mode: 'on_demand',
+      reason: 'default',
+    });
+    expect(effectiveFolderMode({ defaultMode: 'full', folders: [rule('b', 'none')] }, 'a')).toEqual({
+      mode: 'full',
+      reason: 'default',
+    });
+  });
+});
+
+describe('topFolderStatus', () => {
   it('has no data when the hub sends no folders field', () => {
-    expect(summarizeFolders({}).rootCaption).toBe('nodata');
+    expect(topFolderStatus({}, 'a')).toBeNull();
   });
 
-  it('root none: selected folders only, full before on demand, in hub order', () => {
-    const v = summarizeFolders({
+  it('reports full, on demand and none from the effective mode', () => {
+    const device = {
+      defaultMode: 'full' as const,
+      folders: [rule(null, 'none'), rule('a', 'full'), rule('b', 'on_demand')],
+    };
+    expect(topFolderStatus(device, 'a')?.status).toBe('full');
+    expect(topFolderStatus(device, 'b')?.status).toBe('on_demand');
+    expect(topFolderStatus(device, 'c')?.status).toBe('none');
+  });
+
+  it('is partial when a nested rule is synced more than a none folder (via topFolderId)', () => {
+    const device = {
+      defaultMode: 'full' as const,
       folders: [
-        { folderId: null, name: null, mode: 'none' },
-        { folderId: 'a', name: 'Photos', mode: 'full' },
-        { folderId: 'b', name: 'Archive', mode: 'on_demand' },
-        { folderId: 'c', name: 'Docs', mode: 'full' },
-        { folderId: 'd', name: 'Skip', mode: 'none' },
+        rule(null, 'none'),
+        rule('deep', 'full', { topFolderId: 'work', path: ['Work', '2026', 'Reports'] }),
       ],
-    });
-    expect(v.rootCaption).toBe('selected');
-    expect(v.full.map((f) => f.name)).toEqual(['Photos', 'Docs']);
-    expect(v.onDemand.map((f) => f.name)).toEqual(['Archive']);
-    expect(v.empty).toBe(false);
+    };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('partial');
+    expect(st.mode).toBe('none');
+    expect(st.reason).toBe('root');
+    expect(st.nested).toEqual([{ folderId: 'deep', mode: 'full', path: ['Work', '2026', 'Reports'] }]);
   });
 
-  it('root none with nothing selected is empty', () => {
-    expect(summarizeFolders({ folders: [{ folderId: null, name: null, mode: 'none' }] }).empty).toBe(true);
-    expect(summarizeFolders({ folders: [] , defaultMode: undefined}).empty).toBe(true);
+  it('is partial for an on-demand folder with a full rule inside, but not with a none rule inside', () => {
+    const base = [rule(null, 'none'), rule('work', 'on_demand')];
+    const full = { folders: [...base, rule('x', 'full', { topFolderId: 'work', path: ['Work', 'X'] })] };
+    const none = { folders: [...base, rule('x', 'none', { topFolderId: 'work', path: ['Work', 'X'] })] };
+    expect(topFolderStatus(full, 'work')?.status).toBe('partial');
+    expect(topFolderStatus(none, 'work')?.status).toBe('on_demand');
   });
 
-  it('root full is the whole drive and hides redundant full folders', () => {
-    const v = summarizeFolders({
-      folders: [
-        { folderId: null, name: null, mode: 'full' },
-        { folderId: 'a', name: 'Photos', mode: 'full' },
-        { folderId: 'b', name: 'Archive', mode: 'on_demand' },
-      ],
-    });
-    expect(v.rootCaption).toBe('all');
-    expect(v.full).toEqual([]);
-    expect(v.onDemand.map((f) => f.name)).toEqual(['Archive']);
-    expect(v.empty).toBe(false);
+  it('a full folder stays full even with nested rules', () => {
+    const device = {
+      folders: [rule('work', 'full'), rule('x', 'on_demand', { topFolderId: 'work', path: ['Work', 'X'] })],
+    };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('full');
+    expect(st.nested).toHaveLength(1);
   });
 
-  it('without a root rule the hub default mode decides', () => {
-    expect(summarizeFolders({ folders: [], defaultMode: 'full' }).rootCaption).toBe('all');
-    expect(summarizeFolders({ folders: [], defaultMode: 'on_demand' }).rootCaption).toBe('all_on_demand');
+  it('an older hub without topFolderId gives no partial', () => {
+    const device = { folders: [rule(null, 'none'), rule('deep', 'full')] };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('none');
+    expect(st.nested).toEqual([]);
   });
 
-  it('keeps a folder with a null name so the view can say it is unavailable', () => {
-    const v = summarizeFolders({
-      folders: [
-        { folderId: null, name: null, mode: 'none' },
-        { folderId: 'gone', name: null, mode: 'full' },
-      ],
-    });
-    expect(v.full).toEqual([{ key: 'gone', name: null }]);
+  it('a rule of another top-level folder does not count', () => {
+    const device = {
+      folders: [rule(null, 'none'), rule('deep', 'full', { topFolderId: 'other', path: ['Other', 'D'] })],
+    };
+    expect(topFolderStatus(device, 'work')?.status).toBe('none');
   });
 });

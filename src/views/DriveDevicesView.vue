@@ -7,14 +7,17 @@ import {
   type DriveDevice,
   type DriveDeviceKind,
 } from '../api/drive';
+import DriveDeviceFolderDialog from '../components/DriveDeviceFolderDialog.vue';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import {
   filesPluralKey,
   formatBytes,
   formatRelativeTime,
-  summarizeFolders,
   syncStateKey,
+  topFolderStatus,
+  type FolderSyncStatus,
+  type TopFolderStatus,
 } from '../utils/deviceStatus';
 
 const { t, locale } = useI18n();
@@ -29,6 +32,20 @@ const loadingDevices = ref(true);
 const devicesError = ref<string | null>(null);
 /** Moment of the last successful load; relative times are computed against it. */
 const now = ref(Date.now());
+
+/** Top-level folders of the drive, loaded once per page load. null: not loaded (yet). */
+interface TopFolder {
+  id: string;
+  name: string;
+}
+const topFolders = ref<TopFolder[] | null>(null);
+const topFoldersFailed = ref(false);
+/** Rows shown before the "show all" toggle. */
+const FOLDER_ROWS_LIMIT = 12;
+/** Safety cap for the cursor loop: 20 pages of folders is far beyond any real drive. */
+const MAX_FOLDER_PAGES = 20;
+const expandedDevices = ref<Set<string>>(new Set());
+const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus } | null>(null);
 
 let inflight = false;
 let loadedOnce = false;
@@ -92,12 +109,74 @@ function staleText(device: DriveDevice): string {
   return when ? t('cupSyncAsOf').replace('{when}', when) : '';
 }
 
-function foldersView(device: DriveDevice) {
-  return summarizeFolders(device);
+async function loadTopFolders() {
+  const folders: TopFolder[] = [];
+  try {
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_FOLDER_PAGES; page += 1) {
+      const res = await driveApi.getFolderItems('root', {
+        slice: 'all',
+        sort: 'name',
+        order: 'asc',
+        cursor,
+      });
+      for (const item of res.items) {
+        if (item.kind === 'folder') folders.push({ id: item.id, name: item.name });
+      }
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+    folders.sort((a, b) => a.name.localeCompare(b.name, locale.value === 'ru' ? 'ru' : 'en'));
+    topFolders.value = folders;
+    topFoldersFailed.value = false;
+  } catch {
+    // Not loaded: the cards say so, and the next refresh tries again.
+    topFoldersFailed.value = true;
+  }
 }
 
-function folderName(name: string | null): string {
-  return name ?? t('cupFoldersUnavailable');
+function statusLabel(status: FolderSyncStatus): string {
+  switch (status) {
+    case 'full':
+      return t('cupFolderSynced');
+    case 'on_demand':
+      return t('cupFolderOnDemand');
+    case 'partial':
+      return t('cupFolderPartial');
+    default:
+      return t('cupFolderNone');
+  }
+}
+
+interface FolderRow {
+  folder: TopFolder;
+  info: TopFolderStatus;
+}
+
+/** One row per top-level folder with its status on this device. */
+function folderRows(device: DriveDevice): FolderRow[] {
+  const rows: FolderRow[] = [];
+  for (const folder of topFolders.value ?? []) {
+    const info = topFolderStatus(device, folder.id);
+    if (info) rows.push({ folder, info });
+  }
+  return rows;
+}
+
+function visibleRows(device: DriveDevice): FolderRow[] {
+  const rows = folderRows(device);
+  return expandedDevices.value.has(device.id) ? rows : rows.slice(0, FOLDER_ROWS_LIMIT);
+}
+
+function toggleExpanded(deviceId: string) {
+  const next = new Set(expandedDevices.value);
+  if (next.has(deviceId)) next.delete(deviceId);
+  else next.add(deviceId);
+  expandedDevices.value = next;
+}
+
+function showFolder(device: DriveDevice, row: FolderRow) {
+  openFolder.value = { device, folder: row.folder, info: row.info };
 }
 
 async function loadDevices(silent: boolean) {
@@ -108,6 +187,8 @@ async function loadDevices(silent: boolean) {
     devicesError.value = null;
   }
   try {
+    // Folders are loaded once; a failed load is retried with the next refresh.
+    if (silent && topFoldersFailed.value) void loadTopFolders();
     devices.value = await driveApi.listDevices();
     now.value = Date.now();
     loadedOnce = true;
@@ -122,6 +203,7 @@ async function loadDevices(silent: boolean) {
 }
 
 function loadAll() {
+  void loadTopFolders();
   return loadDevices(false);
 }
 
@@ -250,59 +332,68 @@ onBeforeUnmount(() => {
               </p>
             </div>
 
-            <!-- Folders the device syncs -->
+            <!-- Top-level drive folders and whether this device syncs them -->
             <div class="folders-block" data-folders>
               <h4 class="folders-title">{{ t('cupFoldersTitle') }}</h4>
-              <template v-for="fv in [foldersView(device)]" :key="device.id">
-                <p v-if="fv.rootCaption === 'nodata'" class="folders-caption" data-folders-caption>
-                  {{ t('cupFoldersNoData') }}
-                </p>
-                <p v-else-if="fv.empty" class="folders-caption" data-folders-caption>
-                  {{ t('cupFoldersEmpty') }}
-                </p>
-                <template v-else>
-                  <p class="folders-caption" data-folders-caption>
-                    {{
-                      fv.rootCaption === 'all'
-                        ? t('cupWholeDrive')
-                        : fv.rootCaption === 'all_on_demand'
-                          ? t('cupFoldersAllOnDemand')
-                          : t('cupFoldersSelected')
-                    }}
-                  </p>
-                  <div v-if="fv.full.length" class="folders-group" data-folders-full>
-                    <span class="folders-group-title">{{ t('cupFoldersFull') }}</span>
-                    <ul class="folders-list">
-                      <li
-                        v-for="f in fv.full"
-                        :key="f.key"
-                        class="folder-chip"
-                        :class="{ unavailable: f.name === null }"
-                      >
-                        {{ folderName(f.name) }}
-                      </li>
-                    </ul>
-                  </div>
-                  <div v-if="fv.onDemand.length" class="folders-group" data-folders-on-demand>
-                    <span class="folders-group-title">{{ t('cupFoldersOnDemand') }}</span>
-                    <ul class="folders-list">
-                      <li
-                        v-for="f in fv.onDemand"
-                        :key="f.key"
-                        class="folder-chip on-demand"
-                        :class="{ unavailable: f.name === null }"
-                      >
-                        {{ folderName(f.name) }}
-                      </li>
-                    </ul>
-                  </div>
-                </template>
+              <p v-if="!Array.isArray(device.folders)" class="folders-caption" data-folders-caption>
+                {{ t('cupFoldersNoData') }}
+              </p>
+              <p v-else-if="topFolders === null && topFoldersFailed" class="folders-caption" data-folders-caption>
+                {{ t('cupFoldersLoadFailed') }}
+              </p>
+              <p v-else-if="topFolders === null" class="folders-caption" data-folders-caption>
+                {{ t('cupFoldersLoading') }}
+              </p>
+              <p v-else-if="topFolders.length === 0" class="folders-caption" data-folders-caption>
+                {{ t('cupFoldersNoFolders') }}
+              </p>
+              <template v-else>
+                <ul class="folder-rows">
+                  <li v-for="row in visibleRows(device)" :key="row.folder.id">
+                    <button
+                      type="button"
+                      class="folder-row"
+                      :data-folder-row="row.folder.id"
+                      :data-folder-status="row.info.status"
+                      :aria-label="t('cupFolderOpenDetails').replace('{name}', row.folder.name)"
+                      @click="showFolder(device, row)"
+                    >
+                      <span class="folder-row-name">{{ row.folder.name }}</span>
+                      <span class="folder-row-status" :class="`st-${row.info.status}`">
+                        <span class="folder-dot" aria-hidden="true" />
+                        <span data-folder-status-label>{{ statusLabel(row.info.status) }}</span>
+                      </span>
+                    </button>
+                  </li>
+                </ul>
+                <button
+                  v-if="folderRows(device).length > FOLDER_ROWS_LIMIT"
+                  type="button"
+                  class="folders-toggle"
+                  data-folders-toggle
+                  :aria-expanded="expandedDevices.has(device.id)"
+                  @click="toggleExpanded(device.id)"
+                >
+                  {{
+                    expandedDevices.has(device.id)
+                      ? t('cupFoldersShowLess')
+                      : t('cupFoldersShowAll').replace('{n}', String(folderRows(device).length))
+                  }}
+                </button>
               </template>
             </div>
           </article>
         </div>
       </section>
     </div>
+
+    <DriveDeviceFolderDialog
+      v-if="openFolder"
+      :device="openFolder.device"
+      :folder="openFolder.folder"
+      :info="openFolder.info"
+      @close="openFolder = null"
+    />
   </div>
 </template>
 
@@ -625,46 +716,105 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted, #7ea582);
 }
 
-.folders-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.folders-group-title {
-  font-size: 12px;
-  color: var(--ui-text-muted, #7ea582);
-}
-
-.folders-list {
+.folder-rows {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.folder-chip {
-  padding: 3px 10px;
-  border-radius: 6px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.08));
-  color: var(--ui-text-secondary, #d6f2d6);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.folder-chip.on-demand {
-  box-shadow: inset 0 0 0 1px var(--ui-border, rgba(255, 255, 255, 0.15));
+.folder-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.folder-chip.unavailable {
+.folder-row:hover {
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.folder-row:focus-visible,
+.folders-toggle:focus-visible {
+  outline: 2px solid var(--ui-focus, #8cff8c);
+  outline-offset: 1px;
+}
+
+.folder-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-row-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   color: var(--ui-text-muted, #7ea582);
-  font-style: italic;
 }
 
-/* Mobile Responsiveness (≤ 640px) */
+.folder-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ui-text-muted, #7ea582);
+}
+
+.folder-row-status.st-full {
+  color: var(--ui-success, #44cf6e);
+}
+
+.folder-row-status.st-full .folder-dot {
+  background: var(--ui-success, #44cf6e);
+}
+
+.folder-row-status.st-on_demand {
+  color: var(--ui-info, #53dfdd);
+}
+
+.folder-row-status.st-on_demand .folder-dot {
+  background: var(--ui-info, #53dfdd);
+}
+
+.folder-row-status.st-partial {
+  color: var(--ui-warning, #e0de71);
+}
+
+.folder-row-status.st-partial .folder-dot {
+  background: var(--ui-warning, #e0de71);
+}
+
+.folders-toggle {
+  margin-top: 6px;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary, #d6f2d6);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.folders-toggle:hover {
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.06));
+}
+
 @media (max-width: 640px) {
   .drive-devices-container {
     padding: 16px;
