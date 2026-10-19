@@ -1,11 +1,21 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from 'vitest';
 import {
   filesPluralKey,
   formatBytes,
   formatRelativeTime,
-  summarizeFolders,
+  effectiveFolderMode,
+  topFolderStatus,
   syncStateKey,
+  countKeptFolders,
+  formatDuration,
+  formatFiles,
+  plainError,
 } from './deviceStatus';
+import { useI18n } from '../composables/useI18n';
+
+const { t, setLocale } = useI18n();
 
 describe('syncStateKey', () => {
   it('maps the four agent states and treats anything else as no data', () => {
@@ -57,58 +67,160 @@ describe('formatRelativeTime', () => {
   });
 });
 
-describe('summarizeFolders', () => {
+const rule = (folderId: string | null, mode: 'full' | 'on_demand' | 'none', extra = {}) => ({
+  folderId,
+  name: folderId,
+  mode,
+  ...extra,
+});
+
+describe('effectiveFolderMode', () => {
+  it('uses the own rule first', () => {
+    const device = { defaultMode: 'full' as const, folders: [rule(null, 'none'), rule('a', 'on_demand')] };
+    expect(effectiveFolderMode(device, 'a')).toEqual({ mode: 'on_demand', reason: 'own' });
+  });
+
+  it('falls back to the root rule: root none means not synced', () => {
+    const device = { defaultMode: 'full' as const, folders: [rule(null, 'none'), rule('a', 'full')] };
+    expect(effectiveFolderMode(device, 'b')).toEqual({ mode: 'none', reason: 'root' });
+  });
+
+  it('falls back to the device default without a root rule', () => {
+    expect(effectiveFolderMode({ defaultMode: 'on_demand', folders: [] }, 'a')).toEqual({
+      mode: 'on_demand',
+      reason: 'default',
+    });
+    expect(effectiveFolderMode({ defaultMode: 'full', folders: [rule('b', 'none')] }, 'a')).toEqual({
+      mode: 'full',
+      reason: 'default',
+    });
+  });
+});
+
+describe('topFolderStatus', () => {
   it('has no data when the hub sends no folders field', () => {
-    expect(summarizeFolders({}).rootCaption).toBe('nodata');
+    expect(topFolderStatus({}, 'a')).toBeNull();
   });
 
-  it('root none: selected folders only, full before on demand, in hub order', () => {
-    const v = summarizeFolders({
+  it('reports full, on demand and none from the effective mode', () => {
+    const device = {
+      defaultMode: 'full' as const,
+      folders: [rule(null, 'none'), rule('a', 'full'), rule('b', 'on_demand')],
+    };
+    expect(topFolderStatus(device, 'a')?.status).toBe('full');
+    expect(topFolderStatus(device, 'b')?.status).toBe('on_demand');
+    expect(topFolderStatus(device, 'c')?.status).toBe('none');
+  });
+
+  it('is partial when a nested rule is synced more than a none folder (via topFolderId)', () => {
+    const device = {
+      defaultMode: 'full' as const,
       folders: [
-        { folderId: null, name: null, mode: 'none' },
-        { folderId: 'a', name: 'Photos', mode: 'full' },
-        { folderId: 'b', name: 'Archive', mode: 'on_demand' },
-        { folderId: 'c', name: 'Docs', mode: 'full' },
-        { folderId: 'd', name: 'Skip', mode: 'none' },
+        rule(null, 'none'),
+        rule('deep', 'full', { topFolderId: 'work', path: ['Work', '2026', 'Reports'] }),
       ],
-    });
-    expect(v.rootCaption).toBe('selected');
-    expect(v.full.map((f) => f.name)).toEqual(['Photos', 'Docs']);
-    expect(v.onDemand.map((f) => f.name)).toEqual(['Archive']);
-    expect(v.empty).toBe(false);
+    };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('partial');
+    expect(st.mode).toBe('none');
+    expect(st.reason).toBe('root');
+    expect(st.nested).toEqual([{ folderId: 'deep', mode: 'full', path: ['Work', '2026', 'Reports'] }]);
   });
 
-  it('root none with nothing selected is empty', () => {
-    expect(summarizeFolders({ folders: [{ folderId: null, name: null, mode: 'none' }] }).empty).toBe(true);
-    expect(summarizeFolders({ folders: [] , defaultMode: undefined}).empty).toBe(true);
+  it('is partial for an on-demand folder with a full rule inside, but not with a none rule inside', () => {
+    const base = [rule(null, 'none'), rule('work', 'on_demand')];
+    const full = { folders: [...base, rule('x', 'full', { topFolderId: 'work', path: ['Work', 'X'] })] };
+    const none = { folders: [...base, rule('x', 'none', { topFolderId: 'work', path: ['Work', 'X'] })] };
+    expect(topFolderStatus(full, 'work')?.status).toBe('partial');
+    expect(topFolderStatus(none, 'work')?.status).toBe('on_demand');
   });
 
-  it('root full is the whole drive and hides redundant full folders', () => {
-    const v = summarizeFolders({
-      folders: [
-        { folderId: null, name: null, mode: 'full' },
-        { folderId: 'a', name: 'Photos', mode: 'full' },
-        { folderId: 'b', name: 'Archive', mode: 'on_demand' },
-      ],
-    });
-    expect(v.rootCaption).toBe('all');
-    expect(v.full).toEqual([]);
-    expect(v.onDemand.map((f) => f.name)).toEqual(['Archive']);
-    expect(v.empty).toBe(false);
+  it('a full folder stays full even with nested rules', () => {
+    const device = {
+      folders: [rule('work', 'full'), rule('x', 'on_demand', { topFolderId: 'work', path: ['Work', 'X'] })],
+    };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('full');
+    expect(st.nested).toHaveLength(1);
   });
 
-  it('without a root rule the hub default mode decides', () => {
-    expect(summarizeFolders({ folders: [], defaultMode: 'full' }).rootCaption).toBe('all');
-    expect(summarizeFolders({ folders: [], defaultMode: 'on_demand' }).rootCaption).toBe('all_on_demand');
+  it('an older hub without topFolderId gives no partial', () => {
+    const device = { folders: [rule(null, 'none'), rule('deep', 'full')] };
+    const st = topFolderStatus(device, 'work')!;
+    expect(st.status).toBe('none');
+    expect(st.nested).toEqual([]);
   });
 
-  it('keeps a folder with a null name so the view can say it is unavailable', () => {
-    const v = summarizeFolders({
-      folders: [
-        { folderId: null, name: null, mode: 'none' },
-        { folderId: 'gone', name: null, mode: 'full' },
-      ],
-    });
-    expect(v.full).toEqual([{ key: 'gone', name: null }]);
+  it('a rule of another top-level folder does not count', () => {
+    const device = {
+      folders: [rule(null, 'none'), rule('deep', 'full', { topFolderId: 'other', path: ['Other', 'D'] })],
+    };
+    expect(topFolderStatus(device, 'work')?.status).toBe('none');
+  });
+});
+
+describe('formatDuration', () => {
+  it('speaks in plain units, rounded up to the minute and to hours/days after', () => {
+    setLocale('en');
+    expect(formatDuration(20_000, 'en', t)).toBe('less than a minute');
+    expect(formatDuration(150_000, 'en', t)).toBe('3 minutes');
+    expect(formatDuration(2 * 3600_000, 'en', t)).toBe('2 hours');
+    expect(formatDuration(3 * 86400_000, 'en', t)).toBe('3 days');
+  });
+
+  it('uses ru plural forms', () => {
+    setLocale('ru');
+    expect(formatDuration(20_000, 'ru', t)).toBe('меньше минуты');
+    expect(formatDuration(60_000, 'ru', t)).toBe('1 минута');
+    expect(formatDuration(150_000, 'ru', t)).toBe('3 минуты');
+    expect(formatDuration(10 * 60_000, 'ru', t)).toBe('10 минут');
+    expect(formatDuration(2 * 3600_000, 'ru', t)).toBe('2 часа');
+    setLocale('en');
+  });
+});
+
+describe('formatFiles', () => {
+  it('picks the plural form of the language', () => {
+    setLocale('ru');
+    expect([1, 2, 5, 21, 11].map((n) => formatFiles(n, 'ru', t))).toEqual([
+      '1 файл',
+      '2 файла',
+      '5 файлов',
+      '21 файл',
+      '11 файлов',
+    ]);
+    setLocale('en');
+    expect([1, 2].map((n) => formatFiles(n, 'en', t))).toEqual(['1 file', '2 files']);
+  });
+});
+
+describe('countKeptFolders', () => {
+  const device = {
+    defaultMode: 'full' as const,
+    folders: [
+      { folderId: null, name: null, mode: 'none' as const },
+      { folderId: 'a', name: 'A', mode: 'full' as const },
+      { folderId: 'b', name: 'B', mode: 'on_demand' as const },
+      { folderId: 'c2', name: 'C2', mode: 'full' as const, topFolderId: 'c', path: ['C', 'C2'] },
+    ],
+  };
+
+  it('counts folders kept in full; partial ones apart; on-demand and server-only are not kept', () => {
+    expect(countKeptFolders(device, ['a', 'b', 'c', 'd'])).toEqual({ total: 4, full: 1, partial: 1 });
+  });
+
+  it('is null when the hub sent no rules', () => {
+    expect(countKeptFolders({ defaultMode: 'full' }, ['a'])).toBeNull();
+  });
+});
+
+describe('plainError', () => {
+  it('translates the obvious agent errors and passes the rest through', () => {
+    setLocale('en');
+    expect(plainError('write failed: No space left on device (os error 28)', t)).toBe('The disk is full');
+    expect(plainError('Permission denied (os error 13)', t)).toBe('No access to the Q Space folder');
+    expect(plainError('connection refused', t)).toBe('Cannot reach the server');
+    expect(plainError('weird failure 42', t)).toBe('weird failure 42');
+    expect(plainError(null, t)).toBe('');
   });
 });

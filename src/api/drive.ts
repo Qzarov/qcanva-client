@@ -118,6 +118,41 @@ export interface DriveDeviceSyncStatus {
   lastSyncAt?: string | null;
   lastError?: string | null;
   version?: string | null;
+  /** Average transfer speed over about 60 s, bytes per second. Older agents omit it. */
+  speedBps?: number | null;
+  /** When the pending count last went down (ISO); null: no progress yet. Older agents omit it. */
+  lastProgressAt?: string | null;
+}
+
+/** A files-and-bytes pair of the safety summary. */
+export interface DriveSafetyCount {
+  files: number;
+  bytes: number;
+}
+
+/** A device holding files that the hub has no copy of. */
+export interface DriveSafetyDevice {
+  nodeId: string;
+  name: string;
+  kind: DriveDeviceKind | string;
+  lastSeenAt: string | null;
+  files: number;
+  bytes: number;
+}
+
+/**
+ * "Are my files safe?" (GET /drive/safety, needs the hub with the safety summary).
+ * `notOnHub` includes `nowhere`: files with no live copy anywhere.
+ */
+export interface DriveSafety {
+  files: number;
+  bytes: number;
+  onHub: DriveSafetyCount;
+  notOnHub: DriveSafetyCount & {
+    devices: DriveSafetyDevice[];
+    nowhere: DriveSafetyCount;
+  };
+  uploading: DriveSafetyCount;
 }
 
 /** One storage rule of a device with the folder name resolved by the hub. */
@@ -127,6 +162,13 @@ export interface DriveDeviceFolder {
   /** null for the root rule and for a deleted or foreign folder. */
   name: string | null;
   mode: DriveStorageMode;
+  /**
+   * The top-level drive folder the rule folder sits in (itself when top-level);
+   * null for the root rule or an inaccessible folder. Missing on older hubs.
+   */
+  topFolderId?: string | null;
+  /** Folder names from the top-level folder down to the rule folder; null when unknown. */
+  path?: string[] | null;
 }
 
 export interface DriveStorageRule {
@@ -480,6 +522,11 @@ export const driveApi = {
   async listDevices(): Promise<DriveDevice[]> {
     const res = await request<{ nodes: DriveDevice[] } | DriveDevice[]>('/drive/devices');
     return Array.isArray(res) ? res : res?.nodes ?? [];
+  },
+
+  /** Rejects with ApiError 404 on a hub that has no safety summary yet. */
+  getSafety(): Promise<DriveSafety> {
+    return request<DriveSafety>('/drive/safety');
   },
 
   updateDevice(id: string, updates: { keeper: boolean }): Promise<DriveDevice> {

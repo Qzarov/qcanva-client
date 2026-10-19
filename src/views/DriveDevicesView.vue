@@ -1,103 +1,233 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ArrowLeft, Cloud, House, Laptop, Smartphone } from '@lucide/vue';
+import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, Smartphone, TriangleAlert } from '@lucide/vue';
+import { ApiError } from '../api/client';
 import {
   driveApi,
   isDeviceOnline,
   type DriveDevice,
-  type DriveDeviceKind,
+  type DriveSafety,
 } from '../api/drive';
+import DriveDeviceFolderDialog from '../components/DriveDeviceFolderDialog.vue';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import {
+  countKeptFolders,
   filesPluralKey,
   formatBytes,
+  formatFiles,
   formatRelativeTime,
-  summarizeFolders,
+  plainError,
   syncStateKey,
+  topFolderStatus,
+  type FolderSyncStatus,
+  type TopFolderStatus,
 } from '../utils/deviceStatus';
+import { buildSafetyNotices } from '../utils/safetySummary';
 
 const { t, locale } = useI18n();
 
 useDocumentTitle(computed(() => `${t('cupTitle')} — ${t('drive')}`));
 
-/** Q Control is read-only: it only lists devices, how they sync and what they sync. */
+/** Q Control is read-only: it only shows whether files are safe, and what each device keeps. */
 const REFRESH_INTERVAL_MS = 10_000;
 
 const devices = ref<DriveDevice[]>([]);
 const loadingDevices = ref(true);
 const devicesError = ref<string | null>(null);
-/** Moment of the last successful load; relative times are computed against it. */
+/** Current time for relative texts; moves with every refresh tick, also a failed one. */
 const now = ref(Date.now());
+/** Moment of the last successful load. */
+const loadedAt = ref<number | null>(null);
+
+/** "Are my files safe?" from the hub; null while unknown or when the hub has no such endpoint. */
+const safety = ref<DriveSafety | null>(null);
+let safetyMissing = false;
+/** When a device first reported its current pending count (for agents without `lastProgressAt`). */
+const pendingSeen = new Map<string, { signature: string; since: number }>();
+
+/** Top-level folders of the drive, loaded once per page load. null: not loaded (yet). */
+interface TopFolder {
+  id: string;
+  name: string;
+}
+const topFolders = ref<TopFolder[] | null>(null);
+const topFoldersFailed = ref(false);
+/** Safety cap for the cursor loop: 20 pages of folders is far beyond any real drive. */
+const MAX_FOLDER_PAGES = 20;
+/** Devices whose folder list is open; kept in the page only. */
+const expandedDevices = ref<Set<string>>(new Set());
+const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus } | null>(null);
 
 let inflight = false;
 let loadedOnce = false;
 let timer: ReturnType<typeof setInterval> | null = null;
 
-function getDeviceKindLabel(kind: DriveDeviceKind): string {
-  switch (kind) {
-    case 'home':
-      return t('cupKindHome');
-    case 'pc':
-      return t('cupKindPc');
-    case 'phone':
-      return t('cupKindPhone');
-    case 'cloud':
-      return t('cupKindCloud');
-    default:
-      return kind;
-  }
+const notices = computed(() => {
+  if (!safety.value) return [];
+  return buildSafetyNotices(safety.value, {
+    t,
+    locale: locale.value,
+    now: now.value,
+    devices: devices.value,
+    pendingSince: (id) => pendingSeen.get(id)?.since,
+  });
+});
+
+function online(device: DriveDevice): boolean {
+  return isDeviceOnline(device.lastSeenAt, now.value);
 }
 
-function formatLastSeen(lastSeenAt: string | null): string {
-  if (!lastSeenAt) return t('cupNeverSeen');
-  const d = new Date(lastSeenAt);
-  const localeStr = locale.value === 'ru' ? 'ru-RU' : 'en-US';
-  return t('cupLastSeen').replace('{name}', d.toLocaleString(localeStr));
+function connectionText(device: DriveDevice): string {
+  if (online(device)) return t('cupOnline');
+  if (!device.lastSeenAt) return t('cupNeverSeen');
+  return t('cupOffline').replace('{when}', formatRelativeTime(device.lastSeenAt, locale.value, now.value));
 }
 
-function filesText(n: number): string {
-  const key = ({ one: 'cupFilesOne', few: 'cupFilesFew', many: 'cupFilesMany' } as const)[
-    filesPluralKey(n, locale.value)
-  ];
-  return t(key).replace('{n}', String(n));
-}
-
-function syncLabel(device: DriveDevice): string {
+/** One phrase for the sync state; an offline device's report is marked as the last known. */
+function stateText(device: DriveDevice): string {
+  let phrase: string;
   switch (syncStateKey(device)) {
     case 'synced':
-      return t('cupSyncSynced');
+      phrase = t('cupSyncSynced');
+      break;
     case 'syncing':
-      return t('cupSyncSyncing')
-        .replace('{files}', filesText(device.syncStatus?.pendingFiles ?? 0))
+      phrase = t('cupSyncSyncing')
+        .replace('{files}', formatFiles(device.syncStatus?.pendingFiles ?? 0, locale.value, t))
         .replace('{size}', formatBytes(device.syncStatus?.pendingBytes));
+      break;
     case 'paused':
-      return t('cupSyncPaused');
+      phrase = t('cupSyncPaused');
+      break;
     case 'error':
-      return t('cupSyncError');
+      phrase = t('cupSyncError');
+      break;
     default:
       return t('cupSyncNoData');
   }
+  if (online(device)) return phrase;
+  const lower = phrase.charAt(0).toLowerCase() + phrase.slice(1);
+  return t('cupSyncAsOf').replace('{state}', lower);
 }
 
-function lastSyncText(device: DriveDevice): string {
-  const when = formatRelativeTime(device.syncStatus?.lastSyncAt, locale.value, now.value);
-  return when ? t('cupSyncLast').replace('{when}', when) : '';
+function errorText(device: DriveDevice): string {
+  if (syncStateKey(device) !== 'error') return '';
+  return plainError(device.syncStatus?.lastError, t);
 }
 
-/** Offline devices keep their last report: show it muted with the time it was made. */
-function staleText(device: DriveDevice): string {
-  if (isDeviceOnline(device.lastSeenAt, now.value) || !device.syncStatus) return '';
-  const when = formatRelativeTime(device.syncStatusAt ?? device.lastSeenAt, locale.value, now.value);
-  return when ? t('cupSyncAsOf').replace('{when}', when) : '';
+function keepsText(device: DriveDevice): string | null {
+  const counts = countKeptFolders(device, (topFolders.value ?? []).map((f) => f.id));
+  if (!counts || counts.total === 0) return null;
+  const word = filesPluralKey(counts.total, locale.value) === 'one' ? 'cupFoldersOfOne' : 'cupFoldersOfMany';
+  let text = t('cupKeepsFolders')
+    .replace('{n}', String(counts.full))
+    .replace('{total}', String(counts.total))
+    .replace('{folders}', t(word));
+  if (counts.partial > 0) text += t('cupKeepsPartial').replace('{n}', String(counts.partial));
+  return text;
 }
 
-function foldersView(device: DriveDevice) {
-  return summarizeFolders(device);
+/** Why there is no "keeps n of m" line: the hub sent no rules, or folders are loading, failed or absent. */
+function foldersCaption(device: DriveDevice): string | null {
+  if (!Array.isArray(device.folders)) return t('cupFoldersNoData');
+  if (topFolders.value === null) return topFoldersFailed.value ? t('cupFoldersLoadFailed') : t('cupFoldersLoading');
+  if (topFolders.value.length === 0) return t('cupFoldersNoFolders');
+  return null;
 }
 
-function folderName(name: string | null): string {
-  return name ?? t('cupFoldersUnavailable');
+async function loadTopFolders() {
+  const folders: TopFolder[] = [];
+  try {
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_FOLDER_PAGES; page += 1) {
+      const res = await driveApi.getFolderItems('root', {
+        slice: 'all',
+        sort: 'name',
+        order: 'asc',
+        cursor,
+      });
+      for (const item of res.items) {
+        if (item.kind === 'folder') folders.push({ id: item.id, name: item.name });
+      }
+      cursor = res.nextCursor;
+      if (!cursor) break;
+    }
+    folders.sort((a, b) => a.name.localeCompare(b.name, locale.value === 'ru' ? 'ru' : 'en'));
+    topFolders.value = folders;
+    topFoldersFailed.value = false;
+  } catch {
+    // Not loaded: the rows say so, and the next refresh tries again.
+    topFoldersFailed.value = true;
+  }
+}
+
+/** The safety block is optional: a hub without the endpoint (404) hides it, other failures keep the last answer. */
+async function loadSafety() {
+  if (safetyMissing) return;
+  try {
+    safety.value = await driveApi.getSafety();
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      safetyMissing = true;
+      safety.value = null;
+    }
+  }
+}
+
+function trackPending(list: DriveDevice[], at: number) {
+  const seen = new Set<string>();
+  for (const d of list) {
+    const files = d.syncStatus?.pendingFiles ?? 0;
+    const bytes = d.syncStatus?.pendingBytes ?? 0;
+    if (!(files > 0 || bytes > 0)) continue;
+    seen.add(d.id);
+    const signature = `${files}:${bytes}`;
+    if (pendingSeen.get(d.id)?.signature !== signature) pendingSeen.set(d.id, { signature, since: at });
+  }
+  for (const id of [...pendingSeen.keys()]) if (!seen.has(id)) pendingSeen.delete(id);
+}
+
+function statusLabel(status: FolderSyncStatus): string {
+  switch (status) {
+    case 'full':
+      return t('cupFolderSynced');
+    case 'on_demand':
+      return t('cupFolderOnDemand');
+    case 'partial':
+      return t('cupFolderPartial');
+    default:
+      return t('cupFolderNone');
+  }
+}
+
+interface FolderRow {
+  folder: TopFolder;
+  info: TopFolderStatus;
+}
+
+/** One row per top-level folder with its status on this device. */
+function folderRows(device: DriveDevice): FolderRow[] {
+  const rows: FolderRow[] = [];
+  for (const folder of topFolders.value ?? []) {
+    const info = topFolderStatus(device, folder.id);
+    if (info) rows.push({ folder, info });
+  }
+  return rows;
+}
+
+function isExpanded(deviceId: string): boolean {
+  return expandedDevices.value.has(deviceId);
+}
+
+function toggleExpanded(deviceId: string) {
+  const next = new Set(expandedDevices.value);
+  if (next.has(deviceId)) next.delete(deviceId);
+  else next.add(deviceId);
+  expandedDevices.value = next;
+}
+
+function showFolder(device: DriveDevice, row: FolderRow) {
+  openFolder.value = { device, folder: row.folder, info: row.info };
 }
 
 async function loadDevices(silent: boolean) {
@@ -108,8 +238,13 @@ async function loadDevices(silent: boolean) {
     devicesError.value = null;
   }
   try {
-    devices.value = await driveApi.listDevices();
+    // Folders are loaded once; a failed load is retried with the next refresh.
+    if (silent && topFoldersFailed.value) void loadTopFolders();
+    const [list] = await Promise.all([driveApi.listDevices(), loadSafety()]);
     now.value = Date.now();
+    trackPending(list, now.value);
+    devices.value = list;
+    loadedAt.value = now.value;
     loadedOnce = true;
     devicesError.value = null;
   } catch (err: any) {
@@ -122,6 +257,7 @@ async function loadDevices(silent: boolean) {
 }
 
 function loadAll() {
+  void loadTopFolders();
   return loadDevices(false);
 }
 
@@ -136,6 +272,8 @@ function onVisibilityChange() {
 onMounted(() => {
   void loadAll();
   timer = setInterval(() => {
+    // Time moves on even when the refresh fails, so "Updated ..." does not lie.
+    now.value = Date.now();
     if (isVisible()) void loadDevices(true);
   }, REFRESH_INTERVAL_MS);
   document.addEventListener('visibilitychange', onVisibilityChange);
@@ -165,6 +303,33 @@ onBeforeUnmount(() => {
         </div>
       </header>
 
+      <!-- 1. Are my files safe? -->
+      <section
+        v-if="!loadingDevices && !devicesError && notices.length"
+        class="safety"
+        data-safety
+        :data-safety-level="notices[0]!.level"
+        aria-live="polite"
+      >
+        <div
+          v-for="(notice, i) in notices"
+          :key="notice.id"
+          class="safety-notice"
+          :class="[`level-${notice.level}`, { primary: i === 0 }]"
+          :data-safety-notice="notice.id"
+        >
+          <CircleAlert v-if="notice.level === 'loss'" class="safety-mark" :size="i === 0 ? 28 : 20" aria-hidden="true" />
+          <TriangleAlert v-else-if="notice.level === 'attention'" class="safety-mark" :size="i === 0 ? 28 : 20" aria-hidden="true" />
+          <CircleCheck v-else class="safety-mark" :size="i === 0 ? 28 : 20" aria-hidden="true" />
+          <div class="safety-text">
+            <component :is="i === 0 ? 'h2' : 'h3'" class="safety-title" data-safety-title>{{ notice.title }}</component>
+            <p v-for="(line, n) in notice.lines" :key="n" class="safety-line" data-safety-line>{{ line }}</p>
+            <p v-if="notice.hint" class="safety-hint" data-safety-hint>{{ notice.hint }}</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Which device keeps what -->
       <section class="devices-section">
         <h2 class="devices-section-title">{{ t('cupDevices') }}</h2>
 
@@ -184,125 +349,102 @@ onBeforeUnmount(() => {
           <p>{{ t('cupNoDevices') }}</p>
         </div>
 
-        <div v-else class="devices-list">
-          <article
+        <ul v-else class="devices-list">
+          <li
             v-for="device in devices"
             :key="device.id"
-            class="device-card"
+            class="device-row"
+            :class="{ offline: !online(device) }"
             :data-device="device.id"
           >
-            <div class="device-card-header">
-              <div class="device-icon-wrap" :data-kind="device.kind">
-                <House v-if="device.kind === 'home'" :size="24" aria-hidden="true" />
-                <Laptop v-else-if="device.kind === 'pc'" :size="24" aria-hidden="true" />
-                <Smartphone v-else-if="device.kind === 'phone'" :size="24" aria-hidden="true" />
-                <Cloud v-else :size="24" aria-hidden="true" />
-              </div>
+            <div class="device-head">
+              <span class="device-icon" aria-hidden="true">
+                <House v-if="device.kind === 'home'" :size="22" />
+                <Laptop v-else-if="device.kind === 'pc'" :size="22" />
+                <Smartphone v-else-if="device.kind === 'phone'" :size="22" />
+                <Cloud v-else :size="22" />
+              </span>
+              <div class="device-body">
+                <h3 class="device-name">{{ device.name }}</h3>
+                <p
+                  class="device-connection"
+                  :data-online="online(device) ? 'true' : 'false'"
+                  data-connection
+                >
+                  <span v-if="online(device)" class="online-dot" aria-hidden="true" />
+                  {{ connectionText(device) }}
+                </p>
+                <p
+                  class="device-state"
+                  :class="`sync-${syncStateKey(device)}`"
+                  :data-sync="syncStateKey(device)"
+                  data-sync-label
+                >
+                  {{ stateText(device) }}
+                  <span v-if="errorText(device)" class="device-state-error" data-sync-error>{{ errorText(device) }}</span>
+                </p>
 
-              <div class="device-main-info">
-                <div class="device-title-row">
-                  <h3 class="device-name">{{ device.name }}</h3>
-                  <span class="device-kind-pill">{{ getDeviceKindLabel(device.kind) }}</span>
-                </div>
-
-                <div class="device-status-row">
-                  <span
-                    class="online-pill"
-                    :class="{ online: isDeviceOnline(device.lastSeenAt, now), offline: !isDeviceOnline(device.lastSeenAt, now) }"
-                    :data-online="isDeviceOnline(device.lastSeenAt, now) ? 'true' : 'false'"
+                <!-- Top-level drive folders and what this device does with them -->
+                <div class="folders-block" data-folders>
+                  <button
+                    v-if="keepsText(device)"
+                    type="button"
+                    class="folders-summary"
+                    data-folders-toggle
+                    :aria-expanded="isExpanded(device.id)"
+                    :aria-controls="`folders-${device.id}`"
+                    @click="toggleExpanded(device.id)"
                   >
-                    {{ isDeviceOnline(device.lastSeenAt, now) ? t('cupOnline') : t('cupOffline') }}
-                  </span>
-                  <span class="last-seen-text">
-                    {{ formatLastSeen(device.lastSeenAt) }}
-                  </span>
+                    <ChevronRight class="folders-chevron" :size="16" aria-hidden="true" />
+                    <span data-folders-summary>{{ keepsText(device) }}</span>
+                  </button>
+                  <p v-else-if="foldersCaption(device)" class="folders-caption" data-folders-caption>
+                    {{ foldersCaption(device) }}
+                  </p>
+
+                  <Transition name="folders">
+                    <ul
+                      v-if="keepsText(device) && isExpanded(device.id)"
+                      :id="`folders-${device.id}`"
+                      class="folder-rows"
+                    >
+                      <li v-for="row in folderRows(device)" :key="row.folder.id">
+                        <button
+                          type="button"
+                          class="folder-row"
+                          :data-folder-row="row.folder.id"
+                          :data-folder-status="row.info.status"
+                          :aria-label="t('cupFolderOpenDetails').replace('{name}', row.folder.name).replace('{device}', device.name)"
+                          @click="showFolder(device, row)"
+                        >
+                          <span class="folder-row-name">{{ row.folder.name }}</span>
+                          <span class="folder-row-status" :class="`st-${row.info.status}`">
+                            <span class="folder-dot" aria-hidden="true" />
+                            <span data-folder-status-label>{{ statusLabel(row.info.status) }}</span>
+                          </span>
+                        </button>
+                      </li>
+                    </ul>
+                  </Transition>
                 </div>
               </div>
             </div>
-
-            <!-- Sync status -->
-            <div
-              class="sync-block"
-              :class="{ stale: staleText(device) !== '' }"
-              :data-sync="syncStateKey(device)"
-              :data-stale="staleText(device) !== '' ? 'true' : 'false'"
-            >
-              <div class="sync-line">
-                <span class="sync-label" :class="`sync-${syncStateKey(device)}`" data-sync-label>
-                  {{ syncLabel(device) }}
-                </span>
-                <span v-if="staleText(device)" class="sync-muted" data-sync-stale>
-                  {{ staleText(device) }}
-                </span>
-              </div>
-              <p
-                v-if="syncStateKey(device) === 'error' && device.syncStatus?.lastError"
-                class="sync-muted sync-error-text"
-                data-sync-error
-              >
-                {{ device.syncStatus.lastError }}
-              </p>
-              <p v-if="lastSyncText(device)" class="sync-muted" data-sync-last>
-                {{ lastSyncText(device) }}
-              </p>
-              <p v-if="device.syncStatus?.version" class="sync-muted sync-version" data-sync-version>
-                {{ t('cupAgentVersion').replace('{version}', device.syncStatus.version) }}
-              </p>
-            </div>
-
-            <!-- Folders the device syncs -->
-            <div class="folders-block" data-folders>
-              <h4 class="folders-title">{{ t('cupFoldersTitle') }}</h4>
-              <template v-for="fv in [foldersView(device)]" :key="device.id">
-                <p v-if="fv.rootCaption === 'nodata'" class="folders-caption" data-folders-caption>
-                  {{ t('cupFoldersNoData') }}
-                </p>
-                <p v-else-if="fv.empty" class="folders-caption" data-folders-caption>
-                  {{ t('cupFoldersEmpty') }}
-                </p>
-                <template v-else>
-                  <p class="folders-caption" data-folders-caption>
-                    {{
-                      fv.rootCaption === 'all'
-                        ? t('cupWholeDrive')
-                        : fv.rootCaption === 'all_on_demand'
-                          ? t('cupFoldersAllOnDemand')
-                          : t('cupFoldersSelected')
-                    }}
-                  </p>
-                  <div v-if="fv.full.length" class="folders-group" data-folders-full>
-                    <span class="folders-group-title">{{ t('cupFoldersFull') }}</span>
-                    <ul class="folders-list">
-                      <li
-                        v-for="f in fv.full"
-                        :key="f.key"
-                        class="folder-chip"
-                        :class="{ unavailable: f.name === null }"
-                      >
-                        {{ folderName(f.name) }}
-                      </li>
-                    </ul>
-                  </div>
-                  <div v-if="fv.onDemand.length" class="folders-group" data-folders-on-demand>
-                    <span class="folders-group-title">{{ t('cupFoldersOnDemand') }}</span>
-                    <ul class="folders-list">
-                      <li
-                        v-for="f in fv.onDemand"
-                        :key="f.key"
-                        class="folder-chip on-demand"
-                        :class="{ unavailable: f.name === null }"
-                      >
-                        {{ folderName(f.name) }}
-                      </li>
-                    </ul>
-                  </div>
-                </template>
-              </template>
-            </div>
-          </article>
-        </div>
+          </li>
+        </ul>
       </section>
+
+      <p v-if="loadedAt !== null && !devicesError" class="page-footer" data-updated>
+        {{ t('cupUpdated').replace('{when}', formatRelativeTime(new Date(loadedAt).toISOString(), locale, now)) }}
+      </p>
     </div>
+
+    <DriveDeviceFolderDialog
+      v-if="openFolder"
+      :device="openFolder.device"
+      :folder="openFolder.folder"
+      :info="openFolder.info"
+      @close="openFolder = null"
+    />
   </div>
 </template>
 
@@ -316,15 +458,16 @@ onBeforeUnmount(() => {
   color: var(--ui-text, #f8fff8);
   box-sizing: border-box;
   overflow-y: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .drive-devices-container {
-  max-width: 880px;
+  max-width: 760px;
   margin: 0 auto;
   padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 28px;
   box-sizing: border-box;
 }
 
@@ -355,10 +498,19 @@ onBeforeUnmount(() => {
   border-color: var(--ui-border, rgba(255, 255, 255, 0.2));
 }
 
+.drive-back-btn:focus-visible,
+.btn-secondary:focus-visible,
+.folders-summary:focus-visible,
+.folder-row:focus-visible {
+  outline: 2px solid var(--ui-focus, #8cff8c);
+  outline-offset: 2px;
+}
+
 .header-titles {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
 }
 
 .header-title {
@@ -374,66 +526,125 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted, #7ea582);
 }
 
-/* Devices Section */
-.devices-section {
+/* 1. Safety */
+.safety {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
-.devices-section-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--ui-text, #f8fff8);
-}
-
-.devices-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.device-card {
-  background: var(--ui-surface-elevated, #162419);
-  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.device-card-header {
+.safety-notice {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: 14px;
 }
 
-.device-icon-wrap {
-  width: 48px;
-  height: 48px;
-  min-width: 48px;
-  border-radius: 12px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.06));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--ui-brand, #00ff00);
+.safety-mark {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
-.device-main-info {
-  flex: 1;
+.safety-notice:not(.primary) .safety-mark {
+  margin-top: 1px;
+}
+
+.level-ok .safety-mark {
+  color: var(--ui-success-foreground, var(--ui-success, #44cf6e));
+}
+
+.level-attention .safety-mark {
+  color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
+}
+
+.level-loss .safety-mark {
+  color: var(--ui-danger-foreground, var(--ui-danger, #fb464c));
+}
+
+.safety-text {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.device-title-row {
+.safety-title {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.35;
+  font-weight: 600;
+  color: var(--ui-text, #f8fff8);
+  overflow-wrap: anywhere;
+}
+
+.safety-notice.primary .safety-title {
+  font-size: 22px;
+  line-height: 1.3;
+}
+
+.safety-line,
+.safety-hint {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.safety-line {
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.safety-hint {
+  color: var(--ui-text, #f8fff8);
+}
+
+/* 2. Devices */
+.devices-section {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.devices-section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.devices-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.device-row {
+  padding: 16px 0;
+  border-top: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+}
+
+.device-row:last-child {
+  border-bottom: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+}
+
+.device-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.device-icon {
+  flex-shrink: 0;
+  display: flex;
+  margin-top: 2px;
+  color: var(--ui-text-secondary, #d6f2d6);
+}
+
+.device-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .device-name {
@@ -441,48 +652,65 @@ onBeforeUnmount(() => {
   font-size: 17px;
   font-weight: 600;
   color: var(--ui-text, #f8fff8);
+  overflow-wrap: anywhere;
 }
 
-.device-kind-pill.this-device-pill {
-  box-shadow: inset 0 0 0 1px var(--ui-brand);
-  color: var(--ui-brand);
+.device-connection,
+.device-state {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
-.device-kind-pill {
-  padding: 2px 8px;
-  border-radius: 6px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.08));
-  color: var(--ui-text-secondary, #d6f2d6);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.device-status-row {
+.device-connection {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.online-pill {
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.online-pill.online {
-  background: rgba(0, 255, 0, 0.15);
-  color: var(--ui-success, #00ff00);
-}
-
-.online-pill.offline {
-  background: rgba(255, 255, 255, 0.06);
+  gap: 7px;
   color: var(--ui-text-muted, #7ea582);
 }
 
-.last-seen-text {
-  font-size: 13px;
+.device-connection[data-online='true'] {
+  color: var(--ui-text, #f8fff8);
+}
+
+.online-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ui-success, #44cf6e);
+}
+
+.device-state {
+  color: var(--ui-text, #f8fff8);
+}
+
+.device-state.sync-nodata,
+.device-state.sync-paused {
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.device-state.sync-error {
+  color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
+}
+
+.device-state-error {
+  color: var(--ui-text-muted, #7ea582);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.device-state-error::before {
+  content: '· ';
+}
+
+.device-row.offline .device-name,
+.device-row.offline .device-state,
+.device-row.offline .device-icon {
   color: var(--ui-text-muted, #7ea582);
 }
 
@@ -503,17 +731,11 @@ onBeforeUnmount(() => {
   background: var(--ui-surface-sidebar, rgba(255, 255, 255, 0.12));
 }
 
-.btn-secondary:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* State Boxes */
+/* State boxes */
 .state-box {
-  background: var(--ui-surface-elevated, #162419);
   border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
   border-radius: 12px;
-  padding: 36px 20px;
+  padding: 32px 20px;
   text-align: center;
   color: var(--ui-text-muted, #7ea582);
   display: flex;
@@ -524,7 +746,7 @@ onBeforeUnmount(() => {
 }
 
 .error-box {
-  color: var(--ui-danger, #ff4d4d);
+  color: var(--ui-danger, #fb464c);
 }
 
 .error-msg {
@@ -535,16 +757,10 @@ onBeforeUnmount(() => {
 .spinner {
   width: 24px;
   height: 24px;
-  border: 3px solid rgba(255, 255, 255, 0.15);
-  border-top-color: var(--ui-brand, #00ff00);
+  border: 3px solid var(--ui-border, rgba(255, 255, 255, 0.15));
+  border-top-color: var(--ui-text-muted, #7ea582);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
-}
-
-.spinner.small {
-  width: 16px;
-  height: 16px;
-  border-width: 2px;
 }
 
 @keyframes spin {
@@ -553,126 +769,176 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Sync status */
-.sync-block {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.03));
-  font-size: 13px;
-}
-
-.sync-block.stale {
-  opacity: 0.7;
-}
-
-.sync-line {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.sync-label {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--ui-text, #f8fff8);
-}
-
-.sync-label.sync-synced {
-  color: var(--ui-success, #00ff00);
-}
-
-.sync-label.sync-error {
-  color: var(--ui-danger, #ff4d4d);
-}
-
-.sync-label.sync-nodata,
-.sync-label.sync-paused {
-  color: var(--ui-text-muted, #7ea582);
-}
-
-.sync-muted {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ui-text-muted, #7ea582);
-  overflow-wrap: anywhere;
-}
-
-.sync-version {
-  font-size: 11px;
-}
-
-/* Folders */
+/* Folders of a device */
 .folders-block {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.folders-title {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ui-text-secondary, #d6f2d6);
+  align-items: flex-start;
+  margin-top: 4px;
 }
 
 .folders-caption {
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--ui-text-muted, #7ea582);
 }
 
-.folders-group {
+.folders-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 0 -4px;
+  padding: 4px 6px 4px 4px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-muted, #7ea582);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.folders-summary:hover {
+  color: var(--ui-text, #f8fff8);
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.folders-chevron {
+  flex-shrink: 0;
+}
+
+.folders-summary[aria-expanded='true'] .folders-chevron {
+  transform: rotate(90deg);
+}
+
+.folder-rows {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 
-.folders-group-title {
-  font-size: 12px;
-  color: var(--ui-text-muted, #7ea582);
-}
-
-.folders-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+.folder-row {
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.folder-chip {
-  padding: 3px 10px;
-  border-radius: 6px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.08));
-  color: var(--ui-text-secondary, #d6f2d6);
-  font-size: 13px;
-  overflow-wrap: anywhere;
-}
-
-.folder-chip.on-demand {
-  box-shadow: inset 0 0 0 1px var(--ui-border, rgba(255, 255, 255, 0.15));
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
   background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.folder-chip.unavailable {
+.folder-row:hover {
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.06));
+}
+
+.folder-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-row-status {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
   color: var(--ui-text-muted, #7ea582);
-  font-style: italic;
 }
 
-/* Mobile Responsiveness (≤ 640px) */
+.folder-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ui-text-muted, #7ea582);
+}
+
+.folder-row-status.st-full {
+  color: var(--ui-success-foreground, var(--ui-success, #44cf6e));
+}
+
+.folder-row-status.st-full .folder-dot {
+  background: var(--ui-success, #44cf6e);
+}
+
+.folder-row-status.st-on_demand {
+  color: var(--ui-info-foreground, var(--ui-info, #53dfdd));
+}
+
+.folder-row-status.st-on_demand .folder-dot {
+  background: var(--ui-info, #53dfdd);
+}
+
+.folder-row-status.st-partial {
+  color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
+}
+
+.folder-row-status.st-partial .folder-dot {
+  background: var(--ui-warning, #e0de71);
+}
+
+/* Footer */
+.page-footer {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-text-muted, #7ea582);
+}
+
+/* Motion: only the folder list opening and closing; none for reduced-motion users. */
+@media (prefers-reduced-motion: no-preference) {
+  .folders-chevron {
+    transition: transform 0.15s ease;
+  }
+
+  .folders-enter-active,
+  .folders-leave-active {
+    transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+
+  .folders-enter-from,
+  .folders-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
+
 @media (max-width: 640px) {
   .drive-devices-container {
     padding: 16px;
-    gap: 16px;
+    gap: 24px;
   }
 
-  .device-card {
-    padding: 16px;
+  .safety-notice.primary .safety-title {
+    font-size: 20px;
+  }
+
+  .folder-row {
+    flex-wrap: wrap;
+    gap: 2px 12px;
+  }
+
+  .folder-row-name {
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 </style>
