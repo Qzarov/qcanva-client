@@ -142,6 +142,10 @@ object AgentHolder {
                 lastError = null
             } catch (e: Exception) {
                 lastError = e.message
+                // A failed start can leave the node half set up (marked as
+                // running, iroh endpoint bound but never announced to the
+                // hub); the next attempt has to begin from a fresh node.
+                closeLocked()
                 throw e
             }
         }
