@@ -101,6 +101,32 @@ export interface DriveDevice {
   keeper: boolean;
   lastSeenAt: string | null;
   createdAt: string;
+  /** Sync status fields need the hub with the device status (Qzarov/canvas-server-back#41). */
+  syncStatus?: DriveDeviceSyncStatus | null;
+  syncStatusAt?: string | null;
+  defaultMode?: 'full' | 'on_demand';
+  folders?: DriveDeviceFolder[];
+}
+
+export type DriveSyncState = 'synced' | 'syncing' | 'paused' | 'error';
+
+/** What the device agent last reported about its sync. Missing on older hubs. */
+export interface DriveDeviceSyncStatus {
+  state: DriveSyncState | string;
+  pendingFiles?: number | null;
+  pendingBytes?: number | null;
+  lastSyncAt?: string | null;
+  lastError?: string | null;
+  version?: string | null;
+}
+
+/** One storage rule of a device with the folder name resolved by the hub. */
+export interface DriveDeviceFolder {
+  /** null is the device root rule. */
+  folderId: string | null;
+  /** null for the root rule and for a deleted or foreign folder. */
+  name: string | null;
+  mode: DriveStorageMode;
 }
 
 export interface DriveStorageRule {
