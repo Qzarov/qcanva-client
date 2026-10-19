@@ -14,7 +14,7 @@ import org.json.JSONObject
  * thread.
  */
 interface QSpaceBackend {
-    /** Registers this phone with the hub and writes device.json into [configDir]. */
+    /** Registers this phone with the hub and writes config.json into [configDir]. */
     fun register(
         hubUrl: String,
         userToken: String,
