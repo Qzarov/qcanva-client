@@ -3,32 +3,11 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DriveDevicesView from './DriveDevicesView.vue';
-import DrivePairDeviceDialog from '../components/DrivePairDeviceDialog.vue';
-import {
-  driveApi,
-  type DriveDevice,
-  type DriveDevicePolicy,
-  type DriveUnderReplicatedResponse,
-} from '../api/drive';
-import { resourceFolders } from '../api/client';
-import { alertDialog, confirmDialog } from '../composables/appDialog';
+import { driveApi, type DriveDevice } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
-import { resetPhoneNodeState } from '../composables/usePhoneNode';
-
-const phoneAgent = vi.hoisted(() => ({
-  isAvailable: vi.fn(),
-  status: vi.fn(),
-  permissionState: vi.fn(),
-  policy: vi.fn(),
-  onEvent: vi.fn(),
-}));
-
-vi.mock('../native/qspaceAgent', () => ({ qspaceAgent: phoneAgent }));
-
-const push = vi.fn();
 
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push: vi.fn() }),
   useRoute: () => ({ params: {}, path: '/drive/devices' }),
 }));
 
@@ -41,470 +20,248 @@ vi.mock('../api/drive', async (importOriginal) => {
       listDevices: vi.fn(),
       updateDevice: vi.fn(),
       revokeDevice: vi.fn(),
-      getDevicePolicy: vi.fn(),
       setDevicePolicy: vi.fn(),
+      createPairingCode: vi.fn(),
       getUnderReplicated: vi.fn(),
     },
   };
 });
 
-vi.mock('../api/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../api/client')>();
-  return {
-    ...actual,
-    resourceFolders: {
-      ...actual.resourceFolders,
-      list: vi.fn(),
-    },
-  };
-});
-
-vi.mock('../composables/appDialog', () => ({
-  confirmDialog: vi.fn(),
-  alertDialog: vi.fn(),
-  confirmDelete: vi.fn(),
-  promptDialog: vi.fn(),
-}));
-
 vi.mock('../composables/useDocumentTitle', () => ({
   useDocumentTitle: vi.fn(),
 }));
 
-describe('DriveDevicesView.vue', () => {
-  const { t } = useI18n();
+describe('DriveDevicesView.vue (Q Control, read-only)', () => {
+  const { t, setLocale } = useI18n();
 
-  const mockFolders = {
-    own: [
-      { id: 'f-work', name: 'Work Folder', parentId: null, role: 'owner' as const, canvasCount: 0, htmlDocumentCount: 0 },
-      { id: 'f2', name: 'Sub Folder', parentId: 'f-work', role: 'owner' as const, canvasCount: 0, htmlDocumentCount: 0 },
-    ],
-    shared: [],
+  const isoAgo = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  const base = {
+    folderId: null,
+    endpointId: null,
+    relayUrl: null,
+    keeper: false,
+    createdAt: isoAgo(24 * 3600 * 1000),
   };
 
-  const nowIso = new Date().toISOString();
-  const oldIso = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-
-  const mockDevices: DriveDevice[] = [
-    {
-      id: 'dev-1',
-      name: 'Home Server',
-      kind: 'home',
-      folderId: null,
-      endpointId: 'iroh-ep-1',
-      relayUrl: 'https://relay.example.com',
-      keeper: true,
-      lastSeenAt: nowIso,
-      createdAt: oldIso,
-    },
-    {
-      id: 'dev-2',
-      name: 'Work PC',
-      kind: 'pc',
-      folderId: 'f-work',
-      endpointId: null,
-      relayUrl: null,
-      keeper: false,
-      lastSeenAt: null,
-      createdAt: oldIso,
-    },
-  ];
-
-  const mockUnderReplicated: DriveUnderReplicatedResponse = {
-    items: [
+  function devices(): DriveDevice[] {
+    return [
       {
-        fileId: 'file-1',
-        name: 'Report.pdf',
-        folderId: 'f-work',
-        hash: 'hash-1',
-        sizeBytes: 1048576,
+        ...base,
+        id: 'dev-1',
+        name: 'Home Server',
+        kind: 'home',
+        lastSeenAt: isoAgo(5_000),
+        syncStatus: {
+          state: 'syncing',
+          pendingFiles: 3,
+          pendingBytes: 1536,
+          lastSyncAt: isoAgo(5 * 60_000),
+          lastError: null,
+          version: '0.1.0',
+        },
+        syncStatusAt: isoAgo(5_000),
+        defaultMode: 'full',
+        folders: [
+          { folderId: null, name: null, mode: 'none' },
+          { folderId: 'f1', name: 'Photos', mode: 'full' },
+          { folderId: 'f2', name: 'Archive', mode: 'on_demand' },
+          { folderId: 'f3', name: null, mode: 'full' },
+        ],
       },
-    ],
-    nextCursor: null,
-  };
+      {
+        ...base,
+        id: 'dev-2',
+        name: 'Work PC',
+        kind: 'pc',
+        lastSeenAt: isoAgo(2 * 3600 * 1000),
+        syncStatus: {
+          state: 'error',
+          pendingFiles: 0,
+          pendingBytes: 0,
+          lastSyncAt: null,
+          lastError: 'disk full',
+          version: '0.1.0',
+        },
+        syncStatusAt: isoAgo(2 * 3600 * 1000),
+        defaultMode: 'full',
+        folders: [{ folderId: null, name: null, mode: 'full' }],
+      },
+      {
+        ...base,
+        id: 'dev-3',
+        name: 'Old Phone',
+        kind: 'phone',
+        lastSeenAt: null,
+      },
+    ];
+  }
+
+  const mounted: Array<{ unmount: () => void }> = [];
 
   function mountView() {
-    return mount(DriveDevicesView, {
+    const wrapper = mount(DriveDevicesView, {
       global: {
         stubs: {
-          RouterLink: {
-            props: ['to'],
-            template: '<a :href="to"><slot /></a>',
-          },
+          RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
         },
       },
     });
+    mounted.push(wrapper);
+    return wrapper;
   }
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resetPhoneNodeState();
-    phoneAgent.isAvailable.mockResolvedValue({
-      available: false,
-      availability: 'not_android',
-      registered: false,
-      enabled: false,
-      running: false,
-    });
-    phoneAgent.onEvent.mockResolvedValue({ remove: vi.fn() });
-    vi.mocked(driveApi.listDevices).mockResolvedValue(mockDevices);
-    vi.mocked(resourceFolders.list).mockResolvedValue(mockFolders);
-    vi.mocked(driveApi.getUnderReplicated).mockResolvedValue(mockUnderReplicated);
+    setLocale('en');
+    vi.mocked(driveApi.listDevices).mockResolvedValue(devices());
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
+    // Leaked views would keep their interval and visibility listeners alive.
+    for (const w of mounted.splice(0)) w.unmount();
+    vi.useRealTimers();
   });
 
-  it('renders device cards with kind, online vs offline, iroh yes/no, bound folder name', async () => {
+  it('titles the page Q Control in both languages', async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('h1').text()).toBe('Q Control');
+    setLocale('ru');
+    await flushPromises();
+    expect(wrapper.get('h1').text()).toBe('Q Control');
+  });
+
+  it('shows kind, online pill, last seen, sync status and folders for each device', async () => {
     const wrapper = mountView();
     await flushPromises();
 
-    // Device 1: home, online, iroh yes, whole drive
-    const dev1 = wrapper.find('[data-device="dev-1"]');
-    expect(dev1.exists()).toBe(true);
+    const dev1 = wrapper.get('[data-device="dev-1"]');
     expect(dev1.text()).toContain('Home Server');
     expect(dev1.text()).toContain(t('cupKindHome'));
-    expect(dev1.find('[data-online="true"]').exists()).toBe(true);
-    expect(dev1.find('[data-online="true"]').text()).toBe(t('cupOnline'));
-    expect(dev1.find('[data-iroh="yes"]').exists()).toBe(true);
-    expect(dev1.find('[data-iroh="yes"]').text()).toBe(t('cupIrohYes'));
-    expect(dev1.text()).toContain(t('cupWholeDrive'));
-
-    // Device 2: pc, offline (lastSeenAt null -> never seen), iroh no, bound folder
-    const dev2 = wrapper.find('[data-device="dev-2"]');
-    expect(dev2.exists()).toBe(true);
-    expect(dev2.text()).toContain('Work PC');
-    expect(dev2.text()).toContain(t('cupKindPc'));
-    expect(dev2.find('[data-online="false"]').exists()).toBe(true);
-    expect(dev2.find('[data-online="false"]').text()).toBe(t('cupOffline'));
-    expect(dev2.find('[data-iroh="no"]').exists()).toBe(true);
-    expect(dev2.find('[data-iroh="no"]').text()).toBe(t('cupIrohNo'));
-    expect(dev2.text()).toContain(t('cupNeverSeen'));
-    expect(dev2.text()).toContain(t('cupBoundFolder').replace('{name}', 'Work Folder'));
+    expect(dev1.get('[data-online]').attributes('data-online')).toBe('true');
+    expect(dev1.get('[data-sync-label]').text()).toBe('Syncing… 3 files, 1.5 KB');
+    expect(dev1.get('[data-sync-last]').text()).toBe('Last sync: 5 minutes ago');
+    expect(dev1.get('[data-sync-version]').text()).toBe('Agent 0.1.0');
+    expect(dev1.attributes('data-stale')).toBeUndefined();
+    expect(dev1.get('[data-sync]').attributes('data-stale')).toBe('false');
+    expect(dev1.get('[data-folders-caption]').text()).toBe(t('cupFoldersSelected'));
+    expect(dev1.get('[data-folders-full]').text()).toContain('Photos');
+    expect(dev1.get('[data-folders-full]').text()).toContain(t('cupFoldersUnavailable'));
+    expect(dev1.get('[data-folders-on-demand]').text()).toContain('Archive');
   });
 
-  it('«Подключить устройство» opens the pairing dialog; its device list replaces the page list', async () => {
-    const wrapper = mountView();
-    await flushPromises();
-    expect(wrapper.find('[data-pair-dialog]').exists()).toBe(false);
-
-    await wrapper.get('[data-pair-open]').trigger('click');
-    const dialog = wrapper.findComponent(DrivePairDeviceDialog);
-    expect(dialog.exists()).toBe(true);
-    expect(dialog.props('knownDeviceIds')).toEqual(mockDevices.map((d) => d.id));
-
-    const fresh: DriveDevice = { ...(mockDevices[0] as DriveDevice), id: 'dev-new', name: 'Laptop', keeper: false };
-    dialog.vm.$emit('devices', [...mockDevices, fresh]);
-    await flushPromises();
-    expect(wrapper.find('[data-device="dev-new"]').exists()).toBe(true);
-
-    dialog.vm.$emit('close');
-    await flushPromises();
-    expect(wrapper.find('[data-pair-dialog]').exists()).toBe(false);
-  });
-
-  it('keeper toggle calls updateDevice and reverts + alerts on failure', async () => {
+  it('shows the last status of an offline device as stale, an error with its text, and the whole drive', async () => {
     const wrapper = mountView();
     await flushPromises();
 
-    const dev2 = wrapper.find('[data-device="dev-2"]');
-    const toggle = dev2.find<HTMLInputElement>('[data-keeper-toggle]');
-    expect(toggle.element.checked).toBe(false);
-
-    // Test failure scenario
-    vi.mocked(driveApi.updateDevice).mockRejectedValueOnce(new Error('Permission denied'));
-    await toggle.setValue(true);
-    expect(driveApi.updateDevice).toHaveBeenCalledWith('dev-2', { keeper: true });
-    await flushPromises();
-
-    // alertDialog called and toggle reverted
-    expect(alertDialog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: t('cupKeeperFailed'),
-        message: 'Permission denied',
-      })
-    );
-    expect(toggle.element.checked).toBe(false);
-
-    // Test success scenario
-    vi.mocked(driveApi.updateDevice).mockResolvedValueOnce({
-      ...(mockDevices[1] as DriveDevice),
-      keeper: true,
-    });
-    await toggle.setValue(true);
-    expect(driveApi.updateDevice).toHaveBeenCalledWith('dev-2', { keeper: true });
-    await flushPromises();
-    expect(toggle.element.checked).toBe(true);
-    expect(driveApi.getUnderReplicated).toHaveBeenCalledTimes(2); // once on mount, once after keeper update
+    const dev2 = wrapper.get('[data-device="dev-2"]');
+    expect(dev2.get('[data-online]').attributes('data-online')).toBe('false');
+    expect(dev2.get('[data-sync-label]').text()).toBe(t('cupSyncError'));
+    expect(dev2.get('[data-sync-error]').text()).toBe('disk full');
+    expect(dev2.get('[data-sync]').attributes('data-stale')).toBe('true');
+    expect(dev2.get('[data-sync-stale]').text()).toBe('As of 2 hours ago');
+    expect(dev2.get('[data-folders-caption]').text()).toBe(t('cupWholeDrive'));
   });
 
-  it('revoke asks confirmDialog and calls revokeDevice only when confirmed, removes the card', async () => {
+  it('an older hub without the new fields shows "No data" and never offered controls', async () => {
     const wrapper = mountView();
     await flushPromises();
 
-    const dev2 = wrapper.find('[data-device="dev-2"]');
-    const revokeBtn = dev2.find('[data-revoke]');
-
-    // Dismiss confirm
-    vi.mocked(confirmDialog).mockResolvedValueOnce(false);
-    await revokeBtn.trigger('click');
-    expect(confirmDialog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: t('cupRevokeTitle').replace('{name}', 'Work PC'),
-        message: t('cupRevokeNote'),
-        confirmLabel: t('cupRevoke'),
-        danger: true,
-      })
-    );
-    expect(driveApi.revokeDevice).not.toHaveBeenCalled();
-    expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(true);
-
-    // Confirm revoke
-    vi.mocked(confirmDialog).mockResolvedValueOnce(true);
-    vi.mocked(driveApi.revokeDevice).mockResolvedValueOnce({ revoked: true });
-    await revokeBtn.trigger('click');
-    expect(driveApi.revokeDevice).toHaveBeenCalledWith('dev-2');
-    await flushPromises();
-
-    // Card dev-2 removed
-    expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(false);
+    const dev3 = wrapper.get('[data-device="dev-3"]');
+    expect(dev3.get('[data-sync-label]').text()).toBe(t('cupSyncNoData'));
+    expect(dev3.get('[data-sync]').attributes('data-stale')).toBe('false');
+    expect(dev3.get('[data-folders-caption]').text()).toBe(t('cupFoldersNoData'));
+    expect(dev3.text()).toContain(t('cupNeverSeen'));
   });
 
-  it('shows no-keeper hint when no keeper, hidden when one exists', async () => {
-    // Both devices have keeper: false
-    const devicesWithoutKeeper = mockDevices.map((d) => ({ ...d, keeper: false }));
-    vi.mocked(driveApi.listDevices).mockResolvedValueOnce(devicesWithoutKeeper);
-
-    const wrapper = mountView();
-    await flushPromises();
-
-    expect(wrapper.find('[data-no-keeper]').exists()).toBe(true);
-    expect(wrapper.find('[data-no-keeper]').text()).toContain(t('cupNoKeeperHint'));
-
-    // When a keeper device is present (mockDevices[0] is keeper)
-    vi.mocked(driveApi.listDevices).mockResolvedValueOnce(mockDevices);
-    const wrapperWithKeeper = mountView();
-    await flushPromises();
-    expect(wrapperWithKeeper.find('[data-no-keeper]').exists()).toBe(false);
-  });
-
-  it('under block count uses total from the hub, without "+"', async () => {
-    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
-      items: [
-        {
-          fileId: 'file-1',
-          name: 'First.pdf',
-          folderId: 'f-work',
-          hash: 'hash-1',
-          sizeBytes: 1024,
-        },
-      ],
-      nextCursor: 'cursor-page-2',
-      total: 137,
-    });
-
-    const wrapper = mountView();
-    await flushPromises();
-
-    const underSection = wrapper.find('[data-under]');
-    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '137'));
-    expect(underSection.text()).not.toContain('137+');
-    expect(underSection.text()).not.toContain('1+');
-
-    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
-      items: [{ fileId: 'file-2', name: 'Second.pdf', folderId: null, hash: 'hash-2', sizeBytes: 2048 }],
-      nextCursor: 'cursor-page-3',
-      total: 136,
-    });
-    await underSection.find('[data-under-more]').trigger('click');
-    await flushPromises();
-    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '136'));
-  });
-
-  it('under block count falls back to "N+" on a hub without total, load more appends', async () => {
-    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
-      items: [
-        {
-          fileId: 'file-1',
-          name: 'First.pdf',
-          folderId: 'f-work',
-          hash: 'hash-1',
-          sizeBytes: 1024,
-        },
-      ],
-      nextCursor: 'cursor-page-2',
-    });
-
-    const wrapper = mountView();
-    await flushPromises();
-
-    const underSection = wrapper.find('[data-under]');
-    expect(underSection.exists()).toBe(true);
-    // Heading with "1+"
-    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '1+'));
-
-    // Load more button exists
-    const moreBtn = underSection.find('[data-under-more]');
-    expect(moreBtn.exists()).toBe(true);
-
-    vi.mocked(driveApi.getUnderReplicated).mockResolvedValueOnce({
-      items: [
-        {
-          fileId: 'file-2',
-          name: 'Second.pdf',
-          folderId: null,
-          hash: 'hash-2',
-          sizeBytes: 2048,
-        },
-      ],
-      nextCursor: null,
-    });
-
-    await moreBtn.trigger('click');
-    await flushPromises();
-
-    expect(driveApi.getUnderReplicated).toHaveBeenCalledWith({ cursor: 'cursor-page-2', limit: 50 });
-    // Now 2 items and no nextCursor -> count is "2"
-    expect(underSection.text()).toContain(t('cupUnderTitle').replace('{name}', '2'));
-    expect(underSection.text()).toContain('First.pdf');
-    expect(underSection.text()).toContain('Second.pdf');
-    expect(underSection.find('[data-under-more]').exists()).toBe(false);
-  });
-
-  it('rules: expanding loads policy, changing root select + adding a folder via picker + Save calls setDevicePolicy', async () => {
-    const mockPolicy: DriveDevicePolicy = {
-      defaultMode: 'full',
-      rules: [],
-    };
-    vi.mocked(driveApi.getDevicePolicy).mockResolvedValue(mockPolicy);
-    vi.mocked(driveApi.setDevicePolicy).mockResolvedValue({
-      defaultMode: 'full',
-      rules: [
-        { folderId: null, mode: 'on_demand' },
-        { folderId: 'f2', mode: 'full' },
-      ],
-    });
-
-    const wrapper = mountView();
-    await flushPromises();
-
-    const dev1 = wrapper.find('[data-device="dev-1"]');
-    const rulesToggle = dev1.find('[data-rules-toggle]');
-    expect(rulesToggle.exists()).toBe(true);
-
-    // Expand rules
-    await rulesToggle.trigger('click');
-    await flushPromises();
-
-    expect(driveApi.getDevicePolicy).toHaveBeenCalledWith('dev-1');
-
-    // Root select
-    const rootSelect = dev1.find<HTMLSelectElement>('[data-rule-root]');
-    expect(rootSelect.exists()).toBe(true);
-    await rootSelect.setValue('on_demand');
-
-    // Save button should now be enabled
-    const saveBtn = dev1.find<HTMLButtonElement>('[data-save-rules]');
-    expect(saveBtn.attributes('disabled')).toBeUndefined();
-
-    // Add a folder rule
-    const addRuleBtn = dev1.find('[data-add-rule]');
-    await addRuleBtn.trigger('click');
-
-    // Picker is now opened
-    const picker = wrapper.findComponent({ name: 'DriveFolderPicker' });
-    expect(picker.exists()).toBe(true);
-
-    // Picker selects f2
-    picker.vm.$emit('select', 'f2');
-    await flushPromises();
-
-    // Check row for f2 exists
-    expect(dev1.find('[data-rule-folder="f2"]').exists()).toBe(true);
-
-    // Click save
-    await saveBtn.trigger('click');
-    await flushPromises();
-
-    expect(driveApi.setDevicePolicy).toHaveBeenCalledWith('dev-1', [
-      { folderId: null, mode: 'on_demand' },
-      { folderId: 'f2', mode: 'full' },
+  it('says no folders are chosen when the root is none and nothing is selected', async () => {
+    vi.mocked(driveApi.listDevices).mockResolvedValue([
+      { ...devices()[0]!, folders: [{ folderId: null, name: null, mode: 'none' }] },
     ]);
-
-    // Inline success status
-    const statusMsg = dev1.find('[role="status"]');
-    expect(statusMsg.exists()).toBe(true);
-    expect(statusMsg.text()).toContain(t('cupRulesSaved'));
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('[data-folders-caption]').text()).toBe(t('cupFoldersEmpty'));
   });
 
-  it('save error shows the role=alert message', async () => {
-    const mockPolicy: DriveDevicePolicy = {
-      defaultMode: 'full',
-      rules: [],
-    };
-    vi.mocked(driveApi.getDevicePolicy).mockResolvedValue(mockPolicy);
-    vi.mocked(driveApi.setDevicePolicy).mockRejectedValueOnce(new Error('Folder outside subtree'));
-
+  it('is read-only: no buttons, switches, selects or write calls', async () => {
     const wrapper = mountView();
     await flushPromises();
 
-    const dev1 = wrapper.find('[data-device="dev-1"]');
-    await dev1.find('[data-rules-toggle]').trigger('click');
-    await flushPromises();
-
-    const rootSelect = dev1.find<HTMLSelectElement>('[data-rule-root]');
-    await rootSelect.setValue('full');
-
-    const saveBtn = dev1.find('[data-save-rules]');
-    await saveBtn.trigger('click');
-    await flushPromises();
-
-    const alertMsg = dev1.find('[role="alert"]');
-    expect(alertMsg.exists()).toBe(true);
-    expect(alertMsg.text()).toContain(t('cupRulesSaveFailed'));
-    expect(alertMsg.text()).toContain('Folder outside subtree');
-  });
-
-  it('in a browser there is no phone block and no device is marked as this one', async () => {
-    const wrapper = mountView();
-    await flushPromises();
+    expect(wrapper.find('button').exists()).toBe(false);
+    expect(wrapper.find('input').exists()).toBe(false);
+    expect(wrapper.find('select').exists()).toBe(false);
+    expect(wrapper.find('[data-pair-open]').exists()).toBe(false);
+    expect(wrapper.find('[data-under]').exists()).toBe(false);
     expect(wrapper.find('[data-phone-storage]').exists()).toBe(false);
-    expect(wrapper.find('[data-this-device]').exists()).toBe(false);
-  });
-
-  it('in the Android app with the node on, the phone block shows and its hub device is marked "this device"', async () => {
-    phoneAgent.isAvailable.mockResolvedValue({
-      available: true,
-      availability: 'available',
-      registered: true,
-      enabled: true,
-      running: true,
-    });
-    phoneAgent.status.mockResolvedValue({
-      available: true,
-      availability: 'available',
-      registered: true,
-      enabled: true,
-      running: true,
-      lastError: null,
-      node: { nodeId: 'dev-2', paused: false, pauseReason: null, materializedFiles: 0, materializedBytes: 0, remoteOnlyFiles: 0, remoteOnlyBytes: 0, downloadQueueLen: 0, downloadBytesDone: 0, downloadBytesTotal: 0, downloadCurrentFiles: [], lastCycleAt: 0 },
-    });
-    phoneAgent.permissionState.mockResolvedValue({ allFiles: 'granted', notifications: 'granted', batteryExemption: 'granted' });
-    phoneAgent.policy.mockResolvedValue({ defaultMode: 'on_demand', rules: [] });
-    const wrapper = mountView();
-    await flushPromises();
-    expect(wrapper.find('[data-phone-status]').exists()).toBe(true);
-    const marks = wrapper.findAll('[data-this-device]');
-    expect(marks).toHaveLength(1);
-    expect(wrapper.find('[data-device="dev-2"] [data-this-device]').text()).toBe(t('phoneThisDevice'));
+    expect(driveApi.updateDevice).not.toHaveBeenCalled();
+    expect(driveApi.revokeDevice).not.toHaveBeenCalled();
+    expect(driveApi.setDevicePolicy).not.toHaveBeenCalled();
+    expect(driveApi.getUnderReplicated).not.toHaveBeenCalled();
   });
 
   it('empty device list shows cupNoDevices', async () => {
-    vi.mocked(driveApi.listDevices).mockResolvedValueOnce([]);
-
+    vi.mocked(driveApi.listDevices).mockResolvedValue([]);
     const wrapper = mountView();
     await flushPromises();
-
     expect(wrapper.text()).toContain(t('cupNoDevices'));
+  });
+
+  it('shows the load error with a retry that reloads', async () => {
+    vi.mocked(driveApi.listDevices).mockRejectedValueOnce(new Error('boom'));
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('[data-error]').text()).toContain('boom');
+
+    await wrapper.get('[data-error] button').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-error]').exists()).toBe(false);
+    expect(wrapper.find('[data-device="dev-1"]').exists()).toBe(true);
+  });
+
+  describe('auto refresh', () => {
+    let visibility: DocumentVisibilityState = 'visible';
+
+    beforeEach(() => {
+      visibility = 'visible';
+      vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility);
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('reloads every 10 s while visible, skips while hidden, stops after unmount', async () => {
+      const wrapper = mountView();
+      await flushPromises();
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(1);
+
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(2);
+
+      visibility = 'hidden';
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(2);
+
+      visibility = 'visible';
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flushPromises();
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(3);
+
+      wrapper.unmount();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(3);
+    });
+
+    it('a failed background refresh keeps the last list', async () => {
+      const wrapper = mountView();
+      await flushPromises();
+      vi.mocked(driveApi.listDevices).mockRejectedValueOnce(new Error('offline'));
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(wrapper.find('[data-error]').exists()).toBe(false);
+      expect(wrapper.find('[data-device="dev-1"]').exists()).toBe(true);
+      wrapper.unmount();
+    });
   });
 });
