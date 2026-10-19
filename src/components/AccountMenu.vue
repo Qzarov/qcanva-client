@@ -70,6 +70,7 @@ import { LogOut, Puzzle, Settings } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { clearToken, getCurrentUser } from '../api/client';
+import { clearAllTextDocLocalCopies } from '../text-documents/offline-store';
 import { useI18n } from '../composables/useI18n';
 import { usePlugins } from '../composables/usePlugins';
 import ThemeSelector from './ThemeSelector.vue';
@@ -168,6 +169,7 @@ const signOut = () => {
   close(false);
   resetPlugins();
   clearToken();
+  void clearAllTextDocLocalCopies();
   void router.push({ name: 'landing' });
 };
 

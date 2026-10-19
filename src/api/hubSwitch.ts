@@ -1,5 +1,6 @@
 import { clearToken } from './client';
 import { resolveApiBase, setHubOverride } from './hubOverride';
+import { clearAllTextDocLocalCopies } from '../text-documents/offline-store';
 
 /**
  * Applies a new hub override or resets to the built-in default.
@@ -14,6 +15,7 @@ export function applyHubOverride(url: string | null): void {
   const nextBase = resolveApiBase();
   if (nextBase !== currentBase) {
     clearToken();
+    void clearAllTextDocLocalCopies();
   }
   window.location.reload();
 }
