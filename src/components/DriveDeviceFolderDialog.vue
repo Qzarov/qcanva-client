@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from '@lucide/vue';
 import { driveApi, type DriveDevice, type DriveFolderCounts } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
-import { formatRelativeTime, type TopFolderStatus } from '../utils/deviceStatus';
+import { plainError, syncStateKey, type TopFolderStatus } from '../utils/deviceStatus';
 
 /** Read-only details of one top-level folder on one device (Q Control). */
 const props = defineProps<{
@@ -59,13 +59,34 @@ const fileCount = computed(() =>
   counts.value ? counts.value.media + counts.value.files + counts.value.docs : 0,
 );
 
+/** What the status means in plain words. */
+const statusHelp = computed(() => {
+  switch (props.info.status) {
+    case 'full':
+      return t('cupModeFullHelp');
+    case 'on_demand':
+      return t('cupModeOnDemandHelp');
+    case 'partial':
+      return t('cupModePartialHelp');
+    default:
+      return t('cupModeNoneHelp');
+  }
+});
+
 const lastSync = computed(() => {
   const iso = props.device.syncStatus?.lastSyncAt;
   if (!iso) return '';
-  const when = formatRelativeTime(iso, locale.value);
-  const abs = new Date(iso).toLocaleString(locale.value === 'ru' ? 'ru-RU' : 'en-US');
-  return when ? `${when} (${abs})` : abs;
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '';
+  return d.toLocaleString(locale.value === 'ru' ? 'ru-RU' : 'en-US');
 });
+
+const agentVersion = computed(() => props.device.syncStatus?.version ?? '');
+
+/** The agent's last error, in plain words when obvious, for a device in the error state. */
+const deviceError = computed(() =>
+  syncStateKey(props.device) === 'error' ? plainError(props.device.syncStatus?.lastError, t) : '',
+);
 
 const nestedRules = computed(() =>
   props.info.nested.map((r) => ({
@@ -152,6 +173,7 @@ onBeforeUnmount(() => {
           <dd>
             <span class="fd-dot" :class="`st-${info.status}`" aria-hidden="true" />
             <span data-fd-status>{{ statusLabel }}</span>
+            <span class="fd-help" data-fd-help>{{ statusHelp }}</span>
           </dd>
         </div>
         <div class="fd-row">
@@ -192,6 +214,14 @@ onBeforeUnmount(() => {
         <div class="fd-row">
           <dt>{{ t('cupFolderLastSync') }}</dt>
           <dd data-fd-last-sync>{{ lastSync || t('cupFolderNoSync') }}</dd>
+        </div>
+        <div v-if="deviceError" class="fd-row">
+          <dt>{{ t('cupFolderError') }}</dt>
+          <dd data-fd-error>{{ deviceError }}</dd>
+        </div>
+        <div v-if="agentVersion" class="fd-row fd-row-quiet">
+          <dt>{{ t('cupAgentVersion').replace('{version}', '').trim() }}</dt>
+          <dd data-fd-version>{{ agentVersion }}</dd>
         </div>
       </dl>
 
@@ -311,6 +341,22 @@ onBeforeUnmount(() => {
 
 .fd-row-block dd {
   text-align: left;
+}
+
+.fd-help {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.fd-row-quiet {
+  font-size: 12px;
+}
+
+.fd-row-quiet dd {
+  color: var(--ui-text-muted, #7ea582);
 }
 
 .fd-dot {

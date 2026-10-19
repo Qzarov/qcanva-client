@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { describe, expect, it } from 'vitest';
 import {
   filesPluralKey,
@@ -6,7 +8,14 @@ import {
   effectiveFolderMode,
   topFolderStatus,
   syncStateKey,
+  countKeptFolders,
+  formatDuration,
+  formatFiles,
+  plainError,
 } from './deviceStatus';
+import { useI18n } from '../composables/useI18n';
+
+const { t, setLocale } = useI18n();
 
 describe('syncStateKey', () => {
   it('maps the four agent states and treats anything else as no data', () => {
@@ -147,5 +156,71 @@ describe('topFolderStatus', () => {
       folders: [rule(null, 'none'), rule('deep', 'full', { topFolderId: 'other', path: ['Other', 'D'] })],
     };
     expect(topFolderStatus(device, 'work')?.status).toBe('none');
+  });
+});
+
+describe('formatDuration', () => {
+  it('speaks in plain units, rounded up to the minute and to hours/days after', () => {
+    setLocale('en');
+    expect(formatDuration(20_000, 'en', t)).toBe('less than a minute');
+    expect(formatDuration(150_000, 'en', t)).toBe('3 minutes');
+    expect(formatDuration(2 * 3600_000, 'en', t)).toBe('2 hours');
+    expect(formatDuration(3 * 86400_000, 'en', t)).toBe('3 days');
+  });
+
+  it('uses ru plural forms', () => {
+    setLocale('ru');
+    expect(formatDuration(20_000, 'ru', t)).toBe('меньше минуты');
+    expect(formatDuration(60_000, 'ru', t)).toBe('1 минута');
+    expect(formatDuration(150_000, 'ru', t)).toBe('3 минуты');
+    expect(formatDuration(10 * 60_000, 'ru', t)).toBe('10 минут');
+    expect(formatDuration(2 * 3600_000, 'ru', t)).toBe('2 часа');
+    setLocale('en');
+  });
+});
+
+describe('formatFiles', () => {
+  it('picks the plural form of the language', () => {
+    setLocale('ru');
+    expect([1, 2, 5, 21, 11].map((n) => formatFiles(n, 'ru', t))).toEqual([
+      '1 файл',
+      '2 файла',
+      '5 файлов',
+      '21 файл',
+      '11 файлов',
+    ]);
+    setLocale('en');
+    expect([1, 2].map((n) => formatFiles(n, 'en', t))).toEqual(['1 file', '2 files']);
+  });
+});
+
+describe('countKeptFolders', () => {
+  const device = {
+    defaultMode: 'full' as const,
+    folders: [
+      { folderId: null, name: null, mode: 'none' as const },
+      { folderId: 'a', name: 'A', mode: 'full' as const },
+      { folderId: 'b', name: 'B', mode: 'on_demand' as const },
+      { folderId: 'c2', name: 'C2', mode: 'full' as const, topFolderId: 'c', path: ['C', 'C2'] },
+    ],
+  };
+
+  it('counts folders kept in full; partial ones apart; on-demand and server-only are not kept', () => {
+    expect(countKeptFolders(device, ['a', 'b', 'c', 'd'])).toEqual({ total: 4, full: 1, partial: 1 });
+  });
+
+  it('is null when the hub sent no rules', () => {
+    expect(countKeptFolders({ defaultMode: 'full' }, ['a'])).toBeNull();
+  });
+});
+
+describe('plainError', () => {
+  it('translates the obvious agent errors and passes the rest through', () => {
+    setLocale('en');
+    expect(plainError('write failed: No space left on device (os error 28)', t)).toBe('The disk is full');
+    expect(plainError('Permission denied (os error 13)', t)).toBe('No access to the Q Space folder');
+    expect(plainError('connection refused', t)).toBe('Cannot reach the server');
+    expect(plainError('weird failure 42', t)).toBe('weird failure 42');
+    expect(plainError(null, t)).toBe('');
   });
 });

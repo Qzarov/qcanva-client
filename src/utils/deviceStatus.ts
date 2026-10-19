@@ -1,4 +1,8 @@
 import type { DriveDevice, DriveStorageMode } from '../api/drive';
+import type { MessageKey } from '../composables/useI18n';
+
+/** Translator the helpers use; the view passes `t` of useI18n. */
+export type Translate = (key: MessageKey) => string;
 
 /** Shown state of a device sync: the four agent states plus "no report yet". */
 export type SyncStateKey = 'synced' | 'syncing' | 'paused' | 'error' | 'nodata';
@@ -14,6 +18,17 @@ export function filesPluralKey(n: number, locale: string): 'one' | 'few' | 'many
   const cat = new Intl.PluralRules(locale === 'ru' ? 'ru' : 'en').select(n);
   if (cat === 'one' || cat === 'few') return cat;
   return 'many';
+}
+
+/** "3 files" / "1 файл" in the UI language. */
+export function formatFiles(n: number, locale: string, t: Translate): string {
+  const key = ({ one: 'cupFilesOne', few: 'cupFilesFew', many: 'cupFilesMany' } as const)[filesPluralKey(n, locale)];
+  return t(key).replace('{n}', String(n));
+}
+
+/** "3 files (1.5 KB)". */
+export function formatFilesAndSize(n: number, bytes: number | null | undefined, locale: string, t: Translate): string {
+  return `${formatFiles(n, locale, t)} (${formatBytes(bytes)})`;
 }
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -43,6 +58,18 @@ export function formatRelativeTime(iso: string | null | undefined, locale: strin
   if (abs < 45 * 60) return rtf.format(Math.round(diffSec / 60), 'minute');
   if (abs < 22 * 3600) return rtf.format(Math.round(diffSec / 3600), 'hour');
   return rtf.format(Math.round(diffSec / 86400), 'day');
+}
+
+/** A length of time in words: "10 minutes", "2 часа", "3 days"; "less than a minute" under a minute. */
+export function formatDuration(ms: number, locale: string, t: Translate): string {
+  const sec = Math.max(0, ms) / 1000;
+  const lang = locale === 'ru' ? 'ru' : 'en';
+  const unit = (n: number, u: 'minute' | 'hour' | 'day') =>
+    new Intl.NumberFormat(lang, { style: 'unit', unit: u, unitDisplay: 'long' }).format(n);
+  if (sec < 60) return t('cupLessThanMinute');
+  if (sec < 3600) return unit(Math.ceil(sec / 60), 'minute');
+  if (sec < 86400) return unit(Math.round(sec / 3600), 'hour');
+  return unit(Math.round(sec / 86400), 'day');
 }
 
 /** What a top-level folder shows for one device. */
@@ -105,4 +132,48 @@ export function topFolderStatus(
     .map((r) => ({ folderId: r.folderId as string, mode: r.mode, path: r.path ?? null }));
   const partial = nested.some((r) => RANK[r.mode] > RANK[mode]);
   return { status: partial ? 'partial' : mode, mode, reason, nested };
+}
+
+/** Counts of top-level folders by what this device does with them. */
+export interface FolderCounts {
+  total: number;
+  /** Stored on the device in full. */
+  full: number;
+  /** Stored in part (something inside is kept more fully than the folder itself). */
+  partial: number;
+}
+
+/**
+ * "Keeps n of m folders": only folders stored in full count as kept; on-demand and
+ * server-only folders do not occupy the device, so they are not counted. Null: the hub
+ * sent no rules for this device.
+ */
+export function countKeptFolders(
+  device: Pick<DriveDevice, 'folders' | 'defaultMode'>,
+  folderIds: string[],
+): FolderCounts | null {
+  if (!Array.isArray(device.folders)) return null;
+  const counts: FolderCounts = { total: folderIds.length, full: 0, partial: 0 };
+  for (const id of folderIds) {
+    const info = topFolderStatus(device, id);
+    if (info?.status === 'full') counts.full += 1;
+    else if (info?.status === 'partial') counts.partial += 1;
+  }
+  return counts;
+}
+
+/** Messages for the agent errors that are obvious in plain words; null for anything else. */
+export function plainErrorKey(lastError: string | null | undefined): MessageKey | null {
+  if (!lastError) return null;
+  if (/no space left|disk full|ENOSPC|not enough space|quota exceeded/i.test(lastError)) return 'cupErrDiskFull';
+  if (/permission denied|EACCES|access is denied|read-only file system/i.test(lastError)) return 'cupErrPermission';
+  if (/ECONN|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|network|timed? ?out|unreachable|connection (refused|reset|closed)|dns/i.test(lastError))
+    return 'cupErrNetwork';
+  return null;
+}
+
+/** The error in plain words when obvious, else the agent's own text. */
+export function plainError(lastError: string | null | undefined, t: Translate): string {
+  const key = plainErrorKey(lastError);
+  return key ? t(key) : (lastError ?? '');
 }
