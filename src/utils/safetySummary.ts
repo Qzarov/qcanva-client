@@ -251,7 +251,18 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
   // If all held files are already accounted for by rejected notices, don't show a redundant notOnHub block
   const heldNonRejectedFiles = totalRejectedFiles > 0 ? Math.max(0, held.files - totalRejectedFiles) : held.files;
   if (held.files > 0 && (totalRejectedFiles === 0 || heldNonRejectedFiles > 0)) {
-    const holders = safety.notOnHub.devices.filter((d) => d.files > 0);
+    // Files the hub refused are reported in the "not uploading" notice above;
+    // here they must not read as "uploading".
+    const rejectedOf = (nodeId: string) => {
+      const st = ctx.devices.find((x) => x.id === nodeId)?.syncStatus;
+      return { files: st?.rejectedFiles ?? 0, bytes: st?.rejectedBytes ?? 0 };
+    };
+    const holders = safety.notOnHub.devices
+      .map((d) => {
+        const r = rejectedOf(d.nodeId);
+        return { ...d, files: Math.max(0, d.files - r.files), bytes: Math.max(0, d.bytes - r.bytes) };
+      })
+      .filter((d) => d.files > 0);
     const lines = holders.map((d) => {
       const online = isDeviceOnline(d.lastSeenAt, ctx.now);
       const when = formatRelativeTime(d.lastSeenAt, ctx.locale, ctx.now);
@@ -286,9 +297,9 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
     notices.push({
       id: 'notOnHub',
       level: 'attention',
-      title: pick(held.files, ctx, 'cupSafetyNotOnHub', 'cupSafetyNotOnHubOne').replace(
+      title: pick(heldNonRejectedFiles, ctx, 'cupSafetyNotOnHub', 'cupSafetyNotOnHubOne').replace(
         '{files}',
-        sizeOf(held.files, held.bytes, ctx),
+        sizeOf(heldNonRejectedFiles, Math.max(0, held.bytes - totalRejectedBytes), ctx),
       ),
       lines,
       hint,

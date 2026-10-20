@@ -329,7 +329,7 @@ export const messages = {
     cupLostTrashedToast: '{files} перемещено в корзину',
     cupLostTrashFailed: 'Не удалось переместить файлы в корзину',
     cupLostLoadFailed: 'Не удалось загрузить список потерянных файлов',
-    cupSafetyRejected: '{files} не загружается на сервер',
+    cupSafetyRejected: '{files} не загружаются на сервер',
     cupSafetyRejectedOne: '{files} не загружается на сервер',
     cupRejectedTooLarge: 'больше лимита сервера {limit}',
     cupRejectedTooLargeNoLimit: 'больше лимита сервера',

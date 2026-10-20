@@ -332,6 +332,37 @@ describe('buildSafetyNotices: files found nowhere', () => {
 });
 
 describe('buildSafetyNotices: rejected uploads', () => {
+  it('does not call refused files "uploading" in the only-on-devices notice', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 3,
+      pendingBytes: 90 * MB,
+      rejectedFiles: 1,
+      rejectedBytes: 80 * MB,
+      rejected: [{ name: 'big80.bin', path: 'big80.bin', sizeBytes: 80 * MB, reason: 'too_large', limitBytes: 50 * MB }],
+    });
+    const s = safety({
+      notOnHub: { files: 3, bytes: 90 * MB, devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(5_000), files: 3, bytes: 90 * MB }], nowhere: { files: 0, bytes: 0 } },
+      uploading: { files: 3, bytes: 90 * MB },
+    });
+    const notices = buildSafetyNotices(s, ctx([d], 'en'));
+    const held = notices.find((n) => n.id === 'notOnHub');
+    expect(held).toBeDefined();
+    expect(held!.title).toContain('2 files (10 MB)');
+    expect(held!.lines.join(' ')).toContain('Work PC: 2 files (10 MB)');
+  });
+
+  it('drops a device from the only-on-devices notice when all its files are refused', () => {
+    const d = uploader({ state: 'error', pendingFiles: 1, pendingBytes: 80 * MB, rejectedFiles: 1, rejectedBytes: 80 * MB,
+      rejected: [{ name: 'big80.bin', path: 'big80.bin', sizeBytes: 80 * MB, reason: 'too_large', limitBytes: 50 * MB }] });
+    const s = safety({
+      notOnHub: { files: 1, bytes: 80 * MB, devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(5_000), files: 1, bytes: 80 * MB }], nowhere: { files: 0, bytes: 0 } },
+    });
+    const notices = buildSafetyNotices(s, ctx([d], 'en'));
+    expect(notices.some((n) => n.id === 'notOnHub')).toBe(false);
+    expect(notices.some((n) => n.id === 'rejected')).toBe(true);
+  });
+
   it('shows amber rejected notice with item reasons and admin link', () => {
     const d = uploader({
       state: 'syncing',
@@ -350,7 +381,7 @@ describe('buildSafetyNotices: rejected uploads', () => {
     const rejected = notices.find((n) => n.id === 'rejected');
     expect(rejected).toBeDefined();
     expect(rejected!.level).toBe('attention');
-    expect(rejected!.title).toBe('2 файла (30 MB) не загружается на сервер');
+    expect(rejected!.title).toBe('2 файла (30 MB) не загружаются на сервер');
     expect(rejected!.lines).toEqual([
       'big.iso (20 MB) — больше лимита сервера 10 MB',
       'full.zip (10 MB) — нет места в вашем хранилище',

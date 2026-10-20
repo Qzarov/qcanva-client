@@ -1015,7 +1015,7 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
 
       const notice = wrapper.get('[data-safety-notice="rejected"]');
       expect(notice.classes()).toContain('level-attention');
-      expect(notice.get('[data-safety-title]').text()).toBe('2 файла (50 MB) не загружается на сервер');
+      expect(notice.get('[data-safety-title]').text()).toBe('2 файла (50 MB) не загружаются на сервер');
       expect(notice.text()).not.toContain('загружает их сейчас');
 
       const lines = notice.findAll('[data-safety-line]').map((l) => l.text());
