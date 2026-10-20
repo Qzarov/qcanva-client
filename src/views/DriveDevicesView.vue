@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, Smartphone, TriangleAlert } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert } from '@lucide/vue';
 import { ApiError } from '../api/client';
 import {
   driveApi,
@@ -9,8 +9,10 @@ import {
   type DriveSafety,
 } from '../api/drive';
 import DriveDeviceFolderDialog from '../components/DriveDeviceFolderDialog.vue';
+import DriveDeviceRemoveDialog from '../components/DriveDeviceRemoveDialog.vue';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
+import { useToast } from '../composables/useToast';
 import {
   countKeptFolders,
   filesPluralKey,
@@ -28,10 +30,11 @@ import {
 import { buildSafetyNotices } from '../utils/safetySummary';
 
 const { t, locale } = useI18n();
+const toast = useToast();
 
 useDocumentTitle(computed(() => `${t('cupTitle')} — ${t('drive')}`));
 
-/** Q Control is read-only: it only shows whether files are safe, and what each device keeps. */
+/** Q Control shows whether files are safe and what each device keeps; the only write is removing a device. */
 const REFRESH_INTERVAL_MS = 10_000;
 
 const devices = ref<DriveDevice[]>([]);
@@ -60,6 +63,12 @@ const MAX_FOLDER_PAGES = 20;
 /** Devices whose folder list is open; kept in the page only. */
 const expandedDevices = ref<Set<string>>(new Set());
 const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus } | null>(null);
+
+/** Device whose "…" menu is open, and the one waiting for the remove confirmation. */
+const menuDevice = ref<string | null>(null);
+const removing = ref<DriveDevice | null>(null);
+/** Removed devices; a refresh that was already in flight must not bring their rows back. */
+const removedIds = ref<Set<string>>(new Set());
 
 let inflight = false;
 let loadedOnce = false;
@@ -264,7 +273,7 @@ async function loadDevices(silent: boolean) {
     const [list] = await Promise.all([driveApi.listDevices(), loadSafety()]);
     now.value = Date.now();
     trackPending(list, now.value);
-    devices.value = list;
+    devices.value = list.filter((d) => !removedIds.value.has(d.id));
     loadedAt.value = now.value;
     loadedOnce = true;
     devicesError.value = null;
@@ -290,7 +299,79 @@ function onVisibilityChange() {
   if (isVisible() && loadedOnce) void loadDevices(true);
 }
 
+function toggleMenu(deviceId: string) {
+  menuDevice.value = menuDevice.value === deviceId ? null : deviceId;
+}
+
+function menuButton(deviceId: string): HTMLElement | null {
+  const buttons = document.querySelectorAll<HTMLElement>('[data-device-menu-btn]');
+  return Array.from(buttons).find((b) => b.dataset.deviceMenuBtn === deviceId) ?? null;
+}
+
+function closeMenu(restoreFocus: boolean) {
+  const id = menuDevice.value;
+  menuDevice.value = null;
+  if (restoreFocus && id) void nextTick(() => menuButton(id)?.focus());
+}
+
+function askRemove(device: DriveDevice) {
+  menuDevice.value = null;
+  removing.value = device;
+}
+
+/** Files that exist only on this device, from the safety summary the page already has. */
+const removingOnlyHere = computed(() => {
+  const id = removing.value?.id;
+  const entry = id ? safety.value?.notOnHub.devices.find((d) => d.nodeId === id && d.files > 0) : null;
+  return entry ? { files: entry.files, bytes: entry.bytes } : null;
+});
+
+function closeRemove(afterRemoval = false) {
+  const id = removing.value?.id;
+  removing.value = null;
+  // The row is gone after a removal; otherwise the focus goes back to its "…" button.
+  if (id && !afterRemoval) void nextTick(() => menuButton(id)?.focus());
+}
+
+function onRemoved() {
+  const device = removing.value;
+  if (!device) return;
+  removedIds.value = new Set(removedIds.value).add(device.id);
+  devices.value = devices.value.filter((d) => d.id !== device.id);
+  pendingSeen.delete(device.id);
+  if (safety.value) {
+    safety.value = {
+      ...safety.value,
+      notOnHub: { ...safety.value.notOnHub, devices: safety.value.notOnHub.devices.filter((d) => d.nodeId !== device.id) },
+    };
+  }
+  closeRemove(true);
+  toast.show(t('cupRemoved').replace('{name}', device.name), 'success');
+  void loadDevices(true);
+}
+
+/** The hub says the device is already gone: reload the list so the row follows. */
+function onRemoveStale() {
+  void loadDevices(true);
+}
+
+function onDocumentClick(e: MouseEvent) {
+  if (!menuDevice.value) return;
+  const target = e.target as Element | null;
+  if (target?.closest?.('[data-device-menu-root]')) return;
+  closeMenu(false);
+}
+
+function onDocumentKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && menuDevice.value && !removing.value) {
+    e.stopPropagation();
+    closeMenu(true);
+  }
+}
+
 onMounted(() => {
+  document.addEventListener('click', onDocumentClick);
+  document.addEventListener('keydown', onDocumentKeydown);
   void loadAll();
   timer = setInterval(() => {
     // Time moves on even when the refresh fails, so "Updated ..." does not lie.
@@ -304,6 +385,8 @@ onBeforeUnmount(() => {
   if (timer) clearInterval(timer);
   timer = null;
   document.removeEventListener('visibilitychange', onVisibilityChange);
+  document.removeEventListener('click', onDocumentClick);
+  document.removeEventListener('keydown', onDocumentKeydown);
 });
 </script>
 
@@ -449,6 +532,31 @@ onBeforeUnmount(() => {
                   </Transition>
                 </div>
               </div>
+
+              <div class="device-menu" data-device-menu-root>
+                <button
+                  type="button"
+                  class="device-menu-btn"
+                  :data-device-menu-btn="device.id"
+                  :aria-label="t('cupDeviceActions').replace('{name}', device.name)"
+                  aria-haspopup="menu"
+                  :aria-expanded="menuDevice === device.id"
+                  @click="toggleMenu(device.id)"
+                >
+                  <MoreHorizontal :size="20" aria-hidden="true" />
+                </button>
+                <div v-if="menuDevice === device.id" class="device-menu-list" role="menu">
+                  <button
+                    type="button"
+                    class="device-menu-item"
+                    role="menuitem"
+                    data-device-remove
+                    @click="askRemove(device)"
+                  >
+                    {{ t('cupDeviceRemoveItem') }}
+                  </button>
+                </div>
+              </div>
             </div>
           </li>
         </ul>
@@ -465,6 +573,15 @@ onBeforeUnmount(() => {
       :folder="openFolder.folder"
       :info="openFolder.info"
       @close="openFolder = null"
+    />
+    <DriveDeviceRemoveDialog
+      v-if="removing"
+      :device="removing"
+      :only-here="removingOnlyHere"
+      :online="online(removing)"
+      @close="closeRemove()"
+      @removed="onRemoved"
+      @stale="onRemoveStale"
     />
   </div>
 </template>
@@ -751,6 +868,69 @@ onBeforeUnmount(() => {
 
 .btn-secondary:hover:not(:disabled) {
   background: var(--ui-surface-sidebar, rgba(255, 255, 255, 0.12));
+}
+
+/* Quiet per-device menu */
+.device-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.device-menu-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: -6px -8px 0 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-muted, #7ea582);
+  cursor: pointer;
+}
+
+.device-menu-btn:hover,
+.device-menu-btn[aria-expanded='true'] {
+  color: var(--ui-text, #f8fff8);
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.05));
+}
+
+.device-menu-btn:focus-visible,
+.device-menu-item:focus-visible {
+  outline: 2px solid var(--ui-focus, #8cff8c);
+  outline-offset: 2px;
+}
+
+.device-menu-list {
+  position: absolute;
+  top: 38px;
+  right: 0;
+  z-index: 5;
+  min-width: 200px;
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+  background: var(--ui-surface-elevated, #162419);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.device-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.device-menu-item:hover {
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.08));
 }
 
 /* State boxes */

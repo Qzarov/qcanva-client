@@ -6,6 +6,7 @@ import DriveDevicesView from './DriveDevicesView.vue';
 import { ApiError } from '../api/client';
 import { driveApi, type DriveDevice, type DriveItem, type DriveSafety } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
+import { useToast } from '../composables/useToast';
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -138,8 +139,9 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
 
   const mounted: Array<{ unmount: () => void }> = [];
 
-  function mountView() {
+  function mountView(attach = false) {
     const wrapper = mount(DriveDevicesView, {
+      attachTo: attach ? document.body : undefined,
       global: {
         stubs: {
           RouterLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
@@ -612,14 +614,14 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     });
   });
 
-  it('is read-only: only folder toggles and rows are buttons; no switches, selects or write calls', async () => {
+  it('stays read-only: besides folder toggles and rows only the device menu button; no switches, selects or write calls', async () => {
     const wrapper = mountView();
     await flushPromises();
     await expand(wrapper, 'dev-1');
 
     const buttons = wrapper.findAll('button');
     expect(buttons.length).toBeGreaterThan(0);
-    expect(buttons.every((b) => b.classes().some((c) => c === 'folder-row' || c === 'folders-summary'))).toBe(true);
+    expect(buttons.every((b) => b.classes().some((c) => c === 'folder-row' || c === 'folders-summary' || c === 'device-menu-btn'))).toBe(true);
     expect(wrapper.find('input').exists()).toBe(false);
     expect(wrapper.find('select').exists()).toBe(false);
     expect(wrapper.find('[data-pair-open]').exists()).toBe(false);
@@ -629,6 +631,209 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     expect(driveApi.revokeDevice).not.toHaveBeenCalled();
     expect(driveApi.setDevicePolicy).not.toHaveBeenCalled();
     expect(driveApi.getUnderReplicated).not.toHaveBeenCalled();
+  });
+
+  describe('removing a device', () => {
+    const only = (nodeId: string): DriveSafety => ({
+      ...safeAll(),
+      notOnHub: {
+        files: 12,
+        bytes: 2048,
+        devices: [{ nodeId, name: 'x', kind: 'home', lastSeenAt: null, files: 12, bytes: 2048 }],
+        nowhere: { files: 0, bytes: 0 },
+      },
+    });
+
+    async function openDialog(wrapper: ReturnType<typeof mountView>, id: string) {
+      await wrapper.get(`[data-device-menu-btn="${id}"]`).trigger('click');
+      await wrapper.get(`[data-device="${id}"] [data-device-remove]`).trigger('click');
+      await flushPromises();
+    }
+
+    it('opens a quiet menu on the "…" button, then the confirmation dialog, which asks nothing yet', async () => {
+      const wrapper = mountView(true);
+      await flushPromises();
+      const btn = wrapper.get('[data-device-menu-btn="dev-2"]');
+      expect(btn.attributes('aria-label')).toBe('Actions for the device "Work PC"');
+      expect(btn.attributes('aria-expanded')).toBe('false');
+      expect(wrapper.find('[data-device-remove]').exists()).toBe(false);
+
+      await btn.trigger('click');
+      expect(btn.attributes('aria-expanded')).toBe('true');
+      expect(wrapper.get('[data-device-remove]').text()).toBe('Remove from Q Space…');
+
+      await wrapper.get('[data-device-remove]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('[data-remove-title]').text()).toBe('Remove "Work PC" from Q Space?');
+      expect(wrapper.find('[data-device-remove]').exists()).toBe(false);
+      expect(driveApi.revokeDevice).not.toHaveBeenCalled();
+    });
+
+    it('closes the menu on outside click and on Escape', async () => {
+      const wrapper = mountView(true);
+      await flushPromises();
+      const btn = wrapper.get('[data-device-menu-btn="dev-2"]');
+      await btn.trigger('click');
+      document.body.click();
+      await flushPromises();
+      expect(wrapper.find('[data-device-remove]').exists()).toBe(false);
+
+      await btn.trigger('click');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await flushPromises();
+      expect(wrapper.find('[data-device-remove]').exists()).toBe(false);
+    });
+
+    it('says plainly what removing does, with Cancel focused by default', async () => {
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      expect(wrapper.get('[data-remove-consequences]').text()).toBe(
+        'The device will stop syncing. The files on it stay where they are. To connect it again, run qspace-agent init on it.',
+      );
+      expect(wrapper.find('[data-remove-only-here]').exists()).toBe(false);
+      expect(wrapper.find('[data-remove-online]').exists()).toBe(false);
+      expect(wrapper.get('[data-remove-confirm]').text()).toBe('Remove');
+      expect(document.activeElement).toBe(wrapper.get('[data-remove-cancel]').element);
+    });
+
+    it('says it in Russian', async () => {
+      setLocale('ru');
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      expect(wrapper.get('[data-remove-title]').text()).toBe('Удалить «Work PC» из Q Space?');
+      expect(wrapper.get('[data-remove-consequences]').text()).toContain('запустите на нём qspace-agent init.');
+      expect(wrapper.get('[data-remove-confirm]').text()).toBe('Удалить');
+      expect(wrapper.get('[data-remove-cancel]').text()).toBe('Отмена');
+    });
+
+    it('warns about files that exist only on this device and renames the button', async () => {
+      vi.mocked(driveApi.getSafety).mockResolvedValue(only('dev-2'));
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      expect(wrapper.get('[data-remove-only-here]').text()).toBe(
+        'Only this device has 12 files (2 KB). After removal they will not reach the server.',
+      );
+      expect(wrapper.get('[data-remove-confirm]').text()).toBe('Remove anyway');
+      wrapper.unmount();
+
+      setLocale('ru');
+      const other = mountView(true);
+      await flushPromises();
+      await openDialog(other, 'dev-2');
+      expect(other.get('[data-remove-only-here]').text()).toBe(
+        '12 файлов (2 KB) есть только на этом устройстве. После удаления они не попадут на сервер.',
+      );
+      expect(other.get('[data-remove-confirm]').text()).toBe('Всё равно удалить');
+    });
+
+    it('does not warn when the files that exist only elsewhere belong to another device', async () => {
+      vi.mocked(driveApi.getSafety).mockResolvedValue(only('dev-1'));
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      expect(wrapper.find('[data-remove-only-here]').exists()).toBe(false);
+      expect(wrapper.get('[data-remove-confirm]').text()).toBe('Remove');
+    });
+
+    it('notes that an online device stops syncing at once', async () => {
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-1');
+      expect(wrapper.get('[data-remove-online]').text()).toBe(
+        'The device is online now — syncing on it will stop right away.',
+      );
+    });
+
+    it('confirm calls the API, drops the row, shows a notice and reloads devices and safety', async () => {
+      vi.mocked(driveApi.revokeDevice).mockResolvedValue({ revoked: true });
+      const wrapper = mountView(true);
+      await flushPromises();
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(1);
+      await openDialog(wrapper, 'dev-2');
+
+      await wrapper.get('[data-remove-confirm]').trigger('click');
+      await flushPromises();
+
+      expect(driveApi.revokeDevice).toHaveBeenCalledWith('dev-2');
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(false);
+      expect(wrapper.find('[data-device="dev-1"]').exists()).toBe(true);
+      expect(wrapper.find('[data-remove-dialog]').exists()).toBe(false);
+      expect(useToast().toasts.value.map((x) => x.message)).toContain('Device "Work PC" removed');
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(2);
+      expect(driveApi.getSafety).toHaveBeenCalledTimes(2);
+      // The mocked hub still lists it; the row must stay gone.
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(false);
+    });
+
+    it('cancel, Escape and a click outside do nothing', async () => {
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      await wrapper.get('[data-remove-cancel]').trigger('click');
+      expect(wrapper.find('[data-remove-dialog]').exists()).toBe(false);
+
+      await openDialog(wrapper, 'dev-2');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await flushPromises();
+      expect(wrapper.find('[data-remove-dialog]').exists()).toBe(false);
+
+      await openDialog(wrapper, 'dev-2');
+      await wrapper.get('[data-remove-dialog]').trigger('click');
+      expect(wrapper.find('[data-remove-dialog]').exists()).toBe(false);
+
+      expect(driveApi.revokeDevice).not.toHaveBeenCalled();
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(true);
+    });
+
+    it('says in plain words when the hub reports the device gone, and reloads the list', async () => {
+      vi.mocked(driveApi.revokeDevice).mockRejectedValue(new ApiError(404, 'Device not found'));
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      vi.mocked(driveApi.listDevices).mockResolvedValue(devices().filter((d) => d.id !== 'dev-2'));
+
+      await wrapper.get('[data-remove-confirm]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.get('[data-remove-error]').text()).toBe(
+        'Could not remove: the device is already removed or unavailable',
+      );
+      expect(wrapper.find('[data-remove-confirm]').exists()).toBe(false);
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(false);
+      expect(driveApi.listDevices).toHaveBeenCalledTimes(2);
+    });
+
+    it('says "no connection" for a network failure and lets the user retry', async () => {
+      vi.mocked(driveApi.revokeDevice).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+
+      await wrapper.get('[data-remove-confirm]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('[data-remove-error]').text()).toBe('No connection to the server, please try again');
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(true);
+
+      vi.mocked(driveApi.revokeDevice).mockResolvedValueOnce({ revoked: true });
+      await wrapper.get('[data-remove-confirm]').trigger('click');
+      await flushPromises();
+      expect(driveApi.revokeDevice).toHaveBeenCalledTimes(2);
+      expect(wrapper.find('[data-device="dev-2"]').exists()).toBe(false);
+    });
+
+    it('says it in Russian when the hub is unreachable', async () => {
+      setLocale('ru');
+      vi.mocked(driveApi.revokeDevice).mockRejectedValue(new TypeError('Failed to fetch'));
+      const wrapper = mountView(true);
+      await flushPromises();
+      await openDialog(wrapper, 'dev-2');
+      await wrapper.get('[data-remove-confirm]').trigger('click');
+      await flushPromises();
+      expect(wrapper.get('[data-remove-error]').text()).toBe('Нет связи с сервером, попробуйте ещё раз');
+    });
   });
 
   it('empty device list shows cupNoDevices', async () => {
