@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert, X } from '@lucide/vue';
+import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert } from '@lucide/vue';
 import { ApiError, isAdmin } from '../api/client';
 import {
   driveApi,
@@ -66,7 +66,7 @@ const MAX_FOLDER_PAGES = 20;
 const expandedDevices = ref<Set<string>>(new Set());
 const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus; isRootFiles?: boolean } | null>(null);
 
-const lostDialogOpen = ref(false);
+const lostListOpen = ref(false);
 const lostItems = ref<DriveLostItem[]>([]);
 const lostLoading = ref(false);
 const lostLoadingMore = ref(false);
@@ -77,8 +77,16 @@ const lostTotal = ref<number | null>(null);
 const confirmTrashLostOpen = ref(false);
 const trashingLost = ref(false);
 
-async function openLostDialog() {
-  lostDialogOpen.value = true;
+function formatLostPath(path: string | null | undefined, maxLength = 40): string {
+  if (!path) return '';
+  if (path.length <= maxLength) return path;
+  const keep = maxLength - 1;
+  const head = Math.ceil(keep / 2);
+  const tail = Math.floor(keep / 2);
+  return `${path.slice(0, head)}…${path.slice(-tail)}`;
+}
+
+async function loadLostFiles() {
   lostLoading.value = true;
   lostError.value = null;
   lostItems.value = [];
@@ -92,6 +100,13 @@ async function openLostDialog() {
     lostError.value = err?.message || t('cupLostLoadFailed');
   } finally {
     lostLoading.value = false;
+  }
+}
+
+async function toggleLostList() {
+  lostListOpen.value = !lostListOpen.value;
+  if (lostListOpen.value) {
+    await loadLostFiles();
   }
 }
 
@@ -124,6 +139,7 @@ async function trashLost() {
       'success',
     );
     confirmTrashLostOpen.value = false;
+    lostListOpen.value = false;
     await loadDevices(true);
   } catch (err: any) {
     toast.show(err?.message || t('cupLostTrashFailed'), 'error');
@@ -523,9 +539,12 @@ onBeforeUnmount(() => {
                 class="btn-secondary safety-action-btn"
                 style="padding: 4px 12px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); background: var(--ui-surface-subtle); color: var(--ui-text); cursor: pointer;"
                 data-lost-show-list
-                @click="openLostDialog"
+                data-lost-toggle
+                :aria-expanded="lostListOpen"
+                aria-controls="lost-files-list"
+                @click="toggleLostList"
               >
-                {{ t('cupLostShowList') }}
+                {{ lostListOpen ? t('cupLostHideList') : t('cupLostShowList') }}
               </button>
               <button
                 type="button"
@@ -536,6 +555,48 @@ onBeforeUnmount(() => {
               >
                 {{ t('cupLostTrash') }}
               </button>
+            </div>
+            <div
+              v-if="notice.id === 'nowhere' && notice.isLost && lostListOpen"
+              id="lost-files-list"
+              class="lost-files-inline"
+              data-lost-inline
+              tabindex="0"
+              role="region"
+              :aria-label="t('cupLostDialogTitle')"
+            >
+              <div v-if="lostLoading" class="lost-status-msg" data-lost-loading>{{ t('loading') }}</div>
+              <div v-else-if="lostError" class="lost-status-msg lost-error-msg" data-lost-error>{{ lostError }}</div>
+              <div v-else-if="lostItems.length === 0" class="lost-status-msg" data-lost-empty>{{ t('driveNothingFound') }}</div>
+              <div v-else class="lost-list" role="list">
+                <div
+                  v-for="item in lostItems"
+                  :key="item.fileId"
+                  class="lost-row"
+                  data-lost-item
+                  role="listitem"
+                >
+                  <div class="lost-row-main">
+                    <span class="lost-row-name" data-lost-item-name>{{ item.name }}</span>
+                    <span class="lost-row-path" data-lost-item-path :title="item.path">{{ formatLostPath(item.path) }}</span>
+                  </div>
+                  <div class="lost-row-meta">
+                    <span class="lost-row-size" data-lost-item-size>{{ formatBytes(item.sizeBytes) }}</span>
+                    <span class="lost-row-device" data-lost-item-device>{{ item.lastDeviceName || '—' }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="lostCursor && !lostLoading" class="lost-load-more-wrap">
+                <button
+                  type="button"
+                  class="btn-secondary lost-load-more-btn"
+                  data-lost-load-more
+                  :disabled="lostLoadingMore"
+                  @click="loadMoreLost"
+                >
+                  {{ lostLoadingMore ? t('loading') : t('driveShowMore') }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -711,58 +772,6 @@ onBeforeUnmount(() => {
       @stale="onRemoveStale"
     />
 
-    <!-- Lost files list dialog -->
-    <div v-if="lostDialogOpen" class="fd-backdrop" data-lost-dialog @click.self="lostDialogOpen = false">
-      <div class="fd-dialog" role="dialog" aria-modal="true" :aria-label="t('cupLostDialogTitle')" style="max-width: 640px;">
-        <header class="fd-header">
-          <h2 class="fd-title" data-lost-dialog-title>{{ t('cupLostDialogTitle') }}</h2>
-          <button
-            type="button"
-            class="fd-close-btn"
-            :aria-label="t('close')"
-            data-lost-dialog-close
-            @click="lostDialogOpen = false"
-          >
-            <X :size="20" aria-hidden="true" />
-          </button>
-        </header>
-        <div class="fd-body" style="max-height: 400px; overflow-y: auto; padding: 16px 20px;">
-          <div v-if="lostLoading" style="text-align: center; padding: 20px;">{{ t('loading') }}</div>
-          <div v-else-if="lostError" style="color: var(--ui-danger); padding: 20px;">{{ lostError }}</div>
-          <div v-else-if="lostItems.length === 0" style="padding: 20px; text-align: center; color: var(--ui-text-secondary);">{{ t('driveNothingFound') }}</div>
-          <table v-else class="admin-table" style="width: 100%; border-collapse: collapse;">
-            <thead>
-              <tr>
-                <th>{{ t('cupLostName') }}</th>
-                <th>{{ t('cupLostPath') }}</th>
-                <th>{{ t('fileSize') }}</th>
-                <th>{{ t('cupLostLastDevice') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in lostItems" :key="item.fileId" data-lost-item>
-                <td data-lost-item-name>{{ item.name }}</td>
-                <td data-lost-item-path style="color: var(--ui-text-secondary); font-size: 12px;">{{ item.path }}</td>
-                <td data-lost-item-size>{{ formatBytes(item.sizeBytes) }}</td>
-                <td data-lost-item-device>{{ item.lastDeviceName || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div v-if="lostCursor" style="text-align: center; margin-top: 16px;">
-            <button
-              type="button"
-              class="btn-secondary"
-              style="padding: 6px 16px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); cursor: pointer;"
-              data-lost-load-more
-              :disabled="lostLoadingMore"
-              @click="loadMoreLost"
-            >
-              {{ lostLoadingMore ? t('loading') : t('driveShowMore') }}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Confirm trash dialog -->
     <div v-if="confirmTrashLostOpen" class="fd-backdrop" data-lost-confirm-dialog @click.self="confirmTrashLostOpen = false">
@@ -911,6 +920,7 @@ onBeforeUnmount(() => {
 }
 
 .safety-text {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -945,6 +955,117 @@ onBeforeUnmount(() => {
 
 .safety-hint {
   color: var(--ui-text, #f8fff8);
+}
+
+/* Lost files inline list */
+.lost-files-inline {
+  margin-top: 10px;
+  max-height: 320px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.12));
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
+  box-sizing: border-box;
+}
+
+.lost-files-inline:focus-visible {
+  outline: 2px solid var(--ui-focus, #8cff8c);
+  outline-offset: 1px;
+}
+
+.lost-status-msg {
+  padding: 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.lost-error-msg {
+  color: var(--ui-danger, #fb464c);
+}
+
+.lost-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.lost-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ui-border, rgba(255, 255, 255, 0.06));
+}
+
+.lost-row:last-child {
+  border-bottom: none;
+}
+
+.lost-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.lost-row-name {
+  font-weight: 600;
+  color: var(--ui-text, #f8fff8);
+  font-size: 14px;
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lost-row-path {
+  color: var(--ui-text-muted, #7ea582);
+  font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lost-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.lost-row-size {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--ui-text, #f8fff8);
+  text-align: right;
+  min-width: 56px;
+}
+
+.lost-row-device {
+  color: var(--ui-text-muted, #7ea582);
+  font-size: 12px;
+  text-align: right;
+  min-width: 70px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lost-load-more-wrap {
+  text-align: center;
+  padding: 10px 12px;
+  border-top: 1px solid var(--ui-border, rgba(255, 255, 255, 0.06));
+}
+
+.lost-load-more-btn {
+  padding: 5px 14px;
+  font-size: 13px;
 }
 
 /* 2. Devices */
@@ -1353,6 +1474,42 @@ onBeforeUnmount(() => {
   .folder-row-name {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  .lost-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px 8px;
+    padding: 8px 10px;
+  }
+
+  .lost-row-main {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    flex: 1 1 60%;
+    min-width: 0;
+  }
+
+  .lost-row-name {
+    max-width: 100%;
+  }
+
+  .lost-row-path {
+    max-width: 100%;
+    font-size: 12px;
+  }
+
+  .lost-row-meta {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    flex-shrink: 0;
+  }
+
+  .lost-row-device {
+    min-width: 0;
+    max-width: 100px;
   }
 }
 </style>

@@ -1081,11 +1081,15 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       expect(notice.get('[data-safety-title]').text()).toBe('3 файла (3 KB) потеряны');
       expect(notice.get('[data-safety-line]').text()).toBe('Их единственные копии были на удалённых устройствах.');
 
-      expect(notice.find('[data-lost-show-list]').exists()).toBe(true);
+      const toggleBtn = notice.find('[data-lost-show-list]');
+      expect(toggleBtn.exists()).toBe(true);
+      expect(toggleBtn.attributes('aria-expanded')).toBe('false');
+      expect(toggleBtn.text()).toBe('Показать список');
       expect(notice.find('[data-lost-trash]').exists()).toBe(true);
+      expect(wrapper.find('[data-lost-inline]').exists()).toBe(false);
     });
 
-    it('clicking "Показать список" opens dialog and pages with "Показать ещё"', async () => {
+    it('clicking "Показать список" toggles inline list open and closed with aria-expanded and pages with "Показать ещё"', async () => {
       setLocale('ru');
       const s = safeAll();
       s.notOnHub = {
@@ -1108,15 +1112,25 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       const wrapper = mountView();
       await flushPromises();
 
-      await wrapper.get('[data-lost-show-list]').trigger('click');
+      const toggleBtn = wrapper.get('[data-lost-show-list]');
+      expect(toggleBtn.attributes('aria-expanded')).toBe('false');
+      expect(toggleBtn.text()).toBe('Показать список');
+      expect(wrapper.find('[data-lost-inline]').exists()).toBe(false);
+
+      // Open list
+      await toggleBtn.trigger('click');
       await flushPromises();
 
       expect(driveApi.getLostFiles).toHaveBeenCalledWith({ cursor: null, limit: 50 });
-      expect(wrapper.find('[data-lost-dialog]').exists()).toBe(true);
+      expect(toggleBtn.attributes('aria-expanded')).toBe('true');
+      expect(toggleBtn.text()).toBe('Скрыть список');
+      expect(wrapper.find('[data-lost-inline]').exists()).toBe(true);
 
       const items = wrapper.findAll('[data-lost-item]');
       expect(items.length).toBe(2);
       expect(items[0]!.get('[data-lost-item-name]').text()).toBe('lost1.txt');
+      expect(items[0]!.get('[data-lost-item-path]').text()).toBe('lost1.txt');
+      expect(items[0]!.get('[data-lost-item-size]').text()).toBe('1 KB');
       expect(items[0]!.get('[data-lost-item-device]').text()).toBe('Old Laptop');
       expect(items[1]!.get('[data-lost-item-device]').text()).toBe('—');
 
@@ -1137,6 +1151,48 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       expect(driveApi.getLostFiles).toHaveBeenCalledWith({ cursor: 'cur-2', limit: 50 });
       expect(wrapper.findAll('[data-lost-item]').length).toBe(3);
       expect(wrapper.find('[data-lost-load-more]').exists()).toBe(false);
+
+      // Toggle close
+      await toggleBtn.trigger('click');
+      await flushPromises();
+
+      expect(toggleBtn.attributes('aria-expanded')).toBe('false');
+      expect(toggleBtn.text()).toBe('Показать список');
+      expect(wrapper.find('[data-lost-inline]').exists()).toBe(false);
+    });
+
+    it('formats long path with middle ellipsis in inline lost list', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 1,
+        bytes: 1024,
+        devices: [],
+        nowhere: { files: 1, bytes: 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const longPath = 'Photos/2026/Summer/Vacation/Trip/Family/Archive/original_photo.jpg';
+      vi.mocked(driveApi.getLostFiles).mockResolvedValueOnce({
+        items: [
+          { fileId: 'f-long', name: 'original_photo.jpg', path: longPath, sizeBytes: 2048, lastDeviceName: 'Camera' },
+        ],
+        nextCursor: null,
+        total: 1,
+      });
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      await wrapper.get('[data-lost-show-list]').trigger('click');
+      await flushPromises();
+
+      const pathEl = wrapper.get('[data-lost-item-path]');
+      expect(pathEl.attributes('title')).toBe(longPath);
+      expect(pathEl.text()).toContain('…');
+      expect(pathEl.text().length).toBeLessThan(longPath.length);
+      expect(pathEl.text().startsWith('Photos/')).toBe(true);
+      expect(pathEl.text().endsWith('.jpg')).toBe(true);
     });
 
     it('clicking "Убрать в корзину" confirms and calls trash API, toasts and refreshes safety', async () => {
