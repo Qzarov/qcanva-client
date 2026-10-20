@@ -12,6 +12,7 @@ import {
   formatDuration,
   formatFiles,
   plainError,
+  pendingSplit,
 } from './deviceStatus';
 import { useI18n } from '../composables/useI18n';
 
@@ -25,6 +26,29 @@ describe('syncStateKey', () => {
     expect(syncStateKey({ syncStatus: null })).toBe('nodata');
     expect(syncStateKey({})).toBe('nodata');
     expect(syncStateKey({ syncStatus: { state: 'weird' } })).toBe('nodata');
+  });
+});
+
+describe('syncStateKey: waiting for offline devices', () => {
+  it('knows the waiting state', () => {
+    expect(syncStateKey({ syncStatus: { state: 'waiting', pendingFiles: 2, blockedFiles: 2 } })).toBe('waiting');
+  });
+  it('shows syncing as waiting when every pending file is blocked, but not when some still move', () => {
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 4 } })).toBe('waiting');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 9 } })).toBe('waiting');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 1 } })).toBe('syncing');
+    // Older agents send no blocked counts.
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4 } })).toBe('syncing');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 0, blockedFiles: 0 } })).toBe('syncing');
+  });
+  it('splits pending into moving and blocked, clamping blocked to pending', () => {
+    expect(pendingSplit({ syncStatus: { state: 'syncing', pendingFiles: 5, pendingBytes: 500, blockedFiles: 2, blockedBytes: 200 } })).toEqual({
+      files: 5, bytes: 500, blockedFiles: 2, blockedBytes: 200, movingFiles: 3, movingBytes: 300,
+    });
+    expect(pendingSplit({ syncStatus: { state: 'syncing', pendingFiles: 2, pendingBytes: 50, blockedFiles: 7, blockedBytes: 99 } })).toMatchObject({
+      blockedFiles: 2, blockedBytes: 50, movingFiles: 0, movingBytes: 0,
+    });
+    expect(pendingSplit({})).toMatchObject({ files: 0, blockedFiles: 0, movingFiles: 0 });
   });
 });
 

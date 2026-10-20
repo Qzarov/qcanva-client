@@ -39,10 +39,19 @@ export interface DriveFolderCounts {
   folders: number;
 }
 
+/** Everything in the folder's whole subtree. Older hubs omit it. */
+export interface DriveFolderTotals {
+  files: number;
+  bytes: number;
+  folders: number;
+}
+
 export interface DriveFolderResponse {
   folder: DriveFolderNode;
   path: DriveBreadcrumb[];
+  /** Direct children only. */
   counts: DriveFolderCounts;
+  totals?: DriveFolderTotals;
 }
 
 export interface DriveItem {
@@ -108,7 +117,7 @@ export interface DriveDevice {
   folders?: DriveDeviceFolder[];
 }
 
-export type DriveSyncState = 'synced' | 'syncing' | 'paused' | 'error';
+export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error';
 
 /** What the device agent last reported about its sync. Missing on older hubs. */
 export interface DriveDeviceSyncStatus {
@@ -122,6 +131,10 @@ export interface DriveDeviceSyncStatus {
   speedBps?: number | null;
   /** When the pending count last went down (ISO); null: no progress yet. Older agents omit it. */
   lastProgressAt?: string | null;
+  /** Pending files whose bytes are only on offline devices. Older agents omit it (unknown). */
+  blockedFiles?: number | null;
+  /** Their total size in bytes. Older agents omit it. */
+  blockedBytes?: number | null;
 }
 
 /** A files-and-bytes pair of the safety summary. */

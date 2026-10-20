@@ -382,8 +382,9 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     expect(dialog.get('[data-fd-reason]').text()).toContain('You chose this for the whole drive on this device');
     expect(dialog.get('[data-fd-nested-item]').text()).toContain('Work / 2026 / Reports');
     expect(dialog.get('[data-fd-nested-item]').text()).toContain('Kept here');
-    expect(dialog.get('[data-fd-files]').text()).toBe('10');
-    expect(dialog.get('[data-fd-folders]').text()).toBe('4');
+    // An older hub sends no totals: only the direct counts, labelled as such.
+    expect(dialog.get('[data-fd-files]').text()).toBe('10 directly in the folder');
+    expect(dialog.get('[data-fd-folders]').text()).toBe('4 directly in the folder');
     expect(dialog.get('[data-fd-last-sync]').text()).not.toBe(t('cupFolderNoSync'));
     expect(dialog.get('[data-fd-version]').text()).toBe('0.1.0');
     expect(dialog.find('[data-fd-error]').exists()).toBe(false);
@@ -435,6 +436,78 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     await flushPromises();
     await wrapper.get('[data-folder-dialog]').trigger('click');
     expect(wrapper.find('[data-folder-dialog]').exists()).toBe(false);
+  });
+
+  it('shows the totals of the whole subtree in the folder details, not the direct counts', async () => {
+    vi.mocked(driveApi.getFolder).mockResolvedValue({
+      folder: { id: 'f4', name: 'Work', parentId: null, ownerId: 'u1', role: 'owner' },
+      path: [{ id: 'f4', name: 'Work' }],
+      // Nothing directly in the folder, everything in subfolders.
+      counts: { media: 0, files: 0, docs: 0, folders: 2 },
+      totals: { files: 1200, bytes: 3 * 1024 ** 3, folders: 14 },
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await expand(wrapper, 'dev-1');
+    await wrapper.get('[data-device="dev-1"] [data-folder-row="f4"]').trigger('click');
+    await flushPromises();
+    const dialog = wrapper.get('[data-folder-dialog]');
+    expect(dialog.get('[data-fd-files]').text()).toBe('1200 files (3 GB)');
+    expect(dialog.get('[data-fd-folders]').text()).toBe('14');
+    expect(dialog.text()).not.toContain('directly in the folder');
+  });
+
+  it('says "Waiting for ... on devices that are off" when everything pending sits on offline devices', async () => {
+    const list = devices();
+    list[0]!.syncStatus = {
+      state: 'waiting',
+      pendingFiles: 5,
+      pendingBytes: 2048,
+      blockedFiles: 5,
+      blockedBytes: 2048,
+      lastSyncAt: null,
+      lastError: null,
+      version: '0.1.0',
+    };
+    vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+    const wrapper = mountView();
+    await flushPromises();
+    const label = wrapper.get('[data-device="dev-1"] [data-sync-label]');
+    expect(label.text()).toBe('Waiting for 5 files (2 KB) on devices that are off');
+    expect(label.attributes('data-sync')).toBe('waiting');
+    expect(label.text()).not.toContain('Syncing');
+
+    setLocale('ru');
+    await flushPromises();
+    expect(wrapper.get('[data-device="dev-1"] [data-sync-label]').text()).toBe('Ждёт 5 файлов (2 KB) с выключенных устройств');
+  });
+
+  it('treats syncing with every pending file blocked as waiting', async () => {
+    const list = devices();
+    list[0]!.syncStatus = { state: 'syncing', pendingFiles: 3, pendingBytes: 1536, blockedFiles: 3, blockedBytes: 1536 };
+    vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.get('[data-device="dev-1"] [data-sync-label]').text()).toBe(
+      'Waiting for 3 files (1.5 KB) on devices that are off',
+    );
+  });
+
+  it('says both what moves and what waits when only some files are blocked', async () => {
+    const list = devices();
+    list[0]!.syncStatus = { state: 'syncing', pendingFiles: 5, pendingBytes: 5 * 1024, blockedFiles: 2, blockedBytes: 2 * 1024 };
+    vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+    const wrapper = mountView();
+    await flushPromises();
+    const label = wrapper.get('[data-device="dev-1"] [data-sync-label]');
+    expect(label.text()).toBe('Syncing: 3 files (3 KB), another 2 files (2 KB) are waiting for devices that are off');
+    expect(label.attributes('data-sync')).toBe('syncing');
+
+    setLocale('ru');
+    await flushPromises();
+    expect(wrapper.get('[data-device="dev-1"] [data-sync-label]').text()).toBe(
+      'Синхронизирует: 3 файла (3 KB), ещё 2 файла (2 KB) ждут выключенные устройства',
+    );
   });
 
   it('says counts failed to load without breaking the details', async () => {

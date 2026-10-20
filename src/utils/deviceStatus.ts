@@ -4,12 +4,57 @@ import type { MessageKey } from '../composables/useI18n';
 /** Translator the helpers use; the view passes `t` of useI18n. */
 export type Translate = (key: MessageKey) => string;
 
-/** Shown state of a device sync: the four agent states plus "no report yet". */
-export type SyncStateKey = 'synced' | 'syncing' | 'paused' | 'error' | 'nodata';
+/** Shown state of a device sync: the agent states plus "no report yet". `waiting`: only offline devices hold the rest. */
+export type SyncStateKey = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'nodata';
+
+/** Pending files that wait for offline devices; absent or invalid counts are 0 (older agents). */
+export function blockedOf(device: Pick<DriveDevice, 'syncStatus'>): { files: number; bytes: number } {
+  const files = device.syncStatus?.blockedFiles;
+  const bytes = device.syncStatus?.blockedBytes;
+  return {
+    files: typeof files === 'number' && files > 0 ? Math.floor(files) : 0,
+    bytes: typeof bytes === 'number' && bytes > 0 ? bytes : 0,
+  };
+}
+
+/**
+ * Pending files and bytes split into what can move now and what waits for offline devices.
+ * Blocked is clamped to pending (the agent samples and extrapolates it).
+ */
+export function pendingSplit(device: Pick<DriveDevice, 'syncStatus'>): {
+  files: number;
+  bytes: number;
+  blockedFiles: number;
+  blockedBytes: number;
+  movingFiles: number;
+  movingBytes: number;
+} {
+  const pf = device.syncStatus?.pendingFiles;
+  const pb = device.syncStatus?.pendingBytes;
+  const files = typeof pf === 'number' && pf > 0 ? pf : 0;
+  const bytes = typeof pb === 'number' && pb > 0 ? pb : 0;
+  const blocked = blockedOf(device);
+  const blockedFiles = Math.min(blocked.files, files);
+  const blockedBytes = Math.min(blocked.bytes, bytes);
+  return {
+    files,
+    bytes,
+    blockedFiles,
+    blockedBytes,
+    movingFiles: files - blockedFiles,
+    movingBytes: bytes - blockedBytes,
+  };
+}
 
 export function syncStateKey(device: Pick<DriveDevice, 'syncStatus'>): SyncStateKey {
   const state = device.syncStatus?.state;
-  if (state === 'synced' || state === 'syncing' || state === 'paused' || state === 'error') return state;
+  if (state === 'waiting') return 'waiting';
+  if (state === 'syncing') {
+    // An agent that did not send "waiting" but reports all pending files as blocked.
+    const split = pendingSplit(device);
+    return split.files > 0 && split.blockedFiles >= split.files ? 'waiting' : 'syncing';
+  }
+  if (state === 'synced' || state === 'paused' || state === 'error') return state;
   return 'nodata';
 }
 

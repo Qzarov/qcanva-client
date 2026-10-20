@@ -16,6 +16,8 @@ import {
   filesPluralKey,
   formatBytes,
   formatFiles,
+  formatFilesAndSize,
+  pendingSplit,
   formatRelativeTime,
   plainError,
   syncStateKey,
@@ -91,11 +93,30 @@ function stateText(device: DriveDevice): string {
     case 'synced':
       phrase = t('cupSyncSynced');
       break;
-    case 'syncing':
-      phrase = t('cupSyncSyncing')
-        .replace('{files}', formatFiles(device.syncStatus?.pendingFiles ?? 0, locale.value, t))
-        .replace('{size}', formatBytes(device.syncStatus?.pendingBytes));
+    case 'syncing': {
+      const split = pendingSplit(device);
+      if (split.blockedFiles > 0) {
+        const one = filesPluralKey(split.blockedFiles, locale.value) === 'one';
+        phrase = t(one ? 'cupSyncMixedOne' : 'cupSyncMixedMany')
+          .replace('{moving}', formatFilesAndSize(split.movingFiles, split.movingBytes, locale.value, t))
+          .replace('{blocked}', formatFilesAndSize(split.blockedFiles, split.blockedBytes, locale.value, t));
+      } else {
+        phrase = t('cupSyncSyncing')
+          .replace('{files}', formatFiles(device.syncStatus?.pendingFiles ?? 0, locale.value, t))
+          .replace('{size}', formatBytes(device.syncStatus?.pendingBytes));
+      }
       break;
+    }
+    case 'waiting': {
+      // Without blocked counts (state "waiting" from an agent that omits them) everything pending waits.
+      const split = pendingSplit(device);
+      const files = split.blockedFiles || split.files;
+      const bytes = split.blockedFiles ? split.blockedBytes : split.bytes;
+      phrase = t('cupSyncWaiting')
+        .replace('{files}', formatFiles(files, locale.value, t))
+        .replace('{size}', formatBytes(bytes));
+      break;
+    }
     case 'paused':
       phrase = t('cupSyncPaused');
       break;
@@ -690,6 +711,7 @@ onBeforeUnmount(() => {
   color: var(--ui-text-muted, #7ea582);
 }
 
+.device-state.sync-waiting,
 .device-state.sync-error {
   color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
 }

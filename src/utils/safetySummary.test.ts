@@ -197,6 +197,41 @@ describe('buildSafetyNotices: the upload is stuck', () => {
   });
 });
 
+describe('buildSafetyNotices: waiting for offline devices is not a stall', () => {
+  const waiting = safety({ uploading: { files: 3, bytes: 300 * MB } });
+
+  it('ignores a waiting device however long it has not moved', () => {
+    const d = uploader(
+      { state: 'waiting', blockedFiles: 3, blockedBytes: 300 * MB, lastProgressAt: ago(5 * HOUR), speedBps: 0 },
+      { lastSeenAt: ago(5_000) },
+    );
+    expect(stalledSince(d, { now: NOW })).toBeNull();
+    const notices = buildSafetyNotices(waiting, ctx([d]));
+    expect(notices.map((n) => n.id)).not.toContain('stalled');
+    expect(notices[0]!.title).not.toContain('not moving');
+  });
+
+  it('ignores a syncing device whose pending files are all blocked, even when it is offline', () => {
+    const d = uploader({ blockedFiles: 3, blockedBytes: 300 * MB }, { lastSeenAt: ago(3 * HOUR), syncStatusAt: ago(3 * HOUR) });
+    expect(stalledSince(d, { now: NOW })).toBeNull();
+    expect(buildSafetyNotices(waiting, ctx([d])).map((n) => n.id)).not.toContain('stalled');
+  });
+
+  it('still reports a stall when the files that could move do not move', () => {
+    const d = uploader({ blockedFiles: 1, blockedBytes: 100 * MB, lastProgressAt: ago(25 * MIN), speedBps: 0 });
+    expect(stalledSince(d, { now: NOW })).toBe(NOW - 25 * MIN);
+    const [n] = buildSafetyNotices(waiting, ctx([d]));
+    expect(n!.id).toBe('stalled');
+    // Only the 2 files (200 MB) that could move are called stuck.
+    expect(n!.lines[0]).toContain('2 files (200 MB)');
+  });
+
+  it('does not count blocked files in the upload estimate', () => {
+    const d = uploader({ state: 'waiting', blockedFiles: 3, blockedBytes: 300 * MB, speedBps: 1024 });
+    expect(etaMs(waiting, [d])).toBeNull();
+  });
+});
+
 describe('buildSafetyNotices: files only on devices', () => {
   const holders = (devices: DriveSafety['notOnHub']['devices']) =>
     safety({

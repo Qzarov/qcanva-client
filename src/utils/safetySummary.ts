@@ -4,7 +4,9 @@ import {
   formatDuration,
   formatFilesAndSize,
   formatRelativeTime,
+  pendingSplit,
   plainError,
+  syncStateKey,
   type Translate,
 } from './deviceStatus';
 
@@ -38,13 +40,14 @@ export interface SafetyContext {
   pendingSince?: (deviceId: string) => number | undefined;
 }
 
+/**
+ * Pending files that can move now. A `waiting` device (everything pending sits on offline
+ * devices) has none: that is an explained wait, not a stall.
+ */
 function pendingOf(device: DriveDevice): { files: number; bytes: number } {
-  const files = device.syncStatus?.pendingFiles;
-  const bytes = device.syncStatus?.pendingBytes;
-  return {
-    files: typeof files === 'number' && files > 0 ? files : 0,
-    bytes: typeof bytes === 'number' && bytes > 0 ? bytes : 0,
-  };
+  if (syncStateKey(device) === 'waiting') return { files: 0, bytes: 0 };
+  const split = pendingSplit(device);
+  return { files: split.movingFiles, bytes: split.movingBytes };
 }
 
 function hasPending(device: DriveDevice): boolean {
