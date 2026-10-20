@@ -247,3 +247,13 @@ export function plainError(lastError: string | null | undefined, t: Translate): 
   const key = plainErrorKey(lastError);
   return key ? t(key) : (lastError ?? '');
 }
+
+export type HubFolderStatus = 'empty' | 'full' | 'partial' | 'none';
+
+/** Status of a top-level folder on the hub: empty (0 files), full, partial or none. */
+export function hubFolderStatus(folder: { files: number; onHubFiles: number }): HubFolderStatus {
+  if (folder.files === 0) return 'empty';
+  if (folder.onHubFiles >= folder.files) return 'full';
+  if (folder.onHubFiles > 0) return 'partial';
+  return 'none';
+}

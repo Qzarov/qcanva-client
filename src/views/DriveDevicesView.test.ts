@@ -30,6 +30,7 @@ vi.mock('../api/drive', async (importOriginal) => {
       getUnderReplicated: vi.fn(),
       getLostFiles: vi.fn(),
       trashLostFiles: vi.fn(),
+      getSafetyFolders: vi.fn(),
     },
   };
 });
@@ -160,6 +161,7 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     vi.mocked(driveApi.listDevices).mockResolvedValue(devices());
     vi.mocked(driveApi.getFolderItems).mockResolvedValue({ items: rootItems(), nextCursor: null });
     vi.mocked(driveApi.getSafety).mockResolvedValue(safeAll());
+    vi.mocked(driveApi.getSafetyFolders).mockResolvedValue({ folders: [] });
     vi.mocked(driveApi.getFolder).mockResolvedValue({
       folder: { id: 'f4', name: 'Work', parentId: null, ownerId: 'u1', role: 'owner' },
       path: [{ id: 'f4', name: 'Work' }],
@@ -1195,7 +1197,7 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       expect(pathEl.text().endsWith('.jpg')).toBe(true);
     });
 
-    it('clicking "Убрать в корзину" confirms and calls trash API, toasts and refreshes safety', async () => {
+    it('inline trash confirm opens on "Убрать в корзину" with text and danger button, moves focus to cancel', async () => {
       setLocale('ru');
       const s = safeAll();
       s.notOnHub = {
@@ -1205,7 +1207,90 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
         nowhere: { files: 2, bytes: 2 * 1024 },
       };
       vi.mocked(driveApi.getSafety).mockResolvedValue(s);
-      vi.mocked(driveApi.trashLostFiles).mockResolvedValue({ trashed: 2 });
+
+      const wrapper = mountView(true);
+      await flushPromises();
+
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(false);
+      await wrapper.get('[data-lost-trash]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(true);
+      expect(wrapper.find('[data-lost-confirm-dialog]').exists()).toBe(false);
+      expect(wrapper.get('[data-lost-trash-confirm-text]').text()).toBe(
+        'Переместить 2 файла (2 KB) в корзину? Их можно восстановить из корзины, пока она не очищена.',
+      );
+
+      const confirmBtn = wrapper.get('[data-lost-confirm-trash]');
+      expect(confirmBtn.text()).toBe('Переместить');
+      expect(confirmBtn.classes()).toContain('btn-danger');
+
+      const cancelBtn = wrapper.get('[data-lost-cancel-trash]');
+      expect(cancelBtn.text()).toBe('Отмена');
+      expect(document.activeElement).toBe(cancelBtn.element);
+    });
+
+    it('inline trash confirm cancels on "Отмена" button', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 2,
+        bytes: 2 * 1024,
+        devices: [],
+        nowhere: { files: 2, bytes: 2 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView(true);
+      await flushPromises();
+
+      await wrapper.get('[data-lost-trash]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(true);
+
+      await wrapper.get('[data-lost-cancel-trash]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(false);
+      expect(document.activeElement).toBe(wrapper.get('[data-lost-trash]').element);
+    });
+
+    it('inline trash confirm cancels on Esc keypress', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 2,
+        bytes: 2 * 1024,
+        devices: [],
+        nowhere: { files: 2, bytes: 2 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView(true);
+      await flushPromises();
+
+      await wrapper.get('[data-lost-trash]').trigger('click');
+      await flushPromises();
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(true);
+
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await flushPromises();
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(false);
+    });
+
+    it('inline trash confirm calls trash API, disables buttons in flight, toasts and refreshes on success', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 2,
+        bytes: 2 * 1024,
+        devices: [],
+        nowhere: { files: 2, bytes: 2 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+      let resolveTrash: (val: { trashed: number }) => void = () => {};
+      vi.mocked(driveApi.trashLostFiles).mockImplementation(
+        () => new Promise((resolve) => { resolveTrash = resolve; }),
+      );
 
       const wrapper = mountView();
       await flushPromises();
@@ -1213,16 +1298,159 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       await wrapper.get('[data-lost-trash]').trigger('click');
       await flushPromises();
 
-      expect(wrapper.find('[data-lost-confirm-dialog]').exists()).toBe(true);
-      expect(wrapper.get('[data-lost-confirm-title]').text()).toContain('Переместить 2 файла в корзину?');
+      const confirmBtn = wrapper.get('[data-lost-confirm-trash]');
+      const cancelBtn = wrapper.get('[data-lost-cancel-trash]');
+
+      await confirmBtn.trigger('click');
+      // While inflight: both disabled
+      expect(confirmBtn.attributes('disabled')).toBeDefined();
+      expect(cancelBtn.attributes('disabled')).toBeDefined();
+      expect(confirmBtn.text()).toBe('Удаляем…');
+
+      resolveTrash({ trashed: 2 });
+      await flushPromises();
+
+      expect(driveApi.trashLostFiles).toHaveBeenCalledWith({ all: true });
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(false);
+      expect(useToast().toasts.value.map((x) => x.message)).toContain('2 файла перемещено в корзину');
+      expect(driveApi.getSafety).toHaveBeenCalledTimes(2);
+    });
+
+    it('inline trash confirm shows error inline when API fails, keeping buttons enabled', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 2,
+        bytes: 2 * 1024,
+        devices: [],
+        nowhere: { files: 2, bytes: 2 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+      vi.mocked(driveApi.trashLostFiles).mockRejectedValueOnce(new Error('Network error on trash'));
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      await wrapper.get('[data-lost-trash]').trigger('click');
+      await flushPromises();
 
       await wrapper.get('[data-lost-confirm-trash]').trigger('click');
       await flushPromises();
 
-      expect(driveApi.trashLostFiles).toHaveBeenCalledWith({ all: true });
-      expect(wrapper.find('[data-lost-confirm-dialog]').exists()).toBe(false);
-      expect(useToast().toasts.value.map((x) => x.message)).toContain('2 файла перемещено в корзину');
-      expect(driveApi.getSafety).toHaveBeenCalledTimes(2);
+      expect(wrapper.find('[data-lost-trash-confirm]').exists()).toBe(true);
+      expect(wrapper.get('[data-lost-trash-error]').text()).toBe('Network error on trash');
+      expect(wrapper.get('[data-lost-confirm-trash]').attributes('disabled')).toBeUndefined();
+      expect(wrapper.get('[data-lost-cancel-trash]').attributes('disabled')).toBeUndefined();
+    });
+  });
+
+  describe('Q Hub card', () => {
+    it('hub card renders totals and green state when all files on server', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.files = 120;
+      s.bytes = 3 * 1024 ** 3;
+      s.onHub = { files: 120, bytes: 3 * 1024 ** 3 };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const hubCard = wrapper.get('[data-hub-card]');
+      expect(hubCard.get('[data-hub-name]').text()).toBe('Q Hub (сервер)');
+      expect(hubCard.find('[data-hub-icon]').exists()).toBe(true);
+      expect(hubCard.get('[data-hub-stores]').text()).toBe('Хранит 120 файлов (3 GB)');
+      expect(hubCard.get('[data-hub-state]').text()).toBe('Все файлы на сервере');
+      expect(hubCard.get('[data-hub-state]').classes()).toContain('hub-state-ok');
+    });
+
+    it('hub card renders amber state when files are missing on hub (n = files - onHub)', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.files = 10;
+      s.bytes = 50 * 1024 * 1024;
+      s.onHub = { files: 7, bytes: 35 * 1024 * 1024 };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const hubCard = wrapper.get('[data-hub-card]');
+      expect(hubCard.get('[data-hub-stores]').text()).toBe('Хранит 7 файлов (35 MB)');
+      expect(hubCard.get('[data-hub-state]').text()).toBe('Не хватает 3 файла (15 MB)');
+      expect(hubCard.get('[data-hub-state]').classes()).toContain('hub-state-missing');
+    });
+
+    it('hub card renders collapsed "Папки на сервере" and expands to folder statuses including root row, full, partial, none, and empty', async () => {
+      setLocale('ru');
+      vi.mocked(driveApi.getSafetyFolders).mockResolvedValue({
+        folders: [
+          { folderId: 'f-work', name: 'Work', files: 5, bytes: 5000, onHubFiles: 2, onHubBytes: 2000 },
+          { folderId: null, name: null, files: 10, bytes: 10000, onHubFiles: 10, onHubBytes: 10000 },
+          { folderId: 'f-docs', name: 'Docs', files: 4, bytes: 4000, onHubFiles: 0, onHubBytes: 0 },
+          { folderId: 'f-empty', name: 'Empty', files: 0, bytes: 0, onHubFiles: 0, onHubBytes: 0 },
+        ],
+      });
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const hubCard = wrapper.get('[data-hub-card]');
+      const toggleBtn = hubCard.get('[data-hub-folders-toggle]');
+      expect(toggleBtn.text()).toBe('Папки на сервере');
+      expect(toggleBtn.attributes('aria-expanded')).toBe('false');
+      expect(hubCard.find('[data-hub-folders-list]').exists()).toBe(false);
+
+      await toggleBtn.trigger('click');
+      await flushPromises();
+
+      expect(toggleBtn.attributes('aria-expanded')).toBe('true');
+      expect(hubCard.find('[data-hub-folders-list]').exists()).toBe(true);
+
+      const rows = hubCard.findAll('[data-hub-folder-row]');
+      expect(rows.length).toBe(4);
+
+      // Root files row first
+      expect(rows[0]!.attributes('data-hub-folder-row')).toBe('root');
+      expect(rows[0]!.get('[data-hub-folder-name]').text()).toBe('Файлы в корне диска');
+      expect(rows[0]!.get('[data-hub-folder-status-label]').text()).toBe('На сервере полностью');
+      expect(rows[0]!.attributes('data-hub-folder-status')).toBe('full');
+      expect(rows[0]!.find('.st-full').exists()).toBe(true);
+
+      // Docs (alphabetical, onHubFiles === 0 -> 'none')
+      expect(rows[1]!.attributes('data-hub-folder-row')).toBe('f-docs');
+      expect(rows[1]!.get('[data-hub-folder-name]').text()).toBe('Docs');
+      expect(rows[1]!.get('[data-hub-folder-status-label]').text()).toBe('Нет на сервере');
+      expect(rows[1]!.attributes('data-hub-folder-status')).toBe('none');
+      expect(rows[1]!.find('.st-none').exists()).toBe(true);
+
+      // Empty (files === 0 -> 'empty')
+      expect(rows[2]!.attributes('data-hub-folder-row')).toBe('f-empty');
+      expect(rows[2]!.get('[data-hub-folder-name]').text()).toBe('Empty');
+      expect(rows[2]!.get('[data-hub-folder-status-label]').text()).toBe('Пусто');
+      expect(rows[2]!.attributes('data-hub-folder-status')).toBe('empty');
+      expect(rows[2]!.find('.st-empty').exists()).toBe(true);
+
+      // Work (onHubFiles 2 out of 5 -> 'partial')
+      expect(rows[3]!.attributes('data-hub-folder-row')).toBe('f-work');
+      expect(rows[3]!.get('[data-hub-folder-name]').text()).toBe('Work');
+      expect(rows[3]!.get('[data-hub-folder-status-label]').text()).toBe('Частично: 2 из 5');
+      expect(rows[3]!.attributes('data-hub-folder-status')).toBe('partial');
+      expect(rows[3]!.find('.st-partial').exists()).toBe(true);
+    });
+
+    it('hub card handles 404 fallback on /safety/folders by showing card without folder column', async () => {
+      setLocale('ru');
+      vi.mocked(driveApi.getSafetyFolders).mockRejectedValue(new ApiError(404, 'Not found'));
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const hubCard = wrapper.get('[data-hub-card]');
+      expect(hubCard.find('[data-hub-name]').exists()).toBe(true);
+      expect(hubCard.find('[data-hub-stores]').exists()).toBe(true);
+      expect(hubCard.find('[data-hub-state]').exists()).toBe(true);
+      expect(hubCard.find('[data-hub-folders]').exists()).toBe(false);
     });
   });
 });

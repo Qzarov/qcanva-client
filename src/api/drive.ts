@@ -183,6 +183,19 @@ export interface DriveSafety {
   uploading: DriveSafetyCount;
 }
 
+export interface DriveSafetyFolderItem {
+  folderId: string | null;
+  name: string | null;
+  files: number;
+  bytes: number;
+  onHubFiles: number;
+  onHubBytes: number;
+}
+
+export interface DriveSafetyFoldersResponse {
+  folders: DriveSafetyFolderItem[];
+}
+
 /** One storage rule of a device with the folder name resolved by the hub. */
 export interface DriveDeviceFolder {
   /** null is the device root rule. */
@@ -570,6 +583,11 @@ export const driveApi = {
   /** Rejects with ApiError 404 on a hub that has no safety summary yet. */
   getSafety(): Promise<DriveSafety> {
     return request<DriveSafety>('/drive/safety');
+  },
+
+  /** Whole subtree counts of live files per top-level folder + root files. */
+  getSafetyFolders(): Promise<DriveSafetyFoldersResponse> {
+    return request<DriveSafetyFoldersResponse>('/drive/safety/folders');
   },
 
   updateDevice(id: string, updates: { keeper: boolean }): Promise<DriveDevice> {

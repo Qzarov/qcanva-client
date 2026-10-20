@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert } from '@lucide/vue';
+import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Server, Smartphone, TriangleAlert } from '@lucide/vue';
 import { ApiError, isAdmin } from '../api/client';
 import {
   driveApi,
@@ -8,6 +8,7 @@ import {
   type DriveDevice,
   type DriveLostItem,
   type DriveSafety,
+  type DriveSafetyFolderItem,
 } from '../api/drive';
 import DriveDeviceFolderDialog from '../components/DriveDeviceFolderDialog.vue';
 import DriveDeviceRemoveDialog from '../components/DriveDeviceRemoveDialog.vue';
@@ -20,6 +21,7 @@ import {
   formatBytes,
   formatFiles,
   formatFilesAndSize,
+  hubFolderStatus,
   pendingSplit,
   formatRelativeTime,
   plainError,
@@ -76,6 +78,44 @@ const lostTotal = ref<number | null>(null);
 
 const confirmTrashLostOpen = ref(false);
 const trashingLost = ref(false);
+const trashLostError = ref<string | null>(null);
+const trashLostBtnRef = ref<HTMLButtonElement | HTMLButtonElement[] | null>(null);
+const cancelTrashBtnRef = ref<HTMLButtonElement | HTMLButtonElement[] | null>(null);
+
+function focusCancelTrash() {
+  const el = Array.isArray(cancelTrashBtnRef.value)
+    ? cancelTrashBtnRef.value[0]
+    : cancelTrashBtnRef.value;
+  if (el && typeof el.focus === 'function') {
+    el.focus();
+    return;
+  }
+  if (typeof document !== 'undefined') {
+    document.querySelector<HTMLElement>('[data-lost-cancel-trash]')?.focus();
+  }
+}
+
+function focusTrashLostBtn() {
+  const el = Array.isArray(trashLostBtnRef.value)
+    ? trashLostBtnRef.value[0]
+    : trashLostBtnRef.value;
+  if (el && typeof el.focus === 'function') {
+    el.focus();
+    return;
+  }
+  if (typeof document !== 'undefined') {
+    document.querySelector<HTMLElement>('[data-lost-trash]')?.focus();
+  }
+}
+
+const confirmTrashText = computed(() => {
+  const count = safety.value?.notOnHub.nowhere.files ?? 0;
+  const bytes = safety.value?.notOnHub.nowhere.bytes ?? 0;
+  return t('cupLostConfirmTrashTitle')
+    .replace('{files}', formatFiles(count, locale.value, t))
+    .replace('{n}', formatFiles(count, locale.value, t))
+    .replace('{size}', formatBytes(bytes));
+});
 
 function formatLostPath(path: string | null | undefined, maxLength = 40): string {
   if (!path) return '';
@@ -125,12 +165,25 @@ async function loadMoreLost() {
 }
 
 function openTrashConfirm() {
+  trashLostError.value = null;
   confirmTrashLostOpen.value = true;
+  void nextTick(() => {
+    focusCancelTrash();
+  });
+}
+
+function cancelTrashConfirm() {
+  confirmTrashLostOpen.value = false;
+  trashLostError.value = null;
+  void nextTick(() => {
+    focusTrashLostBtn();
+  });
 }
 
 async function trashLost() {
   if (trashingLost.value) return;
   trashingLost.value = true;
+  trashLostError.value = null;
   const count = safety.value?.notOnHub.nowhere.files ?? 0;
   try {
     await driveApi.trashLostFiles({ all: true });
@@ -142,7 +195,7 @@ async function trashLost() {
     lostListOpen.value = false;
     await loadDevices(true);
   } catch (err: any) {
-    toast.show(err?.message || t('cupLostTrashFailed'), 'error');
+    trashLostError.value = err?.message || t('cupLostTrashFailed');
   } finally {
     trashingLost.value = false;
   }
@@ -303,6 +356,75 @@ async function loadSafety() {
   }
 }
 
+const safetyFolders = ref<DriveSafetyFolderItem[] | null>(null);
+let safetyFoldersMissing = false;
+const hubFoldersExpanded = ref(false);
+
+/** Top-level folders and root files status on the hub itself. 404 on older hubs hides the column. */
+async function loadSafetyFolders() {
+  if (safetyFoldersMissing) return;
+  try {
+    const res = await driveApi.getSafetyFolders();
+    safetyFolders.value = res.folders;
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      safetyFoldersMissing = true;
+      safetyFolders.value = null;
+    }
+  }
+}
+
+const hubStoresText = computed(() => {
+  if (!safety.value) return '';
+  return t('cupHubStores')
+    .replace('{files}', formatFiles(safety.value.onHub.files, locale.value, t))
+    .replace('{size}', formatBytes(safety.value.onHub.bytes));
+});
+
+const hubIsAllOnServer = computed(() => {
+  if (!safety.value) return true;
+  return safety.value.onHub.files >= safety.value.files;
+});
+
+const hubStateText = computed(() => {
+  if (!safety.value) return '';
+  if (hubIsAllOnServer.value) {
+    return t('cupHubStateAll');
+  }
+  const n = Math.max(0, safety.value.files - safety.value.onHub.files);
+  const missingBytes = Math.max(0, safety.value.bytes - safety.value.onHub.bytes);
+  return t('cupHubStateMissing')
+    .replace('{files}', formatFiles(n, locale.value, t))
+    .replace('{n}', formatFiles(n, locale.value, t))
+    .replace('{size}', formatBytes(missingBytes));
+});
+
+const sortedHubFolders = computed(() => {
+  if (!safetyFolders.value) return [];
+  const root = safetyFolders.value.find((f) => f.folderId === null);
+  const others = safetyFolders.value
+    .filter((f) => f.folderId !== null)
+    .slice()
+    .sort((a, b) => (a.name ?? '').localeCompare(b.name ?? '', locale.value === 'ru' ? 'ru' : 'en'));
+  return root ? [root, ...others] : others;
+});
+
+function hubFolderStatusLabel(folder: DriveSafetyFolderItem): string {
+  const status = hubFolderStatus(folder);
+  switch (status) {
+    case 'empty':
+      return t('cupHubFolderEmpty');
+    case 'full':
+      return t('cupHubFolderFull');
+    case 'partial':
+      return t('cupHubFolderPartial')
+        .replace('{onHubFiles}', String(folder.onHubFiles))
+        .replace('{files}', String(folder.files));
+    case 'none':
+      return t('cupHubFolderNone');
+  }
+}
+
 function trackPending(list: DriveDevice[], at: number) {
   const seen = new Set<string>();
   for (const d of list) {
@@ -369,7 +491,7 @@ async function loadDevices(silent: boolean) {
   try {
     // Folders are loaded once; a failed load is retried with the next refresh.
     if (silent && topFoldersFailed.value) void loadTopFolders();
-    const [list] = await Promise.all([driveApi.listDevices(), loadSafety()]);
+    const [list] = await Promise.all([driveApi.listDevices(), loadSafety(), loadSafetyFolders()]);
     now.value = Date.now();
     trackPending(list, now.value);
     devices.value = list.filter((d) => !removedIds.value.has(d.id));
@@ -462,9 +584,17 @@ function onDocumentClick(e: MouseEvent) {
 }
 
 function onDocumentKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && menuDevice.value && !removing.value) {
-    e.stopPropagation();
-    closeMenu(true);
+  if (e.key === 'Escape') {
+    if (confirmTrashLostOpen.value) {
+      e.stopPropagation();
+      cancelTrashConfirm();
+      return;
+    }
+    if (menuDevice.value && !removing.value) {
+      e.stopPropagation();
+      closeMenu(true);
+      return;
+    }
   }
 }
 
@@ -547,14 +677,52 @@ onBeforeUnmount(() => {
                 {{ lostListOpen ? t('cupLostHideList') : t('cupLostShowList') }}
               </button>
               <button
+                ref="trashLostBtnRef"
                 type="button"
                 class="btn-secondary safety-action-btn"
                 style="padding: 4px 12px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); background: var(--ui-surface-subtle); color: var(--ui-text); cursor: pointer;"
                 data-lost-trash
+                :aria-expanded="confirmTrashLostOpen"
                 @click="openTrashConfirm"
               >
                 {{ t('cupLostTrash') }}
               </button>
+            </div>
+            <div
+              v-if="notice.id === 'nowhere' && notice.isLost && confirmTrashLostOpen"
+              class="lost-trash-confirm-row"
+              data-lost-trash-confirm
+              role="region"
+              aria-live="polite"
+              @keydown.esc.stop="cancelTrashConfirm"
+            >
+              <p class="lost-trash-confirm-text" data-lost-trash-confirm-text>
+                {{ confirmTrashText }}
+              </p>
+              <div class="lost-trash-confirm-actions">
+                <button
+                  type="button"
+                  class="btn-danger lost-trash-btn-confirm"
+                  data-lost-confirm-trash
+                  :disabled="trashingLost"
+                  @click="trashLost"
+                >
+                  {{ trashingLost ? t('cupRemoving') : t('cupLostConfirmTrashBtn') }}
+                </button>
+                <button
+                  ref="cancelTrashBtnRef"
+                  type="button"
+                  class="btn-secondary lost-trash-btn-cancel"
+                  data-lost-cancel-trash
+                  :disabled="trashingLost"
+                  @click="cancelTrashConfirm"
+                >
+                  {{ t('cupLostCancelTrashBtn') }}
+                </button>
+              </div>
+              <p v-if="trashLostError" class="lost-trash-error" data-lost-trash-error>
+                {{ trashLostError }}
+              </p>
             </div>
             <div
               v-if="notice.id === 'nowhere' && notice.isLost && lostListOpen"
@@ -618,135 +786,212 @@ onBeforeUnmount(() => {
           </button>
         </div>
 
-        <div v-else-if="devices.length === 0" class="state-box empty-box">
-          <p>{{ t('cupNoDevices') }}</p>
-        </div>
-
-        <ul v-else class="devices-list">
-          <li
-            v-for="device in devices"
-            :key="device.id"
-            class="device-row"
-            :class="{ offline: !online(device) }"
-            :data-device="device.id"
+        <template v-else>
+          <!-- Q Hub card: BEFORE the device list -->
+          <div
+            v-if="safety"
+            class="device-row hub-card"
+            data-hub-card
           >
             <div class="device-head">
-              <span class="device-icon" aria-hidden="true">
-                <House v-if="device.kind === 'home'" :size="22" />
-                <Laptop v-else-if="device.kind === 'pc'" :size="22" />
-                <Smartphone v-else-if="device.kind === 'phone'" :size="22" />
-                <Cloud v-else :size="22" />
+              <span class="device-icon" aria-hidden="true" data-hub-icon>
+                <Server :size="22" />
               </span>
               <div class="device-body">
-                <h3 class="device-name">{{ device.name }}</h3>
-                <p
-                  class="device-connection"
-                  :data-online="online(device) ? 'true' : 'false'"
-                  data-connection
-                >
-                  <span v-if="online(device)" class="online-dot" aria-hidden="true" />
-                  {{ connectionText(device) }}
+                <h3 class="device-name" data-hub-name>{{ t('cupHubName') }}</h3>
+                <p class="device-connection" data-hub-stores>
+                  {{ hubStoresText }}
                 </p>
                 <p
                   class="device-state"
-                  :class="`sync-${syncStateKey(device)}`"
-                  :data-sync="syncStateKey(device)"
-                  data-sync-label
+                  :class="hubIsAllOnServer ? 'hub-state-ok' : 'hub-state-missing'"
+                  :data-state="hubIsAllOnServer ? 'ok' : 'missing'"
+                  data-hub-state
                 >
-                  {{ stateText(device) }}
-                  <span v-if="errorText(device)" class="device-state-error" data-sync-error>{{ errorText(device) }}</span>
+                  {{ hubStateText }}
                 </p>
 
-                <!-- Top-level drive folders and what this device does with them -->
-                <div class="folders-block" data-folders>
+                <!-- Top-level drive folders on the hub -->
+                <div v-if="safetyFolders !== null" class="folders-block" data-hub-folders>
                   <button
-                    v-if="keepsText(device)"
                     type="button"
                     class="folders-summary"
-                    data-folders-toggle
-                    :aria-expanded="isExpanded(device.id)"
-                    :aria-controls="`folders-${device.id}`"
-                    @click="toggleExpanded(device.id)"
+                    data-hub-folders-toggle
+                    :aria-expanded="hubFoldersExpanded"
+                    aria-controls="hub-folders-list"
+                    @click="hubFoldersExpanded = !hubFoldersExpanded"
                   >
                     <ChevronRight class="folders-chevron" :size="16" aria-hidden="true" />
-                    <span data-folders-summary>{{ keepsText(device) }}</span>
+                    <span data-hub-folders-summary>{{ t('cupHubFolders') }}</span>
                   </button>
-                  <p v-else-if="foldersCaption(device)" class="folders-caption" data-folders-caption>
-                    {{ foldersCaption(device) }}
-                  </p>
 
                   <Transition name="folders">
                     <ul
-                      v-if="keepsText(device) && isExpanded(device.id)"
-                      :id="`folders-${device.id}`"
+                      v-if="hubFoldersExpanded"
+                      id="hub-folders-list"
                       class="folder-rows"
+                      data-hub-folders-list
                     >
-                      <li>
-                        <button
-                          type="button"
-                          class="folder-row folder-row-root"
-                          data-root-files-row
-                          data-root-files
-                          data-root-row
-                          :data-folder-status="rootFilesStatus(device).status"
-                          :aria-label="t('cupRootFilesOpenDetails').replace('{device}', device.name)"
-                          @click="showRootFiles(device)"
-                        >
-                          <span class="folder-row-name">{{ t('cupRootFiles') }}</span>
-                          <span class="folder-row-status" :class="`st-${rootFilesStatus(device).status}`">
-                            <span class="folder-dot" aria-hidden="true" />
-                            <span data-folder-status-label>{{ statusLabel(rootFilesStatus(device).status) }}</span>
-                          </span>
-                        </button>
-                      </li>
-                      <li v-for="row in folderRows(device)" :key="row.folder.id">
-                        <button
-                          type="button"
+                      <li
+                        v-for="folder in sortedHubFolders"
+                        :key="folder.folderId ?? 'root'"
+                      >
+                        <div
                           class="folder-row"
-                          :data-folder-row="row.folder.id"
-                          :data-folder-status="row.info.status"
-                          :aria-label="t('cupFolderOpenDetails').replace('{name}', row.folder.name).replace('{device}', device.name)"
-                          @click="showFolder(device, row)"
+                          :class="{ 'folder-row-root': folder.folderId === null }"
+                          :data-hub-folder-row="folder.folderId ?? 'root'"
+                          :data-hub-folder-status="hubFolderStatus(folder)"
                         >
-                          <span class="folder-row-name">{{ row.folder.name }}</span>
-                          <span class="folder-row-status" :class="`st-${row.info.status}`">
-                            <span class="folder-dot" aria-hidden="true" />
-                            <span data-folder-status-label>{{ statusLabel(row.info.status) }}</span>
+                          <span class="folder-row-name" data-hub-folder-name>
+                            {{ folder.folderId === null ? t('cupRootFiles') : (folder.name || '') }}
                           </span>
-                        </button>
+                          <span
+                            class="folder-row-status"
+                            :class="`st-${hubFolderStatus(folder)}`"
+                            data-hub-folder-status-label
+                          >
+                            <span class="folder-dot" aria-hidden="true" />
+                            <span>{{ hubFolderStatusLabel(folder) }}</span>
+                          </span>
+                        </div>
                       </li>
                     </ul>
                   </Transition>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <div class="device-menu" data-device-menu-root>
-                <button
-                  type="button"
-                  class="device-menu-btn"
-                  :data-device-menu-btn="device.id"
-                  :aria-label="t('cupDeviceActions').replace('{name}', device.name)"
-                  aria-haspopup="menu"
-                  :aria-expanded="menuDevice === device.id"
-                  @click="toggleMenu(device.id)"
-                >
-                  <MoreHorizontal :size="20" aria-hidden="true" />
-                </button>
-                <div v-if="menuDevice === device.id" class="device-menu-list" role="menu">
+          <div v-if="devices.length === 0" class="state-box empty-box">
+            <p>{{ t('cupNoDevices') }}</p>
+          </div>
+
+          <ul v-else class="devices-list">
+            <li
+              v-for="device in devices"
+              :key="device.id"
+              class="device-row"
+              :class="{ offline: !online(device) }"
+              :data-device="device.id"
+            >
+              <div class="device-head">
+                <span class="device-icon" aria-hidden="true">
+                  <House v-if="device.kind === 'home'" :size="22" />
+                  <Laptop v-else-if="device.kind === 'pc'" :size="22" />
+                  <Smartphone v-else-if="device.kind === 'phone'" :size="22" />
+                  <Cloud v-else :size="22" />
+                </span>
+                <div class="device-body">
+                  <h3 class="device-name">{{ device.name }}</h3>
+                  <p
+                    class="device-connection"
+                    :data-online="online(device) ? 'true' : 'false'"
+                    data-connection
+                  >
+                    <span v-if="online(device)" class="online-dot" aria-hidden="true" />
+                    {{ connectionText(device) }}
+                  </p>
+                  <p
+                    class="device-state"
+                    :class="`sync-${syncStateKey(device)}`"
+                    :data-sync="syncStateKey(device)"
+                    data-sync-label
+                  >
+                    {{ stateText(device) }}
+                    <span v-if="errorText(device)" class="device-state-error" data-sync-error>{{ errorText(device) }}</span>
+                  </p>
+
+                  <!-- Top-level drive folders and what this device does with them -->
+                  <div class="folders-block" data-folders>
+                    <button
+                      v-if="keepsText(device)"
+                      type="button"
+                      class="folders-summary"
+                      data-folders-toggle
+                      :aria-expanded="isExpanded(device.id)"
+                      :aria-controls="`folders-${device.id}`"
+                      @click="toggleExpanded(device.id)"
+                    >
+                      <ChevronRight class="folders-chevron" :size="16" aria-hidden="true" />
+                      <span data-folders-summary>{{ keepsText(device) }}</span>
+                    </button>
+                    <p v-else-if="foldersCaption(device)" class="folders-caption" data-folders-caption>
+                      {{ foldersCaption(device) }}
+                    </p>
+
+                    <Transition name="folders">
+                      <ul
+                        v-if="keepsText(device) && isExpanded(device.id)"
+                        :id="`folders-${device.id}`"
+                        class="folder-rows"
+                      >
+                        <li>
+                          <button
+                            type="button"
+                            class="folder-row folder-row-root"
+                            data-root-files-row
+                            data-root-files
+                            data-root-row
+                            :data-folder-status="rootFilesStatus(device).status"
+                            :aria-label="t('cupRootFilesOpenDetails').replace('{device}', device.name)"
+                            @click="showRootFiles(device)"
+                          >
+                            <span class="folder-row-name">{{ t('cupRootFiles') }}</span>
+                            <span class="folder-row-status" :class="`st-${rootFilesStatus(device).status}`">
+                              <span class="folder-dot" aria-hidden="true" />
+                              <span data-folder-status-label>{{ statusLabel(rootFilesStatus(device).status) }}</span>
+                            </span>
+                          </button>
+                        </li>
+                        <li v-for="row in folderRows(device)" :key="row.folder.id">
+                          <button
+                            type="button"
+                            class="folder-row"
+                            :data-folder-row="row.folder.id"
+                            :data-folder-status="row.info.status"
+                            :aria-label="t('cupFolderOpenDetails').replace('{name}', row.folder.name).replace('{device}', device.name)"
+                            @click="showFolder(device, row)"
+                          >
+                            <span class="folder-row-name">{{ row.folder.name }}</span>
+                            <span class="folder-row-status" :class="`st-${row.info.status}`">
+                              <span class="folder-dot" aria-hidden="true" />
+                              <span data-folder-status-label>{{ statusLabel(row.info.status) }}</span>
+                            </span>
+                          </button>
+                        </li>
+                      </ul>
+                    </Transition>
+                  </div>
+                </div>
+
+                <div class="device-menu" data-device-menu-root>
                   <button
                     type="button"
-                    class="device-menu-item"
-                    role="menuitem"
-                    data-device-remove
-                    @click="askRemove(device)"
+                    class="device-menu-btn"
+                    :data-device-menu-btn="device.id"
+                    :aria-label="t('cupDeviceActions').replace('{name}', device.name)"
+                    aria-haspopup="menu"
+                    :aria-expanded="menuDevice === device.id"
+                    @click="toggleMenu(device.id)"
                   >
-                    {{ t('cupDeviceRemoveItem') }}
+                    <MoreHorizontal :size="20" aria-hidden="true" />
                   </button>
+                  <div v-if="menuDevice === device.id" class="device-menu-list" role="menu">
+                    <button
+                      type="button"
+                      class="device-menu-item"
+                      role="menuitem"
+                      data-device-remove
+                      @click="askRemove(device)"
+                    >
+                      {{ t('cupDeviceRemoveItem') }}
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          </li>
-        </ul>
+            </li>
+          </ul>
+        </template>
       </section>
 
       <p v-if="loadedAt !== null && !devicesError" class="page-footer" data-updated>
@@ -771,39 +1016,6 @@ onBeforeUnmount(() => {
       @removed="onRemoved"
       @stale="onRemoveStale"
     />
-
-
-    <!-- Confirm trash dialog -->
-    <div v-if="confirmTrashLostOpen" class="fd-backdrop" data-lost-confirm-dialog @click.self="confirmTrashLostOpen = false">
-      <div class="fd-dialog" role="dialog" aria-modal="true" style="max-width: 480px;">
-        <header class="fd-header">
-          <h2 class="fd-title" data-lost-confirm-title style="font-size: 16px; font-weight: 600;">
-            {{ t('cupLostConfirmTrashTitle').replace('{files}', formatFiles(safety?.notOnHub.nowhere.files ?? 0, locale, t)) }}
-          </h2>
-        </header>
-        <div style="padding: 16px 20px; display: flex; justify-content: flex-end; gap: 8px;">
-          <button
-            type="button"
-            class="btn-ghost"
-            style="padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer;"
-            data-lost-cancel-trash
-            @click="confirmTrashLostOpen = false"
-          >
-            {{ t('cupLostCancelTrashBtn') }}
-          </button>
-          <button
-            type="button"
-            class="btn-primary"
-            style="padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer;"
-            data-lost-confirm-trash
-            :disabled="trashingLost"
-            @click="trashLost"
-          >
-            {{ trashingLost ? t('cupRemoving') : t('cupLostConfirmTrashBtn') }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -1166,6 +1378,14 @@ onBeforeUnmount(() => {
   color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
 }
 
+.device-state.hub-state-ok {
+  color: var(--ui-success-foreground, var(--ui-success, #44cf6e));
+}
+
+.device-state.hub-state-missing {
+  color: var(--ui-warning-foreground, var(--ui-warning, #e0de71));
+}
+
 .device-state-error {
   color: var(--ui-text-muted, #7ea582);
   display: inline-block;
@@ -1423,6 +1643,89 @@ onBeforeUnmount(() => {
 
 .folder-row-status.st-partial .folder-dot {
   background: var(--ui-warning, #e0de71);
+}
+
+.folder-row-status.st-empty,
+.folder-row-status.st-none {
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.folder-row-status.st-empty .folder-dot,
+.folder-row-status.st-none .folder-dot {
+  background: var(--ui-text-muted, #7ea582);
+}
+
+.hub-card {
+  border-top: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+  border-bottom: 1px solid var(--ui-border, rgba(255, 255, 255, 0.1));
+}
+
+.hub-card + .devices-list .device-row:first-child {
+  border-top: none;
+}
+
+.hub-card + .empty-box {
+  margin-top: 16px;
+}
+
+/* Lost files inline confirm */
+.lost-trash-confirm-row {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.12));
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.lost-trash-confirm-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ui-text, #f8fff8);
+}
+
+.lost-trash-confirm-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-danger {
+  min-height: 32px;
+  padding: 6px 14px;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--ui-danger, #fb464c);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn-danger:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-danger:disabled,
+.lost-trash-btn-cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.lost-trash-btn-cancel {
+  min-height: 32px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.lost-trash-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ui-danger, #fb464c);
 }
 
 /* Footer */
