@@ -114,10 +114,20 @@ export interface DriveDevice {
   syncStatus?: DriveDeviceSyncStatus | null;
   syncStatusAt?: string | null;
   defaultMode?: 'full' | 'on_demand';
+  rootFiles?: DriveStorageMode | null;
   folders?: DriveDeviceFolder[];
 }
 
 export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error';
+export type DriveRejectedReason = 'too_large' | 'quota' | 'refused';
+
+export interface DriveRejectedItem {
+  name: string;
+  path: string;
+  sizeBytes: number;
+  reason: DriveRejectedReason | string;
+  limitBytes?: number | null;
+}
 
 /** What the device agent last reported about its sync. Missing on older hubs. */
 export interface DriveDeviceSyncStatus {
@@ -135,6 +145,11 @@ export interface DriveDeviceSyncStatus {
   blockedFiles?: number | null;
   /** Their total size in bytes. Older agents omit it. */
   blockedBytes?: number | null;
+  /** Local files the hub refused to take. Older agents omit it. */
+  rejectedFiles?: number | null;
+  rejectedBytes?: number | null;
+  /** Items refused by the hub (up to 20). */
+  rejected?: DriveRejectedItem[] | null;
 }
 
 /** A files-and-bytes pair of the safety summary. */
@@ -193,7 +208,22 @@ export interface DriveStorageRule {
 export interface DriveDevicePolicy {
   /** Derived by the hub from the device kind; a root rule overrides it. */
   defaultMode: 'full' | 'on_demand';
+  rootFiles?: DriveStorageMode | null;
   rules: DriveStorageRule[];
+}
+
+export interface DriveLostItem {
+  fileId: string;
+  name: string;
+  path: string;
+  sizeBytes: number;
+  lastDeviceName: string | null;
+}
+
+export interface DriveLostResponse {
+  items: DriveLostItem[];
+  nextCursor: string | null;
+  total?: number;
 }
 
 export interface DriveUnderReplicatedItem {
@@ -591,6 +621,18 @@ export const driveApi = {
   getUnderReplicated(params: { cursor?: string | null; limit?: number } = {}): Promise<DriveUnderReplicatedResponse> {
     const qs = buildQueryString({ cursor: params.cursor, limit: params.limit });
     return request<DriveUnderReplicatedResponse>(`/drive/replication/under${qs}`);
+  },
+
+  getLostFiles(params: { cursor?: string | null; limit?: number } = {}): Promise<DriveLostResponse> {
+    const qs = buildQueryString({ cursor: params.cursor, limit: params.limit });
+    return request<DriveLostResponse>(`/drive/safety/lost${qs}`);
+  },
+
+  trashLostFiles(body: { fileIds?: string[]; all?: boolean } = { all: true }): Promise<{ trashed: number }> {
+    return request<{ trashed: number }>('/drive/safety/lost/trash', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
 
   uploadFile,

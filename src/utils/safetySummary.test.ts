@@ -304,9 +304,82 @@ describe('buildSafetyNotices: files found nowhere', () => {
 
   it('uses the singular form', () => {
     const s = safety({
-      notOnHub: { files: 1, bytes: MB, devices: [], nowhere: { files: 1, bytes: MB } },
+      notOnHub: {
+        files: 1,
+        bytes: MB,
+        devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(HOUR), files: 0, bytes: 0 }],
+        nowhere: { files: 1, bytes: MB },
+      },
     });
     expect(buildSafetyNotices(s, ctx([], 'ru'))[0]!.title).toBe('1 файл (1 MB) не найден ни на одном устройстве');
     expect(buildSafetyNotices(s, ctx([]))[0]!.title).toBe('1 file (1 MB) is not found on any device');
+  });
+
+  it('uses the lost files sentence when nowhere > 0 and no offline holders remain', () => {
+    const s = safety({
+      notOnHub: { files: 1, bytes: MB, devices: [], nowhere: { files: 1, bytes: MB } },
+    });
+    expect(buildSafetyNotices(s, ctx([], 'ru'))[0]!.title).toBe('1 файл (1 MB) потерян');
+    expect(buildSafetyNotices(s, ctx([]))[0]!.title).toBe('1 file (1 MB) is lost');
+    expect(buildSafetyNotices(s, ctx([]))[0]!.isLost).toBe(true);
+
+    const sMany = safety({
+      notOnHub: { files: 5, bytes: 5 * MB, devices: [], nowhere: { files: 5, bytes: 5 * MB } },
+    });
+    expect(buildSafetyNotices(sMany, ctx([], 'ru'))[0]!.title).toBe('5 файлов (5 MB) потеряны');
+    expect(buildSafetyNotices(sMany, ctx([]))[0]!.title).toBe('5 files (5 MB) are lost');
+  });
+});
+
+describe('buildSafetyNotices: rejected uploads', () => {
+  it('shows amber rejected notice with item reasons and admin link', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 2,
+      pendingBytes: 30 * MB,
+      rejectedFiles: 2,
+      rejectedBytes: 30 * MB,
+      rejected: [
+        { name: 'big.iso', path: 'big.iso', sizeBytes: 20 * MB, reason: 'too_large', limitBytes: 10 * MB },
+        { name: 'full.zip', path: 'full.zip', sizeBytes: 10 * MB, reason: 'quota', limitBytes: null },
+      ],
+    });
+    const s = safety({ uploading: { files: 2, bytes: 30 * MB } });
+    const notices = buildSafetyNotices(s, { ...ctx([d], 'ru'), isAdmin: true });
+
+    const rejected = notices.find((n) => n.id === 'rejected');
+    expect(rejected).toBeDefined();
+    expect(rejected!.level).toBe('attention');
+    expect(rejected!.title).toBe('2 файла (30 MB) не загружается на сервер');
+    expect(rejected!.lines).toEqual([
+      'big.iso (20 MB) — больше лимита сервера 10 MB',
+      'full.zip (10 MB) — нет места в вашем хранилище',
+    ]);
+    expect(rejected!.hint).toBe('Поднимите лимит в админке');
+    expect(rejected!.hintLink).toEqual({ to: '/admin#storage', text: 'Поднимите лимит в админке' });
+
+    // Must NOT produce "загружает их сейчас"
+    expect(notices.some((n) => n.id === 'uploading')).toBe(false);
+  });
+
+  it('shows non-admin hint when user is not admin and handles refused reason', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 1,
+      pendingBytes: 5 * MB,
+      rejectedFiles: 1,
+      rejectedBytes: 5 * MB,
+      rejected: [
+        { name: 'secret.dat', path: 'secret.dat', sizeBytes: 5 * MB, reason: 'refused', limitBytes: null },
+      ],
+    });
+    const s = safety({ uploading: { files: 1, bytes: 5 * MB } });
+    const notices = buildSafetyNotices(s, { ...ctx([d], 'ru'), isAdmin: false });
+
+    const rejected = notices.find((n) => n.id === 'rejected');
+    expect(rejected).toBeDefined();
+    expect(rejected!.hint).toBe('Попросите администратора поднять лимит');
+    expect(rejected!.hintLink).toBeNull();
+    expect(rejected!.lines[0]).toBe('secret.dat (5 MB) — сервер отказал');
   });
 });

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert } from '@lucide/vue';
-import { ApiError } from '../api/client';
+import { ArrowLeft, ChevronRight, Cloud, CircleAlert, CircleCheck, House, Laptop, MoreHorizontal, Smartphone, TriangleAlert, X } from '@lucide/vue';
+import { ApiError, isAdmin } from '../api/client';
 import {
   driveApi,
   isDeviceOnline,
   type DriveDevice,
+  type DriveLostItem,
   type DriveSafety,
 } from '../api/drive';
 import DriveDeviceFolderDialog from '../components/DriveDeviceFolderDialog.vue';
@@ -22,6 +23,7 @@ import {
   pendingSplit,
   formatRelativeTime,
   plainError,
+  rootFilesStatus,
   syncStateKey,
   topFolderStatus,
   type FolderSyncStatus,
@@ -62,7 +64,83 @@ const topFoldersFailed = ref(false);
 const MAX_FOLDER_PAGES = 20;
 /** Devices whose folder list is open; kept in the page only. */
 const expandedDevices = ref<Set<string>>(new Set());
-const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus } | null>(null);
+const openFolder = ref<{ device: DriveDevice; folder: TopFolder; info: TopFolderStatus; isRootFiles?: boolean } | null>(null);
+
+const lostDialogOpen = ref(false);
+const lostItems = ref<DriveLostItem[]>([]);
+const lostLoading = ref(false);
+const lostLoadingMore = ref(false);
+const lostError = ref<string | null>(null);
+const lostCursor = ref<string | null>(null);
+const lostTotal = ref<number | null>(null);
+
+const confirmTrashLostOpen = ref(false);
+const trashingLost = ref(false);
+
+async function openLostDialog() {
+  lostDialogOpen.value = true;
+  lostLoading.value = true;
+  lostError.value = null;
+  lostItems.value = [];
+  lostCursor.value = null;
+  try {
+    const res = await driveApi.getLostFiles({ cursor: null, limit: 50 });
+    lostItems.value = res.items;
+    lostCursor.value = res.nextCursor;
+    lostTotal.value = res.total ?? null;
+  } catch (err: any) {
+    lostError.value = err?.message || t('cupLostLoadFailed');
+  } finally {
+    lostLoading.value = false;
+  }
+}
+
+async function loadMoreLost() {
+  if (!lostCursor.value || lostLoadingMore.value) return;
+  lostLoadingMore.value = true;
+  try {
+    const res = await driveApi.getLostFiles({ cursor: lostCursor.value, limit: 50 });
+    lostItems.value.push(...res.items);
+    lostCursor.value = res.nextCursor;
+  } catch (err: any) {
+    toast.show(err?.message || t('cupLostLoadFailed'), 'error');
+  } finally {
+    lostLoadingMore.value = false;
+  }
+}
+
+function openTrashConfirm() {
+  confirmTrashLostOpen.value = true;
+}
+
+async function trashLost() {
+  if (trashingLost.value) return;
+  trashingLost.value = true;
+  const count = safety.value?.notOnHub.nowhere.files ?? 0;
+  try {
+    await driveApi.trashLostFiles({ all: true });
+    toast.show(
+      t('cupLostTrashedToast').replace('{files}', formatFiles(count, locale.value, t)),
+      'success',
+    );
+    confirmTrashLostOpen.value = false;
+    await loadDevices(true);
+  } catch (err: any) {
+    toast.show(err?.message || t('cupLostTrashFailed'), 'error');
+  } finally {
+    trashingLost.value = false;
+  }
+}
+
+function showRootFiles(device: DriveDevice) {
+  const rf = rootFilesStatus(device);
+  openFolder.value = {
+    device,
+    folder: { id: 'root', name: t('cupRootFiles') },
+    info: { status: rf.status, mode: rf.mode, reason: rf.reason, nested: [] },
+    isRootFiles: true,
+  };
+}
 
 /** Device whose "…" menu is open, and the one waiting for the remove confirmation. */
 const menuDevice = ref<string | null>(null);
@@ -81,6 +159,7 @@ const notices = computed(() => {
     locale: locale.value,
     now: now.value,
     devices: devices.value,
+    isAdmin: isAdmin(),
     pendingSince: (id) => pendingSeen.get(id)?.since,
   });
 });
@@ -98,42 +177,46 @@ function connectionText(device: DriveDevice): string {
 /** One phrase for the sync state; an offline device's report is marked as the last known. */
 function stateText(device: DriveDevice): string {
   let phrase: string;
-  switch (syncStateKey(device)) {
-    case 'synced':
-      phrase = t('cupSyncSynced');
-      break;
-    case 'syncing': {
-      const split = pendingSplit(device);
-      if (split.blockedFiles > 0) {
-        const one = filesPluralKey(split.blockedFiles, locale.value) === 'one';
-        phrase = t(one ? 'cupSyncMixedOne' : 'cupSyncMixedMany')
-          .replace('{moving}', formatFilesAndSize(split.movingFiles, split.movingBytes, locale.value, t))
-          .replace('{blocked}', formatFilesAndSize(split.blockedFiles, split.blockedBytes, locale.value, t));
-      } else {
-        phrase = t('cupSyncSyncing')
-          .replace('{files}', formatFiles(device.syncStatus?.pendingFiles ?? 0, locale.value, t))
-          .replace('{size}', formatBytes(device.syncStatus?.pendingBytes));
+  if (device.syncStatus?.rejectedFiles && device.syncStatus.rejectedFiles > 0) {
+    phrase = t('cupSyncRejected').replace('{files}', formatFiles(device.syncStatus.rejectedFiles, locale.value, t));
+  } else {
+    switch (syncStateKey(device)) {
+      case 'synced':
+        phrase = t('cupSyncSynced');
+        break;
+      case 'syncing': {
+        const split = pendingSplit(device);
+        if (split.blockedFiles > 0) {
+          const one = filesPluralKey(split.blockedFiles, locale.value) === 'one';
+          phrase = t(one ? 'cupSyncMixedOne' : 'cupSyncMixedMany')
+            .replace('{moving}', formatFilesAndSize(split.movingFiles, split.movingBytes, locale.value, t))
+            .replace('{blocked}', formatFilesAndSize(split.blockedFiles, split.blockedBytes, locale.value, t));
+        } else {
+          phrase = t('cupSyncSyncing')
+            .replace('{files}', formatFiles(device.syncStatus?.pendingFiles ?? 0, locale.value, t))
+            .replace('{size}', formatBytes(device.syncStatus?.pendingBytes));
+        }
+        break;
       }
-      break;
+      case 'waiting': {
+        // Without blocked counts (state "waiting" from an agent that omits them) everything pending waits.
+        const split = pendingSplit(device);
+        const files = split.blockedFiles || split.files;
+        const bytes = split.blockedFiles ? split.blockedBytes : split.bytes;
+        phrase = t('cupSyncWaiting')
+          .replace('{files}', formatFiles(files, locale.value, t))
+          .replace('{size}', formatBytes(bytes));
+        break;
+      }
+      case 'paused':
+        phrase = t('cupSyncPaused');
+        break;
+      case 'error':
+        phrase = t('cupSyncError');
+        break;
+      default:
+        return t('cupSyncNoData');
     }
-    case 'waiting': {
-      // Without blocked counts (state "waiting" from an agent that omits them) everything pending waits.
-      const split = pendingSplit(device);
-      const files = split.blockedFiles || split.files;
-      const bytes = split.blockedFiles ? split.blockedBytes : split.bytes;
-      phrase = t('cupSyncWaiting')
-        .replace('{files}', formatFiles(files, locale.value, t))
-        .replace('{size}', formatBytes(bytes));
-      break;
-    }
-    case 'paused':
-      phrase = t('cupSyncPaused');
-      break;
-    case 'error':
-      phrase = t('cupSyncError');
-      break;
-    default:
-      return t('cupSyncNoData');
   }
   if (online(device)) return phrase;
   const lower = phrase.charAt(0).toLowerCase() + phrase.slice(1);
@@ -428,7 +511,32 @@ onBeforeUnmount(() => {
           <div class="safety-text">
             <component :is="i === 0 ? 'h2' : 'h3'" class="safety-title" data-safety-title>{{ notice.title }}</component>
             <p v-for="(line, n) in notice.lines" :key="n" class="safety-line" data-safety-line>{{ line }}</p>
-            <p v-if="notice.hint" class="safety-hint" data-safety-hint>{{ notice.hint }}</p>
+            <p v-if="notice.hint" class="safety-hint" data-safety-hint>
+              <router-link v-if="notice.hintLink" :to="notice.hintLink.to" class="safety-hint-link">
+                {{ notice.hint }}
+              </router-link>
+              <template v-else>{{ notice.hint }}</template>
+            </p>
+            <div v-if="notice.id === 'nowhere' && notice.isLost" class="safety-actions" style="margin-top: 10px; display: flex; gap: 8px;">
+              <button
+                type="button"
+                class="btn-secondary safety-action-btn"
+                style="padding: 4px 12px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); background: var(--ui-surface-subtle); color: var(--ui-text); cursor: pointer;"
+                data-lost-show-list
+                @click="openLostDialog"
+              >
+                {{ t('cupLostShowList') }}
+              </button>
+              <button
+                type="button"
+                class="btn-secondary safety-action-btn"
+                style="padding: 4px 12px; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); background: var(--ui-surface-subtle); color: var(--ui-text); cursor: pointer;"
+                data-lost-trash
+                @click="openTrashConfirm"
+              >
+                {{ t('cupLostTrash') }}
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -512,6 +620,24 @@ onBeforeUnmount(() => {
                       :id="`folders-${device.id}`"
                       class="folder-rows"
                     >
+                      <li>
+                        <button
+                          type="button"
+                          class="folder-row folder-row-root"
+                          data-root-files-row
+                          data-root-files
+                          data-root-row
+                          :data-folder-status="rootFilesStatus(device).status"
+                          :aria-label="t('cupRootFilesOpenDetails').replace('{device}', device.name)"
+                          @click="showRootFiles(device)"
+                        >
+                          <span class="folder-row-name">{{ t('cupRootFiles') }}</span>
+                          <span class="folder-row-status" :class="`st-${rootFilesStatus(device).status}`">
+                            <span class="folder-dot" aria-hidden="true" />
+                            <span data-folder-status-label>{{ statusLabel(rootFilesStatus(device).status) }}</span>
+                          </span>
+                        </button>
+                      </li>
                       <li v-for="row in folderRows(device)" :key="row.folder.id">
                         <button
                           type="button"
@@ -572,6 +698,7 @@ onBeforeUnmount(() => {
       :device="openFolder.device"
       :folder="openFolder.folder"
       :info="openFolder.info"
+      :is-root-files="openFolder.isRootFiles"
       @close="openFolder = null"
     />
     <DriveDeviceRemoveDialog
@@ -583,6 +710,91 @@ onBeforeUnmount(() => {
       @removed="onRemoved"
       @stale="onRemoveStale"
     />
+
+    <!-- Lost files list dialog -->
+    <div v-if="lostDialogOpen" class="fd-backdrop" data-lost-dialog @click.self="lostDialogOpen = false">
+      <div class="fd-dialog" role="dialog" aria-modal="true" :aria-label="t('cupLostDialogTitle')" style="max-width: 640px;">
+        <header class="fd-header">
+          <h2 class="fd-title" data-lost-dialog-title>{{ t('cupLostDialogTitle') }}</h2>
+          <button
+            type="button"
+            class="fd-close-btn"
+            :aria-label="t('close')"
+            data-lost-dialog-close
+            @click="lostDialogOpen = false"
+          >
+            <X :size="20" aria-hidden="true" />
+          </button>
+        </header>
+        <div class="fd-body" style="max-height: 400px; overflow-y: auto; padding: 16px 20px;">
+          <div v-if="lostLoading" style="text-align: center; padding: 20px;">{{ t('loading') }}</div>
+          <div v-else-if="lostError" style="color: var(--ui-danger); padding: 20px;">{{ lostError }}</div>
+          <div v-else-if="lostItems.length === 0" style="padding: 20px; text-align: center; color: var(--ui-text-secondary);">{{ t('driveNothingFound') }}</div>
+          <table v-else class="admin-table" style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr>
+                <th>{{ t('cupLostName') }}</th>
+                <th>{{ t('cupLostPath') }}</th>
+                <th>{{ t('fileSize') }}</th>
+                <th>{{ t('cupLostLastDevice') }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in lostItems" :key="item.fileId" data-lost-item>
+                <td data-lost-item-name>{{ item.name }}</td>
+                <td data-lost-item-path style="color: var(--ui-text-secondary); font-size: 12px;">{{ item.path }}</td>
+                <td data-lost-item-size>{{ formatBytes(item.sizeBytes) }}</td>
+                <td data-lost-item-device>{{ item.lastDeviceName || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-if="lostCursor" style="text-align: center; margin-top: 16px;">
+            <button
+              type="button"
+              class="btn-secondary"
+              style="padding: 6px 16px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); cursor: pointer;"
+              data-lost-load-more
+              :disabled="lostLoadingMore"
+              @click="loadMoreLost"
+            >
+              {{ lostLoadingMore ? t('loading') : t('driveShowMore') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm trash dialog -->
+    <div v-if="confirmTrashLostOpen" class="fd-backdrop" data-lost-confirm-dialog @click.self="confirmTrashLostOpen = false">
+      <div class="fd-dialog" role="dialog" aria-modal="true" style="max-width: 480px;">
+        <header class="fd-header">
+          <h2 class="fd-title" data-lost-confirm-title style="font-size: 16px; font-weight: 600;">
+            {{ t('cupLostConfirmTrashTitle').replace('{files}', formatFiles(safety?.notOnHub.nowhere.files ?? 0, locale, t)) }}
+          </h2>
+        </header>
+        <div style="padding: 16px 20px; display: flex; justify-content: flex-end; gap: 8px;">
+          <button
+            type="button"
+            class="btn-ghost"
+            style="padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer;"
+            data-lost-cancel-trash
+            @click="confirmTrashLostOpen = false"
+          >
+            {{ t('cupLostCancelTrashBtn') }}
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            style="padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer;"
+            data-lost-confirm-trash
+            :disabled="trashingLost"
+            @click="trashLost"
+          >
+            {{ trashingLost ? t('cupRemoving') : t('cupLostConfirmTrashBtn') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 

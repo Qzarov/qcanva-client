@@ -13,6 +13,7 @@ import {
   formatFiles,
   plainError,
   pendingSplit,
+  rootFilesStatus,
 } from './deviceStatus';
 import { useI18n } from '../composables/useI18n';
 
@@ -246,5 +247,41 @@ describe('plainError', () => {
     expect(plainError('connection refused', t)).toBe('Cannot reach the server');
     expect(plainError('weird failure 42', t)).toBe('weird failure 42');
     expect(plainError(null, t)).toBe('');
+  });
+});
+
+describe('rootFilesStatus', () => {
+  it('uses node.rootFiles if explicitly set', () => {
+    expect(rootFilesStatus({ rootFiles: 'full', folders: [{ folderId: null, name: null, mode: 'none' }] })).toEqual({
+      status: 'full',
+      mode: 'full',
+      reason: 'own',
+    });
+    expect(rootFilesStatus({ rootFiles: 'on_demand', folders: [{ folderId: null, name: null, mode: 'full' }] })).toEqual({
+      status: 'on_demand',
+      mode: 'on_demand',
+      reason: 'own',
+    });
+  });
+
+  it('falls back to the device root rule when rootFiles is null or absent', () => {
+    expect(rootFilesStatus({ rootFiles: null, folders: [{ folderId: null, name: null, mode: 'none' }] })).toEqual({
+      status: 'none',
+      mode: 'none',
+      reason: 'root',
+    });
+    expect(rootFilesStatus({ folders: [{ folderId: null, name: null, mode: 'full' }] })).toEqual({
+      status: 'full',
+      mode: 'full',
+      reason: 'root',
+    });
+  });
+
+  it('falls back to defaultMode when no root rule and no rootFiles', () => {
+    expect(rootFilesStatus({ defaultMode: 'on_demand', folders: [] })).toEqual({
+      status: 'on_demand',
+      mode: 'on_demand',
+      reason: 'default',
+    });
   });
 });

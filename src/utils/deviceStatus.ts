@@ -159,6 +159,31 @@ export function effectiveFolderMode(
   return { mode: device.defaultMode ?? 'none', reason: 'default' };
 }
 
+export interface RootFilesStatus {
+  status: FolderSyncStatus;
+  mode: DriveStorageMode;
+  reason: FolderReason;
+}
+
+/**
+ * Effective status of root files on a device: node.rootFiles if set,
+ * otherwise follows the device root rule (like effectiveFolderMode).
+ */
+export function rootFilesStatus(
+  device: Pick<DriveDevice, 'folders' | 'defaultMode' | 'rootFiles'>,
+): RootFilesStatus {
+  if (device.rootFiles !== undefined && device.rootFiles !== null) {
+    return { status: device.rootFiles, mode: device.rootFiles, reason: 'own' };
+  }
+  const rules = device.folders ?? [];
+  const root = rules.find((r) => r.folderId === null);
+  if (root) {
+    return { status: root.mode, mode: root.mode, reason: 'root' };
+  }
+  const mode = device.defaultMode ?? 'none';
+  return { status: mode, mode, reason: 'default' };
+}
+
 /**
  * Status of a top-level folder on a device. "partial": the folder itself is
  * synced less than something inside it (none/on-demand folder with a synced

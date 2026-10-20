@@ -10,7 +10,10 @@ const props = defineProps<{
   device: DriveDevice;
   folder: { id: string; name: string };
   info: TopFolderStatus;
+  isRootFiles?: boolean;
 }>();
+
+const isRoot = computed(() => !!props.isRootFiles || props.folder.id === 'root');
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -199,16 +202,16 @@ onBeforeUnmount(() => {
           </dd>
         </div>
 
-        <div class="fd-row">
+        <div v-if="isRoot ? !!totals : true" class="fd-row">
           <dt>{{ t('cupFolderFiles') }}</dt>
           <dd data-fd-files>
             <template v-if="countsLoading">{{ t('loading') }}</template>
             <template v-else-if="countsError">{{ t('cupFolderCountsFailed') }}</template>
             <template v-else-if="totals">{{ formatFilesAndSize(totals.files, totals.bytes, locale, t) }}</template>
-            <template v-else>{{ t('cupFolderDirectOnly').replace('{n}', String(fileCount)) }}</template>
+            <template v-else-if="!isRoot">{{ t('cupFolderDirectOnly').replace('{n}', String(fileCount)) }}</template>
           </dd>
         </div>
-        <div class="fd-row">
+        <div v-if="!isRoot" class="fd-row">
           <dt>{{ t('cupFolderSubfolders') }}</dt>
           <dd data-fd-folders>
             <template v-if="countsLoading">{{ t('loading') }}</template>
@@ -231,7 +234,7 @@ onBeforeUnmount(() => {
         </div>
       </dl>
 
-      <footer class="fd-footer">
+      <footer v-if="!isRoot" class="fd-footer">
         <router-link
           :to="`/drive/${encodeURIComponent(folder.id)}`"
           class="fd-open-link"

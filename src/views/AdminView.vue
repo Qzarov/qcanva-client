@@ -22,6 +22,56 @@
         </div>
       </div>
 
+      <div v-if="storageSupported" class="admin-storage-section">
+        <h2 id="storage" class="admin-section-title">Хранилище</h2>
+        <div class="admin-storage-card">
+          <div class="admin-storage-field">
+            <label for="admin-storage-limit" class="admin-storage-label">Максимальный размер файла</label>
+            <div class="admin-storage-controls">
+              <input
+                id="admin-storage-limit"
+                v-model.number="limitInput"
+                type="number"
+                min="1"
+                step="any"
+                class="admin-storage-input"
+                data-admin-storage-input
+                placeholder="2048"
+              />
+              <select
+                v-model="limitUnit"
+                class="role-select admin-storage-unit"
+                data-admin-storage-unit
+              >
+                <option value="MB">МБ</option>
+                <option value="GB">ГБ</option>
+              </select>
+              <button
+                type="button"
+                class="btn-primary"
+                data-admin-storage-save
+                :disabled="storageSaving"
+                @click="saveStorageLimit"
+              >
+                Сохранить
+              </button>
+              <button
+                type="button"
+                class="btn-ghost"
+                data-admin-storage-reset
+                :disabled="storageSaving"
+                @click="resetStorageLimit"
+              >
+                Сбросить
+              </button>
+            </div>
+          </div>
+          <div v-if="settings" class="admin-storage-effective" data-admin-storage-effective>
+            Текущее значение: <strong>{{ effectiveText }}</strong> ({{ sourceText }})
+          </div>
+        </div>
+      </div>
+
       <h2 class="admin-section-title">Users</h2>
       <table class="admin-table">
         <thead>
@@ -94,28 +144,13 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, onMounted } from 'vue';
+import { defineComponent, ref, computed, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
-import { resolveApiBase } from '../api/hubOverride';
+import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
 
-const API_BASE = resolveApiBase();
 function getToken() { return localStorage.getItem('token'); }
-
-async function adminRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${getToken()}`,
-    ...(options.headers as Record<string, string> || {}),
-  };
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || `HTTP ${res.status}`);
-  }
-  return res.json();
-}
 
 export default defineComponent({
   components: { AccountMenu },
@@ -126,6 +161,54 @@ export default defineComponent({
     const stats = ref({ userCount: 0, canvasCount: 0 });
     const loading = ref(true);
     const superAdmin = isSuperAdmin();
+
+    // Storage section state
+    const settings = ref<AdminSettings | null>(null);
+    const storageSupported = ref(true);
+    const storageSaving = ref(false);
+    const limitInput = ref<number | null>(null);
+    const limitUnit = ref<'MB' | 'GB'>('MB');
+
+    function formatLimitRu(bytes: number): string {
+      if (bytes >= 1024 * 1024 * 1024) {
+        const gb = bytes / (1024 * 1024 * 1024);
+        return `${Number.isInteger(gb) ? gb : gb.toFixed(1)} ГБ`;
+      }
+      const mb = bytes / (1024 * 1024);
+      return `${Number.isInteger(mb) ? mb : mb.toFixed(1)} МБ`;
+    }
+
+    function syncInputFromSettings(s: AdminSettings) {
+      if (typeof s.driveMaxFileBytes !== 'number' || s.driveMaxFileBytes <= 0) return;
+      if (s.driveMaxFileBytes >= 1024 * 1024 * 1024 && s.driveMaxFileBytes % (1024 * 1024 * 1024) === 0) {
+        limitUnit.value = 'GB';
+        limitInput.value = s.driveMaxFileBytes / (1024 * 1024 * 1024);
+      } else if (s.driveMaxFileBytes >= 1024 * 1024 * 1024 && (s.driveMaxFileBytes / (1024 * 1024 * 1024)) % 0.5 === 0) {
+        limitUnit.value = 'GB';
+        limitInput.value = s.driveMaxFileBytes / (1024 * 1024 * 1024);
+      } else {
+        limitUnit.value = 'MB';
+        limitInput.value = Math.round(s.driveMaxFileBytes / (1024 * 1024));
+      }
+    }
+
+    const effectiveText = computed(() => {
+      if (!settings.value || typeof settings.value.driveMaxFileBytes !== 'number') return '';
+      return formatLimitRu(settings.value.driveMaxFileBytes);
+    });
+
+    const sourceText = computed(() => {
+      if (!settings.value) return '';
+      switch (settings.value.driveMaxFileBytesSource) {
+        case 'db':
+          return 'задано здесь';
+        case 'env':
+          return 'из настроек сервера';
+        case 'default':
+        default:
+          return 'по умолчанию';
+      }
+    });
 
     // Decode JWT to get current user id
     const token = getToken();
@@ -150,7 +233,63 @@ export default defineComponent({
       } catch (e: any) {
         showToast(e.message || 'Failed to load admin data', 'error');
       }
+
+      try {
+        const set = await adminApi.getSettings();
+        if (set && typeof (set as any).driveMaxFileBytes === 'number') {
+          settings.value = set;
+          syncInputFromSettings(set);
+        }
+      } catch (e: any) {
+        if (e.status === 404 || e.message?.includes('404')) {
+          storageSupported.value = false;
+        } else {
+          showToast(e.message || 'Не удалось загрузить настройки хранилища', 'error');
+        }
+      }
+
       loading.value = false;
+    };
+
+    const saveStorageLimit = async () => {
+      if (!limitInput.value || limitInput.value <= 0 || !Number.isFinite(limitInput.value)) {
+        showToast('Размер файла должен быть больше 0', 'error');
+        return;
+      }
+      const mult = limitUnit.value === 'GB' ? 1024 * 1024 * 1024 : 1024 * 1024;
+      const driveMaxFileBytes = Math.round(limitInput.value * mult);
+
+      storageSaving.value = true;
+      try {
+        await adminApi.updateSettings({ driveMaxFileBytes });
+        const updated = await adminApi.getSettings();
+        if (updated && typeof updated.driveMaxFileBytes === 'number') {
+          settings.value = updated;
+          syncInputFromSettings(updated);
+        }
+        showToast('Лимит сохранён', 'success');
+      } catch (e: any) {
+        showToast(e.message || 'Не удалось сохранить настройки', 'error');
+      } finally {
+        storageSaving.value = false;
+      }
+    };
+
+    const resetStorageLimit = async () => {
+      storageSaving.value = true;
+      try {
+        await adminApi.updateSettings({ driveMaxFileBytes: null });
+        const updated = await adminApi.getSettings();
+        if (updated && typeof updated.driveMaxFileBytes === 'number') {
+          settings.value = updated;
+          syncInputFromSettings(updated);
+        }
+        showToast('Лимит сброшен', 'success');
+      } catch (e: any) {
+        showToast(e.message || 'Не удалось сбросить лимит', 'error');
+      } finally {
+        storageSaving.value = false;
+      }
     };
 
     const changeRole = async (userId: string, role: string) => {
@@ -202,7 +341,83 @@ export default defineComponent({
     }) : '—';
 
     onMounted(load);
-    return { users, canvases, stats, loading, superAdmin, currentUserId, changeRole, changeHistoryAccess, roleBadge, visBadge, formatDate, formatDateTime };
+    return {
+      users,
+      canvases,
+      stats,
+      loading,
+      superAdmin,
+      currentUserId,
+      settings,
+      storageSupported,
+      storageSaving,
+      limitInput,
+      limitUnit,
+      effectiveText,
+      sourceText,
+      saveStorageLimit,
+      resetStorageLimit,
+      changeRole,
+      changeHistoryAccess,
+      roleBadge,
+      visBadge,
+      formatDate,
+      formatDateTime,
+    };
   },
 });
 </script>
+
+<style scoped>
+.admin-storage-section {
+  margin-top: 24px;
+}
+.admin-storage-card {
+  background: var(--dark-card-bg);
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-lg);
+  padding: 18px 24px;
+  max-width: 680px;
+}
+.admin-storage-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-storage-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ui-text);
+}
+.admin-storage-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.admin-storage-input {
+  width: 140px;
+  padding: 8px 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font-size: 14px;
+  outline: none;
+}
+.admin-storage-input:focus {
+  border-color: var(--color-brands);
+}
+.admin-storage-unit {
+  min-height: 36px;
+  padding: 6px 12px;
+}
+.admin-storage-effective {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+}
+.admin-storage-effective strong {
+  color: var(--ui-text);
+}
+</style>

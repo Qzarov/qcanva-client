@@ -1,6 +1,7 @@
-import { isDeviceOnline, type DriveDevice, type DriveSafety } from '../api/drive';
+import { isDeviceOnline, type DriveDevice, type DriveRejectedItem, type DriveSafety } from '../api/drive';
 import {
   filesPluralKey,
+  formatBytes,
   formatDuration,
   formatFilesAndSize,
   formatRelativeTime,
@@ -19,13 +20,17 @@ export type SafetyLevel = 'ok' | 'attention' | 'loss';
 
 /** One statement of the "Are my files safe?" block. */
 export interface SafetyNotice {
-  id: 'nowhere' | 'stalled' | 'notOnHub' | 'uploading' | 'ok';
+  id: 'nowhere' | 'lost' | 'rejected' | 'stalled' | 'notOnHub' | 'uploading' | 'ok';
   level: SafetyLevel;
   title: string;
   /** Muted lines under the title, one sentence or one device per line. */
   lines: string[];
   /** One plain instruction, or null. */
   hint: string | null;
+  /** Link for the hint (e.g. admin link). */
+  hintLink?: { text: string; to: string } | null;
+  /** True when nowhere files are permanently lost (no registered offline holders). */
+  isLost?: boolean;
 }
 
 export interface SafetyContext {
@@ -33,6 +38,7 @@ export interface SafetyContext {
   locale: string;
   now: number;
   devices: DriveDevice[];
+  isAdmin?: boolean;
   /**
    * When the pending count of an online device was first seen unchanged (ms), for agents that do
    * not report `lastProgressAt`. Undefined: not tracked.
@@ -149,15 +155,71 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
 
   const nowhere = safety.notOnHub.nowhere;
   if (nowhere.files > 0) {
+    const hasOfflineHolders = safety.notOnHub.devices.some((d) => !isDeviceOnline(d.lastSeenAt, ctx.now));
+    if (!hasOfflineHolders) {
+      notices.push({
+        id: 'nowhere',
+        level: 'loss',
+        title: pick(nowhere.files, ctx, 'cupSafetyLost', 'cupSafetyLostOne').replace(
+          '{files}',
+          sizeOf(nowhere.files, nowhere.bytes, ctx),
+        ),
+        lines: [t('cupSafetyLostWhy')],
+        hint: null,
+        isLost: true,
+      });
+    } else {
+      notices.push({
+        id: 'nowhere',
+        level: 'loss',
+        title: pick(nowhere.files, ctx, 'cupSafetyNowhere', 'cupSafetyNowhereOne').replace(
+          '{files}',
+          sizeOf(nowhere.files, nowhere.bytes, ctx),
+        ),
+        lines: [t('cupSafetyNowhereWhy')],
+        hint: t('cupSafetyNowhereHint'),
+        isLost: false,
+      });
+    }
+  }
+
+  const rejectedDevices = ctx.devices.filter(
+    (d) => (d.syncStatus?.rejectedFiles ?? 0) > 0,
+  );
+  let totalRejectedFiles = 0;
+  let totalRejectedBytes = 0;
+  if (rejectedDevices.length > 0) {
+    const allRejected: DriveRejectedItem[] = [];
+    for (const d of rejectedDevices) {
+      totalRejectedFiles += d.syncStatus?.rejectedFiles ?? 0;
+      totalRejectedBytes += d.syncStatus?.rejectedBytes ?? 0;
+      if (Array.isArray(d.syncStatus?.rejected)) {
+        allRejected.push(...d.syncStatus.rejected);
+      }
+    }
+    const itemLines = allRejected.slice(0, 3).map((item) => {
+      let reason = '';
+      if (item.reason === 'too_large') {
+        const limit = item.limitBytes ? formatBytes(item.limitBytes) : '';
+        reason = limit ? t('cupRejectedTooLarge').replace('{limit}', limit) : t('cupRejectedTooLargeNoLimit');
+      } else if (item.reason === 'quota') {
+        reason = t('cupRejectedQuota');
+      } else {
+        reason = t('cupRejectedRefused');
+      }
+      return `${item.name} (${formatBytes(item.sizeBytes)}) — ${reason}`;
+    });
+    const hintText = ctx.isAdmin ? t('cupSafetyAdminHint') : t('cupSafetyNonAdminHint');
     notices.push({
-      id: 'nowhere',
-      level: 'loss',
-      title: pick(nowhere.files, ctx, 'cupSafetyNowhere', 'cupSafetyNowhereOne').replace(
+      id: 'rejected',
+      level: 'attention',
+      title: pick(totalRejectedFiles, ctx, 'cupSafetyRejected', 'cupSafetyRejectedOne').replace(
         '{files}',
-        sizeOf(nowhere.files, nowhere.bytes, ctx),
+        sizeOf(totalRejectedFiles, totalRejectedBytes, ctx),
       ),
-      lines: [t('cupSafetyNowhereWhy')],
-      hint: t('cupSafetyNowhereHint'),
+      lines: itemLines,
+      hint: hintText,
+      hintLink: ctx.isAdmin ? { text: hintText, to: '/admin#storage' } : null,
     });
   }
 
@@ -186,7 +248,9 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
     files: safety.notOnHub.files - nowhere.files,
     bytes: safety.notOnHub.bytes - nowhere.bytes,
   };
-  if (held.files > 0) {
+  // If all held files are already accounted for by rejected notices, don't show a redundant notOnHub block
+  const heldNonRejectedFiles = totalRejectedFiles > 0 ? Math.max(0, held.files - totalRejectedFiles) : held.files;
+  if (held.files > 0 && (totalRejectedFiles === 0 || heldNonRejectedFiles > 0)) {
     const holders = safety.notOnHub.devices.filter((d) => d.files > 0);
     const lines = holders.map((d) => {
       const online = isDeviceOnline(d.lastSeenAt, ctx.now);
@@ -207,9 +271,16 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
       if (offline.length) {
         hint = t('cupSafetyHintTurnOn').replace('{name}', offline.map((d) => d.name).join(', '));
       } else if (holders.length) {
-        hint = t('cupSafetyHintUploading').replace('{name}', holders.map((d) => d.name).join(', '));
-        const eta = etaMs(safety, ctx.devices);
-        if (eta !== null) hint += ` ${etaText(eta, ctx)}`;
+        // A device with rejectedFiles > 0 must NOT produce «загружает их сейчас»
+        const uploadingHolders = holders.filter((h) => {
+          const dev = ctx.devices.find((d) => d.id === h.nodeId);
+          return !(dev?.syncStatus?.rejectedFiles && dev.syncStatus.rejectedFiles > 0);
+        });
+        if (uploadingHolders.length) {
+          hint = t('cupSafetyHintUploading').replace('{name}', uploadingHolders.map((d) => d.name).join(', '));
+          const eta = etaMs(safety, ctx.devices);
+          if (eta !== null) hint += ` ${etaText(eta, ctx)}`;
+        }
       }
     }
     notices.push({

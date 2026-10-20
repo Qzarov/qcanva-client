@@ -28,6 +28,8 @@ vi.mock('../api/drive', async (importOriginal) => {
       setDevicePolicy: vi.fn(),
       createPairingCode: vi.fn(),
       getUnderReplicated: vi.fn(),
+      getLostFiles: vi.fn(),
+      trashLostFiles: vi.fn(),
     },
   };
 });
@@ -898,6 +900,273 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
       expect(wrapper.find('[data-error]').exists()).toBe(false);
       expect(wrapper.find('[data-device="dev-1"]').exists()).toBe(true);
       wrapper.unmount();
+    });
+  });
+
+  describe('root-files mode', () => {
+    it('shows root-files row as first row with status from rootFiles or device root rule', async () => {
+      setLocale('ru');
+      const list = devices();
+      // dev-1 has rootFiles = null, folders: [{ folderId: null, mode: 'none' }] -> status 'none'
+      list[0]!.rootFiles = null;
+      vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+
+      const wrapper = mountView();
+      await flushPromises();
+      await expand(wrapper, 'dev-1');
+
+      const rootRow = wrapper.get('[data-device="dev-1"] [data-root-files-row]');
+      expect(rootRow.text()).toContain('Файлы в корне диска');
+      expect(rootRow.attributes('data-folder-status')).toBe('none');
+      expect(rootRow.find('[data-folder-status-label]').text()).toBe('Только на сервере');
+
+      // Now set rootFiles explicitly to 'full'
+      list[0]!.rootFiles = 'full';
+      vi.mocked(driveApi.listDevices).mockResolvedValue([...list]);
+      const wrapper2 = mountView();
+      await flushPromises();
+      await expand(wrapper2, 'dev-1');
+
+      const rootRow2 = wrapper2.get('[data-device="dev-1"] [data-root-files-row]');
+      expect(rootRow2.attributes('data-folder-status')).toBe('full');
+      expect(rootRow2.find('[data-folder-status-label]').text()).toBe('Хранится здесь');
+    });
+
+    it('clicking root-files row opens details dialog in root-files variant', async () => {
+      setLocale('ru');
+      const list = devices();
+      list[0]!.rootFiles = 'full';
+      vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+      vi.mocked(driveApi.getFolder).mockResolvedValue({
+        folder: { id: 'root', name: 'Файлы в корне диска', parentId: null, ownerId: 'u1', role: 'owner' },
+        path: [],
+        totals: { files: 15, bytes: 1048576, folders: 0 },
+        counts: { media: 0, files: 15, docs: 0, folders: 0 },
+      });
+
+      const wrapper = mountView();
+      await flushPromises();
+      await expand(wrapper, 'dev-1');
+
+      await wrapper.get('[data-device="dev-1"] [data-root-files-row]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.get('[data-folder-dialog-title]').text()).toBe('Файлы в корне диска');
+      // No subfolder counts
+      expect(wrapper.find('[data-fd-subfolders]').exists()).toBe(false);
+      // No "Open in Files" button
+      expect(wrapper.find('[data-fd-open-files]').exists()).toBe(false);
+      // Shows file count/size from totals
+      expect(wrapper.get('[data-fd-files]').text()).toBe('15 файлов (1 MB)');
+    });
+  });
+
+  describe('rejected uploads', () => {
+    it('device row shows "Не загружается: {n} файлов" instead of "Синхронизирует"', async () => {
+      setLocale('ru');
+      const list = devices();
+      list[0]!.syncStatus = {
+        state: 'syncing',
+        pendingFiles: 3,
+        pendingBytes: 3000,
+        rejectedFiles: 2,
+        rejectedBytes: 2000,
+        lastSyncAt: null,
+        lastError: null,
+        version: '0.1.0',
+      };
+      vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const label = wrapper.get('[data-device="dev-1"] [data-sync-label]');
+      expect(label.text()).toBe('Не загружается: 2 файла');
+      expect(label.text()).not.toContain('Синхронизирует');
+    });
+
+    it('safety notice shows amber rejected warning with item reasons and admin link', async () => {
+      setLocale('ru');
+      localStorage.setItem('userRole', 'admin');
+
+      const list = devices();
+      list[0]!.syncStatus = {
+        state: 'syncing',
+        pendingFiles: 2,
+        pendingBytes: 50 * 1024 * 1024,
+        rejectedFiles: 2,
+        rejectedBytes: 50 * 1024 * 1024,
+        rejected: [
+          { name: 'big_video.mp4', path: 'Videos/big_video.mp4', sizeBytes: 30 * 1024 * 1024, reason: 'too_large', limitBytes: 25 * 1024 * 1024 },
+          { name: 'quota_exceeded.zip', path: 'quota_exceeded.zip', sizeBytes: 20 * 1024 * 1024, reason: 'quota', limitBytes: null },
+        ],
+        lastSyncAt: null,
+        lastError: null,
+        version: '0.1.0',
+      };
+      vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+
+      const s = safeAll();
+      s.uploading = { files: 2, bytes: 50 * 1024 * 1024 };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const notice = wrapper.get('[data-safety-notice="rejected"]');
+      expect(notice.classes()).toContain('level-attention');
+      expect(notice.get('[data-safety-title]').text()).toBe('2 файла (50 MB) не загружается на сервер');
+      expect(notice.text()).not.toContain('загружает их сейчас');
+
+      const lines = notice.findAll('[data-safety-line]').map((l) => l.text());
+      expect(lines).toContain('big_video.mp4 (30 MB) — больше лимита сервера 25 MB');
+      expect(lines).toContain('quota_exceeded.zip (20 MB) — нет места в вашем хранилище');
+
+      const hintLink = notice.get('a.safety-hint-link');
+      expect(hintLink.text()).toBe('Поднимите лимит в админке');
+      expect(hintLink.attributes('href')).toBe('/admin#storage');
+    });
+
+    it('safety notice shows non-admin hint when user is not admin', async () => {
+      setLocale('ru');
+      localStorage.setItem('userRole', 'user');
+
+      const list = devices();
+      list[0]!.syncStatus = {
+        state: 'syncing',
+        pendingFiles: 1,
+        pendingBytes: 10 * 1024 * 1024,
+        rejectedFiles: 1,
+        rejectedBytes: 10 * 1024 * 1024,
+        rejected: [
+          { name: 'other.dat', path: 'other.dat', sizeBytes: 10 * 1024 * 1024, reason: 'refused', limitBytes: null },
+        ],
+        lastSyncAt: null,
+        lastError: null,
+        version: '0.1.0',
+      };
+      vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+
+      const s = safeAll();
+      s.uploading = { files: 1, bytes: 10 * 1024 * 1024 };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const notice = wrapper.get('[data-safety-notice="rejected"]');
+      expect(notice.find('a.safety-hint-link').exists()).toBe(false);
+      expect(notice.get('[data-safety-hint]').text()).toBe('Попросите администратора поднять лимит');
+      expect(notice.get('[data-safety-line]').text()).toBe('other.dat (10 MB) — сервер отказал');
+    });
+  });
+
+  describe('lost files', () => {
+    it('shows red lost sentence when nowhere > 0 and no offline holder devices remain', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 3,
+        bytes: 3 * 1024,
+        devices: [], // No registered devices hold them
+        nowhere: { files: 3, bytes: 3 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      const notice = wrapper.get('[data-safety-notice="nowhere"]');
+      expect(notice.classes()).toContain('level-loss');
+      expect(notice.get('[data-safety-title]').text()).toBe('3 файла (3 KB) потеряны');
+      expect(notice.get('[data-safety-line]').text()).toBe('Их единственные копии были на удалённых устройствах.');
+
+      expect(notice.find('[data-lost-show-list]').exists()).toBe(true);
+      expect(notice.find('[data-lost-trash]').exists()).toBe(true);
+    });
+
+    it('clicking "Показать список" opens dialog and pages with "Показать ещё"', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 3,
+        bytes: 3 * 1024,
+        devices: [],
+        nowhere: { files: 3, bytes: 3 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+
+      vi.mocked(driveApi.getLostFiles).mockResolvedValueOnce({
+        items: [
+          { fileId: 'f-1', name: 'lost1.txt', path: 'lost1.txt', sizeBytes: 1024, lastDeviceName: 'Old Laptop' },
+          { fileId: 'f-2', name: 'lost2.txt', path: 'Docs/lost2.txt', sizeBytes: 1024, lastDeviceName: null },
+        ],
+        nextCursor: 'cur-2',
+        total: 3,
+      });
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      await wrapper.get('[data-lost-show-list]').trigger('click');
+      await flushPromises();
+
+      expect(driveApi.getLostFiles).toHaveBeenCalledWith({ cursor: null, limit: 50 });
+      expect(wrapper.find('[data-lost-dialog]').exists()).toBe(true);
+
+      const items = wrapper.findAll('[data-lost-item]');
+      expect(items.length).toBe(2);
+      expect(items[0]!.get('[data-lost-item-name]').text()).toBe('lost1.txt');
+      expect(items[0]!.get('[data-lost-item-device]').text()).toBe('Old Laptop');
+      expect(items[1]!.get('[data-lost-item-device]').text()).toBe('—');
+
+      // Test paging with "Показать ещё"
+      vi.mocked(driveApi.getLostFiles).mockResolvedValueOnce({
+        items: [
+          { fileId: 'f-3', name: 'lost3.txt', path: 'lost3.txt', sizeBytes: 1024, lastDeviceName: 'Old PC' },
+        ],
+        nextCursor: null,
+        total: 3,
+      });
+
+      const loadMoreBtn = wrapper.get('[data-lost-load-more]');
+      expect(loadMoreBtn.text()).toBe('Показать ещё');
+      await loadMoreBtn.trigger('click');
+      await flushPromises();
+
+      expect(driveApi.getLostFiles).toHaveBeenCalledWith({ cursor: 'cur-2', limit: 50 });
+      expect(wrapper.findAll('[data-lost-item]').length).toBe(3);
+      expect(wrapper.find('[data-lost-load-more]').exists()).toBe(false);
+    });
+
+    it('clicking "Убрать в корзину" confirms and calls trash API, toasts and refreshes safety', async () => {
+      setLocale('ru');
+      const s = safeAll();
+      s.notOnHub = {
+        files: 2,
+        bytes: 2 * 1024,
+        devices: [],
+        nowhere: { files: 2, bytes: 2 * 1024 },
+      };
+      vi.mocked(driveApi.getSafety).mockResolvedValue(s);
+      vi.mocked(driveApi.trashLostFiles).mockResolvedValue({ trashed: 2 });
+
+      const wrapper = mountView();
+      await flushPromises();
+
+      await wrapper.get('[data-lost-trash]').trigger('click');
+      await flushPromises();
+
+      expect(wrapper.find('[data-lost-confirm-dialog]').exists()).toBe(true);
+      expect(wrapper.get('[data-lost-confirm-title]').text()).toContain('Переместить 2 файла в корзину?');
+
+      await wrapper.get('[data-lost-confirm-trash]').trigger('click');
+      await flushPromises();
+
+      expect(driveApi.trashLostFiles).toHaveBeenCalledWith({ all: true });
+      expect(wrapper.find('[data-lost-confirm-dialog]').exists()).toBe(false);
+      expect(useToast().toasts.value.map((x) => x.message)).toContain('2 файла перемещено в корзину');
+      expect(driveApi.getSafety).toHaveBeenCalledTimes(2);
     });
   });
 });
