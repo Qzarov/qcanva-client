@@ -234,10 +234,15 @@ const notices = computed(() => {
 });
 
 function online(device: DriveDevice): boolean {
+  if (syncStateKey(device) === 'logged_out') return false;
   return isDeviceOnline(device.lastSeenAt, now.value);
 }
 
 function connectionText(device: DriveDevice): string {
+  if (syncStateKey(device) === 'logged_out') {
+    const when = formatRelativeTime(device.syncStatus?.loggedOutAt ?? device.lastSeenAt, locale.value, now.value);
+    return when ? t('cupLoggedOutTimestamp').replace('{when}', when) : t('cupLoggedOut');
+  }
   if (online(device)) return t('cupOnline');
   if (!device.lastSeenAt) return t('cupNeverSeen');
   return t('cupOffline').replace('{when}', formatRelativeTime(device.lastSeenAt, locale.value, now.value));
@@ -250,6 +255,8 @@ function stateText(device: DriveDevice): string {
     phrase = t('cupSyncRejected').replace('{files}', formatFiles(device.syncStatus.rejectedFiles, locale.value, t));
   } else {
     switch (syncStateKey(device)) {
+      case 'logged_out':
+        return t('cupSyncLoggedOut');
       case 'synced':
         phrase = t('cupSyncSynced');
         break;
@@ -900,6 +907,13 @@ onBeforeUnmount(() => {
                     {{ stateText(device) }}
                     <span v-if="errorText(device)" class="device-state-error" data-sync-error>{{ errorText(device) }}</span>
                   </p>
+                  <p
+                    v-if="syncStateKey(device) === 'logged_out'"
+                    class="device-logged-out-detail"
+                    data-logged-out-detail
+                  >
+                    {{ t('cupLoggedOutDetail') }}
+                  </p>
 
                   <!-- Top-level drive folders and what this device does with them -->
                   <div class="folders-block" data-folders>
@@ -1369,7 +1383,15 @@ onBeforeUnmount(() => {
 }
 
 .device-state.sync-nodata,
-.device-state.sync-paused {
+.device-state.sync-paused,
+.device-state.sync-logged_out {
+  color: var(--ui-text-muted, #7ea582);
+}
+
+.device-logged-out-detail {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--ui-text-muted, #7ea582);
 }
 

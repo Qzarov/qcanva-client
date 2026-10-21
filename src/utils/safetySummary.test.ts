@@ -276,6 +276,19 @@ describe('buildSafetyNotices: files only on devices', () => {
     );
     expect(m!.hint).toBe('Laptop is uploading them now. About 2 minutes.');
   });
+
+  it('treats a logged-out device as offline even if lastSeenAt is fresh', () => {
+    const loggedOutDev = device({
+      id: 'd-lo',
+      name: 'LoggedOutPC',
+      lastSeenAt: ago(5_000),
+      syncStatus: { state: 'logged_out', loggedOutAt: ago(5_000), pendingFiles: 2, pendingBytes: 2 * MB },
+    });
+    const holder = { nodeId: 'd-lo', name: 'LoggedOutPC', kind: 'pc', lastSeenAt: ago(5_000), files: 2, bytes: 2 * MB };
+    const [n] = buildSafetyNotices(holders([holder]), ctx([loggedOutDev], 'ru'));
+    expect(n!.lines[0]).toContain('не на связи');
+    expect(n!.hint).toBe('Включите LoggedOutPC и запустите Q Space — файлы загрузятся на сервер сами.');
+  });
 });
 
 describe('buildSafetyNotices: files found nowhere', () => {
@@ -328,6 +341,26 @@ describe('buildSafetyNotices: files found nowhere', () => {
     });
     expect(buildSafetyNotices(sMany, ctx([], 'ru'))[0]!.title).toBe('5 файлов (5 MB) потеряны');
     expect(buildSafetyNotices(sMany, ctx([]))[0]!.title).toBe('5 files (5 MB) are lost');
+  });
+
+  it('treats a logged-out holder as an offline holder so nowhere files are not marked lost', () => {
+    const loggedOutDev = device({
+      id: 'd-lo',
+      name: 'LoggedOutPC',
+      lastSeenAt: ago(5_000),
+      syncStatus: { state: 'logged_out', loggedOutAt: ago(5_000), pendingFiles: 0, pendingBytes: 0 },
+    });
+    const s = safety({
+      notOnHub: {
+        files: 1,
+        bytes: MB,
+        devices: [{ nodeId: 'd-lo', name: 'LoggedOutPC', kind: 'pc', lastSeenAt: ago(5_000), files: 0, bytes: 0 }],
+        nowhere: { files: 1, bytes: MB },
+      },
+    });
+    const [n] = buildSafetyNotices(s, ctx([loggedOutDev]));
+    expect(n!.isLost).toBe(false);
+    expect(n!.title).toBe('1 file (1 MB) is not found on any device');
   });
 });
 

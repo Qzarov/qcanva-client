@@ -246,6 +246,37 @@ describe('DriveDevicesView.vue (Q Control, read-only)', () => {
     expect(wrapper.get('[data-device="dev-3"] [data-sync-label]').text()).toBe('Ещё не сообщало о себе');
   });
 
+  it('shows a logged-out device with neutral grey icon, logged-out label, detail line, and relative time', async () => {
+    setLocale('ru');
+    const list = devices();
+    list[0]!.syncStatus = {
+      state: 'logged_out',
+      loggedOutAt: isoAgo(2 * 3600_000),
+      pendingFiles: 0,
+      pendingBytes: 0,
+    };
+    list[0]!.lastSeenAt = isoAgo(2 * 3600_000);
+    vi.mocked(driveApi.listDevices).mockResolvedValue(list);
+
+    const wrapper = mountView();
+    await flushPromises();
+
+    const dev = wrapper.get('[data-device="dev-1"]');
+    // Neutral grey icon via offline class
+    expect(dev.classes()).toContain('offline');
+    // Relative time: «вышел 2 часа назад»
+    expect(dev.get('[data-connection]').text()).toBe('вышел 2 часа назад');
+    // Label: «Вышел из аккаунта»
+    expect(dev.get('[data-sync-label]').text()).toBe('Вышел из аккаунта');
+    expect(dev.get('[data-sync-label]').attributes('data-sync')).toBe('logged_out');
+    // Detail line: «Устройство не синхронизируется, пока на нём снова не войдут: qspace-agent init»
+    expect(dev.get('[data-logged-out-detail]').text()).toBe(
+      'Устройство не синхронизируется, пока на нём снова не войдут: qspace-agent init',
+    );
+    // Device removal button keeps working
+    expect(dev.find('[data-device-menu-btn]').exists()).toBe(true);
+  });
+
   it('counts the folders a device keeps, partial ones separately', async () => {
     const wrapper = mountView();
     await flushPromises();

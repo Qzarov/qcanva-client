@@ -118,7 +118,7 @@ export interface DriveDevice {
   folders?: DriveDeviceFolder[];
 }
 
-export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error';
+export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'logged_out';
 export type DriveRejectedReason = 'too_large' | 'quota' | 'refused';
 
 export interface DriveRejectedItem {
@@ -137,6 +137,8 @@ export interface DriveDeviceSyncStatus {
   lastSyncAt?: string | null;
   lastError?: string | null;
   version?: string | null;
+  /** ISO timestamp when the device signed out. */
+  loggedOutAt?: string | null;
   /** Average transfer speed over about 60 s, bytes per second. Older agents omit it. */
   speedBps?: number | null;
   /** When the pending count last went down (ISO); null: no progress yet. Older agents omit it. */

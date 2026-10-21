@@ -5,7 +5,7 @@ import type { MessageKey } from '../composables/useI18n';
 export type Translate = (key: MessageKey) => string;
 
 /** Shown state of a device sync: the agent states plus "no report yet". `waiting`: only offline devices hold the rest. */
-export type SyncStateKey = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'nodata';
+export type SyncStateKey = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'nodata' | 'logged_out';
 
 /** Pending files that wait for offline devices; absent or invalid counts are 0 (older agents). */
 export function blockedOf(device: Pick<DriveDevice, 'syncStatus'>): { files: number; bytes: number } {
@@ -48,6 +48,7 @@ export function pendingSplit(device: Pick<DriveDevice, 'syncStatus'>): {
 
 export function syncStateKey(device: Pick<DriveDevice, 'syncStatus'>): SyncStateKey {
   const state = device.syncStatus?.state;
+  if (state === 'logged_out') return 'logged_out';
   if (state === 'waiting') return 'waiting';
   if (state === 'syncing') {
     // An agent that did not send "waiting" but reports all pending files as blocked.

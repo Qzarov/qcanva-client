@@ -48,10 +48,10 @@ export interface SafetyContext {
 
 /**
  * Pending files that can move now. A `waiting` device (everything pending sits on offline
- * devices) has none: that is an explained wait, not a stall.
+ * devices) has none: that is an explained wait, not a stall. A `logged_out` device cannot move anything.
  */
 function pendingOf(device: DriveDevice): { files: number; bytes: number } {
-  if (syncStateKey(device) === 'waiting') return { files: 0, bytes: 0 };
+  if (syncStateKey(device) === 'waiting' || syncStateKey(device) === 'logged_out') return { files: 0, bytes: 0 };
   const split = pendingSplit(device);
   return { files: split.movingFiles, bytes: split.movingBytes };
 }
@@ -61,6 +61,15 @@ function hasPending(device: DriveDevice): boolean {
   return p.files > 0 || p.bytes > 0;
 }
 
+/** Check if a device or holder is online: logged-out devices always count as offline. */
+function isHolderOnline(d: { nodeId?: string; lastSeenAt?: string | null }, ctx: SafetyContext): boolean {
+  if (d.nodeId) {
+    const dev = ctx.devices.find((x) => x.id === d.nodeId);
+    if (dev && syncStateKey(dev) === 'logged_out') return false;
+  }
+  return isDeviceOnline(d.lastSeenAt, ctx.now);
+}
+
 /** Moment since which the pending files of a device have not moved (ms), or null when it is moving or unknown. */
 export function stalledSince(device: DriveDevice, ctx: Pick<SafetyContext, 'now' | 'pendingSince'>): number | null {
   if (!hasPending(device)) return null;
@@ -68,8 +77,8 @@ export function stalledSince(device: DriveDevice, ctx: Pick<SafetyContext, 'now'
   let since: number | undefined;
   if (Number.isFinite(progress)) {
     since = progress;
-  } else if (!isDeviceOnline(device.lastSeenAt, ctx.now)) {
-    // Offline: nothing has changed since its last report.
+  } else if (!isDeviceOnline(device.lastSeenAt, ctx.now) || syncStateKey(device) === 'logged_out') {
+    // Offline or logged out: nothing has changed since its last report.
     const reported = Date.parse(device.syncStatusAt ?? device.lastSeenAt ?? '');
     since = Number.isFinite(reported) ? reported : undefined;
   } else if (!(device.syncStatus?.speedBps && device.syncStatus.speedBps > 0)) {
@@ -136,7 +145,7 @@ function findStall(safety: DriveSafety, ctx: SafetyContext): Stall | null {
 
 function stallHint(device: DriveDevice, ctx: SafetyContext): string {
   const { t } = ctx;
-  if (!isDeviceOnline(device.lastSeenAt, ctx.now)) return t('cupSafetyHintOffline').replace('{device}', device.name);
+  if (!isHolderOnline({ nodeId: device.id, lastSeenAt: device.lastSeenAt }, ctx)) return t('cupSafetyHintOffline').replace('{device}', device.name);
   if (device.syncStatus?.state === 'error' && device.syncStatus.lastError) {
     return t('cupSafetyHintError')
       .replace('{device}', device.name)
@@ -155,7 +164,7 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
 
   const nowhere = safety.notOnHub.nowhere;
   if (nowhere.files > 0) {
-    const hasOfflineHolders = safety.notOnHub.devices.some((d) => !isDeviceOnline(d.lastSeenAt, ctx.now));
+    const hasOfflineHolders = safety.notOnHub.devices.some((d) => !isHolderOnline(d, ctx));
     if (!hasOfflineHolders) {
       notices.push({
         id: 'nowhere',
@@ -264,7 +273,7 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
       })
       .filter((d) => d.files > 0);
     const lines = holders.map((d) => {
-      const online = isDeviceOnline(d.lastSeenAt, ctx.now);
+      const online = isHolderOnline(d, ctx);
       const when = formatRelativeTime(d.lastSeenAt, ctx.locale, ctx.now);
       const state = online
         ? t('cupSafetyHolderOnline')
@@ -278,13 +287,14 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
     });
     let hint: string | null = null;
     if (!stall) {
-      const offline = holders.filter((d) => !isDeviceOnline(d.lastSeenAt, ctx.now));
+      const offline = holders.filter((d) => !isHolderOnline(d, ctx));
       if (offline.length) {
         hint = t('cupSafetyHintTurnOn').replace('{name}', offline.map((d) => d.name).join(', '));
       } else if (holders.length) {
         // A device with rejectedFiles > 0 must NOT produce «загружает их сейчас»
         const uploadingHolders = holders.filter((h) => {
           const dev = ctx.devices.find((d) => d.id === h.nodeId);
+          if (dev && syncStateKey(dev) === 'logged_out') return false;
           return !(dev?.syncStatus?.rejectedFiles && dev.syncStatus.rejectedFiles > 0);
         });
         if (uploadingHolders.length) {

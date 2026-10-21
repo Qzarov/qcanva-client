@@ -20,10 +20,11 @@ import { useI18n } from '../composables/useI18n';
 const { t, setLocale } = useI18n();
 
 describe('syncStateKey', () => {
-  it('maps the four agent states and treats anything else as no data', () => {
+  it('maps the agent states and treats anything else as no data', () => {
     for (const state of ['synced', 'syncing', 'paused', 'error'] as const) {
       expect(syncStateKey({ syncStatus: { state } })).toBe(state);
     }
+    expect(syncStateKey({ syncStatus: { state: 'logged_out' } })).toBe('logged_out');
     expect(syncStateKey({ syncStatus: null })).toBe('nodata');
     expect(syncStateKey({})).toBe('nodata');
     expect(syncStateKey({ syncStatus: { state: 'weird' } })).toBe('nodata');
