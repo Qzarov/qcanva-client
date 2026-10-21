@@ -297,8 +297,12 @@ export interface DrivePairingCode {
   expiresAt: string;
 }
 
-/** A device counts as online when the hub heard from it within this window. */
-export const DEVICE_ONLINE_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * A device counts as online when the hub heard from it within this window.
+ * A running agent talks to the hub at least once a minute, so three missed
+ * minutes mean its service is stopped or the PC is gone.
+ */
+export const DEVICE_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 export function isDeviceOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
   if (!lastSeenAt) return false;
