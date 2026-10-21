@@ -24,10 +24,22 @@ export async function adminRequest<T>(path: string, options: RequestInit = {}): 
 
 export type AdminSettingsSource = 'db' | 'env' | 'default';
 
+export interface AdminStorageUsage {
+  usedBytes: number;
+  blobs: number;
+  files: number;
+  /** Disk size set by the admin or the server env; null when unknown. */
+  capacityBytes: number | null;
+  capacitySource: 'db' | 'env' | 'none';
+  freeBytes: number | null;
+}
+
 export interface AdminSettings {
   driveMaxFileBytes: number;
   driveMaxFileBytesDefault: number;
   driveMaxFileBytesSource: AdminSettingsSource;
+  /** Absent on a hub that predates the usage report. */
+  storage?: AdminStorageUsage;
 }
 
 export const adminApi = {
@@ -35,7 +47,7 @@ export const adminApi = {
     return adminRequest<AdminSettings>('/admin/settings');
   },
 
-  updateSettings(body: { driveMaxFileBytes: number | null }): Promise<AdminSettings | { ok: boolean }> {
+  updateSettings(body: { driveMaxFileBytes?: number | null; storageCapacityBytes?: number | null }): Promise<AdminSettings | { ok: boolean }> {
     return adminRequest<AdminSettings | { ok: boolean }>('/admin/settings', {
       method: 'PUT',
       body: JSON.stringify(body),
