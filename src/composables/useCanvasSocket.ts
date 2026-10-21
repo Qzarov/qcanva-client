@@ -2,8 +2,9 @@ import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import type {RulerActor,RulerState,RulerMeasurement,RulerSettings,RulerUpdate} from '../canvas/ruler';
+import { resolveWsOrigin } from '../api/hubOverride';
 
-const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
+const WS_URL = resolveWsOrigin();
 const PENDING_OP_TIMEOUT_MS = 10000;
 
 export interface OnlineUser {
@@ -21,6 +22,13 @@ export interface RemoteCursor {
   x: number;
   y: number;
   color: string;
+}
+
+export interface CanvasRoomState {
+  canvasId?: string;
+  revision: number;
+  imageToken?: string;
+  imageTokenExpiresAt?: string;
 }
 
 export interface RevisionReject {
@@ -70,6 +78,7 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
   let onAckCb: ((ack: { clientOpId: string; revision: number }) => void) | null = null;
   let onChatMessageCb: ((m: any) => void) | null = null;
   let onChatErrorCb: ((e: any) => void) | null = null;
+  let onRoomStateCb: ((data: CanvasRoomState) => void) | null = null;
   let rulerStateCb:((state:RulerState)=>void)|undefined;
   let rulerUpdateCb:((value:RulerMeasurement)=>void)|undefined;
   let rulerClearCb:((value:{socketId:string;gestureId:number})=>void)|undefined;
@@ -127,8 +136,9 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     s.on('ruler-settings',(value:{settings:RulerSettings;serverTime:number})=>rulerSettingsCb?.(value));
     s.on('ruler-error',(value:{reason:string})=>rulerErrorCb?.(value));
 
-    s.on('canvas-room-state', (data: { revision: number }) => {
+    s.on('canvas-room-state', (data: CanvasRoomState) => {
       currentRevision.value = data.revision ?? currentRevision.value;
+      onRoomStateCb?.(data);
     });
 
     s.on('online-users', (users: OnlineUser[]) => {
@@ -393,5 +403,8 @@ export function useCanvasSocket(canvasIdInput: string | { value: string }) {
     sendRoll,
     onChatMessage,
     onChatError,
+    onRoomState: (cb: (data: CanvasRoomState) => void) => {
+      onRoomStateCb = cb;
+    },
   };
 }

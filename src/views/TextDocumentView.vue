@@ -739,6 +739,8 @@ import Link from '@tiptap/extension-link';
 import { isRenderableHref } from '../documents/link-policy';
 import TaskList from '@tiptap/extension-task-list';
 import Image from '@tiptap/extension-image';
+import { useResourceImageTokens } from '../composables/useResourceImageTokens';
+import { TextDocumentImageNodeViewExtension } from '../text-documents/image-node';
 import { QuietTaskItem } from '../text-documents/task-item';
 import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
@@ -818,6 +820,18 @@ export default defineComponent({
     const { backTarget } = useResourceBackTarget();
     const id = route.params.id as string;
     const resolvedId = ref(id);
+    const {
+      imageToken,
+      setImageToken,
+      handleImageError,
+    } = useResourceImageTokens({
+      getResourceId: () => resolvedId.value,
+      resourceType: 'text-document',
+    });
+    watch(imageToken, () => {
+      const view = editor.value?.view;
+      if (view) view.dispatch(view.state.tr);
+    });
     const { show: showToast } = useToast();
     const { notifyReadOnlyEditAttempt } = useReadOnlyNotice();
     const { t, locale } = useI18n();
@@ -2524,6 +2538,11 @@ export default defineComponent({
         }),
         // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
         Image.configure({ inline: false, allowBase64: false }),
+        TextDocumentImageNodeViewExtension.configure({
+          getDocumentId: () => resolvedId.value,
+          getImageToken: () => imageToken.value,
+          onImageError: (imageId, src) => handleImageError(imageId, src),
+        }),
         // Clicking a callout's icon picks its kind (icon + colour) - callout.ts.
         Callout.configure({
           labels: {
@@ -2858,6 +2877,11 @@ export default defineComponent({
         const res = await textDocuments.get(resolvedId.value);
         writeNativeResourceCache('text-document', [id, res.document.id, res.document.slug || ''], res);
         resolvedId.value = res.document.id;
+        const token = res.imageToken || (res as any).document?.imageToken;
+        const expiresAt = res.imageTokenExpiresAt || (res as any).document?.imageTokenExpiresAt;
+        if (token) {
+          setImageToken(token, expiresAt);
+        }
         markResourceOpened('text-document', res.document.id);
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
@@ -3386,6 +3410,11 @@ export default defineComponent({
       if (cached?.value?.document) {
         const res = cached.value;
         resolvedId.value = res.document.id;
+        const token = res.imageToken || (res as any).document?.imageToken;
+        const expiresAt = res.imageTokenExpiresAt || (res as any).document?.imageTokenExpiresAt;
+        if (token) {
+          setImageToken(token, expiresAt);
+        }
         slug.value = res.document.slug || null;
         slugInput.value = slug.value || '';
         title.value = res.document.title || 'Untitled document';

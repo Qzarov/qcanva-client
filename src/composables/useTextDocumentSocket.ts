@@ -1,8 +1,9 @@
 import { PROBE_TIMEOUT_MS, type LivenessResult } from './useCharacterSheetSocket';
 import { ref, onUnmounted } from 'vue';
 import { io, type Socket } from 'socket.io-client';
+import { resolveWsOrigin } from '../api/hubOverride';
 
-const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
+const WS_URL = resolveWsOrigin();
 const PENDING_UPDATE_TIMEOUT_MS = 10000;
 
 export interface PendingTextDocumentUpdate {

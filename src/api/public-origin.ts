@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { resolveApiBase } from './hubOverride';
 
 /**
  * The origin a document/HTML-page share link should be built against.
@@ -14,11 +15,11 @@ import { Capacitor } from '@capacitor/core';
  * `VITE_CANONICAL_ORIGIN` pins the browser path to the canonical domain so
  * share links are consistent even if the user arrives via an old alias
  * (e.g. canvas.qzarov.pro). In dev it is unset, so localhost is used as
- * before. `VITE_API_URL` is still used for the native (Capacitor) path.
+ * before. The API base is still used for the native (Capacitor) path.
  */
 export function getPublicOrigin(): string {
   if (Capacitor.isNativePlatform()) {
-    return (import.meta.env.VITE_API_URL || 'http://localhost:3001/api').replace('/api', '');
+    return resolveApiBase().replace('/api', '');
   }
   return import.meta.env.VITE_CANONICAL_ORIGIN || window.location.origin;
 }
