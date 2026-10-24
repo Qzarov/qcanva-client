@@ -271,10 +271,11 @@ describe('drive API and utilities', () => {
       expect(request).toHaveBeenCalledWith('/drive/replication/under?cursor=c1&limit=50');
     });
 
-    it('isDeviceOnline uses a ten-minute window', () => {
+    it('isDeviceOnline uses a three-minute window', () => {
       const now = Date.parse('2026-10-17T12:00:00Z');
-      expect(isDeviceOnline('2026-10-17T11:55:00Z', now)).toBe(true);
-      expect(isDeviceOnline('2026-10-17T11:40:00Z', now)).toBe(false);
+      expect(isDeviceOnline('2026-10-17T11:58:00Z', now)).toBe(true);
+      expect(isDeviceOnline('2026-10-17T11:57:00Z', now)).toBe(true);
+      expect(isDeviceOnline('2026-10-17T11:56:00Z', now)).toBe(false);
       expect(isDeviceOnline(null, now)).toBe(false);
     });
 

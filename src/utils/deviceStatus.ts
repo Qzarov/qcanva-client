@@ -4,12 +4,58 @@ import type { MessageKey } from '../composables/useI18n';
 /** Translator the helpers use; the view passes `t` of useI18n. */
 export type Translate = (key: MessageKey) => string;
 
-/** Shown state of a device sync: the four agent states plus "no report yet". */
-export type SyncStateKey = 'synced' | 'syncing' | 'paused' | 'error' | 'nodata';
+/** Shown state of a device sync: the agent states plus "no report yet". `waiting`: only offline devices hold the rest. */
+export type SyncStateKey = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'nodata' | 'logged_out';
+
+/** Pending files that wait for offline devices; absent or invalid counts are 0 (older agents). */
+export function blockedOf(device: Pick<DriveDevice, 'syncStatus'>): { files: number; bytes: number } {
+  const files = device.syncStatus?.blockedFiles;
+  const bytes = device.syncStatus?.blockedBytes;
+  return {
+    files: typeof files === 'number' && files > 0 ? Math.floor(files) : 0,
+    bytes: typeof bytes === 'number' && bytes > 0 ? bytes : 0,
+  };
+}
+
+/**
+ * Pending files and bytes split into what can move now and what waits for offline devices.
+ * Blocked is clamped to pending (the agent samples and extrapolates it).
+ */
+export function pendingSplit(device: Pick<DriveDevice, 'syncStatus'>): {
+  files: number;
+  bytes: number;
+  blockedFiles: number;
+  blockedBytes: number;
+  movingFiles: number;
+  movingBytes: number;
+} {
+  const pf = device.syncStatus?.pendingFiles;
+  const pb = device.syncStatus?.pendingBytes;
+  const files = typeof pf === 'number' && pf > 0 ? pf : 0;
+  const bytes = typeof pb === 'number' && pb > 0 ? pb : 0;
+  const blocked = blockedOf(device);
+  const blockedFiles = Math.min(blocked.files, files);
+  const blockedBytes = Math.min(blocked.bytes, bytes);
+  return {
+    files,
+    bytes,
+    blockedFiles,
+    blockedBytes,
+    movingFiles: files - blockedFiles,
+    movingBytes: bytes - blockedBytes,
+  };
+}
 
 export function syncStateKey(device: Pick<DriveDevice, 'syncStatus'>): SyncStateKey {
   const state = device.syncStatus?.state;
-  if (state === 'synced' || state === 'syncing' || state === 'paused' || state === 'error') return state;
+  if (state === 'logged_out') return 'logged_out';
+  if (state === 'waiting') return 'waiting';
+  if (state === 'syncing') {
+    // An agent that did not send "waiting" but reports all pending files as blocked.
+    const split = pendingSplit(device);
+    return split.files > 0 && split.blockedFiles >= split.files ? 'waiting' : 'syncing';
+  }
+  if (state === 'synced' || state === 'paused' || state === 'error') return state;
   return 'nodata';
 }
 
@@ -114,6 +160,31 @@ export function effectiveFolderMode(
   return { mode: device.defaultMode ?? 'none', reason: 'default' };
 }
 
+export interface RootFilesStatus {
+  status: FolderSyncStatus;
+  mode: DriveStorageMode;
+  reason: FolderReason;
+}
+
+/**
+ * Effective status of root files on a device: node.rootFiles if set,
+ * otherwise follows the device root rule (like effectiveFolderMode).
+ */
+export function rootFilesStatus(
+  device: Pick<DriveDevice, 'folders' | 'defaultMode' | 'rootFiles'>,
+): RootFilesStatus {
+  if (device.rootFiles !== undefined && device.rootFiles !== null) {
+    return { status: device.rootFiles, mode: device.rootFiles, reason: 'own' };
+  }
+  const rules = device.folders ?? [];
+  const root = rules.find((r) => r.folderId === null);
+  if (root) {
+    return { status: root.mode, mode: root.mode, reason: 'root' };
+  }
+  const mode = device.defaultMode ?? 'none';
+  return { status: mode, mode, reason: 'default' };
+}
+
 /**
  * Status of a top-level folder on a device. "partial": the folder itself is
  * synced less than something inside it (none/on-demand folder with a synced
@@ -176,4 +247,14 @@ export function plainErrorKey(lastError: string | null | undefined): MessageKey 
 export function plainError(lastError: string | null | undefined, t: Translate): string {
   const key = plainErrorKey(lastError);
   return key ? t(key) : (lastError ?? '');
+}
+
+export type HubFolderStatus = 'empty' | 'full' | 'partial' | 'none';
+
+/** Status of a top-level folder on the hub: empty (0 files), full, partial or none. */
+export function hubFolderStatus(folder: { files: number; onHubFiles: number }): HubFolderStatus {
+  if (folder.files === 0) return 'empty';
+  if (folder.onHubFiles >= folder.files) return 'full';
+  if (folder.onHubFiles > 0) return 'partial';
+  return 'none';
 }

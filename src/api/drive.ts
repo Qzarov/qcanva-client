@@ -39,10 +39,19 @@ export interface DriveFolderCounts {
   folders: number;
 }
 
+/** Everything in the folder's whole subtree. Older hubs omit it. */
+export interface DriveFolderTotals {
+  files: number;
+  bytes: number;
+  folders: number;
+}
+
 export interface DriveFolderResponse {
   folder: DriveFolderNode;
   path: DriveBreadcrumb[];
+  /** Direct children only. */
   counts: DriveFolderCounts;
+  totals?: DriveFolderTotals;
 }
 
 export interface DriveItem {
@@ -105,10 +114,20 @@ export interface DriveDevice {
   syncStatus?: DriveDeviceSyncStatus | null;
   syncStatusAt?: string | null;
   defaultMode?: 'full' | 'on_demand';
+  rootFiles?: DriveStorageMode | null;
   folders?: DriveDeviceFolder[];
 }
 
-export type DriveSyncState = 'synced' | 'syncing' | 'paused' | 'error';
+export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'logged_out';
+export type DriveRejectedReason = 'too_large' | 'quota' | 'refused';
+
+export interface DriveRejectedItem {
+  name: string;
+  path: string;
+  sizeBytes: number;
+  reason: DriveRejectedReason | string;
+  limitBytes?: number | null;
+}
 
 /** What the device agent last reported about its sync. Missing on older hubs. */
 export interface DriveDeviceSyncStatus {
@@ -118,10 +137,21 @@ export interface DriveDeviceSyncStatus {
   lastSyncAt?: string | null;
   lastError?: string | null;
   version?: string | null;
+  /** ISO timestamp when the device signed out. */
+  loggedOutAt?: string | null;
   /** Average transfer speed over about 60 s, bytes per second. Older agents omit it. */
   speedBps?: number | null;
   /** When the pending count last went down (ISO); null: no progress yet. Older agents omit it. */
   lastProgressAt?: string | null;
+  /** Pending files whose bytes are only on offline devices. Older agents omit it (unknown). */
+  blockedFiles?: number | null;
+  /** Their total size in bytes. Older agents omit it. */
+  blockedBytes?: number | null;
+  /** Local files the hub refused to take. Older agents omit it. */
+  rejectedFiles?: number | null;
+  rejectedBytes?: number | null;
+  /** Items refused by the hub (up to 20). */
+  rejected?: DriveRejectedItem[] | null;
 }
 
 /** A files-and-bytes pair of the safety summary. */
@@ -155,6 +185,19 @@ export interface DriveSafety {
   uploading: DriveSafetyCount;
 }
 
+export interface DriveSafetyFolderItem {
+  folderId: string | null;
+  name: string | null;
+  files: number;
+  bytes: number;
+  onHubFiles: number;
+  onHubBytes: number;
+}
+
+export interface DriveSafetyFoldersResponse {
+  folders: DriveSafetyFolderItem[];
+}
+
 /** One storage rule of a device with the folder name resolved by the hub. */
 export interface DriveDeviceFolder {
   /** null is the device root rule. */
@@ -180,7 +223,22 @@ export interface DriveStorageRule {
 export interface DriveDevicePolicy {
   /** Derived by the hub from the device kind; a root rule overrides it. */
   defaultMode: 'full' | 'on_demand';
+  rootFiles?: DriveStorageMode | null;
   rules: DriveStorageRule[];
+}
+
+export interface DriveLostItem {
+  fileId: string;
+  name: string;
+  path: string;
+  sizeBytes: number;
+  lastDeviceName: string | null;
+}
+
+export interface DriveLostResponse {
+  items: DriveLostItem[];
+  nextCursor: string | null;
+  total?: number;
 }
 
 export interface DriveUnderReplicatedItem {
@@ -239,8 +297,12 @@ export interface DrivePairingCode {
   expiresAt: string;
 }
 
-/** A device counts as online when the hub heard from it within this window. */
-export const DEVICE_ONLINE_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * A device counts as online when the hub heard from it within this window.
+ * A running agent talks to the hub at least once a minute, so three missed
+ * minutes mean its service is stopped or the PC is gone.
+ */
+export const DEVICE_ONLINE_WINDOW_MS = 3 * 60 * 1000;
 
 export function isDeviceOnline(lastSeenAt: string | null | undefined, now: number = Date.now()): boolean {
   if (!lastSeenAt) return false;
@@ -529,6 +591,11 @@ export const driveApi = {
     return request<DriveSafety>('/drive/safety');
   },
 
+  /** Whole subtree counts of live files per top-level folder + root files. */
+  getSafetyFolders(): Promise<DriveSafetyFoldersResponse> {
+    return request<DriveSafetyFoldersResponse>('/drive/safety/folders');
+  },
+
   updateDevice(id: string, updates: { keeper: boolean }): Promise<DriveDevice> {
     return request<DriveDevice>(`/drive/devices/${encodeURIComponent(id)}`, {
       method: 'PATCH',
@@ -578,6 +645,18 @@ export const driveApi = {
   getUnderReplicated(params: { cursor?: string | null; limit?: number } = {}): Promise<DriveUnderReplicatedResponse> {
     const qs = buildQueryString({ cursor: params.cursor, limit: params.limit });
     return request<DriveUnderReplicatedResponse>(`/drive/replication/under${qs}`);
+  },
+
+  getLostFiles(params: { cursor?: string | null; limit?: number } = {}): Promise<DriveLostResponse> {
+    const qs = buildQueryString({ cursor: params.cursor, limit: params.limit });
+    return request<DriveLostResponse>(`/drive/safety/lost${qs}`);
+  },
+
+  trashLostFiles(body: { fileIds?: string[]; all?: boolean } = { all: true }): Promise<{ trashed: number }> {
+    return request<{ trashed: number }>('/drive/safety/lost/trash', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
   },
 
   uploadFile,

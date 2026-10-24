@@ -1,10 +1,13 @@
-import { isDeviceOnline, type DriveDevice, type DriveSafety } from '../api/drive';
+import { isDeviceOnline, type DriveDevice, type DriveRejectedItem, type DriveSafety } from '../api/drive';
 import {
   filesPluralKey,
+  formatBytes,
   formatDuration,
   formatFilesAndSize,
   formatRelativeTime,
+  pendingSplit,
   plainError,
+  syncStateKey,
   type Translate,
 } from './deviceStatus';
 
@@ -17,13 +20,17 @@ export type SafetyLevel = 'ok' | 'attention' | 'loss';
 
 /** One statement of the "Are my files safe?" block. */
 export interface SafetyNotice {
-  id: 'nowhere' | 'stalled' | 'notOnHub' | 'uploading' | 'ok';
+  id: 'nowhere' | 'lost' | 'rejected' | 'stalled' | 'notOnHub' | 'uploading' | 'ok';
   level: SafetyLevel;
   title: string;
   /** Muted lines under the title, one sentence or one device per line. */
   lines: string[];
   /** One plain instruction, or null. */
   hint: string | null;
+  /** Link for the hint (e.g. admin link). */
+  hintLink?: { text: string; to: string } | null;
+  /** True when nowhere files are permanently lost (no registered offline holders). */
+  isLost?: boolean;
 }
 
 export interface SafetyContext {
@@ -31,6 +38,7 @@ export interface SafetyContext {
   locale: string;
   now: number;
   devices: DriveDevice[];
+  isAdmin?: boolean;
   /**
    * When the pending count of an online device was first seen unchanged (ms), for agents that do
    * not report `lastProgressAt`. Undefined: not tracked.
@@ -38,18 +46,28 @@ export interface SafetyContext {
   pendingSince?: (deviceId: string) => number | undefined;
 }
 
+/**
+ * Pending files that can move now. A `waiting` device (everything pending sits on offline
+ * devices) has none: that is an explained wait, not a stall. A `logged_out` device cannot move anything.
+ */
 function pendingOf(device: DriveDevice): { files: number; bytes: number } {
-  const files = device.syncStatus?.pendingFiles;
-  const bytes = device.syncStatus?.pendingBytes;
-  return {
-    files: typeof files === 'number' && files > 0 ? files : 0,
-    bytes: typeof bytes === 'number' && bytes > 0 ? bytes : 0,
-  };
+  if (syncStateKey(device) === 'waiting' || syncStateKey(device) === 'logged_out') return { files: 0, bytes: 0 };
+  const split = pendingSplit(device);
+  return { files: split.movingFiles, bytes: split.movingBytes };
 }
 
 function hasPending(device: DriveDevice): boolean {
   const p = pendingOf(device);
   return p.files > 0 || p.bytes > 0;
+}
+
+/** Check if a device or holder is online: logged-out devices always count as offline. */
+function isHolderOnline(d: { nodeId?: string; lastSeenAt?: string | null }, ctx: SafetyContext): boolean {
+  if (d.nodeId) {
+    const dev = ctx.devices.find((x) => x.id === d.nodeId);
+    if (dev && syncStateKey(dev) === 'logged_out') return false;
+  }
+  return isDeviceOnline(d.lastSeenAt, ctx.now);
 }
 
 /** Moment since which the pending files of a device have not moved (ms), or null when it is moving or unknown. */
@@ -59,8 +77,8 @@ export function stalledSince(device: DriveDevice, ctx: Pick<SafetyContext, 'now'
   let since: number | undefined;
   if (Number.isFinite(progress)) {
     since = progress;
-  } else if (!isDeviceOnline(device.lastSeenAt, ctx.now)) {
-    // Offline: nothing has changed since its last report.
+  } else if (!isDeviceOnline(device.lastSeenAt, ctx.now) || syncStateKey(device) === 'logged_out') {
+    // Offline or logged out: nothing has changed since its last report.
     const reported = Date.parse(device.syncStatusAt ?? device.lastSeenAt ?? '');
     since = Number.isFinite(reported) ? reported : undefined;
   } else if (!(device.syncStatus?.speedBps && device.syncStatus.speedBps > 0)) {
@@ -127,7 +145,7 @@ function findStall(safety: DriveSafety, ctx: SafetyContext): Stall | null {
 
 function stallHint(device: DriveDevice, ctx: SafetyContext): string {
   const { t } = ctx;
-  if (!isDeviceOnline(device.lastSeenAt, ctx.now)) return t('cupSafetyHintOffline').replace('{device}', device.name);
+  if (!isHolderOnline({ nodeId: device.id, lastSeenAt: device.lastSeenAt }, ctx)) return t('cupSafetyHintOffline').replace('{device}', device.name);
   if (device.syncStatus?.state === 'error' && device.syncStatus.lastError) {
     return t('cupSafetyHintError')
       .replace('{device}', device.name)
@@ -146,15 +164,71 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
 
   const nowhere = safety.notOnHub.nowhere;
   if (nowhere.files > 0) {
+    const hasOfflineHolders = safety.notOnHub.devices.some((d) => !isHolderOnline(d, ctx));
+    if (!hasOfflineHolders) {
+      notices.push({
+        id: 'nowhere',
+        level: 'loss',
+        title: pick(nowhere.files, ctx, 'cupSafetyLost', 'cupSafetyLostOne').replace(
+          '{files}',
+          sizeOf(nowhere.files, nowhere.bytes, ctx),
+        ),
+        lines: [t('cupSafetyLostWhy')],
+        hint: null,
+        isLost: true,
+      });
+    } else {
+      notices.push({
+        id: 'nowhere',
+        level: 'loss',
+        title: pick(nowhere.files, ctx, 'cupSafetyNowhere', 'cupSafetyNowhereOne').replace(
+          '{files}',
+          sizeOf(nowhere.files, nowhere.bytes, ctx),
+        ),
+        lines: [t('cupSafetyNowhereWhy')],
+        hint: t('cupSafetyNowhereHint'),
+        isLost: false,
+      });
+    }
+  }
+
+  const rejectedDevices = ctx.devices.filter(
+    (d) => (d.syncStatus?.rejectedFiles ?? 0) > 0,
+  );
+  let totalRejectedFiles = 0;
+  let totalRejectedBytes = 0;
+  if (rejectedDevices.length > 0) {
+    const allRejected: DriveRejectedItem[] = [];
+    for (const d of rejectedDevices) {
+      totalRejectedFiles += d.syncStatus?.rejectedFiles ?? 0;
+      totalRejectedBytes += d.syncStatus?.rejectedBytes ?? 0;
+      if (Array.isArray(d.syncStatus?.rejected)) {
+        allRejected.push(...d.syncStatus.rejected);
+      }
+    }
+    const itemLines = allRejected.slice(0, 3).map((item) => {
+      let reason = '';
+      if (item.reason === 'too_large') {
+        const limit = item.limitBytes ? formatBytes(item.limitBytes) : '';
+        reason = limit ? t('cupRejectedTooLarge').replace('{limit}', limit) : t('cupRejectedTooLargeNoLimit');
+      } else if (item.reason === 'quota') {
+        reason = t('cupRejectedQuota');
+      } else {
+        reason = t('cupRejectedRefused');
+      }
+      return `${item.name} (${formatBytes(item.sizeBytes)}) — ${reason}`;
+    });
+    const hintText = ctx.isAdmin ? t('cupSafetyAdminHint') : t('cupSafetyNonAdminHint');
     notices.push({
-      id: 'nowhere',
-      level: 'loss',
-      title: pick(nowhere.files, ctx, 'cupSafetyNowhere', 'cupSafetyNowhereOne').replace(
+      id: 'rejected',
+      level: 'attention',
+      title: pick(totalRejectedFiles, ctx, 'cupSafetyRejected', 'cupSafetyRejectedOne').replace(
         '{files}',
-        sizeOf(nowhere.files, nowhere.bytes, ctx),
+        sizeOf(totalRejectedFiles, totalRejectedBytes, ctx),
       ),
-      lines: [t('cupSafetyNowhereWhy')],
-      hint: t('cupSafetyNowhereHint'),
+      lines: itemLines,
+      hint: hintText,
+      hintLink: ctx.isAdmin ? { text: hintText, to: '/admin#storage' } : null,
     });
   }
 
@@ -183,10 +257,23 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
     files: safety.notOnHub.files - nowhere.files,
     bytes: safety.notOnHub.bytes - nowhere.bytes,
   };
-  if (held.files > 0) {
-    const holders = safety.notOnHub.devices.filter((d) => d.files > 0);
+  // If all held files are already accounted for by rejected notices, don't show a redundant notOnHub block
+  const heldNonRejectedFiles = totalRejectedFiles > 0 ? Math.max(0, held.files - totalRejectedFiles) : held.files;
+  if (held.files > 0 && (totalRejectedFiles === 0 || heldNonRejectedFiles > 0)) {
+    // Files the hub refused are reported in the "not uploading" notice above;
+    // here they must not read as "uploading".
+    const rejectedOf = (nodeId: string) => {
+      const st = ctx.devices.find((x) => x.id === nodeId)?.syncStatus;
+      return { files: st?.rejectedFiles ?? 0, bytes: st?.rejectedBytes ?? 0 };
+    };
+    const holders = safety.notOnHub.devices
+      .map((d) => {
+        const r = rejectedOf(d.nodeId);
+        return { ...d, files: Math.max(0, d.files - r.files), bytes: Math.max(0, d.bytes - r.bytes) };
+      })
+      .filter((d) => d.files > 0);
     const lines = holders.map((d) => {
-      const online = isDeviceOnline(d.lastSeenAt, ctx.now);
+      const online = isHolderOnline(d, ctx);
       const when = formatRelativeTime(d.lastSeenAt, ctx.locale, ctx.now);
       const state = online
         ? t('cupSafetyHolderOnline')
@@ -200,21 +287,29 @@ export function buildSafetyNotices(safety: DriveSafety, ctx: SafetyContext): Saf
     });
     let hint: string | null = null;
     if (!stall) {
-      const offline = holders.filter((d) => !isDeviceOnline(d.lastSeenAt, ctx.now));
+      const offline = holders.filter((d) => !isHolderOnline(d, ctx));
       if (offline.length) {
         hint = t('cupSafetyHintTurnOn').replace('{name}', offline.map((d) => d.name).join(', '));
       } else if (holders.length) {
-        hint = t('cupSafetyHintUploading').replace('{name}', holders.map((d) => d.name).join(', '));
-        const eta = etaMs(safety, ctx.devices);
-        if (eta !== null) hint += ` ${etaText(eta, ctx)}`;
+        // A device with rejectedFiles > 0 must NOT produce «загружает их сейчас»
+        const uploadingHolders = holders.filter((h) => {
+          const dev = ctx.devices.find((d) => d.id === h.nodeId);
+          if (dev && syncStateKey(dev) === 'logged_out') return false;
+          return !(dev?.syncStatus?.rejectedFiles && dev.syncStatus.rejectedFiles > 0);
+        });
+        if (uploadingHolders.length) {
+          hint = t('cupSafetyHintUploading').replace('{name}', uploadingHolders.map((d) => d.name).join(', '));
+          const eta = etaMs(safety, ctx.devices);
+          if (eta !== null) hint += ` ${etaText(eta, ctx)}`;
+        }
       }
     }
     notices.push({
       id: 'notOnHub',
       level: 'attention',
-      title: pick(held.files, ctx, 'cupSafetyNotOnHub', 'cupSafetyNotOnHubOne').replace(
+      title: pick(heldNonRejectedFiles, ctx, 'cupSafetyNotOnHub', 'cupSafetyNotOnHubOne').replace(
         '{files}',
-        sizeOf(held.files, held.bytes, ctx),
+        sizeOf(heldNonRejectedFiles, Math.max(0, held.bytes - totalRejectedBytes), ctx),
       ),
       lines,
       hint,
