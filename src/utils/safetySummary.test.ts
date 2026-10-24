@@ -197,6 +197,41 @@ describe('buildSafetyNotices: the upload is stuck', () => {
   });
 });
 
+describe('buildSafetyNotices: waiting for offline devices is not a stall', () => {
+  const waiting = safety({ uploading: { files: 3, bytes: 300 * MB } });
+
+  it('ignores a waiting device however long it has not moved', () => {
+    const d = uploader(
+      { state: 'waiting', blockedFiles: 3, blockedBytes: 300 * MB, lastProgressAt: ago(5 * HOUR), speedBps: 0 },
+      { lastSeenAt: ago(5_000) },
+    );
+    expect(stalledSince(d, { now: NOW })).toBeNull();
+    const notices = buildSafetyNotices(waiting, ctx([d]));
+    expect(notices.map((n) => n.id)).not.toContain('stalled');
+    expect(notices[0]!.title).not.toContain('not moving');
+  });
+
+  it('ignores a syncing device whose pending files are all blocked, even when it is offline', () => {
+    const d = uploader({ blockedFiles: 3, blockedBytes: 300 * MB }, { lastSeenAt: ago(3 * HOUR), syncStatusAt: ago(3 * HOUR) });
+    expect(stalledSince(d, { now: NOW })).toBeNull();
+    expect(buildSafetyNotices(waiting, ctx([d])).map((n) => n.id)).not.toContain('stalled');
+  });
+
+  it('still reports a stall when the files that could move do not move', () => {
+    const d = uploader({ blockedFiles: 1, blockedBytes: 100 * MB, lastProgressAt: ago(25 * MIN), speedBps: 0 });
+    expect(stalledSince(d, { now: NOW })).toBe(NOW - 25 * MIN);
+    const [n] = buildSafetyNotices(waiting, ctx([d]));
+    expect(n!.id).toBe('stalled');
+    // Only the 2 files (200 MB) that could move are called stuck.
+    expect(n!.lines[0]).toContain('2 files (200 MB)');
+  });
+
+  it('does not count blocked files in the upload estimate', () => {
+    const d = uploader({ state: 'waiting', blockedFiles: 3, blockedBytes: 300 * MB, speedBps: 1024 });
+    expect(etaMs(waiting, [d])).toBeNull();
+  });
+});
+
 describe('buildSafetyNotices: files only on devices', () => {
   const holders = (devices: DriveSafety['notOnHub']['devices']) =>
     safety({
@@ -241,6 +276,19 @@ describe('buildSafetyNotices: files only on devices', () => {
     );
     expect(m!.hint).toBe('Laptop is uploading them now. About 2 minutes.');
   });
+
+  it('treats a logged-out device as offline even if lastSeenAt is fresh', () => {
+    const loggedOutDev = device({
+      id: 'd-lo',
+      name: 'LoggedOutPC',
+      lastSeenAt: ago(5_000),
+      syncStatus: { state: 'logged_out', loggedOutAt: ago(5_000), pendingFiles: 2, pendingBytes: 2 * MB },
+    });
+    const holder = { nodeId: 'd-lo', name: 'LoggedOutPC', kind: 'pc', lastSeenAt: ago(5_000), files: 2, bytes: 2 * MB };
+    const [n] = buildSafetyNotices(holders([holder]), ctx([loggedOutDev], 'ru'));
+    expect(n!.lines[0]).toContain('не на связи');
+    expect(n!.hint).toBe('Включите LoggedOutPC и запустите Q Space — файлы загрузятся на сервер сами.');
+  });
 });
 
 describe('buildSafetyNotices: files found nowhere', () => {
@@ -269,9 +317,133 @@ describe('buildSafetyNotices: files found nowhere', () => {
 
   it('uses the singular form', () => {
     const s = safety({
-      notOnHub: { files: 1, bytes: MB, devices: [], nowhere: { files: 1, bytes: MB } },
+      notOnHub: {
+        files: 1,
+        bytes: MB,
+        devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(HOUR), files: 0, bytes: 0 }],
+        nowhere: { files: 1, bytes: MB },
+      },
     });
     expect(buildSafetyNotices(s, ctx([], 'ru'))[0]!.title).toBe('1 файл (1 MB) не найден ни на одном устройстве');
     expect(buildSafetyNotices(s, ctx([]))[0]!.title).toBe('1 file (1 MB) is not found on any device');
+  });
+
+  it('uses the lost files sentence when nowhere > 0 and no offline holders remain', () => {
+    const s = safety({
+      notOnHub: { files: 1, bytes: MB, devices: [], nowhere: { files: 1, bytes: MB } },
+    });
+    expect(buildSafetyNotices(s, ctx([], 'ru'))[0]!.title).toBe('1 файл (1 MB) потерян');
+    expect(buildSafetyNotices(s, ctx([]))[0]!.title).toBe('1 file (1 MB) is lost');
+    expect(buildSafetyNotices(s, ctx([]))[0]!.isLost).toBe(true);
+
+    const sMany = safety({
+      notOnHub: { files: 5, bytes: 5 * MB, devices: [], nowhere: { files: 5, bytes: 5 * MB } },
+    });
+    expect(buildSafetyNotices(sMany, ctx([], 'ru'))[0]!.title).toBe('5 файлов (5 MB) потеряны');
+    expect(buildSafetyNotices(sMany, ctx([]))[0]!.title).toBe('5 files (5 MB) are lost');
+  });
+
+  it('treats a logged-out holder as an offline holder so nowhere files are not marked lost', () => {
+    const loggedOutDev = device({
+      id: 'd-lo',
+      name: 'LoggedOutPC',
+      lastSeenAt: ago(5_000),
+      syncStatus: { state: 'logged_out', loggedOutAt: ago(5_000), pendingFiles: 0, pendingBytes: 0 },
+    });
+    const s = safety({
+      notOnHub: {
+        files: 1,
+        bytes: MB,
+        devices: [{ nodeId: 'd-lo', name: 'LoggedOutPC', kind: 'pc', lastSeenAt: ago(5_000), files: 0, bytes: 0 }],
+        nowhere: { files: 1, bytes: MB },
+      },
+    });
+    const [n] = buildSafetyNotices(s, ctx([loggedOutDev]));
+    expect(n!.isLost).toBe(false);
+    expect(n!.title).toBe('1 file (1 MB) is not found on any device');
+  });
+});
+
+describe('buildSafetyNotices: rejected uploads', () => {
+  it('does not call refused files "uploading" in the only-on-devices notice', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 3,
+      pendingBytes: 90 * MB,
+      rejectedFiles: 1,
+      rejectedBytes: 80 * MB,
+      rejected: [{ name: 'big80.bin', path: 'big80.bin', sizeBytes: 80 * MB, reason: 'too_large', limitBytes: 50 * MB }],
+    });
+    const s = safety({
+      notOnHub: { files: 3, bytes: 90 * MB, devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(5_000), files: 3, bytes: 90 * MB }], nowhere: { files: 0, bytes: 0 } },
+      uploading: { files: 3, bytes: 90 * MB },
+    });
+    const notices = buildSafetyNotices(s, ctx([d], 'en'));
+    const held = notices.find((n) => n.id === 'notOnHub');
+    expect(held).toBeDefined();
+    expect(held!.title).toContain('2 files (10 MB)');
+    expect(held!.lines.join(' ')).toContain('Work PC: 2 files (10 MB)');
+  });
+
+  it('drops a device from the only-on-devices notice when all its files are refused', () => {
+    const d = uploader({ state: 'error', pendingFiles: 1, pendingBytes: 80 * MB, rejectedFiles: 1, rejectedBytes: 80 * MB,
+      rejected: [{ name: 'big80.bin', path: 'big80.bin', sizeBytes: 80 * MB, reason: 'too_large', limitBytes: 50 * MB }] });
+    const s = safety({
+      notOnHub: { files: 1, bytes: 80 * MB, devices: [{ nodeId: 'd1', name: 'Work PC', kind: 'pc', lastSeenAt: ago(5_000), files: 1, bytes: 80 * MB }], nowhere: { files: 0, bytes: 0 } },
+    });
+    const notices = buildSafetyNotices(s, ctx([d], 'en'));
+    expect(notices.some((n) => n.id === 'notOnHub')).toBe(false);
+    expect(notices.some((n) => n.id === 'rejected')).toBe(true);
+  });
+
+  it('shows amber rejected notice with item reasons and admin link', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 2,
+      pendingBytes: 30 * MB,
+      rejectedFiles: 2,
+      rejectedBytes: 30 * MB,
+      rejected: [
+        { name: 'big.iso', path: 'big.iso', sizeBytes: 20 * MB, reason: 'too_large', limitBytes: 10 * MB },
+        { name: 'full.zip', path: 'full.zip', sizeBytes: 10 * MB, reason: 'quota', limitBytes: null },
+      ],
+    });
+    const s = safety({ uploading: { files: 2, bytes: 30 * MB } });
+    const notices = buildSafetyNotices(s, { ...ctx([d], 'ru'), isAdmin: true });
+
+    const rejected = notices.find((n) => n.id === 'rejected');
+    expect(rejected).toBeDefined();
+    expect(rejected!.level).toBe('attention');
+    expect(rejected!.title).toBe('2 файла (30 MB) не загружаются на сервер');
+    expect(rejected!.lines).toEqual([
+      'big.iso (20 MB) — больше лимита сервера 10 MB',
+      'full.zip (10 MB) — нет места в вашем хранилище',
+    ]);
+    expect(rejected!.hint).toBe('Поднимите лимит в админке');
+    expect(rejected!.hintLink).toEqual({ to: '/admin#storage', text: 'Поднимите лимит в админке' });
+
+    // Must NOT produce "загружает их сейчас"
+    expect(notices.some((n) => n.id === 'uploading')).toBe(false);
+  });
+
+  it('shows non-admin hint when user is not admin and handles refused reason', () => {
+    const d = uploader({
+      state: 'syncing',
+      pendingFiles: 1,
+      pendingBytes: 5 * MB,
+      rejectedFiles: 1,
+      rejectedBytes: 5 * MB,
+      rejected: [
+        { name: 'secret.dat', path: 'secret.dat', sizeBytes: 5 * MB, reason: 'refused', limitBytes: null },
+      ],
+    });
+    const s = safety({ uploading: { files: 1, bytes: 5 * MB } });
+    const notices = buildSafetyNotices(s, { ...ctx([d], 'ru'), isAdmin: false });
+
+    const rejected = notices.find((n) => n.id === 'rejected');
+    expect(rejected).toBeDefined();
+    expect(rejected!.hint).toBe('Попросите администратора поднять лимит');
+    expect(rejected!.hintLink).toBeNull();
+    expect(rejected!.lines[0]).toBe('secret.dat (5 MB) — сервер отказал');
   });
 });

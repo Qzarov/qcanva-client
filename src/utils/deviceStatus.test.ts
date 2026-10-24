@@ -12,19 +12,45 @@ import {
   formatDuration,
   formatFiles,
   plainError,
+  pendingSplit,
+  rootFilesStatus,
 } from './deviceStatus';
 import { useI18n } from '../composables/useI18n';
 
 const { t, setLocale } = useI18n();
 
 describe('syncStateKey', () => {
-  it('maps the four agent states and treats anything else as no data', () => {
+  it('maps the agent states and treats anything else as no data', () => {
     for (const state of ['synced', 'syncing', 'paused', 'error'] as const) {
       expect(syncStateKey({ syncStatus: { state } })).toBe(state);
     }
+    expect(syncStateKey({ syncStatus: { state: 'logged_out' } })).toBe('logged_out');
     expect(syncStateKey({ syncStatus: null })).toBe('nodata');
     expect(syncStateKey({})).toBe('nodata');
     expect(syncStateKey({ syncStatus: { state: 'weird' } })).toBe('nodata');
+  });
+});
+
+describe('syncStateKey: waiting for offline devices', () => {
+  it('knows the waiting state', () => {
+    expect(syncStateKey({ syncStatus: { state: 'waiting', pendingFiles: 2, blockedFiles: 2 } })).toBe('waiting');
+  });
+  it('shows syncing as waiting when every pending file is blocked, but not when some still move', () => {
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 4 } })).toBe('waiting');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 9 } })).toBe('waiting');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4, blockedFiles: 1 } })).toBe('syncing');
+    // Older agents send no blocked counts.
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 4 } })).toBe('syncing');
+    expect(syncStateKey({ syncStatus: { state: 'syncing', pendingFiles: 0, blockedFiles: 0 } })).toBe('syncing');
+  });
+  it('splits pending into moving and blocked, clamping blocked to pending', () => {
+    expect(pendingSplit({ syncStatus: { state: 'syncing', pendingFiles: 5, pendingBytes: 500, blockedFiles: 2, blockedBytes: 200 } })).toEqual({
+      files: 5, bytes: 500, blockedFiles: 2, blockedBytes: 200, movingFiles: 3, movingBytes: 300,
+    });
+    expect(pendingSplit({ syncStatus: { state: 'syncing', pendingFiles: 2, pendingBytes: 50, blockedFiles: 7, blockedBytes: 99 } })).toMatchObject({
+      blockedFiles: 2, blockedBytes: 50, movingFiles: 0, movingBytes: 0,
+    });
+    expect(pendingSplit({})).toMatchObject({ files: 0, blockedFiles: 0, movingFiles: 0 });
   });
 });
 
@@ -222,5 +248,41 @@ describe('plainError', () => {
     expect(plainError('connection refused', t)).toBe('Cannot reach the server');
     expect(plainError('weird failure 42', t)).toBe('weird failure 42');
     expect(plainError(null, t)).toBe('');
+  });
+});
+
+describe('rootFilesStatus', () => {
+  it('uses node.rootFiles if explicitly set', () => {
+    expect(rootFilesStatus({ rootFiles: 'full', folders: [{ folderId: null, name: null, mode: 'none' }] })).toEqual({
+      status: 'full',
+      mode: 'full',
+      reason: 'own',
+    });
+    expect(rootFilesStatus({ rootFiles: 'on_demand', folders: [{ folderId: null, name: null, mode: 'full' }] })).toEqual({
+      status: 'on_demand',
+      mode: 'on_demand',
+      reason: 'own',
+    });
+  });
+
+  it('falls back to the device root rule when rootFiles is null or absent', () => {
+    expect(rootFilesStatus({ rootFiles: null, folders: [{ folderId: null, name: null, mode: 'none' }] })).toEqual({
+      status: 'none',
+      mode: 'none',
+      reason: 'root',
+    });
+    expect(rootFilesStatus({ folders: [{ folderId: null, name: null, mode: 'full' }] })).toEqual({
+      status: 'full',
+      mode: 'full',
+      reason: 'root',
+    });
+  });
+
+  it('falls back to defaultMode when no root rule and no rootFiles', () => {
+    expect(rootFilesStatus({ defaultMode: 'on_demand', folders: [] })).toEqual({
+      status: 'on_demand',
+      mode: 'on_demand',
+      reason: 'default',
+    });
   });
 });

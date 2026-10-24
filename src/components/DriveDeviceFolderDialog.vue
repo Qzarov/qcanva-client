@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { X } from '@lucide/vue';
-import { driveApi, type DriveDevice, type DriveFolderCounts } from '../api/drive';
+import { driveApi, type DriveDevice, type DriveFolderCounts, type DriveFolderTotals } from '../api/drive';
 import { useI18n } from '../composables/useI18n';
-import { plainError, syncStateKey, type TopFolderStatus } from '../utils/deviceStatus';
+import { formatFilesAndSize, plainError, syncStateKey, type TopFolderStatus } from '../utils/deviceStatus';
 
 /** Read-only details of one top-level folder on one device (Q Control). */
 const props = defineProps<{
   device: DriveDevice;
   folder: { id: string; name: string };
   info: TopFolderStatus;
+  isRootFiles?: boolean;
 }>();
+
+const isRoot = computed(() => !!props.isRootFiles || props.folder.id === 'root');
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -19,6 +22,8 @@ const { t, locale } = useI18n();
 const dialogEl = ref<HTMLElement | null>(null);
 const closeBtn = ref<HTMLButtonElement | null>(null);
 const counts = ref<DriveFolderCounts | null>(null);
+/** Whole-subtree totals; null with an older hub, which then only gives the direct counts. */
+const totals = ref<DriveFolderTotals | null>(null);
 const countsLoading = ref(true);
 const countsError = ref(false);
 
@@ -126,7 +131,9 @@ onMounted(async () => {
   document.addEventListener('keydown', onKeydown);
   void nextTick(() => closeBtn.value?.focus());
   try {
-    counts.value = (await driveApi.getFolder(props.folder.id)).counts;
+    const res = await driveApi.getFolder(props.folder.id);
+    counts.value = res.counts;
+    totals.value = res.totals ?? null;
   } catch {
     countsError.value = true;
   } finally {
@@ -195,20 +202,22 @@ onBeforeUnmount(() => {
           </dd>
         </div>
 
-        <div class="fd-row">
+        <div v-if="isRoot ? !!totals : true" class="fd-row">
           <dt>{{ t('cupFolderFiles') }}</dt>
           <dd data-fd-files>
             <template v-if="countsLoading">{{ t('loading') }}</template>
             <template v-else-if="countsError">{{ t('cupFolderCountsFailed') }}</template>
-            <template v-else>{{ fileCount }}</template>
+            <template v-else-if="totals">{{ formatFilesAndSize(totals.files, totals.bytes, locale, t) }}</template>
+            <template v-else-if="!isRoot">{{ t('cupFolderDirectOnly').replace('{n}', String(fileCount)) }}</template>
           </dd>
         </div>
-        <div class="fd-row">
+        <div v-if="!isRoot" class="fd-row">
           <dt>{{ t('cupFolderSubfolders') }}</dt>
           <dd data-fd-folders>
             <template v-if="countsLoading">{{ t('loading') }}</template>
             <template v-else-if="countsError">{{ t('cupFolderCountsFailed') }}</template>
-            <template v-else>{{ counts?.folders ?? 0 }}</template>
+            <template v-else-if="totals">{{ totals.folders }}</template>
+            <template v-else>{{ t('cupFolderDirectOnly').replace('{n}', String(counts?.folders ?? 0)) }}</template>
           </dd>
         </div>
         <div class="fd-row">
@@ -225,7 +234,7 @@ onBeforeUnmount(() => {
         </div>
       </dl>
 
-      <footer class="fd-footer">
+      <footer v-if="!isRoot" class="fd-footer">
         <router-link
           :to="`/drive/${encodeURIComponent(folder.id)}`"
           class="fd-open-link"
