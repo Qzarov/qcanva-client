@@ -802,6 +802,8 @@ import { useReadOnlyNotice } from '../composables/useReadOnlyNotice';
 import { readNativeResourceCache, writeNativeResourceCache } from '../composables/useNativeResourceCache';
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
+import { createAwarenessAdapter } from '../text-documents/awareness-adapter';
+import { openLocalCopy, isLocalCopyOrigin, type LocalCopy } from '../text-documents/offline-store';
 import { useI18n } from '../composables/useI18n';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
@@ -837,26 +839,13 @@ export default defineComponent({
     const { t, locale } = useI18n();
 
     const ydoc = new Y.Doc();
-    const awarenessStates = new Map<number, Record<string, unknown>>();
-    let localAwarenessState: Record<string, unknown> = {};
-    const awarenessProvider = {
-      awareness: {
-        clientID: ydoc.clientID,
-        states: awarenessStates,
-        getStates: () => awarenessStates,
-        getLocalState: () => localAwarenessState,
-        setLocalState: (state: Record<string, unknown>) => {
-          localAwarenessState = state || {};
-          awarenessStates.set(ydoc.clientID, localAwarenessState);
-        },
-        setLocalStateField: (field: string, value: unknown) => {
-          localAwarenessState = { ...localAwarenessState, [field]: value };
-          awarenessStates.set(ydoc.clientID, localAwarenessState);
-        },
-        on: () => undefined,
-        off: () => undefined,
+    let sendAwarenessSocket: ((state: unknown) => void) | null = null;
+    const awarenessAdapter = createAwarenessAdapter({
+      doc: ydoc,
+      send: (state) => {
+        sendAwarenessSocket?.(state);
       },
-    } as any;
+    });
 
     const title = ref('');
     useDocumentTitle(title);
@@ -971,6 +960,9 @@ export default defineComponent({
     const selectedHistory = ref<any | null>(null);
     const restoringHistory = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
+    const unsentLocal = ref(false);
+    let localCopy: LocalCopy | null = null;
+    let localCopyAttempted = false;
     let socketInitialized = false;
     let applyingInitialState = false;
 
@@ -997,8 +989,15 @@ export default defineComponent({
       failed: 'syncFailed',
     } as const;
     const syncStatus = computed(() => {
-      const kind = resolveSyncStatus({ failed: !!syncIssue.value, offline: !connected.value, saving: savingVisible.value });
-      return { kind, label: t(SYNC_STATUS_LABEL_KEYS[kind]) };
+      const kind = resolveSyncStatus({
+        failed: !!syncIssue.value,
+        offline: !connected.value,
+        saving: savingVisible.value,
+      });
+      const label = kind === 'offline' && unsentLocal.value
+        ? t('syncOfflineUnsent')
+        : t(SYNC_STATUS_LABEL_KEYS[kind]);
+      return { kind, label };
     });
     const syncStatusTitle = computed(() =>
       pendingUpdatesCount.value > 0
@@ -2745,7 +2744,7 @@ export default defineComponent({
         CapacityGuard.configure({ limit: capacityLimit, onBlocked: onCapacityBlocked }),
         Collaboration.configure({ document: ydoc }),
         CollaborationCursor.configure({
-          provider: awarenessProvider,
+          provider: { awareness: awarenessAdapter.awareness },
           user: {
             name: currentUser.value?.name || currentUser.value?.email || 'Guest',
             color: '#50d1b2',
@@ -2767,9 +2766,6 @@ export default defineComponent({
       onUpdate: () => { refreshBlockCount(); editorTransactionTick.value++; },
       onSelectionUpdate: ({ editor }) => {
         syncActiveOutlineHeading(editor);
-        if (!canEditContent.value) return;
-        const selection = editor.state.selection;
-        sendAwareness({ anchor: selection.anchor, head: selection.head });
       },
       editorProps: {
         handleClick: (_view, _pos, event) => handleEditorLinkClick(event),
@@ -2841,6 +2837,7 @@ export default defineComponent({
       disconnect,
       sendUpdate,
       sendAwareness,
+      onAwareness,
       resync,
       halt,
       onRemoteUpdate,
@@ -2851,12 +2848,20 @@ export default defineComponent({
       clearPendingUpdates,
       probe: probeSocket,
     } = useTextDocumentSocket(resolvedId);
+    sendAwarenessSocket = sendAwareness;
     // Liveness and the tab's state (docs/app-tabs-plan.md).
     useLivenessChecks(probeSocket);
-    watch(() => connected.value, (on) => tab.setStatus(on ? 'online' : 'reconnecting'), { immediate: true });
+    watch(() => connected.value, (on) => {
+      tab.setStatus(on ? 'online' : 'reconnecting');
+      if (!on) {
+        awarenessAdapter.clearRemote();
+      }
+    }, { immediate: true });
     watch(() => pendingUpdatesCount.value, (count) => tab.setUnsent(count > 0), { immediate: true });
 
-    const savingVisible = useCalmSaving(() => pendingUpdatesCount.value > 0);
+    // Local edits restored from the offline copy count as unsaved too, but go
+    // through the calm delay like any other pending change (no flash per keystroke).
+    const savingVisible = useCalmSaving(() => pendingUpdatesCount.value > 0 || (unsentLocal.value && connected.value));
 
     function syncEditorEditable() {
       if (loading.value) return;
@@ -2866,7 +2871,8 @@ export default defineComponent({
     watch([canEditContent, editor, loading, replacedOnServer], syncEditorEditable, { immediate: true });
 
     ydoc.on('update', (update: Uint8Array, origin: unknown) => {
-      if (!canEditContent.value || applyingInitialState || origin === 'remote') return;
+      if (!canEditContent.value || applyingInitialState || origin === 'remote' || isLocalCopyOrigin(localCopy, origin)) return;
+      unsentLocal.value = true;
       sendUpdate(uint8ArrayToBase64(update));
     });
 
@@ -2897,9 +2903,31 @@ export default defineComponent({
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         const state = res.document.snapshot?.yjsState;
-        if (state) {
+        const bytes = state ? base64ToUint8Array(state) : null;
+        const shouldPersist = Boolean(
+          isAuthenticated() &&
+          currentUser.value?.id &&
+          currentUser.value?.accessMode === 'user' &&
+          canEditContent.value
+        );
+        if (shouldPersist && !localCopy && !localCopyAttempted) {
+          localCopyAttempted = true;
+          const r = await openLocalCopy(ydoc, {
+            userKey: currentUser.value!.id!,
+            docId: res.document.id,
+            serverState: bytes,
+          });
+          localCopy = r.copy;
+          if (r.hasLocalOnlyChanges) {
+            unsentLocal.value = true;
+          }
+          if (r.outcome === 'diverged') {
+            showToast(t('textDocLocalCopyDiscarded'));
+          }
+        }
+        if (bytes) {
           applyingInitialState = true;
-          Y.applyUpdate(ydoc, base64ToUint8Array(state), 'remote');
+          Y.applyUpdate(ydoc, bytes, 'remote');
           applyingInitialState = false;
         }
         const preferred = slug.value || res.document.id;
@@ -2921,6 +2949,9 @@ export default defineComponent({
         if (!socketInitialized) {
           socketInitialized = true;
           connect();
+          onAwareness((msg) => {
+            awarenessAdapter.receive(msg);
+          });
           onRemoteUpdate((encodedUpdate, nextRevision) => {
             const hadPending = hasPendingUpdates(ydoc);
             Y.applyUpdate(ydoc, base64ToUint8Array(encodedUpdate), 'remote');
@@ -2937,23 +2968,35 @@ export default defineComponent({
           // load (or the disconnect) and this join, then hand the server any
           // local edits it never acked.
           onRoomState(({ yjsState }) => {
+            awarenessAdapter.announceNow();
             revision.value = currentRevision.value;
             if (!yjsState) return;
             const merged = mergeServerState(ydoc, base64ToUint8Array(yjsState), 'remote');
             if (merged.kind === 'diverged') {
               // Content was replaced server-side (MCP/REST replace or a history
               // restore): this ydoc can no longer be merged, only reloaded.
+              // Clear and drop the local IndexedDB copy so stale offline
+              // state does not resurrect old content on future opens.
+              void localCopy?.clear();
+              localCopy = null;
               halt();
               replacedOnServer.value = true;
               syncIssue.value = 'conflict';
               showToast(t('documentReplacedReload'), 'error');
               return;
             }
-            if (merged.missing && canEditContent.value) sendUpdate(uint8ArrayToBase64(merged.missing));
+            if (merged.missing && canEditContent.value) {
+              sendUpdate(uint8ArrayToBase64(merged.missing));
+            } else if (merged.missing === null && pendingUpdatesCount.value === 0) {
+              unsentLocal.value = false;
+            }
           });
           onAck((ack) => {
             revision.value = ack.revision;
             syncIssue.value = '';
+            if (pendingUpdatesCount.value === 0) {
+              unsentLocal.value = false;
+            }
           });
           onReject((reject) => {
             void handleReject(reject);
@@ -3443,6 +3486,7 @@ export default defineComponent({
     });
     onBeforeUnmount(() => {
       if (cacheStatusTimeout) clearTimeout(cacheStatusTimeout);
+      awarenessAdapter.destroy();
       disconnect();
       editor.value?.destroy();
       ydoc.destroy();
@@ -3578,6 +3622,7 @@ export default defineComponent({
       getDragHandleElement: () => dragHandleElement,
       connected,
       pendingUpdatesCount,
+      unsentLocal,
       syncStatus,
       syncStatusTitle,
       showSyncStatusHint,

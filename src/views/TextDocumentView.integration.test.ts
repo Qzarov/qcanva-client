@@ -51,6 +51,7 @@ vi.mock('../composables/useTextDocumentSocket', () => ({
     sendAwareness: vi.fn(),
     onRemoteUpdate: vi.fn(),
     onRoomState: vi.fn(),
+    onAwareness: vi.fn(),
     resync: vi.fn(),
     halt: vi.fn(),
     onReject: vi.fn(),
