@@ -30,7 +30,7 @@ Obsidian / JSON Canvas, документами, досками и листами
 - Лист персонажа D&D 5e: характеристики, навыки, бой, состояния, оружие, броски,
   спасброски от смерти, отдых, заклинания с ячейками и каталогом SRD, броски в чат
   подключённого канваса —
-  см. [состояние и план](docs/character-sheet-roadmap.md)
+  см. [состояние и план](docs/plans/character-sheet-roadmap.md)
 
 ### Дашборд и доступ
 
@@ -111,14 +111,14 @@ npx playwright test  # браузерные тесты из tests/ (подним
 
 - `dev` — сюда попадает работа до релиза.
 - `main` — то, что работает на проде; релизные теги ставятся с неё.
-- Тег `v*` запускает сборку Android — см. [`docs/release-tagging.md`](docs/release-tagging.md).
+- Тег `v*` запускает сборку Android — см. [`docs/plans/release-tagging.md`](docs/plans/release-tagging.md).
 - История версий — в [GitHub Releases](https://github.com/Qzarov/qcanva-client/releases).
 
 ## План работ
 
 План ведём в двух местах, и они должны совпадать:
 
-- [`docs/roadmap.html`](docs/roadmap.html) в этой репе;
+- [`docs/plans/roadmap.html`](docs/plans/roadmap.html) в этой репе;
 - документ «QCanva roadmap» в самой QCanva: https://qcanva.qzarov.pro/html/qcanva-roadmap.
 
 Когда фича уходит в работу, она переносится в раздел «В работе». Когда её влили и выкатили, она переезжает в раздел «Реализовано за <неделя>»: в группу (`<details class="week-group">`) с платформами, кратким описанием, датой и коммитами. Это значит «передано на проверку», а не «принято»: галочку ставит владелец, агент их не ставит. Новую неделю и её группы добавляют в «Содержание». Что сознательно отложили, записывается в «Бэклог», чтобы не потерять. Правка роадмапа идёт в обоих местах одновременно; главная версия и отметки — в QCanva.
@@ -170,20 +170,20 @@ npm run android:open
 
 В Android Studio выберите устройство или эмулятор и запустите `app`. Для debug APK можно выполнить `npm run android:build:debug`; он будет лежать в `android/app/build/outputs/apk/debug/`. Нужны Android Studio (Android SDK) и JDK 21. Перед каждым нативным релизом запускайте `npm run android:sync`: production API уже задан как `https://qcanva.qzarov.pro/api` в `.env.production`.
 
-Релизная сборка собирается в GitHub Actions по тегу `v*` — см. [`docs/release-tagging.md`](docs/release-tagging.md); публикация в Google Play — [`docs/google-play-release.md`](docs/google-play-release.md).
+Релизная сборка собирается в GitHub Actions по тегу `v*` — см. [`docs/plans/release-tagging.md`](docs/plans/release-tagging.md); публикация в Google Play — [`docs/plans/google-play-release.md`](docs/plans/google-play-release.md).
 
-В Android доступны вкладки открытых ресурсов; в браузере эта возможность выключена по умолчанию. Детали — в [плане вкладок](docs/app-tabs-plan.md).
+В Android доступны вкладки открытых ресурсов; в браузере эта возможность выключена по умолчанию. Детали — в [плане вкладок](docs/plans/app-tabs-plan.md).
 
 ## Документация
 
-- [`docs/character-sheet-roadmap.md`](docs/character-sheet-roadmap.md) — карточка персонажа D&D: что есть и план
-- [`docs/character-sheet-style.md`](docs/character-sheet-style.md) — визуальный стиль карточки персонажа: токены, правила, эталонные снимки
-- [`docs/character-sheet-edit-modes.md`](docs/character-sheet-edit-modes.md) — спецификация: режимы «Игра» и «Настройка», отмена и история изменений листа
-- [`docs/app-tabs-plan.md`](docs/app-tabs-plan.md) — план вкладок в Android-приложении: переключение между ресурсами без перезагрузки
-- [`docs/release-tagging.md`](docs/release-tagging.md) — релизные теги и версии
-- [`docs/google-play-release.md`](docs/google-play-release.md) — публикация в Google Play
+- [`docs/plans/character-sheet-roadmap.md`](docs/plans/character-sheet-roadmap.md) — карточка персонажа D&D: что есть и план
+- [`docs/plans/character-sheet-style.md`](docs/plans/character-sheet-style.md) — визуальный стиль карточки персонажа: токены, правила, эталонные снимки
+- [`docs/plans/character-sheet-edit-modes.md`](docs/plans/character-sheet-edit-modes.md) — спецификация: режимы «Игра» и «Настройка», отмена и история изменений листа
+- [`docs/plans/app-tabs-plan.md`](docs/plans/app-tabs-plan.md) — план вкладок в Android-приложении: переключение между ресурсами без перезагрузки
+- [`docs/plans/release-tagging.md`](docs/plans/release-tagging.md) — релизные теги и версии
+- [`docs/plans/google-play-release.md`](docs/plans/google-play-release.md) — публикация в Google Play
 - [`COLLABORATION_PROTOCOL.md`](COLLABORATION_PROTOCOL.md) — протокол совместного редактирования канваса
-- [`docs/roadmap.html`](docs/roadmap.html) — роадмап: что в работе и что отложено (см. «План работ»)
+- [`docs/plans/roadmap.html`](docs/plans/roadmap.html) — роадмап: что в работе и что отложено (см. «План работ»)
 - `docs/superpowers/` — проектные спеки и планы по отдельным фичам
 - [`TODO.md`](TODO.md) — чек-лист возможностей канваса
 

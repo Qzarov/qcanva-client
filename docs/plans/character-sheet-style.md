@@ -17,32 +17,32 @@
 
 | Вид | Тёмная | Светлая |
 |---|---|---|
-| Десктоп, 1280 px | [снимок](images/character-sheet/sheet-desktop-dark.png) | [снимок](images/character-sheet/sheet-desktop-light.png) |
-| Телефон, 390 px | [снимок](images/character-sheet/sheet-phone-dark.png) | [снимок](images/character-sheet/sheet-phone-light.png) |
-| Тосты бросков | [снимок](images/character-sheet/sheet-toasts-dark.png) | [снимок](images/character-sheet/sheet-toasts-light.png) |
-| Вкладка «Умения» | [снимок](images/character-sheet/sheet-desktop-tab-features.png) | |
-| Вкладка «Снаряжение», раскрытое оружие | [снимок](images/character-sheet/sheet-desktop-tab-equipment.png) | |
-| Меню состояний | [снимок](images/character-sheet/sheet-menu-dark.png) | |
-| Диалог урона | [снимок](images/character-sheet/sheet-desktop-dialog.png) | |
-| Спасброски от смерти (0 HP) | [снимок](images/character-sheet/sheet-death-saves.png) | |
-| Диалог короткого отдыха | [снимок](images/character-sheet/sheet-rest-short.png) | |
-| Диалог длинного отдыха | [снимок](images/character-sheet/sheet-rest-long.png) | |
-| Кнопка «Отдых» и выбор отдыха в диалоге | [снимок](images/character-sheet/sheet-rest-choice.png) | |
-| Строка HP на 320 px: трёхзначные хиты, временные, инициатива, отдых | [снимок](images/character-sheet/sheet-phone-hp-line-320.png) | |
-| Полоска показателей с подсказкой, 320 px | [снимок](images/character-sheet/sheet-phone-stat-strip-320.png) | |
-| Верх листа на десктопе | [снимок](images/character-sheet/sheet-desktop-top.png) | |
-| Диалог HP | | [снимок](images/character-sheet/sheet-hp-dialog.png) |
-| Телефон, раздел «Характеристики» | [снимок](images/character-sheet/sheet-phone-section-abilities.png) | |
-| Телефон, заклинания в режиме игры | | [снимок](images/character-sheet/sheet-phone-spells-play.png) |
-| Телефон, предметы в режиме игры | | [снимок](images/character-sheet/sheet-phone-equipment-play.png) |
-| Телефон, раздел «Снаряжение» с кошельком | [снимок](images/character-sheet/sheet-phone-section-equipment.png) | |
-| Телефон, раздел «Инфо» | [снимок](images/character-sheet/sheet-phone-section-info.png) | |
-| Десктоп, раздел «Снаряжение» | [снимок](images/character-sheet/sheet-desktop-section-equipment.png) | |
-| Диалог «Получить монеты» | [снимок](images/character-sheet/sheet-coins-dialog.png) | |
+| Десктоп, 1280 px | [снимок](../images/character-sheet/sheet-desktop-dark.png) | [снимок](../images/character-sheet/sheet-desktop-light.png) |
+| Телефон, 390 px | [снимок](../images/character-sheet/sheet-phone-dark.png) | [снимок](../images/character-sheet/sheet-phone-light.png) |
+| Тосты бросков | [снимок](../images/character-sheet/sheet-toasts-dark.png) | [снимок](../images/character-sheet/sheet-toasts-light.png) |
+| Вкладка «Умения» | [снимок](../images/character-sheet/sheet-desktop-tab-features.png) | |
+| Вкладка «Снаряжение», раскрытое оружие | [снимок](../images/character-sheet/sheet-desktop-tab-equipment.png) | |
+| Меню состояний | [снимок](../images/character-sheet/sheet-menu-dark.png) | |
+| Диалог урона | [снимок](../images/character-sheet/sheet-desktop-dialog.png) | |
+| Спасброски от смерти (0 HP) | [снимок](../images/character-sheet/sheet-death-saves.png) | |
+| Диалог короткого отдыха | [снимок](../images/character-sheet/sheet-rest-short.png) | |
+| Диалог длинного отдыха | [снимок](../images/character-sheet/sheet-rest-long.png) | |
+| Кнопка «Отдых» и выбор отдыха в диалоге | [снимок](../images/character-sheet/sheet-rest-choice.png) | |
+| Строка HP на 320 px: трёхзначные хиты, временные, инициатива, отдых | [снимок](../images/character-sheet/sheet-phone-hp-line-320.png) | |
+| Полоска показателей с подсказкой, 320 px | [снимок](../images/character-sheet/sheet-phone-stat-strip-320.png) | |
+| Верх листа на десктопе | [снимок](../images/character-sheet/sheet-desktop-top.png) | |
+| Диалог HP | | [снимок](../images/character-sheet/sheet-hp-dialog.png) |
+| Телефон, раздел «Характеристики» | [снимок](../images/character-sheet/sheet-phone-section-abilities.png) | |
+| Телефон, заклинания в режиме игры | | [снимок](../images/character-sheet/sheet-phone-spells-play.png) |
+| Телефон, предметы в режиме игры | | [снимок](../images/character-sheet/sheet-phone-equipment-play.png) |
+| Телефон, раздел «Снаряжение» с кошельком | [снимок](../images/character-sheet/sheet-phone-section-equipment.png) | |
+| Телефон, раздел «Инфо» | [снимок](../images/character-sheet/sheet-phone-section-info.png) | |
+| Десктоп, раздел «Снаряжение» | [снимок](../images/character-sheet/sheet-desktop-section-equipment.png) | |
+| Диалог «Получить монеты» | [снимок](../images/character-sheet/sheet-coins-dialog.png) | |
 
-![Карточка на десктопе, тёмная тема](images/character-sheet/sheet-desktop-dark.png)
+![Карточка на десктопе, тёмная тема](../images/character-sheet/sheet-desktop-dark.png)
 
-![Карточка на десктопе, светлая тема](images/character-sheet/sheet-desktop-light.png)
+![Карточка на десктопе, светлая тема](../images/character-sheet/sheet-desktop-light.png)
 
 ## Характер
 
