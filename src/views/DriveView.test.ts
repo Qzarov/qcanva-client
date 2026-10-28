@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
-import { isPhotosEnabled, photosApi } from '../api/photos';
+import { isPhotosEnabled } from '../api/photos';
+import { photosApi } from '../api/photosLegacy';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
@@ -36,9 +37,17 @@ vi.mock('../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/photos')>();
   return {
     ...actual,
-    isPhotosMock: vi.fn(() => false),
     // Photos is behind VITE_PHOTOS_ENABLED; most tests here run the build that has it.
     isPhotosEnabled: vi.fn(() => true),
+  };
+});
+
+// DrivePhotos still runs on the pre-index API until it is rebuilt (plan 4, task 9).
+vi.mock('../api/photosLegacy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../api/photosLegacy')>();
+  return {
+    ...actual,
+    isPhotosMock: vi.fn(() => false),
     photosApi: {
       getBuckets: vi.fn().mockResolvedValue({ buckets: [] }),
       getBucket: vi.fn().mockResolvedValue({ month: '', items: [] }),

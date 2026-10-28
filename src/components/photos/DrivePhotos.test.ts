@@ -3,12 +3,12 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import DrivePhotos from './DrivePhotos.vue';
-import { photosApi, type PhotoBucket, type PhotoItem, type PhotoPerson } from '../../api/photos';
+import { photosApi, type PhotoBucket, type PhotoItem, type PhotoPerson } from '../../api/photosLegacy';
 import { downloadDriveFile } from '../../api/drive';
 import { useI18n } from '../../composables/useI18n';
 
-vi.mock('../../api/photos', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../api/photos')>();
+vi.mock('../../api/photosLegacy', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../api/photosLegacy')>();
   return {
     ...actual,
     isPhotosMock: vi.fn(() => false),

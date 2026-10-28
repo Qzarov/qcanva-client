@@ -180,7 +180,7 @@ import {
   type PhotoBucket,
   type PhotoItem,
   type PhotoPerson,
-} from '../../api/photos';
+} from '../../api/photosLegacy';
 import { alertDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import DriveFileProperties from '../DriveFileProperties.vue';

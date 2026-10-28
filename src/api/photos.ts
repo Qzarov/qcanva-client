@@ -1,220 +1,158 @@
 import { API_BASE, request } from './client';
 import { resolveDownloadUrl } from './drive';
-import { createPhotosMock } from './photos.mock';
+import { createPhotosMock, renditionUrlMock } from './photos.mock';
 
-/**
- * Photos API of the hub (`/api/drive/photos/*`, `/api/drive/media/*`).
- *
- * Photos are ordinary Q Disk files: Immich only indexes them and supplies
- * media metadata, previews and ML. The feed, search and people are served by
- * the hub with the same tree permissions as "Files"; a folder's photo slice is
- * an album. Thumbnails and previews come from the hub media endpoint
- * (`GET /drive/media/:assetId/thumb?size=…&t=<view token>`, tokens from
- * `POST /drive/media/thumb-tokens`). The feed endpoints (`/drive/photos/*`,
- * track Х3) are not there yet, so this module also carries a mock, used only
- * when the build sets `VITE_PHOTOS_MOCK=1`: a production build never shows
- * demo photos in place of a hub error.
- *
- * The whole Photos UI is behind `VITE_PHOTOS_ENABLED=1` (see `isPhotosEnabled`).
- */
+export type SortKey = 'date' | 'folder' | 'album' | 'size';
+export type SubKey = 'name' | 'size' | 'created' | 'added';
+export type SortSpec = { key: SortKey; desc: boolean; sub?: SubKey };
 
-/** Build flag: the Photos tab and the Files/Photos switch exist only when it is `1`. */
+export type FeedPeriod = 'day' | 'month' | 'year';
+export type FeedParams = {
+  sort: SortSpec[];
+  levels: SortKey[];
+  period: FeedPeriod;
+  filter: 'all' | 'photo' | 'video' | 'fav';
+  shared: boolean;
+  albumId?: string;
+};
+
+export type FeedGroupFolder = {
+  name: string;
+  path: string[];
+};
+
+export type FeedGroupAlbum = {
+  name: string;
+};
+
+export type FeedGroup = {
+  key: string;
+  count: number;
+  folder?: FeedGroupFolder;
+  album?: FeedGroupAlbum;
+  subs?: FeedGroup[];
+};
+
+export type FeedItemShare = {
+  rootFolderId: string;
+  rootName: string;
+  ownerId: string;
+  ownerName: string;
+};
+
+export type FeedItem = {
+  fileId: string;
+  hash: string;
+  name: string;
+  mime: string;
+  kind: 'photo' | 'video';
+  processed: boolean;
+  takenAt: string | null;
+  localTakenAt: string | null;
+  width: number | null;
+  height: number | null;
+  durationSec: number | null;
+  bytes: number;
+  folderId: string | null;
+  favorite: boolean;
+  albumIds: string[];
+  thumbhash: string | null;
+  share: FeedItemShare | null;
+};
+
+export interface PhotoMeta {
+  cameraMake: string | null;
+  cameraModel: string | null;
+  lens: string | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
+  timeZone: string | null;
+  orientation: number | null;
+  livePhotoCid: string | null;
+  motionPhoto: boolean;
+}
+
+export interface PhotoEdit {
+  description: string | null;
+  rating: number | null;
+  favorite: boolean;
+}
+
+export interface PhotoReplica {
+  nodeId: string;
+  name: string;
+  kind: string;
+  state: string;
+  lastSeenAt: string | null;
+}
+
+export interface PhotoDetails {
+  item: FeedItem;
+  meta: PhotoMeta | null;
+  folderPath: { id: string; name: string }[];
+  albums: { id: string; name: string }[];
+  edit: PhotoEdit;
+  storage: {
+    hubCopy: 'present' | 'evicting' | 'absent';
+    replicas: PhotoReplica[];
+  };
+}
+
+export interface Album {
+  id: string;
+  name: string;
+  count: number;
+  bytes: number;
+  createdAt: string;
+  addedAt: string;
+  coverFileIds: string[];
+}
+
+export interface PhotosApi {
+  summary(p: FeedParams): Promise<{ groups: FeedGroup[] }>;
+  items(
+    p: FeedParams,
+    group: string,
+    sub: string | null,
+    cursor?: string | null,
+    limit?: number,
+  ): Promise<{ items: FeedItem[]; nextCursor: string | null }>;
+  details(fileId: string): Promise<PhotoDetails>;
+  edit(
+    fileId: string,
+    patch: { description?: string | null; rating?: number | null; favorite?: boolean },
+  ): Promise<void>;
+  search(
+    query: string,
+    opts: { shared: boolean; cursor?: string | null; limit?: number },
+  ): Promise<{ items: FeedItem[]; nextCursor: string | null }>;
+  albums(): Promise<Album[]>;
+  createAlbum(name: string): Promise<{ id: string }>;
+  renameAlbum(id: string, name: string): Promise<void>;
+  deleteAlbum(id: string): Promise<void>;
+  addToAlbum(id: string, fileIds: string[]): Promise<number>;
+  removeFromAlbum(id: string, fileIds: string[]): Promise<number>;
+  getPreference<T>(key: string): Promise<T | null>;
+  putPreference(key: string, value: unknown): Promise<void>;
+}
+
+export type FeedQueryParams = Partial<FeedParams> & {
+  group?: string;
+  sub?: string | null;
+  cursor?: string | null;
+  limit?: number;
+};
+
+/** The hub accepts at most 500 token hashes per batch (MAX_TOKEN_HASHES). */
+export const RENDITION_TOKENS_BATCH = 500;
+export const TOKEN_MARGIN_MS = 60_000;
+
 export function isPhotosEnabled(): boolean {
   return String(import.meta.env.VITE_PHOTOS_ENABLED ?? '') === '1';
 }
 
-/** Build flag: generated demo data instead of the hub's photos API. */
 function photosMockFromEnv(): boolean {
   return String(import.meta.env.VITE_PHOTOS_MOCK ?? '') === '1';
-}
-
-export type PhotoKind = 'photo' | 'video';
-export type PhotoMediaSize = 'thumbnail' | 'preview';
-
-/** Feed scope: the whole accessible drive, a folder subtree (album) and/or one person. */
-export interface PhotoFilter {
-  /** Folder whose subtree is shown; omitted = all own and shared files. */
-  folderId?: string | null;
-  /** Only assets where this person was recognised. */
-  personId?: string | null;
-}
-
-/** One month of the feed. `count` is known before the items are loaded. */
-export interface PhotoBucket {
-  /** `YYYY-MM`, in the timezone the photo was taken in. */
-  month: string;
-  count: number;
-}
-
-export interface PhotoItem {
-  /** `drive_file.id` — download, properties and trash go through the drive API. */
-  fileId: string;
-  /** Immich asset id — thumbnails and previews are keyed by it. */
-  assetId: string;
-  /** Folder that holds the file ("Open in folder"). */
-  folderId: string;
-  name: string;
-  mime: string | null;
-  kind: PhotoKind;
-  /** ISO date-time the photo was taken (falls back to file mtime on the hub). */
-  takenAt: string;
-  width: number | null;
-  height: number | null;
-  /** Video length in seconds, null for photos. */
-  durationSec?: number | null;
-  /**
-   * Hub-relative URL of the small thumbnail with a view token
-   * (`/api/drive/media/:assetId/thumb?size=thumbnail&t=…`). `<img src>` cannot
-   * send a Bearer header. The feed may omit it: the client then asks
-   * `POST /drive/media/thumb-tokens` and builds the URL itself
-   * (`withMediaUrls`). Null = no token (not linked / not visible).
-   */
-  thumbUrl?: string | null;
-  /** Same for the large preview (`size=preview`). */
-  previewUrl?: string | null;
-  /** False while Immich has not extracted metadata / thumbnails / ML for this file. */
-  processed: boolean;
-}
-
-export interface PhotoBucketsResponse {
-  buckets: PhotoBucket[];
-}
-
-export interface PhotoBucketResponse {
-  month: string;
-  items: PhotoItem[];
-}
-
-export interface PhotoSearchRequest {
-  query: string;
-  folderId?: string | null;
-  cursor?: string | null;
-  limit?: number;
-}
-
-export interface PhotoSearchResponse {
-  /** Ordered by relevance. */
-  items: PhotoItem[];
-  nextCursor: string | null;
-}
-
-export interface PhotoPerson {
-  id: string;
-  /** Null until the owner names the person. */
-  name: string | null;
-  /** Signed face crop URL. */
-  thumbUrl: string | null;
-  assetCount: number;
-}
-
-export interface PhotoPeopleResponse {
-  people: PhotoPerson[];
-}
-
-/** `POST /drive/media/thumb-tokens` (hub PR #30): tokens only for assets the viewer can see. */
-export interface ThumbTokensResponse {
-  tokens: Record<string, string>;
-  expiresAt: string;
-}
-
-/** The hub accepts at most this many asset ids per token request. */
-export const THUMB_TOKENS_BATCH = 1000;
-
-export interface PhotosApi {
-  getBuckets(filter?: PhotoFilter): Promise<PhotoBucketsResponse>;
-  getBucket(month: string, filter?: PhotoFilter): Promise<PhotoBucketResponse>;
-  search(body: PhotoSearchRequest): Promise<PhotoSearchResponse>;
-  getPeople(filter?: Pick<PhotoFilter, 'folderId'>): Promise<PhotoPeopleResponse>;
-}
-
-function queryString(params: Record<string, string | null | undefined>): string {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== '') query.set(key, value);
-  }
-  const qs = query.toString();
-  return qs ? `?${qs}` : '';
-}
-
-/** Real hub client. */
-export const hubPhotosApi: PhotosApi = {
-  getBuckets(filter = {}) {
-    return request<PhotoBucketsResponse>(
-      `/drive/photos/buckets${queryString({ folderId: filter.folderId, personId: filter.personId })}`,
-    );
-  },
-  getBucket(month, filter = {}) {
-    return request<PhotoBucketResponse>(
-      `/drive/photos/bucket${queryString({ month, folderId: filter.folderId, personId: filter.personId })}`,
-    );
-  },
-  search(body) {
-    return request<PhotoSearchResponse>('/drive/photos/search', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-  },
-  getPeople(filter = {}) {
-    return request<PhotoPeopleResponse>(`/drive/photos/people${queryString({ folderId: filter.folderId })}`);
-  },
-};
-
-/** Media endpoints of the hub (track Х4, PR #30). */
-export const mediaApi = {
-  getThumbTokens(assetIds: string[]): Promise<ThumbTokensResponse> {
-    return request<ThumbTokensResponse>('/drive/media/thumb-tokens', {
-      method: 'POST',
-      body: JSON.stringify({ assetIds }),
-    });
-  },
-};
-
-/** Refresh tokens a bit before the hub stops accepting them. */
-const TOKEN_MARGIN_MS = 60_000;
-const thumbTokens = new Map<string, { token: string; expiresAt: number }>();
-
-/** Test hook. */
-export function clearThumbTokenCache(): void {
-  thumbTokens.clear();
-}
-
-/**
- * Fills `thumbUrl`/`previewUrl` of items the feed returned without them, using
- * cached or freshly issued view tokens (batched by `THUMB_TOKENS_BATCH`).
- * A failed token request leaves the URLs null: tiles show a placeholder.
- */
-export async function withMediaUrls(items: PhotoItem[], now: number = Date.now()): Promise<PhotoItem[]> {
-  const missing = [
-    ...new Set(
-      items
-        .filter((item) => !item.thumbUrl || !item.previewUrl)
-        .map((item) => item.assetId)
-        .filter((id) => {
-          const cached = thumbTokens.get(id);
-          return !cached || cached.expiresAt - TOKEN_MARGIN_MS <= now;
-        }),
-    ),
-  ];
-  for (let i = 0; i < missing.length; i += THUMB_TOKENS_BATCH) {
-    try {
-      const res = await mediaApi.getThumbTokens(missing.slice(i, i + THUMB_TOKENS_BATCH));
-      const expiresAt = Date.parse(res.expiresAt) || now + 3_600_000;
-      for (const [assetId, token] of Object.entries(res.tokens ?? {})) {
-        thumbTokens.set(assetId, { token, expiresAt });
-      }
-    } catch {
-      // Leave these without URLs.
-    }
-  }
-  return items.map((item) => {
-    const token = thumbTokens.get(item.assetId)?.token;
-    if (!token) return { ...item, thumbUrl: item.thumbUrl ?? null, previewUrl: item.previewUrl ?? null };
-    return {
-      ...item,
-      thumbUrl: item.thumbUrl || photoMediaUrl(item.assetId, 'thumbnail', token),
-      previewUrl: item.previewUrl || photoMediaUrl(item.assetId, 'preview', token),
-    };
-  });
 }
 
 let mockMode: boolean = photosMockFromEnv();
@@ -225,57 +163,320 @@ function mock(): PhotosApi {
   return mockApi;
 }
 
-/** True when the feed shows generated demo data instead of the hub's. */
 export function isPhotosMock(): boolean {
   return mockMode;
 }
 
-/** Test hook: force or reset the mock decision. */
 export function setPhotosMock(value: boolean | null): void {
   mockMode = value === null ? photosMockFromEnv() : value;
   if (value === null) mockApi = null;
 }
 
-/**
- * Client used by the UI: the hub's API, or the mock when the build asked for
- * it. Every hub error, 404 included, is passed through so it stays visible.
- */
-export const photosApi: PhotosApi = {
-  getBuckets(filter) {
-    return mockMode ? mock().getBuckets(filter) : hubPhotosApi.getBuckets(filter);
+export function serializeSort(sort: SortSpec[]): string {
+  return sort
+    .map((s) => {
+      const dir = s.desc ? 'desc' : 'asc';
+      if ((s.key === 'folder' || s.key === 'album') && s.sub) {
+        return `${s.key}:${dir}:${s.sub}`;
+      }
+      return `${s.key}:${dir}`;
+    })
+    .join(',');
+}
+
+export function serializeFeedParams(params: FeedQueryParams): string {
+  const parts: string[] = [];
+
+  if (params.sort && params.sort.length > 0) {
+    parts.push(`sort=${serializeSort(params.sort)}`);
+  }
+  if (params.levels && params.levels.length > 0) {
+    parts.push(`levels=${params.levels.join(',')}`);
+  }
+  if (params.period !== undefined && params.period !== null) {
+    parts.push(`period=${encodeURIComponent(params.period)}`);
+  }
+  if (params.filter !== undefined && params.filter !== null) {
+    parts.push(`filter=${encodeURIComponent(params.filter)}`);
+  }
+  if (params.shared !== undefined && params.shared !== null) {
+    parts.push(`shared=${params.shared ? 'true' : 'false'}`);
+  }
+  if (params.albumId !== undefined && params.albumId !== null && params.albumId !== '') {
+    parts.push(`albumId=${encodeURIComponent(params.albumId)}`);
+  }
+  if (params.group !== undefined && params.group !== null && params.group !== '') {
+    parts.push(`group=${encodeURIComponent(params.group)}`);
+  }
+  if (params.sub !== undefined && params.sub !== null && params.sub !== '') {
+    parts.push(`sub=${encodeURIComponent(params.sub)}`);
+  }
+  if (params.cursor !== undefined && params.cursor !== null && params.cursor !== '') {
+    parts.push(`cursor=${encodeURIComponent(params.cursor)}`);
+  }
+  if (params.limit !== undefined && params.limit !== null) {
+    parts.push(`limit=${params.limit}`);
+  }
+
+  return parts.join('&');
+}
+
+export function buildFeedQuery(params: FeedQueryParams): string {
+  const qs = serializeFeedParams(params);
+  return qs ? `?${qs}` : '';
+}
+
+export const hubPhotosApi: PhotosApi = {
+  summary(p: FeedParams): Promise<{ groups: FeedGroup[] }> {
+    return request<{ groups: FeedGroup[] }>(`/photos/feed/summary${buildFeedQuery(p)}`);
   },
-  async getBucket(month, filter) {
-    if (mockMode) return mock().getBucket(month, filter);
-    const res = await hubPhotosApi.getBucket(month, filter);
-    return { ...res, items: await withMediaUrls(res.items) };
+
+  items(
+    p: FeedParams,
+    group: string,
+    sub: string | null,
+    cursor?: string | null,
+    limit?: number,
+  ): Promise<{ items: FeedItem[]; nextCursor: string | null }> {
+    return request<{ items: FeedItem[]; nextCursor: string | null }>(
+      `/photos/feed/items${buildFeedQuery({ ...p, group, sub, cursor, limit })}`,
+    );
   },
-  async search(body) {
-    if (mockMode) return mock().search(body);
-    const res = await hubPhotosApi.search(body);
-    return { ...res, items: await withMediaUrls(res.items) };
+
+  details(fileId: string): Promise<PhotoDetails> {
+    return request<PhotoDetails>(`/photos/files/${encodeURIComponent(fileId)}`);
   },
-  getPeople(filter) {
-    return mockMode ? mock().getPeople(filter) : hubPhotosApi.getPeople(filter);
+
+  async edit(
+    fileId: string,
+    patch: { description?: string | null; rating?: number | null; favorite?: boolean },
+  ): Promise<void> {
+    await request<PhotoEdit>(`/photos/files/${encodeURIComponent(fileId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  },
+
+  search(
+    query: string,
+    opts: { shared: boolean; cursor?: string | null; limit?: number },
+  ): Promise<{ items: FeedItem[]; nextCursor: string | null }> {
+    return request<{ items: FeedItem[]; nextCursor: string | null }>('/photos/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        shared: opts.shared,
+        ...(opts.cursor !== undefined && opts.cursor !== null ? { cursor: opts.cursor } : {}),
+        ...(opts.limit !== undefined ? { limit: opts.limit } : {}),
+      }),
+    });
+  },
+
+  async albums(): Promise<Album[]> {
+    const res = await request<{ albums: Album[] }>('/photos/albums');
+    return res.albums;
+  },
+
+  createAlbum(name: string): Promise<{ id: string }> {
+    return request<{ id: string }>('/photos/albums', {
+      method: 'POST',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  async renameAlbum(id: string, name: string): Promise<void> {
+    await request<{ id: string; name: string }>(`/photos/albums/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    });
+  },
+
+  deleteAlbum(id: string): Promise<void> {
+    return request<void>(`/photos/albums/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async addToAlbum(id: string, fileIds: string[]): Promise<number> {
+    const res = await request<{ added: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
+      method: 'PUT',
+      body: JSON.stringify({ fileIds }),
+    });
+    return res.added;
+  },
+
+  async removeFromAlbum(id: string, fileIds: string[]): Promise<number> {
+    const res = await request<{ removed: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
+      method: 'DELETE',
+      body: JSON.stringify({ fileIds }),
+    });
+    return res.removed;
+  },
+
+  async getPreference<T>(key: string): Promise<T | null> {
+    const res = await request<{ value: T | null }>(`/me/preferences/${encodeURIComponent(key)}`);
+    return res.value ?? null;
+  },
+
+  putPreference(key: string, value: unknown): Promise<void> {
+    return request<void>(`/me/preferences/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ value }),
+    });
   },
 };
 
-/**
- * Absolute URL for a signed media URL from the hub (or a mock `data:` URL).
- */
-export function resolvePhotoUrl(url: string | null | undefined, apiBase: string = API_BASE): string | null {
-  if (!url) return null;
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-  return resolveDownloadUrl(url, apiBase);
+const tokenCache = new Map<string, { token: string; expiresAt: number }>();
+const inFlight = new Map<string, Promise<string>>();
+let pendingBatch = new Map<
+  string,
+  {
+    promise: Promise<string>;
+    resolve: (token: string) => void;
+    reject: (err: unknown) => void;
+  }
+>();
+let batchScheduled = false;
+
+export function clearRenditionTokenCache(): void {
+  tokenCache.clear();
+  inFlight.clear();
+  pendingBatch.clear();
+  batchScheduled = false;
 }
 
-/** `GET /api/drive/media/:assetId/thumb?size=…&t=…` (hub PR #30; ETag/304, private cache 1 h). */
-export function photoMediaUrl(assetId: string, size: PhotoMediaSize, token?: string | null): string {
-  const base = `/api/drive/media/${encodeURIComponent(assetId)}/thumb?size=${size}`;
-  return token ? `${base}&t=${encodeURIComponent(token)}` : base;
+function flushBatch(): void {
+  const currentBatch = new Map(pendingBatch);
+  pendingBatch.clear();
+  batchScheduled = false;
+
+  const allHashes = Array.from(currentBatch.keys());
+  for (let i = 0; i < allHashes.length; i += RENDITION_TOKENS_BATCH) {
+    const chunk = allHashes.slice(i, i + RENDITION_TOKENS_BATCH);
+    for (const h of chunk) {
+      const entry = currentBatch.get(h);
+      if (entry) {
+        inFlight.set(h, entry.promise);
+      }
+    }
+
+    void (async () => {
+      try {
+        const res = await request<{ tokens: Record<string, string>; expiresAt: string }>('/media/tokens', {
+          method: 'POST',
+          body: JSON.stringify({ hashes: chunk }),
+        });
+        const expiresAt = Date.parse(res.expiresAt) || Date.now() + 3_600_000;
+        for (const h of chunk) {
+          inFlight.delete(h);
+          const entry = currentBatch.get(h);
+          const token = res.tokens?.[h];
+          if (token) {
+            tokenCache.set(h, { token, expiresAt });
+            entry?.resolve(token);
+          } else {
+            entry?.reject(new Error(`Token missing for hash: ${h}`));
+          }
+        }
+      } catch (err) {
+        for (const h of chunk) {
+          inFlight.delete(h);
+          const entry = currentBatch.get(h);
+          entry?.reject(err);
+        }
+      }
+    })();
+  }
 }
 
-/** `2026-10` → `{ year: 2026, month: 10 }`. */
-export function parseBucketMonth(month: string): { year: number; month: number } {
-  const [year, mm] = month.split('-');
-  return { year: Number(year), month: Number(mm) };
+function fetchRenditionToken(hash: string): Promise<string> {
+  const now = Date.now();
+  const cached = tokenCache.get(hash);
+  if (cached && cached.expiresAt - TOKEN_MARGIN_MS > now) {
+    return Promise.resolve(cached.token);
+  }
+
+  const running = inFlight.get(hash);
+  if (running) {
+    return running;
+  }
+
+  const pending = pendingBatch.get(hash);
+  if (pending) {
+    return pending.promise;
+  }
+
+  let resolveFn!: (token: string) => void;
+  let rejectFn!: (err: unknown) => void;
+  const promise = new Promise<string>((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+
+  pendingBatch.set(hash, { promise, resolve: resolveFn, reject: rejectFn });
+
+  if (!batchScheduled) {
+    batchScheduled = true;
+    queueMicrotask(flushBatch);
+  }
+
+  return promise;
 }
+
+export async function renditionUrl(
+  hash: string,
+  size: 'thumbnail' | 'preview' | 'video',
+): Promise<string> {
+  if (isPhotosMock()) {
+    return renditionUrlMock(hash, size);
+  }
+  const token = await fetchRenditionToken(hash);
+  const path = `/api/media/${encodeURIComponent(hash)}/rendition?size=${encodeURIComponent(size)}&t=${encodeURIComponent(token)}`;
+  return resolveDownloadUrl(path, API_BASE);
+}
+
+export const photosApi: PhotosApi = {
+  summary(p) {
+    return isPhotosMock() ? mock().summary(p) : hubPhotosApi.summary(p);
+  },
+  items(p, group, sub, cursor, limit) {
+    return isPhotosMock()
+      ? mock().items(p, group, sub, cursor, limit)
+      : hubPhotosApi.items(p, group, sub, cursor, limit);
+  },
+  details(fileId) {
+    return isPhotosMock() ? mock().details(fileId) : hubPhotosApi.details(fileId);
+  },
+  edit(fileId, patch) {
+    return isPhotosMock() ? mock().edit(fileId, patch) : hubPhotosApi.edit(fileId, patch);
+  },
+  search(query, opts) {
+    return isPhotosMock() ? mock().search(query, opts) : hubPhotosApi.search(query, opts);
+  },
+  albums() {
+    return isPhotosMock() ? mock().albums() : hubPhotosApi.albums();
+  },
+  createAlbum(name) {
+    return isPhotosMock() ? mock().createAlbum(name) : hubPhotosApi.createAlbum(name);
+  },
+  renameAlbum(id, name) {
+    return isPhotosMock() ? mock().renameAlbum(id, name) : hubPhotosApi.renameAlbum(id, name);
+  },
+  deleteAlbum(id) {
+    return isPhotosMock() ? mock().deleteAlbum(id) : hubPhotosApi.deleteAlbum(id);
+  },
+  addToAlbum(id, fileIds) {
+    return isPhotosMock() ? mock().addToAlbum(id, fileIds) : hubPhotosApi.addToAlbum(id, fileIds);
+  },
+  removeFromAlbum(id, fileIds) {
+    return isPhotosMock()
+      ? mock().removeFromAlbum(id, fileIds)
+      : hubPhotosApi.removeFromAlbum(id, fileIds);
+  },
+  getPreference<T>(key: string) {
+    return isPhotosMock() ? mock().getPreference<T>(key) : hubPhotosApi.getPreference<T>(key);
+  },
+  putPreference(key, value) {
+    return isPhotosMock() ? mock().putPreference(key, value) : hubPhotosApi.putPreference(key, value);
+  },
+};

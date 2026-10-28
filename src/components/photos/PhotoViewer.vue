@@ -117,8 +117,8 @@
 import { ChevronLeft, ChevronRight, Download, FolderOpen, Hourglass, Info, X } from '@lucide/vue';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { driveApi, resolveDownloadUrl } from '../../api/drive';
-import { resolvePhotoUrl, type PhotoItem } from '../../api/photos';
-import { isMockPhotoId } from '../../api/photos.mock';
+import { resolvePhotoUrl, type PhotoItem } from '../../api/photosLegacy';
+import { isMockPhotoId } from '../../api/photosLegacy.mock';
 import { useI18n } from '../../composables/useI18n';
 
 const props = defineProps<{

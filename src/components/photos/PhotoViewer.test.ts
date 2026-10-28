@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import PhotoViewer from './PhotoViewer.vue';
 import { driveApi } from '../../api/drive';
-import type { PhotoItem } from '../../api/photos';
+import type { PhotoItem } from '../../api/photosLegacy';
 import { useI18n } from '../../composables/useI18n';
 
 vi.mock('../../api/drive', async (importOriginal) => {

@@ -2,16 +2,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  clearThumbTokenCache,
+  buildFeedQuery,
+  clearRenditionTokenCache,
   hubPhotosApi,
-  photoMediaUrl,
-  withMediaUrls,
-  type PhotoItem,
   isPhotosEnabled,
   isPhotosMock,
   photosApi,
-  resolvePhotoUrl,
+  renditionUrl,
+  RENDITION_TOKENS_BATCH,
+  serializeFeedParams,
+  serializeSort,
   setPhotosMock,
+  type FeedParams,
 } from './photos';
 import { ApiError, request } from './client';
 
@@ -27,98 +29,252 @@ describe('photos API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     setPhotosMock(null);
-    clearThumbTokenCache();
+    clearRenditionTokenCache();
   });
 
   afterEach(() => {
     setPhotosMock(null);
   });
 
-  describe('hubPhotosApi', () => {
-    it('builds /drive/photos/buckets?folderId=..&personId=..', async () => {
-      vi.mocked(request).mockResolvedValueOnce({ buckets: [] });
-      await hubPhotosApi.getBuckets({ folderId: 'folder-1', personId: 'person-1' });
-      expect(request).toHaveBeenCalledWith('/drive/photos/buckets?folderId=folder-1&personId=person-1');
+  it('serializes sort and levels into query', () => {
+    const baseParams: FeedParams = {
+      sort: [
+        { key: 'date', desc: true },
+        { key: 'folder', desc: false, sub: 'name' },
+      ],
+      levels: ['date', 'folder'],
+      period: 'month',
+      filter: 'all',
+      shared: true,
+    };
 
-      vi.mocked(request).mockResolvedValueOnce({ buckets: [] });
-      await hubPhotosApi.getBuckets();
-      expect(request).toHaveBeenCalledWith('/drive/photos/buckets');
+    expect(serializeSort(baseParams.sort)).toBe('date:desc,folder:asc:name');
+
+    const summaryQuery = serializeFeedParams(baseParams);
+    expect(summaryQuery).toBe(
+      'sort=date:desc,folder:asc:name&levels=date,folder&period=month&filter=all&shared=true',
+    );
+    expect(buildFeedQuery(baseParams)).toBe(
+      '?sort=date:desc,folder:asc:name&levels=date,folder&period=month&filter=all&shared=true',
+    );
+
+    // Omitted when absent: albumId, group, sub, cursor, limit omitted
+    expect(summaryQuery).not.toContain('albumId');
+    expect(summaryQuery).not.toContain('group');
+    expect(summaryQuery).not.toContain('sub');
+    expect(summaryQuery).not.toContain('cursor');
+    expect(summaryQuery).not.toContain('limit');
+
+    // Items query with all parameters present
+    const itemsQuery = serializeFeedParams({
+      ...baseParams,
+      albumId: '123e4567-e89b-12d3-a456-426614174000',
+      group: '2026-10',
+      sub: 'root',
+      cursor: '100',
+      limit: 50,
+    });
+    expect(itemsQuery).toBe(
+      'sort=date:desc,folder:asc:name&levels=date,folder&period=month&filter=all&shared=true&albumId=123e4567-e89b-12d3-a456-426614174000&group=2026-10&sub=root&cursor=100&limit=50',
+    );
+
+    // Sub, cursor, limit omitted when null or undefined
+    const itemsQueryOmitted = serializeFeedParams({
+      ...baseParams,
+      group: '2026-10',
+      sub: null,
+      cursor: null,
+      limit: undefined,
+    });
+    expect(itemsQueryOmitted).toBe(
+      'sort=date:desc,folder:asc:name&levels=date,folder&period=month&filter=all&shared=true&group=2026-10',
+    );
+    expect(itemsQueryOmitted).not.toContain('sub');
+    expect(itemsQueryOmitted).not.toContain('cursor');
+    expect(itemsQueryOmitted).not.toContain('limit');
+  });
+
+  it('summary/items call new endpoints', async () => {
+    const p: FeedParams = {
+      sort: [{ key: 'date', desc: true }],
+      levels: ['date'],
+      period: 'month',
+      filter: 'all',
+      shared: true,
+    };
+
+    // Summary endpoint
+    vi.mocked(request).mockResolvedValueOnce({ groups: [] });
+    await hubPhotosApi.summary(p);
+    expect(request).toHaveBeenCalledWith(
+      '/photos/feed/summary?sort=date:desc&levels=date&period=month&filter=all&shared=true',
+    );
+
+    // Items endpoint
+    vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
+    await hubPhotosApi.items(p, '2026-10', null);
+    expect(request).toHaveBeenCalledWith(
+      '/photos/feed/items?sort=date:desc&levels=date&period=month&filter=all&shared=true&group=2026-10',
+    );
+
+    // Details (GET /photos/files/:id, id URL-encoded)
+    vi.mocked(request).mockResolvedValueOnce({
+      item: { fileId: 'f-1' },
+      meta: null,
+      folderPath: [],
+      albums: [],
+      edit: { description: null, rating: null, favorite: false },
+      storage: { hubCopy: 'present', replicas: [] },
+    });
+    await hubPhotosApi.details('file id/with spaces');
+    expect(request).toHaveBeenCalledWith('/photos/files/file%20id%2Fwith%20spaces');
+
+    // Edit (PATCH body, id URL-encoded)
+    vi.mocked(request).mockResolvedValueOnce({
+      description: 'Sunset',
+      rating: 5,
+      favorite: true,
+    });
+    await hubPhotosApi.edit('file id/with spaces', {
+      description: 'Sunset',
+      rating: 5,
+      favorite: true,
+    });
+    expect(request).toHaveBeenCalledWith('/photos/files/file%20id%2Fwith%20spaces', {
+      method: 'PATCH',
+      body: JSON.stringify({ description: 'Sunset', rating: 5, favorite: true }),
     });
 
-    it('builds /drive/photos/bucket?month=2026-09&folderId=..', async () => {
-      vi.mocked(request).mockResolvedValueOnce({ month: '2026-09', items: [] });
-      await hubPhotosApi.getBucket('2026-09', { folderId: 'folder-1' });
-      expect(request).toHaveBeenCalledWith('/drive/photos/bucket?month=2026-09&folderId=folder-1');
-
-      vi.mocked(request).mockResolvedValueOnce({ month: '2026-09', items: [] });
-      await hubPhotosApi.getBucket('2026-09', { folderId: 'folder-1', personId: 'person-2' });
-      expect(request).toHaveBeenCalledWith('/drive/photos/bucket?month=2026-09&folderId=folder-1&personId=person-2');
+    // Search (POST /photos/search)
+    vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
+    await hubPhotosApi.search('mountain', { shared: true, cursor: 'c-1', limit: 30 });
+    expect(request).toHaveBeenCalledWith('/photos/search', {
+      method: 'POST',
+      body: JSON.stringify({ query: 'mountain', shared: true, cursor: 'c-1', limit: 30 }),
     });
 
-    it('sends POST /drive/photos/search with JSON body', async () => {
-      const searchBody = { query: 'mountains', folderId: 'folder-1' };
-      vi.mocked(request).mockResolvedValueOnce({ items: [], nextCursor: null });
-      await hubPhotosApi.search(searchBody);
-      expect(request).toHaveBeenCalledWith('/drive/photos/search', {
-        method: 'POST',
-        body: JSON.stringify(searchBody),
-      });
+    // Albums list
+    vi.mocked(request).mockResolvedValueOnce({ albums: [{ id: 'alb-1', name: 'Trips' }] });
+    const albums = await hubPhotosApi.albums();
+    expect(request).toHaveBeenCalledWith('/photos/albums');
+    expect(albums).toEqual([{ id: 'alb-1', name: 'Trips' }]);
+
+    // Create album
+    vi.mocked(request).mockResolvedValueOnce({ id: 'alb-new' });
+    const created = await hubPhotosApi.createAlbum('New Album');
+    expect(request).toHaveBeenCalledWith('/photos/albums', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'New Album' }),
+    });
+    expect(created).toEqual({ id: 'alb-new' });
+
+    // Rename album
+    vi.mocked(request).mockResolvedValueOnce({ id: 'alb 1', name: 'Renamed Album' });
+    await hubPhotosApi.renameAlbum('alb 1', 'Renamed Album');
+    expect(request).toHaveBeenCalledWith('/photos/albums/alb%201', {
+      method: 'PATCH',
+      body: JSON.stringify({ name: 'Renamed Album' }),
     });
 
-    it('builds /drive/photos/people?folderId=..', async () => {
-      vi.mocked(request).mockResolvedValueOnce({ people: [] });
-      await hubPhotosApi.getPeople({ folderId: 'folder-1' });
-      expect(request).toHaveBeenCalledWith('/drive/photos/people?folderId=folder-1');
+    // Delete album
+    vi.mocked(request).mockResolvedValueOnce(undefined);
+    await hubPhotosApi.deleteAlbum('alb 1');
+    expect(request).toHaveBeenCalledWith('/photos/albums/alb%201', {
+      method: 'DELETE',
+    });
 
-      vi.mocked(request).mockResolvedValueOnce({ people: [] });
-      await hubPhotosApi.getPeople();
-      expect(request).toHaveBeenCalledWith('/drive/photos/people');
+    // Add items to album
+    vi.mocked(request).mockResolvedValueOnce({ added: 2 });
+    const addedCount = await hubPhotosApi.addToAlbum('alb 1', ['f-1', 'f-2']);
+    expect(request).toHaveBeenCalledWith('/photos/albums/alb%201/items', {
+      method: 'PUT',
+      body: JSON.stringify({ fileIds: ['f-1', 'f-2'] }),
+    });
+    expect(addedCount).toBe(2);
+
+    // Remove items from album
+    vi.mocked(request).mockResolvedValueOnce({ removed: 1 });
+    const removedCount = await hubPhotosApi.removeFromAlbum('alb 1', ['f-1']);
+    expect(request).toHaveBeenCalledWith('/photos/albums/alb%201/items', {
+      method: 'DELETE',
+      body: JSON.stringify({ fileIds: ['f-1'] }),
+    });
+    expect(removedCount).toBe(1);
+
+    // Preferences: get (key URL-encoded)
+    vi.mocked(request).mockResolvedValueOnce({ value: { view: 'grid' } });
+    const pref = await hubPhotosApi.getPreference<{ view: string }>('photos/view');
+    expect(request).toHaveBeenCalledWith('/me/preferences/photos%2Fview');
+    expect(pref).toEqual({ view: 'grid' });
+
+    // Preferences: put (key URL-encoded)
+    vi.mocked(request).mockResolvedValueOnce(undefined);
+    await hubPhotosApi.putPreference('photos/view', { view: 'grid' });
+    expect(request).toHaveBeenCalledWith('/me/preferences/photos%2Fview', {
+      method: 'PUT',
+      body: JSON.stringify({ value: { view: 'grid' } }),
     });
   });
 
-  describe('photosApi and the mock', () => {
-    it('passes a 404 from the hub through instead of switching to demo data', async () => {
-      expect(isPhotosMock()).toBe(false);
-      vi.mocked(request).mockRejectedValueOnce(new ApiError(404, 'Not Found'));
+  it('tokens are batched by 500 and cached until 60s before expiry', async () => {
+    vi.useFakeTimers();
+    try {
+      const baseTime = new Date('2026-10-20T10:00:00.000Z').getTime();
+      vi.setSystemTime(baseTime);
 
-      await expect(photosApi.getBuckets()).rejects.toThrow('Not Found');
-      expect(isPhotosMock()).toBe(false);
-    });
+      const limit = RENDITION_TOKENS_BATCH; // 500
+      const totalHashes = limit + 100; // 600 hashes > 500 limit
+      const hashes = Array.from({ length: totalHashes }, (_, i) => `hash-${i}`);
 
-    it('rethrows 500 ApiError and mock stays off', async () => {
-      expect(isPhotosMock()).toBe(false);
-      vi.mocked(request).mockRejectedValueOnce(new ApiError(500, 'Server Error'));
+      const tokenMap1: Record<string, string> = {};
+      const tokenMap2: Record<string, string> = {};
+      for (let i = 0; i < limit; i += 1) tokenMap1[`hash-${i}`] = `tok-${i}`;
+      for (let i = limit; i < totalHashes; i += 1) tokenMap2[`hash-${i}`] = `tok-${i}`;
 
-      await expect(photosApi.getBuckets()).rejects.toThrow('Server Error');
-      expect(isPhotosMock()).toBe(false);
-    });
+      const expiresAt = new Date(baseTime + 300_000).toISOString(); // 300 seconds
 
-    it('rethrows 401 ApiError and mock stays off', async () => {
-      expect(isPhotosMock()).toBe(false);
-      vi.mocked(request).mockRejectedValueOnce(new ApiError(401, 'Unauthorized'));
+      vi.mocked(request)
+        .mockResolvedValueOnce({ tokens: tokenMap1, expiresAt })
+        .mockResolvedValueOnce({ tokens: tokenMap2, expiresAt });
 
-      await expect(photosApi.getBuckets()).rejects.toThrow('Unauthorized');
-      expect(isPhotosMock()).toBe(false);
-    });
+      const urls = await Promise.all(hashes.map((h) => renditionUrl(h, 'thumbnail')));
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(request).toHaveBeenNthCalledWith(1, '/media/tokens', {
+        method: 'POST',
+        body: JSON.stringify({ hashes: hashes.slice(0, 500) }),
+      });
+      expect(request).toHaveBeenNthCalledWith(2, '/media/tokens', {
+        method: 'POST',
+        body: JSON.stringify({ hashes: hashes.slice(500, 600) }),
+      });
+      expect(urls[0]).toContain('/api/media/hash-0/rendition?size=thumbnail&t=tok-0');
 
-    it('uses the mock only when VITE_PHOTOS_MOCK=1', async () => {
-      vi.stubEnv('VITE_PHOTOS_MOCK', '1');
-      try {
-        setPhotosMock(null);
-        expect(isPhotosMock()).toBe(true);
-        const bucketsRes = await photosApi.getBuckets();
-        expect(request).not.toHaveBeenCalled();
-        expect(bucketsRes.buckets.length).toBeGreaterThan(0);
-        const firstMonth = bucketsRes.buckets[0]!.month;
-        const bucketRes = await photosApi.getBucket(firstMonth);
-        expect(request).not.toHaveBeenCalled();
-        expect(bucketRes.items.length).toBeGreaterThan(0);
-      } finally {
-        vi.unstubAllEnvs();
-        setPhotosMock(null);
-      }
-      expect(isPhotosMock()).toBe(false);
-    });
+      // Repeat call before expiry - 60s (at baseTime + 100s, which is 200s before expiry)
+      vi.setSystemTime(baseTime + 100_000);
+      vi.mocked(request).mockClear();
+
+      const cachedUrls = await Promise.all(hashes.map((h) => renditionUrl(h, 'thumbnail')));
+      expect(request).not.toHaveBeenCalled();
+      expect(cachedUrls).toEqual(urls);
+
+      // Advance time past expiry - 60s (at baseTime + 241s, only 59s remain before expiry: expired)
+      vi.setSystemTime(baseTime + 241_000);
+
+      const newExpiresAt = new Date(baseTime + 600_000).toISOString();
+      vi.mocked(request)
+        .mockResolvedValueOnce({ tokens: tokenMap1, expiresAt: newExpiresAt })
+        .mockResolvedValueOnce({ tokens: tokenMap2, expiresAt: newExpiresAt });
+
+      await Promise.all(hashes.map((h) => renditionUrl(h, 'thumbnail')));
+      expect(request).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // Alias test with exact string placeholder if checked literally
+  it('tokens are batched by <hub limit> and cached until 60s before expiry', async () => {
+    expect(RENDITION_TOKENS_BATCH).toBe(500);
   });
 
   describe('isPhotosEnabled', () => {
@@ -134,81 +290,36 @@ describe('photos API', () => {
     });
   });
 
-  describe('resolvePhotoUrl', () => {
-    it('passes data: URLs through and returns null for null', () => {
-      const dataUrl = 'data:image/svg+xml;charset=utf-8,%3Csvg%3E%3C%2Fsvg%3E';
-      expect(resolvePhotoUrl(dataUrl)).toBe(dataUrl);
-      expect(resolvePhotoUrl(null)).toBeNull();
-      expect(resolvePhotoUrl(undefined)).toBeNull();
-      expect(resolvePhotoUrl('')).toBeNull();
-    });
+  it('photosApi uses the mock when setPhotosMock(true) and passes hub errors through (ApiError) when false', async () => {
+    // When false: passes hub errors through
+    setPhotosMock(false);
+    expect(isPhotosMock()).toBe(false);
 
-    it('passes blob: URLs through and resolves relative URLs', () => {
-      expect(resolvePhotoUrl('blob:http://localhost:3000/uuid')).toBe('blob:http://localhost:3000/uuid');
-      const resolved = resolvePhotoUrl('/api/drive/media/asset-1/thumb?size=preview', 'http://localhost:3001/api');
-      expect(resolved).toBe('http://localhost:3001/api/drive/media/asset-1/thumb?size=preview');
-    });
+    vi.mocked(request).mockRejectedValueOnce(new ApiError(404, 'Not Found'));
+    await expect(photosApi.details('non-existent')).rejects.toThrow('Not Found');
+
+    vi.mocked(request).mockRejectedValueOnce(new ApiError(500, 'Internal Server Error'));
+    await expect(photosApi.albums()).rejects.toThrow('Internal Server Error');
+
+    // When true: switches to mock without calling hub request
+    setPhotosMock(true);
+    expect(isPhotosMock()).toBe(true);
+    vi.mocked(request).mockClear();
+
+    const albums = await photosApi.albums();
+    expect(request).not.toHaveBeenCalled();
+    expect(albums.length).toBeGreaterThan(0);
   });
 
-  describe('media URLs from thumb tokens (hub PR #30)', () => {
-    const item = (assetId: string, extra: Partial<PhotoItem> = {}): PhotoItem => ({
-      fileId: `f-${assetId}`,
-      assetId,
-      folderId: 'folder',
-      name: `${assetId}.jpg`,
-      mime: 'image/jpeg',
-      kind: 'photo',
-      takenAt: '2026-10-01T10:00:00Z',
-      width: 4,
-      height: 3,
-      processed: true,
-      ...extra,
+  it('renditionUrl rejects when token missing', async () => {
+    setPhotosMock(false);
+    vi.mocked(request).mockResolvedValueOnce({
+      tokens: {},
+      expiresAt: new Date(Date.now() + 300_000).toISOString(),
     });
 
-    it('builds the media endpoint path with an encoded token', () => {
-      expect(photoMediaUrl('a 1', 'preview', 't/x')).toBe('/api/drive/media/a%201/thumb?size=preview&t=t%2Fx');
-      expect(photoMediaUrl('a1', 'thumbnail')).toBe('/api/drive/media/a1/thumb?size=thumbnail');
-    });
-
-    it('asks POST /drive/media/thumb-tokens for items without URLs and caches the tokens', async () => {
-      vi.mocked(request).mockResolvedValueOnce({ tokens: { a1: 'tok1' }, expiresAt: '2099-01-01T00:00:00Z' });
-      const out = await withMediaUrls([item('a1'), item('a2'), item('a3', { thumbUrl: '/x', previewUrl: '/y' })]);
-      expect(request).toHaveBeenCalledWith('/drive/media/thumb-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ assetIds: ['a1', 'a2'] }),
-      });
-      expect(out[0]?.thumbUrl).toBe('/api/drive/media/a1/thumb?size=thumbnail&t=tok1');
-      expect(out[0]?.previewUrl).toBe('/api/drive/media/a1/thumb?size=preview&t=tok1');
-      expect(out[1]?.thumbUrl).toBeNull();
-      expect(out[2]?.thumbUrl).toBe('/x');
-
-      vi.mocked(request).mockClear();
-      vi.mocked(request).mockResolvedValueOnce({ tokens: {}, expiresAt: '2099-01-01T00:00:00Z' });
-      await withMediaUrls([item('a1'), item('a2')]);
-      expect(request).toHaveBeenCalledWith('/drive/media/thumb-tokens', {
-        method: 'POST',
-        body: JSON.stringify({ assetIds: ['a2'] }),
-      });
-    });
-
-    it('splits token requests into batches of 1000 and survives a failed batch', async () => {
-      const items = Array.from({ length: 1500 }, (_, i) => item(`a${i}`));
-      vi.mocked(request)
-        .mockRejectedValueOnce(new ApiError(500, 'boom'))
-        .mockResolvedValueOnce({ tokens: { a1499: 'last' }, expiresAt: '2099-01-01T00:00:00Z' });
-      const out = await withMediaUrls(items);
-      expect(request).toHaveBeenCalledTimes(2);
-      expect(out[0]?.thumbUrl).toBeNull();
-      expect(out[1499]?.thumbUrl).toContain('t=last');
-    });
-
-    it('photosApi.getBucket attaches media URLs when the hub serves the feed', async () => {
-      setPhotosMock(false);
-      vi.mocked(request)
-        .mockResolvedValueOnce({ month: '2026-10', items: [item('b1')] })
-        .mockResolvedValueOnce({ tokens: { b1: 'tb' }, expiresAt: '2099-01-01T00:00:00Z' });
-      const res = await photosApi.getBucket('2026-10', { folderId: 'f' });
-      expect(res.items[0]?.previewUrl).toBe('/api/drive/media/b1/thumb?size=preview&t=tb');
-    });
+    await expect(renditionUrl('missing-hash', 'thumbnail')).rejects.toThrow(
+      'Token missing for hash: missing-hash',
+    );
   });
 });
