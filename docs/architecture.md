@@ -31,7 +31,7 @@
 | `/docs/:id` | `text-document` | `src/views/TextDocumentView.vue` | Публичный (проверка прав и AccessGate внутри) |
 | `/templates/:id` | `interactive-template` | `src/views/BoardTemplateView.vue` | `meta: { requiresAuth: true }` |
 | `/mcp` | — | *Redirect* на `/settings?section=mcp` | Публичный редирект для MCP-клиентов |
-| `/admin` | `admin` | `src/views/AdminView.vue` | `meta: { requiresAuth: true }` (роль admin/superadmin) |
+| `/admin` | `admin` | `src/views/AdminView.vue` | `meta: { requiresAuth: true }` — клиент пускает любого вошедшего; роль admin/superadmin проверяет хаб (`AdminGuard`), иначе запросы страницы получают 403 |
 | `/plugins` | `plugins` | `src/views/PluginsView.vue` | `meta: { requiresAuth: true }` |
 | `/canvas/:id` | `canvas` | `src/views/CanvasView.vue` | Публичный (проверка прав и AccessGate внутри) |
 
@@ -80,7 +80,7 @@
 - `src/components/DriveFileProperties.vue`: панель свойств файла с хешем SHA-256, метаданными, репликами и действиями телефона.
 - `src/components/HubOverrideField.vue`: отладочное поле ввода для переключения URL хаба во время выполнения.
 - `src/components/LanguageToggle.vue`: компактная кнопка переключения языка интерфейса (RU / EN).
-- `src/components/ResourceSharePanel.vue`: универсальная панель настройки прав доступа, видимости, паролей, слагов и приглашений соавторов.
+- `src/components/ResourceSharePanel.vue`: панель доступа (видимость, пароль, slug, приглашения соавторов) для канвасов и текстовых документов; HTML-документы используют свою панель в `src/views/HtmlDocumentView.vue`.
 - `src/components/ThemeMenu.vue`: плавающее меню быстрого выбора темы оформления для публичных экранов.
 - `src/components/ThemeSelector.vue`: селектор темы оформления (Светлая, Тёмная, Системная).
 - `src/components/ToastContainer.vue`: всплывающие уведомления (тосты) об успехе, ошибках или системных событиях.
@@ -222,7 +222,7 @@
 
 ### Unit и компонентные тесты (Vitest)
 - **Конфигурация**: [`vitest.config.ts`](../vitest.config.ts), расширяет базовый [`vite.config.ts`](../vite.config.ts).
-- **Файл окружения**: [`src/test-setup.ts`](../src/test-setup.ts) инициализирует jsdom-полифилы для `DOMRect`, `getClientRects` и `Element.prototype.scrollIntoView`.
+- **Файл окружения**: [`src/test-setup.ts`](../src/test-setup.ts) добавляет jsdom-заглушки `Element.prototype.scrollIntoView` и `Range.prototype.getClientRects` / `getBoundingClientRect`.
 - **Изоляция зависимостей**: В блоке `server.deps.inline` принудительно трансформируются `tippy.js`, `@tiptap/vue-3`, `@tiptap/extension-bubble-menu`, `@tiptap/extension-drag-handle`, что устраняет проблемы ESM/CJS резолвинга в среде Node.js.
 - **Запуск**: `npm run test:unit -- --maxWorkers=2` (согласно [docs/rules.md](rules.md)).
 

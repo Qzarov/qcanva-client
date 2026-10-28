@@ -213,15 +213,15 @@
 
 | Функция | Статус | Где в коде | Эндпоинт хаба |
 |---|---|---|---|
-| Унифицированная панель общего доступа (ResourceSharePanel) | в интерфейсе | `src/components/ResourceSharePanel.vue` | `—` |
-| Копирование канонической публичной ссылки ресурса | в интерфейсе | `src/components/ResourceSharePanel.vue` | `—` |
-| Переключение уровня видимости (Private / Authenticated / Public) | в интерфейсе | `src/components/ResourceSharePanel.vue` | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
-| Разрешение публичного редактирования без авторизации | в интерфейсе | `src/components/ResourceSharePanel.vue` | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id` |
-| Включение в общий публичный каталог ресурсов | в интерфейсе | `src/components/ResourceSharePanel.vue` | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id` |
-| Назначение пользовательского короткого адреса (Slug) | в интерфейсе | `src/components/ResourceSharePanel.vue` | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id` |
-| Защита ресурса персональным паролем (роли Viewer / Editor) | в интерфейсе | `src/components/ResourceSharePanel.vue` | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id` |
-| Приглашение соавторов по email с выбором роли | в интерфейсе | `src/components/ResourceSharePanel.vue` | `POST /api/canvas/:id/share`, `POST /api/html-documents/:id/share`, `POST /api/text-documents/:id/share` |
-| Отзыв индивидуального доступа пользователя к ресурсу | в интерфейсе | `src/components/ResourceSharePanel.vue` | `DELETE /api/canvas/:id/share`, `DELETE /api/html-documents/:id/share`, `DELETE /api/text-documents/:id/share` |
+| Унифицированная панель общего доступа (ResourceSharePanel) | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `—` |
+| Копирование канонической публичной ссылки ресурса | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `—` |
+| Переключение уровня видимости (Private / Authenticated / Public) | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
+| Разрешение публичного редактирования без авторизации | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
+| Включение в общий публичный каталог ресурсов | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
+| Назначение пользовательского короткого адреса (Slug) | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
+| Защита ресурса персональным паролем (роли Viewer / Editor) | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `PUT /api/canvas/:id`, `PUT /api/html-documents/:id`, `PUT /api/text-documents/:id` |
+| Приглашение соавторов по email с выбором роли | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `POST /api/canvas/:id/share`, `POST /api/html-documents/:id/share`, `POST /api/text-documents/:id/share` |
+| Отзыв индивидуального доступа пользователя к ресурсу | в интерфейсе | `src/components/ResourceSharePanel.vue` (канвасы и текстовые документы; у HTML-документов своя панель в `src/views/HtmlDocumentView.vue`) | `DELETE /api/canvas/:id/share`, `DELETE /api/html-documents/:id/share`, `DELETE /api/text-documents/:id/share` |
 | Экран блокировки при 401/403 (AccessGate) | в интерфейсе | `src/components/AccessGate.vue` | `POST /api/auth/resource-password-login` |
 | Отправка запроса владельцу на получение прав просмотра или правки | в интерфейсе | `src/components/AccessRequestDialog.vue` | `POST /api/access-requests` |
 
