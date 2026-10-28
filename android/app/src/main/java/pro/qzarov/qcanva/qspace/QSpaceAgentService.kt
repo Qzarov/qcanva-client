@@ -55,6 +55,8 @@ class QSpaceAgentService : Service() {
         private const val CHANNEL_ID = "qspace_agent"
         private const val NOTIFICATION_ID = 4101
         private const val NETWORK_DEBOUNCE_MS = 1_000L
+        private const val START_RETRY_FIRST_MS = 30_000L
+        private const val START_RETRY_MAX_MS = 15 * 60_000L
 
         @Volatile
         var isAlive = false
@@ -87,7 +89,13 @@ class QSpaceAgentService : Service() {
         }
     }
 
-    private val networkChanged = Runnable { worker.execute { AgentHolder.networkChanged() } }
+    private val networkChanged = Runnable {
+        worker.execute { if (AgentHolder.isRunning) AgentHolder.networkChanged() else startNode() }
+    }
+
+    /** Pause before the next start attempt; touched only on [worker]. */
+    private var startRetryMs = START_RETRY_FIRST_MS
+    private val retryStart = Runnable { worker.execute { startNode() } }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -135,14 +143,7 @@ class QSpaceAgentService : Service() {
                 }
                 acquireMulticastLock()
                 registerNetworkCallback()
-                worker.execute {
-                    try {
-                        AgentHolder.startNode(this)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "node failed to start", e)
-                    }
-                    refreshNotification()
-                }
+                worker.execute { startNode() }
             }
         }
         return START_STICKY
@@ -159,12 +160,34 @@ class QSpaceAgentService : Service() {
         isAlive = false
         AgentHolder.removeListener(onEvent)
         main.removeCallbacks(networkChanged)
+        main.removeCallbacks(retryStart)
         unregisterNetworkCallback()
         releaseMulticastLock()
         // Stopping joins the sync thread: not on the main thread.
         worker.execute { AgentHolder.stopNode() }
         worker.shutdown()
         super.onDestroy()
+    }
+
+    /**
+     * Starts the node on [worker]. Right after boot the network, or the hub,
+     * is often not there yet: the service stays up (so the watchdog leaves it
+     * alone), and the node is tried again with a growing pause and whenever
+     * the network changes.
+     */
+    private fun startNode() {
+        main.removeCallbacks(retryStart)
+        if (!AgentHolder.isRunning && AgentHolder.shouldRun(this)) {
+            try {
+                AgentHolder.startNode(this)
+                startRetryMs = START_RETRY_FIRST_MS
+            } catch (e: Exception) {
+                Log.e(TAG, "node failed to start, next try in ${startRetryMs / 1000} s", e)
+                main.postDelayed(retryStart, startRetryMs)
+                startRetryMs = (startRetryMs * 2).coerceAtMost(START_RETRY_MAX_MS)
+            }
+        }
+        refreshNotification()
     }
 
     private fun command(block: () -> Unit) {
