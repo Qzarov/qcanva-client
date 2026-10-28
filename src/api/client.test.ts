@@ -384,3 +384,29 @@ describe('canvas API client', () => {
     });
   });
 });
+
+describe('request() without a body', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('returns undefined for 204 instead of failing on empty JSON', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    await expect(request<void>('/photos/albums/a-1', { method: 'DELETE' })).resolves.toBeUndefined();
+  });
+
+  it('returns undefined for an empty 200 body', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('', { status: 200, headers: { 'content-length': '0' } }),
+    );
+    await expect(request<void>('/x')).resolves.toBeUndefined();
+  });
+
+  it('still parses JSON bodies', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    await expect(request<{ ok: number }>('/x')).resolves.toEqual({ ok: 1 });
+  });
+});

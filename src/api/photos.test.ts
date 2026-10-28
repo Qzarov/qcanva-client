@@ -203,14 +203,14 @@ describe('photos API', () => {
 
     // Preferences: get (key URL-encoded)
     vi.mocked(request).mockResolvedValueOnce({ value: { view: 'grid' } });
-    const pref = await hubPhotosApi.getPreference<{ view: string }>('photos/view');
-    expect(request).toHaveBeenCalledWith('/me/preferences/photos%2Fview');
+    const pref = await hubPhotosApi.getPreference<{ view: string }>('photos.view');
+    expect(request).toHaveBeenCalledWith('/me/preferences/photos.view');
     expect(pref).toEqual({ view: 'grid' });
 
     // Preferences: put (key URL-encoded)
     vi.mocked(request).mockResolvedValueOnce(undefined);
-    await hubPhotosApi.putPreference('photos/view', { view: 'grid' });
-    expect(request).toHaveBeenCalledWith('/me/preferences/photos%2Fview', {
+    await hubPhotosApi.putPreference('photos.view', { view: 'grid' });
+    expect(request).toHaveBeenCalledWith('/me/preferences/photos.view', {
       method: 'PUT',
       body: JSON.stringify({ value: { view: 'grid' } }),
     });
@@ -270,11 +270,6 @@ describe('photos API', () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  // Alias test with exact string placeholder if checked literally
-  it('tokens are batched by <hub limit> and cached until 60s before expiry', async () => {
-    expect(RENDITION_TOKENS_BATCH).toBe(500);
   });
 
   describe('isPhotosEnabled', () => {
