@@ -43,6 +43,8 @@ describe('usePhotosView', () => {
         { key: 'date', desc: true },
         { key: 'folder', desc: false, sub: 'name' },
       ],
+      dirs: { date: true, folder: false, album: false, size: true },
+      subs: { folder: 'name', album: 'name' },
       period: 'month',
       filter: 'all',
       captions: [],
@@ -400,5 +402,84 @@ describe('usePhotosView', () => {
       PHOTOS_VIEW_PREFERENCE_KEY,
       defaultPhotosViewState(),
     );
+  });
+
+  it('toggle off then on keeps direction and sub', async () => {
+    const { usePhotosView } = await load();
+    const { state, toggleSortKey, toggleDir, cycleSub } = usePhotosView();
+
+    toggleDir('folder');
+    cycleSub('folder');
+    toggleSortKey('folder');
+    expect(state.value.sort.some((s) => s.key === 'folder')).toBe(false);
+    expect(state.value.dirs.folder).toBe(true);
+    expect(state.value.subs.folder).toBe('size');
+
+    toggleSortKey('folder');
+    expect(state.value.sort[state.value.sort.length - 1]).toEqual({ key: 'folder', desc: true, sub: 'size' });
+  });
+
+  it('setAllDirs reaches inactive keys', async () => {
+    const { usePhotosView } = await load();
+    const { state, setAllDirs, toggleSortKey } = usePhotosView();
+
+    setAllDirs(true);
+    expect(state.value.dirs).toEqual({ date: true, folder: true, album: true, size: true });
+    toggleSortKey('album');
+    expect(state.value.sort[state.value.sort.length - 1]).toEqual({ key: 'album', desc: true, sub: 'name' });
+    setAllDirs(false);
+    expect(state.value.dirs.size).toBe(false);
+    expect(state.value.sort.every((s) => s.desc === false)).toBe(true);
+  });
+
+  it('toggleDir and cycleSub on an inactive key persist and survive reload', async () => {
+    let mod = await load();
+    let view = mod.usePhotosView();
+    view.toggleDir('size');
+    view.cycleSub('album');
+    expect(view.state.value.sort.map((s) => s.key)).toEqual(['date', 'folder']);
+    expect(view.state.value.dirs.size).toBe(false);
+    expect(view.state.value.subs.album).toBe('size');
+
+    vi.resetModules();
+    mod = await load();
+    view = mod.usePhotosView();
+    expect(view.state.value.dirs.size).toBe(false);
+    expect(view.state.value.subs.album).toBe('size');
+    view.toggleSortKey('album');
+    view.toggleSortKey('size');
+    expect(view.state.value.sort.slice(2)).toEqual([
+      { key: 'album', desc: false, sub: 'size' },
+      { key: 'size', desc: false },
+    ]);
+  });
+
+  it('old stored state without dirs and subs migrates to defaults', async () => {
+    localStorage.setItem(
+      'qcanva:photos:view:v1',
+      JSON.stringify({
+        sort: [{ key: 'size', desc: false }, { key: 'album', desc: true, sub: 'added' }],
+        period: 'day',
+      }),
+    );
+    const { usePhotosView } = await load();
+    const { state } = usePhotosView();
+    expect(state.value.dirs).toEqual({ date: true, folder: false, album: false, size: true });
+    expect(state.value.subs).toEqual({ folder: 'name', album: 'name' });
+    expect(state.value.sort).toEqual([
+      { key: 'size', desc: true },
+      { key: 'album', desc: false, sub: 'name' },
+    ]);
+    expect(state.value.period).toBe('day');
+  });
+
+  it('malformed dirs and subs fall back per key', async () => {
+    const { normalizePhotosViewState } = await load();
+    const st = normalizePhotosViewState({
+      dirs: { date: false, folder: 'x', album: 1, size: false, extra: true },
+      subs: { folder: 'created', album: 'bogus' },
+    });
+    expect(st.dirs).toEqual({ date: false, folder: false, album: false, size: false });
+    expect(st.subs).toEqual({ folder: 'created', album: 'name' });
   });
 });

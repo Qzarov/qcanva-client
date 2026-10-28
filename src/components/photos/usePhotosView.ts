@@ -14,10 +14,16 @@ import {
   type SubKey,
 } from '../../api/photos';
 
+export type SubSortKey = 'folder' | 'album';
 export type CaptionKey = 'folder' | 'album' | 'size';
 
 export type PhotosViewState = {
+  /** Active sort keys in priority order; direction and sub are derived from dirs/subs. */
   sort: SortSpec[];
+  /** Remembered direction (desc flag) per key, also for keys that are not in sort. */
+  dirs: Record<SortKey, boolean>;
+  /** Remembered sub-sort per key, also for keys that are not in sort. */
+  subs: Record<SubSortKey, SubKey>;
   period: FeedPeriod;
   filter: 'all' | 'photo' | 'video' | 'fav';
   captions: CaptionKey[];
@@ -50,6 +56,8 @@ const TILE_CYCLE: Record<'s' | 'm' | 'l', 's' | 'm' | 'l'> = {
   l: 's',
 };
 
+const SORT_KEYS: SortKey[] = ['date', 'folder', 'album', 'size'];
+
 function getDefaultDir(key: SortKey): boolean {
   switch (key) {
     case 'date':
@@ -63,12 +71,33 @@ function getDefaultDir(key: SortKey): boolean {
   }
 }
 
+function defaultDirs(): Record<SortKey, boolean> {
+  return { date: true, folder: false, album: false, size: true };
+}
+
+function defaultSubs(): Record<SubSortKey, SubKey> {
+  return { folder: 'name', album: 'name' };
+}
+
+function makeSpec(key: SortKey, dirs: Record<SortKey, boolean>, subs: Record<SubSortKey, SubKey>): SortSpec {
+  return key === 'folder' || key === 'album'
+    ? { key, desc: dirs[key], sub: subs[key] }
+    : { key, desc: dirs[key] };
+}
+
+/** Rebuilds sort specs from the active key order and the per-key maps. */
+function withDerivedSort(st: PhotosViewState): PhotosViewState {
+  return { ...st, sort: st.sort.map((s) => makeSpec(s.key, st.dirs, st.subs)) };
+}
+
 export function defaultPhotosViewState(): PhotosViewState {
   return {
     sort: [
       { key: 'date', desc: true },
       { key: 'folder', desc: false, sub: 'name' },
     ],
+    dirs: defaultDirs(),
+    subs: defaultSubs(),
     period: 'month',
     filter: 'all',
     captions: [],
@@ -180,12 +209,29 @@ export function normalizePhotosViewState(raw: unknown): PhotosViewState {
   const shared: boolean =
     typeof obj.shared === 'boolean' ? obj.shared : defaults.shared;
 
-  const sort = normalizeSort(obj.sort, defaults.sort);
+  const dirs = defaultDirs();
+  if (obj.dirs && typeof obj.dirs === 'object' && !Array.isArray(obj.dirs)) {
+    for (const k of SORT_KEYS) {
+      const v = (obj.dirs as Record<string, unknown>)[k];
+      if (typeof v === 'boolean') dirs[k] = v;
+    }
+  }
+  const subs = defaultSubs();
+  if (obj.subs && typeof obj.subs === 'object' && !Array.isArray(obj.subs)) {
+    for (const k of ['folder', 'album'] as const) {
+      const v = (obj.subs as Record<string, unknown>)[k];
+      if (typeof v === 'string' && VALID_SUB_KEYS.has(v)) subs[k] = v as SubKey;
+    }
+  }
+  // Only the key order of the stored sort is used; direction and sub come from dirs/subs.
+  const sort = normalizeSort(obj.sort, defaults.sort).map((s) => makeSpec(s.key, dirs, subs));
   const captions = normalizeCaptions(obj.captions);
   const collapsedShares = normalizeCollapsedShares(obj.collapsedShares);
 
   return {
     sort,
+    dirs,
+    subs,
     period,
     filter,
     captions,
@@ -319,67 +365,30 @@ const feedParams = computed<FeedParams>(() => ({
 
 function toggleSortKey(k: SortKey): void {
   mutate((prev) => {
-    const exists = prev.sort.some((s) => s.key === k);
-    if (exists) {
-      return {
-        ...prev,
-        sort: prev.sort.filter((s) => s.key !== k),
-      };
+    if (prev.sort.some((s) => s.key === k)) {
+      return { ...prev, sort: prev.sort.filter((s) => s.key !== k) };
     }
-
-    const desc = getDefaultDir(k);
-    const newSpec: SortSpec =
-      k === 'folder' || k === 'album'
-        ? { key: k, desc, sub: 'name' }
-        : { key: k, desc };
-
-    const newSort = [...prev.sort, newSpec];
-    const newCaptions = [...prev.captions];
-    if (k !== 'date' && !newCaptions.includes(k as CaptionKey)) {
-      newCaptions.push(k as CaptionKey);
-    }
-
-    return {
-      ...prev,
-      sort: newSort,
-      captions: newCaptions,
-    };
+    const captions =
+      k !== 'date' && !prev.captions.includes(k) ? [...prev.captions, k] : prev.captions;
+    // Direction and sub are remembered per key, so re-enabling restores them.
+    return { ...prev, sort: [...prev.sort, makeSpec(k, prev.dirs, prev.subs)], captions };
   });
 }
 
 function toggleDir(k: SortKey): void {
-  if (!state.value.sort.some((s) => s.key === k)) {
-    return;
-  }
-  mutate((prev) => ({
-    ...prev,
-    sort: prev.sort.map((s) => (s.key === k ? { ...s, desc: !s.desc } : s)),
-  }));
+  mutate((prev) => withDerivedSort({ ...prev, dirs: { ...prev.dirs, [k]: !prev.dirs[k] } }));
 }
 
 function setAllDirs(desc: boolean): void {
-  mutate((prev) => ({
-    ...prev,
-    sort: prev.sort.map((s) => ({ ...s, desc })),
-  }));
+  mutate((prev) =>
+    withDerivedSort({ ...prev, dirs: { date: desc, folder: desc, album: desc, size: desc } }),
+  );
 }
 
-function cycleSub(k: 'folder' | 'album'): void {
-  if (!state.value.sort.some((s) => s.key === k)) {
-    return;
-  }
-  mutate((prev) => ({
-    ...prev,
-    sort: prev.sort.map((s) => {
-      if (s.key === k) {
-        const currentSub = s.sub;
-        const nextSub: SubKey =
-          currentSub && currentSub in SUB_CYCLE ? SUB_CYCLE[currentSub] : 'size';
-        return { ...s, sub: nextSub };
-      }
-      return s;
-    }),
-  }));
+function cycleSub(k: SubSortKey): void {
+  mutate((prev) =>
+    withDerivedSort({ ...prev, subs: { ...prev.subs, [k]: SUB_CYCLE[prev.subs[k]] } }),
+  );
 }
 
 function setPeriod(p: FeedPeriod): void {
@@ -435,7 +444,7 @@ export function usePhotosView(): {
   toggleSortKey(k: SortKey): void;
   toggleDir(k: SortKey): void;
   setAllDirs(desc: boolean): void;
-  cycleSub(k: 'folder' | 'album'): void;
+  cycleSub(k: SubSortKey): void;
   setPeriod(p: FeedPeriod): void;
   setFilter(f: PhotosViewState['filter']): void;
   toggleCaption(c: CaptionKey): void;
