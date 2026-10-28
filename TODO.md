@@ -302,4 +302,4 @@
 - [x] Android-клиент на Capacitor и сборки по релизным тегам
 - [x] SQLite через better-sqlite3 с WAL и скрипт online backup
 
-Развитие листа персонажа — в [roadmap](docs/character-sheet-roadmap.md), вкладок — в [плане](docs/app-tabs-plan.md). Эти документы сохраняют детальный backlog соответствующих подсистем. Экспорт HTML в PDF не означает поддержку PDF-файлов внутри нод canvas.
+Развитие листа персонажа — в [roadmap](docs/plans/character-sheet-roadmap.md), вкладок — в [плане](docs/plans/app-tabs-plan.md). Эти документы сохраняют детальный backlog соответствующих подсистем. Экспорт HTML в PDF не означает поддержку PDF-файлов внутри нод canvas.
