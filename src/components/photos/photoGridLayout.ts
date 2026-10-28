@@ -9,7 +9,9 @@ export const GAP = 4,
   H1_HEIGHT = 48,
   H2_HEIGHT = 32,
   SHARE_HEIGHT = 32,
-  MAX_STRETCH = 1.6;
+  MAX_STRETCH = 1.6,
+  MIN_RATIO = 0.25,
+  MAX_RATIO = 4;
 
 export type GroupTitle = string;
 
@@ -74,7 +76,7 @@ function getItemRatio(item: FeedItem): number {
     item.width > 0 &&
     item.height > 0
   ) {
-    return item.width / item.height;
+    return Math.min(MAX_RATIO, Math.max(MIN_RATIO, item.width / item.height));
   }
   return 1;
 }
@@ -82,6 +84,9 @@ function getItemRatio(item: FeedItem): number {
 export function computeLayout(input: LayoutInput): Layout {
   const gap = input.gap ?? GAP;
   const width = input.width;
+  if (!(width > 0) || !Number.isFinite(width)) {
+    return { rows: [], totalHeight: 0, groupTops: new Map() };
+  }
   const rowHeight = input.rowHeight;
   const collapsedShares = input.collapsedShares;
 
@@ -122,13 +127,12 @@ export function computeLayout(input: LayoutInput): Layout {
         }
       }
 
-      const isLastRow = i === runItems.length;
       const countInRow = i - rowStart;
       const availableWidth = width - gap * (countInRow - 1);
       let scale = sumBasis > 0 ? availableWidth / sumBasis : 1;
-      if (isLastRow) {
-        scale = Math.min(scale, MAX_STRETCH);
-      }
+      // R24: every row (not only the last) is capped like the mockup's
+      // `max-width: h*ratio*1.6`; a row that cannot fill the width stays short.
+      scale = Math.min(scale, MAX_STRETCH);
 
       const rowH = rowHeight * scale;
       let currentLeft = 0;
@@ -311,6 +315,8 @@ export function visibleRows(
 
 export type Anchor = {
   fileId: string;
+  groupKey: string;
+  subKey?: string;
   delta: number;
   localTakenAt: string | null;
 };
@@ -326,6 +332,8 @@ export function anchorAt(
     if (tile && row.top + row.height > line) {
       return {
         fileId: tile.item.fileId,
+        groupKey: row.groupKey,
+        ...(row.subKey !== undefined ? { subKey: row.subKey } : {}),
         delta: row.top - line,
         localTakenAt: tile.item.localTakenAt,
       };
@@ -336,13 +344,33 @@ export function anchorAt(
 
 export function restoreAnchor(
   rows: Row[],
-  anchor: { fileId: string; delta: number; localTakenAt?: string | null },
+  anchor: {
+    fileId: string;
+    groupKey?: string;
+    subKey?: string;
+    delta: number;
+    localTakenAt?: string | null;
+  },
   items: FeedItem[],
   stickyOffset: number
 ): number {
-  for (const row of rows) {
-    if (row.kind === 'tiles' && row.tiles?.some((t) => t.item.fileId === anchor.fileId)) {
-      return Math.max(0, row.top - anchor.delta - stickyOffset);
+  // A file can repeat in several groups (album level): prefer the copy in the
+  // anchor's own group/sub, then the same group, then any copy.
+  const matchers: Array<(r: Row) => boolean> = [];
+  if (anchor.groupKey !== undefined) {
+    matchers.push((r) => r.groupKey === anchor.groupKey && r.subKey === anchor.subKey);
+    matchers.push((r) => r.groupKey === anchor.groupKey);
+  }
+  matchers.push(() => true);
+  for (const match of matchers) {
+    for (const row of rows) {
+      if (
+        row.kind === 'tiles' &&
+        match(row) &&
+        row.tiles?.some((t) => t.item.fileId === anchor.fileId)
+      ) {
+        return Math.max(0, row.top - anchor.delta - stickyOffset);
+      }
     }
   }
 

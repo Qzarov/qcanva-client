@@ -461,4 +461,114 @@ describe('photoGridLayout', () => {
     });
     expect(anchorAt(emptyLayout.rows, 0, 50)).toBeNull();
   });
+
+  it('anchor restore prefers the copy in its own group when a file repeats', () => {
+    const shared = [mkItem(0), mkItem(1), mkItem(2), mkItem(3)];
+    const mk = (width: number) =>
+      computeLayout({
+        groups: [
+          { key: 'albumA', title: 'A', count: 4 },
+          { key: 'albumB', title: 'B', count: 4 },
+        ],
+        items: new Map<string, FeedItem[]>([
+          ['albumA', shared],
+          ['albumB', shared],
+        ]),
+        width,
+        rowHeight: 170,
+        collapsedShares: new Set(),
+      });
+    const l1 = mk(1000);
+    const rowsB = l1.rows.filter((r) => r.kind === 'tiles' && r.groupKey === 'albumB');
+    const scrollTop = rowsB[0]!.top - 50 + 20;
+    const anchor = anchorAt(l1.rows, scrollTop, 50);
+    expect(anchor?.groupKey).toBe('albumB');
+    const l2 = mk(700);
+    const restored = restoreAnchor(l2.rows, anchor!, shared, 50);
+    const copyB = l2.rows.find(
+      (r) => r.kind === 'tiles' && r.groupKey === 'albumB' && r.tiles!.some((t) => t.item.fileId === anchor!.fileId),
+    )!;
+    expect(copyB.top - restored - 50).toBeCloseTo(anchor!.delta, 5);
+  });
+
+  it('extreme ratios are clamped and every row stays under the 1.6x cap', () => {
+    const rowHeight = 170;
+    const items = [
+      mkItem(0, { width: 1000, height: 100 }),
+      mkItem(1, { width: 100, height: 1000 }),
+      mkItem(2, { width: 100, height: 1000 }),
+      mkItem(3, { width: 1000, height: 100 }),
+      mkItem(4, { width: 100, height: 1000 }),
+    ];
+    const layout = computeLayout({
+      groups: [{ key: 'g1', title: 'G', count: items.length }],
+      items: new Map<string, FeedItem[]>([['g1', items]]),
+      width: 1000,
+      rowHeight,
+      collapsedShares: new Set(),
+    });
+    const tileRows = layout.rows.filter((r) => r.kind === 'tiles');
+    expect(tileRows.length).toBeGreaterThan(0);
+    for (const row of tileRows) {
+      expect(row.height).toBeLessThanOrEqual(rowHeight * 1.6 + 0.001);
+      expect(row.height).toBeGreaterThanOrEqual(rowHeight / 1.6);
+      for (const t of row.tiles!) {
+        expect(t.left + t.width).toBeLessThanOrEqual(1000 + 0.001);
+      }
+    }
+  });
+
+  it('a lone tall tile is capped instead of filling the row', () => {
+    const layout = computeLayout({
+      groups: [{ key: 'g1', title: 'G', count: 2 }],
+      items: new Map<string, FeedItem[]>([['g1', [mkItem(0, { width: 100, height: 1000 }), mkItem(1, { width: 100, height: 1000 })]]]),
+      width: 1000,
+      rowHeight: 170,
+      collapsedShares: new Set(),
+    });
+    const row = layout.rows.find((r) => r.kind === 'tiles')!;
+    expect(row.height).toBeLessThanOrEqual(170 * 1.6 + 0.001);
+    const last = row.tiles![row.tiles!.length - 1]!;
+    expect(last.left + last.width).toBeLessThan(1000);
+  });
+
+  it('width 0 or negative returns an empty layout', () => {
+    for (const width of [0, -10, NaN]) {
+      const layout = computeLayout({
+        groups: [{ key: 'g1', title: 'G', count: 1 }],
+        items: new Map<string, FeedItem[]>([['g1', [mkItem(0)]]]),
+        width,
+        rowHeight: 170,
+        collapsedShares: new Set(),
+      });
+      expect(layout.rows).toEqual([]);
+      expect(layout.totalHeight).toBe(0);
+    }
+  });
+
+  it('width smaller than one tile shrinks the tile to fit', () => {
+    const layout = computeLayout({
+      groups: [{ key: 'g1', title: 'G', count: 2 }],
+      items: new Map<string, FeedItem[]>([['g1', [mkItem(0, { width: 2000, height: 1000 }), mkItem(1)]]]),
+      width: 100,
+      rowHeight: 170,
+      collapsedShares: new Set(),
+    });
+    for (const row of layout.rows.filter((r) => r.kind === 'tiles')) {
+      expect(row.height).toBeGreaterThan(0);
+      for (const t of row.tiles!) expect(t.left + t.width).toBeLessThanOrEqual(100 + 0.001);
+    }
+  });
+
+  it('null width/height is laid out 1:1', () => {
+    const layout = computeLayout({
+      groups: [{ key: 'g1', title: 'G', count: 1 }],
+      items: new Map<string, FeedItem[]>([['g1', [mkItem(0, { width: null, height: null })]]]),
+      width: 1000,
+      rowHeight: 170,
+      collapsedShares: new Set(),
+    });
+    const row = layout.rows.find((r) => r.kind === 'tiles')!;
+    expect(row.tiles![0]!.width).toBeCloseTo(row.height, 5);
+  });
 });
