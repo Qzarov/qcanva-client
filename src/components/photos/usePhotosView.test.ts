@@ -1,0 +1,404 @@
+// @vitest-environment jsdom
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const getPrefMock = vi.fn<(key: string) => Promise<unknown>>();
+const putPrefMock = vi.fn<(key: string, value: unknown) => Promise<void>>();
+
+async function load() {
+  const mod = await import('./usePhotosView');
+  return mod;
+}
+
+describe('usePhotosView', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.useFakeTimers();
+    localStorage.clear();
+    getPrefMock.mockReset();
+    putPrefMock.mockReset();
+    getPrefMock.mockResolvedValue(null);
+    putPrefMock.mockResolvedValue(undefined);
+    vi.doMock('../../api/photos', () => ({
+      photosApi: {
+        getPreference: getPrefMock,
+        putPreference: putPrefMock,
+      },
+    }));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.doUnmock('../../api/photos');
+    vi.restoreAllMocks();
+  });
+
+  it('defaults match spec', async () => {
+    const { usePhotosView, defaultPhotosViewState } = await load();
+    const { state, levels, feedParams } = usePhotosView();
+
+    expect(state.value).toEqual(defaultPhotosViewState());
+    expect(state.value).toEqual({
+      sort: [
+        { key: 'date', desc: true },
+        { key: 'folder', desc: false, sub: 'name' },
+      ],
+      period: 'month',
+      filter: 'all',
+      captions: [],
+      shared: true,
+      tile: 'm',
+      collapsedShares: [],
+    });
+    expect(levels.value).toEqual(['date']);
+    expect(feedParams.value).toEqual({
+      sort: [
+        { key: 'date', desc: true },
+        { key: 'folder', desc: false, sub: 'name' },
+      ],
+      levels: ['date'],
+      period: 'month',
+      filter: 'all',
+      shared: true,
+    });
+    expect('albumId' in feedParams.value).toBe(false);
+  });
+
+  it('levels: date then folder when folder sorted after date and captioned', async () => {
+    const { usePhotosView } = await load();
+    const { levels, toggleCaption } = usePhotosView();
+
+    expect(levels.value).toEqual(['date']);
+    toggleCaption('folder');
+    expect(levels.value).toEqual(['date', 'folder']);
+  });
+
+  it('levels: folder first when folder outranks date', async () => {
+    localStorage.setItem(
+      'qcanva:photos:view:v1',
+      JSON.stringify({
+        sort: [
+          { key: 'folder', desc: false, sub: 'name' },
+          { key: 'date', desc: true },
+        ],
+        captions: ['folder'],
+      }),
+    );
+    const { usePhotosView } = await load();
+    const { levels, toggleSortKey } = usePhotosView();
+
+    expect(levels.value).toEqual(['folder', 'date']);
+
+    // Case where date is outside sort
+    toggleSortKey('date');
+    expect(levels.value).toEqual(['folder', 'date']);
+  });
+
+  it('caption not in sort goes to tile', async () => {
+    const { usePhotosView } = await load();
+    const { captionOnTile, levels, toggleCaption } = usePhotosView();
+
+    toggleCaption('album');
+    expect(captionOnTile.value).toEqual(['album']);
+    expect(levels.value).toEqual(['date']);
+  });
+
+  it('enabling sort key enables its caption', async () => {
+    const { usePhotosView } = await load();
+    const { state, toggleSortKey } = usePhotosView();
+
+    toggleSortKey('album');
+    expect(state.value.sort[state.value.sort.length - 1]).toEqual({
+      key: 'album',
+      desc: false,
+      sub: 'name',
+    });
+    expect(state.value.captions).toContain('album');
+
+    toggleSortKey('size');
+    expect(state.value.sort[state.value.sort.length - 1]).toEqual({
+      key: 'size',
+      desc: true,
+    });
+    expect(state.value.captions).toContain('size');
+
+    // Toggle date off first so state is without date
+    toggleSortKey('date');
+    expect(state.value.sort.some((s) => s.key === 'date')).toBe(false);
+    const captionsSnapshot = [...state.value.captions];
+
+    // Re-enabling date does not add a caption
+    toggleSortKey('date');
+    expect(state.value.sort.some((s) => s.key === 'date')).toBe(true);
+    expect(state.value.captions).toEqual(captionsSnapshot);
+  });
+
+  it('disabling sort key keeps caption which moves to tile', async () => {
+    const { usePhotosView } = await load();
+    const { state, captionOnTile, levels, toggleSortKey } = usePhotosView();
+
+    toggleSortKey('album');
+    expect(state.value.captions).toContain('album');
+
+    toggleSortKey('album');
+    expect(state.value.captions).toContain('album');
+    expect(captionOnTile.value).toContain('album');
+    expect(levels.value).not.toContain('album');
+  });
+
+  it('setAllDirs', async () => {
+    const { usePhotosView } = await load();
+    const { state, setAllDirs } = usePhotosView();
+
+    setAllDirs(true);
+    expect(state.value.sort.every((s) => s.desc === true)).toBe(true);
+
+    setAllDirs(false);
+    expect(state.value.sort.every((s) => s.desc === false)).toBe(true);
+  });
+
+  it('toggleDir flips only the given key', async () => {
+    const { usePhotosView } = await load();
+    const { state, toggleDir } = usePhotosView();
+
+    toggleDir('date');
+    expect(state.value.sort.find((s) => s.key === 'date')?.desc).toBe(false);
+    expect(state.value.sort.find((s) => s.key === 'folder')?.desc).toBe(false);
+
+    toggleDir('folder');
+    expect(state.value.sort.find((s) => s.key === 'date')?.desc).toBe(false);
+    expect(state.value.sort.find((s) => s.key === 'folder')?.desc).toBe(true);
+  });
+
+  it('cycleSub order', async () => {
+    const { usePhotosView } = await load();
+    const { state, cycleSub, toggleSortKey } = usePhotosView();
+
+    cycleSub('folder');
+    expect(state.value.sort.find((s) => s.key === 'folder')?.sub).toBe('size');
+    cycleSub('folder');
+    expect(state.value.sort.find((s) => s.key === 'folder')?.sub).toBe('created');
+    cycleSub('folder');
+    expect(state.value.sort.find((s) => s.key === 'folder')?.sub).toBe('added');
+    cycleSub('folder');
+    expect(state.value.sort.find((s) => s.key === 'folder')?.sub).toBe('name');
+
+    toggleSortKey('album');
+    expect(state.value.sort.find((s) => s.key === 'album')?.sub).toBe('name');
+    cycleSub('album');
+    expect(state.value.sort.find((s) => s.key === 'album')?.sub).toBe('size');
+    cycleSub('album');
+    expect(state.value.sort.find((s) => s.key === 'album')?.sub).toBe('created');
+    cycleSub('album');
+    expect(state.value.sort.find((s) => s.key === 'album')?.sub).toBe('added');
+    cycleSub('album');
+    expect(state.value.sort.find((s) => s.key === 'album')?.sub).toBe('name');
+  });
+
+  it('cycleTile order', async () => {
+    const { usePhotosView } = await load();
+    const { state, cycleTile } = usePhotosView();
+
+    expect(state.value.tile).toBe('m');
+    cycleTile();
+    expect(state.value.tile).toBe('l');
+    cycleTile();
+    expect(state.value.tile).toBe('s');
+    cycleTile();
+    expect(state.value.tile).toBe('m');
+  });
+
+  it('persists to localStorage immediately and to hub debounced', async () => {
+    const { usePhotosView, PHOTOS_VIEW_STORAGE_KEY, PHOTOS_VIEW_PREFERENCE_KEY } = await load();
+    const { state, setPeriod, setFilter } = usePhotosView();
+
+    setPeriod('year');
+
+    const raw = localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY);
+    expect(raw).not.toBeNull();
+    expect(JSON.parse(raw!).period).toBe('year');
+
+    await vi.advanceTimersByTimeAsync(499);
+    expect(putPrefMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(putPrefMock).toHaveBeenCalledTimes(1);
+    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, state.value);
+
+    putPrefMock.mockClear();
+
+    setPeriod('day');
+    await vi.advanceTimersByTimeAsync(200);
+    setFilter('photo');
+    await vi.advanceTimersByTimeAsync(499);
+    expect(putPrefMock).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(putPrefMock).toHaveBeenCalledTimes(1);
+    expect(putPrefMock).toHaveBeenCalledWith(PHOTOS_VIEW_PREFERENCE_KEY, state.value);
+    expect(state.value.period).toBe('day');
+    expect(state.value.filter).toBe('photo');
+  });
+
+  it('hub put failure keeps local state', async () => {
+    localStorage.setItem(
+      'qcanva:photos:view:v1',
+      JSON.stringify({
+        period: 'day',
+      }),
+    );
+    getPrefMock.mockRejectedValue(new Error('Hub get error'));
+    putPrefMock.mockRejectedValue(new Error('Hub put error'));
+
+    const { usePhotosView, PHOTOS_VIEW_STORAGE_KEY } = await load();
+    const { state, setPeriod } = usePhotosView();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value.period).toBe('day');
+
+    setPeriod('year');
+    expect(state.value.period).toBe('year');
+    expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!).period).toBe('year');
+
+    await vi.advanceTimersByTimeAsync(500);
+
+    expect(state.value.period).toBe('year');
+    expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!).period).toBe('year');
+  });
+
+  it('malformed stored value falls back per field', async () => {
+    const storageKey = 'qcanva:photos:view:v1';
+    localStorage.setItem(
+      storageKey,
+      JSON.stringify({
+        period: 'day',
+        filter: 'favorites',
+        tile: 'xl',
+        shared: 'yes',
+        sort: [
+          { key: 'unknown', desc: true },
+          { key: 'folder', desc: 'bad' },
+          { key: 'folder', desc: true },
+        ],
+        captions: ['junk', 'folder', 123, 'folder'],
+        collapsedShares: [123, 'share-1', '', 'share-1'],
+        extraKey: 'extra',
+      }),
+    );
+    const { usePhotosView, normalizePhotosViewState, defaultPhotosViewState } = await load();
+    const { state } = usePhotosView();
+
+    expect(state.value.period).toBe('day');
+    expect(state.value.filter).toBe('all');
+    expect(state.value.tile).toBe('m');
+    expect(state.value.shared).toBe(true);
+    expect(state.value.sort).toEqual([{ key: 'folder', desc: false, sub: 'name' }]);
+    expect(state.value.captions).toEqual(['folder']);
+    expect(state.value.collapsedShares).toEqual(['share-1']);
+    expect('extraKey' in (state.value as Record<string, unknown>)).toBe(false);
+
+    // Non-JSON garbage string -> all defaults
+    localStorage.setItem(storageKey, '{not-json');
+    vi.resetModules();
+    const mod2 = await import('./usePhotosView');
+    const view2 = mod2.usePhotosView();
+    expect(view2.state.value).toEqual(defaultPhotosViewState());
+
+    // normalizePhotosViewState(null/42/'x') -> defaults
+    expect(normalizePhotosViewState(null)).toEqual(defaultPhotosViewState());
+    expect(normalizePhotosViewState(42)).toEqual(defaultPhotosViewState());
+    expect(normalizePhotosViewState('x')).toEqual(defaultPhotosViewState());
+  });
+
+  it('hub value arriving after load is applied', async () => {
+    getPrefMock.mockResolvedValue({ period: 'year', filter: 'video' });
+
+    const { usePhotosView, PHOTOS_VIEW_STORAGE_KEY } = await load();
+    const { state } = usePhotosView();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value.period).toBe('year');
+    expect(state.value.filter).toBe('video');
+    expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!).period).toBe('year');
+    expect(putPrefMock).not.toHaveBeenCalled();
+  });
+
+  it('hub value does not override a change made meanwhile', async () => {
+    let resolveGetPref!: (val: unknown) => void;
+    const deferred = new Promise((resolve) => {
+      resolveGetPref = resolve;
+    });
+    getPrefMock.mockReturnValue(deferred);
+
+    const { usePhotosView } = await load();
+    const { state, setPeriod } = usePhotosView();
+
+    setPeriod('day');
+    resolveGetPref({ period: 'year' });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value.period).toBe('day');
+  });
+
+  it('hub value is normalized', async () => {
+    getPrefMock.mockResolvedValue({
+      period: 'day',
+      filter: 'invalid_filter',
+      tile: 'invalid_tile',
+      sort: 'not-an-array',
+    });
+
+    const { usePhotosView } = await load();
+    const { state } = usePhotosView();
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(state.value.period).toBe('day');
+    expect(state.value.filter).toBe('all');
+    expect(state.value.tile).toBe('m');
+    expect(state.value.sort).toEqual([
+      { key: 'date', desc: true },
+      { key: 'folder', desc: false, sub: 'name' },
+    ]);
+  });
+
+  it('toggleShareCollapsed and reset', async () => {
+    const {
+      usePhotosView,
+      defaultPhotosViewState,
+      PHOTOS_VIEW_STORAGE_KEY,
+      PHOTOS_VIEW_PREFERENCE_KEY,
+    } = await load();
+    const { state, toggleShareCollapsed, reset, setPeriod } = usePhotosView();
+
+    toggleShareCollapsed('share-root-1');
+    expect(state.value.collapsedShares).toEqual(['share-root-1']);
+
+    toggleShareCollapsed('share-root-1');
+    expect(state.value.collapsedShares).toEqual([]);
+
+    setPeriod('year');
+    toggleShareCollapsed('share-root-2');
+    expect(state.value.period).toBe('year');
+    expect(state.value.collapsedShares).toEqual(['share-root-2']);
+
+    reset();
+    expect(state.value).toEqual(defaultPhotosViewState());
+    expect(JSON.parse(localStorage.getItem(PHOTOS_VIEW_STORAGE_KEY)!)).toEqual(
+      defaultPhotosViewState(),
+    );
+
+    await vi.advanceTimersByTimeAsync(500);
+    expect(putPrefMock).toHaveBeenCalledWith(
+      PHOTOS_VIEW_PREFERENCE_KEY,
+      defaultPhotosViewState(),
+    );
+  });
+});
