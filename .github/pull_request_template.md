@@ -14,5 +14,3 @@
 ## Трекинг
 
 - [ ] Статус в qcanva обновлён
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)

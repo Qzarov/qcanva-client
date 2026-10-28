@@ -141,7 +141,6 @@
 | Локальное скачивание файла `.html` | в интерфейсе | `src/views/HtmlDocumentView.vue` | `—` |
 | Просмотр истории версий HTML с превью и откат ревизии | в интерфейсе | `src/views/HtmlDocumentView.vue` | `GET /api/html-documents/:id/history`, `GET /api/html-documents/:id/history/:entryId`, `POST /api/html-documents/:id/history/:entryId/restore` |
 | Совместная синхронизация изменений по протоколу WebSocket | в интерфейсе | `src/composables/useHtmlSocket.ts` | `WebSocket /html-ws` |
-| Генерация HTML-документа ИИ из выбранных документов по запросу | в интерфейсе | `src/views/HtmlDocsView.vue` | `POST /api/html-documents/generate` |
 
 ---
 
@@ -239,7 +238,6 @@
 | Отзыв / отключение устройства от хранилища Q Space | в интерфейсе | `src/components/DriveDeviceRemoveDialog.vue` | `DELETE /api/drive/devices/:id` |
 | Просмотр списка утерянных файлов (Lost files без онлайн-копий) | в интерфейсе | `src/views/DriveDevicesView.vue` | `GET /api/drive/safety/lost` |
 | Массовое перемещение утерянных файлов в корзину | в интерфейсе | `src/views/DriveDevicesView.vue` | `POST /api/drive/safety/lost/trash` |
-| Подключение нового устройства по одноразовому коду (создать код, показать команду установки, отменить) | в интерфейсе | `src/components/DrivePairDeviceDialog.vue` | `POST /api/drive/devices/pairing-codes`<br>`DELETE /api/drive/devices/pairing-codes/:id` |
 
 ---
 
@@ -326,3 +324,6 @@
 | `driveApi.getDevicePolicy` | `GET /api/drive/devices/:id/policy` | `src/api/drive.ts` |
 | `driveApi.setDevicePolicy` | `PUT /api/drive/devices/:id/policy` | `src/api/drive.ts` |
 | `driveApi.getUnderReplicated` | `GET /api/drive/replication/under` | `src/api/drive.ts` |
+| `htmlDocuments.generate` | `POST /api/html-documents/generate` | `src/api/client.ts` (вызывает только `src/views/HtmlDocsView.vue`, которого нет в роутере) |
+| `driveApi.createPairingCode` | `POST /api/drive/devices/pairing-codes` | `src/api/drive.ts` (вызывает только неподключённый `src/components/DrivePairDeviceDialog.vue`) |
+| `driveApi.cancelPairingCode` | `DELETE /api/drive/devices/pairing-codes/:id` | `src/api/drive.ts` (то же) |
