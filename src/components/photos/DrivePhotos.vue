@@ -185,7 +185,7 @@ import { alertDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import DriveFileProperties from '../DriveFileProperties.vue';
 import PhotoViewer from './PhotoViewer.vue';
-import { computeGridLayout, visibleRows, visibleSections, type GridRow } from './photoGridLayout';
+import { computeGridLayout, visibleRows, visibleSections, type GridRow } from './photoGridLayoutLegacy';
 
 const props = defineProps<{
   /** Folder whose subtree is shown (the folder's album); null = the whole drive. */
