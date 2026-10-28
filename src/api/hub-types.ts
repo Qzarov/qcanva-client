@@ -51,3 +51,13 @@ export type Refine<
   T,
   O extends { [K in keyof O]: K extends keyof T ? T[K] : never },
 > = Simplify<Omit<T, keyof O> & O>;
+
+/**
+ * Поля, где клиент сознательно ждёт не то, что объявил хаб (возможный баг одной из сторон).
+ * Тип поля любой, но поле обязано быть в `T`: пропадёт из схемы — ошибка сборки.
+ * Каждое такое поле помечай комментарием `// расходится со схемой хаба: <тип в схеме>`.
+ */
+export type Override<
+  T,
+  O extends { [K in keyof O]: K extends keyof T ? unknown : never },
+> = Simplify<Omit<T, keyof O> & O>;
