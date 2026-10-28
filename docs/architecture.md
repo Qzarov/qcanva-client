@@ -149,6 +149,22 @@
 | [`src/api/hubOverride.ts`](../src/api/hubOverride.ts) | Отладочный резолв адреса хаба и WebSocket-ориджина | `resolveApiBase()`, `resolveWsOrigin()`, `isHubOverrideAllowed()`, `normalizeHubOverride()` |
 | [`src/api/hubSwitch.ts`](../src/api/hubSwitch.ts) | Безопасная смена сервера с обязательным сбросом JWT токена | `applyHubOverride()` |
 | [`src/api/public-origin.ts`](../src/api/public-origin.ts) | Вычисление канонического домена для ссылок общего доступа | `getPublicOrigin()` (защита от `https://localhost` в Capacitor) |
+| [`src/api/hub-schema.d.ts`](../src/api/hub-schema.d.ts) | Типы API хаба, сгенерированные `openapi-typescript` из схемы хаба `canvas-server-back/docs/api/openapi.json`. Руками не править | `paths`, `operations`, `components` |
+| [`src/api/hub-types.ts`](../src/api/hub-types.ts) | Выборки из сгенерированной схемы для модулей `src/api/*` | `HubResponse`, `HubBody`, `HubQuery`, `HubSchema`, `ItemOf`, `Refine` |
+
+### Типы API хаба из схемы OpenAPI
+
+Хаб строит схему OpenAPI из кода (`npm run openapi:export`, файл [`canvas-server-back/docs/api/openapi.json`](https://github.com/Qzarov/canvas-server-back/blob/q-space/docs/api/openapi.json)). Клиент генерирует из неё типы командой `npm run api:types` → `src/api/hub-schema.d.ts`. Модули `src/api/*` не описывают ответы и тела хаба руками, а выводят их из схемы через [`src/api/hub-types.ts`](../src/api/hub-types.ts):
+
+- `HubResponse<'/api/drive/limits', 'get'>` — JSON успешного ответа; `HubBody<…>` — тело запроса; `HubQuery<…>` — query-параметры. Пути — как в схеме, с префиксом `/api`.
+- `Refine<T, { kind: DriveItemKind }>` — сгенерированный тип с уточнёнными полями (союз литералов вместо `string`). Уточнять можно только поле, которое есть в схеме, и только совместимым типом.
+- Где клиент ждёт не то, что объявил хаб, тип собирается через `Omit<…> & { … }` с комментарием `// расходится со схемой хаба` или `// нет в схеме хаба`; где схема ответ не описывает — остаётся ручной тип с комментарием `// схема хаба не описывает …`.
+
+Поэтому, когда хаб меняет ответ, после перегенерации типов `npm run build` падает в `src/api/*` или в местах использования, а не молча в рантайме.
+
+Ограничения схемы хаба: в большинстве объектов нет списка `required`, поэтому генерация идёт с `--properties-required-by-default` — объявленное поле считается обязательным, `nullable` даёт `| null`. DTO тел без `@ApiProperty` генерируются как `Record<string, never>`.
+
+Переведены `drive.ts` и `admin.ts`; `client.ts`, `photos.ts` пока на ручных типах.
 
 ---
 

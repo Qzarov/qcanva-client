@@ -1,6 +1,6 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { useI18n } from '../composables/useI18n';
-import type { HubBody, HubResponse, ItemOf, Refine } from './hub-types';
+import type { HubBody, HubResponse, ItemOf, Override, Refine } from './hub-types';
 
 export type DriveSlice = 'all' | 'media' | 'files' | 'docs';
 export type DriveSort = 'name' | 'date' | 'size';
@@ -22,11 +22,12 @@ type GeneratedDriveFolderResponse = HubResponse<'/api/drive/folders/{id}', 'get'
 type GeneratedDriveFolderNode = GeneratedDriveFolderResponse['folder'];
 
 export type DriveFolderNode = Refine<
-  Omit<GeneratedDriveFolderNode, 'createdAt' | 'updatedAt'> & {
-    createdAt?: string; // расходится со схемой хаба: string
-    updatedAt?: string; // расходится со схемой хаба: string
-  },
-  { role: DriveFolderRole }
+  GeneratedDriveFolderNode,
+  {
+    role: DriveFolderRole;
+    createdAt?: string;
+    updatedAt?: string;
+  }
 >;
 
 export type DriveBreadcrumb = ItemOf<GeneratedDriveFolderResponse['path']>;
@@ -36,32 +37,41 @@ export type DriveFolderCounts = GeneratedDriveFolderResponse['counts'];
 /** Everything in the folder's whole subtree. Older hubs omit it. */
 export type DriveFolderTotals = GeneratedDriveFolderResponse['totals'];
 
-export type DriveFolderResponse = Omit<GeneratedDriveFolderResponse, 'folder' | 'totals'> & {
-  folder: DriveFolderNode; // расходится со схемой хаба: GeneratedDriveFolderResponse['folder']
-  totals?: DriveFolderTotals; // расходится со схемой хаба: DriveFolderTotals
-};
+export type DriveFolderResponse = Override<
+  Refine<GeneratedDriveFolderResponse, { totals?: DriveFolderTotals }>,
+  {
+    folder: DriveFolderNode; // расходится со схемой хаба: GeneratedDriveFolderResponse['folder']
+  }
+>;
 
 type GeneratedDriveItemsResponse = HubResponse<'/api/drive/folders/{id}/items', 'get'>;
 type GeneratedDriveItem = ItemOf<GeneratedDriveItemsResponse['items']>;
 
 export type DriveItem = Refine<
-  Omit<GeneratedDriveItem, 'placed' | 'parentId'> & {
-    placed?: boolean; // расходится со схемой хаба: boolean
-    parentId?: string | null; // расходится со схемой хаба: string | null
-  },
-  { kind: DriveItemKind }
+  GeneratedDriveItem,
+  {
+    kind: DriveItemKind;
+    placed?: boolean;
+    parentId?: string | null;
+  }
 > & {
   deletedAt?: string | null; // нет в схеме хаба
   snippet?: string | null; // нет в схеме хаба
 };
 
-export type DriveItemsResponse = Omit<GeneratedDriveItemsResponse, 'items'> & {
-  items: DriveItem[]; // расходится со схемой хаба: GeneratedDriveItem[]
-};
+export type DriveItemsResponse = Override<
+  GeneratedDriveItemsResponse,
+  {
+    items: DriveItem[]; // расходится со схемой хаба: GeneratedDriveItem[]
+  }
+>;
 
-export type DriveSearchResponse = Omit<HubResponse<'/api/drive/search', 'get'>, 'items'> & {
-  items: DriveItem[]; // расходится со схемой хаба: HubResponse<'/api/drive/search', 'get'>['items']
-};
+export type DriveSearchResponse = Override<
+  HubResponse<'/api/drive/search', 'get'>,
+  {
+    items: DriveItem[]; // расходится со схемой хаба: HubResponse<'/api/drive/search', 'get'>['items']
+  }
+>;
 
 export interface DriveItemsQuery {
   slice?: DriveSlice;
@@ -86,16 +96,17 @@ type GeneratedDeviceFolder = ItemOf<ItemOf<HubResponse<'/api/drive/devices', 'ge
 
 /** One storage rule of a device with the folder name resolved by the hub. */
 export type DriveDeviceFolder = Refine<
-  Omit<GeneratedDeviceFolder, 'topFolderId' | 'path'> & {
+  GeneratedDeviceFolder,
+  {
     /**
      * The top-level drive folder the rule folder sits in (itself when top-level);
      * null for the root rule or an inaccessible folder. Missing on older hubs.
      */
-    topFolderId?: string | null; // расходится со схемой хаба: string | null
+    topFolderId?: string | null;
     /** Folder names from the top-level folder down to the rule folder; null when unknown. */
-    path?: string[] | null; // расходится со схемой хаба: string[] | null
-  },
-  { mode: DriveStorageMode }
+    path?: string[] | null;
+    mode: DriveStorageMode;
+  }
 >;
 
 export type DriveSyncState = 'synced' | 'syncing' | 'waiting' | 'paused' | 'error' | 'logged_out';
@@ -139,16 +150,21 @@ export interface DriveDeviceSyncStatus {
 type GeneratedDevice = ItemOf<HubResponse<'/api/drive/devices', 'get'>['nodes']>;
 
 /** A storage device of the owner, as the hub lists it (revoked devices are never listed). */
-export type DriveDevice = Refine<
-  Omit<GeneratedDevice, 'syncStatus' | 'syncStatusAt' | 'defaultMode' | 'rootFiles' | 'folders'> & {
+export type DriveDevice = Override<
+  Refine<
+    GeneratedDevice,
+    {
+      kind: DriveDeviceKind;
+      syncStatusAt?: string | null;
+      defaultMode?: 'full' | 'on_demand';
+      rootFiles?: DriveStorageMode | null;
+    }
+  >,
+  {
     /** Sync status fields need the hub with the device status (Qzarov/canvas-server-back#41). */
     syncStatus?: DriveDeviceSyncStatus | null; // расходится со схемой хаба: Record<string, never> | null
-    syncStatusAt?: string | null; // расходится со схемой хаба: string | null
-    defaultMode?: 'full' | 'on_demand'; // расходится со схемой хаба: string
-    rootFiles?: DriveStorageMode | null; // расходится со схемой хаба: string | null
     folders?: DriveDeviceFolder[]; // расходится со схемой хаба: GeneratedDevice['folders']
-  },
-  { kind: DriveDeviceKind }
+  }
 >;
 
 /** A files-and-bytes pair of the safety summary. */
@@ -190,10 +206,9 @@ export type DriveStorageRule = Refine<GeneratedStorageRule, { mode: DriveStorage
 type GeneratedDevicePolicy = HubResponse<'/api/drive/devices/{id}/policy', 'get'>;
 
 export type DriveDevicePolicy = Refine<
-  Omit<GeneratedDevicePolicy, 'rootFiles'> & {
-    rootFiles?: DriveStorageMode | null; // расходится со схемой хаба: string | null
-  },
+  GeneratedDevicePolicy,
   {
+    rootFiles?: DriveStorageMode | null;
     /** Derived by the hub from the device kind; a root rule overrides it. */
     defaultMode: 'full' | 'on_demand';
     rules: DriveStorageRule[];
@@ -205,10 +220,11 @@ type GeneratedLostResponse = HubResponse<'/api/drive/safety/lost', 'get'>;
 export type DriveLostItem = ItemOf<GeneratedLostResponse['items']>;
 
 export type DriveLostResponse = Refine<
-  Omit<GeneratedLostResponse, 'total'> & {
-    total?: number; // расходится со схемой хаба: number
-  },
-  { items: DriveLostItem[] }
+  GeneratedLostResponse,
+  {
+    total?: number;
+    items: DriveLostItem[];
+  }
 >;
 
 type GeneratedUnderReplicatedResponse = HubResponse<'/api/drive/replication/under', 'get'>;
@@ -216,11 +232,12 @@ type GeneratedUnderReplicatedResponse = HubResponse<'/api/drive/replication/unde
 export type DriveUnderReplicatedItem = ItemOf<GeneratedUnderReplicatedResponse['items']>;
 
 export type DriveUnderReplicatedResponse = Refine<
-  Omit<GeneratedUnderReplicatedResponse, 'total'> & {
+  GeneratedUnderReplicatedResponse,
+  {
     /** All files without a keeper copy, independent of the cursor. Missing on older hubs. */
-    total?: number; // расходится со схемой хаба: number
-  },
-  { items: DriveUnderReplicatedItem[] }
+    total?: number;
+    items: DriveUnderReplicatedItem[];
+  }
 >;
 
 export type DriveReplicaState = 'present' | 'verified' | 'evicting' | 'evicted';
@@ -237,18 +254,23 @@ export type DriveFileReplica = Refine<
 
 type GeneratedFileMeta = HubResponse<'/api/drive/files/{id}/meta', 'get'>;
 
-export type DriveFileMeta = Refine<
-  Omit<GeneratedFileMeta, 'mime' | 'hubCopy' | 'availableFrom'> & {
+export type DriveFileMeta = Override<
+  Refine<
+    GeneratedFileMeta,
+    {
+      /** Where the bytes can come from now: device kinds with a live copy, then "hub". */
+      availableFrom?: string[];
+      replicas: DriveFileReplica[];
+    }
+  >,
+  {
     mime: string | null; // расходится со схемой хаба: string
     /**
      * Whether the hub's own storage holds the bytes. The hub sends a boolean;
      * the raw `blob.hubCopy` states are accepted too, `evicting` meaning "no".
      */
     hubCopy?: boolean | 'present' | 'evicting' | 'absent' | null; // расходится со схемой хаба: boolean
-    /** Where the bytes can come from now: device kinds with a live copy, then "hub". */
-    availableFrom?: string[]; // расходится со схемой хаба: string[]
-  },
-  { replicas: DriveFileReplica[] }
+  }
 >;
 
 /** Kinds a user can pair: home server, PC, phone. */
@@ -258,18 +280,28 @@ export type DrivePairingCode = HubResponse<'/api/drive/devices/pairing-codes', '
 
 type GeneratedPairingCodeBody = HubBody<'/api/drive/devices/pairing-codes', 'post'>;
 
-export type DriveCreatePairingCodeBody = Omit<GeneratedPairingCodeBody, 'name' | 'kind' | 'folderId'> & {
-  name?: string; // расходится со схемой хаба: string
-  kind?: DrivePairableKind; // расходится со схемой хаба: string
-  folderId?: string | null; // расходится со схемой хаба: string
-};
+export type DriveCreatePairingCodeBody = Override<
+  Refine<
+    GeneratedPairingCodeBody,
+    {
+      name?: string;
+      kind?: DrivePairableKind;
+    }
+  >,
+  {
+    folderId?: string | null; // расходится со схемой хаба: string
+  }
+>;
 
 type GeneratedTrashLostBody = HubBody<'/api/drive/safety/lost/trash', 'post'>;
 
-export type DriveTrashLostBody = Omit<GeneratedTrashLostBody, 'all' | 'fileIds'> & {
-  all?: boolean; // расходится со схемой хаба: boolean
-  fileIds?: string[]; // расходится со схемой хаба: string[]
-};
+export type DriveTrashLostBody = Refine<
+  GeneratedTrashLostBody,
+  {
+    all?: boolean;
+    fileIds?: string[];
+  }
+>;
 
 /**
  * A device counts as online when the hub heard from it within this window.
@@ -523,13 +555,13 @@ export const driveApi = {
     });
   },
 
-  trashFile(id: string): Promise<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }> { // id нет в схеме хаба
+  trashFile(id: string): Promise<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }> { // нет в схеме хаба
     return request<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }>(`/drive/files/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
 
-  deleteFilePermanently(id: string): Promise<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }> { // id нет в схеме хаба
+  deleteFilePermanently(id: string): Promise<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }> { // нет в схеме хаба
     return request<HubResponse<'/api/drive/files/{id}', 'delete'> & { id?: string }>(`/drive/files/${encodeURIComponent(id)}?permanent=true`, {
       method: 'DELETE',
     });
@@ -556,7 +588,15 @@ export const driveApi = {
   },
 
   async listDevices(): Promise<DriveDevice[]> {
-    const res = await request<(Omit<HubResponse<'/api/drive/devices', 'get'>, 'nodes'> & { nodes: DriveDevice[] }) | DriveDevice[]>('/drive/devices');
+    const res = await request<
+      | Override<
+          HubResponse<'/api/drive/devices', 'get'>,
+          {
+            nodes: DriveDevice[]; // расходится со схемой хаба: GeneratedDevice[]
+          }
+        >
+      | DriveDevice[]
+    >('/drive/devices');
     return Array.isArray(res) ? res : res?.nodes ?? [];
   },
 

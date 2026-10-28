@@ -68,6 +68,10 @@
 - Состояние — модульные синглтоны и composables (`src/composables/`), Pinia нет. Не добавляй стор-библиотеку без решения feofan.
 - i18n — один файл `src/composables/useI18n.ts`. Новый ключ добавляй **и в `ru`, и в `en`**.
 - HTTP к хабу — только через `src/api/*`. Новый эндпоинт хаба → функция в `src/api/`, и строка в `docs/features.md`, если функция видна в интерфейсе (или в таблице «есть в API-слое, нет в интерфейсе»).
+- Типы ответов и тел хаба — из сгенерированной схемы, не руками: `HubResponse` / `HubBody` / `Refine` из `src/api/hub-types.ts` ([architecture.md](architecture.md), раздел 4). Файл `src/api/hub-schema.d.ts` руками не правь, а перегенерируй:
+  - `npm run api:types` — из `canvas-server-back/docs/api/openapi.json` в клоне хаба рядом с клиентом (`../canvas-server-back`; он может стоять на чужой ветке — проверь `git -C ../canvas-server-back status`);
+  - `npm run api:types -- <путь к openapi.json>` или `HUB_OPENAPI=<путь> npm run api:types` — из другого файла. Из worktree схему нужной ветки хаба бери так: `git -C ../canvas-server-back show origin/q-space:docs/api/openapi.json > .agy/openapi.json` и `npm run api:types -- .agy/openapi.json`.
+  - Поменялся эндпоинт хаба → перегенерируй схему в хабе (`npm run openapi:export`), затем типы здесь, затем `npm run build`. Ошибка сборки после перегенерации — это расхождение клиента и хаба: разберись, а не глуши `as any`.
 - `src/views/DashboardView.vue` — ~4,4 тыс. строк: целиком не читать, искать внутри и читать фрагменты.
 - `postinstall` применяет `patch-package` (`patches/`): после `npm install` патчи должны примениться без ошибок.
 
