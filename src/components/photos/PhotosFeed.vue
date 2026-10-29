@@ -802,7 +802,30 @@ function orderedItems(): FeedItem[] {
   return out;
 }
 
-defineExpose({ orderedItems });
+/**
+ * A photo's favorite flag or album membership changed elsewhere (the panel): update
+ * every loaded copy so the heart and the album captions follow, without a reload.
+ */
+function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'albumIds'>>): void {
+  let touched = false;
+  const next = new Map<string, FeedItem[]>();
+  for (const [key, list] of items.value) {
+    const idx = list.findIndex((i) => i.fileId === fileId);
+    if (idx < 0) {
+      next.set(key, list);
+      continue;
+    }
+    const copy = list.slice();
+    copy[idx] = { ...list[idx]!, ...patch };
+    next.set(key, copy);
+    touched = true;
+  }
+  if (!touched) return;
+  items.value = next;
+  relayout();
+}
+
+defineExpose({ orderedItems, refresh, patchItem });
 
 onBeforeUnmount(() => {
   epoch++;

@@ -7,6 +7,7 @@ import {
   hubPhotosApi,
   isPhotosEnabled,
   isPhotosMock,
+  isSearchUnavailable,
   photosApi,
   renditionUrl,
   RENDITION_TOKENS_BATCH,
@@ -316,5 +317,13 @@ describe('photos API', () => {
     await expect(renditionUrl('missing-hash', 'thumbnail')).rejects.toThrow(
       'Token missing for hash: missing-hash',
     );
+  });
+
+  it('recognizes the search_unavailable error and nothing else', () => {
+    expect(isSearchUnavailable(new ApiError(503, 'x', { code: 'search_unavailable' }))).toBe(true);
+    expect(isSearchUnavailable(new ApiError(503, 'x', { code: 'other' }))).toBe(false);
+    expect(isSearchUnavailable(new ApiError(500, 'x', { code: 'search_unavailable' }))).toBe(false);
+    expect(isSearchUnavailable(new Error('search_unavailable'))).toBe(false);
+    expect(isSearchUnavailable(null)).toBe(false);
   });
 });

@@ -551,4 +551,26 @@ describe('PhotosFeed', () => {
     expect(getFolderMock).not.toHaveBeenCalled();
     w.unmount();
   });
+
+  it('patchItem updates the heart without reloading; refresh refetches the summary', async () => {
+    twoMonths();
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    expect(w.find('[data-file-id="f1"] .pf-fav').exists()).toBe(false);
+    const api = w.vm as unknown as {
+      patchItem(id: string, p: { favorite?: boolean; albumIds?: string[] }): void;
+      refresh(): Promise<void>;
+      orderedItems(): FeedItem[];
+    };
+    api.patchItem('f1', { favorite: true });
+    await settle();
+    expect(w.find('[data-file-id="f1"] .pf-fav').exists()).toBe(true);
+    expect(api.orderedItems().find((i) => i.fileId === 'f1')?.favorite).toBe(true);
+    expect(summaryMock).toHaveBeenCalledTimes(1);
+    await api.refresh();
+    await settle();
+    expect(summaryMock).toHaveBeenCalledTimes(2);
+    w.unmount();
+  });
 });

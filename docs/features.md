@@ -91,14 +91,18 @@
 | Функция | Статус | Где в коде | Эндпоинт хаба |
 |---|---|---|---|
 | Переключатель режимов «Файлы» / «Фото» в боковом меню | за флагом `VITE_PHOTOS_ENABLED` | `src/views/DriveView.vue` | `—` |
-| Помесячная лента фотоархива (месячные бакеты) | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/drive/photos/buckets` |
-| Ленивая подгрузка медиа-элементов выбранного месяца | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/drive/photos/bucket` |
-| Семантический поиск по фотографиям и распознанному тексту | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `POST /api/drive/photos/search` |
-| Полоса распознанных лиц и фильтрация фотографий по человеку | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/drive/photos/people` |
-| Просмотр фото и видео в полноэкранном лайтбоксе | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `POST /api/drive/files/:id/download-link` |
-| Переход из просмотра фото к содержащей папке на Диске | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `—` |
-| Скачивание оригинала медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `POST /api/drive/files/:id/download-link` |
-| Просмотр свойств медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `GET /api/drive/files/:id/meta` |
+| Вкладки «Лента» / «Альбомы» (tablist, стрелки Влево/Вправо) и поле поиска над ними | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `—` |
+| Лента фото с гибкой сортировкой (дата, папка, альбом, размер; до двух уровней групп), группировкой по дню/месяцу/году, фильтром всё/фото/видео/избранное, подписями на плитках (папка, альбомы, размер), блоками общих папок и размером плиток | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotosFeed.vue`, `src/components/photos/PhotosViewBar.vue` | `GET /api/photos/feed/summary`, `GET /api/photos/feed/items` |
+| Сохранение вида ленты (сортировка, группы, фильтр, подписи, общие, размер) в `localStorage` и в предпочтениях пользователя | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/usePhotosView.ts` | `GET/PUT /api/me/preferences/photos.view` |
+| Слайдер по датам или по группам рядом с лентой | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotosScrubber.vue` | `—` |
+| Выделение фото (флажок на плитке, выбор всей группы), панель действий: «В альбом», «Переместить в папку», «Убрать из альбома» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/SelectionBar.vue`, `src/components/photos/usePhotoSelectionActions.ts` | `POST/DELETE /api/photos/albums/:id/items`, `PATCH /api/drive/files/:id` |
+| Перенос выделенных фото в папку диска (частичный сбой не теряет выделение неудавшихся) | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/usePhotoSelectionActions.ts`, `src/components/FolderPickerDialog.vue` | `PATCH /api/drive/files/:id` |
+| Панель фото справа (340 px): избранное, открыть, скачать оригинал, сведения, путь с переходом в папку, альбомы, где хранится, описание | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoPanel.vue` | `GET/PATCH /api/photos/files/:id`, `POST /api/photos/albums/:id/items` |
+| Переход из панели к папке фото на вкладке «Файлы» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/views/DriveView.vue` | `—` |
+| Просмотр фото и видео на весь экран (двойной щелчок или «Открыть»), листание по порядку ленты, «Сведения» возвращает к панели | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `POST /api/media/tokens` |
+| Альбомы: список с обложками и числом фото, создание, переименование, удаление | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotosAlbums.vue` | `GET/POST /api/photos/albums`, `PATCH/DELETE /api/photos/albums/:id` |
+| Просмотр одного альбома лентой с возвратом «← Все альбомы» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/photos/feed/summary`, `GET /api/photos/feed/items` |
+| Поиск по фото: плоская сетка результатов по релевантности без групп и слайдера; при недоступности поиска на хабе — «Поиск сейчас недоступен» | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue`, `src/components/photos/PhotosSearchGrid.vue` | `POST /api/photos/search` |
 | Использование локальных сгенерированных демо-данных вместо хаба | за флагом `VITE_PHOTOS_MOCK` | `src/api/photos.mock.ts` | `—` |
 
 ---

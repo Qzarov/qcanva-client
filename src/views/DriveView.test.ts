@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reactive } from 'vue';
 import DriveView from './DriveView.vue';
 import { driveApi, type DriveFolderResponse, type DriveItemsResponse } from '../api/drive';
-import { isPhotosEnabled } from '../api/photos';
-import { photosApi } from '../api/photosLegacy';
+import { isPhotosEnabled, photosApi } from '../api/photos';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
 import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
 import { useI18n } from '../composables/useI18n';
@@ -39,20 +38,14 @@ vi.mock('../api/photos', async (importOriginal) => {
     ...actual,
     // Photos is behind VITE_PHOTOS_ENABLED; most tests here run the build that has it.
     isPhotosEnabled: vi.fn(() => true),
-  };
-});
-
-// DrivePhotos still runs on the pre-index API until it is rebuilt (plan 4, task 9).
-vi.mock('../api/photosLegacy', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../api/photosLegacy')>();
-  return {
-    ...actual,
     isPhotosMock: vi.fn(() => false),
     photosApi: {
-      getBuckets: vi.fn().mockResolvedValue({ buckets: [] }),
-      getBucket: vi.fn().mockResolvedValue({ month: '', items: [] }),
+      summary: vi.fn().mockResolvedValue({ groups: [] }),
+      items: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
       search: vi.fn().mockResolvedValue({ items: [], nextCursor: null }),
-      getPeople: vi.fn().mockResolvedValue({ people: [] }),
+      albums: vi.fn().mockResolvedValue([]),
+      getPreference: vi.fn().mockResolvedValue(null),
+      putPreference: vi.fn().mockResolvedValue(undefined),
     },
   };
 });
@@ -241,9 +234,7 @@ describe('DriveView', () => {
     route.query = {};
     replace.mockClear();
     vi.mocked(isPhotosEnabled).mockReturnValue(true);
-    vi.mocked(photosApi.getBuckets).mockResolvedValue({ buckets: [] });
-    vi.mocked(photosApi.getBucket).mockResolvedValue({ month: '', items: [] });
-    vi.mocked(photosApi.getPeople).mockResolvedValue({ people: [] });
+    vi.mocked(photosApi.summary).mockResolvedValue({ groups: [] });
     vi.mocked(photosApi.search).mockResolvedValue({ items: [], nextCursor: null });
 
     vi.mocked(driveApi.getFolder).mockResolvedValue(mockRootFolder);
@@ -574,30 +565,17 @@ describe('DriveView', () => {
     expect(textDocuments.create).toHaveBeenCalledWith({ title: 'Untitled document', folderId: 'folder-altay' });
   });
 
-  it('renders DrivePhotos in Photos tab with correct folderId, supports tab switch and query view=photos', async () => {
+  it('renders DrivePhotos in the Photos tab and loads the feed summary', async () => {
     const wrapper = mountDriveView();
     await flushPromises();
 
-    // Click "Фото" tab
     await wrapper.get('[data-tab="photos"]').trigger('click');
     await flushPromises();
 
     expect(wrapper.find('[data-photos-tab]').exists()).toBe(true);
     expect(wrapper.find('[data-drive-photos]').exists()).toBe(true);
-    expect(photosApi.getBuckets).toHaveBeenCalledWith({ folderId: null, personId: null });
-
-    // When route.params.folderId is set, photosApi.getBuckets is called with that folderId
-    route.params = { folderId: 'folder-altay' };
-    vi.mocked(driveApi.getFolder).mockResolvedValue(mockSubfolder);
-    const subfolderWrapper = mountDriveView();
-    await flushPromises();
-
-    await subfolderWrapper.get('[data-tab="photos"]').trigger('click');
-    await flushPromises();
-
-    expect(subfolderWrapper.find('[data-photos-tab]').exists()).toBe(true);
-    expect(subfolderWrapper.find('[data-drive-photos]').exists()).toBe(true);
-    expect(photosApi.getBuckets).toHaveBeenCalledWith({ folderId: 'folder-altay', personId: null });
+    expect(photosApi.summary).toHaveBeenCalled();
+    expect(wrapper.get('[data-photos-title]').text()).toBe('Фото');
   });
 
   it('clicking [data-view-switch-photos] calls router.replace with query {view:"photos"}', async () => {

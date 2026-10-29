@@ -1,20 +1,39 @@
 <template>
-  <section class="drive-photos" data-drive-photos>
-    <div class="photos-toolbar">
-      <form class="photos-search" role="search" data-photos-search @submit.prevent="runSearchNow">
-        <Search :size="16" class="photos-search-icon" aria-hidden="true" />
+  <section ref="rootEl" class="drive-photos" data-drive-photos>
+    <header class="dp-top">
+      <div class="dp-tabs" role="tablist" :aria-label="t('photosTabsLabel')" @keydown="onTabsKeydown">
+        <button
+          v-for="tb in TABS"
+          :id="`dp-tab-${tb}`"
+          :key="tb"
+          type="button"
+          role="tab"
+          class="dp-tab"
+          :aria-selected="tab === tb"
+          :aria-controls="'dp-tabpanel'"
+          :tabindex="tab === tb ? 0 : -1"
+          :data-tab="tb"
+          @click="setTab(tb)"
+        >
+          {{ tb === 'feed' ? t('photosTabFeed') : t('photosTabAlbums') }}
+        </button>
+      </div>
+
+      <form class="dp-search" role="search" data-photos-search @submit.prevent="runSearchNow">
+        <Search :size="16" class="dp-search-icon" aria-hidden="true" />
         <input
           v-model="query"
           type="search"
-          class="photos-search-input"
-          :placeholder="folderId ? t('photosSearchInFolderPlaceholder') : t('photosSearchPlaceholder')"
+          class="dp-search-input"
+          :placeholder="t('photosSearchPlaceholder')"
           :aria-label="t('photosSearchPlaceholder')"
           data-photos-search-input
+          @keydown.esc="clearSearch"
         />
         <button
           v-if="query"
           type="button"
-          class="photos-search-clear"
+          class="dp-search-clear"
           :aria-label="t('photosClearSearch')"
           data-photos-search-clear
           @click="clearSearch"
@@ -22,655 +41,582 @@
           <X :size="14" aria-hidden="true" />
         </button>
       </form>
-    </div>
+    </header>
 
-    <div v-if="mock" class="photos-mock-banner" data-photos-mock-banner>{{ t('photosMockBanner') }}</div>
+    <!-- Across the whole width, above the feed and the panel, as in the mockup -->
+    <PhotosViewBar v-if="!searchActive && (tab === 'feed' || albumId)" />
 
-    <div v-if="people.length && !searchActive" class="photos-people" data-photos-people>
-      <span class="photos-people-label">{{ t('photosPeople') }}</span>
-      <div class="photos-people-strip">
-        <button
-          v-for="person in people"
-          :key="person.id"
-          type="button"
-          class="photos-person"
-          :class="{ active: personId === person.id }"
-          :aria-pressed="personId === person.id"
-          :title="person.name || t('photosUnnamedPerson')"
-          :data-person="person.id"
-          @click="togglePerson(person.id)"
-        >
-          <img
-            v-if="resolvePhotoUrl(person.thumbUrl)"
-            class="photos-person-avatar"
-            :src="resolvePhotoUrl(person.thumbUrl) ?? undefined"
-            alt=""
-            loading="lazy"
+    <div class="dp-body">
+      <div
+        id="dp-tabpanel"
+        class="dp-main"
+        role="tabpanel"
+        :aria-labelledby="`dp-tab-${tab}`"
+        data-photos-main
+        @keydown.esc="onMainEscape"
+      >
+        <!-- Search: a flat relevance grid, no groups, no scrubber -->
+        <template v-if="searchActive">
+          <p v-if="searchError === 'unavailable'" class="dp-note" role="alert" data-photos-search-unavailable>
+            {{ t('photosSearchUnavailable') }}
+          </p>
+          <p v-else-if="searchError === 'failed'" class="dp-note" role="alert" data-photos-search-error>
+            {{ t('photosSearchError') }}
+            <button type="button" class="dp-retry" @click="runSearchNow">{{ t('photosRetry') }}</button>
+          </p>
+          <p v-else-if="searchLoading && !searchItems.length" class="dp-note" role="status">{{ t('photosLoading') }}</p>
+          <p v-else-if="!searchItems.length" class="dp-note" role="status" data-photos-search-empty>
+            {{ t('photosSearchNothing') }}
+          </p>
+          <PhotosSearchGrid
+            v-if="searchItems.length"
+            :items="searchItems"
+            :tile="view.state.value.tile"
+            :current="currentId"
+            :has-more="searchCursor !== null && !searchLoading"
+            @open="onOpen"
+            @activate="onActivate"
+            @more="loadMoreSearch"
           />
-          <span v-else class="photos-person-avatar photos-person-avatar-empty"><User :size="18" aria-hidden="true" /></span>
-          <span class="photos-person-name">{{ person.name || t('photosUnnamedPerson') }}</span>
-        </button>
-      </div>
-    </div>
-
-    <div v-if="activePerson && !searchActive" class="photos-filter-chip" data-photos-person-filter>
-      <span>{{ t('photosFilteredByPerson') }}: {{ activePerson.name || t('photosUnnamedPerson') }}</span>
-      <button type="button" class="photos-search-clear" :aria-label="t('photosResetFilter')" @click="personId = null">
-        <X :size="14" aria-hidden="true" />
-      </button>
-    </div>
-
-    <div
-      ref="scrollerEl"
-      class="photos-scroller"
-      data-photos-scroller
-    >
-      <div v-if="errorMessage" class="photos-state" data-photos-error>
-        <p>{{ errorMessage }}</p>
-        <button type="button" class="photos-retry" @click="reloadAll">{{ t('photosRetry') }}</button>
-      </div>
-      <div v-else-if="loadingFeed" class="photos-state" data-photos-loading>{{ t('photosLoading') }}</div>
-      <div v-else-if="!sections.length" class="photos-state" data-photos-empty>
-        <ImageIcon :size="44" class="photos-state-icon" aria-hidden="true" />
-        <p>{{ emptyText }}</p>
-      </div>
-
-      <div v-else class="photos-grid" :style="{ height: `${layout.totalHeight}px` }" data-photos-grid>
-        <template v-for="row in rendered" :key="row.key">
-          <h3
-            v-if="row.type === 'header'"
-            class="photos-month"
-            :style="{ transform: `translateY(${row.top}px)`, height: `${row.height}px` }"
-            data-photos-month
-          >
-            <span>{{ sections[row.section]?.title }}</span>
-            <span class="photos-month-count">{{ sections[row.section]?.count }}</span>
-          </h3>
-          <div
-            v-else
-            class="photos-row"
-            :style="{
-              transform: `translateY(${row.top}px)`,
-              gridTemplateColumns: `repeat(${layout.columns}, ${layout.tileSize}px)`,
-              gap: `${layout.gap}px`,
-            }"
-          >
-            <template v-for="offset in row.count" :key="offset">
-              <button
-                v-if="itemAt(row.section, row.start + offset - 1)"
-                type="button"
-                class="photos-tile"
-                :style="{ width: `${layout.tileSize}px`, height: `${layout.tileSize}px` }"
-                :aria-label="itemAt(row.section, row.start + offset - 1)!.name"
-                :data-photo-tile="itemAt(row.section, row.start + offset - 1)!.assetId"
-                @click="openViewer(row.section, row.start + offset - 1)"
-              >
-                <img
-                  v-if="thumbSrc(itemAt(row.section, row.start + offset - 1)!)"
-                  class="photos-thumb"
-                  :src="thumbSrc(itemAt(row.section, row.start + offset - 1)!) ?? undefined"
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  draggable="false"
-                  @error="brokenThumbs.add(itemAt(row.section, row.start + offset - 1)!.assetId)"
-                />
-                <span v-else class="photos-thumb photos-thumb-empty"><ImageIcon :size="22" aria-hidden="true" /></span>
-                <span
-                  v-if="itemAt(row.section, row.start + offset - 1)!.kind === 'video'"
-                  class="photos-badge photos-badge-video"
-                  data-photo-video
-                >
-                  <Play :size="12" aria-hidden="true" />
-                  {{ formatDuration(itemAt(row.section, row.start + offset - 1)!.durationSec) }}
-                </span>
-                <span
-                  v-if="!itemAt(row.section, row.start + offset - 1)!.processed"
-                  class="photos-badge photos-badge-pending"
-                  :title="t('photosNotProcessed')"
-                  data-photo-pending
-                >
-                  <Hourglass :size="12" aria-hidden="true" />
-                  <span class="photos-badge-text">{{ t('photosNotProcessed') }}</span>
-                </span>
-              </button>
-              <span
-                v-else
-                class="photos-tile photos-tile-skeleton"
-                :style="{ width: `${layout.tileSize}px`, height: `${layout.tileSize}px` }"
-                data-photo-skeleton
-              />
-            </template>
-          </div>
         </template>
+
+        <!-- Feed, or one album's photos -->
+        <template v-else-if="tab === 'feed' || albumId">
+          <div v-if="albumId" class="dp-album-head" data-photos-album-head>
+            <button type="button" class="dp-back" data-photos-back @click="backToAlbums">
+              {{ t('photosBackToAlbums') }}
+            </button>
+            <h2 class="dp-album-title">{{ albumName }}</h2>
+          </div>
+          <PhotosFeed
+            :key="albumId ?? 'feed'"
+            ref="feedRef"
+            class="dp-feed"
+            :params="feedParams"
+            :caption-on-tile="view.captionOnTile.value"
+            :tile="view.state.value.tile"
+            :selected="selected"
+            :current="currentId"
+            @open="onOpen"
+            @activate="onActivate"
+            @toggle-select="onToggleSelect"
+          />
+        </template>
+
+        <!-- Remounted whenever it is shown again, so counts and covers are fresh -->
+        <PhotosAlbums v-else @open="openAlbum" />
+
+        <SelectionBar
+          v-if="selected.size > 0"
+          :count="selected.size"
+          :in-album="albumId !== null"
+          :busy="selBusy"
+          :album-menu-open="albumMenuOpen"
+          :albums="albums"
+          :albums-failed="albumsFailed"
+          @album="actions.toggleAlbumMenu()"
+          @move="actions.openMove()"
+          @clear="clearSelection"
+          @remove-from-album="actions.removeFromAlbum()"
+          @pick-album="actions.addToAlbum($event)"
+          @new-album="actions.createAlbumAndAdd()"
+          @close-album="actions.closeAlbumMenu()"
+        />
+      </div>
+
+      <div v-if="panelId" class="dp-panel" data-photos-panel-wrap>
+        <PhotoPanel
+          :key="panelEpoch"
+          :file-id="panelId"
+          @close="closePanel"
+          @open-folder="onOpenFolder"
+          @open-album="onOpenAlbum"
+          @open-viewer="onOpenViewerFromPanel"
+          @changed="onPanelChanged"
+        />
       </div>
     </div>
 
     <PhotoViewer
       v-if="viewerItem"
       :item="viewerItem"
-      :has-prev="hasPrev"
-      :has-next="hasNext"
+      :index="viewer!.index"
+      :total="viewer!.items.length"
+      :has-prev="viewer!.index > 0"
+      :has-next="viewer!.index < viewer!.items.length - 1"
       @close="viewer = null"
       @prev="stepViewer(-1)"
       @next="stepViewer(1)"
-      @open-folder="onOpenFolder"
-      @download="onDownload"
-      @properties="propertiesItem = $event"
+      @info="onViewerInfo"
     />
 
-    <DriveFileProperties
-      v-if="propertiesItem"
-      :file-id="propertiesItem.fileId"
-      :file-name="propertiesItem.name"
-      @close="propertiesItem = null"
+    <FolderPickerDialog
+      v-if="moveOpen"
+      :title="fmt('photosMoveTitle', { n: selected.size })"
+      :confirm-label="t('photosMoveAction')"
+      :exclude-ids="moveExcl.ids"
+      :exclude-root="moveExcl.root"
+      @select="actions.moveTo($event)"
+      @close="actions.closeMove()"
     />
   </section>
 </template>
 
 <script setup lang="ts">
-import { Hourglass, Image as ImageIcon, Play, Search, User, X } from '@lucide/vue';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue';
-import { downloadDriveFile } from '../../api/drive';
-import {
-  isPhotosMock,
-  parseBucketMonth,
-  photosApi,
-  resolvePhotoUrl,
-  type PhotoBucket,
-  type PhotoItem,
-  type PhotoPerson,
-} from '../../api/photosLegacy';
-import { alertDialog } from '../../composables/appDialog';
+import { Search, X } from '@lucide/vue';
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
+import { isSearchUnavailable, photosApi, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
-import DriveFileProperties from '../DriveFileProperties.vue';
-import PhotoViewer from './PhotoViewerLegacy.vue';
-import { computeGridLayout, visibleRows, visibleSections, type GridRow } from './photoGridLayoutLegacy';
-
-const props = defineProps<{
-  /** Folder whose subtree is shown (the folder's album); null = the whole drive. */
-  folderId: string | null;
-}>();
+import FolderPickerDialog from '../FolderPickerDialog.vue';
+import PhotoPanel from './PhotoPanel.vue';
+import PhotosAlbums from './PhotosAlbums.vue';
+import PhotosFeed from './PhotosFeed.vue';
+import PhotosSearchGrid from './PhotosSearchGrid.vue';
+import PhotosViewBar from './PhotosViewBar.vue';
+import PhotoViewer from './PhotoViewer.vue';
+import SelectionBar from './SelectionBar.vue';
+import { usePhotoSelectionActions } from './usePhotoSelectionActions';
+import { usePhotosView } from './usePhotosView';
 
 const emit = defineEmits<{
   (e: 'openFolder', folderId: string, fileId: string): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
+const view = usePhotosView();
 
-const SEARCH_KEY = 'search';
-const SEARCH_PAGE = 200;
-/** jsdom and hidden panes report 0; fall back to a sane viewport. */
-const FALLBACK_WIDTH = 960;
-const FALLBACK_HEIGHT = 800;
+type MsgKey = Parameters<typeof t>[0];
+const fmt = (key: MsgKey, vars: Record<string, string | number>): string =>
+  t(key).replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
 
-interface FeedSection {
-  key: string;
-  title: string;
-  count: number;
-}
+const SEARCH_DEBOUNCE_MS = 350;
+const SEARCH_PAGE = 60;
 
-const buckets = ref<PhotoBucket[]>([]);
-/** Loaded items by section key; replaced (not mutated) so the grid re-renders. */
-const items = shallowRef<Map<string, PhotoItem[]>>(new Map());
-const pending = new Set<string>();
-const loadingFeed = ref(false);
-const errorMessage = ref('');
-const mock = ref(isPhotosMock());
+const TABS = ['feed', 'albums'] as const;
+type Tab = (typeof TABS)[number];
 
-const people = ref<PhotoPerson[]>([]);
-const personId = ref<string | null>(null);
+const rootEl = ref<HTMLElement | null>(null);
+const feedRef = ref<InstanceType<typeof PhotosFeed> | null>(null);
 
+const tab = ref<Tab>('feed');
+/** The album shown in the Albums tab (its photos as a feed), or null for the album list. */
+const albumId = ref<string | null>(null);
+const albumName = ref('');
+
+const feedParams = computed(() => (albumId.value ? { ...view.feedParams.value, albumId: albumId.value } : view.feedParams.value));
+
+// ----- search -----
+
+type SearchError = '' | 'unavailable' | 'failed';
 const query = ref('');
+/** The query the displayed results belong to; empty = the feed. */
 const searchQuery = ref('');
-const searchItems = ref<PhotoItem[]>([]);
+const searchItems = shallowRef<FeedItem[]>([]);
 const searchCursor = ref<string | null>(null);
 const searchLoading = ref(false);
+const searchError = ref<SearchError>('');
 const searchActive = computed(() => searchQuery.value !== '');
-
-const scrollerEl = ref<HTMLElement | null>(null);
-const viewport = reactive({ width: 0, height: 0, scrollTop: 0 });
-
-const viewer = ref<{ section: number; index: number } | null>(null);
-const propertiesItem = ref<PhotoItem | null>(null);
-
-const activePerson = computed(() => people.value.find((person) => person.id === personId.value) ?? null);
-
-const monthFormatter = computed(
-  () => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' }),
-);
-
-function monthTitle(month: string): string {
-  const { year, month: mm } = parseBucketMonth(month);
-  if (!year || !mm) return month;
-  const label = monthFormatter.value.format(new Date(Date.UTC(year, mm - 1, 1)));
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-const sections = computed<FeedSection[]>(() => {
-  if (searchActive.value) {
-    if (!searchItems.value.length) return [];
-    return [{ key: SEARCH_KEY, title: t('photosSearchResults'), count: searchItems.value.length }];
-  }
-  return buckets.value.map((bucket) => ({ key: bucket.month, title: monthTitle(bucket.month), count: bucket.count }));
-});
-
-const layout = computed(() => {
-  const width = viewport.width || FALLBACK_WIDTH;
-  return computeGridLayout(sections.value, width, {
-    targetTileSize: width < 640 ? 104 : 168,
-    gap: width < 640 ? 2 : 4,
-    headerHeight: 44,
-  });
-});
-
-const rendered = computed<GridRow[]>(() =>
-  visibleRows(layout.value, viewport.scrollTop, viewport.height || FALLBACK_HEIGHT, 600),
-);
-
-const emptyText = computed(() => {
-  if (searchActive.value) return searchLoading.value ? t('photosLoading') : t('photosSearchNothing');
-  if (personId.value) return t('photosEmptyPerson');
-  return props.folderId ? t('photosEmptyFolder') : t('photosEmpty');
-});
-
-function sectionItems(section: number): PhotoItem[] | undefined {
-  const key = sections.value[section]?.key;
-  if (!key) return undefined;
-  return key === SEARCH_KEY ? searchItems.value : items.value.get(key);
-}
-
-function itemAt(section: number, index: number): PhotoItem | undefined {
-  return sectionItems(section)?.[index];
-}
-
-/** Thumbnails the hub answered 404 for (not uploaded by the media node yet). */
-const brokenThumbs = reactive(new Set<string>());
-
-function thumbSrc(item: PhotoItem): string | null {
-  return brokenThumbs.has(item.assetId) ? null : resolvePhotoUrl(item.thumbUrl);
-}
-
-function formatDuration(seconds?: number | null): string {
-  if (!seconds && seconds !== 0) return '';
-  const total = Math.max(0, Math.round(seconds));
-  const m = Math.floor(total / 60);
-  const s = String(total % 60).padStart(2, '0');
-  return `${m}:${s}`;
-}
-
-function filter() {
-  return { folderId: props.folderId, personId: personId.value };
-}
-
-let feedGeneration = 0;
-
-async function loadBucket(month: string): Promise<void> {
-  if (items.value.has(month) || pending.has(month)) return;
-  const generation = feedGeneration;
-  pending.add(month);
-  try {
-    const res = await photosApi.getBucket(month, filter());
-    if (generation !== feedGeneration) return;
-    const next = new Map(items.value);
-    next.set(month, res.items);
-    items.value = next;
-  } catch {
-    // Leave skeletons; the next scroll retries.
-  } finally {
-    if (generation === feedGeneration) pending.delete(month);
-  }
-}
-
-function loadVisibleBuckets(): void {
-  if (searchActive.value) {
-    maybeLoadMoreSearch();
-    return;
-  }
-  for (const section of visibleSections(rendered.value)) {
-    const key = sections.value[section]?.key;
-    if (key) void loadBucket(key);
-  }
-}
-
-async function loadFeed(): Promise<void> {
-  const generation = ++feedGeneration;
-  pending.clear();
-  brokenThumbs.clear();
-  items.value = new Map();
-  buckets.value = [];
-  errorMessage.value = '';
-  loadingFeed.value = true;
-  viewer.value = null;
-  scrollFeedToTop();
-  try {
-    const res = await photosApi.getBuckets(filter());
-    if (generation !== feedGeneration) return;
-    buckets.value = res.buckets.filter((bucket) => bucket.count > 0);
-    mock.value = isPhotosMock();
-  } catch (error) {
-    if (generation !== feedGeneration) return;
-    errorMessage.value = error instanceof Error && error.message ? error.message : t('photosLoadError');
-  } finally {
-    if (generation === feedGeneration) loadingFeed.value = false;
-  }
-  await nextTick();
-  measure();
-  loadVisibleBuckets();
-}
-
-async function loadPeople(): Promise<void> {
-  try {
-    const res = await photosApi.getPeople({ folderId: props.folderId });
-    people.value = res.people.filter((person) => person.assetCount > 0);
-  } catch {
-    people.value = [];
-  }
-}
-
-let searchGeneration = 0;
-
-async function runSearch(text: string, append = false): Promise<void> {
-  const generation = append ? searchGeneration : ++searchGeneration;
-  searchLoading.value = true;
-  if (!append) {
-    searchQuery.value = text;
-    searchItems.value = [];
-    searchCursor.value = null;
-    viewer.value = null;
-    scrollFeedToTop();
-  }
-  try {
-    const res = await photosApi.search({
-      query: text,
-      folderId: props.folderId,
-      cursor: append ? searchCursor.value : null,
-      limit: SEARCH_PAGE,
-    });
-    if (generation !== searchGeneration) return;
-    searchItems.value = append ? [...searchItems.value, ...res.items] : res.items;
-    searchCursor.value = res.nextCursor;
-    errorMessage.value = '';
-  } catch (error) {
-    if (generation !== searchGeneration) return;
-    errorMessage.value = error instanceof Error && error.message ? error.message : t('photosSearchError');
-  } finally {
-    if (generation === searchGeneration) searchLoading.value = false;
-  }
-}
-
-function maybeLoadMoreSearch(): void {
-  if (!searchCursor.value || searchLoading.value) return;
-  const bottom = viewport.scrollTop + (viewport.height || FALLBACK_HEIGHT);
-  if (bottom > layout.value.totalHeight - 600) void runSearch(searchQuery.value, true);
-}
-
+let searchGen = 0;
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 
-function runSearchNow(): void {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = null;
-  const text = query.value.trim();
-  if (!text) {
-    clearSearch();
-    return;
+function cancelSearchTimer(): void {
+  if (searchTimer !== null) {
+    clearTimeout(searchTimer);
+    searchTimer = null;
   }
-  void runSearch(text);
 }
 
-function clearSearch(): void {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = null;
-  ++searchGeneration;
-  query.value = '';
+async function runSearch(q: string, more = false): Promise<void> {
+  const gen = ++searchGen;
+  searchError.value = '';
+  searchLoading.value = true;
+  if (!more) {
+    searchItems.value = [];
+    searchCursor.value = null;
+  }
+  try {
+    const res = await photosApi.search(q, {
+      shared: view.state.value.shared,
+      cursor: more ? searchCursor.value : null,
+      limit: SEARCH_PAGE,
+    });
+    if (gen !== searchGen) return;
+    searchItems.value = more ? [...searchItems.value, ...res.items] : res.items;
+    searchCursor.value = res.nextCursor;
+  } catch (err) {
+    if (gen !== searchGen) return;
+    searchError.value = isSearchUnavailable(err) ? 'unavailable' : 'failed';
+    searchCursor.value = null;
+  } finally {
+    if (gen === searchGen) searchLoading.value = false;
+  }
+}
+
+function startSearch(): void {
+  cancelSearchTimer();
+  const q = query.value.trim();
+  if (q === '') {
+    endSearch();
+    return;
+  }
+  if (!searchActive.value) {
+    viewer.value = null;
+    clearSelection();
+  }
+  searchQuery.value = q;
+  void runSearch(q);
+}
+
+function endSearch(): void {
+  searchGen++;
   searchQuery.value = '';
   searchItems.value = [];
   searchCursor.value = null;
   searchLoading.value = false;
-  errorMessage.value = '';
+  searchError.value = '';
   viewer.value = null;
-  void nextTick(() => {
-    measure();
-    loadVisibleBuckets();
-  });
+}
+
+function runSearchNow(): void {
+  startSearch();
+}
+
+function clearSearch(): void {
+  cancelSearchTimer();
+  query.value = '';
+  endSearch();
+}
+
+function loadMoreSearch(): void {
+  if (!searchActive.value || searchLoading.value || searchCursor.value === null) return;
+  void runSearch(searchQuery.value, true);
 }
 
 watch(query, (value) => {
-  if (searchTimer) clearTimeout(searchTimer);
-  if (!value.trim()) {
-    if (searchActive.value) clearSearch();
+  cancelSearchTimer();
+  if (value.trim() === '') {
+    if (searchActive.value) endSearch();
     return;
   }
-  searchTimer = setTimeout(runSearchNow, 450);
+  searchTimer = setTimeout(startSearch, SEARCH_DEBOUNCE_MS);
 });
 
-function reloadAll(): void {
-  if (searchActive.value) void runSearch(searchQuery.value);
-  else void loadFeed();
-  void loadPeople();
-}
-
-function togglePerson(id: string): void {
-  personId.value = personId.value === id ? null : id;
-}
-
-watch(personId, () => void loadFeed());
+// The "shared" switch changes what the hub returns.
 watch(
-  () => props.folderId,
+  () => view.state.value.shared,
   () => {
-    personId.value = null;
-    if (searchActive.value) clearSearch();
-    void loadFeed();
-    void loadPeople();
+    if (searchActive.value) void runSearch(searchQuery.value);
   },
 );
-watch(rendered, () => loadVisibleBuckets());
 
-/* ---------- viewer ---------- */
+// ----- tabs and albums -----
 
-const viewerItem = computed(() => (viewer.value ? itemAt(viewer.value.section, viewer.value.index) ?? null : null));
+function setTab(next: Tab): void {
+  if (tab.value === next && albumId.value === null && !searchActive.value) return;
+  if (searchActive.value) clearSearch();
+  tab.value = next;
+  albumId.value = null;
+  clearSelection();
+  if (next === 'albums') closePanel(false);
+}
 
-function neighbour(step: 1 | -1): { section: number; index: number } | null {
-  if (!viewer.value) return null;
-  let { section, index } = viewer.value;
-  index += step;
-  for (;;) {
-    const current = sections.value[section];
-    if (!current) return null;
-    if (index >= 0 && index < current.count) return { section, index };
-    section += step;
-    const next = sections.value[section];
-    if (!next) return null;
-    index = step === 1 ? 0 : next.count - 1;
+function onTabsKeydown(e: KeyboardEvent): void {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return;
+  e.preventDefault();
+  const idx = TABS.indexOf(tab.value);
+  const nextIdx =
+    e.key === 'Home' ? 0 : e.key === 'End' ? TABS.length - 1 : (idx + (e.key === 'ArrowRight' ? 1 : -1) + TABS.length) % TABS.length;
+  setTab(TABS[nextIdx]!);
+  void nextTick(() => rootEl.value?.querySelector<HTMLElement>(`#dp-tab-${TABS[nextIdx]}`)?.focus());
+}
+
+function openAlbum(id: string): void {
+  if (searchActive.value) clearSearch();
+  tab.value = 'albums';
+  albumId.value = id;
+  albumName.value = '';
+  clearSelection();
+  void photosApi
+    .albums()
+    .then((list) => {
+      if (albumId.value === id) albumName.value = list.find((a) => a.id === id)?.name ?? '';
+    })
+    .catch(() => {});
+}
+
+function backToAlbums(): void {
+  albumId.value = null;
+  clearSelection();
+  closePanel(false);
+}
+
+// ----- selection -----
+
+const selected = shallowRef<Set<string>>(new Set());
+
+function onToggleSelect(fileIds: string[], on: boolean): void {
+  const next = new Set(selected.value);
+  for (const id of fileIds) {
+    if (on) next.add(id);
+    else next.delete(id);
   }
-  return null;
+  selected.value = next;
 }
 
-const hasPrev = computed(() => neighbour(-1) !== null);
-const hasNext = computed(() => neighbour(1) !== null);
-
-function openViewer(section: number, index: number): void {
-  if (itemAt(section, index)) viewer.value = { section, index };
+function clearSelection(): void {
+  if (selected.value.size > 0) selected.value = new Set();
 }
 
-async function stepViewer(step: 1 | -1): Promise<void> {
-  const target = neighbour(step);
-  if (!target) return;
-  const key = sections.value[target.section]?.key ?? SEARCH_KEY;
-  if (!itemAt(target.section, target.index) && key !== SEARCH_KEY) await loadBucket(key);
-  if (itemAt(target.section, target.index)) {
-    viewer.value = target;
-    scrollToTile(target.section, target.index);
+let folderMap: Map<string, string | null> | null = null;
+function folderOf(fileId: string): string | null | undefined {
+  if (!folderMap) {
+    folderMap = new Map((feedRef.value?.orderedItems() ?? []).map((i) => [i.fileId, i.folderId]));
+    queueMicrotask(() => {
+      folderMap = null;
+    });
   }
+  return folderMap.get(fileId);
 }
 
-function scrollToTile(section: number, index: number): void {
-  const row = layout.value.rows.find(
-    (r) => r.type === 'tiles' && r.section === section && index >= r.start && index < r.start + r.count,
-  );
-  if (!row) return;
-  const height = viewport.height || FALLBACK_HEIGHT;
-  if (row.top < viewport.scrollTop || row.top + row.height > viewport.scrollTop + height) {
-    scrollFeedTo(Math.max(0, row.top - height / 3));
-  }
+const actions = usePhotoSelectionActions({
+  selected: () => selected.value,
+  albumId: () => albumId.value,
+  folderOf,
+  deselect: (ids) => onToggleSelect(ids, false),
+  onMoved: (ids) => {
+    void feedRef.value?.refresh();
+    if (panelId.value && ids.includes(panelId.value)) panelEpoch.value++;
+  },
+  onAlbumChanged: (kind, id, fileIds) => {
+    const feed = feedRef.value;
+    if (!feed) return;
+    if (albumId.value || feedParams.value.levels.includes('album')) {
+      void feed.refresh();
+    } else {
+      const byId = new Map(feed.orderedItems().map((i) => [i.fileId, i]));
+      for (const fid of fileIds) {
+        const item = byId.get(fid);
+        if (!item) continue;
+        const set = new Set(item.albumIds);
+        if (kind === 'add') set.add(id);
+        else set.delete(id);
+        feed.patchItem(fid, { albumIds: [...set] });
+      }
+    }
+    if (panelId.value && fileIds.includes(panelId.value)) panelEpoch.value++;
+  },
+});
+const { busy: selBusy, moveOpen, albumMenuOpen, albums, albumsFailed } = actions;
+
+/** Evaluated when the picker opens, so it greys out the folder the selection sits in now. */
+const moveExcl = ref<{ ids: string[]; root: boolean }>({ ids: [], root: false });
+watch(
+  moveOpen,
+  (open) => {
+    if (open) moveExcl.value = actions.moveExclusion();
+  },
+  { flush: 'sync' },
+);
+
+watch(
+  () => selected.value.size,
+  (n) => {
+    if (n === 0) {
+      actions.closeAlbumMenu();
+      actions.closeMove();
+    }
+  },
+);
+
+// ----- panel and viewer -----
+
+const panelId = ref<string | null>(null);
+/** Bumped to reload the panel's data after the photo was moved or re-albumed from the selection bar. */
+const panelEpoch = ref(0);
+const viewer = shallowRef<{ items: FeedItem[]; index: number } | null>(null);
+const viewerItem = computed(() => viewer.value?.items[viewer.value.index] ?? null);
+const currentId = computed(() => viewerItem.value?.fileId ?? panelId.value);
+
+function shownItems(): FeedItem[] {
+  return searchActive.value ? searchItems.value : (feedRef.value?.orderedItems() ?? []);
 }
 
-function onOpenFolder(item: PhotoItem): void {
-  viewer.value = null;
-  emit('openFolder', item.folderId, item.fileId);
-}
-
-async function onDownload(item: PhotoItem): Promise<void> {
+/** Keyboard users land in the panel; mouse users keep their place in the feed. */
+function openedByKeyboard(): boolean {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el || !rootEl.value?.contains(el) || !el.matches('[data-file-id]')) return false;
   try {
-    await downloadDriveFile(item.fileId, item.name);
-  } catch (error) {
-    await alertDialog({
-      title: t('photosDownloadOriginal'),
-      message: error instanceof Error && error.message ? error.message : t('photosDownloadError'),
+    return el.matches(':focus-visible');
+  } catch {
+    return false;
+  }
+}
+
+function onOpen(item: FeedItem): void {
+  const byKeyboard = openedByKeyboard();
+  panelId.value = item.fileId;
+  if (byKeyboard) {
+    void nextTick(() => {
+      rootEl.value?.querySelector<HTMLElement>('[data-photo-panel] button, [data-photo-panel] textarea')?.focus();
     });
   }
 }
 
-/* ---------- viewport ---------- */
+function onActivate(item: FeedItem): void {
+  const items = shownItems();
+  const index = items.findIndex((i) => i.fileId === item.fileId);
+  if (index < 0) return;
+  panelId.value = item.fileId;
+  viewer.value = { items, index };
+}
 
-/*
- * The feed scrolls together with the page (`.drive-main` in DriveView), not in
- * a nested scroller: one scrollbar on phones, and the search and people strip
- * scroll away. `viewport.scrollTop` is the scroll position relative to the top
- * of the grid wrapper.
- */
-let scrollParent: HTMLElement | null = null;
+function onOpenViewerFromPanel(fileId: string): void {
+  const items = shownItems();
+  const index = items.findIndex((i) => i.fileId === fileId);
+  if (index >= 0) viewer.value = { items, index };
+}
 
-function findScrollParent(el: HTMLElement): HTMLElement | null {
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    const overflowY = typeof getComputedStyle === 'function' ? getComputedStyle(node).overflowY : '';
-    if (overflowY === 'auto' || overflowY === 'scroll') return node;
+function stepViewer(delta: number): void {
+  const v = viewer.value;
+  if (!v) return;
+  const index = Math.min(v.items.length - 1, Math.max(0, v.index + delta));
+  if (index === v.index) return;
+  viewer.value = { items: v.items, index };
+  // An open panel follows the photo being viewed.
+  if (panelId.value) panelId.value = v.items[index]!.fileId;
+}
+
+function onViewerInfo(item: FeedItem): void {
+  viewer.value = null;
+  panelId.value = item.fileId;
+}
+
+function focusTile(fileId: string): void {
+  const safe = fileId.replace(/"/g, '');
+  rootEl.value?.querySelector<HTMLElement>(`[data-file-id="${safe}"]`)?.focus();
+}
+
+function closePanel(restoreFocus = true): void {
+  const id = panelId.value;
+  panelId.value = null;
+  if (restoreFocus && id) void nextTick(() => focusTile(id));
+}
+
+function onMainEscape(): void {
+  if (selected.value.size > 0) clearSelection();
+  else if (panelId.value) closePanel();
+}
+
+function onOpenFolder(folderId: string): void {
+  emit('openFolder', folderId, panelId.value ?? '');
+}
+
+function onOpenAlbum(id: string): void {
+  openAlbum(id);
+}
+
+function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void {
+  const { fileId, ...patch } = change;
+  feedRef.value?.patchItem(fileId, patch);
+  if (searchItems.value.some((i) => i.fileId === fileId)) {
+    searchItems.value = searchItems.value.map((i) => (i.fileId === fileId ? { ...i, ...patch } : i));
   }
-  return null;
 }
 
-/** Scroll offset of the parent and the grid's distance from the parent's content top. */
-function scrollMetrics(): { parentTop: number; gridTop: number; height: number } | null {
-  const el = scrollerEl.value;
-  if (!el) return null;
-  if (scrollParent) {
-    const parentRect = scrollParent.getBoundingClientRect();
-    const gridTop = el.getBoundingClientRect().top - parentRect.top + scrollParent.scrollTop;
-    return { parentTop: scrollParent.scrollTop, gridTop, height: scrollParent.clientHeight };
-  }
-  const gridTop = el.getBoundingClientRect().top + window.scrollY;
-  return { parentTop: window.scrollY, gridTop, height: window.innerHeight };
-}
-
-function measure(): void {
-  const el = scrollerEl.value;
-  const metrics = scrollMetrics();
-  if (!el || !metrics) return;
-  viewport.width = el.clientWidth;
-  viewport.height = metrics.height;
-  viewport.scrollTop = Math.max(0, metrics.parentTop - metrics.gridTop);
-}
-
-function scrollFeedTo(offset: number): void {
-  const metrics = scrollMetrics();
-  if (!metrics) return;
-  const target = metrics.gridTop + offset;
-  if (scrollParent) scrollParent.scrollTop = target;
-  else window.scrollTo(0, target);
-  viewport.scrollTop = offset;
-}
-
-/** After a reload the feed starts at its first month, but the toolbar above is not forced away. */
-function scrollFeedToTop(): void {
-  const metrics = scrollMetrics();
-  if (metrics && metrics.parentTop > metrics.gridTop) scrollFeedTo(0);
-  viewport.scrollTop = 0;
-}
-
-let scrollFrame = 0;
-function onScroll(): void {
-  if (scrollFrame) return;
-  const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (cb: () => void) => setTimeout(cb, 16);
-  scrollFrame = schedule(() => {
-    scrollFrame = 0;
-    measure();
-  }) as unknown as number;
-}
-
-let resizeObserver: ResizeObserver | null = null;
-const scrollTarget = (): HTMLElement | Window => scrollParent ?? window;
-
-onMounted(() => {
-  if (scrollerEl.value) scrollParent = findScrollParent(scrollerEl.value);
-  scrollTarget().addEventListener('scroll', onScroll, { passive: true });
-  measure();
-  if (typeof ResizeObserver !== 'undefined' && scrollerEl.value) {
-    resizeObserver = new ResizeObserver(() => measure());
-    resizeObserver.observe(scrollerEl.value);
-    if (scrollParent) resizeObserver.observe(scrollParent);
-  } else {
-    window.addEventListener('resize', measure);
-  }
-  void loadFeed();
-  void loadPeople();
+onBeforeUnmount(() => {
+  cancelSearchTimer();
+  searchGen++;
 });
-
-onUnmounted(() => {
-  scrollTarget().removeEventListener('scroll', onScroll);
-  resizeObserver?.disconnect();
-  window.removeEventListener('resize', measure);
-  if (searchTimer) clearTimeout(searchTimer);
-});
-
-defineExpose({ layout, rendered });
 </script>
 
 <style scoped>
 .drive-photos {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  min-width: 0;
+  color: var(--ui-text);
 }
 
-.photos-toolbar {
+.dp-top {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--ui-border);
 }
 
-.photos-search {
+.dp-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.dp-tab {
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dp-tab:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.dp-tab[aria-selected='true'] {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--ui-accent-strong);
+}
+
+.dp-tab:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+.dp-search {
   position: relative;
   display: flex;
   align-items: center;
   flex: 1;
-  max-width: 560px;
-  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.14));
+  min-width: 200px;
+  max-width: 420px;
+  gap: 8px;
+  padding: 0 12px;
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
-  padding: 0 10px;
+  background: var(--ui-surface-subtle);
 }
 
-.photos-search-icon {
-  color: var(--ui-text-secondary, #a3b3a3);
+.dp-search-icon {
+  color: var(--ui-text-secondary);
   flex-shrink: 0;
 }
 
-.photos-search-input {
+.dp-search-input {
   flex: 1;
   min-width: 0;
+  height: 36px;
   border: 0;
-  background: transparent;
-  color: var(--ui-text, #f8fff8);
-  font-size: 14px;
-  padding: 9px 8px;
+  background: none;
+  color: var(--ui-text);
+  font: inherit;
   outline: none;
 }
 
-.photos-search-input::-webkit-search-cancel-button {
-  display: none;
+.dp-search:focus-within {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
 }
 
-.photos-search-clear {
+.dp-search-clear {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -679,242 +625,102 @@ defineExpose({ layout, rendered });
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: var(--ui-text-secondary, #a3b3a3);
+  color: var(--ui-text-secondary);
   cursor: pointer;
 }
 
-.photos-mock-banner {
-  font-size: 12px;
-  color: var(--ui-text-secondary, #a3b3a3);
-  border: 1px dashed var(--ui-border, rgba(255, 255, 255, 0.14));
-  border-radius: 8px;
-  padding: 6px 10px;
+.dp-search-clear:focus-visible,
+.dp-retry:focus-visible,
+.dp-back:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
 }
 
-.photos-people {
+.dp-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.dp-main {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
 }
 
-.photos-people-label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--ui-text-secondary, #a3b3a3);
+.dp-feed {
+  flex: 1;
+  min-height: 0;
 }
 
-.photos-people-strip {
-  display: flex;
-  scrollbar-width: thin;
-  gap: 12px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.photos-person {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  width: 64px;
-  flex-shrink: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text, #f8fff8);
-  cursor: pointer;
-  padding: 0;
-}
-
-.photos-person-avatar {
-  width: 52px;
-  height: 52px;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 2px solid transparent;
-  box-sizing: border-box;
-}
-
-.photos-person-avatar-empty {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--ui-surface-elevated, rgba(255, 255, 255, 0.08));
-}
-
-.photos-person.active .photos-person-avatar {
-  border-color: var(--ui-brand, #8cff8c);
-}
-
-.photos-person-name {
-  font-size: 11px;
-  max-width: 100%;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.photos-filter-chip {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  gap: 6px;
-  font-size: 13px;
-  padding: 4px 6px 4px 12px;
-  border-radius: 999px;
-  background: var(--ui-surface-elevated, rgba(255, 255, 255, 0.08));
-  color: var(--ui-text, #f8fff8);
-}
-
-.photos-scroller {
-  position: relative;
-  width: 100%;
-}
-
-.photos-grid {
-  position: relative;
-  width: 100%;
-}
-
-.photos-month,
-.photos-row {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  will-change: transform;
-}
-
-.photos-month {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.dp-note {
   margin: 0;
-  padding-top: 8px;
-  box-sizing: border-box;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--ui-text, #f8fff8);
+  padding: 24px 20px;
+  color: var(--ui-text-secondary);
 }
 
-.photos-month-count {
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--ui-text-secondary, #a3b3a3);
-}
-
-.photos-row {
-  display: grid;
-}
-
-.photos-tile {
-  position: relative;
-  display: block;
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.05));
+.dp-retry {
+  margin-left: 8px;
+  padding: 4px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
   cursor: pointer;
 }
 
-.photos-tile:focus-visible {
-  outline: 2px solid var(--ui-brand, #8cff8c);
-  outline-offset: 1px;
-}
-
-.photos-tile-skeleton {
-  cursor: default;
-  animation: photos-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes photos-pulse {
-  50% {
-    opacity: 0.55;
-  }
-}
-
-.photos-thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.photos-thumb-empty {
+.dp-album-head {
   display: flex;
   align-items: center;
-  justify-content: center;
-  color: var(--ui-text-secondary, #a3b3a3);
+  gap: 14px;
+  padding: 10px 20px 0;
 }
 
-.photos-badge {
-  position: absolute;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 11px;
-  line-height: 1;
-  padding: 3px 5px;
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #fff;
-}
-
-.photos-badge-video {
-  right: 4px;
-  top: 4px;
-}
-
-.photos-badge-pending {
-  left: 4px;
-  bottom: 4px;
-  max-width: calc(100% - 8px);
-}
-
-.photos-badge-text {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.photos-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 240px;
-  text-align: center;
-  color: var(--ui-text-secondary, #a3b3a3);
-}
-
-.photos-state-icon {
-  opacity: 0.6;
-}
-
-.photos-retry {
-  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.14));
+.dp-back {
+  padding: 4px 10px;
+  border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--ui-text, #f8fff8);
-  padding: 6px 14px;
+  color: var(--ui-accent-strong);
+  font: inherit;
+  font-weight: 600;
   cursor: pointer;
 }
 
-@media (max-width: 640px) {
-  .photos-search {
+.dp-album-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.dp-panel {
+  flex: none;
+  width: 340px;
+  max-width: 100%;
+  min-height: 0;
+}
+
+@media (max-width: 720px) {
+  .dp-search {
     max-width: none;
+    flex-basis: 100%;
   }
 
-  .photos-badge-text {
-    display: none;
+  /* On a phone the panel covers the feed instead of squeezing it. */
+  .dp-panel {
+    position: absolute;
+    inset: 0;
+    width: auto;
+    z-index: 20;
   }
 
-  .photos-tile {
-    border-radius: 0;
+  .dp-panel :deep(.pp) {
+    width: 100%;
   }
 }
 </style>

@@ -1,4 +1,4 @@
-import { API_BASE, request } from './client';
+import { API_BASE, ApiError, request } from './client';
 import { resolveDownloadUrl } from './drive';
 import { createPhotosMock, renditionUrlMock, type PhotosMockApi, type PhotosMockDrive } from './photos.mock';
 
@@ -146,6 +146,11 @@ export type FeedQueryParams = Partial<FeedParams> & {
 /** The hub accepts at most 500 token hashes per batch (MAX_TOKEN_HASHES). */
 export const RENDITION_TOKENS_BATCH = 500;
 export const TOKEN_MARGIN_MS = 60_000;
+
+/** Semantic search is off on the hub (no ML service): 503 with `code: 'search_unavailable'`. */
+export function isSearchUnavailable(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 503 && err.body?.code === 'search_unavailable';
+}
 
 export function isPhotosEnabled(): boolean {
   return String(import.meta.env.VITE_PHOTOS_ENABLED ?? '') === '1';

@@ -89,10 +89,15 @@
 - `src/components/dashboard/DashboardSidebar.vue`: боковая панель разделов (Главная, Диск, Папки, Доступные, Публичные) с деревом папок.
 - `src/components/dashboard/DashboardViewToggle.vue`: переключатель сетки отображения ресурсов (плитка / табличный список).
 - `src/components/dashboard/InteractiveTemplatePicker.vue`: диалог выбора типа интерактивного шаблона или импорта персонажа из JSON.
-- `src/components/photos/DrivePhotos.vue`: виртуализированная галерея фотографий и видео с группировкой по месяцам и фильтром по лицам.
-- `src/components/photos/PhotoViewerLegacy.vue`: лайтбокс старой галереи `DrivePhotos.vue` (на старом API `photosLegacy.ts`); уйдёт вместе с ней.
-- `src/components/photos/PhotoPanel.vue`: боковая панель фото на новом API (`photosApi.details/edit/albums`): избранное, сведения, путь, альбомы, где хранится, описание. Пока не подключена к контейнеру.
-- `src/components/photos/PhotoViewer.vue`: полноэкранный просмотр фото и видео на новом API (`renditionUrl`: preview → thumbnail; видео: rendition `video` → оригинал по ссылке → превью-кадр), листает по порядку ленты (`PhotosFeed.orderedItems()`), «Сведения» закрывает просмотр. Пока не подключён к контейнеру.
+- `src/components/photos/DrivePhotos.vue`: контейнер вкладки «Фото»: вкладки «Лента»/«Альбомы», поиск, панель вида, лента, панель фото, просмотр, панель выделения и выбор папки для переноса; состояние выделения, панели и просмотра держит он.
+- `src/components/photos/PhotosViewBar.vue`, `usePhotosView.ts`: панель вида ленты и его состояние (модульный синглтон, `localStorage` + предпочтение `photos.view`).
+- `src/components/photos/PhotosFeed.vue`, `photoGridLayout.ts`, `groupTitle.ts`, `PhotosGroupHead.vue`: виртуализированная лента по `photosApi.summary/items`; раскладка — чистая функция; наружу отдаёт `orderedItems()`, `refresh()`, `patchItem()`.
+- `src/components/photos/PhotosScrubber.vue`: слайдер по датам/группам внутри ленты.
+- `src/components/photos/PhotosSearchGrid.vue`: плоская сетка результатов поиска (`photosApi.search`) без групп и слайдера.
+- `src/components/photos/PhotoPanel.vue`: боковая панель фото (`photosApi.details/edit/albums`): избранное, сведения, путь, альбомы, где хранится, описание.
+- `src/components/photos/PhotoViewer.vue`: полноэкранный просмотр фото и видео (`renditionUrl`: preview → thumbnail; видео: rendition `video` → оригинал по ссылке → превью-кадр), листает по порядку ленты; «Сведения» закрывает просмотр и оставляет панель на этом фото.
+- `src/components/photos/PhotosAlbums.vue`: список альбомов (создание, переименование, удаление).
+- `src/components/photos/SelectionBar.vue`, `usePhotoSelectionActions.ts`: панель выделения и действия над ним (в альбом, перенос в папку, убрать из альбома).
 - `src/components/settings/McpTokensPanel.vue`: панель выпуска и управления личными токенами доступа по протоколу MCP.
 - `src/components/tabs/TabsButton.vue`: кнопка со счётчиком вкладок для вызова панели переключения активных ресурсов на Android.
 
@@ -130,7 +135,7 @@
    - Модульное состояние: `availability`, `snapshot`, `permissions`, `policy`, `liveDownloads = reactive(new Map())`.
    - Управляет состоянием встроенного в Android Rust-агента хранения.
 9. **Кэш подписанных токенов миниатюр фото** — [`src/api/photos.ts`](../src/api/photos.ts):
-   - Кэш токенов: `const thumbTokens = new Map<string, { token: string; expiresAt: number }>()`.
+   - Кэш токенов: `const tokenCache = new Map<string, { token: string; expiresAt: number }>()` (пачки до 500 хэшей, запас 60 с).
    - Кеширует временные токены для отображения картинок Immich через защищённые URL без отправки Bearer-заголовка в `<img src>`.
 
 ---
@@ -145,8 +150,8 @@
 |---|---|---|
 | [`src/api/client.ts`](../src/api/client.ts) | Базовый транспорт, авторизация, канвасы, документы, теги, папки, MCP | `request()`, `auth`, `resourceFolders`, `canvas`, `htmlDocuments`, `textDocuments`, `interactiveTemplates`, `plugins`, `accessRequests`, `tags`, `mcpTokens`, `recentResources`, `uploadImage()` |
 | [`src/api/drive.ts`](../src/api/drive.ts) | Диск Q Disk, файлы, папки, корзина, безопасность Q Control, устройства | `driveApi`, `uploadFile()`, `downloadDriveFile()`, `resolveDownloadUrl()`, утилиты размеров и реплик |
-| [`src/api/photos.ts`](../src/api/photos.ts) | Медиаархив (Immich-интеграция), таймлайн, распознавание лиц | `photosApi`, `hubPhotosApi`, `mediaApi`, `withMediaUrls()`, `isPhotosEnabled()` |
-| [`src/api/photos.mock.ts`](../src/api/photos.mock.ts) | Генератор мок-данных фото для разработки и тестов без хаба | `createPhotosMock()`, `isMockPhotoId()` |
+| [`src/api/photos.ts`](../src/api/photos.ts) | Фото: лента, поиск, альбомы, сведения о фото, предпочтения вида, токены миниатюр | `photosApi`, `hubPhotosApi`, `renditionUrl()`, `isSearchUnavailable()`, `isPhotosEnabled()` |
+| [`src/api/photos.mock.ts`](../src/api/photos.mock.ts) | Генератор мок-данных фото для разработки и тестов без хаба | `createPhotosMock()`, `renditionUrlMock()` |
 | [`src/api/admin.ts`](../src/api/admin.ts) | Консоль администратора: лимиты файлов, квоты хранилища | `adminRequest()`, `adminApi` |
 | [`src/api/hubOverride.ts`](../src/api/hubOverride.ts) | Отладочный резолв адреса хаба и WebSocket-ориджина | `resolveApiBase()`, `resolveWsOrigin()`, `isHubOverrideAllowed()`, `normalizeHubOverride()` |
 | [`src/api/hubSwitch.ts`](../src/api/hubSwitch.ts) | Безопасная смена сервера с обязательным сбросом JWT токена | `applyHubOverride()` |
@@ -198,7 +203,7 @@
 | `VITE_CANONICAL_ORIGIN` | [`src/api/public-origin.ts`](../src/api/public-origin.ts) | Канонический домен сервиса для формирования публичных ссылок общего доступа (предотвращает утечку localhost) |
 | `VITE_ALLOW_HUB_OVERRIDE` | [`src/api/hubOverride.ts`](../src/api/hubOverride.ts), [`capacitor.config.ts`](../capacitor.config.ts) | При значении `1` включает UI смены адреса хаба в настройках и разрешает Mixed Content (HTTP) в WebView Android для отладки на стендах |
 | `VITE_PHOTOS_ENABLED` | [`src/api/photos.ts`](../src/api/photos.ts) | Фича-флаг: при значении `1` включает раздел «Фото» и переключатель «Файлы/Фото» на Диске |
-| `VITE_PHOTOS_MOCK` | [`src/api/photos.ts`](../src/api/photos.ts) | Мок-флаг: при значении `1` подставляет локальные сгенерированные фото и лица вместо реального API Immich хаба |
+| `VITE_PHOTOS_MOCK` | [`src/api/photos.ts`](../src/api/photos.ts) | Мок-флаг: при значении `1` подставляет локальные сгенерированные фото, папки и альбомы вместо API фото хаба |
 
 ---
 
