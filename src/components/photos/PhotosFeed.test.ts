@@ -11,6 +11,7 @@ const itemsMock = vi.fn<
 const albumsMock = vi.fn();
 const renditionMock = vi.fn<(hash: string, size: string) => Promise<string>>();
 const getFolderMock = vi.fn();
+const isMockMode = vi.fn(() => false);
 
 const WIDTH = 800;
 const VIEWPORT = 600;
@@ -114,6 +115,10 @@ async function scrollTo(w: Wrapper, v: number): Promise<void> {
   await settle();
 }
 
+function bottomOf(w: Wrapper): number {
+  return parseFloat((w.get('.pf-sizer').element as HTMLElement).style.height) - VIEWPORT;
+}
+
 function rowTopOfFile(w: Wrapper, fileId: string): number {
   const tile = w.get(`[data-file-id="${fileId}"]`).element as HTMLElement;
   return parseFloat((tile.closest('.pf-row') as HTMLElement).style.top);
@@ -140,6 +145,7 @@ describe('PhotosFeed', () => {
     albumsMock.mockReset().mockResolvedValue([]);
     renditionMock.mockReset().mockImplementation(async (hash) => `blob:${hash}`);
     getFolderMock.mockReset().mockResolvedValue({ folder: { name: 'Алтай' }, path: [] });
+    isMockMode.mockReset().mockReturnValue(false);
     vi.doMock('../../api/photos', () => ({
       photosApi: {
         summary: summaryMock,
@@ -149,6 +155,7 @@ describe('PhotosFeed', () => {
         putPreference: vi.fn().mockResolvedValue(undefined),
       },
       renditionUrl: renditionMock,
+      isPhotosMock: isMockMode,
     }));
     vi.doMock('../../api/drive', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../api/drive')>();
@@ -342,6 +349,8 @@ describe('PhotosFeed', () => {
       ({ top: 0, left: 0, right: 56, bottom: 500, width: 56, height: 500, x: 0, y: 0, toJSON() {} }) as DOMRect;
     // 60 of 100 photos precede the second group: it starts at 0.6 of the rail (y = 300).
     scrub.dispatchEvent(new MouseEvent('pointerdown', { clientY: 301, bubbles: true }));
+    // Loading after a jump is debounced (80 ms).
+    await new Promise((r) => setTimeout(r, 150));
     await settle();
 
     const st = scroller(w).scrollTop;
@@ -377,6 +386,169 @@ describe('PhotosFeed', () => {
 
     const st = scroller(w).scrollTop;
     expect(Math.abs(rowTopOfFile(w, fileId) - st - screenY)).toBeLessThanOrEqual(2);
+    w.unmount();
+  });
+  function manyGroups(n: number, count = 20): FeedGroup[] {
+    return Array.from({ length: n }, (_, i) => ({ key: `k${String(i).padStart(2, '0')}`, count }));
+  }
+
+  it('loads groups lazily by visibility', async () => {
+    summaryMock.mockResolvedValue({ groups: manyGroups(50) });
+    itemsMock.mockImplementation(async (_p, g) => ({
+      items: Array.from({ length: 20 }, (_, i) => mkItem(Number(g.slice(1)) * 100 + i)),
+      nextCursor: null,
+    }));
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    const asked = new Set(itemsMock.mock.calls.map((c) => c[1]));
+    expect(asked.has('k00')).toBe(true);
+    expect(asked.size).toBeGreaterThan(0);
+    expect(asked.size).toBeLessThanOrEqual(3);
+    expect(asked.has('k49')).toBe(false);
+    w.unmount();
+  });
+
+  it('never runs more than four loads at once during a fast scroll', async () => {
+    summaryMock.mockResolvedValue({ groups: manyGroups(50) });
+    const waiting: Array<() => void> = [];
+    let running = 0;
+    let peak = 0;
+    itemsMock.mockImplementation(
+      (_p, g) =>
+        new Promise((resolve) => {
+          running++;
+          peak = Math.max(peak, running);
+          waiting.push(() => {
+            running--;
+            resolve({
+              items: Array.from({ length: 20 }, (_, i) => mkItem(Number(g.slice(1)) * 100 + i)),
+              nextCursor: null,
+            });
+          });
+        }),
+    );
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    const end = bottomOf(w);
+    for (let y = 600; y <= end; y += 600) {
+      const el = scroller(w);
+      el.scrollTop = y;
+      el.dispatchEvent(new Event('scroll'));
+    }
+    await settle();
+    expect(peak).toBeLessThanOrEqual(4);
+    // Queued units that left the viewport are dropped: far fewer requests than groups passed.
+    expect(itemsMock.mock.calls.length).toBeLessThan(15);
+    for (let guard = 0; guard < 50 && waiting.length > 0; guard++) {
+      waiting.shift()!();
+      await settle();
+    }
+    expect(peak).toBeLessThanOrEqual(4);
+    w.unmount();
+  });
+
+  it('discards a response that started before a params change was applied', async () => {
+    const groups = manyGroups(30, 3);
+    const itemsFor = (prefix: string, g: string) =>
+      Array.from({ length: 3 }, (_, i) => mkItem(Number(g.slice(1)) * 10 + i, { fileId: `${prefix}${g}-${i}`, hash: `${prefix}${g}-${i}` }));
+    let releaseOld: (() => void) | null = null;
+    itemsMock.mockImplementation((p, g) => {
+      if (p.filter === 'all' && g === 'k29') {
+        return new Promise((resolve) => {
+          releaseOld = () => resolve({ items: itemsFor('old-', g), nextCursor: null });
+        });
+      }
+      return Promise.resolve({ items: itemsFor(p.filter === 'all' ? 'old-' : 'new-', g), nextCursor: null });
+    });
+    summaryMock.mockResolvedValueOnce({ groups });
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    // The new summary is slow; meanwhile the user scrolls to the far group (old params).
+    let finishSummary: (() => void) | null = null;
+    summaryMock.mockImplementationOnce(
+      () => new Promise((resolve) => { finishSummary = () => resolve({ groups }); }),
+    );
+    await w.setProps({ params: params({ filter: 'photo' }) });
+    await settle();
+    await scrollTo(w, bottomOf(w));
+    expect(itemsMock.mock.calls.some((c) => c[1] === 'k29' && c[0].filter === 'all')).toBe(true);
+
+    finishSummary!();
+    await settle();
+    releaseOld!(); // the old response arrives after the new params were applied
+    await settle();
+
+    await scrollTo(w, bottomOf(w));
+    const ids = w.findAll('.pf-tile').map((n) => n.attributes('data-file-id')!);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.every((id) => id.startsWith('new-'))).toBe(true);
+    w.unmount();
+  });
+
+  it('a photo hidden by a filter leaves the nearest-by-date photo at the same place', async () => {
+    const all = Array.from({ length: 80 }, (_, i) => mkItem(i));
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 80 }] });
+    itemsMock.mockImplementation(async () => ({ items: all, nextCursor: null }));
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    await scrollTo(w, 700);
+    const hidden = topVisibleFile(w, 700);
+    const n = Number(hidden.slice(1));
+    const screenY = rowTopOfFile(w, hidden) - 700;
+
+    const hiddenDate = Date.parse(all[n]!.localTakenAt!);
+    const nearest = `f${n + 1}`;
+    const after = all
+      .filter((i) => i.fileId !== hidden)
+      .map((i) => {
+        if (i.fileId !== nearest) return i;
+        const d = new Date(hiddenDate - 60_000).toISOString();
+        return { ...i, localTakenAt: d, takenAt: d };
+      });
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: after.length }] });
+    itemsMock.mockImplementation(async () => ({ items: after, nextCursor: null }));
+    await w.setProps({ params: params({ filter: 'fav' }) });
+    await settle();
+
+    expect(w.find(`[data-file-id="${hidden}"]`).exists()).toBe(false);
+    const st = scroller(w).scrollTop;
+    expect(Math.abs(rowTopOfFile(w, nearest) - st - screenY)).toBeLessThanOrEqual(2);
+    w.unmount();
+  });
+
+  it('keyboard: Enter opens a tile, Space toggles its selection', async () => {
+    twoMonths();
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    const tile = w.get('[data-file-id="f1"]');
+    expect(tile.attributes('tabindex')).toBe('0');
+    expect(tile.attributes('role')).toBe('button');
+    expect(tile.attributes('aria-label')).toContain('p1.jpg');
+    await tile.trigger('keydown.enter');
+    expect((w.emitted('open')![0]![0] as FeedItem).fileId).toBe('f1');
+    await tile.trigger('keydown.space');
+    expect(w.emitted('toggle-select')![0]).toEqual([['f1'], true]);
+    const chk = w.get('[data-file-id="f1"] [data-testid="tile-check"]');
+    expect(chk.element.tagName).toBe('BUTTON');
+    expect(chk.attributes('aria-label')).toContain('p1.jpg');
+    expect(w.get('[data-testid="group-pick"]').attributes('aria-label')).toContain('Октябрь 2026');
+    w.unmount();
+  });
+
+  it('does not fetch folder names in mock mode', async () => {
+    isMockMode.mockReturnValue(true);
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 1 }] });
+    itemsMock.mockResolvedValue({ items: [mkItem(0, { folderId: 'fold1' })], nextCursor: null });
+    const Feed = await load();
+    const w = mountFeed(Feed, { captionOnTile: ['folder'] });
+    await settle();
+    expect(getFolderMock).not.toHaveBeenCalled();
     w.unmount();
   });
 });

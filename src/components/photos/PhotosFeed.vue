@@ -10,6 +10,7 @@ import {
   watch,
 } from 'vue';
 import {
+  isPhotosMock,
   photosApi,
   renditionUrl,
   type FeedGroup,
@@ -32,6 +33,7 @@ import {
   type Row,
 } from './photoGridLayout';
 import {
+  dateGroupTitle,
   formatDuration,
   groupKeysForItem,
   groupTitle,
@@ -63,6 +65,8 @@ const OVERSCAN = 600;
 /** Header band the sticky group title covers; the anchor line sits right below it. */
 const STICKY_OFFSET = H1_HEIGHT;
 const MAX_PENDING_PAGES = 25;
+const MAX_CONCURRENT = 4;
+const JUMP_DEBOUNCE_MS = 80;
 
 const { t, locale } = useI18n();
 const view = usePhotosView();
@@ -268,19 +272,24 @@ function loadUnit(group: string, sub?: string): Promise<void> {
 
   const my = epoch;
   const params = appliedParams.value;
-  const run = (async () => {
+  // A response is current only while neither the epoch nor the applied params moved on.
+  const current = (): boolean => my === epoch && params === appliedParams.value;
+  let run: Promise<void> | undefined;
+  run = (async () => {
+    await Promise.resolve(); // `run` is assigned before anything below can finish
     try {
       const res = await photosApi.items(params, group, sub ?? null, have ? cursors.get(key) : null, PAGE_SIZE);
-      if (my !== epoch) return;
+      if (!current()) return;
       const next = new Map(items.value);
       next.set(key, have ? [...have, ...res.items] : res.items);
       items.value = next;
       cursors.set(key, res.nextCursor ?? null);
       relayout();
     } catch {
-      if (my === epoch) failed.add(key);
+      if (current()) failed.add(key);
     } finally {
-      if (my === epoch) inflight.delete(key);
+      // Only drop our own entry: a newer request for the same key may have replaced it.
+      if (inflight.get(key) === run) inflight.delete(key);
     }
   })();
   inflight.set(key, run);
@@ -297,44 +306,106 @@ async function loadAll(group: string, sub?: string): Promise<void> {
   }
 }
 
+// Visibility-driven requests go through a small queue: at most MAX_CONCURRENT run at once,
+// the nearest to the viewport first, and units that left the viewport before they started
+// are dropped (the next ensureLoaded rebuilds the wanted set from what is visible now).
+type Task = { dist: number; run: () => Promise<unknown> };
+let wanted = new Map<string, Task>();
+let active = 0;
+
+function pump(): void {
+  while (active < MAX_CONCURRENT && wanted.size > 0) {
+    let bestId = '';
+    let best: Task | null = null;
+    for (const [id, task] of wanted) {
+      if (!best || task.dist < best.dist) {
+        best = task;
+        bestId = id;
+      }
+    }
+    if (!best) return;
+    wanted.delete(bestId);
+    active++;
+    const done = (): void => {
+      active--;
+      pump();
+    };
+    let p: Promise<unknown>;
+    try {
+      p = best.run();
+    } catch {
+      p = Promise.resolve();
+    }
+    void p.then(done, done);
+  }
+}
+
+function distanceTo(row: Row): number {
+  const top = lastScrollTop;
+  const bottom = top + viewportH.value;
+  if (row.top > bottom) return row.top - bottom;
+  if (row.top + row.height < top) return top - (row.top + row.height);
+  return 0;
+}
+
 function ensureLoaded(): void {
   const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, OVERSCAN);
   const bottom = lastScrollTop + viewportH.value + OVERSCAN;
+  const next = new Map<string, Task>();
+  const wantFolders = props.captionOnTile.includes('folder') && !isPhotosMock();
   for (const row of rows) {
     if (row.kind === 'placeholder') {
-      void loadUnit(row.groupKey, row.subKey);
+      const key = unitKeyOf(row);
+      if (!inflight.has(key) && !failed.has(key)) {
+        next.set(`u:${key}`, { dist: distanceTo(row), run: () => loadUnit(row.groupKey, row.subKey) });
+      }
     } else if (row.kind === 'tiles') {
       const key = unitKeyOf(row);
       const have = items.value.get(key);
       const total = unitCount.get(key) ?? 0;
-      if (have && have.length < total && cursors.get(key) && (unitEnd.get(key) ?? 0) <= bottom) {
-        void loadUnit(row.groupKey, row.subKey);
+      if (
+        have &&
+        have.length < total &&
+        cursors.get(key) &&
+        (unitEnd.get(key) ?? 0) <= bottom &&
+        !inflight.has(key) &&
+        !failed.has(key)
+      ) {
+        next.set(`u:${key}`, { dist: distanceTo(row), run: () => loadUnit(row.groupKey, row.subKey) });
       }
-      for (const tl of row.tiles ?? []) requestThumb(tl.item);
+      for (const tl of row.tiles ?? []) {
+        requestThumb(tl.item);
+        const id = tl.item.folderId;
+        if (wantFolders && id && !folderNames.has(id) && !folderRequested.has(id)) {
+          const fid = `f:${id}`;
+          if (!next.has(fid)) next.set(fid, { dist: distanceTo(row), run: () => requestFolder(id) });
+        }
+      }
     }
   }
+  wanted = next;
+  pump();
 }
 
 function requestThumb(item: FeedItem): void {
-  if (!item.processed || thumbRequested.has(item.hash)) {
-    if (props.captionOnTile.includes('folder')) requestFolder(item);
-    return;
-  }
+  if (!item.processed || thumbRequested.has(item.hash)) return;
   thumbRequested.add(item.hash);
   renditionUrl(item.hash, 'thumbnail')
     .then((u) => thumbs.set(item.hash, u))
     .catch(() => thumbs.set(item.hash, null));
-  if (props.captionOnTile.includes('folder')) requestFolder(item);
 }
 
-function requestFolder(item: FeedItem): void {
-  const id = item.folderId;
-  if (!id || folderNames.has(id) || folderRequested.has(id)) return;
+function requestFolder(id: string): Promise<void> {
+  if (folderNames.has(id) || folderRequested.has(id)) return Promise.resolve();
   folderRequested.add(id);
-  driveApi
+  return driveApi
     .getFolder(id)
-    .then((r) => folderNames.set(id, r.folder.name ?? ''))
-    .catch(() => folderNames.set(id, ''));
+    .then((r) => {
+      folderNames.set(id, r.folder.name ?? '');
+    })
+    .catch(() => {
+      folderNames.set(id, '');
+    });
 }
 
 function requestAlbums(): void {
@@ -420,6 +491,9 @@ async function refresh(): Promise<void> {
   try {
     const res = await photosApi.summary(params);
     if (my !== epoch) return;
+    // Anything started during the request belongs to the old params: invalidate it.
+    epoch++;
+    wanted = new Map();
     appliedParams.value = params;
     groups.value = res.groups;
     items.value = new Map();
@@ -480,6 +554,8 @@ function cancelPending(): void {
 
 // ----- scrolling -----
 
+let jumpTimer: ReturnType<typeof setTimeout> | null = null;
+
 function onScroll(): void {
   const el = scroller.value;
   if (!el) return;
@@ -487,7 +563,8 @@ function onScroll(): void {
   if (sizer.value && sizer.value.clientWidth === 0) return;
   lastScrollTop = el.scrollTop;
   scrollTop.value = lastScrollTop;
-  ensureLoaded();
+  // While the scrubber is being dragged, loading waits for the debounced jump.
+  if (jumpTimer === null) ensureLoaded();
 }
 
 function onJump(key: string, frac: number): void {
@@ -495,7 +572,12 @@ function onJump(key: string, frac: number): void {
   if (!entry) return;
   pending = null;
   setScroll(entry.top + frac * entry.height - 8);
-  ensureLoaded();
+  // The scroll position follows the pointer at once; requests wait until it settles.
+  if (jumpTimer !== null) clearTimeout(jumpTimer);
+  jumpTimer = setTimeout(() => {
+    jumpTimer = null;
+    ensureLoaded();
+  }, JUMP_DEBOUNCE_MS);
 }
 
 const visible = computed(() =>
@@ -585,6 +667,11 @@ function tileCaption(item: FeedItem): string[] {
   return out;
 }
 
+function tileLabel(item: FeedItem): string {
+  const day = groupKeysForItem(item, 'date', 'day')[0];
+  return day ? `${item.name}, ${dateGroupTitle(day, 'day', locale.value)}` : item.name;
+}
+
 function onThumbError(item: FeedItem): void {
   thumbs.set(item.hash, null);
 }
@@ -593,7 +680,7 @@ function toggleOne(item: FeedItem): void {
   emit('toggle-select', [item.fileId], !props.selected.has(item.fileId));
 }
 
-function onTileClick(e: MouseEvent, item: FeedItem): void {
+function onTileClick(e: Event, item: FeedItem): void {
   if ((e.target as HTMLElement | null)?.closest('[data-chk]') || props.selected.size > 0) {
     toggleOne(item);
     return;
@@ -601,7 +688,7 @@ function onTileClick(e: MouseEvent, item: FeedItem): void {
   emit('open', item);
 }
 
-function onTileDblClick(e: MouseEvent, item: FeedItem): void {
+function onTileDblClick(e: Event, item: FeedItem): void {
   if ((e.target as HTMLElement | null)?.closest('[data-chk]') || props.selected.size > 0) return;
   emit('activate', item);
 }
@@ -699,6 +786,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   epoch++;
+  if (jumpTimer !== null) clearTimeout(jumpTimer);
+  wanted = new Map();
   ro?.disconnect();
   window.removeEventListener('resize', measure);
 });
@@ -783,9 +872,15 @@ onBeforeUnmount(() => {
                   vid: tl.item.kind === 'video',
                 }"
                 :data-file-id="tl.item.fileId"
+                tabindex="0"
+                role="button"
+                :aria-label="tileLabel(tl.item)"
+                :aria-pressed="selected.has(tl.item.fileId)"
                 :style="{ left: `${tl.left}px`, width: `${tl.width}px`, height: `${row.height}px` }"
                 @click="onTileClick($event, tl.item)"
                 @dblclick="onTileDblClick($event, tl.item)"
+                @keydown.enter.self="onTileClick($event, tl.item)"
+                @keydown.space.self.prevent="toggleOne(tl.item)"
               >
                 <img
                   v-if="thumbs.get(tl.item.hash)"
@@ -801,14 +896,15 @@ onBeforeUnmount(() => {
                   class="pf-nothumb"
                   :title="thumbs.get(tl.item.hash) === null || !tl.item.processed ? t('photosThumbUnavailable') : undefined"
                 ></div>
-                <span
+                <button
+                  type="button"
                   class="pf-chk"
                   data-chk
                   data-testid="tile-check"
                   role="checkbox"
                   :aria-checked="selected.has(tl.item.fileId)"
-                  :aria-label="t('photosSelectPhoto')"
-                ></span>
+                  :aria-label="`${t('photosSelectPhoto')}: ${tl.item.name}`"
+                ></button>
                 <span v-if="tileCaption(tl.item).length" class="pf-cap">
                   <span v-for="(part, i) in tileCaption(tl.item)" :key="i">{{ part }}</span>
                 </span>
@@ -965,12 +1061,23 @@ onBeforeUnmount(() => {
   width: 22px;
   height: 22px;
   box-sizing: border-box;
+  padding: 0;
   border-radius: 50%;
   border: 2px solid #fff;
   background: rgba(0, 0, 0, 0.25);
   opacity: 0;
+  cursor: pointer;
+}
+.pf-tile:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+.pf-chk:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
 }
 .pf-tile:hover .pf-chk,
+.pf-tile:focus-within .pf-chk,
 .sel-on .pf-chk {
   opacity: 1;
 }

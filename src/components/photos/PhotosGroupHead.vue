@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from '../../composables/useI18n';
 
-defineProps<{
+const props = defineProps<{
   title: string;
   secondary?: string;
   count: number;
@@ -25,7 +25,7 @@ const { t } = useI18n();
       class="pgh-pick"
       data-testid="group-pick"
       :aria-pressed="pressed"
-      :aria-label="t('photosSelectGroup')"
+      :aria-label="`${t('photosSelectGroup')}: ${props.title}`"
       @click.stop="emit('pick')"
       @dblclick.stop
     ></button>

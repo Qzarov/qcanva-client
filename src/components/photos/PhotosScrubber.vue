@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useI18n } from '../../composables/useI18n';
 
 export type ScrubGroup = {
   key: string;
@@ -21,6 +22,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ (e: 'jump', key: string, frac: number): void }>();
 
+const { t } = useI18n();
 const FALLBACK_HEIGHT = 600;
 const root = ref<HTMLElement | null>(null);
 const height = ref(0);
@@ -89,6 +91,47 @@ const nowTop = computed(() => {
   if (!sp) return null;
   return (sp.start + Math.min(Math.max(cur.frac, 0), 1) * sp.size) * 100;
 });
+
+const currentIndex = computed(() => {
+  const i = props.groups.findIndex((g) => g.key === props.current?.key);
+  return i < 0 ? 0 : i;
+});
+const valueText = computed(() => props.groups[currentIndex.value]?.label ?? '');
+
+const PAGE_STEP = 5;
+
+function onKey(e: KeyboardEvent): void {
+  const n = props.groups.length;
+  if (n === 0) return;
+  const i = currentIndex.value;
+  let to: number;
+  switch (e.key) {
+    case 'ArrowUp':
+      to = i - 1;
+      break;
+    case 'ArrowDown':
+      to = i + 1;
+      break;
+    case 'PageUp':
+      to = i - PAGE_STEP;
+      break;
+    case 'PageDown':
+      to = i + PAGE_STEP;
+      break;
+    case 'Home':
+      to = 0;
+      break;
+    case 'End':
+      to = n - 1;
+      break;
+    default:
+      return;
+  }
+  e.preventDefault();
+  to = Math.min(Math.max(to, 0), n - 1);
+  const g = props.groups[to];
+  if (g) emit('jump', g.key, 0);
+}
 
 function measure(): void {
   const el = root.value;
@@ -164,6 +207,15 @@ onBeforeUnmount(() => {
     class="scrub"
     :class="{ drag: dragging }"
     data-testid="scrubber"
+    role="slider"
+    tabindex="0"
+    aria-orientation="vertical"
+    :aria-label="t('photosScrubberLabel')"
+    :aria-valuemin="0"
+    :aria-valuemax="Math.max(0, groups.length - 1)"
+    :aria-valuenow="currentIndex"
+    :aria-valuetext="valueText"
+    @keydown="onKey"
     @pointerdown="onDown"
     @pointermove="onMove"
     @pointerup="onUp"
@@ -189,6 +241,11 @@ onBeforeUnmount(() => {
   cursor: ns-resize;
   user-select: none;
   touch-action: none;
+}
+.scrub:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .scrub-tick {
   position: absolute;

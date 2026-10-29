@@ -72,4 +72,25 @@ describe('PhotosScrubber', () => {
     expect(labels).toEqual(['2026', '2025']);
     w.unmount();
   });
+  it('is a keyboard-operable slider', async () => {
+    const w = mountScrubber({ current: { key: '2026-09', frac: 0.2 } });
+    expect(w.attributes('role')).toBe('slider');
+    expect(w.attributes('tabindex')).toBe('0');
+    expect(w.attributes('aria-valuetext')).toBe('Сентябрь 2026');
+    await w.trigger('keydown', { key: 'ArrowUp' });
+    await w.trigger('keydown', { key: 'ArrowDown' });
+    await w.trigger('keydown', { key: 'Home' });
+    await w.trigger('keydown', { key: 'End' });
+    await w.trigger('keydown', { key: 'PageDown' });
+    await w.trigger('keydown', { key: 'PageUp' });
+    expect(w.emitted('jump')).toEqual([
+      ['2026-10', 0],
+      ['2025-12', 0],
+      ['2026-10', 0],
+      ['2025-12', 0],
+      ['2025-12', 0],
+      ['2026-10', 0],
+    ]);
+    w.unmount();
+  });
 });
