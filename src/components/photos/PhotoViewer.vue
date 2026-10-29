@@ -1,128 +1,101 @@
 <template>
   <div
-    class="photo-viewer"
+    ref="rootEl"
+    class="pv"
     role="dialog"
     aria-modal="true"
-    :aria-label="item.name"
+    :aria-label="t('photosViewerLabel')"
     data-photo-viewer
     tabindex="-1"
-    ref="rootEl"
     @keydown="onKeydown"
     @touchstart.passive="onTouchStart"
     @touchend.passive="onTouchEnd"
   >
-    <header class="photo-viewer-bar">
-      <button type="button" class="photo-viewer-icon-btn" :aria-label="t('photosClose')" data-viewer-close @click="emit('close')">
-        <X :size="22" aria-hidden="true" />
+    <div class="pv-top">
+      <span class="pv-name" :title="item.name" data-viewer-name>{{ item.name }}</span>
+      <span v-if="total > 0" class="pv-count" aria-live="polite" data-viewer-pos>
+        {{ index + 1 }} {{ t('photosViewerOf') }} {{ total }}
+      </span>
+      <button type="button" class="pv-btn" data-viewer-info @click="emit('info', item)">
+        <Info :size="16" aria-hidden="true" />
+        {{ t('photosPanelDetails') }}
       </button>
-      <div class="photo-viewer-title">
-        <span class="photo-viewer-name" :title="item.name">{{ item.name }}</span>
-        <span class="photo-viewer-date">{{ takenLabel }}</span>
-      </div>
-      <div class="photo-viewer-actions">
-        <button
-          type="button"
-          class="photo-viewer-icon-btn"
-          :aria-label="t('photosOpenInFolder')"
-          :title="actionsDisabled ? t('photosMockActionUnavailable') : t('photosOpenInFolder')"
-          :disabled="actionsDisabled"
-          data-viewer-open-folder
-          @click="emit('openFolder', item)"
-        >
-          <FolderOpen :size="20" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="photo-viewer-icon-btn"
-          :aria-label="t('photosDownloadOriginal')"
-          :title="actionsDisabled ? t('photosMockActionUnavailable') : t('photosDownloadOriginal')"
-          :disabled="actionsDisabled"
-          data-viewer-download
-          @click="emit('download', item)"
-        >
-          <Download :size="20" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="photo-viewer-icon-btn"
-          :aria-label="t('photosProperties')"
-          :title="actionsDisabled ? t('photosMockActionUnavailable') : t('photosProperties')"
-          :disabled="actionsDisabled"
-          data-viewer-properties
-          @click="emit('properties', item)"
-        >
-          <Info :size="20" aria-hidden="true" />
-        </button>
-      </div>
-    </header>
-
-    <div class="photo-viewer-stage">
-      <button
-        v-if="hasPrev"
-        type="button"
-        class="photo-viewer-nav prev"
-        :aria-label="t('photosPrevious')"
-        data-viewer-prev
-        @click="emit('prev')"
-      >
-        <ChevronLeft :size="28" aria-hidden="true" />
-      </button>
-
-      <template v-if="item.kind === 'video'">
-        <video
-          v-if="videoSrc"
-          :key="item.fileId"
-          class="photo-viewer-media"
-          :src="videoSrc"
-          :poster="previewSrc ?? undefined"
-          controls
-          autoplay
-          playsinline
-          data-viewer-video
-        />
-        <div v-else class="photo-viewer-placeholder" data-viewer-video-unavailable>
-          <img v-if="previewSrc" class="photo-viewer-media dim" :src="previewSrc" alt="" />
-          <p>{{ videoError || (actionsDisabled ? t('photosMockVideoUnavailable') : t('photosVideoLoading')) }}</p>
-        </div>
-      </template>
-      <img
-        v-else-if="previewSrc"
-        :key="item.assetId"
-        class="photo-viewer-media"
-        :src="previewSrc"
-        :alt="item.name"
-        data-viewer-image
-        @error="previewSrc && failedSrcs.add(previewSrc)"
-      />
-      <div v-else class="photo-viewer-placeholder" data-viewer-not-processed>
-        <Hourglass :size="40" aria-hidden="true" />
-        <p>{{ t('photosNotProcessedHint') }}</p>
-      </div>
-
-      <button
-        v-if="hasNext"
-        type="button"
-        class="photo-viewer-nav next"
-        :aria-label="t('photosNext')"
-        data-viewer-next
-        @click="emit('next')"
-      >
-        <ChevronRight :size="28" aria-hidden="true" />
+      <button type="button" class="pv-x" :aria-label="t('photosClose')" data-viewer-close @click="emit('close')">
+        <X :size="20" aria-hidden="true" />
       </button>
     </div>
+
+    <button
+      v-if="hasPrev"
+      type="button"
+      class="pv-nav pv-prev"
+      :aria-label="t('photosPrevious')"
+      data-viewer-prev
+      @click="emit('prev')"
+    >
+      <ChevronLeft :size="26" aria-hidden="true" />
+    </button>
+
+    <template v-if="item.kind === 'video'">
+      <video
+        v-if="videoSrc"
+        :key="`${item.fileId}:${videoSource}`"
+        class="pv-media"
+        :src="videoSrc"
+        :poster="imgSrc ?? undefined"
+        controls
+        autoplay
+        playsinline
+        data-viewer-video
+        @error="onVideoError"
+      />
+      <div v-else class="pv-ph" data-viewer-video-unavailable>
+        <img v-if="imgSrc" class="pv-media pv-dim" :src="imgSrc" alt="" @error="onImgError" />
+        <p role="status">{{ videoFailed ? t('photosVideoOffline') : t('photosVideoLoading') }}</p>
+      </div>
+    </template>
+    <img
+      v-else-if="imgSrc"
+      :key="item.fileId"
+      class="pv-media"
+      :src="imgSrc"
+      :alt="item.name"
+      data-viewer-image
+      @error="onImgError"
+    />
+    <div v-else-if="imgLoading" class="pv-ph" data-viewer-loading>
+      <p role="status">{{ t('photosLoading') }}</p>
+    </div>
+    <div v-else class="pv-ph" data-viewer-not-processed>
+      <Hourglass :size="40" aria-hidden="true" />
+      <p>{{ item.processed ? t('photosThumbUnavailable') : t('photosNotProcessedHint') }}</p>
+    </div>
+
+    <button
+      v-if="hasNext"
+      type="button"
+      class="pv-nav pv-next"
+      :aria-label="t('photosNext')"
+      data-viewer-next
+      @click="emit('next')"
+    >
+      <ChevronRight :size="26" aria-hidden="true" />
+    </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Download, FolderOpen, Hourglass, Info, X } from '@lucide/vue';
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { ChevronLeft, ChevronRight, Hourglass, Info, X } from '@lucide/vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { driveApi, resolveDownloadUrl } from '../../api/drive';
-import { resolvePhotoUrl, type PhotoItem } from '../../api/photosLegacy';
-import { isMockPhotoId } from '../../api/photosLegacy.mock';
+import { renditionUrl, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 
 const props = defineProps<{
-  item: PhotoItem;
+  item: FeedItem;
+  /** Zero-based position in the feed order and the feed length; `total` 0 hides the counter. */
+  index: number;
+  total: number;
   hasPrev: boolean;
   hasNext: boolean;
 }>();
@@ -131,60 +104,148 @@ const emit = defineEmits<{
   (e: 'close'): void;
   (e: 'prev'): void;
   (e: 'next'): void;
-  (e: 'openFolder', item: PhotoItem): void;
-  (e: 'download', item: PhotoItem): void;
-  (e: 'properties', item: PhotoItem): void;
+  /** "Сведения": the container closes the viewer and keeps the panel on this photo. */
+  (e: 'info', item: FeedItem): void;
 }>();
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const rootEl = ref<HTMLElement | null>(null);
-const videoSrc = ref<string | null>(null);
-const videoError = ref('');
 
-const actionsDisabled = computed(() => isMockPhotoId(props.item.fileId));
+// ----- still image: preview, then thumbnail -----
+
+const SIZES = ['preview', 'thumbnail'] as const;
+type Size = (typeof SIZES)[number];
+
+const imgSrc = ref<string | null>(null);
+const imgLoading = ref(true);
+let imgSize: Size | null = null;
+let failedSizes = new Set<Size>();
+let imgRequest = 0;
+
 /**
- * Sources that failed to load: the hub evicts previews (LRU) and answers 404,
- * and view tokens expire after an hour. Fall back from the preview to the
- * thumbnail, then to the "not processed" placeholder.
+ * The hub evicts previews (LRU) and answers 404, and view tokens expire: walk
+ * down from the preview to the thumbnail, then to the placeholder.
  */
-const failedSrcs = reactive(new Set<string>());
-const previewSrc = computed(
-  () =>
-    [props.item.previewUrl, props.item.thumbUrl]
-      .map((url) => resolvePhotoUrl(url))
-      .find((url): url is string => !!url && !failedSrcs.has(url)) ?? null,
-);
-const takenLabel = computed(() => {
-  const date = new Date(props.item.takenAt);
-  if (Number.isNaN(date.getTime())) return '';
-  return new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
-    dateStyle: 'long',
-    timeStyle: 'short',
-  }).format(date);
-});
+async function loadImage(): Promise<void> {
+  const request = ++imgRequest;
+  imgLoading.value = true;
+  for (const size of SIZES) {
+    if (failedSizes.has(size)) continue;
+    try {
+      const url = await renditionUrl(props.item.hash, size);
+      if (request !== imgRequest) return;
+      imgSrc.value = url;
+      imgSize = size;
+      imgLoading.value = false;
+      return;
+    } catch {
+      failedSizes.add(size);
+    }
+  }
+  if (request !== imgRequest) return;
+  imgSrc.value = null;
+  imgSize = null;
+  imgLoading.value = false;
+}
 
+function onImgError(): void {
+  if (imgSize) failedSizes.add(imgSize);
+  void loadImage();
+}
+
+// ----- video: the rendition, else the original, else the preview frame -----
+
+const videoSrc = ref<string | null>(null);
+const videoSource = ref<'rendition' | 'original' | null>(null);
+const videoFailed = ref(false);
 let videoRequest = 0;
-async function loadVideo(): Promise<void> {
-  const request = ++videoRequest;
-  videoSrc.value = null;
-  videoError.value = '';
-  if (props.item.kind !== 'video' || actionsDisabled.value) return;
+
+async function loadOriginal(request: number): Promise<void> {
   try {
-    // The original streams from a signed download link, like any drive file.
     const link = await driveApi.getDownloadLink(props.item.fileId);
-    if (request === videoRequest) videoSrc.value = resolveDownloadUrl(link.url);
+    if (request !== videoRequest) return;
+    videoSrc.value = resolveDownloadUrl(link.url);
+    videoSource.value = 'original';
   } catch {
-    if (request === videoRequest) videoError.value = t('photosVideoUnavailable');
+    if (request !== videoRequest) return;
+    videoSrc.value = null;
+    videoFailed.value = true;
   }
 }
 
-watch(() => props.item.fileId, () => void loadVideo());
+async function loadVideo(): Promise<void> {
+  const request = ++videoRequest;
+  videoSrc.value = null;
+  videoSource.value = null;
+  videoFailed.value = false;
+  if (props.item.kind !== 'video') return;
+  try {
+    // The hub does not say whether a transcoded rendition exists: try it, and
+    // let the playback error send us to the original.
+    const url = await renditionUrl(props.item.hash, 'video');
+    if (request !== videoRequest) return;
+    videoSrc.value = url;
+    videoSource.value = 'rendition';
+  } catch {
+    await loadOriginal(request);
+  }
+}
+
+function onVideoError(): void {
+  const request = videoRequest;
+  if (videoSource.value === 'rendition') {
+    void loadOriginal(request);
+  } else {
+    videoSrc.value = null;
+    videoFailed.value = true;
+  }
+}
+
+function loadItem(): void {
+  failedSizes = new Set();
+  imgSrc.value = null;
+  imgSize = null;
+  void loadImage();
+  void loadVideo();
+}
+
+watch(() => props.item.fileId, loadItem);
+
+// ----- keyboard, touch, focus -----
+
+function focusables(): HTMLElement[] {
+  const root = rootEl.value;
+  if (!root) return [];
+  return Array.from(
+    root.querySelectorAll<HTMLElement>('button:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])'),
+  );
+}
 
 function onKeydown(event: KeyboardEvent): void {
-  if (event.key === 'Escape') emit('close');
-  else if (event.key === 'ArrowLeft' && props.hasPrev) emit('prev');
-  else if (event.key === 'ArrowRight' && props.hasNext) emit('next');
-  else return;
+  if (event.key === 'Escape') {
+    emit('close');
+  } else if (event.key === 'Tab') {
+    // The viewer is modal: keep Tab inside it.
+    const list = focusables();
+    const first = list[0];
+    const last = list[list.length - 1];
+    if (!first || !last) {
+      event.preventDefault();
+      return;
+    }
+    const active = document.activeElement;
+    if (event.shiftKey && (active === first || active === rootEl.value)) last.focus();
+    else if (!event.shiftKey && active === last) first.focus();
+    else return;
+  } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    // Arrows seek inside a focused video.
+    if ((event.target as HTMLElement | null)?.tagName === 'VIDEO') return;
+    if (event.key === 'ArrowLeft' && props.hasPrev) emit('prev');
+    else if (event.key === 'ArrowRight' && props.hasNext) emit('next');
+    else return;
+  } else {
+    return;
+  }
   event.preventDefault();
 }
 
@@ -200,148 +261,154 @@ function onTouchEnd(event: TouchEvent): void {
   else if (dx < -60 && props.hasNext) emit('next');
 }
 
+let opener: HTMLElement | null = null;
+
 onMounted(async () => {
-  void loadVideo();
+  opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  loadItem();
   await nextTick();
   rootEl.value?.focus();
+});
+
+onBeforeUnmount(() => {
+  imgRequest++;
+  videoRequest++;
+  if (opener?.isConnected) opener.focus();
 });
 </script>
 
 <style scoped>
-.photo-viewer {
+.pv {
   position: fixed;
   inset: 0;
   z-index: 1200;
   display: flex;
-  flex-direction: column;
-  background: #050506;
-  color: #fff;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 7, 6, 0.96);
+  color: var(--ui-text-secondary);
   outline: none;
-  padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0)
-    env(safe-area-inset-left, 0);
 }
 
-.photo-viewer-bar {
+.pv-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 14px 18px;
+  padding-top: max(14px, env(safe-area-inset-top, 0px));
 }
 
-.photo-viewer-title {
-  flex: 1;
+.pv-name {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.photo-viewer-name {
-  font-size: 14px;
-  font-weight: 600;
-  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
 }
 
-.photo-viewer-date {
-  font-size: 12px;
-  opacity: 0.7;
+.pv-count {
+  margin-right: auto;
+  flex: none;
+  color: var(--ui-text-muted);
+  font-size: 13px;
 }
 
-.photo-viewer-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.photo-viewer-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
+.pv-btn,
+.pv-x,
+.pv-nav {
   border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
+  color: var(--ui-text);
+  background: var(--ui-glass-btn-bg);
   cursor: pointer;
 }
 
-.photo-viewer-icon-btn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
+.pv-btn:hover,
+.pv-x:hover,
+.pv-nav:hover {
+  background: var(--ui-glass-btn-hover);
 }
 
-.photo-viewer-icon-btn:disabled {
-  opacity: 0.35;
-  cursor: not-allowed;
+.pv-btn:focus-visible,
+.pv-x:focus-visible,
+.pv-nav:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
 }
 
-.photo-viewer-stage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
+.pv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 7px 12px;
+  border-radius: 9px;
+  font: inherit;
+}
+
+.pv-x {
+  flex: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 56px 16px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
 }
 
-.photo-viewer-media {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
-.photo-viewer-media.dim {
-  opacity: 0.4;
-  max-height: 70%;
-}
-
-.photo-viewer-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  text-align: center;
-  opacity: 0.85;
-  max-width: 100%;
-  max-height: 100%;
-}
-
-.photo-viewer-nav {
+.pv-nav {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
-  border: 0;
+  width: 52px;
+  height: 52px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-  cursor: pointer;
 }
 
-.photo-viewer-nav.prev {
-  left: 8px;
+.pv-prev {
+  left: 20px;
 }
 
-.photo-viewer-nav.next {
-  right: 8px;
+.pv-next {
+  right: 20px;
+}
+
+.pv-media {
+  max-width: calc(100vw - 160px);
+  max-height: calc(100vh - 100px);
+  object-fit: contain;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.pv-dim {
+  opacity: 0.4;
+  max-height: 70vh;
+}
+
+.pv-ph {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 160px);
+  text-align: center;
+  color: var(--ui-text-muted);
 }
 
 @media (max-width: 640px) {
-  .photo-viewer-stage {
-    padding: 0 0 12px;
+  .pv-media,
+  .pv-ph {
+    max-width: 100vw;
   }
 
-  .photo-viewer-nav {
+  .pv-nav {
     display: none;
-  }
-
-  .photo-viewer-actions {
-    gap: 0;
   }
 }
 </style>

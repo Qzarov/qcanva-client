@@ -90,7 +90,9 @@
 - `src/components/dashboard/DashboardViewToggle.vue`: переключатель сетки отображения ресурсов (плитка / табличный список).
 - `src/components/dashboard/InteractiveTemplatePicker.vue`: диалог выбора типа интерактивного шаблона или импорта персонажа из JSON.
 - `src/components/photos/DrivePhotos.vue`: виртуализированная галерея фотографий и видео с группировкой по месяцам и фильтром по лицам.
-- `src/components/photos/PhotoViewer.vue`: полноэкранный модальный лайтбокс для просмотра фото и видео с зумом и навигацией.
+- `src/components/photos/PhotoViewerLegacy.vue`: лайтбокс старой галереи `DrivePhotos.vue` (на старом API `photosLegacy.ts`); уйдёт вместе с ней.
+- `src/components/photos/PhotoPanel.vue`: боковая панель фото на новом API (`photosApi.details/edit/albums`): избранное, сведения, путь, альбомы, где хранится, описание. Пока не подключена к контейнеру.
+- `src/components/photos/PhotoViewer.vue`: полноэкранный просмотр фото и видео на новом API (`renditionUrl`: preview → thumbnail; видео: rendition `video` → оригинал по ссылке → превью-кадр), листает по порядку ленты (`PhotosFeed.orderedItems()`), «Сведения» закрывает просмотр. Пока не подключён к контейнеру.
 - `src/components/settings/McpTokensPanel.vue`: панель выпуска и управления личными токенами доступа по протоколу MCP.
 - `src/components/tabs/TabsButton.vue`: кнопка со счётчиком вкладок для вызова панели переключения активных ресурсов на Android.
 

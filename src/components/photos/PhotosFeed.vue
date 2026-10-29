@@ -784,6 +784,26 @@ onMounted(() => {
   void refresh();
 });
 
+/**
+ * Photos of the loaded groups in feed order (what the viewer steps through).
+ * A photo that sits in several groups appears once, at its first place.
+ */
+function orderedItems(): FeedItem[] {
+  const seen = new Set<string>();
+  const out: FeedItem[] = [];
+  for (const row of layout.value.rows) {
+    if (row.kind !== 'tiles' || !row.tiles) continue;
+    for (const tl of row.tiles) {
+      if (seen.has(tl.item.fileId)) continue;
+      seen.add(tl.item.fileId);
+      out.push(tl.item);
+    }
+  }
+  return out;
+}
+
+defineExpose({ orderedItems });
+
 onBeforeUnmount(() => {
   epoch++;
   if (jumpTimer !== null) clearTimeout(jumpTimer);

@@ -95,10 +95,10 @@
 | Ленивая подгрузка медиа-элементов выбранного месяца | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/drive/photos/bucket` |
 | Семантический поиск по фотографиям и распознанному тексту | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `POST /api/drive/photos/search` |
 | Полоса распознанных лиц и фильтрация фотографий по человеку | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/DrivePhotos.vue` | `GET /api/drive/photos/people` |
-| Просмотр фото и видео в полноэкранном лайтбоксе | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `POST /api/drive/files/:id/download-link` |
-| Переход из просмотра фото к содержащей папке на Диске | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `—` |
-| Скачивание оригинала медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `POST /api/drive/files/:id/download-link` |
-| Просмотр свойств медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewer.vue` | `GET /api/drive/files/:id/meta` |
+| Просмотр фото и видео в полноэкранном лайтбоксе | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `POST /api/drive/files/:id/download-link` |
+| Переход из просмотра фото к содержащей папке на Диске | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `—` |
+| Скачивание оригинала медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `POST /api/drive/files/:id/download-link` |
+| Просмотр свойств медиафайла из просмотрщика | за флагом `VITE_PHOTOS_ENABLED` | `src/components/photos/PhotoViewerLegacy.vue` | `GET /api/drive/files/:id/meta` |
 | Использование локальных сгенерированных демо-данных вместо хаба | за флагом `VITE_PHOTOS_MOCK` | `src/api/photos.mock.ts` | `—` |
 
 ---

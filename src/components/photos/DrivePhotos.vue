@@ -184,7 +184,7 @@ import {
 import { alertDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import DriveFileProperties from '../DriveFileProperties.vue';
-import PhotoViewer from './PhotoViewer.vue';
+import PhotoViewer from './PhotoViewerLegacy.vue';
 import { computeGridLayout, visibleRows, visibleSections, type GridRow } from './photoGridLayoutLegacy';
 
 const props = defineProps<{
