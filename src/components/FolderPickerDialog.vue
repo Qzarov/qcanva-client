@@ -7,6 +7,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ChevronDown, ChevronRight, Folder, X } from '@lucide/vue';
 import { driveApi } from '../api/drive';
+import { photosMockDrive } from '../api/photos';
 import { useI18n } from '../composables/useI18n';
 
 export interface PickedFolder {
@@ -21,8 +22,10 @@ const props = withDefaults(
     confirmLabel?: string;
     /** Folders that cannot be chosen (still expandable). */
     excludeIds?: string[];
+    /** The disk root cannot be chosen. */
+    excludeRoot?: boolean;
   }>(),
-  { title: undefined, confirmLabel: undefined, excludeIds: () => [] },
+  { title: undefined, confirmLabel: undefined, excludeIds: () => [], excludeRoot: false },
 );
 
 const emit = defineEmits<{
@@ -81,7 +84,10 @@ async function loadChildren(node: FolderNode): Promise<void> {
   try {
     const folders: FolderNode[] = [];
     let cursor: string | null = null;
-    for (let page = 0; page < MAX_PAGES; page += 1) {
+    const mockDrive = photosMockDrive();
+    // Mock mode (VITE_PHOTOS_MOCK=1): the Files-tab API is not there, use the mock's tree.
+    if (mockDrive) folders.push(...mockDrive.folders(node.id));
+    for (let page = 0; !mockDrive && page < MAX_PAGES; page += 1) {
       const res = await driveApi.getFolderItems(node.id ?? 'root', {
         slice: 'all',
         sort: 'name',
@@ -122,7 +128,7 @@ const visible = computed<VisibleNode[]>(() => {
       expandable: kids === undefined || kids.length > 0,
       loading: loading.value.has(key),
       failed: failed.value.has(key),
-      disabled: node.id !== null && props.excludeIds.includes(node.id),
+      disabled: node.id === null ? props.excludeRoot : props.excludeIds.includes(node.id),
     });
     if (isExpanded && kids) for (const kid of kids) walk(kid, key, depth + 1);
   };

@@ -126,7 +126,17 @@ function getSizeRank(bucket: string): number {
   return 0;
 }
 
-export function createPhotosMock(): PhotosApi {
+/** The mock's stand-in for the Files-tab folder tree and `PATCH /drive/files/:id`. */
+export interface PhotosMockDrive {
+  /** Direct sub-folders of `parentId` (`null` = disk root), sorted by name. */
+  folders(parentId: string | null): { id: string; name: string }[];
+  /** Sets the item's `folderId`, so the next feed request reflects the move. */
+  moveFile(fileId: string, folderId: string | null): Promise<void>;
+}
+
+export type PhotosMockApi = PhotosApi & { drive: PhotosMockDrive };
+
+export function createPhotosMock(): PhotosMockApi {
   const albumsList: MockAlbumData[] = INITIAL_ALBUMS.map((a) => ({ ...a }));
   const preferences = new Map<string, unknown>();
   const itemEdits = new Map<string, { description: string | null; rating: number | null }>();
@@ -360,7 +370,28 @@ export function createPhotosMock(): PhotosApi {
     });
   }
 
+  const drive: PhotosMockDrive = {
+    folders(parentId) {
+      const parentPath = parentId === null ? [] : (MOCK_FOLDERS[parentId]?.path ?? null);
+      if (!parentPath) return [];
+      return Object.values(MOCK_FOLDERS)
+        .filter(
+          (f) =>
+            f.path.length === parentPath.length + 1 && parentPath.every((seg, i) => f.path[i] === seg),
+        )
+        .map((f) => ({ id: f.id, name: f.name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    },
+    async moveFile(fileId, folderId) {
+      const item = itemsList.find((i) => i.fileId === fileId);
+      if (!item) throw new ApiError(404, 'File not found');
+      if (folderId !== null && !MOCK_FOLDERS[folderId]) throw new ApiError(404, 'Folder not found');
+      item.folderId = folderId;
+    },
+  };
+
   return {
+    drive,
     async summary(p: FeedParams): Promise<{ groups: FeedGroup[] }> {
       const filtered = filterItems(p);
       const level1: SortKey = p.levels[0] ?? 'date';

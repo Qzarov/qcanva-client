@@ -1,6 +1,6 @@
 import { API_BASE, request } from './client';
 import { resolveDownloadUrl } from './drive';
-import { createPhotosMock, renditionUrlMock } from './photos.mock';
+import { createPhotosMock, renditionUrlMock, type PhotosMockApi, type PhotosMockDrive } from './photos.mock';
 
 export type SortKey = 'date' | 'folder' | 'album' | 'size';
 export type SubKey = 'name' | 'size' | 'created' | 'added';
@@ -156,15 +156,23 @@ function photosMockFromEnv(): boolean {
 }
 
 let mockMode: boolean = photosMockFromEnv();
-let mockApi: PhotosApi | null = null;
+let mockApi: PhotosMockApi | null = null;
 
-function mock(): PhotosApi {
+function mock(): PhotosMockApi {
   if (!mockApi) mockApi = createPhotosMock();
   return mockApi;
 }
 
 export function isPhotosMock(): boolean {
   return mockMode;
+}
+
+/**
+ * In mock mode: the mock's folder tree and file move (the Files tab has no backend then).
+ * `null` in real mode, where callers use `driveApi`.
+ */
+export function photosMockDrive(): PhotosMockDrive | null {
+  return mockMode ? mock().drive : null;
 }
 
 export function setPhotosMock(value: boolean | null): void {

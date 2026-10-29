@@ -6,7 +6,7 @@
  */
 import { ref, type Ref } from 'vue';
 import { driveApi } from '../../api/drive';
-import { photosApi, type Album } from '../../api/photos';
+import { photosApi, photosMockDrive, type Album } from '../../api/photos';
 import { promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import { useToast } from '../../composables/useToast';
@@ -33,7 +33,9 @@ export async function moveFilesToFolder(
       const i = next;
       next += 1;
       try {
-        await driveApi.moveFile(fileIds[i] as string, folderId);
+        const mockDrive = photosMockDrive();
+        if (mockDrive) await mockDrive.moveFile(fileIds[i] as string, folderId);
+        else await driveApi.moveFile(fileIds[i] as string, folderId);
         ok[i] = true;
       } catch {
         ok[i] = false;
@@ -52,6 +54,11 @@ export interface PhotoSelectionActionsOptions {
   selected: () => Iterable<string>;
   /** The album the feed is showing, if any ("remove from album" works on it). */
   albumId?: () => string | null | undefined;
+  /**
+   * The folder a selected file is in now (`null` = disk root); `undefined` when unknown.
+   * Used to skip no-op moves and to grey out the current folder in the picker.
+   */
+  folderOf?: (fileId: string) => string | null | undefined;
   /** Drop these file ids from the selection. */
   deselect: (fileIds: string[]) => void;
   /** Files that actually moved: the feed reloads the groups they left and entered. */
@@ -67,6 +74,8 @@ export interface PhotoSelectionActions {
   /** `null` until loaded. */
   albums: Ref<Album[] | null>;
   albumsFailed: Ref<boolean>;
+  /** What the picker must not offer: the folder the whole selection already sits in. */
+  moveExclusion(): { ids: string[]; root: boolean };
   openMove(): void;
   closeMove(): void;
   toggleAlbumMenu(): Promise<void>;
@@ -126,18 +135,34 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     await loadAlbums();
   }
 
-  async function moveTo(folder: PickedFolder): Promise<void> {
+  function moveExclusion(): { ids: string[]; root: boolean } {
     const ids = snapshot();
+    if (ids.length === 0 || !opts.folderOf) return { ids: [], root: false };
+    const first = opts.folderOf(ids[0] as string);
+    if (first === undefined || !ids.every((id) => opts.folderOf?.(id) === first)) {
+      return { ids: [], root: false };
+    }
+    return first === null ? { ids: [], root: true } : { ids: [first], root: false };
+  }
+
+  async function moveTo(folder: PickedFolder): Promise<void> {
+    const all = snapshot();
     moveOpen.value = false;
-    if (ids.length === 0 || busy.value) return;
+    if (all.length === 0 || busy.value) return;
+    // Files already in the target are not touched (unknown location: send it).
+    const already = all.filter((id) => opts.folderOf?.(id) === folder.id);
+    const ids = all.filter((id) => !already.includes(id));
+    if (ids.length === 0) {
+      toast.show(t('photosAlreadyInFolderToast'), 'info');
+      return;
+    }
     busy.value = true;
     try {
       const { moved, failed } = await moveFilesToFolder(ids, folder.id);
-      if (moved.length > 0) {
-        // Moved photos leave the selection; the failed ones stay selected.
-        opts.deselect(moved);
-        opts.onMoved?.(moved, folder.id);
-      }
+      // Moved photos (and those that were there already) leave the selection; failed ones stay.
+      const done = [...moved, ...already];
+      if (done.length > 0) opts.deselect(done);
+      if (moved.length > 0) opts.onMoved?.(moved, folder.id);
       if (failed.length === 0) {
         toast.show(fmt('photosMovedToast', { n: moved.length, folder: folder.name }), 'success');
       } else if (moved.length === 0) {
@@ -153,19 +178,32 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     }
   }
 
+  /**
+   * The hub says how many it really added (photos already in the album do not count).
+   * 0: nothing happened, the selection stays and an info toast says so. Otherwise the
+   * whole selection is done (the rest were in the album already) and leaves the selection.
+   */
   async function addIds(albumId: string, albumName: string, ids: string[], created: boolean): Promise<void> {
+    let added: number;
     try {
-      await photosApi.addToAlbum(albumId, ids);
+      added = await photosApi.addToAlbum(albumId, ids);
     } catch {
       toast.show(t('photosAlbumAddFailedToast'), 'error');
       return;
     }
+    if (added <= 0) {
+      toast.show(fmt('photosAlreadyInAlbumToast', { album: albumName }), 'info');
+      return;
+    }
     opts.deselect(ids);
     opts.onAlbumChanged?.('add', albumId, ids);
-    toast.show(
-      fmt(created ? 'photosAlbumCreatedToast' : 'photosAddedToAlbumToast', { n: ids.length, album: albumName }),
-      'success',
-    );
+    const vars = { n: added, total: ids.length, album: albumName };
+    const key = created
+      ? 'photosAlbumCreatedToast'
+      : added < ids.length
+        ? 'photosAddedPartialToast'
+        : 'photosAddedToAlbumToast';
+    toast.show(fmt(key, vars), 'success');
   }
 
   async function addToAlbum(albumId: string): Promise<void> {
@@ -214,15 +252,27 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     if (!albumId || ids.length === 0 || busy.value) return;
     busy.value = true;
     try {
+      let removed: number;
       try {
-        await photosApi.removeFromAlbum(albumId, ids);
+        removed = await photosApi.removeFromAlbum(albumId, ids);
       } catch {
         toast.show(t('photosAlbumRemoveFailedToast'), 'error');
         return;
       }
+      // The hub reports how many were really in the album; 0 means nothing changed.
+      if (removed <= 0) {
+        toast.show(t('photosNotInAlbumToast'), 'info');
+        return;
+      }
       opts.deselect(ids);
       opts.onAlbumChanged?.('remove', albumId, ids);
-      toast.show(fmt('photosRemovedFromAlbumToast', { n: ids.length }), 'success');
+      toast.show(
+        fmt(removed < ids.length ? 'photosRemovedPartialToast' : 'photosRemovedFromAlbumToast', {
+          n: removed,
+          total: ids.length,
+        }),
+        'success',
+      );
     } finally {
       busy.value = false;
     }
@@ -234,6 +284,7 @@ export function usePhotoSelectionActions(opts: PhotoSelectionActionsOptions): Ph
     albumMenuOpen,
     albums,
     albumsFailed,
+    moveExclusion,
     openMove,
     closeMove,
     toggleAlbumMenu,

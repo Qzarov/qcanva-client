@@ -129,6 +129,13 @@ describe('FolderPickerDialog', () => {
     expect(document.activeElement).toBe(w.get('[data-fpd-cancel]').element);
   });
 
+  it('excludeRoot makes the disk root unchoosable', async () => {
+    const w = await setup({ excludeRoot: true });
+    await item(w, '__root__').trigger('click');
+    expect(item(w, '__root__').attributes('aria-disabled')).toBe('true');
+    expect(w.get('[data-fpd-confirm]').attributes('disabled')).toBeDefined();
+  });
+
   it('a failed load shows an error with retry and never stays loading', async () => {
     getFolderItems.mockReset();
     getFolderItems.mockRejectedValueOnce(new Error('boom'));
