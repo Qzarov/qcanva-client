@@ -2,6 +2,7 @@
 
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
+import viewBarSource from './PhotosViewBar.vue?raw';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 let wrapper: VueWrapper | null = null;
@@ -216,5 +217,33 @@ describe('PhotosViewBar', () => {
     expect(btn.attributes('aria-pressed')).toBe('false');
     await btn.trigger('click');
     expect(view.state.value.shared).toBe(true);
+  });
+
+  it('popup is a dialog popup and toggling a key keeps focus on it after rows reorder', async () => {
+    const { w } = await setup();
+    const pill = w.get('[data-testid="sort-pill"]');
+    expect(pill.attributes('aria-haspopup')).toBe('dialog');
+    await openMenu(w);
+    expect(w.get('[data-testid="sort-menu"]').attributes('role')).toBe('dialog');
+    await w.get('[data-testid="sort-key-size"]').trigger('click');
+    await nextTick();
+    expect(document.activeElement).toBe(w.get('[data-testid="sort-key-size"]').element);
+    await w.get('[data-testid="sort-key-size"]').trigger('keydown', { key: 'Escape' });
+    expect(w.find('[data-testid="sort-menu"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(pill.element);
+  });
+
+  // jsdom does no layout, so the narrow-screen rules are asserted on the stylesheet itself.
+  it('styles keep the popup inside the viewport and pin it on phones', () => {
+    const css = viewBarSource.slice(viewBarSource.indexOf('<style'));
+    const media = css.match(/@media \(max-width: 480px\) \{([\s\S]*)\n\}/);
+    expect(media).not.toBeNull();
+    const phone = media![1];
+    expect(phone).toMatch(/\.pvb-pop \{[^}]*position: fixed;[^}]*left: 8px;[^}]*right: 8px;/);
+    expect(phone).toMatch(/\.pvb-pop \{[^}]*top: var\(--pvb-pop-top/);
+    expect(phone).toMatch(/\.pvb-st \{[^}]*minmax\(0, 1fr\) minmax\(0, auto\)/);
+    const desktop = css.slice(0, css.indexOf('@media'));
+    expect(desktop).toMatch(/\.pvb-pop \{[^}]*max-width: calc\(100vw - 16px\)/);
+    expect(desktop).toMatch(/\.pvb-st \{[^}]*grid-template-columns: 210px 170px/);
   });
 });

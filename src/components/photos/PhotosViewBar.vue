@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import type { FeedPeriod, SortKey, SubKey } from '../../api/photos';
 import { usePhotosView, type CaptionKey, type PhotosViewState } from './usePhotosView';
@@ -87,10 +87,35 @@ const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 const pill = ref<HTMLButtonElement | null>(null);
 
+/** Viewport offset of the popup on phones, where it is pinned with `position: fixed`. */
+const popTop = ref(0);
+
+function updatePopTop(): void {
+  if (pill.value) popTop.value = Math.round(pill.value.getBoundingClientRect().bottom) + 6;
+}
+
+function toggleMenu(): void {
+  if (!open.value) updatePopTop();
+  open.value = !open.value;
+}
+
+// A long pill text wraps on phones and moves the pill's bottom edge.
+watch(pillValue, () => {
+  if (open.value) void nextTick(updatePopTop);
+});
+
 function closeMenu(returnFocus = false): void {
   if (!open.value) return;
   open.value = false;
   if (returnFocus) void nextTick(() => pill.value?.focus());
+}
+
+/** Toggling a key moves its row; the moved button loses focus, so put it back (keeps Esc working). */
+function onToggleKey(k: SortKey): void {
+  toggleSortKey(k);
+  void nextTick(() => {
+    root.value?.querySelector<HTMLElement>(`[data-key="${k}"]`)?.focus();
+  });
 }
 
 function onDocClick(e: MouseEvent): void {
@@ -123,10 +148,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
         type="button"
         class="pvb-pill"
         data-testid="sort-pill"
-        aria-haspopup="true"
+        aria-haspopup="dialog"
         :aria-expanded="open"
         :aria-controls="MENU_ID"
-        @click="open = !open"
+        @click="toggleMenu"
       >
         {{ t('photosSortPill') }}: <b>{{ pillValue }}</b>
       </button>
@@ -134,7 +159,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
         v-if="open"
         :id="MENU_ID"
         class="pvb-pop"
-        role="group"
+        :style="{ '--pvb-pop-top': `${popTop}px` }"
+        role="dialog"
         :aria-label="t('photosSortMenuLabel')"
         data-testid="sort-menu"
       >
@@ -155,8 +181,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
                 class="pvb-key"
                 :class="{ on: row.on }"
                 :data-testid="`sort-key-${row.key}`"
+                :data-key="row.key"
                 :aria-pressed="row.on"
-                @click="toggleSortKey(row.key)"
+                @click="onToggleKey(row.key)"
               >
                 {{ t(KEY_LABEL[row.key]) }}
               </button>
@@ -318,9 +345,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   top: calc(100% + 6px);
   left: 0;
   z-index: 30;
+  box-sizing: border-box;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   padding: 10px;
   border-radius: 12px;
-  background: var(--ui-surface-elevated);
+  background: var(--ui-surface-solid);
   border: 1px solid var(--ui-glass-border);
   box-shadow: var(--ui-glass-shadow);
   color: var(--ui-text);
@@ -434,5 +465,37 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick));
   white-space: nowrap;
   color: var(--ui-glass-accent-text);
   text-decoration: underline;
+}
+
+/* Phones: the menu spans the viewport, columns shrink and long labels wrap. */
+@media (max-width: 480px) {
+  .pvb {
+    padding: 10px 16px;
+  }
+  .pvb-pop {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    top: var(--pvb-pop-top, auto);
+    max-width: none;
+    max-height: calc(100vh - var(--pvb-pop-top, 0px) - 8px);
+  }
+  .pvb-st {
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+  }
+  .pvb-keycell {
+    flex-wrap: wrap;
+  }
+  .pvb-ord {
+    max-width: 150px;
+  }
+  .pvb-st-h-r {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .pvb-foot {
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
 }
 </style>
