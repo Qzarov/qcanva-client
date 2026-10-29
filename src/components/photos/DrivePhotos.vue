@@ -517,7 +517,12 @@ function onOpenAlbum(id: string): void {
 
 function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void {
   const { fileId, ...patch } = change;
-  feedRef.value?.patchItem(fileId, patch);
+  const feed = feedRef.value;
+  feed?.patchItem(fileId, patch);
+  // The photo may have to leave (or move between) the groups on screen.
+  const albumMoved = patch.albumIds !== undefined && (albumId.value !== null || feedParams.value.levels.includes('album'));
+  const leavesFavorites = patch.favorite !== undefined && view.state.value.filter === 'fav';
+  if (albumMoved || leavesFavorites) void feed?.refresh();
   if (searchItems.value.some((i) => i.fileId === fileId)) {
     searchItems.value = searchItems.value.map((i) => (i.fileId === fileId ? { ...i, ...patch } : i));
   }

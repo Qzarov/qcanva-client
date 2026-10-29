@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, shallowReactive, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, shallowReactive, watch } from 'vue';
 import { renditionUrl, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 import { formatDuration } from './groupTitle';
@@ -23,7 +23,9 @@ const { t } = useI18n();
 
 const TILE_MIN = { s: 110, m: 170, l: 250 } as const;
 const END_MARGIN = 400;
+const FILL_MARGIN = 8;
 
+const root = ref<HTMLElement | null>(null);
 const thumbs = shallowReactive(new Map<string, string | null>());
 const requested = new Set<string>();
 let alive = true;
@@ -53,17 +55,41 @@ function onScroll(e: Event): void {
   if (props.hasMore && el.scrollHeight - el.scrollTop - el.clientHeight < END_MARGIN) emit('more');
 }
 
+/** A page that does not fill the viewport has nothing to scroll: ask for the next one. */
+function fillCheck(): void {
+  const el = root.value;
+  if (!alive || !el || !props.hasMore) return;
+  if (el.scrollHeight <= el.clientHeight + FILL_MARGIN) emit('more');
+}
+
+let ro: ResizeObserver | null = null;
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && root.value) {
+    ro = new ResizeObserver(() => fillCheck());
+    ro.observe(root.value);
+  }
+  void nextTick(fillCheck);
+});
+
+// `hasMore` is false while a page loads, so this cannot emit twice for one page.
+watch(
+  () => [props.items, props.hasMore] as const,
+  () => void nextTick(fillCheck),
+);
+
 function label(item: FeedItem): string {
   return item.name;
 }
 
 onBeforeUnmount(() => {
   alive = false;
+  ro?.disconnect();
+  ro = null;
 });
 </script>
 
 <template>
-  <div class="sg" data-testid="photos-search-grid" @scroll.passive="onScroll">
+  <div ref="root" class="sg" data-testid="photos-search-grid" @scroll.passive="onScroll">
     <ul class="sg-grid" :style="{ '--sg-min': `${TILE_MIN[tile]}px` }" role="list">
       <li v-for="item in items" :key="item.fileId" class="sg-cell" role="listitem">
         <button
@@ -82,6 +108,7 @@ onBeforeUnmount(() => {
             alt=""
             draggable="false"
             decoding="async"
+            loading="lazy"
             @error="thumbs.set(item.hash, null)"
           />
           <span v-else class="sg-nothumb" :title="t('photosThumbUnavailable')"></span>

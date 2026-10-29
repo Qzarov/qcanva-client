@@ -7,9 +7,12 @@ import { ApiError } from '../../api/client';
 import type { FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 import DrivePhotos from './DrivePhotos.vue';
+import { usePhotosView } from './usePhotosView';
 
 const searchMock = vi.hoisted(() => vi.fn());
 const albumsMock = vi.hoisted(() => vi.fn());
+const feedRefresh = vi.hoisted(() => vi.fn());
+const feedPatch = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/photos')>();
@@ -59,7 +62,7 @@ const FeedStub = defineComponent({
   props: ['params', 'captionOnTile', 'tile', 'selected', 'current'],
   emits: ['open', 'activate', 'toggle-select'],
   setup(props, { emit, expose }) {
-    expose({ orderedItems: () => feedItems, refresh: vi.fn(), patchItem: vi.fn() });
+    expose({ orderedItems: () => feedItems, refresh: feedRefresh, patchItem: feedPatch });
     return () =>
       h(
         'div',
@@ -90,6 +93,8 @@ const PanelStub = defineComponent({
       h('aside', { 'data-photo-panel': '', 'data-panel-file': props.fileId as string }, [
         h('button', { 'data-stub-folder': '', onClick: () => emit('open-folder', 'fold1') }, 'folder'),
         h('button', { 'data-stub-album': '', onClick: () => emit('open-album', 'alb1') }, 'album'),
+        h('button', { 'data-stub-chg-albums': '', onClick: () => emit('changed', { fileId: 'f0', albumIds: [] }) }, 'chg'),
+        h('button', { 'data-stub-chg-fav': '', onClick: () => emit('changed', { fileId: 'f0', favorite: false }) }, 'chg'),
         h('button', { 'data-stub-close': '', onClick: () => emit('close') }, 'close'),
       ]);
   },
@@ -142,6 +147,9 @@ describe('DrivePhotos', () => {
     vi.useFakeTimers();
     localStorage.clear();
     useI18n().setLocale('ru');
+    usePhotosView().reset();
+    feedRefresh.mockReset();
+    feedPatch.mockReset();
     searchMock.mockReset().mockResolvedValue({ items: [mkItem(7), mkItem(8)], nextCursor: null });
     albumsMock.mockReset().mockResolvedValue([{ id: 'alb1', name: 'Алтай', count: 2, bytes: 0, coverFileIds: [] }]);
   });
@@ -309,5 +317,51 @@ describe('DrivePhotos', () => {
     await w.get('[data-sel-clear]').trigger('click');
     expect(w.find('.sel-bar').exists()).toBe(false);
     expect(w.find('[data-testid="picker-stub"]').exists()).toBe(false);
+  });
+
+  describe('panel changes refresh dependent views', () => {
+    async function openPanel(w: VueWrapper): Promise<void> {
+      await w.get('[data-file-id="f0"]').trigger('click');
+    }
+
+    it('plain feed: patches the tile only', async () => {
+      const w = mountIt();
+      await flushPromises();
+      await openPanel(w);
+      await w.get('[data-stub-chg-albums]').trigger('click');
+      expect(feedPatch).toHaveBeenCalledWith('f0', { albumIds: [] });
+      expect(feedRefresh).not.toHaveBeenCalled();
+    });
+
+    it('album view: removing from the album refreshes the feed', async () => {
+      const w = mountIt();
+      await w.findAll('[role="tab"]')[1]!.trigger('click');
+      await w.get('[data-stub-open]').trigger('click');
+      await flushPromises();
+      await openPanel(w);
+      await w.get('[data-stub-chg-albums]').trigger('click');
+      expect(feedRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('album as a sort level: album change refreshes the feed', async () => {
+      usePhotosView().toggleSortKey('album');
+      const w = mountIt();
+      await flushPromises();
+      await openPanel(w);
+      await w.get('[data-stub-chg-albums]').trigger('click');
+      expect(feedRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('favorites filter: unfavoriting refreshes the feed, otherwise it does not', async () => {
+      const w = mountIt();
+      await flushPromises();
+      await openPanel(w);
+      await w.get('[data-stub-chg-fav]').trigger('click');
+      expect(feedRefresh).not.toHaveBeenCalled();
+      usePhotosView().setFilter('fav');
+      await flushPromises();
+      await w.get('[data-stub-chg-fav]').trigger('click');
+      expect(feedRefresh).toHaveBeenCalledTimes(1);
+    });
   });
 });
