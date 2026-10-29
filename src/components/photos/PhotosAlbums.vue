@@ -40,10 +40,32 @@ let loadSeq = 0;
 
 const hashCache = new Map<string, Promise<string | null>>();
 
+/** At most this many `details()` calls in flight; the rest wait in list order. */
+const MAX_COVER_REQUESTS = 6;
+let activeCovers = 0;
+const waitingCovers: (() => void)[] = [];
+
+async function limited<T>(job: () => Promise<T>): Promise<T> {
+  if (activeCovers >= MAX_COVER_REQUESTS) {
+    await new Promise<void>((resolve) => waitingCovers.push(resolve));
+  } else {
+    activeCovers += 1;
+  }
+  try {
+    return await job();
+  } finally {
+    const next = waitingCovers.shift();
+    if (next) next();
+    else activeCovers -= 1;
+  }
+}
+
+const isGone = (e: unknown): boolean => (e as { status?: number } | null)?.status === 404;
+
 function hashOf(fileId: string): Promise<string | null> {
   let p = hashCache.get(fileId);
   if (!p) {
-    p = photosApi.details(fileId).then(
+    p = limited(() => photosApi.details(fileId)).then(
       (d) => d.item.hash || null,
       () => {
         hashCache.delete(fileId);
@@ -123,9 +145,8 @@ async function renameAlbum(album: Album): Promise<void> {
   if (!name || name === album.name) return;
   try {
     await photosApi.renameAlbum(album.id, name);
-  } catch {
-    toast.show(t('photosAlbumRenameFailedToast'), 'error');
-    return;
+  } catch (e) {
+    toast.show(t(isGone(e) ? 'photosAlbumGoneToast' : 'photosAlbumRenameFailedToast'), 'error');
   }
   await load();
 }
@@ -141,9 +162,8 @@ async function deleteAlbum(album: Album): Promise<void> {
   if (!ok) return;
   try {
     await photosApi.deleteAlbum(album.id);
-  } catch {
-    toast.show(t('photosAlbumDeleteFailedToast'), 'error');
-    return;
+  } catch (e) {
+    toast.show(t(isGone(e) ? 'photosAlbumGoneToast' : 'photosAlbumDeleteFailedToast'), 'error');
   }
   await load();
 }

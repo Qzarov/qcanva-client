@@ -177,6 +177,54 @@ describe('PhotosAlbums', () => {
     expect(albumsMock).toHaveBeenCalledTimes(2);
   });
 
+  it('delete of an album already deleted elsewhere (404) drops the card and says so', async () => {
+    confirmMock.mockResolvedValue(true);
+    deleteMock.mockRejectedValue(Object.assign(new Error('HTTP 404'), { status: 404 }));
+    const w = await setup();
+    albumsMock.mockResolvedValue([mkAlbum({ id: 'a2', name: 'Горы', count: 1, coverFileIds: ['f4'] })]);
+    await w.findAll('[data-album-menu-btn]')[0]!.trigger('click');
+    await w.get('[data-album-delete]').trigger('click');
+    await flushPromises();
+    expect(albumsMock).toHaveBeenCalledTimes(2);
+    expect(w.findAll('[data-album]')).toHaveLength(1);
+    expect(w.text()).not.toContain('Лето 2026');
+    const { useToast } = await import('../../composables/useToast');
+    expect(useToast().toasts.value.map((x) => x.message)).toContain('Альбом уже удалён');
+  });
+
+  it('rename failing with 500 shows the generic toast and reloads the list', async () => {
+    promptMock.mockResolvedValue('Новое');
+    renameMock.mockRejectedValue(Object.assign(new Error('HTTP 500'), { status: 500 }));
+    const w = await setup();
+    await w.findAll('[data-album-menu-btn]')[0]!.trigger('click');
+    await w.get('[data-album-rename]').trigger('click');
+    await flushPromises();
+    expect(albumsMock).toHaveBeenCalledTimes(2);
+    const { useToast } = await import('../../composables/useToast');
+    expect(useToast().toasts.value.map((x) => x.message)).toContain('Не удалось переименовать альбом');
+  });
+
+  it('fetches covers through a small pool: at most 6 details() at once, all covers resolve', async () => {
+    const many = Array.from({ length: 20 }, (_, i) =>
+      mkAlbum({ id: `m${i}`, name: `A${i}`, count: 3, coverFileIds: [`x${i}a`, `x${i}b`, `x${i}c`] }),
+    );
+    albumsMock.mockResolvedValue(many);
+    let active = 0;
+    let peak = 0;
+    detailsMock.mockImplementation(async (id) => {
+      active += 1;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 2));
+      active -= 1;
+      return { item: { fileId: id, hash: `h-${id}` } } as PhotoDetails;
+    });
+    const w = await setup();
+    await vi.waitFor(() => expect(w.findAll('img[data-cover]')).toHaveLength(60));
+    expect(detailsMock).toHaveBeenCalledTimes(60);
+    expect(peak).toBeLessThanOrEqual(6);
+    expect(peak).toBeGreaterThan(1);
+  });
+
   it('open emits the album id', async () => {
     const w = await setup();
     await w.findAll('[data-album-open]')[1]!.trigger('click');
