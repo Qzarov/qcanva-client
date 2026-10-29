@@ -221,6 +221,58 @@ describe('PhotoPanel', () => {
     expect(editMock).toHaveBeenLastCalledWith('f1', { description: null });
   });
 
+  it('flushes an unblurred description edit when the photo changes', async () => {
+    detailsMock.mockResolvedValueOnce(mkDetails());
+    detailsMock.mockResolvedValueOnce(mkDetails({ item: mkItem({ fileId: 'f2', name: 'second.jpg' }) }));
+    const w = await setup('f1');
+    await w.get('[data-panel-desc]').setValue('Новое описание');
+    await w.setProps({ fileId: 'f2' });
+    await flushPromises();
+    expect(editMock).toHaveBeenCalledTimes(1);
+    expect(editMock).toHaveBeenCalledWith('f1', { description: 'Новое описание' });
+    // A late blur of the removed textarea does not send it twice.
+    await w.get('[data-panel-desc]').trigger('blur');
+    expect(editMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes an unblurred description edit on unmount', async () => {
+    const w = await setup();
+    await w.get('[data-panel-desc]').setValue('Перед закрытием');
+    w.unmount();
+    wrapper = null;
+    expect(editMock).toHaveBeenCalledWith('f1', { description: 'Перед закрытием' });
+  });
+
+  it('Escape in the description saves the edit before closing', async () => {
+    const w = await setup();
+    const ta = w.get('[data-panel-desc]');
+    await ta.setValue('Не потерять');
+    await ta.trigger('keydown', { key: 'Escape' });
+    expect(editMock).toHaveBeenCalledWith('f1', { description: 'Не потерять' });
+    expect(w.emitted('close')).toHaveLength(1);
+  });
+
+  it('a failed save for the old photo leaves the new photo baseline intact', async () => {
+    let failSave!: (e: Error) => void;
+    editMock.mockImplementationOnce(() => new Promise<void>((_, rej) => (failSave = rej)));
+    detailsMock.mockResolvedValueOnce(mkDetails());
+    detailsMock.mockResolvedValueOnce(
+      mkDetails({ item: mkItem({ fileId: 'f2' }), edit: { description: 'B', rating: null, favorite: false } }),
+    );
+    const w = await setup('f1');
+    await w.get('[data-panel-desc]').setValue('A изменено');
+    await w.setProps({ fileId: 'f2' });
+    await flushPromises();
+    failSave(new Error('nope'));
+    await flushPromises();
+    editMock.mockClear();
+    const ta = w.get('[data-panel-desc]');
+    expect((ta.element as HTMLTextAreaElement).value).toBe('B');
+    // B is unchanged, so blurring must not send anything (baseline still 'B', not 'Озеро утром').
+    await ta.trigger('blur');
+    expect(editMock).not.toHaveBeenCalled();
+  });
+
   it('album plus toggles membership', async () => {
     const w = await setup();
     await w.get('[data-panel-plus]').trigger('click');

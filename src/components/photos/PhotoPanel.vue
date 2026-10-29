@@ -5,11 +5,11 @@
     :aria-labelledby="headingId"
     :aria-busy="loading"
     data-photo-panel
-    @keydown.esc="emit('close')"
+    @keydown.esc="close"
   >
     <div class="pp-top">
       <h3 :id="headingId" class="pp-title" data-panel-title>{{ details ? details.item.name : t('photosLoading') }}</h3>
-      <button type="button" class="pp-x" :aria-label="t('photosClose')" data-panel-close @click="emit('close')">
+      <button type="button" class="pp-x" :aria-label="t('photosClose')" data-panel-close @click="close">
         <X :size="18" aria-hidden="true" />
       </button>
     </div>
@@ -129,7 +129,7 @@
           class="pp-desc"
           :placeholder="t('photosPanelDescriptionPlaceholder')"
           data-panel-desc
-          @blur="saveDescription"
+          @blur="flushDescription"
         ></textarea>
       </section>
     </template>
@@ -205,9 +205,18 @@ async function load(): Promise<void> {
 }
 
 // The panel follows the current photo: opening the same photo again does not reload it.
-watch(() => props.fileId, () => void load(), { immediate: true });
+// Flush a pending description first: load() replaces the details it belongs to.
+watch(
+  () => props.fileId,
+  () => {
+    flushDescription();
+    void load();
+  },
+  { immediate: true },
+);
 
 onBeforeUnmount(() => {
+  flushDescription();
   request++;
   previewRequest++;
 });
@@ -285,19 +294,28 @@ async function download(): Promise<void> {
   }
 }
 
-async function saveDescription(): Promise<void> {
+/**
+ * Sends a changed description of the photo currently shown. Called on blur and
+ * synchronously before the panel moves to another photo, closes or unmounts, so
+ * an edit is never lost to a late blur.
+ */
+function flushDescription(): void {
   const d = details.value;
   if (!d) return;
   const text = description.value.trim();
   if (text === savedDescription.trim()) return;
   const previous = savedDescription;
   savedDescription = text;
-  try {
-    await photosApi.edit(d.item.fileId, { description: text === '' ? null : text });
-  } catch (e) {
-    savedDescription = previous;
+  photosApi.edit(d.item.fileId, { description: text === '' ? null : text }).catch(async (e) => {
+    // Roll back only while the same photo is shown: the baseline now belongs to another one otherwise.
+    if (details.value === d) savedDescription = previous;
     await reportSaveError(e);
-  }
+  });
+}
+
+function close(): void {
+  flushDescription();
+  emit('close');
 }
 
 // ----- albums -----
