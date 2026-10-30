@@ -150,6 +150,35 @@ describe('imageUrls helper', () => {
     });
   });
 
+  // The server's tokenized routes serve UUID names only; older uploads named by
+  // their 64-hex content hash got a 404 there and showed as their label.
+  describe('names the tokenized route does not serve', () => {
+    const hashName = '6038d696b326a56253934f01fa47cbfdafdf7c04c258503e59e6ffa82a6f4f06.png';
+    const uuidName = '3d0bb920-f20f-43cb-8d70-0feb9621e047.png';
+    const stored = (name: string) => `https://canvas.qzarov.pro/api/canvas/files/images/${name}`;
+
+    it('keeps a content-hash name on its stored address, and tokenizes a UUID name', () => {
+      expect(resolveCanvasImageUrl(stored(hashName), 'c1', 'tok', 'https://qcanva.qzarov.pro/api')).toBe(stored(hashName));
+      expect(resolveCanvasImageUrl(stored(uuidName), 'c1', 'tok', 'https://qcanva.qzarov.pro/api'))
+        .toBe(`https://qcanva.qzarov.pro/api/canvas/c1/images/${uuidName}?t=tok`);
+    });
+
+    it('does the same for every resource type and inside HTML', () => {
+      for (const type of ['text-document', 'html-document', 'interactive-template']) {
+        expect(resolveResourceImageUrl(stored(hashName), type, 'r1', 'tok', 'https://qcanva.qzarov.pro/api')).toBe(stored(hashName));
+      }
+      const html = `<img src="${stored(hashName)}"><img src="${stored(uuidName)}">`;
+      const mapped = mapHtmlImageUrls(html, 'html-document', 'h1', 'tok', 'https://qcanva.qzarov.pro/api');
+      expect(mapped).toContain(`src="${stored(hashName)}"`);
+      expect(mapped).toContain(`/html-documents/h1/images/${uuidName}?t=tok`);
+    });
+
+    it('accepts the UUID in any case, as the server does', () => {
+      const upper = '3D0BB920-F20F-43CB-8D70-0FEB9621E047.PNG';
+      expect(resolveCanvasImageUrl(stored(upper), 'c1', 'tok', 'https://qcanva.qzarov.pro/api')).toContain('/canvas/c1/images/');
+    });
+  });
+
   describe('mapHtmlImageUrls and unmapHtmlImageUrls', () => {
     it('maps img src attributes within HTML string to resource tokenized route', () => {
       const rawHtml = `

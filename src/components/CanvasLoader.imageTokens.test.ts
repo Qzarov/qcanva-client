@@ -67,7 +67,7 @@ describe('CanvasLoader image tokens rendering', () => {
   });
 
   it('renders dnd sheet portrait with access token and emits image-error on failure', async () => {
-    const portraitUrl = '/api/canvas/files/images/portrait-9876-5432.jpg';
+    const portraitUrl = '/api/canvas/files/images/98765432-abcd-4ef0-8123-456789abcdef.jpg';
     const wrapper = mount(CanvasLoader, {
       props: {
         canvasId: 'canvas-test-2',
@@ -109,7 +109,7 @@ describe('CanvasLoader image tokens rendering', () => {
     const portraitImg = wrapper.find('.dnd-portrait img');
     expect(portraitImg.exists()).toBe(true);
     expect(portraitImg.attributes('src')).toBe(
-      'http://localhost:3001/api/canvas/canvas-test-2/images/portrait-9876-5432.jpg?t=token-dnd',
+      'http://localhost:3001/api/canvas/canvas-test-2/images/98765432-abcd-4ef0-8123-456789abcdef.jpg?t=token-dnd',
     );
 
     await portraitImg.trigger('error');

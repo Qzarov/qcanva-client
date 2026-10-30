@@ -16,6 +16,14 @@ export const OLD_CANVAS_IMAGE_URL_REGEX = /(?:^|\/)api\/canvas\/files\/images\/(
 export const TOKENIZED_RESOURCE_IMAGE_URL_REGEX = /(?:^|\/)(?:api\/)?(canvas|text-documents|html-documents|interactive-templates)\/([^/]+)\/images\/([a-zA-Z0-9_-]+\.(?:png|jpg|jpeg|webp|gif))(?:\?.*)?$/i;
 
 /**
+ * The names the server's tokenized image routes serve: a UUID with an image
+ * extension (VALID_IMAGE_NAME_REGEX in each backend service). Other stored
+ * names - e.g. the 64-hex content hashes of older uploads - get a 404 there,
+ * so they keep their stored address, which still serves them.
+ */
+export const TOKENIZED_IMAGE_NAME_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:png|jpg|jpeg|webp|gif)$/i;
+
+/**
  * Normalizes a resource type or path segment into its canonical route base segment:
  * - 'canvas' -> 'canvas'
  * - 'text-document' | 'text-documents' -> 'text-documents'
@@ -54,7 +62,8 @@ export function isResourceImageUrl(url: string | null | undefined): boolean {
  * <API_BASE>/<resource base>/<id>/images/<name>?t=<token>
  *
  * If the URL is already tokenized, re-tokenizes with the new token.
- * External URLs and unsupported extensions are returned unchanged.
+ * External URLs, unsupported extensions and names the tokenized route does not
+ * serve (see TOKENIZED_IMAGE_NAME_REGEX) are returned unchanged.
  * If no token or resourceId is provided, returns the URL unchanged.
  */
 export function resolveResourceImageUrl(
@@ -78,7 +87,8 @@ export function resolveResourceImageUrl(
     }
   }
 
-  if (!name) {
+  // Only names the tokenized route serves; anything else stays on its stored address.
+  if (!name || !TOKENIZED_IMAGE_NAME_REGEX.test(name)) {
     return url;
   }
 
