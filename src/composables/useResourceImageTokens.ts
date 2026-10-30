@@ -22,10 +22,25 @@ export interface UseResourceImageTokensOptions {
   refreshTokenApi?: (resourceId: string) => Promise<{ imageToken: string; imageTokenExpiresAt: string }>;
 }
 
+export interface SetImageTokenOptions {
+  /** Take the token even though the current one is still good: a refresh asked for on purpose. */
+  force?: boolean;
+}
+
+/**
+ * A token still good for longer than this is kept when another one arrives.
+ * The server signs a new token (a new string) on every load, resync and room
+ * join; every image's address carries it, so swapping it reloads every image
+ * on the page - on a canvas edited by several people that was on every
+ * revision conflict. Keeping the token until it is near its end changes the
+ * addresses about once an hour instead.
+ */
+export const KEEP_TOKEN_WHILE_VALID_FOR_MS = 10 * 60 * 1000;
+
 export interface ResourceImageTokensComposable {
   imageToken: Ref<string>;
   imageTokenExpiresAt: Ref<string>;
-  setImageToken: (token?: string | null, expiresAt?: string | null) => void;
+  setImageToken: (token?: string | null, expiresAt?: string | null, options?: SetImageTokenOptions) => void;
   refreshToken: () => Promise<{ imageToken: string; imageTokenExpiresAt: string } | null>;
   handleImageError: (imageId: string, url?: string | null) => Promise<boolean>;
   scheduleRefresh: (expiresAt?: string | null) => void;
@@ -37,6 +52,8 @@ export function useResourceImageTokens(options: UseResourceImageTokensOptions): 
   const imageToken = ref<string>('');
   const imageTokenExpiresAt = ref<string>('');
   const retriedImages = new Set<string>();
+  // The resource the current token was issued for: a token is bound to one.
+  let tokenResourceId = '';
 
   let refreshTimer: ReturnType<typeof setTimeout> | null = null;
   let inFlightRefresh: Promise<{ imageToken: string; imageTokenExpiresAt: string } | null> | null = null;
@@ -64,9 +81,20 @@ export function useResourceImageTokens(options: UseResourceImageTokensOptions): 
     }, delay);
   }
 
-  function setImageToken(token?: string | null, expiresAt?: string | null) {
+  /** Whether the current token can stay: there is one, for this resource, good for a while yet. */
+  function currentTokenHolds(): boolean {
+    if (!imageToken.value || tokenResourceId !== options.getResourceId()) return false;
+    const expiresAtMs = new Date(imageTokenExpiresAt.value).getTime();
+    if (!imageTokenExpiresAt.value || Number.isNaN(expiresAtMs)) return false;
+    return expiresAtMs - Date.now() > KEEP_TOKEN_WHILE_VALID_FOR_MS;
+  }
+
+  function setImageToken(token?: string | null, expiresAt?: string | null, setOptions: SetImageTokenOptions = {}) {
+    if (!token && !expiresAt) return;
+    if (!setOptions.force && currentTokenHolds()) return;
     if (token) {
       imageToken.value = token;
+      tokenResourceId = options.getResourceId();
     }
     if (expiresAt) {
       imageTokenExpiresAt.value = expiresAt;
@@ -104,7 +132,7 @@ export function useResourceImageTokens(options: UseResourceImageTokensOptions): 
     inFlightRefresh = (async () => {
       try {
         const res = await executeRefreshCall(resourceId);
-        setImageToken(res.imageToken, res.imageTokenExpiresAt);
+        setImageToken(res.imageToken, res.imageTokenExpiresAt, { force: true });
         return res;
       } catch (err) {
         console.warn('Failed to refresh resource image token', err);
@@ -133,6 +161,7 @@ export function useResourceImageTokens(options: UseResourceImageTokensOptions): 
     clearTimer();
     imageToken.value = '';
     imageTokenExpiresAt.value = '';
+    tokenResourceId = '';
     retriedImages.clear();
     inFlightRefresh = null;
   }
