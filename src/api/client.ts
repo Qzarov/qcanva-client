@@ -1,5 +1,6 @@
 import { clearTabs } from '../tabs/registry';
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+import { resolveApiBase } from './hubOverride';
+export const API_BASE = resolveApiBase();
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
 const SUPPORTED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
@@ -136,9 +137,9 @@ export function isPasswordAccess(): boolean {
   return getAccessMode() === 'resource-password';
 }
 
-type ApiRequestInit = RequestInit & { skipAuthRedirect?: boolean };
+export type ApiRequestInit = RequestInit & { skipAuthRedirect?: boolean };
 
-async function request<T>(path: string, options: ApiRequestInit = {}): Promise<T> {
+export async function request<T>(path: string, options: ApiRequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -170,9 +171,9 @@ function isMissingRouteError(error: unknown): boolean {
   return error.message.includes('Cannot POST') || error.message.includes('HTTP 404');
 }
 
-async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canvas: { id: string; data: string; revision: number } }> {
+async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canvas: { id: string; data: string; revision: number }; imageToken?: string; imageTokenExpiresAt?: string }> {
   try {
-    return await request<{ canvas: { id: string; data: string; revision: number } }>(`/canvas/${id}/resync`, {
+    return await request<{ canvas: { id: string; data: string; revision: number }; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}/resync`, {
       method: 'POST',
       body: JSON.stringify({ knownRevision: knownRevision?.toString() }),
     });
@@ -181,13 +182,15 @@ async function resyncCanvas(id: string, knownRevision?: number): Promise<{ canva
       throw error;
     }
 
-    const snapshot = await request<{ canvas: { id: string; data: string; revision?: number } }>(`/canvas/${id}`);
+    const snapshot = await request<{ canvas: { id: string; data: string; revision?: number }; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}`);
     return {
       canvas: {
         id: snapshot.canvas.id,
         data: snapshot.canvas.data,
         revision: snapshot.canvas.revision ?? 0,
       },
+      imageToken: snapshot.imageToken,
+      imageTokenExpiresAt: snapshot.imageTokenExpiresAt,
     };
   }
 }
@@ -288,7 +291,9 @@ export const canvas = {
   list: () => request<{ own: any[]; shared: any[]; public: any[]; welcome?: any }>('/canvas'),
   create: (title: string, data?: string, folderId?: string | null, tags?: ResourceTag[]) =>
     request<any>('/canvas', { method: 'POST', body: JSON.stringify({ title, data, folderId, tags }) }),
-  get: (id: string) => request<{ canvas: any; role: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
+  get: (id: string) => request<{ canvas: any; role: string; imageToken?: string; imageTokenExpiresAt?: string }>(`/canvas/${id}`, { skipAuthRedirect: true }),
+  refreshImageToken: (id: string) =>
+    request<{ imageToken: string; imageTokenExpiresAt: string }>(`/canvas/${id}/image-token`, { method: 'POST' }),
   update: (
     id: string,
     updates: {
@@ -350,7 +355,9 @@ export const htmlDocuments = {
     resourceFolders.rename(id, name),
   create: (payload: { title: string; html: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean }) =>
     request<any>('/html-documents', { method: 'POST', body: JSON.stringify(payload) }),
-  get: (id: string) => request<{ document: any; role: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
+  get: (id: string) => request<{ document: any; role: string; imageToken?: string; imageTokenExpiresAt?: string }>(`/html-documents/${id}`, { skipAuthRedirect: true }),
+  refreshImageToken: (id: string) =>
+    request<{ imageToken: string; imageTokenExpiresAt: string }>(`/html-documents/${id}/image-token`, { method: 'POST' }),
   update: (id: string, payload: { title?: string; description?: string | null; slug?: string | null; html?: string; groupId?: string; folderId?: string | null; tags?: ResourceTag[]; pinned?: boolean; shared?: boolean; visibility?: string; allowPublicEdit?: boolean; listedInPublic?: boolean; passwordAccessEnabled?: boolean; passwordAccessPassword?: string; passwordAccessRole?: string }) =>
     request<any>(`/html-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
   duplicate: (id: string) =>
@@ -407,13 +414,17 @@ export type InteractiveTemplate = {
   role?: 'owner' | 'read' | 'edit';
   ownerId?: string;
   folderId?: string | null;
+  imageToken?: string;
+  imageTokenExpiresAt?: string;
 };
 
 export const interactiveTemplates = {
   list: () => request<{ own?: InteractiveTemplate[]; shared?: InteractiveTemplate[]; templates: InteractiveTemplate[] }>('/interactive-templates'),
   create: (payload: { templateType: InteractiveTemplate['templateType']; title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>('/interactive-templates', { method: 'POST', body: JSON.stringify(payload) }),
-  get: (id: string) => request<InteractiveTemplate>(`/interactive-templates/${id}`),
+  get: (id: string) => request<InteractiveTemplate & { imageToken?: string; imageTokenExpiresAt?: string }>(`/interactive-templates/${id}`),
+  refreshImageToken: (id: string) =>
+    request<{ imageToken: string; imageTokenExpiresAt: string }>(`/interactive-templates/${id}/image-token`, { method: 'POST' }),
   snapshot: (id: string) => request<{ template: InteractiveTemplate; role: 'owner' | 'read' | 'edit'; revision: number; participants: Array<{ userId: string; name: string }> }>(`/interactive-templates/${id}/snapshot`, { skipAuthRedirect: true }),
   update: (id: string, payload: { title?: string; data?: Record<string, unknown> }) =>
     request<InteractiveTemplate>(`/interactive-templates/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
@@ -476,7 +487,9 @@ export const textDocuments = {
   publicList: () => request<{ documents: any[] }>('/text-documents/public', { skipAuthRedirect: true }),
   create: (payload: { title: string; folderId?: string | null; tags?: ResourceTag[]; visibility?: string }) =>
     request<any>('/text-documents', { method: 'POST', body: JSON.stringify(payload) }),
-  get: (id: string) => request<{ document: any; role: string }>(`/text-documents/${id}`, { skipAuthRedirect: true }),
+  get: (id: string) => request<{ document: any; role: string; imageToken?: string; imageTokenExpiresAt?: string }>(`/text-documents/${id}`, { skipAuthRedirect: true }),
+  refreshImageToken: (id: string) =>
+    request<{ imageToken: string; imageTokenExpiresAt: string }>(`/text-documents/${id}/image-token`, { method: 'POST' }),
   snapshot: (id: string) => request<any>(`/text-documents/${id}/snapshot`, { skipAuthRedirect: true }),
   update: (id: string, payload: Record<string, unknown>) =>
     request<any>(`/text-documents/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),

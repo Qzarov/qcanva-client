@@ -3894,6 +3894,10 @@ export default defineComponent({
      */
     const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
+      if (section.kind === 'drive') {
+        router.push('/drive');
+        return;
+      }
       const target = section.kind as FeedSection;
       if (!isLoggedIn || !(FEED_SIDEBAR_SECTIONS as readonly string[]).includes(section.kind)) {
         selectDashboardSection(section);

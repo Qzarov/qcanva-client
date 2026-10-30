@@ -190,7 +190,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, Folder, FolderCog, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import { ChevronDown, Folder, FolderCog, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import packageJson from '../../../package.json';
@@ -261,6 +261,7 @@ const topLevelItems = computed<Array<{
   label: string;
   icon: Component;
 }>>(() => [
+  { kind: 'drive', label: t('drive'), icon: HardDrive },
   { kind: 'shared', label: t('sharedWithMe'), icon: Users },
   { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
   { kind: 'public', label: t('public'), icon: Globe2 },

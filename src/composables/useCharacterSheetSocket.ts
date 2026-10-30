@@ -2,8 +2,9 @@ import { onUnmounted, ref } from 'vue';
 import { io, type Socket } from 'socket.io-client';
 import { applySheetOperation, replaySheetOperations, type SheetOperation } from '../dnd/sheetOperations';
 import type { RollSpec, RolledSpec } from '../dnd/useSheetRolls';
+import { resolveWsOrigin } from '../api/hubOverride';
 
-const WS_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').replace('/api', '');
+const WS_URL = resolveWsOrigin();
 
 export type SheetRole = 'owner' | 'edit' | 'read';
 export type SheetSyncStatus = 'idle' | 'connecting' | 'synced' | 'offline' | 'forbidden' | 'error';

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!-- UniFFI bindings are generated (scripts/build-qspace-native.sh). They
+         probe for java.lang.ref.Cleaner at runtime and fall back to JNA's
+         cleaner below API 33, which lint cannot see. -->
+    <issue id="NewApi">
+        <ignore path="src/qspaceGenerated/**" />
+    </issue>
+</lint>
