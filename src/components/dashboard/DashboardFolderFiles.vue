@@ -62,7 +62,6 @@ import {
   resolveDownloadUrl,
   type DriveItem,
 } from '../../api/drive';
-import { ApiError } from '../../api/client';
 import { alertDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 
@@ -137,7 +136,7 @@ async function load(folderId: string) {
   } catch (error) {
     if (current !== loadId) return;
     // A hub without the Drive (or a folder it does not know) simply has no files here.
-    if (error instanceof ApiError && error.status === 404) return;
+    if ((error as { status?: unknown } | null)?.status === 404) return;
     failed.value = true;
   }
 }
