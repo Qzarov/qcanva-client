@@ -57,6 +57,7 @@ vi.mock('../api/client', () => ({
     update: vi.fn().mockResolvedValue({ id: 'doc-1', pinned: true }),
   },
   isAdmin: vi.fn(() => false),
+  refreshCurrentUserRole: vi.fn().mockResolvedValue(false),
   isAuthenticated: vi.fn(() => true),
   MAX_DESCRIPTION_LENGTH: 2000,
   resourceFolders: {

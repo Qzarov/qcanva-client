@@ -41,14 +41,21 @@ export const FOLDER_FILES: Record<string, { media: unknown[]; files: unknown[] }
   },
 };
 
-export async function serveDashboard(page: Page, options: { driveMissing?: boolean; theme?: 'light' | 'dark'; list?: boolean; admin?: boolean } = {}) {
-  await page.addInitScript(({ theme, list, admin }) => {
+type Role = 'user' | 'admin' | 'superadmin';
+/**
+ * role: the role stored at sign-in (admin: true is role 'admin');
+ * serverRole: the role /auth/me answers now, if it changed since.
+ */
+export async function serveDashboard(page: Page, options: { driveMissing?: boolean; theme?: 'light' | 'dark'; list?: boolean; admin?: boolean; role?: Role; serverRole?: Role } = {}) {
+  const storedRole: Role = options.role ?? (options.admin ? 'admin' : 'user');
+  const serverRole: Role = options.serverRole ?? storedRole;
+  await page.addInitScript(({ theme, list, role }) => {
     localStorage.setItem('qcanva:theme:v1', theme);
     localStorage.setItem('token', 'dash-test-token');
     localStorage.setItem('currentUser', JSON.stringify({ id: 'user-1', email: 'me@example.com', name: 'Me', role: 'user' }));
     if (list) localStorage.setItem('qcanva:dashboard-recents-view:v1', 'list');
-    localStorage.setItem('userRole', admin ? 'admin' : 'user');
-  }, { theme: options.theme ?? 'light', list: Boolean(options.list), admin: Boolean(options.admin) });
+    localStorage.setItem('userRole', role);
+  }, { theme: options.theme ?? 'light', list: Boolean(options.list), role: storedRole });
   const linkRequests: string[] = [];
   const downloads: string[] = [];
   const folderRequests: string[] = [];
@@ -69,6 +76,7 @@ export async function serveDashboard(page: Page, options: { driveMissing?: boole
     const path = url.pathname.replace(/^\/api/, '');
     const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
     if (path === '/canvas') return json({ own: canvases, shared: [], public: [], welcome: null });
+    if (path === '/auth/me') return json({ id: 'user-1', email: 'me@example.com', name: 'Me', role: serverRole });
     if (path === '/resource-folders') {
       return json({
         own: [

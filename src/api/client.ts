@@ -106,6 +106,30 @@ export function getUserRole(): string {
   return localStorage.getItem('userRole') || 'user';
 }
 
+/**
+ * Asks the hub who the signed-in user is now and keeps the stored role in
+ * step with it. The role is stored at sign-in only, and a session lives long
+ * (the app keeps it for weeks): someone made an admin since would not see
+ * Admin until signing in again, and someone no longer one would keep seeing
+ * it. A password-access session (no account) and a failed request change
+ * nothing. Resolves to whether the role changed.
+ */
+export async function refreshCurrentUserRole(): Promise<boolean> {
+  if (!getToken() || getAccessMode() === 'resource-password') return false;
+  let me: { id?: string; email?: string; name?: string; role?: string } | null = null;
+  try {
+    me = await request<{ id?: string; email?: string; name?: string; role?: string }>('/auth/me', { skipAuthRedirect: true });
+  } catch {
+    return false;
+  }
+  const role = me?.role;
+  if (!role || role === getUserRole()) return false;
+  localStorage.setItem('userRole', role);
+  const stored = getCurrentUser();
+  if (stored) localStorage.setItem('currentUser', JSON.stringify({ ...stored, role }));
+  return true;
+}
+
 export function isAdmin(): boolean {
   const r = getUserRole();
   return r === 'admin' || r === 'superadmin';

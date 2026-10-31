@@ -1142,7 +1142,7 @@ import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { characterSheetTitle } from '../dnd/characterSheet';
 import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
@@ -1300,7 +1300,8 @@ export default defineComponent({
     const router = useRouter();
     const { t, locale } = useI18n();
     useDocumentTitle(computed(() => t('home')));
-    const admin = isAdmin();
+    /** Admin shows in the sidebar; checked again with the hub once the dashboard opens. */
+    const admin = ref(isAdmin());
     const isLoggedIn = isAuthenticated();
     const own = ref<CanvasRecord[]>([]);
     const shared = ref<CanvasRecord[]>([]);
@@ -4024,6 +4025,8 @@ export default defineComponent({
 
     onMounted(() => {
       void loadRecentResources();
+      // The role is stored at sign-in; one given or taken since shows now.
+      void refreshCurrentUserRole().then((changed) => { if (changed) admin.value = isAdmin(); });
       document.addEventListener('visibilitychange', onDashboardVisible);
       if (Capacitor.isNativePlatform()) {
         void CapacitorApp.addListener('appStateChange', ({ isActive }) => {

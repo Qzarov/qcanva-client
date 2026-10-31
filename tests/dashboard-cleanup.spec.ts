@@ -50,6 +50,32 @@ test('a user who is not an admin has no Admin item', async ({ page }) => {
   await expect(page.locator('[data-sidebar-admin]')).toHaveCount(0);
 });
 
+test.describe('who sees Admin', () => {
+  for (const role of ['admin', 'superadmin'] as const) {
+    test(`an ${role} sees it in the sidebar, on a phone too, and it opens the Admin page`, async ({ page }) => {
+      await openDashboard(page, { role });
+      await expect(page.locator('[data-sidebar-admin]')).toBeVisible();
+      await page.setViewportSize({ width: 390, height: 800 });
+      await page.locator('[data-mobile-sidebar-open]').click();
+      await expect(page.locator('[data-sidebar-admin]')).toBeVisible();
+      await page.locator('[data-sidebar-admin]').click();
+      await expect(page).toHaveURL(/\/admin$/);
+      await expect(page.locator('.admin-topbar h1')).toBeVisible();
+    });
+  }
+
+  test('a user made an admin after signing in sees it without signing in again', async ({ page }) => {
+    await openDashboard(page, { role: 'user', serverRole: 'admin' });
+    await expect(page.locator('[data-sidebar-admin]')).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem('userRole'))).toBe('admin');
+  });
+
+  test('an admin who is no longer one stops seeing it', async ({ page }) => {
+    await openDashboard(page, { role: 'admin', serverRole: 'user' });
+    await expect(page.locator('[data-sidebar-admin]')).toHaveCount(0);
+  });
+});
+
 test('folders, not groups, in the folder menus and dialogs', async ({ page }) => {
   await openDashboard(page);
   await openDashboardFolder(page, 'folder-a');

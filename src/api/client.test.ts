@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, resourceFolders, setToken, textDocuments } from './client';
+import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, refreshCurrentUserRole, resourceFolders, setToken, textDocuments } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -67,6 +67,56 @@ describe('session helpers', () => {
       role: 'admin',
       accessMode: 'user',
     });
+  });
+});
+
+describe('refreshCurrentUserRole', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+  const answer = (body: unknown, ok = true) => vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+    ok, status: ok ? 200 : 500, json: async () => body,
+  } as Response);
+
+  it('takes a role given since sign-in: a user made an admin, or a superadmin', async () => {
+    for (const role of ['admin', 'superadmin']) {
+      setToken('token-1', 'user', 'user', { id: 'u1', email: 'me@example.com', name: 'Me' });
+      const fetchMock = answer({ id: 'u1', email: 'me@example.com', name: 'Me', role });
+      expect(isAdmin()).toBe(false);
+      await expect(refreshCurrentUserRole()).resolves.toBe(true);
+      expect(fetchMock).toHaveBeenCalledWith('http://localhost:3001/api/auth/me', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer token-1' }) }));
+      expect(isAdmin()).toBe(true);
+      expect(getCurrentUser()).toMatchObject({ id: 'u1', role });
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('drops a role taken away since sign-in', async () => {
+    setToken('token-1', 'admin', 'user', { id: 'u1', email: 'me@example.com', name: 'Me' });
+    answer({ id: 'u1', role: 'user' });
+    await expect(refreshCurrentUserRole()).resolves.toBe(true);
+    expect(isAdmin()).toBe(false);
+  });
+
+  it('changes nothing when the role is the same, the request fails, or there is no account', async () => {
+    setToken('token-1', 'admin', 'user', { id: 'u1' });
+    answer({ id: 'u1', role: 'admin' });
+    await expect(refreshCurrentUserRole()).resolves.toBe(false);
+    vi.restoreAllMocks();
+
+    answer({ message: 'down' }, false);
+    await expect(refreshCurrentUserRole()).resolves.toBe(false);
+    expect(isAdmin()).toBe(true);
+    vi.restoreAllMocks();
+
+    // A password-access session has no account to ask about.
+    setToken('token-2', 'user', 'resource-password');
+    const fetchMock = answer({ role: 'admin' });
+    await expect(refreshCurrentUserRole()).resolves.toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    localStorage.clear();
+    await expect(refreshCurrentUserRole()).resolves.toBe(false);
   });
 });
 
