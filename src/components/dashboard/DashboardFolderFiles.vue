@@ -1,54 +1,52 @@
 <template>
-  <!-- The folder's own files (uploaded from a device or to the Drive): the dashboard
-       otherwise shows only canvases and documents. Pictures get a preview. -->
-  <section v-if="shown.length || failed" class="folder-files" :class="`folder-files--${mode}`" data-folder-files>
-    <h3 class="folder-files-title">
-      {{ t('folderFilesTitle') }}
-      <span class="folder-files-count">{{ shown.length }}</span>
-    </h3>
-    <p v-if="failed" class="folder-files-note" role="alert">{{ t('folderFilesLoadFailed') }}</p>
-    <div v-else class="folder-files-grid">
-      <button
-        v-for="file in shown"
-        :key="file.id"
-        :ref="(el) => watchVisible(el as Element | null, file)"
-        type="button"
-        class="folder-file"
-        :data-folder-file="file.id"
-        :title="file.name"
-        :aria-label="`${t('folderFileDownload')}: ${file.name}`"
-        @click="download(file)"
-      >
-        <span class="folder-file-preview" aria-hidden="true">
-          <img
-            v-if="previews[file.id]"
-            :src="previews[file.id]"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            data-folder-file-preview
-            @error="dropPreview(file.id)"
-          />
-          <Video v-else-if="isVideo(file)" :size="mode === 'grid' ? 34 : 20" />
-          <ImageIcon v-else-if="isImage(file)" :size="mode === 'grid' ? 34 : 20" />
-          <template v-else>
-            <FileIcon :size="mode === 'grid' ? 32 : 20" />
-            <span v-if="mode === 'grid'" class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
-          </template>
-        </span>
-        <span class="folder-file-body">
-          <span class="folder-file-name">{{ file.name }}</span>
-          <span class="folder-file-meta">{{ [formatFileSize(file.sizeBytes), formatDate(file.updatedAt)].filter(Boolean).join(' · ') }}</span>
-        </span>
-      </button>
+  <!-- The folder's own files (uploaded from a device or to the Drive), as cards
+       in the folder's grid after its documents: the same card, an icon for the
+       kind, size and date, and a picture's preview in the corner. -->
+  <article
+    v-for="file in shown"
+    :key="file.id"
+    :ref="(el) => watchVisible(el as Element | null, file)"
+    class="canvas-card folder-file-card"
+    :class="{ 'has-preview': Boolean(previews[file.id]) }"
+    role="button"
+    tabindex="0"
+    :data-folder-file="file.id"
+    :title="file.name"
+    :aria-label="`${t('folderFileDownload')}: ${file.name}`"
+    @click="download(file)"
+    @keydown.enter.prevent="download(file)"
+    @keydown.space.prevent="download(file)"
+  >
+    <div class="card-title card-title-with-icon">
+      <span class="folder-file-kind" aria-hidden="true">
+        <Video v-if="isVideo(file)" :size="16" />
+        <ImageIcon v-else-if="isImage(file)" :size="16" />
+        <FileIcon v-else :size="16" />
+      </span>
+      <span class="card-title-text folder-file-name">{{ file.name }}</span>
     </div>
-    <router-link
-      v-if="hasMore"
-      class="folder-files-more"
-      :to="{ name: 'drive-folder', params: { folderId } }"
-      data-folder-files-more
-    >{{ t('folderFilesMore') }}</router-link>
-  </section>
+    <div class="card-meta folder-file-meta">
+      <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
+      <span>{{ formatFileSize(file.sizeBytes) }}</span>
+      <span class="card-date">{{ formatDate(file.updatedAt) }}</span>
+    </div>
+    <span v-if="previews[file.id]" class="folder-file-thumb" aria-hidden="true">
+      <img
+        :src="previews[file.id]"
+        alt=""
+        decoding="async"
+        data-folder-file-preview
+        @error="dropPreview(file.id)"
+      />
+    </span>
+  </article>
+  <p v-if="failed" class="folder-files-note" role="alert" data-folder-files-error>{{ t('folderFilesLoadFailed') }}</p>
+  <router-link
+    v-if="hasMore && shown.length"
+    class="folder-files-more"
+    :to="{ name: 'drive-folder', params: { folderId } }"
+    data-folder-files-more
+  >{{ t('folderFilesMore') }}</router-link>
 </template>
 
 <script setup lang="ts">
@@ -69,7 +67,6 @@ type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 
 const props = defineProps<{
   folderId: string;
-  mode: 'grid' | 'list';
   /** The dashboard's search text: files match it by name. */
   query?: string;
   /** A type or tag filter is on: files have neither, so none of them match. */
@@ -220,34 +217,3 @@ async function download(file: DriveItem) {
   }
 }
 </script>
-
-<style scoped>
-.folder-files { margin-top: 18px; }
-.folder-files-title { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 14px; font-weight: 700; color: var(--ui-text); }
-.folder-files-count { padding: 1px 8px; border-radius: 999px; background: var(--ui-surface-subtle); color: var(--ui-text-secondary); font-size: 12px; font-weight: 600; }
-.folder-files-note { margin: 0; font-size: 13px; color: var(--ui-danger-foreground); }
-.folder-files-more { display: inline-block; margin-top: 10px; font-size: 13px; color: var(--ui-accent-strong); text-decoration: none; }
-.folder-files-more:hover { text-decoration: underline; }
-
-.folder-files-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }
-.folder-file { display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--ui-border); border-radius: 14px; background: var(--ui-surface); color: var(--ui-text); font: inherit; text-align: left; cursor: pointer; transition: border-color .15s, box-shadow .15s, transform .15s; }
-.folder-file:hover { border-color: var(--ui-glass-accent-border, var(--ui-border)); box-shadow: var(--ui-shadow); }
-.folder-file:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
-.folder-file-preview { position: relative; display: grid; place-items: center; height: 116px; background: var(--ui-surface-subtle); color: var(--ui-text-secondary); }
-.folder-file-preview img { width: 100%; height: 100%; object-fit: cover; }
-.folder-file-ext { position: absolute; bottom: 10px; padding: 1px 6px; border-radius: 6px; background: var(--ui-surface); color: var(--ui-text-secondary); font-size: 10px; font-weight: 700; letter-spacing: .04em; }
-.folder-file-body { display: grid; gap: 2px; min-width: 0; padding: 9px 11px 10px; }
-.folder-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
-.folder-file-meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ui-text-secondary); }
-
-/* List: one row per file, a small square preview on the left. */
-.folder-files--list .folder-files-grid { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-.folder-files--list .folder-file { flex-direction: row; align-items: center; gap: 10px; padding: 6px; border-radius: 12px; }
-.folder-files--list .folder-file-preview { flex: none; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; }
-.folder-files--list .folder-file-body { padding: 0; }
-
-@media (max-width: 720px) {
-  .folder-files-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-  .folder-file-preview { height: 96px; }
-}
-</style>

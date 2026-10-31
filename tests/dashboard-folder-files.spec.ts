@@ -1,163 +1,221 @@
 /**
- * A dashboard folder shows its files too (uploaded to the Drive), pictures
- * with a preview. Mocked API, no backend needed. Screenshots only when
- * SHOT_DIR is set.
+ * Dashboard folders with files, the filter and sort menus, and the sidebar's
+ * folder tree. Mocked API (tests/support/fake-dashboard-server.ts), no
+ * backend needed. Screenshots only when SHOT_DIR is set.
  */
 
 import { expect, test, type Page } from '@playwright/test';
+import { openDashboardFolder, serveDashboard } from './support/fake-dashboard-server';
 
 const SHOTS = process.env.SHOT_DIR;
-const API = 'http://localhost:3001/api/**';
-const now = new Date().toISOString();
-const day = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
-// A 2×2 PNG, served as every picture's content.
-const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP4z8DwnwEIGBkZGRkZAQAkCwQBXV2gvQAAAABJRU5ErkJggg==', 'base64');
 
-const file = (id: string, name: string, mime: string, sizeBytes: number, updatedAt: string, kind = 'file') => ({
-  kind, id, name, mime, sizeBytes, sortDate: updatedAt, updatedAt, ownerId: 'user-1', folderId: 'folder-a',
-});
-const MEDIA = [
-  file('f-sea', 'Море.jpg', 'image/jpeg', 2_400_000, day(1), 'photo'),
-  file('f-cat', 'Кот на окне.png', 'image/png', 900_000, day(3), 'photo'),
-  file('f-huge', 'Панорама.png', 'image/png', 40_000_000, day(5), 'photo'),
-  file('f-clip', 'Отпуск.mp4', 'video/mp4', 80_000_000, day(2), 'video'),
-];
-const FILES = [
-  file('f-pdf', 'Договор аренды.pdf', 'application/pdf', 350_000, day(4)),
-  file('f-zip', 'backup-2026-10.zip', 'application/zip', 12_000_000, day(6)),
-];
-
-async function openFolder(page: Page, options: { width?: number; list?: boolean; driveMissing?: boolean } = {}) {
+async function openDashboard(page: Page, options: Parameters<typeof serveDashboard>[1] & { width?: number } = {}) {
   await page.setViewportSize({ width: options.width ?? 1280, height: 860 });
-  await page.addInitScript((list) => {
-    localStorage.setItem('qcanva:theme:v1', 'light');
-    localStorage.setItem('token', 'dash-test-token');
-    localStorage.setItem('currentUser', JSON.stringify({ id: 'user-1', email: 'me@example.com', name: 'Me', role: 'user' }));
-    if (list) localStorage.setItem('qcanva:dashboard-recents-view:v1', 'list');
-  }, Boolean(options.list));
-  const linkRequests: string[] = [];
-  const downloads: string[] = [];
-  await page.route(API, async (route) => {
-    const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^\/api/, '');
-    const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
-    if (path === '/canvas') return json({ own: [], shared: [], public: [], welcome: null });
-    if (path === '/resource-folders') {
-      return json({
-        own: [{ id: 'folder-a', name: 'Поездки', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], textDocuments: [{ id: 'doc-1', title: 'План поездки', ownerId: 'user-1', visibility: 'private', createdAt: now, updatedAt: now, folderId: 'folder-a' }] }],
-        shared: [],
-      });
-    }
-    if (path === '/text-documents') return json({ documents: [] });
-    if (path === '/text-documents/public' || path === '/html-documents/public') return json({ documents: [] });
-    if (path === '/html-documents') return json({ groups: [], documents: [] });
-    if (path === '/interactive-templates') return json({ templates: [] });
-    if (path === '/access-requests/incoming') return json([]);
-    if (path === '/tags') return json({ tags: [] });
-    if (path === '/drive/folders/folder-a/items') {
-      if (options.driveMissing) return json({ message: 'Not found' }, 404);
-      const slice = url.searchParams.get('slice');
-      return json({ items: slice === 'media' ? MEDIA : slice === 'files' ? FILES : [], nextCursor: null });
-    }
-    const link = /^\/drive\/files\/([^/]+)\/download-link$/.exec(path);
-    if (link) {
-      linkRequests.push(link[1]!);
-      return json({ url: `/api/test-bytes/${link[1]}`, expiresAt: now });
-    }
-    if (path.startsWith('/test-bytes/')) {
-      downloads.push(path.slice('/test-bytes/'.length));
-      return route.fulfill({ status: 200, contentType: 'image/png', body: PNG });
-    }
-    return json({});
-  });
+  const server = await serveDashboard(page, options);
   await page.goto('/dashboard');
   await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
   await page.waitForLoadState('networkidle');
-  // The sidebar is a drawer on a phone: open the folder the way the sidebar does.
-  await page.evaluate(() => (document.querySelector('.app-layout') as any).__vueParentComponent.setupState.selectFolder('folder-a'));
-  await expect(page.locator('[data-dashboard-view="folder"]')).toBeVisible();
-  return { linkRequests, downloads };
+  return server;
 }
 
-const files = (page: Page) => page.locator('[data-folder-files] [data-folder-file]');
+async function openFolder(page: Page, options: Parameters<typeof openDashboard>[1] = {}) {
+  const server = await openDashboard(page, options);
+  await openDashboardFolder(page, 'folder-a');
+  await expect(page.locator('[data-dashboard-view="folder"]')).toBeVisible();
+  return server;
+}
 
-test('a folder lists its files after its documents, newest first, with previews for pictures', async ({ page }) => {
-  const { linkRequests } = await openFolder(page);
-  await expect(files(page)).toHaveCount(6);
-  expect(await page.locator('[data-folder-files] .folder-file-name').allInnerTexts())
-    .toEqual(['Море.jpg', 'Отпуск.mp4', 'Кот на окне.png', 'Договор аренды.pdf', 'Панорама.png', 'backup-2026-10.zip']);
-  await expect(page.locator('[data-folder-files] .folder-files-count')).toHaveText('6');
-  // The documents come first, the files after them.
-  const doc = (await page.locator('.dash-grid').getByText('План поездки').boundingBox())!;
-  const firstFile = (await files(page).first().boundingBox())!;
-  expect(firstFile.y).toBeGreaterThan(doc.y);
-  // Pictures under the size limit get a preview; the large one, the video and the rest get an icon.
-  await expect(page.locator('[data-folder-file="f-sea"] img[data-folder-file-preview]')).toBeVisible();
-  await expect(page.locator('[data-folder-file="f-cat"] img[data-folder-file-preview]')).toBeVisible();
-  await expect.poll(() => page.locator('[data-folder-file="f-sea"] img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
-  for (const id of ['f-huge', 'f-clip', 'f-pdf', 'f-zip']) {
-    await expect(page.locator(`[data-folder-file="${id}"] img`)).toHaveCount(0);
-    await expect(page.locator(`[data-folder-file="${id}"] svg`)).toBeVisible();
-  }
-  expect(new Set(linkRequests)).toEqual(new Set(['f-sea', 'f-cat']));
-  await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-ext')).toHaveText('PDF');
-  await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-meta')).toContainText('341.8 KB');
-  await expect(page.locator('.folder-manager-count')).toContainText('/ 6 files');
-  if (SHOTS) {
-    await page.evaluate(() => document.fonts.ready);
-    await page.screenshot({ path: `${SHOTS}/folder-files-grid.png`, fullPage: false });
-  }
-});
+const files = (page: Page) => page.locator('[data-folder-file]');
+const desktop = (page: Page, what: 'filter' | 'sort') =>
+  page.locator(`.dashboard-toolbar-desktop[data-${what}-menu-trigger], .dashboard-toolbar-desktop [data-${what}-menu-trigger]`).first();
+const phone = (page: Page, what: 'filter' | 'sort') =>
+  page.locator(`.dashboard-toolbar-mobile[data-${what}-menu-trigger], .dashboard-toolbar-mobile [data-${what}-menu-trigger]`).first();
 
-test('a click downloads the file', async ({ page }) => {
-  const { downloads } = await openFolder(page);
-  await page.locator('[data-folder-file="f-pdf"]').click();
-  await expect.poll(() => downloads.includes('f-pdf')).toBe(true);
-});
-
-test('search matches file names, and a type filter hides the files', async ({ page }) => {
-  await openFolder(page);
-  await expect(files(page)).toHaveCount(6);
-  await page.evaluate(() => { (document.querySelector('.app-layout') as any).__vueParentComponent.setupState.searchQuery = 'дог'; });
-  await expect(files(page)).toHaveCount(1);
-  await expect(files(page).first()).toContainText('Договор аренды.pdf');
-  await page.evaluate(() => {
-    const setup = (document.querySelector('.app-layout') as any).__vueParentComponent.setupState;
-    setup.searchQuery = '';
-    setup.contentFilter = 'canvas';
-  });
-  await expect(page.locator('[data-folder-files]')).toHaveCount(0);
-});
-
-test('list view: one row per file with a small preview', async ({ page }) => {
-  await openFolder(page, { list: true });
-  await expect(page.locator('[data-folder-files]')).toHaveClass(/folder-files--list/);
-  const rows = await files(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height));
-  for (const height of rows) expect(height).toBeLessThan(64);
-  const preview = (await page.locator('[data-folder-file="f-sea"] .folder-file-preview').boundingBox())!;
-  expect(preview.width).toBeLessThanOrEqual(41);
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/folder-files-list.png` });
-});
-
-for (const width of [320, 390]) {
-  test(`on a phone the files fit in two columns (${width}px)`, async ({ page }) => {
-    await openFolder(page, { width });
+test.describe('a folder\'s files', () => {
+  test('come after the documents as the same cards, newest first, pictures with a preview', async ({ page }) => {
+    const { linkRequests } = await openFolder(page);
     await expect(files(page)).toHaveCount(6);
+    expect(await page.locator('[data-folder-file] .folder-file-name').allInnerTexts())
+      .toEqual(['Море.jpg', 'Отпуск.mp4', 'Кот на окне.png', 'Договор аренды.pdf', 'Панорама.png', 'backup-2026-10.zip']);
+    // The same glass card as a document, in the same grid, after it.
+    await expect(files(page).first()).toHaveClass(/canvas-card/);
+    const grid = page.locator('.folder-manager-body .dash-grid').last();
+    await expect(grid.locator('[data-folder-file]')).toHaveCount(6);
+    const doc = (await grid.getByText('План поездки').boundingBox())!;
+    const firstFile = (await files(page).first().boundingBox())!;
+    expect(firstFile.y > doc.y || firstFile.x > doc.x).toBe(true);
+    // Pictures under the limit get a preview inside the card; the rest an icon.
+    for (const id of ['f-sea', 'f-cat']) {
+      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb`)).toBeVisible();
+      const card = (await page.locator(`[data-folder-file="${id}"]`).boundingBox())!;
+      const thumb = (await page.locator(`[data-folder-file="${id}"] .folder-file-thumb`).boundingBox())!;
+      expect(thumb.x).toBeGreaterThan(card.x);
+      expect(thumb.x + thumb.width).toBeLessThanOrEqual(card.x + card.width);
+    }
+    await expect.poll(() => page.locator('[data-folder-file="f-sea"] img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
+    for (const id of ['f-huge', 'f-clip', 'f-pdf', 'f-zip']) {
+      await expect(page.locator(`[data-folder-file="${id}"] img`)).toHaveCount(0);
+      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-kind svg`)).toBeVisible();
+    }
+    expect(new Set(linkRequests)).toEqual(new Set(['f-sea', 'f-cat']));
+    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-ext')).toHaveText('PDF');
+    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-meta')).toContainText('341.8 KB');
+    await expect(page.locator('.folder-manager-count')).toContainText('/ 6 files');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/folder-grid.png` });
+  });
+
+  test('a click downloads the file', async ({ page }) => {
+    const { downloads } = await openFolder(page);
+    await page.locator('[data-folder-file="f-pdf"]').click();
+    await expect.poll(() => downloads.includes('f-pdf')).toBe(true);
+  });
+
+  test('list view: one row per file, the preview on the left', async ({ page }) => {
+    await openFolder(page, { list: true });
+    await expect(files(page)).toHaveCount(6);
+    await expect(page.locator('[data-folder-file="f-sea"] .folder-file-thumb')).toBeVisible();
+    for (const height of await files(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) {
+      expect(height).toBeLessThan(64);
+    }
+    const row = (await page.locator('[data-folder-file="f-sea"]').boundingBox())!;
+    const thumb = (await page.locator('[data-folder-file="f-sea"] .folder-file-thumb').boundingBox())!;
+    expect(thumb.width).toBeLessThanOrEqual(33);
+    expect(thumb.x - row.x).toBeLessThan(24);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/folder-list.png` });
+  });
+
+  test('a hub without the Drive shows the documents, no files and no error', async ({ page }) => {
+    await openFolder(page, { driveMissing: true });
+    await expect(page.locator('.folder-manager-body').getByText('План поездки')).toBeVisible();
+    await expect(files(page)).toHaveCount(0);
+    await expect(page.locator('[data-folder-files-error]')).toHaveCount(0);
+  });
+});
+
+test.describe('folder counts', () => {
+  test('count the files too: on the home tiles and on a subfolder', async ({ page }) => {
+    await openDashboard(page);
+    // "Поездки": a canvas and a document, plus six files.
+    await expect(page.locator('[data-recent-folder-tile="folder-a"] .subfolder-card-count')).toHaveText('8');
+    await expect(page.locator('[data-recent-folder-tile="folder-b"] .subfolder-card-count')).toHaveText('2');
+    // A tag filter leaves the files out: they carry no tags.
+    await desktop(page, 'filter').click();
+    await page.locator('[data-filter-tag="отпуск"]').click();
+    await expect(page.locator('[data-recent-folder-tile="folder-a"] .subfolder-card-count')).toHaveText('2');
+    await page.locator('[data-filter-reset]').click();
+    // A subfolder that holds only files is not "Empty".
+    await openDashboardFolder(page, 'folder-a');
+    await expect(page.locator('.subfolder-card', { hasText: 'Фото' }).locator('.subfolder-card-count')).toHaveText('2');
+  });
+});
+
+test.describe('filters and sort', () => {
+  test('several types at once, Files among them in a folder; a badge counts what is on', async ({ page }) => {
+    await openFolder(page);
+    await expect(files(page)).toHaveCount(6);
+    await desktop(page, 'filter').click();
+    const menu = page.locator('[data-filter-menu]');
+    await expect(menu).toBeVisible();
+    await expect(menu.locator('[data-filter-type]')).toHaveCount(5);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/filter-menu.png` });
+
+    const body = page.locator('.folder-manager-body');
+    await menu.locator('[data-filter-type="canvas"] input').check();
+    await menu.locator('[data-filter-type="file"] input').check();
+    await expect(page.locator('.dashboard-toolbar-desktop [data-filter-count], .dashboard-toolbar-desktop[data-filter-count]').first()).toHaveText('2');
+    await expect(body.getByText('Маршрут')).toBeVisible();
+    await expect(body.getByText('План поездки')).toHaveCount(0);
+    await expect(files(page)).toHaveCount(6);
+
+    // Files alone.
+    await menu.locator('[data-filter-type="canvas"] input').uncheck();
+    await expect(body.getByText('Маршрут')).toHaveCount(0);
+    await expect(files(page)).toHaveCount(6);
+    // Without Files, the files go.
+    await menu.locator('[data-filter-type="file"] input').uncheck();
+    await menu.locator('[data-filter-type="text-document"] input').check();
+    await expect(files(page)).toHaveCount(0);
+    await expect(body.getByText('План поездки')).toBeVisible();
+
+    // A click elsewhere closes the menu; the filter stays.
+    await page.mouse.click(700, 820);
+    await expect(menu).toHaveCount(0);
+    await expect(page.locator('.dashboard-toolbar-desktop [data-filter-count], .dashboard-toolbar-desktop[data-filter-count]').first()).toHaveText('1');
+  });
+
+  test('the order from the sort icon: names A to Z puts the files in that order', async ({ page }) => {
+    await openFolder(page);
+    await expect(files(page)).toHaveCount(6);
+    await desktop(page, 'sort').click();
+    await expect(page.locator('[data-sort-menu]')).toBeVisible();
+    await page.locator('[data-sort-option="title-asc"]').click();
+    await expect(page.locator('[data-sort-menu]')).toHaveCount(0);
+    await expect.poll(() => page.locator('[data-folder-file] .folder-file-name').allInnerTexts())
+      .toEqual(['backup-2026-10.zip', 'Договор аренды.pdf', 'Кот на окне.png', 'Море.jpg', 'Отпуск.mp4', 'Панорама.png']);
+  });
+
+  for (const width of [320, 390]) {
+    test(`on a phone both icons sit beside the search, and the menus open as sheets in the screen (${width}px)`, async ({ page }) => {
+      await openDashboard(page, { width });
+      for (const what of ['filter', 'sort'] as const) {
+        const box = (await phone(page, what).boundingBox())!;
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(width);
+      }
+      await phone(page, 'filter').click();
+      const sheet = page.locator('[data-filter-menu]');
+      await expect(sheet).toBeVisible();
+      const box = (await sheet.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(width);
+      expect(box.y + box.height).toBeLessThanOrEqual(860);
+      expect(box.y + box.height).toBeGreaterThan(860 - 40);
+      if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-filter-${width}.png` });
+      await sheet.locator('[data-filter-tag="работа"]').click();
+      await expect(page.locator('.dashboard-toolbar-mobile [data-filter-count], .dashboard-toolbar-mobile[data-filter-count]').first()).toHaveText('1');
+      await page.mouse.click(width / 2, 120);
+      await expect(sheet).toHaveCount(0);
+
+      await phone(page, 'sort').click();
+      const sortMenu = page.locator('[data-sort-menu]');
+      await expect(sortMenu).toBeVisible();
+      const sortBox = (await sortMenu.boundingBox())!;
+      expect(sortBox.y + sortBox.height).toBeLessThanOrEqual(860);
+      expect(sortBox.x + sortBox.width).toBeLessThanOrEqual(width);
+    });
+  }
+
+  test('on a phone the files fit two columns, names readable beside a preview', async ({ page }) => {
+    await openFolder(page, { width: 390 });
+    await expect(files(page)).toHaveCount(6);
+    await expect(page.locator('[data-folder-file="f-sea"] .folder-file-thumb')).toBeVisible();
     const boxes = await files(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right })));
     for (const box of boxes) {
       expect(box.left).toBeGreaterThanOrEqual(0);
-      expect(box.right).toBeLessThanOrEqual(width);
+      expect(box.right).toBeLessThanOrEqual(390);
     }
     expect(new Set(boxes.map((box) => Math.round(box.left))).size).toBe(2);
-    if (SHOTS) {
-      await files(page).first().scrollIntoViewIfNeeded();
-      await page.screenshot({ path: `${SHOTS}/folder-files-${width}.png` });
-    }
+    const name = page.locator('[data-folder-file="f-sea"] .folder-file-name');
+    expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-folder.png`, fullPage: true });
   });
-}
+});
 
-test('a hub without the Drive shows no files section and no error', async ({ page }) => {
-  await openFolder(page, { driveMissing: true });
-  await expect(page.locator('.dash-grid').getByText('План поездки')).toBeVisible();
-  await expect(page.locator('[data-folder-files]')).toHaveCount(0);
+test('the sidebar draws folders as Q Space does: plain rows, a green folder, a soft highlight', async ({ page }) => {
+  await openFolder(page);
+  const row = page.locator('[data-dashboard-folder="folder-a"]');
+  const style = await row.evaluate((el) => {
+    const s = getComputedStyle(el);
+    const icon = getComputedStyle(el.querySelector('.dashboard-sidebar-icon')!);
+    return { height: el.getBoundingClientRect().height, borderTop: s.borderTopColor, shadow: s.boxShadow, iconColor: icon.color, color: s.color, weight: s.fontWeight };
+  });
+  expect(style.height).toBeLessThanOrEqual(36);
+  expect(style.borderTop).toBe('rgba(0, 0, 0, 0)');
+  expect(style.shadow).toBe('none');
+  expect(Number(style.weight)).toBeGreaterThanOrEqual(600);
+  const other = page.locator('[data-dashboard-folder="folder-b"]');
+  expect(await other.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+  // The folder icon is the accent colour, not the name's.
+  expect(style.iconColor).not.toBe(style.color);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/sidebar.png`, clip: { x: 0, y: 0, width: 260, height: 480 } });
 });

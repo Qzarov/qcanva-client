@@ -820,20 +820,27 @@ describe('dashboard sidebar navigation', () => {
     expect(folderIds()).toEqual(before);
   });
 
-  it('opens one sort popover per sort button on the feed', async () => {
-    vi.mocked(textDocuments.publicList).mockResolvedValueOnce({
-      documents: [{ id: 'doc-theirs', title: 'Their public doc', ownerId: 'user-9', visibility: 'public' }],
-    } as never);
+  it('sorts from one icon in the toolbar: its menu picks the order, one menu open at a time', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    const vm = wrapper.vm as any;
+    // The sections no longer carry sort buttons of their own.
+    expect(wrapper.findAll('.dash-sort-button-mobile')).toHaveLength(0);
+    expect(wrapper.find('.dash-sort-select').exists()).toBe(false);
 
-    await wrapper.get('[data-feed-section="recent"] .dash-sort-button-mobile').trigger('click');
-    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
-    expect(wrapper.find('[data-feed-section="recent"] .mobile-sort-popover').exists()).toBe(true);
+    const desktopSort = wrapper.get('.dashboard-toolbar-desktop[data-sort-menu-trigger], .dashboard-toolbar-desktop [data-sort-menu-trigger]');
+    await desktopSort.trigger('click');
+    expect(wrapper.findAll('[data-sort-menu]')).toHaveLength(1);
+    expect(wrapper.get('[data-sort-option="updated-desc"]').attributes('aria-checked')).toBe('true');
+    await wrapper.get('[data-sort-option="title-asc"]').trigger('click');
+    expect(vm.sortMode).toBe('title-asc');
+    expect(wrapper.find('[data-sort-menu]').exists()).toBe(false);
 
-    await wrapper.get('[data-section="public"] .dash-sort-button-mobile').trigger('click');
-    expect(wrapper.findAll('.mobile-sort-popover')).toHaveLength(1);
-    expect(wrapper.find('[data-section="public"] .mobile-sort-popover').exists()).toBe(true);
+    // The filter menu and the sort menu do not stay open together.
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    await desktopSort.trigger('click');
+    expect(wrapper.find('[data-filter-menu]').exists()).toBe(false);
+    expect(wrapper.find('[data-sort-menu]').exists()).toBe(true);
   });
 
   it('keeps Public and its Mine/Others switch in the feed when "Mine" has nothing', async () => {
@@ -941,14 +948,16 @@ describe('dashboard sidebar navigation', () => {
     vi.mocked(textDocuments.publicList).mockResolvedValue({ documents: [] } as never);
   });
 
-  it('puts the Public sort control on the Public heading row', async () => {
+  it('keeps the Public heading to its title and switch: the order is the toolbar\'s', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
     await wrapper.get('[data-dashboard-section="public"]').trigger('click');
     await flushPromises();
     const head = wrapper.get('[data-section="public"] .dash-section-head');
     expect(head.find('h2').exists()).toBe(true);
-    expect(head.find('.dash-sort-button-mobile').exists()).toBe(true);
+    expect(head.find('[data-sort-menu-trigger]').exists()).toBe(false);
+    // One sort icon for a computer and one for a phone's header, nothing else.
+    expect(wrapper.findAll('[data-sort-menu-trigger]')).toHaveLength(2);
   });
 
   it('filters interactive templates by search and resource type', async () => {
@@ -2436,7 +2445,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Both Tags', 'One Tag']);
   });
 
-  it('shows every tag as its own chip on mobile too, selected or not', async () => {
+  it('lists every tag in the filter menu, selected or not, and toggles them there', async () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [
         { id: 'r-canvas-a', title: 'A', tags: [tagFixture('architecture')] },
@@ -2448,72 +2457,51 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
+    // No row of tag chips on the page itself any more.
+    expect(wrapper.find('.tag-filter-list-desktop').exists()).toBe(false);
+    expect(wrapper.find('.tag-filter-list-mobile').exists()).toBe(false);
 
-    // Nothing selected yet - both tags must still appear as chips in the
-    // mobile row, not just an "all" chip (front task: mobile used to
-    // collapse every unselected tag into a single "+N", showing none of
-    // them individually until that sheet was opened). jsdom measures every
-    // chip's width as 0 (no real layout engine), which is exactly the
-    // "haven't measured yet" case computeVisibleTagFitCount treats as
-    // "show everything" rather than flashing an empty row - a real,
-    // deliberate fallback, not a jsdom workaround (see tag-fit.ts).
-    expect(vm.selectedTags).toEqual([]);
-    const mobileChipText = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter').map((el) => el.text());
-    expect(mobileChipText).toContain('#architecture');
-    expect(mobileChipText).toContain('#dev');
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    const chips = () => wrapper.findAll('[data-filter-menu] [data-filter-tag]');
+    expect(chips().map((el) => el.text())).toEqual(['#architecture', '#dev']);
+    await wrapper.get('[data-filter-tag="dev"]').trigger('click');
+    expect(vm.selectedTags).toEqual(['dev']);
+    expect(wrapper.get('[data-filter-tag="dev"]').attributes('aria-pressed')).toBe('true');
+    // Both still listed: a selected tag does not hide the others.
+    expect(chips()).toHaveLength(2);
+    expect(wrapper.get('.dashboard-toolbar-desktop [data-filter-count], .dashboard-toolbar-desktop[data-filter-count]').text()).toBe('1');
   });
 
-  it('shows only as many tags as fit in one line plus a +N, once real widths are known', async () => {
-    vi.mocked(canvas.list).mockResolvedValueOnce({
-      own: [
-        { id: 'r-canvas-a', title: 'A', tags: [tagFixture('alpha')] },
-        { id: 'r-canvas-b', title: 'B', tags: [tagFixture('bravo')] },
-        { id: 'r-canvas-c', title: 'C', tags: [tagFixture('charlie')] },
-        { id: 'r-canvas-d', title: 'D', tags: [tagFixture('delta')] },
-      ],
-      shared: [], public: [], welcome: null,
-    } as never);
-
+  it('filters by several types at once from the filter menu, with Files only in a folder, and resets', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
+    const vm = wrapper.vm as any;
+    expect(wrapper.find('.content-type-tabs').exists()).toBe(false);
 
-    // Simulate a real, narrow layout: every chip measures 60px, the visible
-    // row is 220px wide - room for the "All" chip (60) plus about two tag
-    // chips (60 each) before the "+N" badge (60) is needed, matching
-    // computeVisibleTagFitCount's own already-unit-tested arithmetic.
-    const visibleRow = wrapper.find('.tag-filter-list-mobile:not(.tag-filter-measure)');
-    Object.defineProperty(visibleRow.element, 'clientWidth', { value: 220, configurable: true });
-    for (const el of wrapper.findAll('.tag-filter-measure .tag-filter')) {
-      el.element.getBoundingClientRect = () => ({ width: 60, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() { return this; } });
-    }
-    (wrapper.vm as any).recomputeMobileTagFit();
+    const trigger = () => wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]');
+    await trigger().trigger('click');
+    const types = () => wrapper.findAll('[data-filter-menu] [data-filter-type]').map((el) => el.attributes('data-filter-type'));
+    expect(types()).toEqual(['canvas', 'html-document', 'text-document', 'interactive-template']);
+
+    await wrapper.get('[data-filter-type="canvas"] input').setValue(true);
+    await wrapper.get('[data-filter-type="text-document"] input').setValue(true);
+    expect(vm.contentTypes).toEqual(['canvas', 'text-document']);
+    expect(vm.contentFilter).toBe('mixed');
+    expect(vm.hasActiveFilter).toBe(true);
+
+    await wrapper.get('[data-filter-reset]').trigger('click');
+    expect(vm.contentTypes).toEqual([]);
+    expect(vm.contentFilter).toBe('all');
+
+    // The single-value view still sets one type, as older callers do.
+    vm.contentFilter = 'html-document';
+    expect(vm.contentTypes).toEqual(['html-document']);
+
+    // In a folder the menu offers its files too.
+    vm.selectFolder(vm.sidebarFolders[0].id);
     await flushPromises();
-
-    const visibleChips = wrapper.findAll('.tag-filter-list-mobile:not(.tag-filter-measure) .tag-filter');
-    const visibleTagChips = visibleChips.filter((el) => el.text().startsWith('#'));
-    const overflowBadge = visibleChips.find((el) => el.text().startsWith('+'));
-    expect(visibleTagChips.length).toBeLessThan(4);
-    expect(overflowBadge).toBeTruthy();
-    expect(overflowBadge?.text()).toBe(`+${4 - visibleTagChips.length}`);
-  });
-
-  it('renders the type filters as exactly five equal-width buttons in one row', async () => {
-    // The actual viewport-fit behavior (flex:1;min-width:0;width:100%, see
-    // style.css) is CSS-only and unverifiable in jsdom (no real layout
-    // engine) - confirmed live instead, at 320/360/390/430px, with zero
-    // page-level horizontal overflow at every width. What's checked here,
-    // reliably, is the structural shape those CSS rules depend on: exactly
-    // four buttons, direct children of .content-type-tabs, one per
-    // contentFilter value - a regression guard against a future change
-    // silently adding/removing a tab (breaking the "four EQUAL columns"
-    // assumption) or nesting them a level deeper (breaking the CSS
-    // selector's ` > button` reach, if it depends on that).
-    const wrapper = mountDashboard();
-    await flushPromises();
-
-    const tabs = wrapper.findAll('.content-type-tabs > button');
-    expect(tabs).toHaveLength(5);
-    expect(tabs.map((el) => el.text())).toEqual(['All', 'Canvas', 'HTML', 'Docs', 'Templates']);
+    if (!wrapper.find('[data-filter-menu]').exists()) await trigger().trigger('click');
+    expect(types()).toContain('file');
   });
 
   it('sorts Recent by the shared sortMode - title and updated, both directions', async () => {
@@ -2811,7 +2799,8 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     // The tag exists (allTagNames), and is rendered as a selectable chip -
     // this is the bug: it used to be silently dropped.
     expect(vm.allTagNames).toContain('nicheTag');
-    expect(wrapper.findAll('.tag-filter-list-desktop .tag-filter').some((el) => el.text() === '#nicheTag')).toBe(true);
+    await wrapper.get('.dashboard-toolbar-desktop [data-filter-menu-trigger], .dashboard-toolbar-desktop[data-filter-menu-trigger]').trigger('click');
+    expect(wrapper.findAll('[data-filter-menu] [data-filter-tag]').some((el) => el.text() === '#nicheTag')).toBe(true);
 
     // Baseline: Recent shows the one item that's actually in its history.
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Other Item']);

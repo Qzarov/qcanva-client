@@ -69,6 +69,27 @@
           class="dash-search dash-search-header-mobile"
           :placeholder="folderSearchPlaceholder"
         />
+        <DashboardFilterMenu
+          class="dashboard-toolbar-mobile"
+          sheet
+          :open="openControlMenu === 'filter:mobile'"
+          :types="contentTypes"
+          :tags="allTagNames"
+          :selected-tags="selectedTags"
+          :with-files="activeSection.kind === 'folder'"
+          @toggle="toggleToolbarMenu('filter:mobile')"
+          @update:types="contentTypes = $event"
+          @toggle-tag="toggleSelectedTag"
+          @reset="clearTypeAndTagFilters"
+        />
+        <DashboardSortMenu
+          class="dashboard-toolbar-mobile"
+          sheet
+          :open="openControlMenu === 'sort:mobile'"
+          :mode="sortMode"
+          @toggle="toggleToolbarMenu('sort:mobile')"
+          @select="selectSortMode"
+        />
         <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
         <TabsButton class="dashboard-tabs-button" />
       </div>
@@ -146,73 +167,26 @@
             </div>
           </div>
       <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-      <select v-model="sortMode" class="dash-sort-select dash-sort-select-desktop">
-        <option value="updated-desc">{{ t('newest') }}</option>
-        <option value="updated-asc">{{ t('oldest') }}</option>
-        <option value="title-asc">{{ t('titleAsc') }}</option>
-        <option value="title-desc">{{ t('titleDesc') }}</option>
-      </select>
-      <div class="content-type-tabs">
-        <button :class="{ active: contentFilter === 'all' }" @click.stop="contentFilter = 'all'">{{ t('all') }}</button>
-        <button :class="{ active: contentFilter === 'canvas' }" @click.stop="contentFilter = 'canvas'">{{ t('canvas') }}</button>
-        <button :class="{ active: contentFilter === 'html-document' }" @click.stop="contentFilter = 'html-document'">HTML</button>
-        <button :class="{ active: contentFilter === 'text-document' }" @click.stop="contentFilter = 'text-document'">{{ t('docs') }}</button>
-        <button :class="{ active: contentFilter === 'interactive-template' }" @click.stop="contentFilter = 'interactive-template'">{{ t('templatesFilter') }}</button>
-      </div>
-      <div v-if="allTagNames.length" ref="tagFilterList" class="tag-filter-list tag-filter-list-desktop">
-        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
-        <button
-          v-for="tag in allTagNames"
-          :key="tag"
-          class="tag-filter"
-          :class="{ active: isTagSelected(tag) }"
-          @click.stop="toggleSelectedTag(tag)"
-        >#{{ tag }}</button>
-        <span v-if="hasTagOverflow" class="tag-filter-scroll-hint" aria-hidden="true">›</span>
-      </div>
-      <!-- Mobile: shows as many tags as actually fit in one line (selected
-           tags first), plus a "+N" for the rest - never a horizontal
-           scroll, never a hardcoded chip count. See src/dashboard/tag-fit.ts
-           for the actual fit math; recomputeMobileTagFit measures real
-           pixel widths off the hidden row below and feeds them in, re-run
-           on resize and whenever the tag list/selection changes. -->
-      <div v-if="allTagNames.length" ref="tagFilterMobileEl" class="tag-filter-list-mobile">
-        <button class="tag-filter" :class="{ active: selectedTags.length === 0 }" @click.stop="clearSelectedTags">{{ t('all') }}</button>
-        <button
-          v-for="tag in visibleMobileTags"
-          :key="tag"
-          class="tag-filter"
-          :class="{ active: isTagSelected(tag) }"
-          @click.stop="toggleSelectedTag(tag)"
-        >#{{ tag }}</button>
-        <button
-          v-if="mobileTagOverflowCount > 0"
-          type="button"
-          class="tag-filter tag-filter-more"
-          @click.stop="openTagSheet"
-        >+{{ mobileTagOverflowCount }}</button>
-        <button
-          v-if="selectedTags.length"
-          type="button"
-          class="tag-filter tag-filter-clear"
-          :title="t('clearTagFilter')"
-          :aria-label="t('clearTagFilter')"
-          @click.stop="clearSelectedTags"
-        ><X :size="13" aria-hidden="true" /></button>
-      </div>
-      <!-- Measurement-only twin of the row above: renders every possible
-           chip (off-screen, never interactive) purely so recomputeMobileTagFit
-           can read real widths for chips the visible row above isn't
-           currently rendering - the classic "shadow measurement row"
-           pattern this kind of single-line-plus-overflow layout needs,
-           since you can't measure a chip's width without laying it out
-           somewhere first. -->
-      <div v-if="allTagNames.length" ref="tagMeasureEl" class="tag-filter-list-mobile tag-filter-measure" aria-hidden="true">
-        <button ref="tagMeasureAllEl" class="tag-filter">{{ t('all') }}</button>
-        <button v-for="tag in tagsInPriorityOrder" :key="`measure-${tag}`" class="tag-filter">#{{ tag }}</button>
-        <button ref="tagMeasureMoreEl" class="tag-filter tag-filter-more">+{{ tagsInPriorityOrder.length }}</button>
-        <button ref="tagMeasureClearEl" class="tag-filter tag-filter-clear"><X :size="13" aria-hidden="true" /></button>
-      </div>
+      <!-- Types, tags and the order: each behind its own icon. -->
+      <DashboardFilterMenu
+        class="dashboard-toolbar-desktop"
+        :open="openControlMenu === 'filter:desktop'"
+        :types="contentTypes"
+        :tags="allTagNames"
+        :selected-tags="selectedTags"
+        :with-files="activeSection.kind === 'folder'"
+        @toggle="toggleToolbarMenu('filter:desktop')"
+        @update:types="contentTypes = $event"
+        @toggle-tag="toggleSelectedTag"
+        @reset="clearTypeAndTagFilters"
+      />
+      <DashboardSortMenu
+        class="dashboard-toolbar-desktop"
+        :open="openControlMenu === 'sort:desktop'"
+        :mode="sortMode"
+        @toggle="toggleToolbarMenu('sort:desktop')"
+        @select="selectSortMode"
+      />
     </div>
 
     <!-- Floating (style.css), never in the page flow: the list must not
@@ -231,29 +205,6 @@
       <div class="dash-section-head dashboard-recent-head">
         <h2>{{ t('recents') }}</h2>
         <div class="dashboard-recent-head-controls">
-          <div class="control-menu dash-sort-menu-mobile">
-            <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('recent')">
-              <ArrowUpDown :size="15" aria-hidden="true" />
-            </button>
-            <div v-if="openControlMenu === 'mobile-sort:recent'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('newest') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('oldest') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('titleAsc') }}</span>
-              </button>
-              <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                <span>{{ t('titleDesc') }}</span>
-              </button>
-            </div>
-          </div>
           <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
         </div>
       </div>
@@ -383,30 +334,6 @@
                 </span>
               </div>
               <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
-              <!-- Sort button in folder header -->
-              <div class="control-menu dash-sort-menu-mobile folder-header-sort">
-                <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('folder')">
-                  <ArrowUpDown :size="15" aria-hidden="true" />
-                </button>
-                <div v-if="openControlMenu === 'mobile-sort:folder'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                    <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('newest') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                    <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('oldest') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                    <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('titleAsc') }}</span>
-                  </button>
-                  <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                    <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                    <span>{{ t('titleDesc') }}</span>
-                  </button>
-                </div>
-              </div>
               <!-- Веб: «+» слева от «⋯» — что создать прямо в этой папке. На мобильном скрыт:
                    там создаёт плавающая «+», она сама подставляет открытую папку. -->
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
@@ -632,15 +559,14 @@
                     </div>
                   </article>
                   </template>
+                  <DashboardFolderFiles
+                    :folder-id="activeFolder.id"
+                    :query="searchQuery"
+                    :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
+                    :sort-mode="sortMode"
+                    @count="activeFolderFileCount = $event"
+                  />
                 </div>
-                <DashboardFolderFiles
-                  :folder-id="activeFolder.id"
-                  :mode="recentViewMode"
-                  :query="searchQuery"
-                  :filtered-out="contentFilter !== 'all' || selectedTags.length > 0"
-                  :sort-mode="sortMode"
-                  @count="activeFolderFileCount = $event"
-                />
               </div>
           </div>
         </section>
@@ -809,29 +735,6 @@
                 :data-public-owner-filter="option"
                 @click.stop="publicOwnerFilter = option"
               >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
-            </div>
-            <div class="control-menu dash-sort-menu-mobile">
-              <button type="button" class="btn-ghost btn-sm dash-sort-button-mobile" :aria-label="t('sortBy')" :title="t('sortBy')" @click.stop="toggleMobileSortMenu('public')">
-                <ArrowUpDown :size="15" aria-hidden="true" />
-              </button>
-              <div v-if="openControlMenu === 'mobile-sort:public'" class="mobile-action-popover mobile-sort-popover" @click.stop>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-desc' }" @click="selectSortMode('updated-desc')">
-                  <Check v-if="sortMode === 'updated-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('newest') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'updated-asc' }" @click="selectSortMode('updated-asc')">
-                  <Check v-if="sortMode === 'updated-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('oldest') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-asc' }" @click="selectSortMode('title-asc')">
-                  <Check v-if="sortMode === 'title-asc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('titleAsc') }}</span>
-                </button>
-                <button type="button" class="card-menu-item mobile-sort-option" :class="{ active: sortMode === 'title-desc' }" @click="selectSortMode('title-desc')">
-                  <Check v-if="sortMode === 'title-desc'" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
-                  <span>{{ t('titleDesc') }}</span>
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1292,6 +1195,10 @@ import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
+import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
+import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
+import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
+import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1411,6 +1318,8 @@ export default defineComponent({
     DashboardSidebar,
     DashboardViewToggle,
     DashboardFolderFiles,
+    DashboardFilterMenu,
+    DashboardSortMenu,
     InteractiveTemplatePicker,
     LanguageToggle,
     ArrowLeft,
@@ -1477,7 +1386,13 @@ export default defineComponent({
      * separate per-surface selection state.
      */
     const selectedTags = ref<string[]>([]);
-    const contentFilter = ref<'all' | FolderItem['type']>('all');
+    /** Types shown; none chosen means all of them (see dashboard/content-filter.ts). */
+    const contentTypes = ref<DashboardContentType[]>([]);
+    /** The single-value view of contentTypes, for older callers: 'canvas' chooses just canvases, 'all' clears. */
+    const contentFilter = computed<'all' | 'mixed' | DashboardContentType>({
+      get: () => singleType(contentTypes.value),
+      set: (value) => { contentTypes.value = value === 'all' || value === 'mixed' ? [] : [value]; },
+    });
     const sortMode = ref<'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc'>('updated-desc');
     const openMenuCanvasId = ref('');
     const openControlMenu = ref('');
@@ -1507,6 +1422,8 @@ export default defineComponent({
     const selectedFolderId = ref('');
     /** Files shown in the open folder (DashboardFolderFiles reports them). */
     const activeFolderFileCount = ref(0);
+    /** Files each folder holds (from the Drive), added to the folder tiles' counts. */
+    const folderFiles = useFolderFileCounts();
     watch(selectedFolderId, () => { activeFolderFileCount.value = 0; });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
@@ -1753,7 +1670,7 @@ export default defineComponent({
       selectedTags.value.length === 0 || selectedTags.value.some((selected) => tags.some((tag) => tag.name === selected));
 
     const matchesCanvas = (c: CanvasRecord) => {
-      if (contentFilter.value !== 'all' && contentFilter.value !== 'canvas') return false;
+      if (!typePasses(contentTypes.value, 'canvas')) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       return matchesQuery && matchesSelectedTags(c.tags);
@@ -1766,14 +1683,14 @@ export default defineComponent({
      * narrower than the full FolderItem union.
      */
     const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) => {
-      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
+      if (!typePasses(contentTypes.value, item.type)) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       return matchesQuery && matchesSelectedTags(item.tags);
     };
 
     const matchesPublicItem = (item: FolderItem) => {
-      if (contentFilter.value !== 'all' && item.type !== contentFilter.value) return false;
+      if (!typePasses(contentTypes.value, item.type)) return false;
       const q = searchQuery.value.trim().toLowerCase();
       const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
       return matchesQuery && matchesSelectedTags(item.tags);
@@ -1871,7 +1788,7 @@ export default defineComponent({
     const allTagNames = computed(() => {
       const names = new Set<string>();
       for (const item of dashboardItemsByKey.value.values()) {
-        if (contentFilter.value !== 'all' && contentFilter.value !== item.type) continue;
+        if (!typePasses(contentTypes.value, item.type)) continue;
         for (const tag of item.tags || []) names.add(tag.name);
       }
       return Array.from(names).sort();
@@ -1930,7 +1847,7 @@ export default defineComponent({
       );
     }
 
-    watch(contentFilter, () => {
+    watch(contentTypes, () => {
       selectedTags.value = selectedTags.value.filter((tag) => allTagNames.value.includes(tag));
     });
 
@@ -2421,6 +2338,7 @@ export default defineComponent({
           const folders = await resourceFolders.list();
           ownResourceFolders.value = folders.own.map(normalizeResourceFolder);
           sharedResourceFolders.value = folders.shared.map(normalizeResourceFolder);
+          refreshFolderFileCounts();
           const folderDocumentIds = new Set(
             [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) =>
               (folder.items?.htmlDocuments || []).map((document: any) => document.id),
@@ -3556,6 +3474,18 @@ export default defineComponent({
       openControlMenu.value = openControlMenu.value === key ? '' : key;
     };
 
+    /** The toolbar's filter and sort menus, one open at a time like every control menu. */
+    const toggleToolbarMenu = (key: string) => {
+      closeSidebarAccountMenu();
+      openMenuCanvasId.value = '';
+      openControlMenu.value = openControlMenu.value === key ? '' : key;
+    };
+    /** "Reset" in the filter menu: types and tags; the search stays as typed. */
+    const clearTypeAndTagFilters = () => {
+      contentTypes.value = [];
+      selectedTags.value = [];
+    };
+
     const selectSortMode = (mode: typeof sortMode.value) => {
       sortMode.value = mode;
       openControlMenu.value = '';
@@ -3627,17 +3557,18 @@ export default defineComponent({
             (folder.canvasCount || 0) +
             (folder.htmlDocumentCount || 0) +
             (folder.textDocumentCount || 0) +
-            (folder.interactiveTemplateCount || 0),
+            (folder.interactiveTemplateCount || 0) +
+            (folderFiles.counts[folder.id] ?? 0),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
 
     /** True once any of search/type/tags actually narrows the result set. */
-    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentFilter.value !== 'all'));
+    const hasActiveFilter = computed(() => Boolean(searchQuery.value.trim() || selectedTags.value.length || contentTypes.value.length));
     const resetFilters = () => {
       searchQuery.value = '';
       selectedTags.value = [];
-      contentFilter.value = 'all';
+      contentTypes.value = [];
     };
 
     /**
@@ -3655,6 +3586,12 @@ export default defineComponent({
      * textDocuments), so a tag filter would silently zero out every canvas
      * and HTML doc in every folder without this - see dashboardItemsByKey.
      */
+    /**
+     * Whether files count in a folder tile: they have no tags, and their
+     * names are not known until the folder opens, so a search or a tag
+     * filter leaves them out; a type filter keeps them only with "Files".
+     */
+    const filesCounted = computed(() => !searchQuery.value.trim() && !selectedTags.value.length && typePasses(contentTypes.value, 'file'));
     const recentFolderTiles = computed(() => allFolderSummaries.value
       .filter((folder) => !(folder.parentId ?? null))
       .map((folder) => {
@@ -3663,7 +3600,8 @@ export default defineComponent({
           const enriched = dashboardItemsByKey.value.get(`${item.type}:${item.id}`) || item;
           return matchesFolderItem(enriched, folder.name);
         }).length;
-        const count = hasActiveFilter.value ? matchingCount : totalCount;
+        const files = filesCounted.value ? (folderFiles.counts[folder.id] ?? 0) : 0;
+        const count = (hasActiveFilter.value ? matchingCount : totalCount) + files;
         return {
           id: folder.id,
           name: folder.name,
@@ -3672,10 +3610,21 @@ export default defineComponent({
           // empty only because of the active filter shows a literal "0" -
           // "Empty" would wrongly suggest nothing was ever put in it.
           displayCount: count === 0 ? (hasActiveFilter.value ? '0' : t('emptyFolder')) : String(count),
-          zeroMatch: hasActiveFilter.value && matchingCount === 0,
+          zeroMatch: hasActiveFilter.value && count === 0,
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name)));
+
+    const countedFolderIds = computed(() => [
+      ...allFolderSummaries.value.filter((folder) => !(folder.parentId ?? null)).map((folder) => folder.id),
+      ...activeSubfolders.value.map((folder) => folder.id),
+    ]);
+    watch(countedFolderIds, (ids) => folderFiles.want(ids), { immediate: true });
+    /** After a reload: files may have come or gone since. */
+    const refreshFolderFileCounts = () => {
+      folderFiles.forget();
+      folderFiles.want(countedFolderIds.value);
+    };
 
     const openSubfolderModal = (folder: FolderSummary) => {
       openControlMenu.value = '';
@@ -4258,6 +4207,10 @@ export default defineComponent({
       searchQuery,
       selectedTags,
       contentFilter,
+      contentTypes,
+      typePasses,
+      toggleToolbarMenu,
+      clearTypeAndTagFilters,
       sortMode,
       feedback,
       isBusy,
