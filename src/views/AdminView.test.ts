@@ -28,7 +28,7 @@ describe('AdminView', () => {
     });
     await flushPromises();
     expect(wrapper.findComponent(AccountMenu).exists()).toBe(true);
-    expect(wrapper.getComponent({ name: 'RouterLink' }).text()).toBe('Back to Dashboard');
+    expect(wrapper.get('[data-admin-back]').attributes('aria-label')).toBeTruthy();
   });
 
   it('loads storage settings and displays effective value and source', async () => {

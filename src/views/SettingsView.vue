@@ -194,8 +194,13 @@ watch(section, (value) => {
 </script>
 
 <style scoped>
+/* Its own scroll container: the canvas's phone rule sets html, body
+   { overflow: hidden }, which kept a long page at its first screen. */
 .settings-page {
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
   color: var(--ui-text);
 }
 .settings-topbar {

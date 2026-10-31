@@ -1,29 +1,32 @@
 <template>
-  <div class="dashboard">
-    <header class="dash-header">
-      <h1>Admin — Users</h1>
-      <div class="dash-actions">
-        <router-link :to="{ name: 'dashboard' }" class="btn-ghost">Back to Dashboard</router-link>
-        <AccountMenu />
-      </div>
+  <!-- The settings page's look (settings-page: its glass background, bar and
+       buttons), and its own scroll: on a phone html and body do not scroll. -->
+  <div class="settings-page admin-page">
+    <header class="settings-topbar admin-topbar">
+      <router-link :to="{ name: 'dashboard' }" class="btn-ghost admin-back" :aria-label="t('back')" :title="t('back')" data-admin-back>
+        <ArrowLeft :size="18" aria-hidden="true" />
+      </router-link>
+      <h1>{{ t('adminTitle') }}</h1>
+      <AccountMenu glass :show-plugins="false" />
     </header>
 
-    <div v-if="loading" class="dash-loading">Loading...</div>
+    <main class="admin-content">
+    <p v-if="loading" class="admin-note">{{ t('loadingDots') }}</p>
 
-    <div v-else>
+    <template v-else>
       <div class="admin-stats">
-        <div class="stat-card">
+        <div class="admin-card stat-card">
           <div class="stat-value">{{ stats.userCount }}</div>
-          <div class="stat-label">Users</div>
+          <div class="stat-label">{{ t('adminStatUsers') }}</div>
         </div>
-        <div class="stat-card">
+        <div class="admin-card stat-card">
           <div class="stat-value">{{ stats.canvasCount }}</div>
-          <div class="stat-label">Canvases</div>
+          <div class="stat-label">{{ t('adminStatCanvases') }}</div>
         </div>
       </div>
 
-      <div v-if="storageSupported" class="admin-storage-section">
-        <h2 id="storage" class="admin-section-title">Хранилище</h2>
+      <section v-if="storageSupported" id="storage" class="admin-card admin-storage-section">
+        <h2>{{ t('adminStorageTitle') }}</h2>
         <div class="admin-storage-card">
           <div v-if="settings && settings.storage" class="admin-storage-usage" data-admin-storage-usage>
             <div class="admin-storage-used" data-admin-storage-used>{{ usedText }}</div>
@@ -50,7 +53,7 @@
             </div>
           </div>
           <div class="admin-storage-field">
-            <label for="admin-storage-limit" class="admin-storage-label">Максимальный размер файла</label>
+            <label for="admin-storage-limit" class="admin-storage-label">{{ t('adminFileSizeLimit') }}</label>
             <div class="admin-storage-controls">
               <input
                 id="admin-storage-limit"
@@ -67,8 +70,8 @@
                 class="role-select admin-storage-unit"
                 data-admin-storage-unit
               >
-                <option value="MB">МБ</option>
-                <option value="GB">ГБ</option>
+                <option value="MB">{{ t('driveUnitMB') }}</option>
+                <option value="GB">{{ t('driveUnitGB') }}</option>
               </select>
               <button
                 type="button"
@@ -77,7 +80,7 @@
                 :disabled="storageSaving"
                 @click="saveStorageLimit"
               >
-                Сохранить
+                {{ t('save') }}
               </button>
               <button
                 type="button"
@@ -86,12 +89,12 @@
                 :disabled="storageSaving"
                 @click="resetStorageLimit"
               >
-                Сбросить
+                {{ t('adminReset') }}
               </button>
             </div>
           </div>
           <div v-if="settings" class="admin-storage-effective" data-admin-storage-effective>
-            Текущее значение: <strong>{{ effectiveText }}</strong> ({{ sourceText }})
+            {{ t('adminCurrentValue') }} <strong>{{ effectiveText }}</strong> ({{ sourceText }})
           </div>
           <div v-if="settings && settings.storage" class="admin-storage-field admin-storage-capacity">
             <label for="admin-storage-capacity" class="admin-storage-label">{{ t('adminStorageCapacityLabel') }}</label>
@@ -138,18 +141,21 @@
             <div class="admin-storage-muted" data-admin-capacity-hint>{{ t('adminStorageCapacityHint') }}</div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <h2 class="admin-section-title">Users</h2>
-      <table class="admin-table">
+      <section class="admin-card">
+        <h2>{{ t('adminUsersTitle') }}</h2>
+        <!-- Wider than a phone: the table scrolls sideways inside its card. -->
+        <div class="admin-table-wrap">
+      <table class="admin-table" data-admin-users>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Canvases</th>
-            <th>Registered</th>
-            <th>Последняя активность</th>
+            <th>{{ t('adminColName') }}</th>
+            <th>{{ t('adminColEmail') }}</th>
+            <th>{{ t('adminColRole') }}</th>
+            <th>{{ t('adminColCanvases') }}</th>
+            <th>{{ t('adminColRegistered') }}</th>
+            <th>{{ t('adminColLastActive') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -163,9 +169,9 @@
                 :value="u.role"
                 @change="changeRole(u.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option value="user">User</option>
-                <option value="admin">Admin</option>
-                <option value="superadmin">Superadmin</option>
+                <option value="user">{{ t('adminRoleUser') }}</option>
+                <option value="admin">{{ t('adminRoleAdmin') }}</option>
+                <option value="superadmin">{{ t('adminRoleSuperadmin') }}</option>
               </select>
               <span v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</span>
             </td>
@@ -175,16 +181,20 @@
           </tr>
         </tbody>
       </table>
+        </div>
+      </section>
 
-      <h2 class="admin-section-title">Canvas History Access</h2>
-      <table class="admin-table">
+      <section class="admin-card">
+        <h2>{{ t('adminHistoryTitle') }}</h2>
+        <div class="admin-table-wrap">
+      <table class="admin-table" data-admin-history>
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Owner</th>
-            <th>Visibility</th>
-            <th>History access</th>
-            <th>Updated</th>
+            <th>{{ t('adminColTitle') }}</th>
+            <th>{{ t('adminColOwner') }}</th>
+            <th>{{ t('adminColVisibility') }}</th>
+            <th>{{ t('adminColHistory') }}</th>
+            <th>{{ t('adminColUpdated') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -198,16 +208,19 @@
                 :value="c.historyAccess"
                 @change="changeHistoryAccess(c.id, ($event.target as HTMLSelectElement).value)"
               >
-                <option value="owner">Owner only</option>
-                <option value="editors">Editors</option>
-                <option value="viewers">All viewers</option>
+                <option value="owner">{{ t('adminHistoryOwner') }}</option>
+                <option value="editors">{{ t('adminHistoryEditors') }}</option>
+                <option value="viewers">{{ t('adminHistoryViewers') }}</option>
               </select>
             </td>
             <td>{{ formatDate(c.updatedAt) }}</td>
           </tr>
         </tbody>
       </table>
-    </div>
+        </div>
+      </section>
+    </template>
+    </main>
   </div>
 </template>
 
@@ -216,13 +229,14 @@ import { defineComponent, ref, computed, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
+import { ArrowLeft } from '@lucide/vue';
 import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
 
 function getToken() { return localStorage.getItem('token'); }
 
 export default defineComponent({
-  components: { AccountMenu },
+  components: { AccountMenu, ArrowLeft },
   setup() {
     const { show: showToast } = useToast();
     const { t } = useI18n();
@@ -545,15 +559,93 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.admin-storage-section {
-  margin-top: 24px;
+/* Its own scroll container: the canvas's phone rule sets html, body
+   { overflow: hidden }, which left this page stuck at its first screen. */
+.admin-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  color: var(--ui-text);
+}
+.admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(10px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-left)) 10px;
+  border-bottom: 1px solid var(--ui-glass-border);
+}
+.admin-topbar h1 { flex: 1; min-width: 0; margin: 0; font-size: 18px; }
+.admin-back { width: 38px; height: 38px; display: inline-grid; place-items: center; padding: 0; border-radius: 999px; }
+.admin-content {
+  display: grid;
+  /* minmax(0, 1fr): a wide table scrolls inside its card instead of widening the page. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  align-content: start;
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  padding: 24px 16px calc(48px + env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+.admin-note { margin: 0; color: var(--ui-text-secondary); }
+.admin-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+.admin-card h2 { margin: 0; font-size: 16px; }
+.admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
+@media (max-width: 520px) {
+  .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}
+.stat-card { gap: 2px; }
+.stat-value { font-size: 28px; font-weight: 750; line-height: 1.1; }
+.stat-label { color: var(--ui-text-secondary); font-size: 13px; }
+.admin-table-wrap { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+/* A table again on a phone too (the old phone rule made it a scrolling
+   block): the card's wrap scrolls it sideways. */
+.admin-table { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }
+.admin-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--ui-border);
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.admin-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--ui-border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.admin-table tbody tr:last-child td { border-bottom: 0; }
+.admin-table tbody tr:hover td { background: var(--ui-glass-btn-hover); }
+.role-select {
+  min-height: 34px;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 10px;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
 }
 .admin-storage-card {
-  background: var(--dark-card-bg);
-  border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-lg);
-  padding: 18px 24px;
-  max-width: 680px;
+  display: grid;
+  gap: 4px;
 }
 .admin-storage-field {
   display: flex;
@@ -571,18 +663,23 @@ export default defineComponent({
   gap: 10px;
   flex-wrap: wrap;
 }
+/* Beside their field, not full-width (a phone's rule stretches buttons). */
+.admin-storage-controls :is(.btn-primary, .btn-ghost) {
+  width: auto;
+}
 .admin-storage-input {
   width: 140px;
   padding: 8px 12px;
-  border: 1px solid var(--dark-neutral-border);
-  border-radius: var(--radius-sm);
-  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
   color: var(--ui-text);
   font-size: 14px;
   outline: none;
 }
 .admin-storage-input:focus {
-  border-color: var(--color-brands);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: 0 0 0 3px var(--ui-glass-focus-glow);
 }
 .admin-storage-unit {
   min-height: 36px;
@@ -602,7 +699,7 @@ export default defineComponent({
   gap: 6px;
   margin-bottom: 18px;
   padding-bottom: 16px;
-  border-bottom: 1px solid var(--dark-neutral-border);
+  border-bottom: 1px solid var(--ui-border);
   font-size: 14px;
   color: var(--ui-text);
 }
@@ -630,7 +727,7 @@ export default defineComponent({
 .admin-storage-capacity {
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid var(--dark-neutral-border);
+  border-top: 1px solid var(--ui-border);
 }
 .admin-storage-capacity .admin-storage-effective {
   margin-top: 0;
