@@ -379,7 +379,7 @@
                 ><ArrowLeft :size="16" aria-hidden="true" /></button>
                 <span class="folder-manager-title">
                   <span class="folder-manager-name">{{ activeFolder.name }}</span>
-                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}</span>
+                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}<template v-if="activeFolderFileCount"> / {{ activeFolderFileCount }} {{ t('folderFilesTitle').toLowerCase() }}</template></span>
                 </span>
               </div>
               <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
@@ -484,7 +484,7 @@
                     <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
                   </button>
                 </div>
-                <div v-if="!activeFolder.items.length && (hasActiveFilter || !activeSubfolders.length)" class="dash-empty" data-folder-empty>
+                <div v-if="!activeFolder.items.length && !activeFolderFileCount && (hasActiveFilter || !activeSubfolders.length)" class="dash-empty" data-folder-empty>
                   {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
                   <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
                 </div>
@@ -633,6 +633,14 @@
                   </article>
                   </template>
                 </div>
+                <DashboardFolderFiles
+                  :folder-id="activeFolder.id"
+                  :mode="recentViewMode"
+                  :query="searchQuery"
+                  :filtered-out="contentFilter !== 'all' || selectedTags.length > 0"
+                  :sort-mode="sortMode"
+                  @count="activeFolderFileCount = $event"
+                />
               </div>
           </div>
         </section>
@@ -1283,6 +1291,7 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
+import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1401,6 +1410,7 @@ export default defineComponent({
     TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
+    DashboardFolderFiles,
     InteractiveTemplatePicker,
     LanguageToggle,
     ArrowLeft,
@@ -1495,6 +1505,9 @@ export default defineComponent({
     // any new/unseen folder shows open without a click.
     const collapsedFolderIds = ref<string[]>([]);
     const selectedFolderId = ref('');
+    /** Files shown in the open folder (DashboardFolderFiles reports them). */
+    const activeFolderFileCount = ref(0);
+    watch(selectedFolderId, () => { activeFolderFileCount.value = 0; });
     const draggingResourceId = ref('');
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
@@ -4281,6 +4294,7 @@ export default defineComponent({
       folderSummaries,
       activeFolder,
       selectedFolderId,
+      activeFolderFileCount,
       incomingRequests,
       createCanvas,
       createHtmlDocument,
