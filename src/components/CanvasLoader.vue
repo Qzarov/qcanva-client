@@ -3296,6 +3296,32 @@ export default defineComponent({
       if (!d) return { x: 0, y: 0, w: 0, h: 0 };
       return drawingBounds(shownDrawing(d));
     });
+    /**
+     * The selected nodes' box on screen, in the viewport's pixels: where the
+     * desktop node toolbar stands (CanvasNodeToolbar). Null with no node selected.
+     */
+    const selectedNodesScreenRect = computed(() => {
+      if (!selectedNodeIds.value.length) return null;
+      const chosen = new Set(selectedNodeIds.value);
+      let left = Infinity;
+      let top = Infinity;
+      let right = -Infinity;
+      let bottom = -Infinity;
+      for (const node of nodes.value) {
+        if (!chosen.has(node.id)) continue;
+        left = Math.min(left, node.x);
+        top = Math.min(top, node.y);
+        right = Math.max(right, node.x + node.width);
+        bottom = Math.max(bottom, node.y + node.height);
+      }
+      if (!Number.isFinite(left)) return null;
+      return {
+        left: left * camera.scale + camera.x,
+        top: top * camera.scale + camera.y,
+        width: (right - left) * camera.scale,
+        height: (bottom - top) * camera.scale,
+      };
+    });
     const selectedDrawingScreenRect = computed(() => {
       if (!selectedDrawingObj.value) return null;
       const b = selectedBounds.value;
@@ -4653,6 +4679,8 @@ export default defineComponent({
       isDraggingDrawing,
       selectedBounds,
       selectedDrawingScreenRect,
+      selectedNodesScreenRect,
+      isPanning,
       renderList,
       onDrawingPointerDown,
       onDrawingPointerMove,

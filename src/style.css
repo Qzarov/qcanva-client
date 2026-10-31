@@ -9588,7 +9588,7 @@ textarea:focus-visible {
 /* Show mobile components and adjust layout at mobile breakpoint */
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
   .mobile-only { display: flex !important; }
-  .canvas-view .node-toolbar.desktop-only { display: none !important; }
+  .canvas-view :is(.node-toolbar, .node-floating-toolbar).desktop-only { display: none !important; }
   .canvas-view .canvas-topbar .canvas-ruler-button,
   .canvas-view .canvas-topbar .canvas-plugin-settings-action { display: none !important; }
   .canvas-plugin-panel {
@@ -11189,4 +11189,170 @@ html { -webkit-tap-highlight-color: transparent; }
 /* Admin is a link in the sidebar: no underline, like the buttons around it. */
 .dashboard-sidebar .dashboard-sidebar-admin {
   text-decoration: none;
+}
+
+/* ===== Canvas: the desktop node toolbar (CanvasNodeToolbar) =====
+   A row of icons right above the selection, in the canvas bar's glass; its
+   menu one card under (or, low on the screen, over) the row. */
+.node-floating-toolbar {
+  position: absolute;
+  z-index: 130;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px; /* MENU_GAP in nodeToolbarPlacement.ts */
+  pointer-events: none;
+}
+.node-floating-toolbar > * {
+  pointer-events: auto;
+}
+.node-floating-toolbar.opens-up {
+  flex-direction: column-reverse;
+}
+.node-toolbar-row,
+.node-toolbar-menu {
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+.node-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 14px;
+  white-space: nowrap;
+}
+.node-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+.node-tool:hover:not(:disabled) {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.node-tool.active {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+}
+.node-tool:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}
+.node-tool-menu {
+  padding: 0 4px 0 7px;
+}
+.node-tool-caret {
+  opacity: .6;
+}
+.node-tool-swatch.tb-color {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  border-width: 1px;
+  font-size: 0;
+}
+.node-tool-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 3px;
+  background: var(--ui-glass-border);
+}
+.node-toolbar-menu {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 12px;
+  border-radius: 14px;
+}
+.node-menu-label {
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.node-menu-swatches,
+.node-menu-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.node-menu-swatches .tb-color {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+}
+.node-menu-choice {
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.node-menu-choice.active {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+}
+.node-menu-list {
+  display: grid;
+  gap: 2px;
+}
+.node-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.node-menu-item:hover {
+  background: var(--ui-glass-btn-hover);
+}
+.node-menu-item.danger {
+  color: var(--ui-danger-foreground);
+}
+.node-menu-divider {
+  height: 1px;
+  background: var(--ui-glass-border);
+}
+.node-menu-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 10px;
+  background: var(--ui-glass-btn-bg);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
 }
