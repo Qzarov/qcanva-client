@@ -110,8 +110,8 @@ test('the question before leaving the app and a group delete with a note', async
   const dialog = page.getByRole('alertdialog');
 
   await dashboard(page, `state.deleteFolder({ id: 'f-1', name: 'Работа' })`);
-  await expect(dialog.getByRole('heading')).toHaveText('Удалить группу «Работа»?');
-  await expect(dialog.locator('p')).toHaveText('Её материалы останутся и окажутся вне групп.');
+  await expect(dialog.getByRole('heading')).toHaveText('Удалить папку «Работа»?');
+  await expect(dialog.locator('p')).toHaveText('Её материалы останутся и окажутся вне папок.');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/confirm-group-dark-390.png` });
   await page.keyboard.press('Escape');
 
@@ -138,7 +138,7 @@ test('a line of text is asked in the same dialog', async ({ page }) => {
     const { promptText } = await import('/src/composables/appDialog.ts');
     return promptText('groupNameTitle', 'save', 'Работа');
   });
-  const dialog = page.getByRole('dialog', { name: 'Название группы' });
+  const dialog = page.getByRole('dialog', { name: 'Название папки' });
   const field = dialog.getByRole('textbox');
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('Работа');

@@ -11013,14 +11013,16 @@ html { -webkit-tap-highlight-color: transparent; }
   text-decoration: underline;
 }
 
-/* ===== Dashboard sidebar: folders as Q Space draws them =====
-   Plain rows instead of framed buttons: a small chevron, a green folder,
-   the name; the open folder is a soft highlight. The collapsed (icon-only)
-   sidebar keeps its own look. */
+/* ===== Dashboard sidebar: the folder tree =====
+   Q Space's plain rows (no frames, a small chevron, compact), in the
+   dashboard sidebar's own colours: grey like the items above and below,
+   the open folder in the same accent glass as any selected item, its icon
+   green. A thin line shows the tree sits inside Home. The collapsed
+   (icon-only) sidebar keeps its own look. */
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-home-children {
-  margin-left: 6px;
-  padding-left: 0;
-  border-left: 0;
+  margin-left: 15px;
+  padding-left: 6px;
+  border-left: 1px solid var(--ui-border);
 }
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list {
   gap: 2px;
@@ -11030,36 +11032,35 @@ html { -webkit-tap-highlight-color: transparent; }
   gap: 2px;
 }
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder {
-  min-height: 34px;
-  grid-template-columns: 18px minmax(0, 1fr);
+  min-height: 36px;
+  grid-template-columns: 24px minmax(0, 1fr);
   gap: 8px;
   padding: 4px 8px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   box-shadow: none;
-  color: var(--ui-text);
-  font-size: 13px;
+  color: var(--ui-text-secondary);
 }
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder .dashboard-sidebar-icon {
-  width: 18px;
-  height: 18px;
-  color: var(--ui-accent-strong);
-}
-.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder .dashboard-sidebar-icon > svg {
-  width: 16px;
-  height: 16px;
+  width: 24px;
+  height: 24px;
 }
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder:hover:not(.active) {
   border-color: transparent;
   background: var(--ui-glass-btn-hover);
-}
-.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder.active {
-  border-color: transparent;
-  background: var(--ui-brand-soft);
-  box-shadow: none;
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
   color: var(--ui-text);
-  font-weight: 600;
+}
+/* Selected: exactly as a selected sidebar item. */
+.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder.active .dashboard-sidebar-icon {
+  color: var(--ui-accent-strong);
 }
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder:is(.drop-active, .reorder-target) {
   border-color: var(--ui-focus);
@@ -11169,4 +11170,23 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-auth-header .app-header-inner {
     gap: 6px;
   }
+}
+
+/* Menu rows with an icon ("New", a folder's "+"): .card-menu-item is a
+   block, which set the icon above the text's line. A row, icon centred; the
+   icon bare, not a framed glass pane. */
+.dashboard-view .card-menu-item:has(> .menu-icon) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dashboard-view .card-menu-item > .menu-icon {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--ui-text-secondary);
+}
+/* Admin is a link in the sidebar: no underline, like the buttons around it. */
+.dashboard-sidebar .dashboard-sidebar-admin {
+  text-decoration: none;
 }

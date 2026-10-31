@@ -1,6 +1,6 @@
 /**
- * Dashboard folders with files, the filter and sort menus, and the sidebar's
- * folder tree. Mocked API (tests/support/fake-dashboard-server.ts), no
+ * Dashboard folders with files, and the filter and sort menus (the sidebar's
+ * folder tree: dashboard-cleanup.spec.ts). Mocked API (tests/support/fake-dashboard-server.ts), no
  * backend needed. Screenshots only when SHOT_DIR is set.
  */
 
@@ -199,23 +199,4 @@ test.describe('filters and sort', () => {
     expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-folder.png`, fullPage: true });
   });
-});
-
-test('the sidebar draws folders as Q Space does: plain rows, a green folder, a soft highlight', async ({ page }) => {
-  await openFolder(page);
-  const row = page.locator('[data-dashboard-folder="folder-a"]');
-  const style = await row.evaluate((el) => {
-    const s = getComputedStyle(el);
-    const icon = getComputedStyle(el.querySelector('.dashboard-sidebar-icon')!);
-    return { height: el.getBoundingClientRect().height, borderTop: s.borderTopColor, shadow: s.boxShadow, iconColor: icon.color, color: s.color, weight: s.fontWeight };
-  });
-  expect(style.height).toBeLessThanOrEqual(36);
-  expect(style.borderTop).toBe('rgba(0, 0, 0, 0)');
-  expect(style.shadow).toBe('none');
-  expect(Number(style.weight)).toBeGreaterThanOrEqual(600);
-  const other = page.locator('[data-dashboard-folder="folder-b"]');
-  expect(await other.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
-  // The folder icon is the accent colour, not the name's.
-  expect(style.iconColor).not.toBe(style.color);
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/sidebar.png`, clip: { x: 0, y: 0, width: 260, height: 480 } });
 });

@@ -41,16 +41,23 @@ export const FOLDER_FILES: Record<string, { media: unknown[]; files: unknown[] }
   },
 };
 
-export async function serveDashboard(page: Page, options: { driveMissing?: boolean; theme?: 'light' | 'dark'; list?: boolean } = {}) {
-  await page.addInitScript(({ theme, list }) => {
+export async function serveDashboard(page: Page, options: { driveMissing?: boolean; theme?: 'light' | 'dark'; list?: boolean; admin?: boolean } = {}) {
+  await page.addInitScript(({ theme, list, admin }) => {
     localStorage.setItem('qcanva:theme:v1', theme);
     localStorage.setItem('token', 'dash-test-token');
     localStorage.setItem('currentUser', JSON.stringify({ id: 'user-1', email: 'me@example.com', name: 'Me', role: 'user' }));
     if (list) localStorage.setItem('qcanva:dashboard-recents-view:v1', 'list');
-  }, { theme: options.theme ?? 'light', list: Boolean(options.list) });
+    localStorage.setItem('userRole', admin ? 'admin' : 'user');
+  }, { theme: options.theme ?? 'light', list: Boolean(options.list), admin: Boolean(options.admin) });
   const linkRequests: string[] = [];
   const downloads: string[] = [];
   const folderRequests: string[] = [];
+  // The tags as the Tags settings manage them.
+  let tagList = [
+    { name: 'отпуск', color: '#44cf6e', canvasCount: 1, htmlDocumentCount: 0, textDocumentCount: 1, totalCount: 2 },
+    { name: 'работа', color: '#7c8aff', canvasCount: 1, htmlDocumentCount: 0, textDocumentCount: 1, totalCount: 2 },
+  ];
+  const tagCalls: Array<{ method: string; name: string; body?: unknown }> = [];
   const docs = [
     textDoc('doc-1', 'План поездки', 'folder-a', ['отпуск']),
     textDoc('doc-2', 'Отчёт за октябрь', 'folder-b', ['работа']),
@@ -77,7 +84,22 @@ export async function serveDashboard(page: Page, options: { driveMissing?: boole
     if (path === '/html-documents') return json({ groups: [], documents: [] });
     if (path === '/interactive-templates') return json({ templates: [] });
     if (path === '/access-requests/incoming') return json([]);
-    if (path === '/tags') return json({ tags: [{ name: 'отпуск', color: '#44cf6e' }, { name: 'работа', color: '#7c8aff' }] });
+    if (path === '/tags') return json({ tags: tagList });
+    const tagPath = /^\/tags\/(.+)$/.exec(path);
+    if (tagPath) {
+      const name = decodeURIComponent(tagPath[1]!);
+      const method = route.request().method();
+      if (method === 'PUT') {
+        const body = route.request().postDataJSON() as { name: string; color: string };
+        tagCalls.push({ method, name, body });
+        tagList = tagList.map((tag) => (tag.name === name ? { ...tag, ...body } : tag));
+      } else if (method === 'DELETE') {
+        tagCalls.push({ method, name });
+        tagList = tagList.filter((tag) => tag.name !== name);
+      }
+      return json({ tags: tagList });
+    }
+    if (path === '/settings/html' || path.startsWith('/mcp-tokens')) return json(path.startsWith('/mcp') ? [] : {});
     if (path.startsWith('/recent-resources')) {
       return json([
         { id: 'r1', resourceType: 'text-document', resourceId: 'doc-1', updatedAt: now },
@@ -127,7 +149,7 @@ export async function serveDashboard(page: Page, options: { driveMissing?: boole
     return json({});
   };
   await page.route('http://localhost:3001/api/**', handler);
-  return { linkRequests, downloads, folderRequests };
+  return { linkRequests, downloads, folderRequests, tagCalls };
 }
 
 /** Opens a dashboard folder the way the sidebar does (the sidebar is a drawer on a phone). */

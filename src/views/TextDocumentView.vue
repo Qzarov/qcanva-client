@@ -81,8 +81,8 @@
             <button
               type="button"
               class="btn-ghost btn-sm text-doc-menu-trigger"
-              :aria-label="t('groupActions')"
-              :title="t('groupActions')"
+              :aria-label="t('documentActionsAria')"
+              :title="t('documentActionsAria')"
               @click.stop="toggleDocMenu"
             ><MoreVertical :size="18" aria-hidden="true" /></button>
             <!-- The topbar's own backdrop-filter makes it a containing block

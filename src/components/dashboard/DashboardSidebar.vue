@@ -158,6 +158,18 @@
           <span class="dashboard-sidebar-icon" aria-hidden="true"><component :is="item.icon" :size="18" /></span>
           <span class="dashboard-sidebar-label">{{ item.label }}</span>
         </button>
+        <!-- Admins only, and last: a page of its own, not a dashboard section. -->
+        <router-link
+          v-if="admin"
+          to="/admin"
+          class="btn-ghost dashboard-sidebar-item dashboard-sidebar-admin"
+          :aria-label="t('admin')"
+          :title="compactPresentation ? t('admin') : undefined"
+          data-sidebar-admin
+        >
+          <span class="dashboard-sidebar-icon" aria-hidden="true"><ShieldCheck :size="18" /></span>
+          <span class="dashboard-sidebar-label">{{ t('admin') }}</span>
+        </router-link>
       </nav>
 
     </div>
@@ -190,7 +202,7 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, Folder, FolderCog, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import { ChevronDown, Folder, FolderCog, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, ShieldCheck, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import AccountMenu from '../AccountMenu.vue';
 import packageJson from '../../../package.json';
@@ -214,6 +226,8 @@ const props = defineProps<{
   widthState: SidebarWidthState;
   mobileOpen: boolean;
   folders: readonly DashboardFolderNavItem[];
+  /** The user is an admin: the Admin page closes the list. */
+  admin?: boolean;
 }>();
 
 const emit = defineEmits<{

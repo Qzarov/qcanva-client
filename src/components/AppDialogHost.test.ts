@@ -59,7 +59,7 @@ describe('AppDialogHost', () => {
     const answer = confirmDelete('deleteCanvasTitle', 'План', 'deleteGroupNote');
     await flushPromises();
     expect(wrapper!.get('h2').text()).toBe('Удалить канвас «План»?');
-    expect(wrapper!.get('p').text()).toBe('Её материалы останутся и окажутся вне групп.');
+    expect(wrapper!.get('p').text()).toBe('Её материалы останутся и окажутся вне папок.');
     const confirm = wrapper!.get('[data-app-dialog-confirm]');
     expect(confirm.text()).toBe('Удалить');
     expect(confirm.classes()).toContain('app-dialog-danger');

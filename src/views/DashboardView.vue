@@ -13,6 +13,7 @@
       }"
     >
       <DashboardSidebar
+        :admin="admin"
         v-if="isLoggedIn"
         :active-section="activeSection"
         :feed-section="isHomeFeed ? activeFeedSection : null"
@@ -106,25 +107,6 @@
     <!-- One grid/list choice for the whole dashboard: every feed section
          and every folder (the switch sits in Recents' and the folder's heading). -->
     <div ref="dashboardShell" class="dashboard-shell" :class="{ 'dashboard-list-view': recentViewMode === 'list' }">
-    <section
-      v-if="isLoggedIn && activeSection.kind === 'recent'"
-      class="resource-control-panel"
-    >
-      <div class="dash-actions-secondary">
-        <button class="btn-ghost" @click.stop="openTagManager">
-          <Tags class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('manageTags') }}</span>
-        </button>
-        <button class="btn-ghost" @click.stop="importFile()">
-          <Upload class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('import') }}</span>
-        </button>
-        <router-link v-if="admin" to="/admin" class="btn-ghost">
-          <ShieldCheck class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('admin') }}</span>
-        </router-link>
-      </div>
-    </section>
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
@@ -163,6 +145,10 @@
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('group') }}</span>
+              </button>
+              <button class="card-menu-item" data-new-import @click="openControlMenu = ''; importFile()">
+                <Upload class="menu-icon" :size="17" aria-hidden="true" />
+                <span>{{ t('import') }}</span>
               </button>
             </div>
           </div>
@@ -894,7 +880,7 @@
           v-if="!folderModal.resourceId"
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
-          :placeholder="t('groupName')"
+          :placeholder="t('groupNameTitle')"
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
@@ -1033,7 +1019,7 @@
         <input
           v-model.trim="renameFolderModal.value"
           class="dashboard-modal-input"
-          :placeholder="t('groupName')"
+          :placeholder="t('groupNameTitle')"
           @keydown.enter.prevent="saveRenameFolderModal"
         />
         <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
@@ -1123,35 +1109,6 @@
       </div>
     </div>
 
-    <div v-if="tagManager.open" class="dashboard-modal-backdrop" @click.self="closeTagManager">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Manage tags</h3>
-          <button class="dashboard-modal-close" @click="closeTagManager">x</button>
-        </div>
-        <div v-if="!tagManager.items.length" class="dashboard-modal-note">No tags yet.</div>
-        <div v-else class="tag-manager-list">
-          <div v-for="tag in tagManager.items" :key="tag.originalName" class="tag-manager-row">
-            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
-            <div class="tag-color-palette">
-              <button
-                v-for="color in tagColors"
-                :key="color"
-                class="tag-color-option"
-                :class="{ active: tag.color === color }"
-                :style="{ background: color }"
-                @click="tag.color = color"
-                :disabled="isBusy"
-              ></button>
-            </div>
-            <span class="tag-manager-count">{{ tag.totalCount }} refs</span>
-            <button class="btn-ghost btn-sm" @click="saveManagedTag(tag)" :disabled="isBusy || !tag.name.trim()">Save</button>
-            <button class="btn-ghost btn-sm danger" @click="deleteManagedTag(tag)" :disabled="isBusy">{{ t('delete') }}</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
     <div v-if="transferModal.open" class="dashboard-modal-backdrop" @click.self="closeTransferModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
@@ -1178,14 +1135,14 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, ShieldCheck, Tags, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { confirmDelete } from '../composables/appDialog';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
-import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag, type ResourceTagSummary } from '../api/client';
+import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { characterSheetTitle } from '../dnd/characterSheet';
 import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
@@ -1199,6 +1156,7 @@ import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
+import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1218,7 +1176,6 @@ import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
-type ManagedTag = ResourceTagSummary & { originalName: string };
 type CanvasRecord = {
   type: 'canvas';
   id: string;
@@ -1337,8 +1294,6 @@ export default defineComponent({
     LayoutTemplate,
     Menu,
     Plus,
-    ShieldCheck,
-    Tags,
     Upload,
   },
   setup() {
@@ -1443,7 +1398,7 @@ export default defineComponent({
     const incomingRequests = ref<any[]>([]);
     const feedback = ref<FeedbackState>({ type: 'success', message: '' });
     let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
-    const tagColors = ['#50d1b2', '#44cf6e', '#53dfdd', '#e0de71', '#e9973f', '#fb464c', '#f472b6', '#94a3b8'];
+    const tagColors = TAG_COLORS;
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
       !item.ownerId || item.ownerId === currentUser.value?.id;
@@ -1582,10 +1537,6 @@ export default defineComponent({
       resourceId: '',
       resourceType: 'canvas',
       tags: [],
-    });
-    const tagManager = ref<{ open: boolean; items: ManagedTag[] }>({
-      open: false,
-      items: [],
     });
     const transferModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; email: string }>({
       open: false,
@@ -2702,7 +2653,7 @@ export default defineComponent({
       const normalizedName = name.trim() || 'Unsorted';
       const existing = ownResourceFolders.value.find((folder) => folder.name.toLowerCase() === normalizedName.toLowerCase());
       if (existing) return existing;
-      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Group ${normalizedName} created`);
+      return runAction('create-folder', () => resourceFolders.create(normalizedName), `Folder ${normalizedName} created`);
     };
 
     const saveFolderModal = async () => {
@@ -3099,7 +3050,7 @@ export default defineComponent({
       await runAction(
         'rename-folder',
         () => resourceFolders.rename(renameFolderModal.value.folderId, nextFolder),
-        `Group renamed to ${nextFolder}`,
+        `Folder renamed to ${nextFolder}`,
       );
       closeRenameFolderModal();
       await load();
@@ -3112,7 +3063,7 @@ export default defineComponent({
       await runAction(
         'delete-folder',
         () => resourceFolders.delete(folder.id),
-        `Group ${folder.name} removed`,
+        `Folder ${folder.name} removed`,
       );
       await load();
     };
@@ -3123,7 +3074,7 @@ export default defineComponent({
       try {
         folderShareModal.value.permissions = await resourceFolders.permissions(folderShareModal.value.folderId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : 'Failed to load group permissions';
+        const message = error instanceof Error ? error.message : 'Failed to load folder permissions';
         setFeedback('error', message);
       } finally {
         folderShareModal.value.loading = false;
@@ -3154,7 +3105,7 @@ export default defineComponent({
       await runAction(
         'share-folder',
         () => resourceFolders.share(folderShareModal.value.folderId, email, folderShareModal.value.role),
-        `Shared group with ${email}`,
+        `Shared folder with ${email}`,
       );
       folderShareModal.value.email = '';
       await loadFolderPermissions();
@@ -3165,7 +3116,7 @@ export default defineComponent({
       await runAction(
         'revoke-folder',
         () => resourceFolders.revoke(folderShareModal.value.folderId, userId),
-        'Group access revoked',
+        'Folder access revoked',
       );
       await loadFolderPermissions();
     };
@@ -3209,43 +3160,6 @@ export default defineComponent({
           : () => textDocuments.update(tagsModal.value.resourceId, { tags });
       await runAction('save-tags', save, 'Tags saved');
       closeTagsModal();
-      await load();
-    };
-
-    const openTagManager = async () => {
-      closeCardMenu();
-      const state = await runAction('load-tags', () => tags.list());
-      tagManager.value = {
-        open: true,
-        items: (state?.tags || []).map((tag) => ({ ...tag, originalName: tag.name })),
-      };
-    };
-
-    const closeTagManager = () => {
-      tagManager.value = { open: false, items: [] };
-    };
-
-    const refreshTagManager = async () => {
-      const state = await tags.list();
-      tagManager.value.items = state.tags.map((tag) => ({ ...tag, originalName: tag.name }));
-      sharedResourceTags.value = state.tags.map(({ name, color }) => ({ name, color }));
-    };
-
-    const saveManagedTag = async (tag: ManagedTag) => {
-      await runAction(
-        `save-tag-${tag.originalName}`,
-        () => tags.update(tag.originalName, { name: tag.name, color: tag.color }),
-        'Tag updated',
-      );
-      await refreshTagManager();
-      await load();
-    };
-
-    const deleteManagedTag = async (tag: ManagedTag) => {
-      const confirmed = await confirmDelete('deleteTagTitle', tag.originalName, 'deleteTagNote');
-      if (!confirmed) return;
-      await runAction(`delete-tag-${tag.originalName}`, () => tags.delete(tag.originalName), 'Tag deleted');
-      await refreshTagManager();
       await load();
     };
 
@@ -4242,7 +4156,6 @@ export default defineComponent({
       renameFolderModal,
       folderShareModal,
       tagsModal,
-      tagManager,
       transferModal,
       folderSummaries,
       activeFolder,
@@ -4347,10 +4260,6 @@ export default defineComponent({
       addSuggestedTag,
       removeTag,
       saveTagsModal,
-      openTagManager,
-      closeTagManager,
-      saveManagedTag,
-      deleteManagedTag,
       openTransferModal,
       closeTransferModal,
       saveTransferModal,
