@@ -125,6 +125,24 @@ npx playwright test  # браузерные тесты из tests/ (подним
 
 Готовая работа сразу вливается в `dev` из своей ветки, не дожидаясь пачки фич.
 
+## Dev deploy
+
+Dev-стенд — `dev-qcanva.qzarov.pro`: на сервере только собранный сайт в
+`/var/www/qcanva-dev/front/dist` (nginx отдаёт его, `/api` и сокеты проксирует на
+dev-бэкенд), рядом — две-три прошлые сборки `dist.prev-<время>`. Собирается и
+выкатывается с машины разработчика:
+
+```bash
+DEV_HOST=user@server npm run deploy:dev            # origin/dev → стенд
+DEV_HOST=user@server bash scripts/deploy-dev.sh rollback
+```
+
+Скрипт берёт `origin/dev` (другую ветку — через `DEPLOY_REF`) во временный worktree,
+так что незакоммиченное в рабочей копии на стенд не попадёт; запускает `npm ci`,
+юнит-тесты и `npm run build:dev` — сборку в режиме `dev` (`.env.dev`: API на том же
+домене). Сборку, которая смотрит в production API, скрипт не выкатит. Что сейчас на
+стенде — в `/deploy-commit.txt`. Тест скрипта: `bash scripts/deploy-dev.test.sh`.
+
 ## Production deploy
 
 На сервере сайт лежит в `/var/www/qcanva.qzarov.pro/` (оба домена,
