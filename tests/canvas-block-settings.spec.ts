@@ -318,19 +318,15 @@ for (const mobile of [false, true]) {
   });
 }
 
-test('context-menu colour picker uses the same floating menu and updates the node', async ({ page }) => {
+test('a right-click on a node selects it for its toolbar: no context menu of its own any more', async ({ page }) => {
   await setup(page);
   await page.locator('[data-node-id="text"]').click({ button: 'right' });
-  await page.locator('.context-menu').getByRole('button', { name: 'Background color', exact: true }).click();
-  const menu = page.getByRole('group', { name: 'Background color', exact: true });
-  await expect(menu).toHaveCSS('position', 'fixed');
-  await menu.getByRole('button', { name: 'Background color 2', exact: true }).click();
+  await expect(page.locator('.context-menu')).toHaveCount(0);
+  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/selected/);
+  // What the menu had is on the toolbar: the fill colours, for one.
+  await page.locator('[data-node-toolbar] [data-node-tool="fill"]').click();
+  await page.locator('[data-node-menu="fill"] .ctx-color-2').click();
   await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-2/);
-  await expect(menu).toBeVisible();
-  await menu.getByRole('button', { name: 'Background color 3', exact: true }).click();
-  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-3/);
-  await expect(menu).toBeVisible();
-  await page.keyboard.press('Escape'); await expect(menu).toBeHidden();
 });
 
 for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'], [true, 'dark']] as const) {

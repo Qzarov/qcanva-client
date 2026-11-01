@@ -720,50 +720,7 @@
       :style="contextMenuStyle"
       @mousedown.stop
     >
-      <template v-if="contextMenu.kind === 'node'">
-        <div class="ctx-colors">
-          <span class="ctx-label">{{ t('background') }}</span>
-          <button class="ctx-color-btn" :class="getContextNode()?.color ? 'ctx-color-'+getContextNode()?.color : 'ctx-color-none'" :aria-label="t('backgroundColor')" :aria-expanded="contextColorPopup === 'fill'" @click="toggleContextColorMenu('fill', $event)" />
-        </div>
-        <CanvasColorMenu :open="contextColorPopup === 'fill'" :anchor="contextColorAnchor" :label="t('backgroundColor')" @close="contextColorPopup = null">
-          <button
-            v-for="c in ['1','2','3','4','5','6']"
-            :key="c"
-            class="ctx-color-btn"
-            :class="['ctx-color-' + c, { active: getContextNode()?.color === c }]"
-            :title="'Color ' + c"
-            :aria-label="t('backgroundColor')+' '+c"
-            @click="onCtxSetColor(c)"
-          ></button>
-          <button class="ctx-color-btn ctx-color-none" :title="t('clearColor')" @click="onCtxSetColor(undefined)">✕</button>
-          <button class="tb-btn" :class="{ active: isNodeTransparent(contextMenu.nodeId) }" :aria-label="t('transparent')" :title="t('transparent')" :aria-pressed="isNodeTransparent(contextMenu.nodeId)" @click="toggleNodeTransparent(contextMenu.nodeId)"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3" y="3" width="14" height="14" rx="3"/><path d="M3 3l14 14M3 17 17 3"/></svg></button>
-        </CanvasColorMenu>
-        <div class="ctx-colors">
-          <span class="ctx-label">{{ t('text') }}</span>
-          <button class="ctx-color-btn" :style="{ background: getNodeFontColorSwatch(getContextNode()?.fontColor) }" :aria-label="t('textColor')" :aria-expanded="contextColorPopup === 'text'" @click="toggleContextColorMenu('text', $event)" />
-        </div>
-        <CanvasColorMenu :open="contextColorPopup === 'text'" :anchor="contextColorAnchor" :label="t('textColor')" @close="contextColorPopup = null">
-          <button
-            v-for="c in fontColors"
-            :key="'ctx-font-' + c"
-            class="ctx-color-btn"
-            :class="{ active: isNodeFontColorActive(getContextNode()?.fontColor, c) }"
-            :style="{ background: getNodeFontColorSwatch(c) }"
-            :title="'Text ' + c"
-            @click="onCtxSetFontColor(c)"
-          ></button>
-          <button class="ctx-color-btn ctx-color-none" :title="t('defaultTextColor')" @click="onCtxSetFontColor(undefined)">✕</button>
-        </CanvasColorMenu>
-        <button class="ctx-item" @click="onCtxSendBackward">{{ t('layerDown') }}</button>
-        <button class="ctx-item" @click="onCtxBringForward">{{ t('layerUp') }}</button>
-        <button class="ctx-item" @click="onCtxSendToBack">{{ t('sendToBack') }}</button>
-        <button class="ctx-item" @click="onCtxBringToFront">{{ t('bringToFront') }}</button>
-        <button class="ctx-item" @click="onCtxToggleLock">{{ isNodePositionLocked(contextMenu.nodeId) ? t('unlockPosition') : t('lockPosition') }}</button>
-        <button v-if="isOwner" class="ctx-item" @click="toggleNodeHidden(contextMenu.nodeId)">{{ isNodeHidden(contextMenu.nodeId) ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item" @click="onCtxDuplicate">{{ t('duplicate') }}</button>
-        <button class="ctx-item ctx-item-danger" @click="onCtxDelete">{{ t('delete') }}</button>
-      </template>
-      <template v-else-if="contextMenu.kind === 'edge'">
+      <template v-if="contextMenu.kind === 'edge'">
         <button class="ctx-item" @click="onEdgeToggleStyle(); closeContextMenu()">Стиль линии</button>
         <button class="ctx-item" @click="onEdgeCycleArrow(); closeContextMenu()">Тип стрелки</button>
         <button class="ctx-item" @click="onEdgeCycleColor(); closeContextMenu()">Цвет линии</button>
@@ -2547,7 +2504,6 @@ export default defineComponent({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
     }));
-    const getContextNode = () => nodes.value.find((n) => n.id === contextMenu.nodeId);
 
     const closeContextMenu = () => { contextMenu.visible = false; contextColorPopup.value = null; };
 
@@ -2581,13 +2537,14 @@ export default defineComponent({
       contextMenu.y = Math.max(8, Math.min(e.clientY - rect.top, rect.height - menuHeight - 8));
     };
 
-    const onNodeContextMenu = (e: MouseEvent, node: CanvasNode) => {
-      selectedNodeIds.value = [node.id];
-      positionContextMenu(e);
-      contextMenu.kind = "node";
-      contextMenu.nodeId = node.id;
-      contextMenu.id = node.id;
-      contextMenu.visible = true;
+    /**
+     * A right-click on a node selects it, and nothing else: its toolbar has
+     * everything the old context menu did, so that menu is gone (and the
+     * browser's own stays shut). Edges and drawings keep their menus.
+     */
+    const onNodeContextMenu = (_e: MouseEvent, node: CanvasNode) => {
+      closeContextMenu();
+      if (!selectedNodeIds.value.includes(node.id)) selectedNodeIds.value = [node.id];
     };
 
     const onEdgeContextMenu = (e: MouseEvent, edge: { id: string }) => {
@@ -2895,41 +2852,6 @@ export default defineComponent({
     const bringSelectionToFront = () => changeSelectionLayer("front");
     const sendSelectionToBack = () => changeSelectionLayer("back");
 
-    const onCtxSetColor = (color: string | undefined) => {
-      const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
-      if (node) {
-        node.color = color;
-        emitOp({ type: 'node-update', id: node.id, changes: { color } });
-      }
-    };
-
-    const onCtxSetFontColor = (fontColor: string | undefined) => {
-      setNodeFontColor(contextMenu.nodeId, fontColor);
-    };
-
-    const withContextNodeSelected = (action: () => void) => {
-      if (contextMenu.nodeId) selectedNodeIds.value = [contextMenu.nodeId];
-      action();
-      closeContextMenu();
-    };
-
-    const onCtxSendBackward = () => withContextNodeSelected(sendSelectionBackward);
-    const onCtxBringForward = () => withContextNodeSelected(bringSelectionForward);
-    const onCtxSendToBack = () => withContextNodeSelected(sendSelectionToBack);
-    const onCtxBringToFront = () => withContextNodeSelected(bringSelectionToFront);
-    const onCtxToggleLock = () => withContextNodeSelected(() => toggleNodePositionLock(contextMenu.nodeId));
-
-    const onCtxDuplicate = () => {
-      const node = nodes.value.find((n) => n.id === contextMenu.nodeId);
-      if (!node) return;
-      pushUndo();
-      const clone: CanvasNode = { ...node, id: genId(), x: node.x + 30, y: node.y + 30 };
-      nodes.value.push(clone);
-      emitOp({ type: 'node-add', node: { ...clone } });
-      selectedNodeIds.value = [clone.id];
-      closeContextMenu();
-    };
-
     const duplicateSelection = () => {
       if (!selectedNodeIds.value.length) return;
       const ids = getSelectionWithGroupContents();
@@ -2957,16 +2879,6 @@ export default defineComponent({
       for (const n of newNodes) emitOp({ type: 'node-add', node: { ...n } });
       for (const ed of newEdges) emitOp({ type: 'edge-add', edge: { ...ed } });
       selectedNodeIds.value = newNodes.map((n) => n.id);
-    };
-
-    const onCtxDelete = () => {
-      pushUndo();
-      const id = contextMenu.nodeId;
-      edges.value = edges.value.filter((ed) => ed.fromNode !== id && ed.toNode !== id);
-      nodes.value = nodes.value.filter((n) => n.id !== id);
-      emitOp({ type: 'node-delete', ids: [id] });
-      selectedNodeIds.value = [];
-      closeContextMenu();
     };
 
     // Delete the current selection (toolbar button — touch-friendly alternative
@@ -4562,7 +4474,6 @@ export default defineComponent({
       contextMenu,
       contextColorPopup, contextColorAnchor, toggleContextColorMenu,
       contextMenuStyle,
-      getContextNode,
       setNodeColor,
       getNodeColor,
       getNodeAlign,
@@ -4600,15 +4511,6 @@ export default defineComponent({
       onEdgeContextMenu,
       onDrawingContextMenu,
       closeContextMenu,
-      onCtxSetColor,
-      onCtxSetFontColor,
-      onCtxSendBackward,
-      onCtxBringForward,
-      onCtxSendToBack,
-      onCtxBringToFront,
-      onCtxToggleLock,
-      onCtxDuplicate,
-      onCtxDelete,
       connDragging,
       tempEdgePath,
       onConnStart,
