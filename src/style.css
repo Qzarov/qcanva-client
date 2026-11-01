@@ -11758,3 +11758,221 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 15px;
   line-height: 1;
 }
+
+/* ===== Dashboard: the Add dialog =====
+   Make something new or bring files in, in the template picker's look:
+   tiles with an icon, a name and what it is. Importing, the kind is a
+   segmented choice over a drop zone, and every file says whether it is
+   that kind; on a phone the dialog is a sheet from the bottom. */
+.dashboard-add-dialog {
+  display: grid;
+  gap: 12px;
+  width: min(620px, 100%);
+  max-height: min(86vh, 760px);
+  overflow-y: auto;
+}
+.dashboard-add-head {
+  gap: 8px;
+  margin-bottom: 0;
+}
+.dashboard-add-head h3 {
+  flex: 1;
+  margin: 0;
+}
+.dashboard-add-where {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-where select {
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+}
+.dashboard-add-section {
+  margin: 4px 0 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 8px;
+}
+.dashboard-add-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 56px;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface);
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.dashboard-add-option:hover:not(:disabled),
+.dashboard-add-option:focus-visible {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+}
+.dashboard-add-option:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dashboard-add-option-icon {
+  grid-row: 1 / span 2;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--ui-glass-accent-border, var(--ui-border));
+  border-radius: 10px;
+  background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
+  color: var(--ui-glass-accent-text, var(--ui-text));
+}
+.dashboard-add-option strong {
+  font-size: 14px;
+  font-weight: 600;
+}
+.dashboard-add-option small {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-subtle);
+  justify-self: start;
+}
+.dashboard-add-kinds button {
+  padding: 6px 12px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.dashboard-add-kinds button.active {
+  background: var(--ui-glass-accent-bg, var(--color-brands));
+  color: var(--ui-glass-accent-text, var(--color-brand-on));
+}
+.dashboard-add-drop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 96px;
+  padding: 16px;
+  border: 1.5px dashed var(--ui-border);
+  border-radius: var(--radius-md);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  text-align: center;
+}
+.dashboard-add-drop.over {
+  border-color: var(--color-brands);
+  background: color-mix(in srgb, var(--color-brands) 8%, transparent);
+}
+.dashboard-add-files {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dashboard-add-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+}
+.dashboard-add-files li.bad {
+  border-color: color-mix(in srgb, var(--ui-danger) 45%, var(--ui-border));
+  background: color-mix(in srgb, var(--ui-danger) 7%, transparent);
+}
+.dashboard-add-file-state {
+  display: inline-flex;
+  width: 16px;
+  color: var(--color-brands);
+}
+.dashboard-add-files li.bad .dashboard-add-file-state {
+  color: var(--ui-danger);
+}
+.dashboard-add-file-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.dashboard-add-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-add-file-note {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-files li.bad .dashboard-add-file-note {
+  color: var(--ui-danger);
+}
+.dashboard-add-file-action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+@media (max-width: 720px) {
+  .dashboard-add-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .dashboard-add-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .dashboard-add-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .dashboard-add-option {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    row-gap: 6px;
+  }
+  .dashboard-add-option-icon {
+    grid-row: auto;
+  }
+}

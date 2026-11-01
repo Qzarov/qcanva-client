@@ -448,19 +448,22 @@ describe('dashboard sidebar navigation', () => {
     // «⋯» — только управление папкой: пункты создания переехали в «+».
     expect(wrapper.find('[data-folder-create]').exists()).toBe(false);
 
+    // «+» папки — окно «Добавить», эта папка уже выбрана.
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="text-document"]').trigger('click');
+    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('folder-b');
+    await wrapper.get('[data-add-create="text-document"]').trigger('click');
     await flushPromises();
+    expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="canvas"]').trigger('click');
+    await wrapper.get('[data-add-create="canvas"]').trigger('click');
     await flushPromises();
     expect(canvas.create).toHaveBeenLastCalledWith(expect.anything(), undefined, 'folder-b');
   });
 
-  it('lets the New menu pick the destination folder, defaulting to the folder you are in', async () => {
+  it('lets the Add dialog pick the destination folder, defaulting to the folder you are in', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
@@ -468,26 +471,26 @@ describe('dashboard sidebar navigation', () => {
     vm.selectFolder('folder-c');
     await nextTick();
 
-    vm.toggleNewMenu();
+    vm.openAddDialog();
     await nextTick();
-    const picker = wrapper.get('[data-new-item-folder]');
+    const picker = wrapper.get('[data-add-folder]');
     expect((picker.element as HTMLSelectElement).value).toBe('folder-c');
 
     await picker.setValue('folder-b');
-    vm.createTextDocument();
+    await wrapper.get('[data-add-create="text-document"]').trigger('click');
     await flushPromises();
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
   });
 
-  it('keeps creating into Unsorted from the New menu when you are not inside a folder', async () => {
+  it('keeps creating into Unsorted from the Add dialog when you are not inside a folder', async () => {
     withDefaultFolders();
     const wrapper = mountDashboard();
     await flushPromises();
     const vm = wrapper.vm as any;
-    vm.toggleNewMenu();
+    vm.openAddDialog();
     await nextTick();
-    expect((wrapper.get('[data-new-item-folder]').element as HTMLSelectElement).value).toBe('');
-    vm.createTextDocument();
+    expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('');
+    await wrapper.get('[data-add-create="text-document"]').trigger('click');
     await flushPromises();
     // folder-a is the mocked "Unsorted".
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));
@@ -683,7 +686,7 @@ describe('dashboard sidebar navigation', () => {
 
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-folder-create="interactive-template"]').trigger('click');
+    await wrapper.get('[data-add-create="interactive-template"]').trigger('click');
     await nextTick();
     await wrapper.get('[data-template-type="trello-board"]').trigger('click');
     await flushPromises();
@@ -1190,20 +1193,20 @@ describe('DashboardView groups', () => {
     withDefaultFolders();
   });
 
-  it('keeps the account and legacy control popovers mutually exclusive', async () => {
+  it('opens the Add dialog from the Add button, and the account menu closes for it', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
 
-    await wrapper.get('.dashboard-new-menu > button').trigger('click');
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
-
     await wrapper.get('[data-account-menu-trigger]').trigger('click');
     expect(wrapper.find('[data-account-menu]').exists()).toBe(true);
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
 
-    await wrapper.get('.dashboard-new-menu > button').trigger('click');
-    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(true);
+    await wrapper.get('[data-add-button]').trigger('click');
+    expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
+    // Create and Upload, side by side: no old popover menu.
+    expect(wrapper.findAll('[data-add-create]').length).toBe(5);
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'html']);
+    expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
   });
 
   it('creates a group without creating or opening a canvas', async () => {

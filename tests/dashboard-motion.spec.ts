@@ -58,7 +58,7 @@ test('filter and sort sit between New and the search', async ({ page }) => {
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar.png`, clip: { x: 248, y: 0, width: 1032, height: 120 } });
 });
 
-test('an empty section offers "+ Add", which opens New', async ({ page }) => {
+test('an empty section offers "+ Add", which opens the Add dialog', async ({ page }) => {
   await openDashboard(page);
   const tile = page.locator('[data-feed-add="shared"]');
   // Just "+ Add": no caption saying the section is empty.
@@ -68,7 +68,7 @@ test('an empty section offers "+ Add", which opens New', async ({ page }) => {
     await page.screenshot({ path: `${SHOTS}/add-tile.png` });
   }
   await tile.click();
-  await expect(page.locator('.dashboard-new-menu .mobile-action-popover')).toBeVisible();
+  await expect(page.locator('[data-add-dialog]')).toBeVisible();
 });
 
 test('the grid/list switch slides its thumb to the chosen segment', async ({ page }) => {

@@ -1,8 +1,10 @@
 /**
- * "+ Add" (it said "New") and Upload files in its menu: files from the
- * device go into the folder chosen in "Create in", or straight into an open
- * folder from its own "+"; a status bar follows them.
- * Mocked API, no backend needed. Screenshots only when SHOT_DIR is set.
+ * "+ Add" is a dialog: make something new, or bring files in. Importing, the
+ * user says what the files are first (files for the Drive, a canvas, an HTML
+ * page); each file is checked, and one that is not that kind says so - pick
+ * another kind, or send it to the Drive as a plain file. A status bar
+ * follows the uploads. Mocked API, no backend needed. Screenshots only when
+ * SHOT_DIR is set.
  */
 
 import { expect, test, type Page } from '@playwright/test';
@@ -13,67 +15,117 @@ const SHOTS = process.env.SHOT_DIR;
 async function openDashboard(page: Page) {
   await page.setViewportSize({ width: 1280, height: 860 });
   await serveDashboard(page);
-  // Registered after the fake backend, so it answers first: record the uploads.
+  // Registered after the fake backend, so these answer first: record what goes up.
   const uploads: string[] = [];
+  const created: Array<{ path: string; body: any }> = [];
   await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     uploads.push(new URL(route.request().url()).pathname);
     return route.fulfill({ status: 201, json: { items: [] } });
   });
+  await page.route(/\/api\/(canvas|html-documents)$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    const path = new URL(route.request().url()).pathname;
+    created.push({ path, body: route.request().postDataJSON() });
+    return route.fulfill({ status: 201, json: { id: path.endsWith('canvas') ? 'imported-canvas' : 'imported-page' } });
+  });
   await page.goto('/dashboard');
   await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
   await page.waitForLoadState('networkidle');
-  return uploads;
+  return { uploads, created };
 }
 
-const files = [
-  { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') },
-  { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('png') },
-];
+const dialog = (page: Page) => page.locator('[data-add-dialog]');
+const pick = async (page: Page, files: Parameters<import('@playwright/test').FileChooser['setFiles']>[0]) => {
+  const chooser = page.waitForEvent('filechooser');
+  await dialog(page).locator('[data-add-choose]').click();
+  await (await chooser).setFiles(files);
+};
 
-test('the button says Add, and Upload files sends them into the folder chosen in "Create in"', async ({ page }) => {
-  const uploads = await openDashboard(page);
-  const button = page.locator('.dashboard-new-menu > .btn-primary');
+const photo = { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from([137, 80, 78, 71, 0, 1]) };
+const notes = { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') };
+
+test('the Add button opens a dialog: create on one side, upload on the other', async ({ page }) => {
+  await openDashboard(page);
+  const button = page.locator('[data-add-button]');
   await expect(button).toHaveText('Add');
   await button.click();
-  const menu = page.locator('.dashboard-new-menu .mobile-action-popover');
-  await menu.locator('[data-new-item-folder]').selectOption('folder-b');
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-menu.png`, clip: { x: 248, y: 0, width: 600, height: 520 } });
+  await expect(dialog(page)).toBeVisible();
+  expect(await dialog(page).locator('[data-add-create]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-create'))))
+    .toEqual(['canvas', 'html-document', 'text-document', 'interactive-template', 'folder']);
+  expect(await dialog(page).locator('[data-add-import]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-import'))))
+    .toEqual(['file', 'canvas', 'html']);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog.png` });
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toHaveCount(0);
+});
 
-  const chooser = page.waitForEvent('filechooser');
-  await menu.locator('[data-new-upload]').click();
-  await (await chooser).setFiles(files);
-
-  const status = page.locator('[data-download-status]');
-  await expect(status).toHaveAttribute('data-transfer-kind', 'upload');
-  await expect(status).toContainText('Files uploaded: 2');
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/upload-status.png` });
+test('files go up into the folder chosen in "Where"', async ({ page }) => {
+  const { uploads } = await openDashboard(page);
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-b');
+  await dialog(page).locator('[data-add-import="file"]').click();
+  await pick(page, [photo, notes]);
+  await expect(dialog(page).locator('[data-add-file]')).toHaveCount(2);
+  await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (2)');
+  await dialog(page).locator('[data-add-submit]').click();
+  await expect(dialog(page)).toHaveCount(0);
+  await expect(page.locator('[data-download-status]')).toContainText('Files uploaded: 2');
   expect(uploads).toEqual(['/api/drive/folders/folder-b/files', '/api/drive/folders/folder-b/files']);
 });
 
-test("an open folder's own + uploads straight into it", async ({ page }) => {
-  const uploads = await openDashboard(page);
-  await openDashboardFolder(page, 'folder-a');
-  await page.locator('[data-folder-create-menu]').click();
-  const chooser = page.waitForEvent('filechooser');
-  await page.locator('[data-folder-create="upload"]').click();
-  await (await chooser).setFiles(files.slice(0, 1));
-  await expect(page.locator('[data-download-status]')).toContainText('Files uploaded: 1');
-  expect(uploads).toEqual(['/api/drive/folders/folder-a/files']);
+test('a canvas import catches a file that is not one: pick another kind, or send it as a file', async ({ page }) => {
+  const { uploads, created } = await openDashboard(page);
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-import="canvas"]').click();
+  await pick(page, [
+    { name: 'hero.json', mimeType: 'application/json', buffer: Buffer.from('{"name":"Lyra","hp":12}') },
+    { name: 'Roadmap.canvas', mimeType: 'application/json', buffer: Buffer.from('{"nodes":[{"id":"a"}],"edges":[]}') },
+  ]);
+  const bad = dialog(page).locator('[data-add-file="hero.json"]');
+  await expect(bad).toHaveClass(/bad/);
+  await expect(bad.locator('[data-add-problem]')).toContainText('The file has no canvas nodes or edges.');
+  // Only the good one would go: the wrong one is left out until said otherwise.
+  await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (1)');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-import-check.png` });
+  await bad.locator('[data-add-as-file]').click();
+  await expect(bad).not.toHaveClass(/bad/);
+  await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (2)');
+  await dialog(page).locator('[data-add-submit]').click();
+
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0]).toMatchObject({ path: '/api/canvas', body: { title: 'Roadmap', folderId: 'folder-a' } });
+  expect(JSON.parse(created[0]!.body.data)).toEqual({ nodes: [{ id: 'a' }], edges: [] });
+  await expect.poll(() => uploads).toEqual(['/api/drive/folders/folder-a/files']);
 });
 
-test('a file the server refuses is counted and said, the rest still go up', async ({ page }) => {
+test('another kind checks the files again', async ({ page }) => {
   await openDashboard(page);
-  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
-    const body = route.request().postDataBuffer()?.toString('latin1') || '';
-    if (body.includes('photo.png')) return route.fulfill({ status: 413, json: { message: 'Too large' } });
-    return route.fulfill({ status: 201, json: { items: [] } });
-  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-import="html"]').click();
+  await pick(page, [notes]);
+  const entry = dialog(page).locator('[data-add-file="notes.txt"]');
+  await expect(entry.locator('[data-add-problem]')).toContainText('Does not look like an HTML page.');
+  await expect(dialog(page).locator('[data-add-submit]')).toBeDisabled();
+  await dialog(page).locator('[data-import-kind="file"]').click();
+  await expect(entry).not.toHaveClass(/bad/);
+  await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (1)');
+});
+
+test("a folder's Import opens the dialog on uploading, that folder chosen; its + on creating", async ({ page }) => {
+  const { uploads } = await openDashboard(page);
   await openDashboardFolder(page, 'folder-a');
+  await page.locator('.folder-manager-menu:not(.folder-create-menu) .folder-manager-trigger').click();
+  await page.locator('[data-folder-import]').click();
+  await expect(dialog(page).locator('[data-import-kind="file"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(dialog(page).locator('[data-add-folder]')).toHaveValue('folder-a');
+  await pick(page, [photo]);
+  await dialog(page).locator('[data-add-submit]').click();
+  await expect(page.locator('[data-download-status]')).toContainText('Files uploaded: 1');
+  expect(uploads).toEqual(['/api/drive/folders/folder-a/files']);
+
   await page.locator('[data-folder-create-menu]').click();
-  const chooser = page.waitForEvent('filechooser');
-  await page.locator('[data-folder-create="upload"]').click();
-  await (await chooser).setFiles(files);
-  await expect(page.locator('[data-download-status]')).toContainText('Uploaded: 1, failed: 1');
-  await expect(page.locator('[data-dashboard-toast]')).toBeVisible();
+  await expect(dialog(page).locator('[data-add-create="canvas"]')).toBeVisible();
+  await expect(dialog(page).locator('[data-add-folder]')).toHaveValue('folder-a');
 });

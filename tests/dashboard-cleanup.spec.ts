@@ -19,21 +19,20 @@ async function openDashboard(page: Page, options: Parameters<typeof serveDashboa
   return server;
 }
 
-test('no panel above the toolbar; Import is in the New menu', async ({ page }) => {
+test('no panel above the toolbar; Import is in the Add dialog', async ({ page }) => {
   await openDashboard(page, { admin: true });
   await expect(page.locator('.resource-control-panel')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Manage tags' })).toHaveCount(0);
-  await page.locator('.dashboard-new-menu > .btn-primary').click();
-  const menu = page.locator('.dashboard-new-menu .mobile-action-popover');
-  await expect(menu.locator('[data-new-import]')).toHaveText('Import');
+  await page.locator('[data-add-button]').click();
+  const dialog = page.locator('[data-add-dialog]');
   // "Group" is a folder now.
-  await expect(menu).toContainText('Folder');
-  await expect(menu).not.toContainText('Group');
+  await expect(dialog.locator('[data-add-create="folder"]')).toContainText('Folder');
+  await expect(dialog).not.toContainText('Group');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/new-menu.png`, clip: { x: 248, y: 0, width: 600, height: 420 } });
+  await dialog.locator('[data-add-import="file"]').click();
   const chooser = page.waitForEvent('filechooser');
-  await menu.locator('[data-new-import]').click();
+  await dialog.locator('[data-add-choose]').click();
   await chooser;
-  await expect(menu).toHaveCount(0);
 });
 
 test('Admin is the sidebar\'s last item, for admins only', async ({ page }) => {

@@ -165,56 +165,13 @@
       @pointercancel.capture="cancelLongPress"
       @contextmenu.capture="onSelectionContextMenu"
     >
-    <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
-    <input type="file" ref="uploadInput" multiple style="display:none" data-upload-input @change="onUploadSelected" />
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
-            <button class="btn-primary" @click.stop="toggleNewMenu">
-              <Plus class="menu-icon" :size="17" aria-hidden="true" />
-              <span>{{ t('add') }}</span>
-            </button>
-            <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
-              <label v-if="isLoggedIn && folderOptions.length" class="dashboard-new-destination">
-                <span>{{ t('createIn') }}</span>
-                <select v-model="newItemFolderId" data-new-item-folder>
-                  <option value="">{{ t('createInUnsorted') }}</option>
-                  <option
-                    v-for="option in newItemFolderOptions"
-                    :key="option.id"
-                    :value="option.id"
-                  >{{ '\u00a0\u00a0'.repeat(option.depth) }}{{ option.name }}</option>
-                </select>
-              </label>
-              <button class="card-menu-item" @click="createCanvas">
-                <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('newCanvas') }}</span>
-              </button>
-              <button class="card-menu-item" @click="createHtmlDocument">
-                <FileCode2 class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('htmlDocument') }}</span>
-              </button>
-              <button class="card-menu-item" @click="createTextDocument">
-                <FileText class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('document') }}</span>
-              </button>
-              <button class="card-menu-item" @click="openInteractiveTemplatePicker">
-                <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('interactiveTemplate') }}</span>
-              </button>
-              <button class="card-menu-item" @click="openCreateGroupModal">
-                <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('group') }}</span>
-              </button>
-              <button class="card-menu-item" data-new-upload @click="chooseUploadFiles()">
-                <FileUp class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('uploadFiles') }}</span>
-              </button>
-              <button class="card-menu-item" data-new-import @click="openControlMenu = ''; importFile()">
-                <Upload class="menu-icon" :size="17" aria-hidden="true" />
-                <span>{{ t('import') }}</span>
-              </button>
-            </div>
-          </div>
+        <button class="btn-primary" data-add-button @click.stop="openAddDialog()">
+          <Plus class="menu-icon" :size="17" aria-hidden="true" />
+          <span>{{ t('add') }}</span>
+        </button>
+      </div>
       <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
       <DashboardFilterMenu
         class="dashboard-toolbar-desktop"
@@ -402,34 +359,17 @@
                 </span>
               </div>
               <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
-              <!-- Веб: «+» слева от «⋯» — что создать прямо в этой папке. На мобильном скрыт:
-                   там создаёт плавающая «+», она сама подставляет открытую папку. -->
+              <!-- Веб: «+» слева от «⋯» — окно «Добавить» с этой папкой. На мобильном скрыт:
+                   там добавляет плавающая «+», она сама подставляет открытую папку. -->
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
                 <button
                   class="folder-manager-trigger folder-create-trigger"
                   data-folder-create-menu
-                  @click.stop="toggleFolderCreateMenu(activeFolder.id)"
+                  @click.stop="openAddDialog({ folderId: activeFolder.id })"
                   :title="t('add')"
                   :aria-label="t('add')"
                   :disabled="isBusy"
                 ><Plus :size="17" aria-hidden="true" /></button>
-                <div v-if="openControlMenu === 'folder-new:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" data-folder-create="canvas" @click="createCanvas(activeFolder.id)" :disabled="isBusy">
-                    <FilePlus2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('newCanvas') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="html-document" @click="createHtmlDocument(activeFolder.id)" :disabled="isBusy">
-                    <FileCode2 class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('htmlDocument') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="text-document" @click="createTextDocument(activeFolder.id)" :disabled="isBusy">
-                    <FileText class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('document') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="interactive-template" @click="openInteractiveTemplatePicker(activeFolder.id)" :disabled="isBusy">
-                    <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('interactiveTemplate') }}</span>
-                  </button>
-                  <button class="card-menu-item" data-folder-create="upload" @click="chooseUploadFiles(activeFolder.id)" :disabled="isBusy">
-                    <FileUp class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('uploadFiles') }}</span>
-                  </button>
-                </div>
               </div>
               <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
                 <button
@@ -439,7 +379,7 @@
                   :disabled="isBusy"
                 >⋯</button>
                 <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" @click="importToFolder(activeFolder)" :disabled="isBusy">{{ t('import') }}</button>
+                  <button class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
                   <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
                   <button
                     v-if="activeFolder.name !== 'Unsorted'"
@@ -923,7 +863,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="toggleNewMenu"
+        @click.stop="openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
@@ -963,6 +903,17 @@
         </div>
       </div>
     </div>
+
+    <DashboardAddDialog
+      v-if="addDialog.open"
+      :folders="newItemFolderOptions"
+      :initial-folder-id="addDialog.folderId"
+      :initial-import="addDialog.importKind"
+      :busy="isBusy"
+      @close="closeAddDialog"
+      @create="onAddCreate"
+      @import="onAddImport"
+    />
 
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
@@ -1229,7 +1180,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Trash2, Download, FileUp, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1258,6 +1209,8 @@ import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
+import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
+import { importTitle, type ImportKind } from '../dashboard/import-files';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
 import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
@@ -1272,7 +1225,7 @@ import {
   type DashboardSection,
   type SidebarWidthState,
 } from '../dashboard/navigation';
-import { animateHeight, heightOfFirstChildren, prefersReducedMotion } from '../dashboard/motion';
+import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
 import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
@@ -1382,6 +1335,7 @@ export default defineComponent({
     DashboardFolderFiles,
     DashboardFilterMenu,
     DashboardSortMenu,
+    DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
     ArrowLeft,
@@ -1390,19 +1344,12 @@ export default defineComponent({
     ChevronDown,
     ChevronUp,
     X,
-    FileCode2,
-    FilePlus2,
-    FileText,
     Folder,
     FolderInput,
     Download,
-    FileUp,
     Trash2,
-    FolderPlus,
-    LayoutTemplate,
     Menu,
     Plus,
-    Upload,
   },
   setup() {
     const router = useRouter();
@@ -3751,20 +3698,7 @@ export default defineComponent({
      * folder's own "+"), else the Add menu's "Create in", else Unsorted, as
      * for anything created. The status bar follows all of them by bytes.
      */
-    const uploadInput = ref<HTMLInputElement | null>(null);
-    const uploadTargetFolderId = ref<string | undefined>(undefined);
     const folderFilesRefreshKey = ref(0);
-    const chooseUploadFiles = (folderId?: string) => {
-      uploadTargetFolderId.value = folderId;
-      openControlMenu.value = '';
-      uploadInput.value?.click();
-    };
-    const onUploadSelected = (event: Event) => {
-      const input = event.target as HTMLInputElement;
-      const files = Array.from(input.files || []);
-      input.value = '';
-      if (files.length) void uploadFiles(files, uploadTargetFolderId.value);
-    };
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
@@ -3965,41 +3899,65 @@ export default defineComponent({
       cardMenuStyle.value = null;
     };
 
-    const toggleNewMenu = () => {
+    /**
+     * "+ Add" is a dialog: make something new, or bring files in - having
+     * said what they are, so a wrong file is caught (DashboardAddDialog).
+     * It opens on the folder you are in, or the one whose "+" was pressed.
+     */
+    const addDialog = ref<{ open: boolean; folderId: string; importKind?: ImportKind }>({ open: false, folderId: '' });
+    const openAddDialog = (options: { folderId?: string; importKind?: ImportKind } = {}) => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
-      const opening = openControlMenu.value !== 'new';
-      openControlMenu.value = opening ? 'new' : '';
-      if (!opening) return;
-      // Default destination: the (own, non-technical) folder you're in.
+      openControlMenu.value = '';
       const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
-      newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
+      const fallback = current && newItemFolderOptions.value.some((option) => option.id === current.id) ? current.id : '';
+      addDialog.value = { open: true, folderId: options.folderId ?? fallback, importKind: options.importKind };
+    };
+    const closeAddDialog = () => {
+      addDialog.value = { open: false, folderId: '' };
+    };
+    const onAddCreate = (kind: AddCreateKind, folderId: string) => {
+      closeAddDialog();
+      newItemFolderId.value = folderId;
+      const target = folderId || undefined;
+      if (kind === 'canvas') return void createCanvas(target);
+      if (kind === 'html-document') return void createHtmlDocument(target);
+      if (kind === 'text-document') return void createTextDocument(target);
+      if (kind === 'interactive-template') return openInteractiveTemplatePicker(target);
+      const parent = folderId ? allFolderSummaries.value.find((folder) => folder.id === folderId) : null;
+      return parent ? openSubfolderModal(parent) : openCreateGroupModal();
+    };
+    /** Files the dialog checked: to the Drive, or each one a canvas / an HTML document. */
+    const onAddImport = async (kind: ImportKind, files: File[], folderId: string) => {
+      closeAddDialog();
+      newItemFolderId.value = folderId;
+      if (kind === 'file') return uploadFiles(files, folderId || undefined);
+      const opened: string[] = [];
+      try {
+        const target = await resolveCreateFolderId(folderId || undefined);
+        for (const file of files) {
+          const title = importTitle(file.name);
+          const text = await file.text();
+          if (kind === 'html') {
+            const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), `Imported ${title}`);
+            if (doc) opened.push(`/edit/html/${doc.id}`);
+          } else {
+            const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), `Imported ${title}`);
+            if (created) opened.push(`/canvas/${created.id}`);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to import file:', error);
+      }
+      if (opened.length === 1) router.push(opened[0]!);
+      else if (opened.length) await load({ showLoading: false });
     };
 
-    /**
-     * "+ Add" in an empty section: a folder for Folders, the template picker
-     * for Templates, otherwise the New menu (its destination already the
-     * open folder). On a computer New sits in the toolbar, so it is brought
-     * into view first; on a phone it is a bottom sheet anyway.
-     */
+    /** "+ Add" in an empty section: a folder for Folders, the template picker for Templates, else the Add dialog. */
     const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
       if (section === 'folders') return openCreateGroupModal();
       if (section === 'interactive') return openInteractiveTemplatePicker();
-      const phone = matchesMedia(LAYOUT.dashboardDrawer);
-      if (!phone) {
-        dashboardShell.value?.querySelector('.dash-toolbar')?.scrollIntoView?.({
-          block: 'nearest',
-          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-        });
-      }
-      if (openControlMenu.value !== 'new') toggleNewMenu();
-    };
-
-    const toggleFolderCreateMenu = (folderId: string) => {
-      closeSidebarAccountMenu();
-      openMenuCanvasId.value = '';
-      const key = `folder-new:${folderId}`;
-      openControlMenu.value = openControlMenu.value === key ? '' : key;
+      openAddDialog();
     };
 
     const toggleFolderMenu = (folderId: string) => {
@@ -4610,52 +4568,6 @@ export default defineComponent({
       return t('search');
     });
 
-    const fileInput = ref<HTMLInputElement | null>(null);
-    const importFolderId = ref<string | null>(null);
-
-    const importFile = (folderId: string | null = null) => {
-      importFolderId.value = folderId;
-      openControlMenu.value = '';
-      fileInput.value?.click();
-    };
-    const importToFolder = (folder: FolderSummary) => importFile(folder.id);
-
-    const onFileSelected = async (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const isHtml = /\.html?$/i.test(file.name) || file.type === 'text/html';
-        const title = file.name.replace(/\.(canvas|json|html?|htm)$/i, '') || 'Imported';
-        const targetFolderId = importFolderId.value || (await ensureFolderByName('Unsorted'))?.id;
-        if (isHtml) {
-          const doc = await runAction(
-            'import-html-document',
-            () => htmlDocuments.create({ title, html: text, folderId: targetFolderId }),
-            `Imported ${title}`,
-          );
-          if (!doc) return;
-          router.push(`/edit/html/${doc.id}`);
-          return;
-        }
-
-        const data = JSON.parse(text);
-        const c = await runAction(
-          'import-canvas',
-          () => canvas.create(title, JSON.stringify(data), targetFolderId),
-          `Imported ${title}`,
-        );
-        if (!c) return;
-        router.push(`/canvas/${c.id}`);
-      } catch (err) {
-        setFeedback('error', err instanceof Error ? err.message : 'Failed to import file');
-        console.error('Failed to import file:', err);
-      } finally {
-        importFolderId.value = null;
-        (e.target as HTMLInputElement).value = '';
-      }
-    };
-
     const renamingId = ref('');
     const renameInput = ref<HTMLInputElement[]>([]);
 
@@ -4854,9 +4766,11 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
-      uploadInput,
-      chooseUploadFiles,
-      onUploadSelected,
+      addDialog,
+      openAddDialog,
+      closeAddDialog,
+      onAddCreate,
+      onAddImport,
       folderFilesRefreshKey,
       transferStatusText,
       transferStatusPercent,
@@ -4973,9 +4887,7 @@ export default defineComponent({
       isTechnicalFolder,
       toggleCardMenu,
       closeCardMenu,
-      toggleNewMenu,
       toggleFolderMenu,
-      toggleFolderCreateMenu,
       openCanvas,
       openCanvasFromCard,
       duplicateCanvas,
@@ -4988,10 +4900,6 @@ export default defineComponent({
       renameInput,
       startRename,
       finishRename,
-      fileInput,
-      importFile,
-      importToFolder,
-      onFileSelected,
       resolveAccessRequest,
     };
   },
