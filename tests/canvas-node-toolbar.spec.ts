@@ -7,6 +7,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 const SHOTS = process.env.SHOT_DIR;
+const PIXEL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP4z8DwnwEIGBkZGRkZAQAkCwQBXV2gvQAAAABJRU5ErkJggg==';
 
 async function openCanvas(page: Page, options: { width?: number; height?: number; role?: 'owner' | 'edit' | 'read'; theme?: 'light' | 'dark' } = {}) {
   await page.addInitScript((theme) => {
@@ -23,6 +24,7 @@ async function openCanvas(page: Page, options: { width?: number; height?: number
           { id: 'middle', type: 'text', text: 'Распечатать коробку', x: 480, y: 360, width: 288, height: 96, zIndex: 1 },
           { id: 'second', type: 'text', text: 'Снять деньги', x: 840, y: 360, width: 240, height: 96, zIndex: 2 },
           { id: 'top', type: 'text', text: 'У самого верха', x: 480, y: 24, width: 240, height: 72, zIndex: 3 },
+          { id: 'picture', type: 'image', file: PIXEL, label: 'Схема', x: 480, y: 560, width: 240, height: 140, zIndex: 4 },
         ], edges: [] }) },
         role: options.role ?? 'owner', revision: 1,
       } });
@@ -48,9 +50,9 @@ test('one row of icons right above the selected node, centred on it', async ({ p
   expect(node.y - (row.y + row.height)).toBeLessThan(24);
   expect(Math.abs((row.x + row.width / 2) - (node.x + node.width / 2))).toBeLessThan(4);
   expect(row.height).toBeLessThanOrEqual(46);
-  // The whole set, in its order: fill, text, border | edit, lock, duplicate, hide | more.
-  expect(await toolbar(page).locator('[data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
-    .toEqual(['fill', 'text', 'border', 'edit', 'lock', 'duplicate', 'hide', 'more']);
+  // The whole set, in its order: fill, text, border | duplicate, layers | more. No Edit on the web.
+  expect(await toolbar(page).locator('.node-toolbar-row [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['fill', 'text', 'border', 'duplicate', 'layers', 'more']);
   // Every icon says what it is.
   for (const button of await toolbar(page).locator('button').all()) expect(await button.getAttribute('aria-label')).toBeTruthy();
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar-dark.png` });
@@ -64,6 +66,10 @@ test('the fill menu holds its colours itself: one click colours the node, no pal
   await expect(menu).toBeVisible();
   await expect(page.locator('.canvas-color-menu')).toHaveCount(0);
   await expect(menu.locator('.tb-color')).toHaveCount(7);
+  // "Background" on top, then Transparent and Gradient, then the colours; Round is the border's now.
+  await expect(menu.locator('.node-menu-label').first()).toHaveText('Background');
+  expect(await menu.locator('.node-menu-choice').allTextContents()).toEqual(['Transparent', 'Gradient']);
+  await expect(menu.getByText('Round', { exact: true })).toHaveCount(0);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar-fill-light.png` });
   await menu.locator('.ctx-color-3').click();
   await expect(tool(page, 'fill').locator('.node-tool-swatch')).toHaveClass(/ctx-color-3/);
@@ -92,18 +98,56 @@ test('Escape and a click elsewhere close a menu; another menu replaces it', asyn
   await expect(toolbar(page).locator('[data-node-menu]')).toHaveCount(0);
 });
 
-test('Edit opens the text editor; Delete is in the more menu', async ({ page }) => {
+test('the border menu has the Round switch', async ({ page }) => {
   await openCanvas(page);
   await page.locator('[data-node-id="middle"]').click();
-  await tool(page, 'edit').click();
-  await expect(toolbar(page)).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  await tool(page, 'border').click();
+  const round = toolbar(page).locator('[data-node-menu="border"] [data-node-round]');
+  await expect(round).toHaveAttribute('aria-checked', 'false');
+  await round.click();
+  await expect(round).toHaveAttribute('aria-checked', 'true');
+  await expect(page.locator('[data-node-id="middle"]')).toHaveClass(/node-round/);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar-border.png` });
+  await round.click();
+  await expect(page.locator('[data-node-id="middle"]')).not.toHaveClass(/node-round/);
+});
+
+test('layers on the row; lock, visibility and delete under more', async ({ page }) => {
+  await openCanvas(page);
   await page.locator('[data-node-id="second"]').click();
+  await tool(page, 'layers').click();
+  await expect(toolbar(page).locator('[data-node-menu="layers"]').getByRole('button', { name: 'Bring to front' })).toBeVisible();
   await tool(page, 'more').click();
   const menu = toolbar(page).locator('[data-node-menu="more"]');
-  await expect(menu.getByRole('button', { name: 'Bring to front' })).toBeVisible();
+  expect(await menu.locator('[data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['lock', 'hide', 'delete']);
+  await menu.locator('[data-node-tool="lock"]').click();
+  await expect(menu.locator('[data-node-tool="lock"]')).toHaveAttribute('aria-pressed', 'true');
   await menu.locator('[data-node-tool="delete"]').click();
   await expect(page.locator('[data-node-id="second"]')).toHaveCount(0);
+});
+
+test('a picture: its name instead of background and text; layers and delete on the row', async ({ page }) => {
+  await openCanvas(page);
+  await page.locator('[data-node-id="picture"]').click();
+  await expect(toolbar(page)).toBeVisible();
+  expect(await toolbar(page).locator('.node-toolbar-row [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['name', 'border', 'duplicate', 'layers', 'delete', 'more']);
+  await tool(page, 'name').click();
+  const name = toolbar(page).locator('[data-node-menu="name"] [data-node-title-input]');
+  await expect(name).toHaveValue('Схема');
+  await name.fill('Схема склада');
+  await expect(name).toHaveValue('Схема склада');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar-image.png` });
+  // Round is in its border menu too.
+  await tool(page, 'border').click();
+  await expect(toolbar(page).locator('[data-node-menu="border"] [data-node-round]')).toBeVisible();
+  // Under more: lock and visibility only.
+  await tool(page, 'more').click();
+  expect(await toolbar(page).locator('[data-node-menu="more"] [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['lock', 'hide']);
+  await tool(page, 'delete').click();
+  await expect(page.locator('[data-node-id="picture"]')).toHaveCount(0);
 });
 
 test('several nodes: only what they share, over the whole selection', async ({ page }) => {
@@ -111,13 +155,14 @@ test('several nodes: only what they share, over the whole selection', async ({ p
   await page.locator('[data-node-id="middle"]').click();
   await page.locator('[data-node-id="second"]').click({ modifiers: ['Shift'] });
   await expect(toolbar(page)).toBeVisible();
-  expect(await toolbar(page).locator('[data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
-    .toEqual(['lock', 'duplicate', 'hide', 'more']);
+  expect(await toolbar(page).locator('.node-toolbar-row [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['duplicate', 'layers', 'more']);
   const a = (await page.locator('[data-node-id="middle"]').boundingBox())!;
   const b = (await page.locator('[data-node-id="second"]').boundingBox())!;
   const row = (await toolbar(page).locator('.node-toolbar-row').boundingBox())!;
   const middle = (a.x + (b.x + b.width)) / 2;
   expect(Math.abs((row.x + row.width / 2) - middle)).toBeLessThan(4);
+  await tool(page, 'more').click();
   await tool(page, 'lock').click();
   await expect(tool(page, 'lock')).toHaveAttribute('aria-pressed', 'true');
 });

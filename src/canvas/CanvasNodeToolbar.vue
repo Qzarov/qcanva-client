@@ -16,34 +16,52 @@
     @keydown.esc="closeOnEscape"
   >
     <div class="node-toolbar-row">
-      <!-- What the node looks like: one node at a time -->
+      <!-- What the node looks like: one node at a time. A picture has no
+           background or text of its own: its name instead. -->
       <template v-if="single">
+        <template v-if="!isImage">
+          <button
+            type="button"
+            class="node-tool node-tool-menu"
+            :class="{ active: menu === 'fill' }"
+            :title="t('background')"
+            :aria-label="t('background')"
+            aria-haspopup="true"
+            :aria-expanded="menu === 'fill'"
+            data-node-tool="fill"
+            @click="toggle('fill')"
+          >
+            <span class="node-tool-swatch tb-color" :class="fillColor ? 'ctx-color-' + fillColor : 'tb-color-none'" aria-hidden="true"></span>
+            <ChevronDown :size="12" class="node-tool-caret" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="node-tool node-tool-menu"
+            :class="{ active: menu === 'text' }"
+            :title="t('text')"
+            :aria-label="t('text')"
+            aria-haspopup="true"
+            :aria-expanded="menu === 'text'"
+            data-node-tool="text"
+            @click="toggle('text')"
+          >
+            <Type :size="17" aria-hidden="true" />
+            <ChevronDown :size="12" class="node-tool-caret" aria-hidden="true" />
+          </button>
+        </template>
         <button
+          v-else
           type="button"
           class="node-tool node-tool-menu"
-          :class="{ active: menu === 'fill' }"
-          :title="t('background')"
-          :aria-label="t('background')"
+          :class="{ active: menu === 'name' }"
+          :title="t('imageName')"
+          :aria-label="t('imageName')"
           aria-haspopup="true"
-          :aria-expanded="menu === 'fill'"
-          data-node-tool="fill"
-          @click="toggle('fill')"
+          :aria-expanded="menu === 'name'"
+          data-node-tool="name"
+          @click="toggle('name')"
         >
-          <span class="node-tool-swatch tb-color" :class="fillColor ? 'ctx-color-' + fillColor : 'tb-color-none'" aria-hidden="true"></span>
-          <ChevronDown :size="12" class="node-tool-caret" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          class="node-tool node-tool-menu"
-          :class="{ active: menu === 'text' }"
-          :title="t('text')"
-          :aria-label="t('text')"
-          aria-haspopup="true"
-          :aria-expanded="menu === 'text'"
-          data-node-tool="text"
-          @click="toggle('text')"
-        >
-          <Type :size="17" aria-hidden="true" />
+          <TextCursorInput :size="17" aria-hidden="true" />
           <ChevronDown :size="12" class="node-tool-caret" aria-hidden="true" />
         </button>
         <button
@@ -63,26 +81,7 @@
         <span class="node-tool-sep" aria-hidden="true"></span>
       </template>
 
-      <!-- One click each -->
-      <button
-        v-if="single && canvas.isTextNode(nodeId)"
-        type="button"
-        class="node-tool"
-        :title="t('toolbarEdit')"
-        :aria-label="t('toolbarEdit')"
-        data-node-tool="edit"
-        @click="canvas.openTextEditor(nodeId)"
-      ><Pencil :size="17" aria-hidden="true" /></button>
-      <button
-        type="button"
-        class="node-tool"
-        :class="{ active: locked }"
-        :title="locked ? t('unlockPosition') : t('lockPosition')"
-        :aria-label="locked ? t('unlockPosition') : t('lockPosition')"
-        :aria-pressed="locked"
-        data-node-tool="lock"
-        @click="single ? canvas.toggleNodePositionLock(nodeId) : canvas.toggleSelectedNodesPositionLock()"
-      ><Lock v-if="locked" :size="17" aria-hidden="true" /><LockOpen v-else :size="17" aria-hidden="true" /></button>
+      <!-- Everyday actions -->
       <button
         type="button"
         class="node-tool"
@@ -92,16 +91,29 @@
         @click="canvas.duplicateSelection()"
       ><Copy :size="17" aria-hidden="true" /></button>
       <button
-        v-if="role === 'owner'"
         type="button"
-        class="node-tool"
-        :class="{ active: hidden }"
-        :title="hidden ? t('show') : t('hide')"
-        :aria-label="hidden ? t('show') : t('hide')"
-        :aria-pressed="hidden"
-        data-node-tool="hide"
-        @click="single ? canvas.toggleNodeHidden(nodeId) : canvas.toggleSelectedNodesHidden()"
-      ><EyeOff v-if="hidden" :size="17" aria-hidden="true" /><Eye v-else :size="17" aria-hidden="true" /></button>
+        class="node-tool node-tool-menu"
+        :class="{ active: menu === 'layers' }"
+        :title="t('layers')"
+        :aria-label="t('layers')"
+        aria-haspopup="true"
+        :aria-expanded="menu === 'layers'"
+        data-node-tool="layers"
+        @click="toggle('layers')"
+      >
+        <Layers :size="17" aria-hidden="true" />
+        <ChevronDown :size="12" class="node-tool-caret" aria-hidden="true" />
+      </button>
+      <!-- A picture's delete is on the row; a text node keeps it under "more". -->
+      <button
+        v-if="isImage"
+        type="button"
+        class="node-tool danger"
+        :title="t('delete')"
+        :aria-label="t('delete')"
+        data-node-tool="delete"
+        @click="canvas.deleteSelection()"
+      ><Trash2 :size="17" aria-hidden="true" /></button>
       <span class="node-tool-sep" aria-hidden="true"></span>
       <button
         type="button"
@@ -118,8 +130,12 @@
 
     <!-- The open menu: everything at once, nothing nested over it -->
     <div v-if="menu" ref="menuEl" class="node-toolbar-menu" :data-node-menu="menu">
-      <template v-if="menu === 'fill' && single">
-        <div class="node-menu-label" aria-hidden="true">{{ t('backgroundColor') }}</div>
+      <template v-if="menu === 'fill' && single && !isImage">
+        <div class="node-menu-label">{{ t('background') }}</div>
+        <div class="node-menu-row">
+          <button type="button" class="node-menu-choice" :class="{ active: canvas.isNodeTransparent(nodeId) }" :aria-pressed="canvas.isNodeTransparent(nodeId) ?? false" data-node-fill="transparent" @click="canvas.toggleNodeTransparent(nodeId)">{{ t('transparent') }}</button>
+          <button type="button" class="node-menu-choice" :class="{ active: canvas.getNodeFillStyle(nodeId) !== 'solid' }" :aria-pressed="canvas.getNodeFillStyle(nodeId) !== 'solid'" data-node-fill="gradient" @click="canvas.toggleNodeFillStyle(nodeId)">{{ t('gradient') }}</button>
+        </div>
         <div class="node-menu-swatches" role="group" :aria-label="t('backgroundColor')">
           <button
             v-for="c in FILL_COLORS"
@@ -133,14 +149,21 @@
           ></button>
           <button type="button" class="tb-color tb-color-none" :class="{ active: !fillColor }" :aria-label="t('clearColor')" :title="t('clearColor')" @click="canvas.setNodeColor(nodeId, undefined)">×</button>
         </div>
-        <div class="node-menu-row">
-          <button type="button" class="node-menu-choice" :class="{ active: canvas.isNodeTransparent(nodeId) }" :aria-pressed="canvas.isNodeTransparent(nodeId) ?? false" @click="canvas.toggleNodeTransparent(nodeId)">{{ t('transparent') }}</button>
-          <button type="button" class="node-menu-choice" :class="{ active: canvas.getNodeFillStyle(nodeId) !== 'solid' }" :aria-pressed="canvas.getNodeFillStyle(nodeId) !== 'solid'" @click="canvas.toggleNodeFillStyle(nodeId)">{{ t('gradient') }}</button>
-          <button type="button" class="node-menu-choice" :class="{ active: canvas.getNodeShape(nodeId) === 'round' }" :aria-pressed="canvas.getNodeShape(nodeId) === 'round'" @click="canvas.toggleNodeShape(nodeId)">{{ t('round') }}</button>
-        </div>
       </template>
 
-      <template v-else-if="menu === 'text' && single">
+      <template v-else-if="menu === 'name' && single && isImage">
+        <div class="node-menu-label">{{ t('imageName') }}</div>
+        <input
+          class="node-menu-input"
+          :value="canvas.getNodeTitle(nodeId)"
+          :placeholder="t('imageName')"
+          data-node-title-input
+          @input="canvas.setNodeTitle?.(nodeId, ($event.target as HTMLInputElement).value)"
+          @keydown.stop
+        />
+      </template>
+
+      <template v-else-if="menu === 'text' && single && !isImage">
         <div class="node-menu-label" aria-hidden="true">{{ t('textColor') }}</div>
         <div class="node-menu-swatches" role="group" :aria-label="t('textColor')">
           <button
@@ -192,30 +215,64 @@
           ></button>
           <button type="button" class="tb-color tb-color-none" :aria-label="t('clearColor')" :title="t('clearColor')" @click="canvas.setNodeBorderColor(nodeId, undefined)">×</button>
         </div>
+        <!-- Round corners belong to the border, not the background. -->
+        <button
+          type="button"
+          class="node-menu-switch"
+          role="switch"
+          :aria-checked="round"
+          data-node-round
+          @click="canvas.toggleNodeShape(nodeId)"
+        >
+          <span>{{ t('round') }}</span>
+          <span class="node-menu-switch-track" aria-hidden="true"><span class="node-menu-switch-thumb"></span></span>
+        </button>
       </template>
 
-      <template v-else-if="menu === 'more'">
-        <div v-if="!single" class="node-menu-label">{{ t('selectedObjects') }}: {{ canvas.selectedNodeIds.length }}</div>
-        <template v-if="single && (canvas.isImageNode(nodeId) || canvas.isGroupNode(nodeId))">
-          <div class="node-menu-label">{{ canvas.isGroupNode(nodeId) ? t('groupName') : t('imageName') }}</div>
-          <input
-            class="node-menu-input"
-            :value="canvas.getNodeTitle(nodeId)"
-            :placeholder="canvas.isGroupNode(nodeId) ? t('groupName') : t('imageName')"
-            data-node-title-input
-            @input="canvas.setNodeTitle?.(nodeId, ($event.target as HTMLInputElement).value)"
-            @keydown.stop
-          />
-        </template>
-        <div class="node-menu-label">{{ t('layers') }}</div>
+      <template v-else-if="menu === 'layers'">
         <div class="node-menu-list">
           <button type="button" class="node-menu-item" @click="canvas.bringSelectionForward()"><ArrowUp :size="15" aria-hidden="true" />{{ t('layerUp') }}</button>
           <button type="button" class="node-menu-item" @click="canvas.sendSelectionBackward()"><ArrowDown :size="15" aria-hidden="true" />{{ t('layerDown') }}</button>
           <button type="button" class="node-menu-item" @click="canvas.bringSelectionToFront()"><ArrowUpToLine :size="15" aria-hidden="true" />{{ t('bringToFront') }}</button>
           <button type="button" class="node-menu-item" @click="canvas.sendSelectionToBack()"><ArrowDownToLine :size="15" aria-hidden="true" />{{ t('sendToBack') }}</button>
         </div>
-        <div class="node-menu-divider" aria-hidden="true"></div>
-        <button type="button" class="node-menu-item danger" data-node-tool="delete" @click="canvas.deleteSelection()"><Trash2 :size="15" aria-hidden="true" />{{ t('delete') }}</button>
+      </template>
+
+      <template v-else-if="menu === 'more'">
+        <div v-if="!single" class="node-menu-label">{{ t('selectedObjects') }}: {{ canvas.selectedNodeIds.length }}</div>
+        <template v-if="single && canvas.isGroupNode(nodeId)">
+          <div class="node-menu-label">{{ t('groupName') }}</div>
+          <input
+            class="node-menu-input"
+            :value="canvas.getNodeTitle(nodeId)"
+            :placeholder="t('groupName')"
+            data-node-title-input
+            @input="canvas.setNodeTitle?.(nodeId, ($event.target as HTMLInputElement).value)"
+            @keydown.stop
+          />
+          <div class="node-menu-divider" aria-hidden="true"></div>
+        </template>
+        <div class="node-menu-list">
+          <button
+            type="button"
+            class="node-menu-item"
+            :aria-pressed="locked"
+            data-node-tool="lock"
+            @click="single ? canvas.toggleNodePositionLock(nodeId) : canvas.toggleSelectedNodesPositionLock()"
+          ><Lock v-if="locked" :size="15" aria-hidden="true" /><LockOpen v-else :size="15" aria-hidden="true" />{{ locked ? t('unlockPosition') : t('lockPosition') }}</button>
+          <button
+            v-if="role === 'owner'"
+            type="button"
+            class="node-menu-item"
+            :aria-pressed="hidden"
+            data-node-tool="hide"
+            @click="single ? canvas.toggleNodeHidden(nodeId) : canvas.toggleSelectedNodesHidden()"
+          ><EyeOff v-if="hidden" :size="15" aria-hidden="true" /><Eye v-else :size="15" aria-hidden="true" />{{ hidden ? t('show') : t('hide') }}</button>
+        </div>
+        <template v-if="!isImage">
+          <div class="node-menu-divider" aria-hidden="true"></div>
+          <button type="button" class="node-menu-item danger" data-node-tool="delete" @click="canvas.deleteSelection()"><Trash2 :size="15" aria-hidden="true" />{{ t('delete') }}</button>
+        </template>
       </template>
     </div>
   </div>
@@ -224,13 +281,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import {
-  ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, ChevronDown, Copy, Eye, EyeOff, Lock, LockOpen,
-  MoreHorizontal, Pencil, Square, Trash2, Type,
+  ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, ChevronDown, Copy, Eye, EyeOff, Layers, Lock, LockOpen,
+  MoreHorizontal, Square, TextCursorInput, Trash2, Type,
 } from '@lucide/vue';
 import { useI18n } from '../composables/useI18n';
 import { MENU_GAP, placeNodeToolbar } from './nodeToolbarPlacement';
 
-type NodeMenu = '' | 'fill' | 'text' | 'border' | 'more';
+type NodeMenu = '' | 'fill' | 'text' | 'name' | 'border' | 'layers' | 'more';
 
 const props = defineProps<{
   /** The CanvasLoader instance: the toolbar reads and changes the selection through it. */
@@ -262,6 +319,9 @@ const visible = computed(() => Boolean(
   && !props.canvas.isPanning,
 ));
 const fillColor = computed(() => (single.value ? props.canvas.getNodeColor(nodeId.value) : undefined));
+/** One picture selected: no background or text, its name instead; layers and delete on the row. */
+const isImage = computed(() => Boolean(single.value && props.canvas.isImageNode(nodeId.value)));
+const round = computed(() => Boolean(single.value && props.canvas.getNodeShape(nodeId.value) === 'round'));
 const locked = computed(() => Boolean(single.value ? props.canvas.isNodePositionLocked(nodeId.value) : props.canvas.areSelectedNodesPositionLocked()));
 const hidden = computed(() => Boolean(single.value ? props.canvas.isNodeHidden(nodeId.value) : props.canvas.areSelectedNodesHidden()));
 
