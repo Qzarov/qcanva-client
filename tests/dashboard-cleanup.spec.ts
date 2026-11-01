@@ -29,6 +29,7 @@ test('no panel above the toolbar; Import is in the Add dialog', async ({ page })
   await expect(dialog.locator('[data-add-create="folder"]')).toContainText('Folder');
   await expect(dialog).not.toContainText('Group');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/new-menu.png`, clip: { x: 248, y: 0, width: 600, height: 420 } });
+  await dialog.locator('[data-add-tab="upload"]').click();
   await dialog.locator('[data-add-import="file"]').click();
   const chooser = page.waitForEvent('filechooser');
   await dialog.locator('[data-add-choose]').click();

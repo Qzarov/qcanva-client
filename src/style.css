@@ -11851,14 +11851,6 @@ html { -webkit-tap-highlight-color: transparent; }
   color: var(--ui-text);
   font: inherit;
 }
-.dashboard-add-section {
-  margin: 4px 0 0;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--ui-text-secondary);
-}
 .dashboard-add-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
@@ -11909,6 +11901,7 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 12px;
   color: var(--ui-text-secondary);
 }
+.dashboard-add-tabs,
 .dashboard-add-kinds {
   display: flex;
   flex-wrap: wrap;
@@ -11919,6 +11912,7 @@ html { -webkit-tap-highlight-color: transparent; }
   background: var(--ui-surface-subtle);
   justify-self: start;
 }
+.dashboard-add-tabs button,
 .dashboard-add-kinds button {
   padding: 6px 12px;
   border: 0;
@@ -11929,6 +11923,7 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 13px;
   cursor: pointer;
 }
+.dashboard-add-tabs button.active,
 .dashboard-add-kinds button.active {
   background: var(--ui-glass-accent-bg, var(--color-brands));
   color: var(--ui-glass-accent-text, var(--color-brand-on));

@@ -1203,10 +1203,39 @@ describe('DashboardView groups', () => {
     await wrapper.get('[data-add-button]').trigger('click');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
-    // Create and Upload, side by side: no old popover menu.
-    expect(wrapper.findAll('[data-add-create]').length).toBe(5);
-    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'html']);
+    // Create and Upload are tabs: short names, no captions.
+    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'HTML', 'Document', 'Template', 'Folder']);
+    expect(wrapper.find('[data-add-import]').exists()).toBe(false);
+    await wrapper.get('[data-add-tab="upload"]').trigger('click');
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'html', 'markdown', 'folder']);
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.find('strong').text())).toEqual(['File', 'Canvas', 'HTML', 'Document', 'Folder']);
+    // Uploading a folder is shown but not yet usable.
+    const folderUpload = wrapper.get('[data-add-import="folder"]');
+    expect(folderUpload.attributes('disabled')).toBeDefined();
+    expect(folderUpload.text()).toContain('In development');
     expect(wrapper.find('.dashboard-new-menu .control-popover').exists()).toBe(false);
+  });
+
+  it('lists every own folder as a destination, one whose parent is missing too, and reads them afresh on open', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'root-folder', name: 'Projects', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], textDocuments: [] },
+        { id: 'stray', name: 'Models', role: 'owner', parentId: 'gone-parent', canvases: [], htmlDocuments: [], textDocuments: [] },
+        { id: 'stray-child', name: 'Prints', role: 'owner', parentId: 'stray', canvases: [], htmlDocuments: [], textDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+    expect(vm.folderOptions.map((option: any) => option.name)).toEqual(['Models', 'Prints', 'Projects']);
+
+    const calls = vi.mocked(resourceFolders.list).mock.calls.length;
+    vm.openAddDialog();
+    await flushPromises();
+    expect(vi.mocked(resourceFolders.list).mock.calls.length).toBeGreaterThan(calls);
+    const names = wrapper.findAll('[data-add-folder] option').map((option) => option.text().trim());
+    expect(names).toEqual(expect.arrayContaining(['Models', 'Prints', 'Projects']));
   });
 
   it('creates a group without creating or opening a canvas', async () => {

@@ -1211,6 +1211,7 @@ import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLi
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
+import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
 import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
@@ -1909,9 +1910,13 @@ export default defineComponent({
      * the path to its parent, so picking a nested folder is unambiguous.
      */
     const folderOptions = computed(() => {
+      // A folder whose parent is not among these (or comes back as '' instead
+      // of null) is a root here, as in the sidebar: it used to drop out of the
+      // list, its subfolders with it.
+      const own = new Set(ownResourceFolders.value.map((folder) => folder.id));
       const byParent = new Map<string | null, ResourceFolderSummary[]>();
       for (const folder of ownResourceFolders.value) {
-        const key = folder.parentId ?? null;
+        const key = folder.parentId && own.has(folder.parentId) ? folder.parentId : null;
         byParent.set(key, [...(byParent.get(key) || []), folder]);
       }
       const options: { id: string; name: string; depth: number; path: string }[] = [];
@@ -3912,6 +3917,18 @@ export default defineComponent({
       const current = activeSection.value.kind === 'folder' ? activeFolder.value : null;
       const fallback = current && newItemFolderOptions.value.some((option) => option.id === current.id) ? current.id : '';
       addDialog.value = { open: true, folderId: options.folderId ?? fallback, importKind: options.importKind };
+      // A folder made in the Drive (or elsewhere) since the dashboard loaded:
+      // the folders alone, quietly - no "Updating list" for opening a dialog.
+      if (isLoggedIn) void refreshFoldersQuietly();
+    };
+    const refreshFoldersQuietly = async () => {
+      try {
+        const folders = await resourceFolders.list();
+        ownResourceFolders.value = folders.own.map(normalizeResourceFolder);
+        sharedResourceFolders.value = folders.shared.map(normalizeResourceFolder);
+      } catch {
+        // The list already shown stays: the dialog still works with it.
+      }
     };
     const closeAddDialog = () => {
       addDialog.value = { open: false, folderId: '' };
@@ -3941,6 +3958,13 @@ export default defineComponent({
           if (kind === 'html') {
             const doc = await runAction('import-html-document', () => htmlDocuments.create({ title, html: text, folderId: target }), `Imported ${title}`);
             if (doc) opened.push(`/edit/html/${doc.id}`);
+          } else if (kind === 'markdown') {
+            const doc = await runAction('import-text-document', async () => {
+              const created = await textDocuments.create({ title, folderId: target });
+              await textDocuments.replaceContent(created.id, { html: marked.parse(text, { async: false }) as string });
+              return created;
+            }, `Imported ${title}`);
+            if (doc) opened.push(`/docs/${doc.slug || doc.id}`);
           } else {
             const created = await runAction('import-canvas', () => canvas.create(title, JSON.stringify(JSON.parse(text)), target), `Imported ${title}`);
             if (created) opened.push(`/canvas/${created.id}`);

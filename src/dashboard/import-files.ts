@@ -4,9 +4,9 @@
  * a file that is not what was said is told apart (so another kind can be
  * picked, or the file sent to the Drive as it is).
  */
-export type ImportKind = 'file' | 'canvas' | 'html';
+export type ImportKind = 'file' | 'canvas' | 'html' | 'markdown';
 
-export type ImportProblem = 'empty' | 'notJson' | 'notCanvas' | 'notHtml';
+export type ImportProblem = 'empty' | 'notJson' | 'notCanvas' | 'notHtml' | 'notText';
 
 export type ImportCheck = { ok: true } | { ok: false; problem: ImportProblem };
 
@@ -14,6 +14,7 @@ export type ImportCheck = { ok: true } | { ok: false; problem: ImportProblem };
 export function importAccept(kind: ImportKind): string | undefined {
   if (kind === 'canvas') return '.canvas,.json,application/json';
   if (kind === 'html') return '.html,.htm,text/html';
+  if (kind === 'markdown') return '.md,.markdown,text/markdown,text/plain';
   return undefined;
 }
 
@@ -40,6 +41,8 @@ export async function checkImportFile(kind: ImportKind, file: File): Promise<Imp
     }
     return isCanvasData(data) ? { ok: true } : { ok: false, problem: 'notCanvas' };
   }
+  // A document from Markdown: any text will do; a binary file has NUL bytes.
+  if (kind === 'markdown') return text.includes('\u0000') ? { ok: false, problem: 'notText' } : { ok: true };
   // A binary file read as text has NUL bytes; a page has tags.
   if (text.includes('\u0000') || !HTML_TAG.test(text)) return { ok: false, problem: 'notHtml' };
   return { ok: true };
@@ -47,5 +50,5 @@ export async function checkImportFile(kind: ImportKind, file: File): Promise<Imp
 
 /** The resource's title: the file's name without its extension. */
 export function importTitle(name: string): string {
-  return name.replace(/\.(canvas|json|html?)$/i, '').trim() || 'Imported';
+  return name.replace(/\.(canvas|json|html?|md|markdown)$/i, '').trim() || 'Imported';
 }

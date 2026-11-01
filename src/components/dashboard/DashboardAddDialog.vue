@@ -1,8 +1,7 @@
 <template>
-  <!-- "+ Add": one dialog for making something new and for bringing files in.
-       Importing, the user says what the files are first; each file is then
-       checked against it, and one that is not is told apart - pick another
-       kind, or send it to the Drive as a plain file. -->
+  <!-- "+ Add": Where, then two tabs - Create, Upload. Uploading, the kind is
+       chosen first; each file is then checked against it, and one that is
+       not that kind says why: pick another kind, or send it as a file. -->
   <div class="dashboard-modal-backdrop dashboard-add-backdrop" @click.self="emit('close')">
     <section
       ref="dialog"
@@ -14,7 +13,7 @@
       @keydown.esc.prevent.stop="emit('close')"
     >
       <header class="dashboard-modal-head dashboard-add-head">
-        <button v-if="step === 'import'" type="button" class="dashboard-modal-close" :aria-label="t('back')" :title="t('back')" data-add-back @click="step = 'choose'">
+        <button v-if="importing" type="button" class="dashboard-modal-close" :aria-label="t('back')" :title="t('back')" data-add-back @click="importing = false">
           <ArrowLeft :size="16" aria-hidden="true" />
         </button>
         <h3>{{ title }}</h3>
@@ -29,20 +28,27 @@
         </select>
       </label>
 
-      <template v-if="step === 'choose'">
-        <h4 class="dashboard-add-section">{{ t('addCreate') }}</h4>
-        <div class="dashboard-add-grid">
+      <template v-if="!importing">
+        <div class="dashboard-add-tabs" role="tablist">
+          <button type="button" role="tab" :aria-selected="tab === 'create'" :class="{ active: tab === 'create' }" data-add-tab="create" @click="tab = 'create'">{{ t('addCreate') }}</button>
+          <button type="button" role="tab" :aria-selected="tab === 'upload'" :class="{ active: tab === 'upload' }" data-add-tab="upload" @click="tab = 'upload'">{{ t('addUpload') }}</button>
+        </div>
+        <div v-if="tab === 'create'" class="dashboard-add-grid" role="tabpanel">
           <button v-for="tile in createTiles" :key="tile.kind" type="button" class="dashboard-add-option" :data-add-create="tile.kind" :disabled="busy" @click="emit('create', tile.kind, folderId)">
             <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="20" /></span>
             <strong>{{ tile.label }}</strong>
           </button>
         </div>
-        <h4 class="dashboard-add-section">{{ t('addUpload') }}</h4>
-        <div class="dashboard-add-grid">
+        <div v-else class="dashboard-add-grid" role="tabpanel">
           <button v-for="tile in importTiles" :key="tile.kind" type="button" class="dashboard-add-option" :data-add-import="tile.kind" :disabled="busy" @click="openImport(tile.kind)">
             <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="20" /></span>
             <strong>{{ tile.label }}</strong>
-            <small>{{ tile.hint }}</small>
+          </button>
+          <!-- Uploading a whole folder is coming: shown, not yet usable. -->
+          <button type="button" class="dashboard-add-option" data-add-import="folder" disabled>
+            <span class="dashboard-add-option-icon" aria-hidden="true"><FolderUp :size="20" /></span>
+            <strong>{{ t('group') }}</strong>
+            <small>{{ t('inDevelopment') }}</small>
           </button>
         </div>
       </template>
@@ -68,7 +74,6 @@
           @dragleave="dragOver = false"
           @drop.prevent="onDrop"
         >
-          <span>{{ t('dropFilesHere') }}</span>
           <button type="button" class="btn-ghost btn-sm" data-add-choose @click="input?.click()">{{ t('chooseFiles') }}</button>
           <input ref="input" type="file" multiple :accept="importAccept(kind)" hidden data-add-input @change="onPicked" />
         </div>
@@ -80,18 +85,10 @@
             </span>
             <span class="dashboard-add-file-main">
               <span class="dashboard-add-file-name">{{ entry.file.name }}</span>
-              <span v-if="entry.asFile" class="dashboard-add-file-note">{{ t('importGoesToDrive') }}</span>
-              <span v-else-if="entry.check && !entry.check.ok" class="dashboard-add-file-note" data-add-problem>
-                {{ problemText(entry.check.problem) }} {{ t('importPickOther') }}
-              </span>
+              <span v-if="entry.asFile" class="dashboard-add-file-note">{{ t('importAsFile') }}</span>
+              <span v-else-if="entry.check && !entry.check.ok" class="dashboard-add-file-note" data-add-problem>{{ problemText(entry.check.problem) }}</span>
             </span>
-            <button
-              v-if="isBad(entry)"
-              type="button"
-              class="dashboard-add-file-action"
-              data-add-as-file
-              @click="entry.asFile = true"
-            >{{ t('importAsDriveFile') }}</button>
+            <button v-if="isBad(entry)" type="button" class="dashboard-add-file-action" data-add-as-file @click="entry.asFile = true">{{ t('importAsFile') }}</button>
             <button type="button" class="dashboard-modal-close" :aria-label="t('removeFile')" @click="removeEntry(entry.id)"><X :size="14" aria-hidden="true" /></button>
           </li>
         </ul>
@@ -108,7 +105,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, type Component } from 'vue';
-import { ArrowLeft, CircleAlert, CircleCheck, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, HardDriveUpload, LayoutTemplate, X } from '@lucide/vue';
+import { ArrowLeft, CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, X } from '@lucide/vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { checkImportFile, importAccept, type ImportCheck, type ImportKind, type ImportProblem } from '../../dashboard/import-files';
 
@@ -119,7 +116,7 @@ const props = defineProps<{
   folders: ReadonlyArray<{ id: string; name: string; depth: number }>;
   /** Where it goes at first: the open folder, or Unsorted (''). */
   initialFolderId?: string;
-  /** Straight to importing (a folder's Import), with this kind chosen. */
+  /** Straight to uploading (a folder's Import), with this kind chosen. */
   initialImport?: ImportKind;
   busy?: boolean;
 }>();
@@ -131,7 +128,8 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const folderId = ref(props.initialFolderId || '');
-const step = ref<'choose' | 'import'>(props.initialImport ? 'import' : 'choose');
+const tab = ref<'create' | 'upload'>(props.initialImport ? 'upload' : 'create');
+const importing = ref(Boolean(props.initialImport));
 const kind = ref<ImportKind>(props.initialImport || 'file');
 const dialog = ref<HTMLElement | null>(null);
 const input = ref<HTMLInputElement | null>(null);
@@ -143,19 +141,20 @@ const entries = ref<Entry[]>([]);
 let nextId = 0;
 
 const createTiles = computed<Array<{ kind: AddCreateKind; label: string; icon: Component }>>(() => [
-  { kind: 'canvas', label: t('newCanvas'), icon: FilePlus2 },
-  { kind: 'html-document', label: t('htmlDocument'), icon: FileCode2 },
+  { kind: 'canvas', label: t('canvas'), icon: FilePlus2 },
+  { kind: 'html-document', label: 'HTML', icon: FileCode2 },
   { kind: 'text-document', label: t('document'), icon: FileText },
-  { kind: 'interactive-template', label: t('interactiveTemplate'), icon: LayoutTemplate },
+  { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate },
   { kind: 'folder', label: t('group'), icon: FolderPlus },
 ]);
-const importTiles = computed<Array<{ kind: ImportKind; label: string; hint: string; icon: Component }>>(() => [
-  { kind: 'file', label: t('importFiles'), hint: t('importFilesHint'), icon: HardDriveUpload },
-  { kind: 'canvas', label: t('importCanvas'), hint: t('importCanvasHint'), icon: FileInput },
-  { kind: 'html', label: t('importHtml'), hint: t('importHtmlHint'), icon: FileCode2 },
+const importTiles = computed<Array<{ kind: ImportKind; label: string; icon: Component }>>(() => [
+  { kind: 'file', label: t('addFile'), icon: FileIcon },
+  { kind: 'canvas', label: t('canvas'), icon: FileInput },
+  { kind: 'html', label: 'HTML', icon: FileCode2 },
+  { kind: 'markdown', label: t('document'), icon: FileText },
 ]);
-const title = computed(() => (step.value === 'import'
-  ? importTiles.value.find((tile) => tile.kind === kind.value)!.label
+const title = computed(() => (importing.value
+  ? `${t('addUpload')}: ${importTiles.value.find((tile) => tile.kind === kind.value)!.label}`
   : t('add')));
 
 const PROBLEM_TEXT: Record<ImportProblem, MessageKey> = {
@@ -163,6 +162,7 @@ const PROBLEM_TEXT: Record<ImportProblem, MessageKey> = {
   notJson: 'importProblemNotJson',
   notCanvas: 'importProblemNotCanvas',
   notHtml: 'importProblemNotHtml',
+  notText: 'importProblemNotText',
 };
 const problemText = (problem: ImportProblem) => t(PROBLEM_TEXT[problem]);
 const isBad = (entry: Entry) => !entry.asFile && entry.check !== null && !entry.check.ok;
@@ -184,7 +184,7 @@ const addFiles = (files: File[]) => {
 };
 const openImport = (next: ImportKind) => {
   kind.value = next;
-  step.value = 'import';
+  importing.value = true;
 };
 /** Another kind: every file is checked again against it. */
 const setKind = (next: ImportKind) => {

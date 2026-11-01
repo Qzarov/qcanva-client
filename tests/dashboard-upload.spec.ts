@@ -23,6 +23,12 @@ async function openDashboard(page: Page) {
     uploads.push(new URL(route.request().url()).pathname);
     return route.fulfill({ status: 201, json: { items: [] } });
   });
+  await page.route(/\/api\/text-documents(\/[^/]+\/content)?$/, async (route) => {
+    if (!['POST', 'PUT'].includes(route.request().method())) return route.fallback();
+    const path = new URL(route.request().url()).pathname;
+    created.push({ path, body: route.request().postDataJSON() });
+    return route.fulfill({ status: 201, json: { id: 'imported-doc' } });
+  });
   await page.route(/\/api\/(canvas|html-documents)$/, async (route) => {
     if (route.request().method() !== 'POST') return route.fallback();
     const path = new URL(route.request().url()).pathname;
@@ -51,11 +57,14 @@ test('the Add button opens a dialog: create on one side, upload on the other', a
   await expect(button).toHaveText('Add');
   await button.click();
   await expect(dialog(page)).toBeVisible();
-  expect(await dialog(page).locator('[data-add-create]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-create'))))
-    .toEqual(['canvas', 'html-document', 'text-document', 'interactive-template', 'folder']);
-  expect(await dialog(page).locator('[data-add-import]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-import'))))
-    .toEqual(['file', 'canvas', 'html']);
+  expect(await dialog(page).locator('[data-add-create]').allTextContents()).toEqual(['Canvas', 'HTML', 'Document', 'Template', 'Folder']);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog.png` });
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  expect(await dialog(page).locator('[data-add-import]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-import'))))
+    .toEqual(['file', 'canvas', 'html', 'markdown', 'folder']);
+  await expect(dialog(page).locator('[data-add-import="folder"]')).toBeDisabled();
+  await expect(dialog(page).locator('[data-add-import="folder"]')).toContainText('In development');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog-upload.png` });
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toHaveCount(0);
 });
@@ -64,6 +73,7 @@ test('files go up into the folder chosen in "Where"', async ({ page }) => {
   const { uploads } = await openDashboard(page);
   await page.locator('[data-add-button]').click();
   await dialog(page).locator('[data-add-folder]').selectOption('folder-b');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
   await dialog(page).locator('[data-add-import="file"]').click();
   await pick(page, [photo, notes]);
   await expect(dialog(page).locator('[data-add-file]')).toHaveCount(2);
@@ -78,6 +88,7 @@ test('a canvas import catches a file that is not one: pick another kind, or send
   const { uploads, created } = await openDashboard(page);
   await page.locator('[data-add-button]').click();
   await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
   await dialog(page).locator('[data-add-import="canvas"]').click();
   await pick(page, [
     { name: 'hero.json', mimeType: 'application/json', buffer: Buffer.from('{"name":"Lyra","hp":12}') },
@@ -103,6 +114,7 @@ test('a canvas import catches a file that is not one: pick another kind, or send
 test('another kind checks the files again', async ({ page }) => {
   await openDashboard(page);
   await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-tab="upload"]').click();
   await dialog(page).locator('[data-add-import="html"]').click();
   await pick(page, [notes]);
   const entry = dialog(page).locator('[data-add-file="notes.txt"]');
@@ -128,4 +140,20 @@ test("a folder's Import opens the dialog on uploading, that folder chosen; its +
   await page.locator('[data-folder-create-menu]').click();
   await expect(dialog(page).locator('[data-add-create="canvas"]')).toBeVisible();
   await expect(dialog(page).locator('[data-add-folder]')).toHaveValue('folder-a');
+});
+
+test('a document from Markdown: created, its text as the content', async ({ page }) => {
+  const { created } = await openDashboard(page);
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-b');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="markdown"]').click();
+  await pick(page, [{ name: 'Plan.md', mimeType: 'text/markdown', buffer: Buffer.from('# Plan\n\n- one\n- two') }]);
+  await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (1)');
+  await dialog(page).locator('[data-add-submit]').click();
+  await expect.poll(() => created.map((call) => call.path)).toEqual(['/api/text-documents', '/api/text-documents/imported-doc/content']);
+  expect(created[0]!.body).toMatchObject({ title: 'Plan', folderId: 'folder-b' });
+  expect(created[1]!.body.html).toContain('<h1>Plan</h1>');
+  expect(created[1]!.body.html).toContain('<li>two</li>');
+  await expect(page).toHaveURL(/\/docs\/imported-doc$/);
 });

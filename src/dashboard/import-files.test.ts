@@ -29,7 +29,14 @@ describe('dashboard import files', () => {
     expect(await checkImportFile('html', file('doc.pdf', new Uint8Array([37, 80, 68, 70, 0, 60, 112, 62])))).toEqual({ ok: false, problem: 'notHtml' });
   });
 
+  it('takes any text as a document from Markdown, not a binary file', async () => {
+    expect(importAccept('markdown')).toContain('.md');
+    expect(await checkImportFile('markdown', file('notes.md', '# Plan\n\n- one'))).toEqual({ ok: true });
+    expect(await checkImportFile('markdown', file('photo.png', new Uint8Array([137, 80, 78, 71, 0, 1])))).toEqual({ ok: false, problem: 'notText' });
+  });
+
   it('names the resource after the file', () => {
+    expect(importTitle('Plan.md')).toBe('Plan');
     expect(importTitle('Roadmap.canvas')).toBe('Roadmap');
     expect(importTitle('page.HTML')).toBe('page');
     expect(importTitle('.canvas')).toBe('Imported');
