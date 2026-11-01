@@ -1,12 +1,14 @@
 /**
  * Several dashboard items at once: tick them (the box in place of the type
  * icon, Ctrl/Cmd-click, Shift-click, a long press on a phone), then move,
- * pin or delete them all from the bar over the dashboard. Also: the filter
- * menu opens rightwards, never under the sidebar.
+ * download (one zip) or delete them all from the bar over the dashboard.
+ * Also: the filter menu opens rightwards, never under the sidebar.
  * Mocked API, no backend needed. Screenshots only when SHOT_DIR is set.
  */
 
+import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { strFromU8, unzipSync } from 'fflate';
 import { openDashboardFolder, serveDashboard } from './support/fake-dashboard-server';
 
 const SHOTS = process.env.SHOT_DIR;
@@ -20,7 +22,13 @@ async function openDashboard(page: Page, width = 1280) {
   const calls: Call[] = [];
   await page.route(/\/api\/(resource-folders\/[^/]+\/resources|canvas\/[^/]+|text-documents\/[^/]+)$/, async (route) => {
     const request = route.request();
-    if (request.method() === 'GET') return route.fallback();
+    const path = new URL(request.url()).pathname;
+    if (request.method() === 'GET') {
+      // What a download fetches.
+      if (path === '/api/canvas/c-1') return route.fulfill({ json: { canvas: { id: 'c-1', data: '{"nodes":[{"id":"n1"}],"edges":[]}' }, role: 'owner' } });
+      if (path === '/api/text-documents/doc-1') return route.fulfill({ json: { document: { id: 'doc-1', title: 'План поездки', snapshot: { html: '<p>Лиссабон</p>' } }, role: 'owner' } });
+      return route.fallback();
+    }
     calls.push({ method: request.method(), path: new URL(request.url()).pathname, body: request.postDataJSON?.() ?? undefined });
     return route.fulfill({ status: 200, json: { ok: true } });
   });
@@ -58,6 +66,9 @@ test('tick by the box, then a click ticks instead of opening; Select all; move t
   await expect(bar.locator('[data-selection-count]')).toHaveText('Selected: 2');
   // Both cards of the folder are ticked: nothing left for "Select all".
   await expect(bar.locator('[data-selection-select-all]')).toHaveCount(0);
+  // No bulk pin.
+  await expect(bar.locator('[data-selection-pin]')).toHaveCount(0);
+  await expect(bar.locator('[data-selection-move]')).toHaveText('Move');
   // After the bar's entrance, not halfway through it.
   if (SHOTS) await page.waitForTimeout(400);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/selection-bar.png` });
@@ -96,7 +107,8 @@ test('Ctrl/Cmd-click ticks; delete them all after one confirmation', async ({ pa
 test('Shift-click ticks a range in Recents; Escape clears', async ({ page }) => {
   await openDashboard(page);
   const recents = page.locator('[data-recent-layout] [data-select-key]');
-  await expect(recents).toHaveCount(3);
+  // Opened and created items alike: at least the three ticked below.
+  await expect.poll(() => recents.count()).toBeGreaterThanOrEqual(3);
   await recents.nth(0).click({ modifiers: ['ControlOrMeta'] });
   await recents.nth(2).click({ modifiers: ['Shift'] });
   const bar = page.locator('[data-selection-bar]');
@@ -106,20 +118,54 @@ test('Shift-click ticks a range in Recents; Escape clears', async ({ page }) => 
   await expect(page.locator('[data-selected]')).toHaveCount(0);
 });
 
-test('a long press ticks on a phone, and does not open the card', async ({ page }) => {
-  await openDashboard(page, 390);
-  const first = page.locator('[data-recent-layout] [data-select-key]').first();
-  const box = (await first.boundingBox())!;
-  const point = { clientX: box.x + box.width / 2, clientY: box.y + box.height / 2, pointerType: 'touch', bubbles: true, isPrimary: true };
-  await first.dispatchEvent('pointerdown', point);
-  await page.waitForTimeout(600);
-  await first.dispatchEvent('pointerup', point);
-  await first.dispatchEvent('click', point);
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 1');
-  // After the bar's entrance, not halfway through it.
-  if (SHOTS) await page.waitForTimeout(400);
-  if (SHOTS) await page.screenshot({ path: `${SHOTS}/selection-phone.png` });
+test('download them all as one zip, with a status bar', async ({ page }) => {
+  await openDashboard(page);
+  await openDashboardFolder(page, 'folder-a');
+  await card(page, 'canvas:c-1').click({ modifiers: ['ControlOrMeta'] });
+  await card(page, 'text-document:doc-1').click({ modifiers: ['ControlOrMeta'] });
+
+  const downloading = page.waitForEvent('download');
+  await page.locator('[data-selection-download]').click();
+  const download = await downloading;
+  expect(download.suggestedFilename()).toMatch(/^qcanva-\d{4}-\d{2}-\d{2}\.zip$/);
+  const files = unzipSync(new Uint8Array(await readFile(await download.path())));
+  expect(Object.keys(files).sort()).toEqual(['Маршрут.canvas', 'План поездки.html']);
+  expect(JSON.parse(strFromU8(files['Маршрут.canvas']!))).toEqual({ nodes: [{ id: 'n1' }], edges: [] });
+  expect(strFromU8(files['План поездки.html']!)).toContain('<p>Лиссабон</p>');
+
+  const status = page.locator('[data-download-status]');
+  await expect(status).toContainText('Archive downloaded');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/download-status.png` });
+  await expect(page.locator('[data-selection-bar]')).toHaveCount(0);
+});
+
+test.describe('on a phone', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test('a real long press ticks a card, opens nothing, and the next tap still works', async ({ page }) => {
+    await openDashboard(page, 390);
+    const cards = page.locator('[data-recent-layout] [data-select-key]');
+    const box = (await cards.first().boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    // Real touches through the browser, not synthetic events.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
+    await page.waitForTimeout(700);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    await expect(page).toHaveURL(/\/dashboard$/);
+    const count = page.locator('[data-selection-bar] [data-selection-count]');
+    await expect(count).toHaveText('Selected: 1');
+    // A plain tap on another card now ticks it too.
+    await cards.nth(1).tap();
+    await expect(count).toHaveText('Selected: 2');
+    await expect(page).toHaveURL(/\/dashboard$/);
+    if (SHOTS) {
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: `${SHOTS}/selection-phone.png` });
+    }
+  });
 });
 
 test('the filter menu opens rightwards, clear of the sidebar', async ({ page }) => {

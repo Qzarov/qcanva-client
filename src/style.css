@@ -11547,6 +11547,14 @@ html { -webkit-tap-highlight-color: transparent; }
   border-color: var(--ui-glass-accent-border, var(--color-brands));
   box-shadow: 0 0 0 1px var(--ui-glass-accent-border, var(--color-brands)), var(--ui-glass-accent-glow, none);
 }
+/* A long press ticks a card on a touch screen: no callout or text
+   selection on cards there. */
+@media (pointer: coarse) {
+  :is(.canvas-card, .dashboard-recent-card) {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
 /* Ticking, not opening: no text selection while picking several. */
 .dashboard-selecting :is(.canvas-card, .dashboard-recent-card) {
   user-select: none;
@@ -11649,4 +11657,75 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-selection-bar-leave-active {
     transition: none;
   }
+}
+
+/* ===== Dashboard: downloading the selection =====
+   While the zip is put together a status bar sits at the bottom of the
+   central column: what it is doing and how far along; it stays a few
+   seconds once the archive is saved (or could not be). */
+.dashboard-download-status {
+  position: absolute;
+  z-index: 330;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100% - 32px));
+  padding: 12px 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+  color: var(--ui-text);
+  font-size: 13px;
+}
+.dashboard-download-status-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-subtle);
+}
+.dashboard-download-status-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brands);
+  transition: width 0.3s ease;
+}
+.dashboard-download-status.is-error .dashboard-download-status-bar {
+  background: var(--ui-danger);
+}
+.dashboard-download-status-enter-active,
+.dashboard-download-status-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-download-status-enter-from,
+.dashboard-download-status-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 12px);
+}
+@media (max-width: 768px) {
+  /* Above the floating "+". */
+  .dashboard-download-status {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-download-status-enter-active,
+  .dashboard-download-status-leave-active,
+  .dashboard-download-status-bar {
+    transition: none;
+  }
+}
+
+/* Recent could not be refreshed but still shows the last list: a quiet line above it. */
+.dashboard-recents-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
 }

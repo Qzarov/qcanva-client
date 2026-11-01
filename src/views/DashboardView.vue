@@ -44,10 +44,10 @@
           <span class="dashboard-selection-count" data-selection-count>{{ t('selectedCount').replace('{n}', String(selectedKeys.length)) }}</span>
           <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-action" data-selection-select-all @click="selectAllOnScreen">{{ t('selectAll') }}</button>
           <button type="button" class="dashboard-selection-action" data-selection-move :disabled="isBusy" @click.stop="openBulkMoveModal">
-            <FolderInput :size="15" aria-hidden="true" /><span>{{ t('bulkMoveToFolder') }}</span>
+            <FolderInput :size="15" aria-hidden="true" /><span>{{ t('bulkMove') }}</span>
           </button>
-          <button v-if="bulkPinnable.length" type="button" class="dashboard-selection-action" data-selection-pin :disabled="isBusy" @click="bulkTogglePinned">
-            <PinOff v-if="bulkAllPinned" :size="15" aria-hidden="true" /><Pin v-else :size="15" aria-hidden="true" /><span>{{ bulkAllPinned ? t('unpin') : t('pin') }}</span>
+          <button type="button" class="dashboard-selection-action" data-selection-download :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
+            <Download :size="15" aria-hidden="true" /><span>{{ t('download') }}</span>
           </button>
           <button v-if="bulkDeletable.length" type="button" class="dashboard-selection-action danger" data-selection-delete :disabled="isBusy" @click="bulkDelete">
             <Trash2 :size="15" aria-hidden="true" /><span>{{ t('delete') }}</span>
@@ -55,6 +55,26 @@
           <button type="button" class="dashboard-selection-clear" data-selection-clear :title="t('clearSelection')" @click="clearSelection">
             <X :size="15" aria-hidden="true" /><span>{{ t('clearSelection') }}</span>
           </button>
+        </div>
+      </Transition>
+      <Transition name="dashboard-download-status">
+        <div
+          v-if="downloadStatus.phase !== 'idle'"
+          class="dashboard-download-status"
+          :class="'is-' + downloadStatus.phase"
+          role="status"
+          aria-live="polite"
+          data-download-status
+        >
+          <span class="dashboard-download-status-text">{{
+            downloadStatus.phase === 'collect' ? t('downloadCollecting').replace('{done}', String(downloadStatus.done)).replace('{total}', String(downloadStatus.total))
+            : downloadStatus.phase === 'pack' ? t('downloadPacking')
+            : downloadStatus.phase === 'done' ? (downloadStatus.failed ? t('downloadDonePartly').replace('{n}', String(downloadStatus.failed)) : t('downloadDone'))
+            : t('downloadFailed')
+          }}</span>
+          <span class="dashboard-download-status-track" aria-hidden="true">
+            <span class="dashboard-download-status-bar" :style="{ width: (downloadStatus.phase === 'collect' ? Math.round(downloadStatus.done / Math.max(1, downloadStatus.total) * 90) : downloadStatus.phase === 'pack' ? 95 : 100) + '%' }"></span>
+          </span>
         </div>
       </Transition>
     <header v-if="!isLoggedIn" class="app-header app-header-public">
@@ -139,6 +159,7 @@
       @pointermove.capture="onSelectionPointerMove"
       @pointerup.capture="cancelLongPress"
       @pointercancel.capture="cancelLongPress"
+      @contextmenu.capture="onSelectionContextMenu"
     >
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
@@ -227,6 +248,10 @@
           <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
         </div>
       </div>
+      <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
+        {{ t('recentStale') }}
+        <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
+      </p>
       <div
         v-if="visibleRecent.length"
         class="dashboard-recents-layout"
@@ -247,6 +272,10 @@
           <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
           <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
         </button>
+      </div>
+      <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
+        {{ t('recentLoadFailed') }}
+        <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
       </div>
       <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
         {{ t('noRecentMatches') }}
@@ -1196,10 +1225,11 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Pin, PinOff, Plus, Trash2, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Trash2, Download, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
+import { buildZip, canvasFileContent, safeFileName, saveBlob, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { downloadDriveFile } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -1360,8 +1390,7 @@ export default defineComponent({
     FileText,
     Folder,
     FolderInput,
-    Pin,
-    PinOff,
+    Download,
     Trash2,
     FolderPlus,
     LayoutTemplate,
@@ -1498,6 +1527,9 @@ export default defineComponent({
       }
     };
     const recentResourceHistory = ref<RecentHistoryEntry[]>([]);
+    /** The last refresh of the open history, or of the dashboard itself, failed. */
+    const recentLoadFailed = ref(false);
+    const dashboardLoadFailed = ref(false);
     const tagFilterList = ref<HTMLElement | null>(null);
     const activeFolderBody = ref<HTMLElement | null>(null);
     const hasTagOverflow = ref(false);
@@ -1525,8 +1557,10 @@ export default defineComponent({
           title: '',
           openedAt: new Date(row.updatedAt).getTime(),
         })).sort((a, b) => b.openedAt - a.openedAt);
+        recentLoadFailed.value = false;
       } catch {
-        recentResourceHistory.value = [];
+        // Keep what was shown: a failed refresh is not "nothing opened yet".
+        recentLoadFailed.value = true;
       }
     };
     // Browser navigation should always read the current resource list. The
@@ -2224,8 +2258,34 @@ export default defineComponent({
       [...allRecentResourceItems.value, ...allHtmlDocumentsRaw.value, ...allTextDocumentsRaw.value]
         .map((item) => [`${item.type}:${item.id}`, item] as const),
     ));
+    /**
+     * Creating counts as much as opening: the user's own items join Recent at
+     * the time they were made, so a new file is there at once, and a user who
+     * has opened nothing yet still sees what they made. Only one's own: an
+     * item of someone else's is "recent" for them only once opened.
+     */
+    const createdRecentEntries = computed<RecentHistoryEntry[]>(() => {
+      const userId = currentUser.value?.id;
+      const entries: RecentHistoryEntry[] = [];
+      for (const item of dashboardItemsByKey.value.values()) {
+        const mine = item.type === 'interactive-template'
+          ? (item as { role?: string }).role === 'owner'
+          : Boolean(userId) && item.ownerId === userId;
+        if (!mine) continue;
+        const raw = item as { createdAt?: string; updatedAt?: string };
+        const createdAt = Date.parse(raw.createdAt || raw.updatedAt || '');
+        if (!Number.isFinite(createdAt)) continue;
+        entries.push({ id: item.id, routeId: ('slug' in item && item.slug) || item.id, type: item.type, title: item.title || '', openedAt: createdAt });
+      }
+      return entries;
+    });
     const recentResources = computed<RecentResource[]>(() => {
-      return [...recentResourceHistory.value].sort((a, b) => b.openedAt - a.openedAt).flatMap((recent) => {
+      const opened = new Set(recentResourceHistory.value.map((entry) => `${entry.type}:${entry.id}`));
+      const history = [
+        ...recentResourceHistory.value,
+        ...createdRecentEntries.value.filter((entry) => !opened.has(`${entry.type}:${entry.id}`)),
+      ].sort((a, b) => b.openedAt - a.openedAt).slice(0, RECENT_RESOURCES_LIMIT);
+      return history.flatMap((recent) => {
         const item = dashboardItemsByKey.value.get(`${recent.type}:${recent.id}`);
         if (!item) return [];
         return [{
@@ -2293,6 +2353,11 @@ export default defineComponent({
       recentExpanded.value ? sortedRecentResources.value : sortedRecentResources.value.slice(0, feedLimit('recent')),
     );
     const recentShowAllAvailable = computed(() => recentTotal.value > feedLimit('recent'));
+    const recentRefreshFailed = computed(() => recentLoadFailed.value || dashboardLoadFailed.value);
+    const retryRecent = () => {
+      void load({ showLoading: false });
+      void loadRecentResources();
+    };
 
     /**
      * HOME AS ONE FEED. Shared / Interactive / Public render on Home too,
@@ -2506,7 +2571,9 @@ export default defineComponent({
         expandedTreeIds.value = expandedTreeIds.value.filter((id) => knownFolders.has(id));
         restoreSelectedFolder();
         writeDashboardCache();
+        dashboardLoadFailed.value = false;
       } catch (error) {
+        dashboardLoadFailed.value = true;
         if (showLoading) setFeedback('error', error instanceof Error ? error.message : 'Failed to load dashboard');
       } finally {
         if (showLoading) loading.value = false;
@@ -2566,6 +2633,12 @@ export default defineComponent({
       }
     };
 
+    /** Just created: into Recent now, from what the server answered. */
+    const rememberCreatedResource = (type: RecentResourceType, record: { id: string; slug?: string | null; title?: string | null }) => {
+      const recent: RecentHistoryEntry = { id: record.id, routeId: record.slug || record.id, type, title: record.title || '', openedAt: Date.now() };
+      recentResourceHistory.value = [recent, ...recentResourceHistory.value.filter((entry) => !(entry.type === type && entry.id === record.id))].slice(0, RECENT_RESOURCES_LIMIT);
+      markResourceOpened(type, record.id);
+    };
     const rememberRecentResource = (type: RecentResourceType, routeId: string) => {
       const item = allRecentResourceItems.value.find((resource) => resource.type === type && (resource.id === routeId || ('slug' in resource && resource.slug === routeId)));
       if (!item) return;
@@ -2657,6 +2730,7 @@ export default defineComponent({
       const targetFolderId = await resolveCreateFolderId(folderId);
       const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolderId), 'Canvas created');
       if (!c) return;
+      rememberCreatedResource('canvas', c);
       router.push(`/canvas/${c.id}`);
     };
 
@@ -2669,6 +2743,7 @@ export default defineComponent({
         'HTML document created',
       );
       if (!doc) return;
+      rememberCreatedResource('html-document', doc);
       router.push(`/edit/html/${doc.id}`);
     };
 
@@ -2681,6 +2756,7 @@ export default defineComponent({
         'Document created',
       );
       if (!doc) return;
+      rememberCreatedResource('text-document', doc);
       openTextDocument(doc.id);
     };
 
@@ -2704,6 +2780,7 @@ export default defineComponent({
       templateFolderId.value = null;
       if (folderId) await resourceFolders.move(folderId, 'interactive-template', template.id);
       interactiveTemplateItems.value = [{ ...template, role: 'owner' }, ...interactiveTemplateItems.value];
+      rememberCreatedResource('interactive-template', template);
       openInteractiveTemplate(template.id);
     };
 
@@ -3418,8 +3495,6 @@ export default defineComponent({
     const ownsItem = (item: FolderItem) => (
       item.type === 'interactive-template' ? (item as { role?: string }).role === 'owner' : isOwnedResource(item)
     );
-    const bulkPinnable = computed(() => selectedItems.value.filter((item) => item.type !== 'interactive-template' && ownsItem(item)));
-    const bulkAllPinned = computed(() => bulkPinnable.value.length > 0 && bulkPinnable.value.every((item) => item.pinned));
     const bulkDeletable = computed(() => selectedItems.value.filter(ownsItem));
     /** Cards on screen that can be ticked, in screen order. */
     const selectableOnScreen = () => Array.from(
@@ -3461,6 +3536,9 @@ export default defineComponent({
       longPressStart = null;
     };
     const onSelectionPointerDown = (event: PointerEvent) => {
+      // A long press is not always followed by a click: the flag must not
+      // outlive it and eat the next real tap.
+      swallowNextClick = false;
       if (!isLoggedIn || event.pointerType === 'mouse') return;
       const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-select-key]');
       if (!card) return;
@@ -3475,6 +3553,11 @@ export default defineComponent({
     };
     const onSelectionPointerMove = (event: PointerEvent) => {
       if (longPressStart && Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelLongPress();
+    };
+    /** The system's long-press menu (or text selection) must not follow the tick. */
+    const onSelectionContextMenu = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest('[data-select-key]')) return;
+      if (swallowNextClick || longPressTimer) event.preventDefault();
     };
     const onSelectionClickCapture = (event: MouseEvent) => {
       if (swallowNextClick) {
@@ -3532,18 +3615,68 @@ export default defineComponent({
         bulk: [...selectedKeys.value],
       };
     };
-    const bulkTogglePinned = async () => {
-      const nextPinned = !bulkAllPinned.value;
-      const items = bulkPinnable.value.filter((item) => Boolean(item.pinned) !== nextPinned);
-      await runAction('bulk-pin', async () => {
-        for (const item of items) {
-          if (item.type === 'canvas') await canvas.update(item.id, { pinned: nextPinned });
-          else if (item.type === 'html-document') await htmlDocuments.update(item.id, { pinned: nextPinned });
-          else await textDocuments.update(item.id, { pinned: nextPinned });
-        }
-      }, t(nextPinned ? 'bulkPinned' : 'bulkUnpinned').replace('{n}', String(items.length)));
-      await load({ showLoading: false });
+    /**
+     * Download the selection as one zip. Each item is fetched in turn (the
+     * status bar counts them), then packed; one that fails is left out and
+     * counted, the rest still download.
+     */
+    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
+      phase: 'idle', done: 0, total: 0, failed: 0,
+    });
+    let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
+    const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
+      const title = item.title || t('untitled');
+      const base = safeFileName(title, t('untitled'));
+      if (item.type === 'canvas') {
+        const res = await canvas.get(item.id);
+        return { name: uniqueFileName(base, 'canvas', taken), content: canvasFileContent(res.canvas?.data) };
+      }
+      if (item.type === 'html-document') {
+        const res = await htmlDocuments.get(item.id);
+        return { name: uniqueFileName(base, 'html', taken), content: res.document?.html || '' };
+      }
+      if (item.type === 'text-document') {
+        const res = await textDocuments.get(item.id);
+        return { name: uniqueFileName(base, 'html', taken), content: textDocumentFileContent(title, res.document?.snapshot?.html || '') };
+      }
+      const template = await interactiveTemplates.get(item.id);
+      return {
+        name: uniqueFileName(base, 'json', taken),
+        content: JSON.stringify({ title: template.title, templateType: template.templateType, data: template.data }, null, 2),
+      };
     };
+    const bulkDownload = async () => {
+      const items = selectedItems.value;
+      if (!items.length) return;
+      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
+      downloadStatus.value = { phase: 'collect', done: 0, total: items.length, failed: 0 };
+      const taken = new Set<string>();
+      const files: ArchiveFile[] = [];
+      for (const item of items) {
+        try {
+          files.push(await archiveFileOf(item, taken));
+        } catch {
+          downloadStatus.value.failed += 1;
+        }
+        downloadStatus.value.done += 1;
+      }
+      if (!files.length) {
+        downloadStatus.value.phase = 'error';
+      } else {
+        downloadStatus.value.phase = 'pack';
+        try {
+          const blob = await buildZip(files);
+          saveBlob(blob, `qcanva-${new Date().toISOString().slice(0, 10)}.zip`);
+          downloadStatus.value.phase = 'done';
+          clearSelection();
+        } catch {
+          downloadStatus.value.phase = 'error';
+        }
+      }
+      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
+    };
+    onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
+
     const bulkDelete = async () => {
       const items = bulkDeletable.value;
       const skipped = selectedItems.value.length - items.length;
@@ -4581,12 +4714,13 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
+      recentRefreshFailed,
+      recentResourceHistory,
+      retryRecent,
       folderModalMoves,
       selectedKeys,
       isSelected,
       selectionKey,
-      bulkPinnable,
-      bulkAllPinned,
       bulkDeletable,
       allOnScreenSelected,
       clearSelection,
@@ -4596,8 +4730,10 @@ export default defineComponent({
       onSelectionPointerMove,
       cancelLongPress,
       onSelectionClickCapture,
+      onSelectionContextMenu,
       openBulkMoveModal,
-      bulkTogglePinned,
+      bulkDownload,
+      downloadStatus,
       bulkDelete,
       publicOwnerFilterEl,
       openAddFromTile,

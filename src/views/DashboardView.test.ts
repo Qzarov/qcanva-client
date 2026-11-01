@@ -2575,6 +2575,70 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Roadmap Draft']);
   });
 
+  it('says Recent could not be refreshed instead of showing it as empty', async () => {
+    vi.mocked(recentResources.list).mockRejectedValueOnce(new Error('offline'));
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const { t } = useI18n();
+
+    expect(wrapper.get('[data-recent-error]').text()).toContain(t('recentLoadFailed'));
+    expect(wrapper.find('[data-feed-add="recent"]').exists()).toBe(false);
+
+    // Retry: this time it answers, with nothing opened yet.
+    await wrapper.get('[data-recent-retry]').trigger('click');
+    await flushPromises();
+    expect(wrapper.find('[data-recent-error]').exists()).toBe(false);
+    expect(wrapper.find('[data-feed-add="recent"]').exists()).toBe(true);
+  });
+
+  it('keeps the last Recent when a refresh fails, and says it may be out of date', async () => {
+    vi.mocked(canvas.list).mockResolvedValue({
+      own: [{ id: 'kept', title: 'Kept Canvas', ownerId: 'someone-else' }], shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([
+      { resourceId: 'kept', resourceType: 'canvas', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ] as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    vi.mocked(recentResources.list).mockRejectedValueOnce(new Error('offline'));
+    await vm.retryRecent();
+    await flushPromises();
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Kept Canvas']);
+    expect(wrapper.find('[data-recent-stale]').exists()).toBe(true);
+    vi.mocked(canvas.list).mockResolvedValue({ own: [], shared: [], public: [], welcome: null } as never);
+  });
+
+  it('counts what the user created: Recent shows it when nothing has been opened', async () => {
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [
+        { id: 'older', title: 'Older Canvas', ownerId: 'user-1', createdAt: '2026-01-01T00:00:00.000Z' },
+        { id: 'newer', title: 'Newer Canvas', ownerId: 'user-1', createdAt: '2026-02-01T00:00:00.000Z' },
+        // Someone else's: recent for this user only once opened.
+        { id: 'theirs', title: 'Their Canvas', ownerId: 'user-9', createdAt: '2026-03-01T00:00:00.000Z' },
+      ],
+      shared: [], public: [], welcome: null,
+    } as never);
+    vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.findAll('.dashboard-recent-title').map((el) => el.text())).toEqual(['Newer Canvas', 'Older Canvas']);
+  });
+
+  it('puts a file into Recent the moment it is created', async () => {
+    vi.mocked(textDocuments.create).mockResolvedValueOnce({ id: 'fresh-doc', title: 'Untitled document' } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    const vm = wrapper.vm as any;
+
+    await vm.createTextDocument('folder-1');
+    await flushPromises();
+    expect(vm.recentResourceHistory[0]).toMatchObject({ id: 'fresh-doc', type: 'text-document' });
+    expect(recentResources.markOpened).toHaveBeenCalledWith('text-document', 'fresh-doc');
+  });
+
   it('distinguishes "no recent items at all" from "filters matched nothing"', async () => {
     vi.mocked(recentResources.list).mockResolvedValueOnce([] as never);
 
