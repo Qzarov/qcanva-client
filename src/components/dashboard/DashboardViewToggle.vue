@@ -1,7 +1,7 @@
 <template>
   <!-- One switch for the whole dashboard: the feed and every folder share
        the grid/list choice (remembered in localStorage by the caller). -->
-  <div class="dashboard-recent-view-toggle" role="group" :aria-label="t('viewMode')">
+  <div ref="toggleRef" class="dashboard-recent-view-toggle dashboard-segmented" role="group" :aria-label="t('viewMode')">
     <button
       type="button"
       :class="{ active: mode === 'grid' }"
@@ -25,10 +25,14 @@
 
 <script setup lang="ts">
 import { LayoutGrid, List } from '@lucide/vue';
+import { ref } from 'vue';
 import { useI18n } from '../../composables/useI18n';
+import { useSegmentThumb } from '../../composables/useSegmentThumb';
 import type { RecentViewMode } from '../../dashboard/recent-view';
 
-defineProps<{ mode: RecentViewMode }>();
+const props = defineProps<{ mode: RecentViewMode }>();
 const emit = defineEmits<{ 'update:mode': [mode: RecentViewMode] }>();
 const { t } = useI18n();
+const toggleRef = ref<HTMLElement | null>(null);
+useSegmentThumb(toggleRef, () => props.mode);
 </script>

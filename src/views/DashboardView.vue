@@ -23,7 +23,7 @@
         @select="onSidebarSelect"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
-        @create-folder="openCreateGroupModal"
+        @open-file="openSidebarFile"
         @toggle-folder="toggleTreeExpanded"
         @folder-drag-start="onSidebarFolderDragStart"
         @folder-drag-end="onFolderDragEnd"
@@ -106,7 +106,7 @@
     >
     <!-- One grid/list choice for the whole dashboard: every feed section
          and every folder (the switch sits in Recents' and the folder's heading). -->
-    <div ref="dashboardShell" class="dashboard-shell" :class="{ 'dashboard-list-view': recentViewMode === 'list' }">
+    <div ref="dashboardShell" class="dashboard-shell" :class="[{ 'dashboard-list-view': recentViewMode === 'list' }, 'dashboard-nav-' + navDirection]">
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
@@ -152,8 +152,7 @@
               </button>
             </div>
           </div>
-      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-      <!-- Types, tags and the order: each behind its own icon. -->
+      <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
       <DashboardFilterMenu
         class="dashboard-toolbar-desktop"
         :open="openControlMenu === 'filter:desktop'"
@@ -173,6 +172,7 @@
         @toggle="toggleToolbarMenu('sort:desktop')"
         @select="selectSortMode"
       />
+      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
     </div>
 
     <!-- Floating (style.css), never in the page flow: the list must not
@@ -218,7 +218,12 @@
         {{ t('noRecentMatches') }}
         <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
       </div>
-      <div v-else class="dash-empty dashboard-recents-empty">{{ t('noRecentResources') }}</div>
+      <div v-else class="dash-grid" data-feed-grid="recent">
+          <button type="button" class="dashboard-add-tile" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+            <span class="dashboard-add-tile-hint dashboard-recents-empty">{{ t('noRecentResources') }}</span>
+          </button>
+      </div>
       <button
         v-if="recentShowAllAvailable"
         type="button"
@@ -230,7 +235,7 @@
         <ChevronUp v-else :size="15" aria-hidden="true" />
       </button>
 
-      <div v-if="recentFolderTiles.length" id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
+      <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
         <h2>{{ t('folders') }}</h2>
       </div>
       <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
@@ -246,6 +251,11 @@
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
           <span class="subfolder-card-count">{{ folder.displayCount }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="folders" @click.stop="openAddFromTile('folders')">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
         </button>
       </div>
     </section>
@@ -397,11 +407,21 @@
                     <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
                   </button>
                 </div>
-                <div v-if="!activeFolder.items.length && !activeFolderFileCount && (hasActiveFilter || !activeSubfolders.length)" class="dash-empty" data-folder-empty>
+                <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
                   {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
                   <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
                 </div>
                 <div class="dash-grid">
+                  <button
+                    v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
+                    type="button"
+                    class="dashboard-add-tile"
+                    data-feed-add="folder"
+                    @click.stop="openAddFromTile('folder')"
+                  >
+                    <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+                    <span class="dashboard-add-tile-hint" data-folder-empty>{{ t('noFolderItems') }}</span>
+                  </button>
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
                     v-if="item.type === 'canvas'"
@@ -567,7 +587,7 @@
         data-section="shared"
       >
         <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid">
+        <div class="dash-grid" data-feed-grid="shared">
           <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
@@ -639,9 +659,13 @@
             </div>
           </article>
           </template>
+          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" @click.stop="openAddFromTile('shared')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+            <span class="dashboard-add-tile-hint" data-feed-empty="shared">{{ t('noSharedResources') }}</span>
+          </button>
         </div>
-        <div v-if="!sharedFiltered.length" class="dash-empty" data-feed-empty="shared">
-          {{ hasActiveFilter ? t('noFilterMatches') : t('noSharedResources') }}
+        <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
+          {{ t('noFilterMatches') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
         <button
@@ -668,7 +692,7 @@
         data-section="interactive-templates"
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid">
+        <div class="dash-grid" data-feed-grid="interactive">
           <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
             <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
             <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
@@ -678,9 +702,13 @@
               <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
             </div>
           </article>
+          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" @click.stop="openAddFromTile('interactive')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+            <span class="dashboard-add-tile-hint" data-feed-empty="interactive">{{ t('noInteractiveTemplates') }}</span>
+          </button>
         </div>
-        <div v-if="!visibleInteractiveTemplateItems.length" class="dash-empty" data-feed-empty="interactive">
-          {{ hasActiveFilter ? t('noFilterMatches') : t('noInteractiveTemplates') }}
+        <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
+          {{ t('noFilterMatches') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
         <button
@@ -711,7 +739,7 @@
         <div class="dash-section-head dashboard-public-head">
           <h2>{{ t('public') }}</h2>
           <div class="dashboard-public-head-controls">
-            <div v-if="isLoggedIn" class="dashboard-public-owner-filter" role="group" :aria-label="t('publicOwnerFilter')">
+            <div v-if="isLoggedIn" ref="publicOwnerFilterEl" class="dashboard-public-owner-filter dashboard-segmented" role="group" :aria-label="t('publicOwnerFilter')">
               <button
                 v-for="option in PUBLIC_OWNER_FILTERS"
                 :key="option"
@@ -724,7 +752,7 @@
             </div>
           </div>
         </div>
-        <div class="dash-grid">
+        <div class="dash-grid" data-feed-grid="public">
           <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
@@ -801,8 +829,12 @@
             </div>
           </article>
           </template>
+          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" @click.stop="openAddFromTile('public')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+            <span class="dashboard-add-tile-hint" data-public-empty data-feed-empty="public">{{ publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}</span>
+          </button>
         </div>
-        <div v-if="!publicFiltered.length" class="dash-empty" data-public-empty data-feed-empty="public">
+        <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
           {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
           <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
         </div>
@@ -1137,7 +1169,9 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { confirmDelete } from '../composables/appDialog';
+import { alertDialog, confirmDelete } from '../composables/appDialog';
+import { downloadDriveFile } from '../api/drive';
+import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
@@ -1163,12 +1197,18 @@ import type { CharacterImport } from '../dnd/importLongStoryShort';
 import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
 import {
+  SIDEBAR_FOLDER_CHILD_LIMIT,
+  buildSidebarNavItems,
   readSidebarWidthState,
   writeSidebarWidthState,
+  type DashboardFileNavItem,
   type DashboardFolderNavItem,
+  type DashboardSidebarNavItem,
   type DashboardSection,
   type SidebarWidthState,
 } from '../dashboard/navigation';
+import { animateHeight, heightOfFirstChildren, prefersReducedMotion } from '../dashboard/motion';
+import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { formatRelativeDate } from '../dashboard/relative-date';
@@ -1694,6 +1734,8 @@ export default defineComponent({
     const PUBLIC_OWNER_FILTERS = ['all', 'mine', 'others'] as const;
     const PUBLIC_OWNER_FILTER_LABELS = { all: 'all', mine: 'publicMine', others: 'publicOthers' } as const;
     const publicOwnerFilter = ref<(typeof PUBLIC_OWNER_FILTERS)[number]>('all');
+    const publicOwnerFilterEl = ref<HTMLElement | null>(null);
+    useSegmentThumb(publicOwnerFilterEl, publicOwnerFilter);
     const matchesPublicOwner = (item: { ownerId?: string | null }) => {
       if (publicOwnerFilter.value === 'all') return true;
       const mine = !!currentUser.value?.id && item.ownerId === currentUser.value.id;
@@ -2015,6 +2057,12 @@ export default defineComponent({
       }
       return buildFolderTree(folders);
     });
+    const activeFolderEmpty = computed(() => Boolean(
+      activeFolder.value
+      && !activeFolder.value.items.length
+      && !activeFolderFileCount.value
+      && (hasActiveFilter.value || !activeSubfolders.value.length),
+    ));
     const activeFolder = computed(() => {
       const folder = allFolderSummaries.value.find((item) => item.id === selectedFolderId.value);
       if (selectedFolderId.value === 'legacy-resource-inbox' && legacyInboxSourceItems.value.length) {
@@ -2028,7 +2076,7 @@ export default defineComponent({
         items: sortFolderItems(folder.items.filter((item) => matchesFolderItem(item, folder.name))),
       };
     });
-    const sidebarFolders = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
+    const sidebarFolderRows = computed<DashboardFolderNavItem[]>(() => folderSummaries.value.map((folder) => ({
       id: folder.id,
       name: folder.name,
       parentId: folder.parentId || null,
@@ -2036,11 +2084,71 @@ export default defineComponent({
       role: folder.role,
       technical: isTechnicalFolder(folder),
       expanded: isTreeExpanded(folder.id),
-      hasChildren: Boolean(folder.hasChildren),
+      // Files count as children too: an opened folder lists them under its subfolders.
+      hasChildren: Boolean(folder.hasChildren || folder.items.length || folderFiles.counts[folder.id]),
       draggable: canReorderFolder(folder),
       dropActive: canDropToFolder(folder) && dragTargetFolder.value === folder.id,
       reorderTarget: folderDragOverId.value === folder.id,
     })));
+    /**
+     * The tree as the sidebar shows it: an opened folder lists its
+     * subfolders, then its documents, then its Drive files (the first few,
+     * fetched when it opens; how many in all comes from the file counts).
+     */
+    const sidebarDriveFiles = useSidebarDriveFiles(SIDEBAR_FOLDER_CHILD_LIMIT);
+    const sidebarServerFolderIds = computed(() => {
+      const known = new Set(allResourceFolders.value.map((folder) => folder.id));
+      return folderSummaries.value.map((folder) => folder.id).filter((id) => known.has(id));
+    });
+    watch(sidebarServerFolderIds, (ids) => {
+      // Counts for every folder in view (so one holding only files can open);
+      // the files themselves only for the opened ones.
+      folderFiles.want(ids);
+      sidebarDriveFiles.want(ids.filter(isTreeExpanded));
+    }, { immediate: true });
+    watch(expandedTreeIds, (ids) => sidebarDriveFiles.want(ids.filter((id) => sidebarServerFolderIds.value.includes(id))));
+    const sidebarFolders = computed<DashboardSidebarNavItem[]>(() => {
+      const itemsById = new Map(folderSummaries.value.map((folder) => [folder.id, folder.items]));
+      return buildSidebarNavItems(
+        sidebarFolderRows.value,
+        (folderId) => [
+          ...(itemsById.get(folderId) || []),
+          ...(sidebarDriveFiles.files[folderId] || []).map((file) => ({
+            id: file.id,
+            title: file.name,
+            type: 'drive-file' as const,
+            fileKind: file.kind === 'photo' || file.mime?.startsWith('image/') ? 'image' as const
+              : file.kind === 'video' || file.mime?.startsWith('video/') ? 'video' as const
+                : 'file' as const,
+          })),
+        ],
+        SIDEBAR_FOLDER_CHILD_LIMIT,
+        (folderId) => (itemsById.get(folderId)?.length || 0) + (folderFiles.counts[folderId] ?? 0),
+      );
+    });
+    const openSidebarFile = async (file: DashboardFileNavItem) => {
+      if (file.type === 'drive-file') {
+        // As its card in the folder does: a Drive file downloads.
+        try {
+          await downloadDriveFile(file.id, file.title);
+        } catch (error) {
+          await alertDialog({
+            title: t('driveDownloadFailedTitle'),
+            message: error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'),
+          });
+        }
+        return;
+      }
+      const item = folderSummaries.value
+        .find((folder) => folder.id === file.folderId)?.items
+        .find((candidate) => candidate.type === file.type && candidate.id === file.id);
+      const routeId = (item && 'slug' in item && item.slug) || file.id;
+      mobileSidebarOpen.value = false;
+      if (file.type === 'canvas') openCanvas(routeId);
+      else if (file.type === 'html-document') openHtmlDocument(routeId);
+      else if (file.type === 'text-document') openTextDocument(routeId);
+      else openInteractiveTemplate(file.id);
+    };
     const isBusy = computed(() => pendingAction.value.length > 0);
     const allDashboardResources = computed<FolderItem[]>(() => [
       ...allFolderSummaries.value.flatMap((folder) => folder.items),
@@ -2171,10 +2279,18 @@ export default defineComponent({
     type ExpandableFeedSection = 'shared' | 'interactive' | 'public';
     const expandedFeedSections = ref<ExpandableFeedSection[]>([]);
     const isFeedSectionExpanded = (section: ExpandableFeedSection) => expandedFeedSections.value.includes(section);
+    /** Unfold / fold a feed block, its grid easing to the new height. */
+    const animateFeedGrid = (selector: string, collapsing: boolean, limit: number, change: () => void) => {
+      const grid = dashboardShell.value?.querySelector<HTMLElement>(selector);
+      void animateHeight(grid, change, collapsing && grid ? { collapseTo: heightOfFirstChildren(grid, limit) } : {});
+    };
     const toggleFeedSectionExpanded = (section: ExpandableFeedSection) => {
-      expandedFeedSections.value = isFeedSectionExpanded(section)
-        ? expandedFeedSections.value.filter((item) => item !== section)
-        : [...expandedFeedSections.value, section];
+      const collapsing = isFeedSectionExpanded(section);
+      animateFeedGrid(`[data-feed-grid="${section}"]`, collapsing, feedLimit(section), () => {
+        expandedFeedSections.value = collapsing
+          ? expandedFeedSections.value.filter((item) => item !== section)
+          : [...expandedFeedSections.value, section];
+      });
     };
     const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
       isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
@@ -2252,7 +2368,10 @@ export default defineComponent({
       if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
     });
     const toggleRecentExpanded = () => {
-      recentExpanded.value = !recentExpanded.value;
+      const collapsing = recentExpanded.value;
+      animateFeedGrid('[data-recent-layout]', collapsing, feedLimit('recent'), () => {
+        recentExpanded.value = !collapsing;
+      });
     };
 
     const setFeedback = (type: FeedbackState['type'], message: string) => {
@@ -3360,6 +3479,25 @@ export default defineComponent({
       newItemFolderId.value = current && newItemFolderOptions.value.some((o) => o.id === current.id) ? current.id : '';
     };
 
+    /**
+     * "+ Add" in an empty section: a folder for Folders, the template picker
+     * for Templates, otherwise the New menu (its destination already the
+     * open folder). On a computer New sits in the toolbar, so it is brought
+     * into view first; on a phone it is a bottom sheet anyway.
+     */
+    const openAddFromTile = (section: 'recent' | 'folders' | 'shared' | 'interactive' | 'public' | 'folder') => {
+      if (section === 'folders') return openCreateGroupModal();
+      if (section === 'interactive') return openInteractiveTemplatePicker();
+      const phone = matchesMedia(LAYOUT.dashboardDrawer);
+      if (!phone) {
+        dashboardShell.value?.querySelector('.dash-toolbar')?.scrollIntoView?.({
+          block: 'nearest',
+          behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+        });
+      }
+      if (openControlMenu.value !== 'new') toggleNewMenu();
+    };
+
     const toggleFolderCreateMenu = (folderId: string) => {
       closeSidebarAccountMenu();
       openMenuCanvasId.value = '';
@@ -3538,7 +3676,9 @@ export default defineComponent({
     /** After a reload: files may have come or gone since. */
     const refreshFolderFileCounts = () => {
       folderFiles.forget();
-      folderFiles.want(countedFolderIds.value);
+      folderFiles.want([...countedFolderIds.value, ...sidebarServerFolderIds.value]);
+      sidebarDriveFiles.forget();
+      sidebarDriveFiles.want(sidebarServerFolderIds.value.filter(isTreeExpanded));
     };
 
     const openSubfolderModal = (folder: FolderSummary) => {
@@ -3798,6 +3938,35 @@ export default defineComponent({
     // Android's system Back inside a folder does the same as the folder's
     // own back arrow, rather than main.ts offering to exit the app.
     useBackHandler(goToParentFolder);
+
+    /**
+     * Into a folder the new view slides in from the right, out of one (to
+     * its parent or the feed) from the left. The class lives only as long
+     * as the animation, so a later re-render (a reload) doesn't replay it.
+     */
+    const navDirection = ref<'none' | 'forward' | 'back'>('none');
+    let navDirectionTimer: ReturnType<typeof setTimeout> | null = null;
+    const sectionDepth = (section: DashboardSection) => {
+      if (section.kind !== 'folder') return -1;
+      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
+      let depth = 0;
+      let parentId = byId.get(section.folderId)?.parentId ?? null;
+      const seen = new Set<string>();
+      while (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        depth += 1;
+        parentId = byId.get(parentId)?.parentId ?? null;
+      }
+      return depth;
+    };
+    watch(activeSection, (next, previous) => {
+      if (!previous || (next.kind !== 'folder' && previous.kind !== 'folder')) return;
+      if (next.kind === 'folder' && previous.kind === 'folder' && next.folderId === previous.folderId) return;
+      navDirection.value = next.kind === 'folder' && sectionDepth(next) >= sectionDepth(previous) ? 'forward' : 'back';
+      if (navDirectionTimer) clearTimeout(navDirectionTimer);
+      navDirectionTimer = setTimeout(() => { navDirection.value = 'none'; }, 450);
+    });
+    onBeforeUnmount(() => { if (navDirectionTimer) clearTimeout(navDirectionTimer); });
 
     const toggleSidebarWidth = () => {
       sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
@@ -4073,6 +4242,7 @@ export default defineComponent({
       recentViewMode,
       setRecentViewMode,
       openRecentResource,
+      openSidebarFile,
       rememberRecentResource,
       recentResourceTypeLabel,
       recentResourceIconClass,
@@ -4186,6 +4356,10 @@ export default defineComponent({
       feedLimit,
       feedColumns,
       dashboardShell,
+      navDirection,
+      publicOwnerFilterEl,
+      openAddFromTile,
+      activeFolderEmpty,
       isFeedSectionExpanded,
       toggleFeedSectionExpanded,
       resetFilters,

@@ -196,12 +196,41 @@ describe('DashboardSidebar', () => {
     expect(wrapper.get('[data-account-menu-trigger]').text()).toContain('Admin');
   });
 
-  it('emits folder creation and expansion requests without owning folder state', async () => {
+  it('shows the folder tree without a "Folders" heading or a create button of its own', async () => {
+    const wrapper = mountSidebar();
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+
+    expect(wrapper.find('[data-sidebar-create-folder]').exists()).toBe(false);
+    expect(wrapper.find('[data-home-children] h2').exists()).toBe(false);
+    expect(wrapper.get('[data-home-children] section').attributes('aria-label')).toBe('Folders');
+  });
+
+  it('lists an opened folder\'s files and opens one, and "… N more" opens the folder', async () => {
+    const wrapper = mountSidebar({
+      folders: [
+        folders[1],
+        { kind: 'file', key: 'project/canvas:c1', id: 'c1', type: 'canvas', title: 'Board', folderId: 'project', depth: 1 },
+        { kind: 'more', key: 'project/more', folderId: 'project', count: 4, depth: 1 },
+      ],
+    });
+    await wrapper.get('[data-home-disclosure]').trigger('click');
+
+    const file = wrapper.get('[data-sidebar-file="project/canvas:c1"]');
+    expect(file.text()).toBe('Board');
+    expect(file.find('.resource-title-icon.icon-canvas').exists()).toBe(true);
+    await file.trigger('click');
+    expect(wrapper.emitted('open-file')?.[0]?.[0]).toMatchObject({ id: 'c1', type: 'canvas' });
+
+    const more = wrapper.get('[data-sidebar-more="project"]');
+    expect(more.text()).toBe('… 4 more');
+    await more.trigger('click');
+    expect(wrapper.emitted('select')?.slice(-1)[0]).toEqual([{ kind: 'folder', folderId: 'project' }]);
+  });
+
+  it('emits folder expansion requests without owning folder state', async () => {
     const wrapper = mountSidebar();
 
     await wrapper.get('[data-home-disclosure]').trigger('click');
-    await wrapper.get('[data-sidebar-create-folder]').trigger('click');
-    expect(wrapper.emitted('create-folder')).toHaveLength(1);
 
     const toggle = wrapper.get('[data-folder-toggle="project"]');
     expect(toggle.attributes('aria-expanded')).toBe('true');
