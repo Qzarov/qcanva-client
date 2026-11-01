@@ -150,6 +150,23 @@ test('a picture: its name instead of background and text; layers and delete on t
   await expect(page.locator('[data-node-id="picture"]')).toHaveCount(0);
 });
 
+test('one item is not a menu: a picture for an editor has its lock on the row, no "more"', async ({ page }) => {
+  await openCanvas(page, { role: 'edit' });
+  await page.locator('[data-node-id="picture"]').click();
+  // Hide is the owner's: for an editor only the lock would be under "more".
+  expect(await toolbar(page).locator('.node-toolbar-row [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['name', 'border', 'duplicate', 'layers', 'delete', 'lock']);
+  await tool(page, 'lock').click();
+  await expect(tool(page, 'lock')).toHaveAttribute('aria-pressed', 'true');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/toolbar-image-editor.png` });
+
+  // A text node for the same editor: lock and delete, two items - "more" stays.
+  await page.locator('[data-node-id="second"]').click();
+  await tool(page, 'more').click();
+  expect(await toolbar(page).locator('[data-node-menu="more"] [data-node-tool]').evaluateAll((els) => els.map((el) => el.getAttribute('data-node-tool'))))
+    .toEqual(['lock', 'delete']);
+});
+
 test('several nodes: only what they share, over the whole selection', async ({ page }) => {
   await openCanvas(page);
   await page.locator('[data-node-id="middle"]').click();

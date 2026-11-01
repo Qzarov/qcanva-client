@@ -115,7 +115,20 @@
         @click="canvas.deleteSelection()"
       ><Trash2 :size="17" aria-hidden="true" /></button>
       <span class="node-tool-sep" aria-hidden="true"></span>
+      <!-- One item is not a menu: alone, the lock stands on the row instead of "more". -->
       <button
+        v-if="lockOnRow"
+        type="button"
+        class="node-tool"
+        :class="{ active: locked }"
+        :title="locked ? t('unlockPosition') : t('lockPosition')"
+        :aria-label="locked ? t('unlockPosition') : t('lockPosition')"
+        :aria-pressed="locked"
+        data-node-tool="lock"
+        @click="single ? canvas.toggleNodePositionLock(nodeId) : canvas.toggleSelectedNodesPositionLock()"
+      ><Lock v-if="locked" :size="17" aria-hidden="true" /><LockOpen v-else :size="17" aria-hidden="true" /></button>
+      <button
+        v-else
         type="button"
         class="node-tool"
         :class="{ active: menu === 'more' }"
@@ -322,6 +335,16 @@ const fillColor = computed(() => (single.value ? props.canvas.getNodeColor(nodeI
 /** One picture selected: no background or text, its name instead; layers and delete on the row. */
 const isImage = computed(() => Boolean(single.value && props.canvas.isImageNode(nodeId.value)));
 const round = computed(() => Boolean(single.value && props.canvas.getNodeShape(nodeId.value) === 'round'));
+/**
+ * What "more" holds for this user: the lock always, hide for the owner,
+ * delete unless it is on the row (a picture), a group's name. A single item
+ * is no menu - it goes on the row instead.
+ */
+const moreItemCount = computed(() => 1
+  + (props.role === 'owner' ? 1 : 0)
+  + (isImage.value ? 0 : 1)
+  + (single.value && props.canvas.isGroupNode(nodeId.value) ? 1 : 0));
+const lockOnRow = computed(() => moreItemCount.value === 1);
 const locked = computed(() => Boolean(single.value ? props.canvas.isNodePositionLocked(nodeId.value) : props.canvas.areSelectedNodesPositionLocked()));
 const hidden = computed(() => Boolean(single.value ? props.canvas.isNodeHidden(nodeId.value) : props.canvas.areSelectedNodesHidden()));
 
