@@ -87,6 +87,59 @@ test('tick by the box, then a click ticks instead of opening; Select all; move t
   ]);
 });
 
+test('the box of a document ticks it, though the card is one big open link', async ({ page }) => {
+  await openDashboard(page);
+  await openDashboardFolder(page, 'folder-a');
+  const plan = card(page, 'text-document:doc-1');
+  await plan.hover();
+  // A real click at the box: it used to land on the card's open link.
+  await plan.locator('[data-select-box]').click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(plan).toHaveAttribute('data-selected', 'true');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 1');
+});
+
+test('a frame drawn from an empty spot ticks every card it touches; with Shift it adds', async ({ page }) => {
+  await openDashboard(page);
+  await openDashboardFolder(page, 'folder-a');
+  const plan = (await card(page, 'text-document:doc-1').boundingBox())!;
+  const route = (await card(page, 'canvas:c-1').boundingBox())!;
+  const bottom = Math.max(plan.y + plan.height, route.y + route.height);
+  // From the empty space under the cards, up over both of them.
+  const start = { x: Math.min(plan.x, route.x) + 10, y: bottom + 260 };
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  await page.mouse.move(start.x + 60, start.y - 80, { steps: 4 });
+  await expect(page.locator('[data-marquee]')).toBeVisible();
+  await page.mouse.move(Math.max(plan.x + plan.width, route.x + route.width) - 10, Math.min(plan.y, route.y) + 20, { steps: 8 });
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/marquee.png` });
+  await page.mouse.up();
+  await expect(page.locator('[data-marquee]')).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 2');
+
+  // A new frame over one card alone starts over...
+  await page.mouse.move(route.x + route.width / 2, bottom + 200);
+  await page.mouse.down();
+  await page.mouse.move(route.x + route.width / 2 + 5, route.y + route.height - 10, { steps: 6 });
+  await page.mouse.up();
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 1');
+  // ...with Shift it adds.
+  await page.keyboard.down('Shift');
+  await page.mouse.move(plan.x + plan.width / 2, bottom + 200);
+  await page.mouse.down();
+  await page.mouse.move(plan.x + plan.width / 2 + 5, plan.y + plan.height - 10, { steps: 6 });
+  await page.mouse.up();
+  await page.keyboard.up('Shift');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 2');
+});
+
+test('no "Pinned" plate on cards: the star says it', async ({ page }) => {
+  await openDashboard(page);
+  await openDashboardFolder(page, 'folder-a');
+  await expect(page.locator('.badge-pinned')).toHaveCount(0);
+});
+
 test('Ctrl/Cmd-click ticks; delete them all after one confirmation', async ({ page }) => {
   const calls = await openDashboard(page);
   await openDashboardFolder(page, 'folder-a');

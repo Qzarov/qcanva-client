@@ -11507,6 +11507,10 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 .card-select {
   display: none;
+  /* Above the card's stretched open link (.card-open-link, z-index 1): the
+     box under it opened the document instead of ticking it. */
+  position: relative;
+  z-index: 2;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
@@ -11728,4 +11732,29 @@ html { -webkit-tap-highlight-color: transparent; }
   margin: 0 0 10px;
   color: var(--ui-text-secondary);
   font-size: 12px;
+}
+
+/* The frame drawn with the mouse from an empty spot: every card it touches is ticked. */
+.dashboard-marquee {
+  position: fixed;
+  z-index: 340;
+  border: 1px solid var(--color-brands);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+  pointer-events: none;
+}
+.dashboard-marquee-active,
+.dashboard-marquee-active * {
+  user-select: none;
+}
+
+/* An interactive template is known by its kind's emoji, not a plate. */
+.resource-title-icon.template-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: none;
+  font-size: 15px;
+  line-height: 1;
 }
