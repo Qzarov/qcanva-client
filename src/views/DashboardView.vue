@@ -219,9 +219,8 @@
         <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
       </div>
       <div v-else class="dash-grid" data-feed-grid="recent">
-          <button type="button" class="dashboard-add-tile" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
+          <button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-            <span class="dashboard-add-tile-hint dashboard-recents-empty">{{ t('noRecentResources') }}</span>
           </button>
       </div>
       <button
@@ -416,11 +415,10 @@
                     v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
                     type="button"
                     class="dashboard-add-tile"
-                    data-feed-add="folder"
+                    data-feed-add="folder" data-folder-empty
                     @click.stop="openAddFromTile('folder')"
                   >
                     <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-                    <span class="dashboard-add-tile-hint" data-folder-empty>{{ t('noFolderItems') }}</span>
                   </button>
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
@@ -659,9 +657,8 @@
             </div>
           </article>
           </template>
-          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" @click.stop="openAddFromTile('shared')">
+          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-            <span class="dashboard-add-tile-hint" data-feed-empty="shared">{{ t('noSharedResources') }}</span>
           </button>
         </div>
         <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
@@ -702,9 +699,8 @@
               <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
             </div>
           </article>
-          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" @click.stop="openAddFromTile('interactive')">
+          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-            <span class="dashboard-add-tile-hint" data-feed-empty="interactive">{{ t('noInteractiveTemplates') }}</span>
           </button>
         </div>
         <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
@@ -829,9 +825,8 @@
             </div>
           </article>
           </template>
-          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" @click.stop="openAddFromTile('public')">
+          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-            <span class="dashboard-add-tile-hint" data-public-empty data-feed-empty="public">{{ publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}</span>
           </button>
         </div>
         <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">

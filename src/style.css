@@ -11216,8 +11216,8 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ===== Dashboard: "+ Add" in an empty section =====
-   A card-sized dashed tile in the section's own grid; the line under it
-   says why the section is empty. */
+   A card-sized dashed tile in the section's own grid: just "+ Add", no
+   caption saying the section is empty. */
 .dashboard-add-tile {
   display: flex;
   flex-direction: column;
@@ -11248,11 +11248,6 @@ html { -webkit-tap-highlight-color: transparent; }
   gap: 6px;
   font-size: 14px;
   font-weight: 600;
-}
-.dashboard-add-tile-hint {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ui-text-secondary);
 }
 .dashboard-add-tile-folder {
   flex-direction: row;

@@ -61,8 +61,8 @@ test('filter and sort sit between New and the search', async ({ page }) => {
 test('an empty section offers "+ Add", which opens New', async ({ page }) => {
   await openDashboard(page);
   const tile = page.locator('[data-feed-add="shared"]');
-  await expect(tile).toContainText('Add');
-  await expect(tile).toContainText('Nothing has been shared with you yet.');
+  // Just "+ Add": no caption saying the section is empty.
+  await expect(tile).toHaveText('Add');
   if (SHOTS) {
     await tile.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${SHOTS}/add-tile.png` });

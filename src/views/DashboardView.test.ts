@@ -196,9 +196,9 @@ describe('dashboard sidebar navigation', () => {
 
     expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
-    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Nothing has been shared with you yet.');
-    // An empty section offers "+ Add" in its grid.
-    expect(wrapper.get('[data-feed-add="shared"]').text()).toContain('Add');
+    // An empty section offers just "+ Add" in its grid, no caption saying it is empty.
+    expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Add');
+    expect(wrapper.get('[data-feed-section="shared"]').text()).not.toContain('Nothing has been shared with you yet.');
   });
 
   it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
@@ -373,9 +373,9 @@ describe('dashboard sidebar navigation', () => {
     await flushPromises();
 
     const order = wrapper.findAll('[data-feed-section]').map((el) => el.attributes('data-feed-section'));
-    // Interactive is empty, yet stays in the feed with its empty note.
+    // Interactive is empty, yet stays in the feed with its "+ Add" tile.
     expect(order).toEqual(['recent', 'shared', 'interactive', 'public']);
-    expect(wrapper.get('[data-feed-empty="interactive"]').text()).toBe('No interactive templates yet.');
+    expect(wrapper.get('[data-feed-empty="interactive"]').text()).toBe('Add');
     const shared = wrapper.get('[data-feed-section="shared"]');
     const cards = (el: any) => el.findAll('.dash-grid > *').length;
     expect(cards(shared)).toBe(4);
@@ -863,7 +863,7 @@ describe('dashboard sidebar navigation', () => {
     // Still the feed, still a Public section with its switch - only empty.
     expect((wrapper.vm as any).activeSection).toEqual({ kind: 'recent' });
     expect(wrapper.get('[data-section="public"]').text()).not.toContain('Their public doc');
-    expect(wrapper.get('[data-public-empty]').text()).toBe('No public resources match this filter.');
+    expect(wrapper.get('[data-public-empty]').text()).toBe('Add');
     expect((wrapper.vm as any).feedNavSections).toContain('public');
 
     await wrapper.get('[data-public-owner-filter="all"]').trigger('click');
@@ -2582,7 +2582,7 @@ describe('mobile Dashboard filters: Recent, folder counters, tag sheet', () => {
     await flushPromises();
     const { t } = useI18n();
 
-    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('noRecentResources'));
+    expect(wrapper.get('.dashboard-recents-empty').text()).toBe(t('add'));
 
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [{ id: 'z-canvas-1', title: 'Only Canvas' }],
