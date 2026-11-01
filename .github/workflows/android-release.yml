@@ -157,9 +157,14 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release delete "$TAG" --yes
           fi
+          # Hand-written notes in docs/releases/<tag>.md, when the release has
+          # them (they keep what a rebuilt release said before); otherwise
+          # GitHub's own list of what was merged.
+          NOTES_FILE="docs/releases/${TAG}.md"
+          if [ -f "$NOTES_FILE" ]; then NOTES=(--notes-file "$NOTES_FILE"); else NOTES=(--generate-notes); fi
           gh release create "$TAG" \
             --title "QCanva $VERSION_NAME" \
-            --generate-notes \
+            "${NOTES[@]}" \
             android/app/build/outputs/bundle/release/app-release.aab#qcanva-${VERSION_NAME}.aab \
             android/app/build/outputs/apk/release/app-arm64-v8a-release.apk#qcanva-${VERSION_NAME}-arm64-v8a.apk \
             android/app/build/outputs/apk/release/app-x86_64-release.apk#qcanva-${VERSION_NAME}-x86_64-emulator.apk
