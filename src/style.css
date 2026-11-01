@@ -11477,8 +11477,63 @@ html { -webkit-tap-highlight-color: transparent; }
 .node-menu-item:hover {
   background: var(--ui-glass-btn-hover);
 }
-.node-menu-item.danger {
+.node-menu-item.danger,
+.node-tool.danger {
   color: var(--ui-danger-foreground);
+}
+/* "Round" in the border menu: a switch, on or off. */
+.node-menu-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.node-menu-switch-track {
+  position: relative;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 20px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.node-menu-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ui-text-secondary);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+.node-menu-switch[aria-checked="true"] .node-menu-switch-track {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-accent-bg);
+}
+.node-menu-switch[aria-checked="true"] .node-menu-switch-thumb {
+  transform: translateX(14px);
+  background: var(--ui-glass-accent-text);
+}
+.node-menu-switch:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .node-menu-switch-track,
+  .node-menu-switch-thumb {
+    transition: none;
+  }
 }
 .node-menu-divider {
   height: 1px;
