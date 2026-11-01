@@ -41,19 +41,23 @@
           :aria-label="t('selectionActions')"
           data-selection-bar
         >
-          <span class="dashboard-selection-count" data-selection-count>{{ t('selectedCount').replace('{n}', String(selectedKeys.length)) }}</span>
-          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-action" data-selection-select-all @click="selectAllOnScreen">{{ t('selectAll') }}</button>
-          <button type="button" class="dashboard-selection-action" data-selection-move :disabled="isBusy" @click.stop="openBulkMoveModal">
-            <FolderInput :size="15" aria-hidden="true" /><span>{{ t('bulkMove') }}</span>
+          <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
+          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" :title="t('clearSelection')" @click="clearSelection">
+            <X :size="17" aria-hidden="true" />
           </button>
-          <button type="button" class="dashboard-selection-action" data-selection-download :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
-            <Download :size="15" aria-hidden="true" /><span>{{ t('download') }}</span>
+          <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
+          <span class="dashboard-selection-sep" aria-hidden="true"></span>
+          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" :title="t('selectAll')" @click="selectAllOnScreen">
+            <CheckCheck :size="17" aria-hidden="true" />
           </button>
-          <button v-if="bulkDeletable.length" type="button" class="dashboard-selection-action danger" data-selection-delete :disabled="isBusy" @click="bulkDelete">
-            <Trash2 :size="15" aria-hidden="true" /><span>{{ t('delete') }}</span>
+          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" :title="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
+            <FolderInput :size="17" aria-hidden="true" />
           </button>
-          <button type="button" class="dashboard-selection-clear" data-selection-clear :title="t('clearSelection')" @click="clearSelection">
-            <X :size="15" aria-hidden="true" /><span>{{ t('clearSelection') }}</span>
+          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" :title="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
+            <Download :size="17" aria-hidden="true" />
+          </button>
+          <button v-if="bulkDeletable.length" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" :title="t('delete')" :disabled="isBusy" @click="bulkDelete">
+            <Trash2 :size="17" aria-hidden="true" />
           </button>
         </div>
       </Transition>
@@ -1183,7 +1187,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1345,6 +1349,7 @@ export default defineComponent({
     ArrowLeft,
     ArrowUpDown,
     Check,
+    CheckCheck,
     ChevronDown,
     ChevronUp,
     X,
