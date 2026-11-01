@@ -57,11 +57,13 @@ test('the Add button opens a dialog: create on one side, upload on the other', a
   await expect(button).toHaveText('Add');
   await button.click();
   await expect(dialog(page)).toBeVisible();
-  expect(await dialog(page).locator('[data-add-create]').allTextContents()).toEqual(['Canvas', 'HTML', 'Document', 'Template', 'Folder']);
+  expect(await dialog(page).locator('[data-add-create]').allTextContents()).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder']);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog.png` });
   await dialog(page).locator('[data-add-tab="upload"]').click();
+  // The tiles swap with a quick fade: wait for the Upload ones.
+  await expect(dialog(page).locator('[data-add-import]')).toHaveCount(5);
   expect(await dialog(page).locator('[data-add-import]').evaluateAll((els) => els.map((el) => el.getAttribute('data-add-import'))))
-    .toEqual(['file', 'canvas', 'html', 'markdown', 'folder']);
+    .toEqual(['file', 'canvas', 'markdown', 'html', 'folder']);
   await expect(dialog(page).locator('[data-add-import="folder"]')).toBeDisabled();
   await expect(dialog(page).locator('[data-add-import="folder"]')).toContainText('In development');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog-upload.png` });
@@ -195,7 +197,7 @@ test('in the glass: the slider centred with a thumb, square tiles; Template and 
   await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
   await dialog(page).locator('[data-add-create="folder"]').click();
   await expect(templates).toHaveCount(0);
-  const name = dialog(page).locator('[data-add-folder-name]');
+  const name = dialog(page).locator('[data-add-name]');
   await expect(name).toBeFocused();
   await name.fill('Prints');
   if (SHOTS) {
@@ -205,4 +207,59 @@ test('in the glass: the slider centred with a thumb, square tiles; Template and 
   await name.press('Enter');
   await expect(dialog(page)).toHaveCount(0);
   await expect.poll(() => folderCalls).toEqual([{ name: 'Prints', parentId: 'folder-a' }]);
+});
+
+test('nothing jumps: the dialog keeps its top through tab changes and unfolding steps, a step set apart from the tiles', async ({ page }) => {
+  await openDashboard(page);
+  await page.locator('[data-add-button]').click();
+  const top = async () => Math.round((await dialog(page).boundingBox())!.y);
+  await page.waitForTimeout(300);
+  const start = await top();
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await page.waitForTimeout(300);
+  expect(await top()).toBe(start);
+  await dialog(page).locator('[data-add-tab="create"]').click();
+  await dialog(page).locator('[data-add-create="interactive-template"]').click();
+  const step = dialog(page).locator('[data-add-expand="template"]');
+  await expect(step).toBeVisible();
+  await page.waitForTimeout(400);
+  expect(await top()).toBe(start);
+  // Switching tabs with a step open: it folds away, the top still stays.
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await expect(step).toHaveCount(0);
+  expect(await top()).toBe(start);
+
+  // The step is a panel of its own under the tiles: framed, below them.
+  await dialog(page).locator('[data-add-tab="create"]').click();
+  await dialog(page).locator('[data-add-create="folder"]').click();
+  const panel = dialog(page).locator('[data-add-expand="folder"]');
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toHaveCSS('border-top-width', '0px');
+  const tiles = (await dialog(page).locator('[role="tabpanel"]').boundingBox())!;
+  const panelBox = (await panel.boundingBox())!;
+  expect(panelBox.y).toBeGreaterThanOrEqual(tiles.y + tiles.height);
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/add-dialog-step-panel.png` });
+  }
+});
+
+test('Canvas, Document, HTML are named before they are made', async ({ page }) => {
+  const { created } = await openDashboard(page);
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-b');
+  await dialog(page).locator('[data-add-create="html-document"]').click();
+  const name = dialog(page).locator('[data-add-name]');
+  await expect(name).toBeFocused();
+  await expect(dialog(page).locator('[data-add-name-create]')).toBeDisabled();
+  await name.fill('Отчёт <Q4>');
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/add-dialog-name.png` });
+  }
+  await name.press('Enter');
+  await expect.poll(() => created.length).toBe(1);
+  expect(created[0]).toMatchObject({ path: '/api/html-documents', body: { title: 'Отчёт <Q4>', folderId: 'folder-b' } });
+  // Its name heads the page, escaped.
+  expect(created[0]!.body.html).toBe('<main><h1>Отчёт &lt;Q4&gt;</h1></main>');
 });

@@ -30,7 +30,9 @@
         <button type="button" role="tab" :aria-selected="tab === 'upload'" :class="{ active: tab === 'upload' }" data-add-tab="upload" @click="setTab('upload')">{{ t('addUpload') }}</button>
       </div>
 
-      <div v-if="tab === 'create'" class="dashboard-add-grid" role="tabpanel">
+      <!-- Both tabs hold one row of square tiles: the grids swap in place, nothing moves. -->
+      <Transition name="dashboard-add-tab" mode="out-in">
+      <div v-if="tab === 'create'" key="create" class="dashboard-add-grid" role="tabpanel">
         <button
           v-for="tile in createTiles"
           :key="tile.kind"
@@ -46,7 +48,7 @@
           <strong>{{ tile.label }}</strong>
         </button>
       </div>
-      <div v-else class="dashboard-add-grid" role="tabpanel">
+      <div v-else key="upload" class="dashboard-add-grid" role="tabpanel">
         <button
           v-for="tile in importTiles"
           :key="tile.kind"
@@ -68,6 +70,7 @@
           <small>{{ t('inDevelopment') }}</small>
         </button>
       </div>
+      </Transition>
 
       <!-- The next step, unfolding under the tiles. -->
       <Transition :css="false" mode="out-in" @enter="heightTransitionHooks.onEnter" @leave="heightTransitionHooks.onLeave">
@@ -87,15 +90,16 @@
             </button>
           </div>
         </div>
-        <form v-else-if="expanded === 'folder'" key="folder" class="dashboard-add-expand dashboard-add-folder-form" data-add-expand="folder" @submit.prevent="submitFolder">
+        <!-- Canvas, Document, HTML, Folder: named before they are made. -->
+        <form v-else-if="namedStep" key="name" class="dashboard-add-expand dashboard-add-folder-form" :data-add-expand="expanded" @submit.prevent="submitName">
           <input
-            ref="folderNameInput"
-            v-model.trim="folderName"
+            ref="nameInput"
+            v-model.trim="name"
             class="dashboard-modal-input"
-            :placeholder="t('groupNameTitle')"
-            data-add-folder-name
+            :placeholder="expanded === 'folder' ? t('groupNameTitle') : t('itemName')"
+            data-add-name
           />
-          <button type="submit" class="btn-primary" data-add-folder-create :disabled="busy || !folderName">{{ t('create') }}</button>
+          <button type="submit" class="btn-primary" data-add-name-create :disabled="busy || !name">{{ t('create') }}</button>
         </form>
         <div v-else-if="expanded === 'upload'" key="upload" class="dashboard-add-expand" data-add-expand="upload">
           <div
@@ -160,7 +164,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{
   close: [];
-  create: [kind: AddCreateKind, folderId: string];
+  create: [kind: AddCreateKind, folderId: string, title: string];
   'create-template': [templateType: TemplateType, folderId: string];
   'import-character': [folderId: string];
   'create-folder': [name: string, folderId: string];
@@ -171,17 +175,21 @@ const { t } = useI18n();
 const folderId = ref(props.initialFolderId || '');
 const tab = ref<'create' | 'upload'>(props.initialImport ? 'upload' : 'create');
 /** The step open under the tiles, if any. */
-const expanded = ref<'' | 'interactive-template' | 'folder' | 'upload'>(props.initialImport ? 'upload' : '');
+const expanded = ref<'' | CreateTile | 'upload'>(props.initialImport ? 'upload' : '');
+/** The step is a name to give: everything made here but a template. */
+const namedStep = computed(() => expanded.value !== '' && expanded.value !== 'upload' && expanded.value !== 'interactive-template');
 const kind = ref<ImportKind>(props.initialImport || 'file');
 const dialog = ref<HTMLElement | null>(null);
 const tabsEl = ref<HTMLElement | null>(null);
 const input = ref<HTMLInputElement | null>(null);
-const folderNameInput = ref<HTMLInputElement | null>(null);
-const folderName = ref('');
+const nameInput = ref<HTMLInputElement | null>(null);
+const name = ref('');
 const dragOver = ref(false);
 useSegmentThumb(tabsEl, tab);
-// The name field is ready to type in as soon as it appears (after the step it replaces has folded away).
-watch(folderNameInput, (el) => el?.focus());
+// The name field is ready to type in as soon as it appears (after the step it
+// replaces has folded away), and again when another kind takes it over.
+watch(nameInput, (el) => el?.focus());
+watch(expanded, () => { if (namedStep.value) void nextTick(() => nameInput.value?.focus()); });
 
 /** `run` counts the checks: a late answer to an earlier kind is dropped. */
 type Entry = { id: number; file: File; check: ImportCheck | null; asFile: boolean; run: number };
@@ -189,17 +197,17 @@ const entries = ref<Entry[]>([]);
 let nextId = 0;
 
 const createTiles = computed<Array<{ kind: CreateTile; label: string; icon: Component; expands?: boolean }>>(() => [
-  { kind: 'canvas', label: t('canvas'), icon: FilePlus2 },
-  { kind: 'html-document', label: 'HTML', icon: FileCode2 },
-  { kind: 'text-document', label: t('document'), icon: FileText },
+  { kind: 'canvas', label: t('canvas'), icon: FilePlus2, expands: true },
+  { kind: 'text-document', label: t('document'), icon: FileText, expands: true },
+  { kind: 'html-document', label: 'HTML', icon: FileCode2, expands: true },
   { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate, expands: true },
   { kind: 'folder', label: t('group'), icon: FolderPlus, expands: true },
 ]);
 const importTiles = computed<Array<{ kind: ImportKind; label: string; icon: Component }>>(() => [
   { kind: 'file', label: t('addFile'), icon: FileIcon },
   { kind: 'canvas', label: t('canvas'), icon: FileInput },
-  { kind: 'html', label: 'HTML', icon: FileCode2 },
   { kind: 'markdown', label: t('document'), icon: FileText },
+  { kind: 'html', label: 'HTML', icon: FileCode2 },
 ]);
 
 const PROBLEM_TEXT: Record<ImportProblem, MessageKey> = {
@@ -219,16 +227,15 @@ const setTab = (next: 'create' | 'upload') => {
   tab.value = next;
   expanded.value = '';
 };
-/** Canvas, HTML, Document are made at once; Template and Folder open under the tiles (again: fold away). */
+/** Every tile opens its step under the tiles (again: folds it away). */
 const onCreateTile = (next: CreateTile) => {
-  if (next === 'interactive-template' || next === 'folder') {
-    expanded.value = expanded.value === next ? '' : next;
-    return;
-  }
-  emit('create', next, folderId.value);
+  expanded.value = expanded.value === next ? '' : next;
 };
-const submitFolder = () => {
-  if (folderName.value) emit('create-folder', folderName.value, folderId.value);
+const submitName = () => {
+  const kind = expanded.value;
+  if (!name.value || !namedStep.value) return;
+  if (kind === 'folder') emit('create-folder', name.value, folderId.value);
+  else emit('create', kind as AddCreateKind, folderId.value, name.value);
 };
 
 const check = async (entry: Entry) => {

@@ -89,6 +89,15 @@ vi.mock('../api/client', () => ({
 // answer Back presses in later tests.
 enableAutoUnmount(afterEach);
 
+/** In the Add dialog: a tile, then the name it asks for, then Create. */
+async function createNamed(wrapper: any, kind: string, name: string) {
+  await wrapper.get(`[data-add-create="${kind}"]`).trigger('click');
+  await nextTick();
+  await wrapper.get('[data-add-name]').setValue(name);
+  await wrapper.get('[data-add-name-create]').trigger('submit');
+  await flushPromises();
+}
+
 function mountDashboard(options: MountingOptions<any> = {}) {
   return mount(DashboardView, {
     ...options,
@@ -452,15 +461,13 @@ describe('dashboard sidebar navigation', () => {
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
     expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('folder-b');
-    await wrapper.get('[data-add-create="text-document"]').trigger('click');
-    await flushPromises();
+    await createNamed(wrapper, 'text-document', 'Notes');
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(false);
-    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
+    expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ title: 'Notes', folderId: 'folder-b' }));
     await wrapper.get('[data-folder-create-menu]').trigger('click');
     await nextTick();
-    await wrapper.get('[data-add-create="canvas"]').trigger('click');
-    await flushPromises();
-    expect(canvas.create).toHaveBeenLastCalledWith(expect.anything(), undefined, 'folder-b');
+    await createNamed(wrapper, 'canvas', 'Board');
+    expect(canvas.create).toHaveBeenLastCalledWith('Board', undefined, 'folder-b');
   });
 
   it('lets the Add dialog pick the destination folder, defaulting to the folder you are in', async () => {
@@ -477,8 +484,7 @@ describe('dashboard sidebar navigation', () => {
     expect((picker.element as HTMLSelectElement).value).toBe('folder-c');
 
     await picker.setValue('folder-b');
-    await wrapper.get('[data-add-create="text-document"]').trigger('click');
-    await flushPromises();
+    await createNamed(wrapper, 'text-document', 'Plan');
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-b' }));
   });
 
@@ -490,8 +496,7 @@ describe('dashboard sidebar navigation', () => {
     vm.openAddDialog();
     await nextTick();
     expect((wrapper.get('[data-add-folder]').element as HTMLSelectElement).value).toBe('');
-    await wrapper.get('[data-add-create="text-document"]').trigger('click');
-    await flushPromises();
+    await createNamed(wrapper, 'text-document', 'Plan');
     // folder-a is the mocked "Unsorted".
     expect(textDocuments.create).toHaveBeenLastCalledWith(expect.objectContaining({ folderId: 'folder-a' }));
   });
@@ -1204,11 +1209,16 @@ describe('DashboardView groups', () => {
     expect(wrapper.find('[data-add-dialog]').exists()).toBe(true);
     expect(wrapper.find('[data-account-menu]').exists()).toBe(false);
     // Create and Upload are tabs: short names, no captions.
-    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'HTML', 'Document', 'Template', 'Folder']);
+    expect(wrapper.findAll('[data-add-create]').map((tile) => tile.text())).toEqual(['Canvas', 'Document', 'HTML', 'Template', 'Folder']);
+    // Nothing is made without a name: a tile opens the name field, Create waits for it.
+    await wrapper.get('[data-add-create="html-document"]').trigger('click');
+    await nextTick();
+    expect(wrapper.get('[data-add-name-create]').attributes('disabled')).toBeDefined();
+    expect(htmlDocuments.create).not.toHaveBeenCalled();
     expect(wrapper.find('[data-add-import]').exists()).toBe(false);
     await wrapper.get('[data-add-tab="upload"]').trigger('click');
-    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'html', 'markdown', 'folder']);
-    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.find('strong').text())).toEqual(['File', 'Canvas', 'HTML', 'Document', 'Folder']);
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.attributes('data-add-import'))).toEqual(['file', 'canvas', 'markdown', 'html', 'folder']);
+    expect(wrapper.findAll('[data-add-import]').map((tile) => tile.find('strong').text())).toEqual(['File', 'Canvas', 'Document', 'HTML', 'Folder']);
     // Uploading a folder is shown but not yet usable.
     const folderUpload = wrapper.get('[data-add-import="folder"]');
     expect(folderUpload.attributes('disabled')).toBeDefined();

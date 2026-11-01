@@ -2687,21 +2687,23 @@ export default defineComponent({
     };
 
     // `folderId` is optional; a click handler may pass its event instead.
-    const createCanvas = async (folderId?: unknown) => {
+    const createCanvas = async (folderId?: unknown, title = 'Untitled') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
-      const c = await runAction('create-canvas', () => canvas.create('Untitled', undefined, targetFolderId), 'Canvas created');
+      const c = await runAction('create-canvas', () => canvas.create(title, undefined, targetFolderId), 'Canvas created');
       if (!c) return;
       rememberCreatedResource('canvas', c);
       router.push(`/canvas/${c.id}`);
     };
 
-    const createHtmlDocument = async (folderId?: unknown) => {
+    const createHtmlDocument = async (folderId?: unknown, title = 'Untitled HTML') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
+      // The page starts with its name as the heading.
+      const heading = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const doc = await runAction(
         'create-html-document',
-        () => htmlDocuments.create({ title: 'Untitled HTML', html: '<main><h1>Untitled HTML</h1></main>', folderId: targetFolderId }),
+        () => htmlDocuments.create({ title, html: `<main><h1>${heading}</h1></main>`, folderId: targetFolderId }),
         'HTML document created',
       );
       if (!doc) return;
@@ -2709,12 +2711,12 @@ export default defineComponent({
       router.push(`/edit/html/${doc.id}`);
     };
 
-    const createTextDocument = async (folderId?: unknown) => {
+    const createTextDocument = async (folderId?: unknown, title = 'Untitled document') => {
       openControlMenu.value = '';
       const targetFolderId = await resolveCreateFolderId(folderId);
       const doc = await runAction(
         'create-text-document',
-        () => textDocuments.create({ title: 'Untitled document', folderId: targetFolderId }),
+        () => textDocuments.create({ title, folderId: targetFolderId }),
         'Document created',
       );
       if (!doc) return;
@@ -3936,13 +3938,14 @@ export default defineComponent({
     const closeAddDialog = () => {
       addDialog.value = { open: false, folderId: '' };
     };
-    const onAddCreate = (kind: AddCreateKind, folderId: string) => {
+    /** Made with the name given in the dialog. */
+    const onAddCreate = (kind: AddCreateKind, folderId: string, title: string) => {
       closeAddDialog();
       newItemFolderId.value = folderId;
       const target = folderId || undefined;
-      if (kind === 'canvas') return void createCanvas(target);
-      if (kind === 'html-document') return void createHtmlDocument(target);
-      return void createTextDocument(target);
+      if (kind === 'canvas') return void createCanvas(target, title);
+      if (kind === 'html-document') return void createHtmlDocument(target, title);
+      return void createTextDocument(target, title);
     };
     /** A template of a kind chosen in the dialog's own Template step, into Where. */
     const onAddCreateTemplate = (templateType: InteractiveTemplate['templateType'], folderId: string) => {
