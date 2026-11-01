@@ -11633,11 +11633,14 @@ html { -webkit-tap-highlight-color: transparent; }
   width: max-content;
   max-width: calc(100% - 24px);
   padding: 5px 6px;
-  border: 1px solid color-mix(in srgb, var(--color-brands) 45%, var(--ui-border));
   border-radius: var(--radius-full);
-  /* Solid, not glass: what is under it (the search, the header) must not show through. */
-  background: color-mix(in srgb, var(--color-brands) 16%, var(--ui-surface-elevated));
-  box-shadow: var(--shadow-dropdown), 0 8px 28px color-mix(in srgb, var(--color-brands) 22%, transparent);
+  /* The dashboard's glass, as its sidebar and menus: what is under it is
+     blurred away, not shown through. */
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   color: var(--ui-text);
 }
 /* "(3)": the number alone. */
@@ -11652,7 +11655,7 @@ html { -webkit-tap-highlight-color: transparent; }
   width: 1px;
   height: 20px;
   margin: 0 2px;
-  background: color-mix(in srgb, var(--color-brands) 35%, var(--ui-border));
+  background: var(--ui-glass-border);
 }
 .dashboard-selection-icon {
   display: inline-grid;
@@ -11660,14 +11663,15 @@ html { -webkit-tap-highlight-color: transparent; }
   width: 34px;
   height: 34px;
   padding: 0;
-  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border: 1px solid var(--ui-glass-border);
   border-radius: 50%;
-  background: var(--ui-surface-elevated);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
   color: var(--ui-text);
   cursor: pointer;
 }
 .dashboard-selection-icon:hover:not(:disabled) {
-  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  background: var(--ui-glass-btn-hover);
 }
 .dashboard-selection-icon:disabled {
   opacity: 0.55;
@@ -11679,6 +11683,7 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-selection-icon[data-selection-clear] {
   border-color: transparent;
   background: transparent;
+  box-shadow: none;
 }
 .dashboard-selection-icon:focus-visible {
   outline: 2px solid var(--ui-focus);
@@ -11775,9 +11780,11 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-marquee {
   position: fixed;
   z-index: 340;
-  border: 1px solid var(--color-brands);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+  /* The accent glass of a selected item, thinned to a veil. */
+  border: 1px solid var(--ui-glass-accent-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ui-glass-accent-bg) 40%, transparent);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
   pointer-events: none;
 }
 .dashboard-marquee-active,
