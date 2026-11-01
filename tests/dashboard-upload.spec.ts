@@ -120,7 +120,9 @@ test('another kind checks the files again', async ({ page }) => {
   const entry = dialog(page).locator('[data-add-file="notes.txt"]');
   await expect(entry.locator('[data-add-problem]')).toContainText('Does not look like an HTML page.');
   await expect(dialog(page).locator('[data-add-submit]')).toBeDisabled();
-  await dialog(page).locator('[data-import-kind="file"]').click();
+  // Another upload tile is another kind: the files are checked again.
+  await dialog(page).locator('[data-add-import="file"]').click();
+  await expect(dialog(page).locator('[data-add-import="file"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(entry).not.toHaveClass(/bad/);
   await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (1)');
 });
@@ -130,7 +132,7 @@ test("a folder's Import opens the dialog on uploading, that folder chosen; its +
   await openDashboardFolder(page, 'folder-a');
   await page.locator('.folder-manager-menu:not(.folder-create-menu) .folder-manager-trigger').click();
   await page.locator('[data-folder-import]').click();
-  await expect(dialog(page).locator('[data-import-kind="file"]')).toHaveAttribute('aria-checked', 'true');
+  await expect(dialog(page).locator('[data-add-import="file"]')).toHaveAttribute('aria-expanded', 'true');
   await expect(dialog(page).locator('[data-add-folder]')).toHaveValue('folder-a');
   await pick(page, [photo]);
   await dialog(page).locator('[data-add-submit]').click();
@@ -156,4 +158,51 @@ test('a document from Markdown: created, its text as the content', async ({ page
   expect(created[1]!.body.html).toContain('<h1>Plan</h1>');
   expect(created[1]!.body.html).toContain('<li>two</li>');
   await expect(page).toHaveURL(/\/docs\/imported-doc$/);
+});
+
+test('in the glass: the slider centred with a thumb, square tiles; Template and Folder unfold under the tiles', async ({ page }) => {
+  await openDashboard(page);
+  const folderCalls: Array<{ name: string; parentId: string | null }> = [];
+  await page.route(/\/api\/resource-folders$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    folderCalls.push(route.request().postDataJSON());
+    return route.fulfill({ status: 201, json: { id: 'new-folder', name: 'Prints' } });
+  });
+  await page.locator('[data-add-button]').click();
+  const box = (await dialog(page).boundingBox())!;
+  const tabs = dialog(page).locator('[data-add-tab]').first().locator('..');
+  await expect(tabs).toHaveClass(/has-thumb/);
+  const tabsBox = (await tabs.boundingBox())!;
+  expect(Math.abs((tabsBox.x + tabsBox.width / 2) - (box.x + box.width / 2))).toBeLessThan(3);
+  for (const tile of await dialog(page).locator('[data-add-create]').all()) {
+    const b = (await tile.boundingBox())!;
+    expect(Math.abs(b.width - b.height)).toBeLessThan(2);
+  }
+
+  // Template: its kinds right under the tiles, the dialog growing.
+  const before = (await dialog(page).boundingBox())!.height;
+  await dialog(page).locator('[data-add-create="interactive-template"]').click();
+  const templates = dialog(page).locator('[data-add-expand="template"]');
+  await expect(templates).toBeVisible();
+  await expect(templates.locator('[data-template-type]')).toHaveCount(2);
+  await expect.poll(async () => (await dialog(page).boundingBox())!.height).toBeGreaterThan(before + 40);
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/add-dialog-template.png` });
+  }
+
+  // Folder: its name and Create, in place of the template step.
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-create="folder"]').click();
+  await expect(templates).toHaveCount(0);
+  const name = dialog(page).locator('[data-add-folder-name]');
+  await expect(name).toBeFocused();
+  await name.fill('Prints');
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/add-dialog-folder.png` });
+  }
+  await name.press('Enter');
+  await expect(dialog(page)).toHaveCount(0);
+  await expect.poll(() => folderCalls).toEqual([{ name: 'Prints', parentId: 'folder-a' }]);
 });

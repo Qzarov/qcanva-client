@@ -912,6 +912,9 @@
       :busy="isBusy"
       @close="closeAddDialog"
       @create="onAddCreate"
+      @create-template="onAddCreateTemplate"
+      @import-character="onAddImportCharacter"
+      @create-folder="onAddCreateFolder"
       @import="onAddImport"
     />
 
@@ -3939,10 +3942,24 @@ export default defineComponent({
       const target = folderId || undefined;
       if (kind === 'canvas') return void createCanvas(target);
       if (kind === 'html-document') return void createHtmlDocument(target);
-      if (kind === 'text-document') return void createTextDocument(target);
-      if (kind === 'interactive-template') return openInteractiveTemplatePicker(target);
-      const parent = folderId ? allFolderSummaries.value.find((folder) => folder.id === folderId) : null;
-      return parent ? openSubfolderModal(parent) : openCreateGroupModal();
+      return void createTextDocument(target);
+    };
+    /** A template of a kind chosen in the dialog's own Template step, into Where. */
+    const onAddCreateTemplate = (templateType: InteractiveTemplate['templateType'], folderId: string) => {
+      closeAddDialog();
+      templateFolderId.value = folderId || null;
+      void createInteractiveTemplate(templateType);
+    };
+    /** A character from a file: the template picker has the reading and the review of it. */
+    const onAddImportCharacter = (folderId: string) => {
+      closeAddDialog();
+      openInteractiveTemplatePicker(folderId || undefined);
+    };
+    /** A folder named in the dialog's Folder step: inside Where, or at the top. */
+    const onAddCreateFolder = async (name: string, folderId: string) => {
+      closeAddDialog();
+      const created = await runAction('create-folder', () => resourceFolders.create(name, folderId || null), `Folder ${name} created`);
+      if (created) await load({ showLoading: false });
     };
     /** Files the dialog checked: to the Drive, or each one a canvas / an HTML document. */
     const onAddImport = async (kind: ImportKind, files: File[], folderId: string) => {
@@ -4794,6 +4811,9 @@ export default defineComponent({
       openAddDialog,
       closeAddDialog,
       onAddCreate,
+      onAddCreateTemplate,
+      onAddImportCharacter,
+      onAddCreateFolder,
       onAddImport,
       folderFilesRefreshKey,
       transferStatusText,

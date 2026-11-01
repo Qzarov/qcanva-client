@@ -11815,23 +11815,24 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ===== Dashboard: the Add dialog =====
-   Make something new or bring files in, in the template picker's look:
-   tiles with an icon, a name and what it is. Importing, the kind is a
-   segmented choice over a drop zone, and every file says whether it is
-   that kind; on a phone the dialog is a sheet from the bottom. */
+   In the dashboard's glass: the dialog is a glass panel (.dashboard-modal),
+   Where an inset glass field, Create / Upload a centred segmented slider
+   (useSegmentThumb), the tiles square glass cards - icon over name - the
+   chosen one in accent glass. Template, Folder and the uploads unfold
+   their next step under the tiles (motion.ts); on a phone the dialog is a
+   sheet from the bottom. */
 .dashboard-add-dialog {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   width: min(620px, 100%);
-  max-height: min(86vh, 760px);
+  max-height: min(88vh, 780px);
   overflow-y: auto;
+  border-radius: 20px;
 }
 .dashboard-add-head {
-  gap: 8px;
   margin-bottom: 0;
 }
 .dashboard-add-head h3 {
-  flex: 1;
   margin: 0;
 }
 .dashboard-add-where {
@@ -11842,105 +11843,139 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 13px;
   color: var(--ui-text-secondary);
 }
-.dashboard-add-where select {
-  min-height: 36px;
-  padding: 6px 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-sm);
-  background: var(--ui-surface);
+.dashboard-view .dashboard-add-where select,
+.dashboard-view .dashboard-add-folder-form .dashboard-modal-input {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
   color: var(--ui-text);
   font: inherit;
 }
-.dashboard-add-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 8px;
-}
-.dashboard-add-option {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  align-items: center;
-  column-gap: 10px;
-  min-height: 56px;
-  padding: 10px 12px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-md);
-  background: var(--ui-surface);
-  color: var(--ui-text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
-}
-.dashboard-add-option:hover:not(:disabled),
-.dashboard-add-option:focus-visible {
-  border-color: var(--ui-glass-accent-border, var(--color-brands));
-  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
-}
-.dashboard-add-option:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-.dashboard-add-option-icon {
-  grid-row: 1 / span 2;
-  display: inline-grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--ui-glass-accent-border, var(--ui-border));
-  border-radius: 10px;
-  background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
-  color: var(--ui-glass-accent-text, var(--ui-text));
-}
-.dashboard-add-option strong {
-  font-size: 14px;
-  font-weight: 600;
-}
-.dashboard-add-option small {
-  font-size: 12px;
-  color: var(--ui-text-secondary);
-}
-.dashboard-add-tabs,
-.dashboard-add-kinds {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+/* The slider, centred; its thumb glides (the .dashboard-segmented rules). */
+.dashboard-add-tabs {
+  justify-self: center;
+  display: inline-flex;
+  gap: 2px;
   padding: 3px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-full);
-  background: var(--ui-surface-subtle);
-  justify-self: start;
+  border-radius: 999px;
 }
-.dashboard-add-tabs button,
-.dashboard-add-kinds button {
-  padding: 6px 12px;
-  border: 0;
-  border-radius: var(--radius-full);
+.dashboard-view .dashboard-add-tabs {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+.dashboard-add-tabs button {
+  min-width: 112px;
+  padding: 7px 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
   background: transparent;
   color: var(--ui-text-secondary);
   font: inherit;
   font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
 }
-.dashboard-add-tabs button.active,
-.dashboard-add-kinds button.active {
-  background: var(--ui-glass-accent-bg, var(--color-brands));
-  color: var(--ui-glass-accent-text, var(--color-brand-on));
+.dashboard-add-tabs button.active {
+  color: var(--ui-glass-accent-text);
+}
+/* Until the thumb is measured, the chosen tab carries the accent itself. */
+.dashboard-view .dashboard-add-tabs:not(.has-thumb) button.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+}
+.dashboard-view .dashboard-add-tabs.has-thumb::before {
+  border-radius: 999px;
+}
+/* Square tiles: as many to a row as fit, all the same size. */
+.dashboard-add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+.dashboard-add-option {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 16px;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.dashboard-view .dashboard-add-option {
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  color: var(--ui-text);
+}
+.dashboard-view .dashboard-add-option:hover:not(:disabled, .active) {
+  background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+}
+.dashboard-view .dashboard-add-option.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.dashboard-add-option:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.dashboard-add-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dashboard-add-option-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--ui-glass-accent-border, var(--ui-border));
+  background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
+  color: var(--ui-glass-accent-text, var(--ui-text));
+}
+.dashboard-add-option-emoji {
+  font-size: 22px;
+  line-height: 1;
+}
+.dashboard-add-option strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.dashboard-add-option small {
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+/* The step under the tiles. */
+.dashboard-add-expand {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+}
+.dashboard-add-folder-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
 }
 .dashboard-add-drop {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  min-height: 96px;
+  min-height: 88px;
   padding: 16px;
-  border: 1.5px dashed var(--ui-border);
-  border-radius: var(--radius-md);
-  color: var(--ui-text-secondary);
-  font-size: 13px;
-  text-align: center;
+  border: 1.5px dashed var(--ui-glass-border, var(--ui-border));
+  border-radius: 16px;
 }
 .dashboard-add-drop.over {
   border-color: var(--color-brands);
@@ -11958,8 +11993,9 @@ html { -webkit-tap-highlight-color: transparent; }
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg, transparent);
   font-size: 13px;
 }
 .dashboard-add-files li.bad {
@@ -11994,9 +12030,9 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-add-file-action {
   flex: 0 0 auto;
   padding: 4px 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: var(--radius-full);
-  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg, var(--ui-surface-elevated));
   color: var(--ui-text);
   font: inherit;
   font-size: 12px;
@@ -12011,18 +12047,10 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-add-dialog {
     width: 100%;
     max-height: 92vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-radius: 20px 20px 0 0;
     padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   }
   .dashboard-add-grid {
-    grid-template-columns: 1fr 1fr;
-  }
-  .dashboard-add-option {
-    grid-template-columns: 1fr;
-    justify-items: start;
-    row-gap: 6px;
-  }
-  .dashboard-add-option-icon {
-    grid-row: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }

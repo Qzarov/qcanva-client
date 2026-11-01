@@ -1,22 +1,19 @@
 <template>
-  <!-- "+ Add": Where, then two tabs - Create, Upload. Uploading, the kind is
-       chosen first; each file is then checked against it, and one that is
-       not that kind says why: pick another kind, or send it as a file. -->
+  <!-- "+ Add": Where, the Create / Upload slider, square tiles. Canvas, HTML
+       and Document are made at once; Template, Folder and every upload open
+       their next step right under the tiles, the dialog growing smoothly. -->
   <div class="dashboard-modal-backdrop dashboard-add-backdrop" @click.self="emit('close')">
     <section
       ref="dialog"
       class="dashboard-modal dashboard-add-dialog"
       role="dialog"
       aria-modal="true"
-      :aria-label="title"
+      :aria-label="t('add')"
       data-add-dialog
       @keydown.esc.prevent.stop="emit('close')"
     >
       <header class="dashboard-modal-head dashboard-add-head">
-        <button v-if="importing" type="button" class="dashboard-modal-close" :aria-label="t('back')" :title="t('back')" data-add-back @click="importing = false">
-          <ArrowLeft :size="16" aria-hidden="true" />
-        </button>
-        <h3>{{ title }}</h3>
+        <h3>{{ t('add') }}</h3>
         <button type="button" class="dashboard-modal-close" :aria-label="t('close')" @click="emit('close')"><X :size="16" aria-hidden="true" /></button>
       </header>
 
@@ -28,88 +25,129 @@
         </select>
       </label>
 
-      <template v-if="!importing">
-        <div class="dashboard-add-tabs" role="tablist">
-          <button type="button" role="tab" :aria-selected="tab === 'create'" :class="{ active: tab === 'create' }" data-add-tab="create" @click="tab = 'create'">{{ t('addCreate') }}</button>
-          <button type="button" role="tab" :aria-selected="tab === 'upload'" :class="{ active: tab === 'upload' }" data-add-tab="upload" @click="tab = 'upload'">{{ t('addUpload') }}</button>
-        </div>
-        <div v-if="tab === 'create'" class="dashboard-add-grid" role="tabpanel">
-          <button v-for="tile in createTiles" :key="tile.kind" type="button" class="dashboard-add-option" :data-add-create="tile.kind" :disabled="busy" @click="emit('create', tile.kind, folderId)">
-            <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="20" /></span>
-            <strong>{{ tile.label }}</strong>
-          </button>
-        </div>
-        <div v-else class="dashboard-add-grid" role="tabpanel">
-          <button v-for="tile in importTiles" :key="tile.kind" type="button" class="dashboard-add-option" :data-add-import="tile.kind" :disabled="busy" @click="openImport(tile.kind)">
-            <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="20" /></span>
-            <strong>{{ tile.label }}</strong>
-          </button>
-          <!-- Uploading a whole folder is coming: shown, not yet usable. -->
-          <button type="button" class="dashboard-add-option" data-add-import="folder" disabled>
-            <span class="dashboard-add-option-icon" aria-hidden="true"><FolderUp :size="20" /></span>
-            <strong>{{ t('group') }}</strong>
-            <small>{{ t('inDevelopment') }}</small>
-          </button>
-        </div>
-      </template>
+      <div ref="tabsEl" class="dashboard-add-tabs dashboard-segmented" role="tablist">
+        <button type="button" role="tab" :aria-selected="tab === 'create'" :class="{ active: tab === 'create' }" data-add-tab="create" @click="setTab('create')">{{ t('addCreate') }}</button>
+        <button type="button" role="tab" :aria-selected="tab === 'upload'" :class="{ active: tab === 'upload' }" data-add-tab="upload" @click="setTab('upload')">{{ t('addUpload') }}</button>
+      </div>
 
-      <template v-else>
-        <div class="dashboard-add-kinds" role="radiogroup" :aria-label="t('importWhat')">
-          <button
-            v-for="tile in importTiles"
-            :key="tile.kind"
-            type="button"
-            role="radio"
-            :aria-checked="kind === tile.kind"
-            :class="{ active: kind === tile.kind }"
-            :data-import-kind="tile.kind"
-            @click="setKind(tile.kind)"
-          >{{ tile.label }}</button>
-        </div>
-        <div
-          class="dashboard-add-drop"
-          :class="{ over: dragOver }"
-          data-add-drop
-          @dragover.prevent="dragOver = true"
-          @dragleave="dragOver = false"
-          @drop.prevent="onDrop"
+      <div v-if="tab === 'create'" class="dashboard-add-grid" role="tabpanel">
+        <button
+          v-for="tile in createTiles"
+          :key="tile.kind"
+          type="button"
+          class="dashboard-add-option"
+          :class="{ active: expanded === tile.kind }"
+          :aria-expanded="tile.expands ? expanded === tile.kind : undefined"
+          :data-add-create="tile.kind"
+          :disabled="busy"
+          @click="onCreateTile(tile.kind)"
         >
-          <button type="button" class="btn-ghost btn-sm" data-add-choose @click="input?.click()">{{ t('chooseFiles') }}</button>
-          <input ref="input" type="file" multiple :accept="importAccept(kind)" hidden data-add-input @change="onPicked" />
+          <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="22" /></span>
+          <strong>{{ tile.label }}</strong>
+        </button>
+      </div>
+      <div v-else class="dashboard-add-grid" role="tabpanel">
+        <button
+          v-for="tile in importTiles"
+          :key="tile.kind"
+          type="button"
+          class="dashboard-add-option"
+          :class="{ active: expanded === 'upload' && kind === tile.kind }"
+          :aria-expanded="expanded === 'upload' && kind === tile.kind"
+          :data-add-import="tile.kind"
+          :disabled="busy"
+          @click="openImport(tile.kind)"
+        >
+          <span class="dashboard-add-option-icon" aria-hidden="true"><component :is="tile.icon" :size="22" /></span>
+          <strong>{{ tile.label }}</strong>
+        </button>
+        <!-- Uploading a whole folder is coming: shown, not yet usable. -->
+        <button type="button" class="dashboard-add-option" data-add-import="folder" disabled>
+          <span class="dashboard-add-option-icon" aria-hidden="true"><FolderUp :size="22" /></span>
+          <strong>{{ t('group') }}</strong>
+          <small>{{ t('inDevelopment') }}</small>
+        </button>
+      </div>
+
+      <!-- The next step, unfolding under the tiles. -->
+      <Transition :css="false" mode="out-in" @enter="heightTransitionHooks.onEnter" @leave="heightTransitionHooks.onLeave">
+        <div v-if="expanded === 'interactive-template'" key="template" class="dashboard-add-expand" data-add-expand="template">
+          <div class="dashboard-add-grid">
+            <button type="button" class="dashboard-add-option" data-template-type="dnd-character" :disabled="busy" @click="emit('create-template', 'dnd-character', folderId)">
+              <span class="dashboard-add-option-icon dashboard-add-option-emoji" aria-hidden="true">{{ templateEmoji('dnd-character') }}</span>
+              <strong>{{ t('templateDnd') }}</strong>
+            </button>
+            <button type="button" class="dashboard-add-option" data-template-type="trello-board" :disabled="busy" @click="emit('create-template', 'trello-board', folderId)">
+              <span class="dashboard-add-option-icon dashboard-add-option-emoji" aria-hidden="true">{{ templateEmoji('trello-board') }}</span>
+              <strong>{{ t('templateKanban') }}</strong>
+            </button>
+            <button type="button" class="dashboard-add-option" data-template-import="dnd-character" :disabled="busy" @click="emit('import-character', folderId)">
+              <span class="dashboard-add-option-icon" aria-hidden="true"><FileInput :size="22" /></span>
+              <strong>{{ t('templateImportCharacter') }}</strong>
+            </button>
+          </div>
         </div>
-        <ul v-if="entries.length" class="dashboard-add-files" data-add-files>
-          <li v-for="entry in entries" :key="entry.id" :class="{ bad: isBad(entry) }" :data-add-file="entry.file.name">
-            <span class="dashboard-add-file-state" aria-hidden="true">
-              <CircleAlert v-if="isBad(entry)" :size="16" />
-              <CircleCheck v-else-if="entry.check" :size="16" />
-            </span>
-            <span class="dashboard-add-file-main">
-              <span class="dashboard-add-file-name">{{ entry.file.name }}</span>
-              <span v-if="entry.asFile" class="dashboard-add-file-note">{{ t('importAsFile') }}</span>
-              <span v-else-if="entry.check && !entry.check.ok" class="dashboard-add-file-note" data-add-problem>{{ problemText(entry.check.problem) }}</span>
-            </span>
-            <button v-if="isBad(entry)" type="button" class="dashboard-add-file-action" data-add-as-file @click="entry.asFile = true">{{ t('importAsFile') }}</button>
-            <button type="button" class="dashboard-modal-close" :aria-label="t('removeFile')" @click="removeEntry(entry.id)"><X :size="14" aria-hidden="true" /></button>
-          </li>
-        </ul>
-        <div class="dashboard-modal-actions dashboard-modal-actions-row">
-          <button type="button" class="btn-ghost" @click="emit('close')">{{ t('cancel') }}</button>
-          <button type="button" class="btn-primary" data-add-submit :disabled="busy || !readyCount || checking" @click="submit">
-            {{ t('importRun').replace('{n}', String(readyCount)) }}
-          </button>
+        <form v-else-if="expanded === 'folder'" key="folder" class="dashboard-add-expand dashboard-add-folder-form" data-add-expand="folder" @submit.prevent="submitFolder">
+          <input
+            ref="folderNameInput"
+            v-model.trim="folderName"
+            class="dashboard-modal-input"
+            :placeholder="t('groupNameTitle')"
+            data-add-folder-name
+          />
+          <button type="submit" class="btn-primary" data-add-folder-create :disabled="busy || !folderName">{{ t('create') }}</button>
+        </form>
+        <div v-else-if="expanded === 'upload'" key="upload" class="dashboard-add-expand" data-add-expand="upload">
+          <div
+            class="dashboard-add-drop"
+            :class="{ over: dragOver }"
+            data-add-drop
+            @dragover.prevent="dragOver = true"
+            @dragleave="dragOver = false"
+            @drop.prevent="onDrop"
+          >
+            <button type="button" class="btn-ghost btn-sm" data-add-choose @click="input?.click()">{{ t('chooseFiles') }}</button>
+            <input ref="input" type="file" multiple :accept="importAccept(kind)" hidden data-add-input @change="onPicked" />
+          </div>
+          <ul v-if="entries.length" class="dashboard-add-files" data-add-files>
+            <li v-for="entry in entries" :key="entry.id" :class="{ bad: isBad(entry) }" :data-add-file="entry.file.name">
+              <span class="dashboard-add-file-state" aria-hidden="true">
+                <CircleAlert v-if="isBad(entry)" :size="16" />
+                <CircleCheck v-else-if="entry.check" :size="16" />
+              </span>
+              <span class="dashboard-add-file-main">
+                <span class="dashboard-add-file-name">{{ entry.file.name }}</span>
+                <span v-if="entry.asFile" class="dashboard-add-file-note">{{ t('importAsFile') }}</span>
+                <span v-else-if="entry.check && !entry.check.ok" class="dashboard-add-file-note" data-add-problem>{{ problemText(entry.check.problem) }}</span>
+              </span>
+              <button v-if="isBad(entry)" type="button" class="dashboard-add-file-action" data-add-as-file @click="entry.asFile = true">{{ t('importAsFile') }}</button>
+              <button type="button" class="dashboard-modal-close" :aria-label="t('removeFile')" @click="removeEntry(entry.id)"><X :size="14" aria-hidden="true" /></button>
+            </li>
+          </ul>
+          <div class="dashboard-modal-actions dashboard-modal-actions-row">
+            <button type="button" class="btn-ghost" @click="emit('close')">{{ t('cancel') }}</button>
+            <button type="button" class="btn-primary" data-add-submit :disabled="busy || !readyCount || checking" @click="submit">
+              {{ t('importRun').replace('{n}', String(readyCount)) }}
+            </button>
+          </div>
         </div>
-      </template>
+      </Transition>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, type Component } from 'vue';
-import { ArrowLeft, CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, X } from '@lucide/vue';
+import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue';
+import { CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, X } from '@lucide/vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
+import { useSegmentThumb } from '../../composables/useSegmentThumb';
+import { heightTransitionHooks } from '../../dashboard/motion';
+import { templateEmoji } from '../../dashboard/template-emoji';
 import { checkImportFile, importAccept, type ImportCheck, type ImportKind, type ImportProblem } from '../../dashboard/import-files';
 
-export type AddCreateKind = 'canvas' | 'html-document' | 'text-document' | 'interactive-template' | 'folder';
+export type AddCreateKind = 'canvas' | 'html-document' | 'text-document';
+type CreateTile = AddCreateKind | 'interactive-template' | 'folder';
+type TemplateType = 'dnd-character' | 'trello-board';
 
 const props = defineProps<{
   /** Own folders to add into, in tree order. */
@@ -123,29 +161,39 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   create: [kind: AddCreateKind, folderId: string];
+  'create-template': [templateType: TemplateType, folderId: string];
+  'import-character': [folderId: string];
+  'create-folder': [name: string, folderId: string];
   import: [kind: ImportKind, files: File[], folderId: string];
 }>();
 const { t } = useI18n();
 
 const folderId = ref(props.initialFolderId || '');
 const tab = ref<'create' | 'upload'>(props.initialImport ? 'upload' : 'create');
-const importing = ref(Boolean(props.initialImport));
+/** The step open under the tiles, if any. */
+const expanded = ref<'' | 'interactive-template' | 'folder' | 'upload'>(props.initialImport ? 'upload' : '');
 const kind = ref<ImportKind>(props.initialImport || 'file');
 const dialog = ref<HTMLElement | null>(null);
+const tabsEl = ref<HTMLElement | null>(null);
 const input = ref<HTMLInputElement | null>(null);
+const folderNameInput = ref<HTMLInputElement | null>(null);
+const folderName = ref('');
 const dragOver = ref(false);
+useSegmentThumb(tabsEl, tab);
+// The name field is ready to type in as soon as it appears (after the step it replaces has folded away).
+watch(folderNameInput, (el) => el?.focus());
 
 /** `run` counts the checks: a late answer to an earlier kind is dropped. */
 type Entry = { id: number; file: File; check: ImportCheck | null; asFile: boolean; run: number };
 const entries = ref<Entry[]>([]);
 let nextId = 0;
 
-const createTiles = computed<Array<{ kind: AddCreateKind; label: string; icon: Component }>>(() => [
+const createTiles = computed<Array<{ kind: CreateTile; label: string; icon: Component; expands?: boolean }>>(() => [
   { kind: 'canvas', label: t('canvas'), icon: FilePlus2 },
   { kind: 'html-document', label: 'HTML', icon: FileCode2 },
   { kind: 'text-document', label: t('document'), icon: FileText },
-  { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate },
-  { kind: 'folder', label: t('group'), icon: FolderPlus },
+  { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate, expands: true },
+  { kind: 'folder', label: t('group'), icon: FolderPlus, expands: true },
 ]);
 const importTiles = computed<Array<{ kind: ImportKind; label: string; icon: Component }>>(() => [
   { kind: 'file', label: t('addFile'), icon: FileIcon },
@@ -153,9 +201,6 @@ const importTiles = computed<Array<{ kind: ImportKind; label: string; icon: Comp
   { kind: 'html', label: 'HTML', icon: FileCode2 },
   { kind: 'markdown', label: t('document'), icon: FileText },
 ]);
-const title = computed(() => (importing.value
-  ? `${t('addUpload')}: ${importTiles.value.find((tile) => tile.kind === kind.value)!.label}`
-  : t('add')));
 
 const PROBLEM_TEXT: Record<ImportProblem, MessageKey> = {
   empty: 'importProblemEmpty',
@@ -168,6 +213,23 @@ const problemText = (problem: ImportProblem) => t(PROBLEM_TEXT[problem]);
 const isBad = (entry: Entry) => !entry.asFile && entry.check !== null && !entry.check.ok;
 const checking = computed(() => entries.value.some((entry) => !entry.asFile && entry.check === null));
 const readyCount = computed(() => entries.value.filter((entry) => entry.asFile || entry.check?.ok).length);
+
+const setTab = (next: 'create' | 'upload') => {
+  if (tab.value === next) return;
+  tab.value = next;
+  expanded.value = '';
+};
+/** Canvas, HTML, Document are made at once; Template and Folder open under the tiles (again: fold away). */
+const onCreateTile = (next: CreateTile) => {
+  if (next === 'interactive-template' || next === 'folder') {
+    expanded.value = expanded.value === next ? '' : next;
+    return;
+  }
+  emit('create', next, folderId.value);
+};
+const submitFolder = () => {
+  if (folderName.value) emit('create-folder', folderName.value, folderId.value);
+};
 
 const check = async (entry: Entry) => {
   entry.check = null;
@@ -182,14 +244,16 @@ const addFiles = (files: File[]) => {
   entries.value = [...entries.value, ...added];
   added.forEach((entry) => void check(entries.value.find((item) => item.id === entry.id)!));
 };
+/** An upload tile opens the files step; another tile there changes the kind, every file checked again. */
 const openImport = (next: ImportKind) => {
+  if (expanded.value === 'upload' && kind.value === next) {
+    expanded.value = '';
+    return;
+  }
+  const changed = kind.value !== next;
   kind.value = next;
-  importing.value = true;
-};
-/** Another kind: every file is checked again against it. */
-const setKind = (next: ImportKind) => {
-  if (kind.value === next) return;
-  kind.value = next;
+  expanded.value = 'upload';
+  if (!changed) return;
   for (const entry of entries.value) {
     entry.asFile = false;
     void check(entry);
