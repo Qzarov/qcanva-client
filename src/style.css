@@ -11190,3 +11190,141 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-sidebar .dashboard-sidebar-admin {
   text-decoration: none;
 }
+
+/* ===== Dashboard sidebar: files in an opened folder =====
+   Files sit under a folder's subfolders, one level in, quieter than the
+   folders; past ten children the rest is one "… N more" row that opens the
+   folder. Rows ease in and out (motion.ts), and so do the chevrons. */
+.dashboard-sidebar-home-chevron,
+.dashboard-sidebar-folder-toggle .lucide {
+  transition: transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-file {
+  min-height: 32px;
+  font-size: 13px;
+}
+.dashboard-sidebar-file .resource-title-icon {
+  width: 16px;
+  height: 16px;
+}
+.dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-more {
+  min-height: 28px;
+  grid-template-columns: minmax(0, 1fr);
+  padding-inline-start: 12px;
+  font-size: 12px;
+  color: var(--ui-text-muted, var(--ui-text-secondary));
+}
+
+/* ===== Dashboard: "+ Add" in an empty section =====
+   A card-sized dashed tile in the section's own grid; the line under it
+   says why the section is empty. */
+.dashboard-add-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 112px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--ui-glass-border, var(--ui-border));
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.dashboard-add-tile:hover,
+.dashboard-add-tile:focus-visible {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+  color: var(--ui-text);
+}
+.dashboard-add-tile-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dashboard-add-tile-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-tile-folder {
+  flex-direction: row;
+  min-height: 52px;
+  border-radius: var(--radius-md);
+}
+.dashboard .dashboard-list-view .dashboard-add-tile {
+  flex-direction: row;
+  justify-content: flex-start;
+  min-height: 48px;
+  gap: 12px;
+}
+
+/* ===== Dashboard: into a folder and out of it =====
+   dashboard-nav-forward / -back are set for the length of one animation
+   (DashboardView navDirection): deeper slides in from the right, back up
+   (to the parent or the feed) from the left. */
+@keyframes dashboard-nav-in-forward {
+  from { opacity: 0; transform: translateX(28px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes dashboard-nav-in-back {
+  from { opacity: 0; transform: translateX(-28px); }
+  to { opacity: 1; transform: none; }
+}
+.dashboard-nav-forward .folder-manager-row {
+  animation: dashboard-nav-in-forward 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-nav-back :is(.folder-manager-row, .dashboard-feed-section) {
+  animation: dashboard-nav-in-back 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* ===== Dashboard: segmented controls with a sliding thumb =====
+   useSegmentThumb measures the active segment into --thumb-x/-w and sets
+   .has-thumb; the accent glass then lives on ::before and glides, while
+   the buttons themselves stay clear. */
+.dashboard-view .dashboard-segmented {
+  position: relative;
+  isolation: isolate;
+}
+.dashboard-view .dashboard-segmented.has-thumb::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  bottom: 3px;
+  left: 0;
+  width: var(--thumb-w);
+  transform: translateX(var(--thumb-x));
+  border: 1px solid var(--ui-glass-accent-border);
+  border-radius: 12px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  transition: transform 0.26s cubic-bezier(0.2, 0, 0, 1), width 0.26s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-view .dashboard-segmented.has-thumb button {
+  transition: color 0.2s ease;
+}
+.dashboard-view .dashboard-segmented.has-thumb button.active {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-nav-forward .folder-manager-row,
+  .dashboard-nav-back :is(.folder-manager-row, .dashboard-feed-section) {
+    animation: none;
+  }
+  .dashboard-view .dashboard-segmented.has-thumb::before,
+  .dashboard-sidebar-home-chevron,
+  .dashboard-sidebar-folder-toggle .lucide {
+    transition: none;
+  }
+}

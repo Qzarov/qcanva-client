@@ -197,6 +197,8 @@ describe('dashboard sidebar navigation', () => {
     expect(wrapper.find('[data-dashboard-view="shared"]').exists()).toBe(false);
     expect(wrapper.get('[data-dashboard-view="recent"]').isVisible()).toBe(true);
     expect(wrapper.get('[data-feed-empty="shared"]').text()).toBe('Nothing has been shared with you yet.');
+    // An empty section offers "+ Add" in its grid.
+    expect(wrapper.get('[data-feed-add="shared"]').text()).toContain('Add');
   });
 
   it('scrolls the home feed to a sidebar section that has content, instead of opening a page', async () => {
@@ -781,6 +783,8 @@ describe('dashboard sidebar navigation', () => {
     await nextTick();
     const empty = wrapper.get('[data-feed-empty="interactive"]');
     expect(empty.text()).toContain('Nothing matches the current filters.');
+    // Emptied by the filters, not empty: no "+ Add" there.
+    expect(wrapper.find('[data-feed-add="interactive"]').exists()).toBe(false);
 
     await empty.get('[data-reset-filters]').trigger('click');
     expect(vm.contentFilter).toBe('all');
@@ -1807,7 +1811,7 @@ describe('DashboardView groups', () => {
       expect(cards[0]?.text()).toContain('Archive');
 
       // Rendered ahead of the folder's own items, not merely present.
-      const html = wrapper.html();
+      const html = wrapper.get('[data-dashboard-view="folder"]').html();
       const subfolderAt = html.indexOf('subfolder-card');
       const itemAt = html.indexOf('Doc 1');
       expect(subfolderAt).toBeGreaterThan(-1);
