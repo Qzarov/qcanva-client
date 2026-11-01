@@ -10926,6 +10926,13 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-view .dashboard-sort-popover {
   min-width: 200px;
 }
+/* Filter and sort sit right after New, at the toolbar's left: their menus
+   unfold rightwards. Anchored to the right they reached left past the main
+   column and went under the sidebar. */
+.dashboard-view .dash-toolbar :is(.dashboard-filter-popover, .dashboard-sort-popover):not(.dashboard-menu-sheet) {
+  left: 0;
+  right: auto;
+}
 
 /* ===== Dashboard: a folder's files, as the folder's own cards =====
    The same glass card as a canvas or a document; the kind's icon in the
@@ -11488,4 +11495,158 @@ html { -webkit-tap-highlight-color: transparent; }
   color: var(--ui-text);
   font: inherit;
   font-size: 13px;
+}
+
+/* ===== Dashboard: several items at once =====
+   A card's box takes its type icon's place: on hover, and on every card
+   once anything is ticked (.dashboard-selecting). A ticked card wears the
+   accent frame. The bar floats over the top of the central column, above
+   whatever is scrolled, the way Spot Bonus's bar floats over its list. */
+.dashboard-central-shell {
+  position: relative;
+}
+.card-select {
+  display: none;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--ui-text-secondary);
+  border-radius: 5px;
+  background: var(--ui-surface-elevated);
+  color: transparent;
+  cursor: pointer;
+}
+.card-select:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  :is(.canvas-card, .dashboard-recent-card):hover .card-select {
+    display: inline-flex;
+  }
+  :is(.canvas-card, .dashboard-recent-card):hover .card-select + .resource-title-icon {
+    display: none;
+  }
+}
+.dashboard-selecting .card-select,
+[data-selected] .card-select {
+  display: inline-flex;
+}
+.dashboard-selecting .card-select + .resource-title-icon,
+[data-selected] .card-select + .resource-title-icon {
+  display: none;
+}
+[data-selected] .card-select {
+  border-color: var(--color-brands);
+  background: var(--color-brands);
+  color: var(--color-brand-on);
+}
+.dashboard-view :is(.canvas-card, .dashboard-recent-card)[data-selected] {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  box-shadow: 0 0 0 1px var(--ui-glass-accent-border, var(--color-brands)), var(--ui-glass-accent-glow, none);
+}
+/* Ticking, not opening: no text selection while picking several. */
+.dashboard-selecting :is(.canvas-card, .dashboard-recent-card) {
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.dashboard-selection-bar {
+  position: absolute;
+  z-index: 330;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px 8px;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 8px 10px 8px 18px;
+  border: 1px solid color-mix(in srgb, var(--color-brands) 45%, var(--ui-border));
+  border-radius: var(--radius-full);
+  /* Solid, not glass: what is under it (the search, the header) must not show through. */
+  background: color-mix(in srgb, var(--color-brands) 16%, var(--ui-surface-elevated));
+  box-shadow: var(--shadow-dropdown), 0 8px 28px color-mix(in srgb, var(--color-brands) 22%, transparent);
+  color: var(--ui-text);
+}
+.dashboard-selection-count {
+  margin-right: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.dashboard-selection-action,
+.dashboard-selection-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 14px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dashboard-selection-action:hover:not(:disabled) {
+  background: var(--ui-glass-btn-hover, var(--ui-surface-subtle));
+}
+.dashboard-selection-action:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dashboard-selection-action.danger {
+  color: var(--ui-danger);
+}
+.dashboard-selection-clear {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dashboard-selection-bar-enter-active,
+.dashboard-selection-bar-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-selection-bar-enter-from,
+.dashboard-selection-bar-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -12px);
+}
+@media (max-width: 768px) {
+  .dashboard-selection-bar {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-width: none;
+    transform: none;
+    border-radius: var(--radius-lg);
+    padding: 8px 10px;
+  }
+  .dashboard-selection-bar-enter-from,
+  .dashboard-selection-bar-leave-to {
+    transform: translateY(-12px);
+  }
+  .dashboard-selection-count {
+    flex: 1 0 100%;
+    text-align: center;
+  }
+  .dashboard-selection-clear span {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-selection-bar-enter-active,
+  .dashboard-selection-bar-leave-active {
+    transition: none;
+  }
 }

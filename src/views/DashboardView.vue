@@ -33,6 +33,30 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
+      <Transition name="dashboard-selection-bar">
+        <div
+          v-if="isLoggedIn && selectedKeys.length"
+          class="dashboard-selection-bar"
+          role="region"
+          :aria-label="t('selectionActions')"
+          data-selection-bar
+        >
+          <span class="dashboard-selection-count" data-selection-count>{{ t('selectedCount').replace('{n}', String(selectedKeys.length)) }}</span>
+          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-action" data-selection-select-all @click="selectAllOnScreen">{{ t('selectAll') }}</button>
+          <button type="button" class="dashboard-selection-action" data-selection-move :disabled="isBusy" @click.stop="openBulkMoveModal">
+            <FolderInput :size="15" aria-hidden="true" /><span>{{ t('bulkMoveToFolder') }}</span>
+          </button>
+          <button v-if="bulkPinnable.length" type="button" class="dashboard-selection-action" data-selection-pin :disabled="isBusy" @click="bulkTogglePinned">
+            <PinOff v-if="bulkAllPinned" :size="15" aria-hidden="true" /><Pin v-else :size="15" aria-hidden="true" /><span>{{ bulkAllPinned ? t('unpin') : t('pin') }}</span>
+          </button>
+          <button v-if="bulkDeletable.length" type="button" class="dashboard-selection-action danger" data-selection-delete :disabled="isBusy" @click="bulkDelete">
+            <Trash2 :size="15" aria-hidden="true" /><span>{{ t('delete') }}</span>
+          </button>
+          <button type="button" class="dashboard-selection-clear" data-selection-clear :title="t('clearSelection')" @click="clearSelection">
+            <X :size="15" aria-hidden="true" /><span>{{ t('clearSelection') }}</span>
+          </button>
+        </div>
+      </Transition>
     <header v-if="!isLoggedIn" class="app-header app-header-public">
       <div class="app-header-inner">
         <div class="dashboard-brand">
@@ -106,7 +130,16 @@
     >
     <!-- One grid/list choice for the whole dashboard: every feed section
          and every folder (the switch sits in Recents' and the folder's heading). -->
-    <div ref="dashboardShell" class="dashboard-shell" :class="[{ 'dashboard-list-view': recentViewMode === 'list' }, 'dashboard-nav-' + navDirection]">
+    <div
+      ref="dashboardShell"
+      class="dashboard-shell"
+      :class="[{ 'dashboard-list-view': recentViewMode === 'list', 'dashboard-selecting': selectedKeys.length > 0 }, 'dashboard-nav-' + navDirection]"
+      @click.capture="onSelectionClickCapture"
+      @pointerdown.capture="onSelectionPointerDown"
+      @pointermove.capture="onSelectionPointerMove"
+      @pointerup.capture="cancelLongPress"
+      @pointercancel.capture="cancelLongPress"
+    >
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
@@ -201,7 +234,8 @@
         :aria-label="t('recentResources')"
         data-recent-layout
       >
-        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
           <span class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
           <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
           <span
@@ -423,7 +457,7 @@
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <div
                     v-if="item.type === 'canvas'"
-                    class="canvas-card"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
                     @click="openCanvasFromCard(item.slug || item.id)"
@@ -438,7 +472,7 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
                     <div class="card-meta">
                       <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                       <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -466,7 +500,7 @@
                   </div>
                   <article
                     v-else-if="item.type === 'html-document'"
-                    class="canvas-card html-doc-card"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
                     @click="openHtmlDocumentFromCard(item.slug || item.id)"
@@ -477,7 +511,7 @@
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
                       @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -504,11 +538,11 @@
                   </article>
                   <article
                     v-else-if="item.type === 'interactive-template'"
-                    class="canvas-card html-doc-card interactive-template-card"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card"
                     :data-folder-resource="`interactive-template:${item.id}`"
                     @click="openInteractiveTemplate(item.id)"
                   >
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span><span class="card-title-text">{{ item.title }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span><span class="card-title-text">{{ item.title }}</span></div>
                     <div class="card-meta">
                       <span class="badge" :class="item.role === 'owner' ? 'badge-owner' : 'badge-shared'">{{ interactiveTemplateTypeLabel(item.templateType) }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -526,7 +560,7 @@
                   </article>
                   <article
                     v-else
-                    class="canvas-card html-doc-card"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
                     :class="{ dragging: draggingResourceId === item.id }"
                     draggable="false"
                     @click="openTextDocumentFromCard(item.slug || item.id)"
@@ -537,7 +571,7 @@
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
                       @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
                     <div class="card-meta">
                       <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -589,10 +623,10 @@
           <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
-            class="canvas-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
             @click="openCanvas(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">Pinned</span>
@@ -620,10 +654,10 @@
           </div>
           <article
             v-else-if="item.type === 'html-document'"
-            class="canvas-card html-doc-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -639,10 +673,10 @@
           </article>
           <article
             v-else-if="item.type === 'text-document'"
-            class="canvas-card html-doc-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -690,8 +724,8 @@
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid" data-feed-grid="interactive">
-          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
+          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-template" data-resource-icon="interactive-template" aria-label="Интерактивный шаблон"></span>{{ item.title }}</div>
             <div class="card-meta"><span class="badge badge-owner">{{ interactiveTemplateTypeLabel(item.templateType) }}</span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
@@ -752,10 +786,10 @@
           <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
           <div
             v-if="item.type === 'canvas'"
-            class="canvas-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
             @click="openCanvas(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -778,10 +812,10 @@
           </div>
           <article
             v-else-if="item.type === 'html-document'"
-            class="canvas-card html-doc-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -802,10 +836,10 @@
           </article>
           <article
             v-else-if="item.type === 'text-document'"
-            class="canvas-card html-doc-card"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
-            <div class="card-title card-title-with-icon"><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span v-if="item.pinned" class="badge badge-pinned">{{ t('pinned') }}</span>
@@ -900,19 +934,19 @@
     <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
       <div class="dashboard-modal">
         <div class="dashboard-modal-head">
-          <h3>{{ folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
+          <h3>{{ folderModal.bulk?.length ? t('moveSelectedTitle').replace('{n}', String(folderModal.bulk.length)) : folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
           <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
         </div>
         <input
-          v-if="!folderModal.resourceId"
+          v-if="!folderModalMoves"
           v-model.trim="folderModal.value"
           class="dashboard-modal-input"
           :placeholder="t('groupNameTitle')"
           @input="folderModal.folderId = ''"
           @keydown.enter.prevent="saveFolderModal"
         />
-        <div v-if="folderModal.resourceId" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
-        <div v-if="folderModal.resourceId && folderOptions.length" class="folder-parent-list">
+        <div v-if="folderModalMoves" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
+        <div v-if="folderModalMoves && folderOptions.length" class="folder-parent-list">
           <button
             v-for="folder in folderOptions"
             :key="folder.id"
@@ -931,7 +965,7 @@
         <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
           <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
           <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
-            {{ actionLabel(folderModal.resourceId ? 'move-folder' : 'create-folder', folderModal.resourceId ? t('move') : t('create')) }}
+            {{ actionLabel(folderModalMoves ? 'move-folder' : 'create-folder', folderModalMoves ? t('move') : t('create')) }}
           </button>
         </div>
       </div>
@@ -1162,9 +1196,10 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Pin, PinOff, Plus, Trash2, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { alertDialog, confirmDelete } from '../composables/appDialog';
+import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
+import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { downloadDriveFile } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -1325,6 +1360,9 @@ export default defineComponent({
     FileText,
     Folder,
     FolderInput,
+    Pin,
+    PinOff,
+    Trash2,
     FolderPlus,
     LayoutTemplate,
     Menu,
@@ -1546,13 +1584,15 @@ export default defineComponent({
       }
     };
 
-    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string }>({
+    const folderModal = ref<{ open: boolean; resourceId: string; resourceType: FolderItem['type']; folderId: string; value: string; bulk?: string[] }>({
       open: false,
       resourceId: '',
       resourceType: 'canvas',
       folderId: '',
       value: '',
     });
+    /** The folder dialog moves something (one item, or the selection) rather than creating a folder. */
+    const folderModalMoves = computed(() => Boolean(folderModal.value.resourceId || folderModal.value.bulk?.length));
     const renameFolderModal = ref<{ open: boolean; folderId: string; sourceName: string; value: string }>({
       open: false,
       folderId: '',
@@ -1903,6 +1943,7 @@ export default defineComponent({
     const folderNames = computed(() => folderOptions.value.map((folder) => folder.name));
     const canSaveFolderModal = computed(() => {
       if (!folderModal.value.open) return false;
+      if (folderModal.value.bulk?.length) return Boolean(folderModal.value.folderId);
       if (!folderModal.value.resourceId) return Boolean(folderModal.value.value.trim());
       return Boolean(folderModal.value.folderId && folderModal.value.folderId !== draggingResourceFolderId.value);
     });
@@ -2777,6 +2818,16 @@ export default defineComponent({
         ? ownResourceFolders.value.find((folder) => folder.id === folderModal.value.folderId)
         : await ensureFolderByName(folderName);
       if (!targetFolder) return;
+      if (folderModal.value.bulk?.length) {
+        const items = selectedItemsOf(folderModal.value.bulk).filter((item) => item.folderId !== targetFolder.id);
+        await runAction('move-folder', async () => {
+          for (const item of items) await resourceFolders.move(targetFolder.id, item.type, item.id);
+        }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(items.length)));
+        closeFolderModal();
+        clearSelection();
+        await load();
+        return;
+      }
       if (!folderModal.value.resourceId) {
         closeFolderModal();
         await load();
@@ -3346,6 +3397,184 @@ export default defineComponent({
       if (!confirmed) return;
       await runAction('delete-text-document', () => textDocuments.delete(doc.id), `Deleted ${title}`);
       forgetResourceTab('doc', doc.id);
+      await load();
+    };
+
+    /**
+     * SEVERAL ITEMS AT ONCE. A card is ticked by its box (on hover, or on
+     * every card once something is ticked), by Ctrl/Cmd-click, Shift-click
+     * for a range, or a long press on a phone; while anything is ticked a
+     * click ticks instead of opening. The bar over the dashboard then moves,
+     * pins or deletes them all.
+     */
+    const selectedKeys = ref<string[]>([]);
+    let selectionAnchor = '';
+    const isSelected = (item: { type: string; id: string }) => selectedKeys.value.includes(selectionKey(item));
+    const itemsBySelectionKey = computed(() => dashboardItemsByKey.value as ReadonlyMap<string, FolderItem>);
+    const selectedItemsOf = (keys: readonly string[]) => keys
+      .map((key) => itemsBySelectionKey.value.get(key))
+      .filter((item): item is FolderItem => Boolean(item));
+    const selectedItems = computed(() => selectedItemsOf(selectedKeys.value));
+    const ownsItem = (item: FolderItem) => (
+      item.type === 'interactive-template' ? (item as { role?: string }).role === 'owner' : isOwnedResource(item)
+    );
+    const bulkPinnable = computed(() => selectedItems.value.filter((item) => item.type !== 'interactive-template' && ownsItem(item)));
+    const bulkAllPinned = computed(() => bulkPinnable.value.length > 0 && bulkPinnable.value.every((item) => item.pinned));
+    const bulkDeletable = computed(() => selectedItems.value.filter(ownsItem));
+    /** Cards on screen that can be ticked, in screen order. */
+    const selectableOnScreen = () => Array.from(
+      dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
+    ).map((card) => card.dataset.selectKey!).filter(Boolean);
+    const allOnScreenSelected = ref(false);
+    watch(selectedKeys, () => {
+      void nextTick(() => {
+        const onScreen = selectableOnScreen();
+        allOnScreenSelected.value = onScreen.length > 0 && onScreen.every((key) => selectedKeys.value.includes(key));
+      });
+    });
+    const clearSelection = () => {
+      selectedKeys.value = [];
+      selectionAnchor = '';
+    };
+    const toggleSelected = (key: string) => {
+      selectedKeys.value = toggleSelection(selectedKeys.value, key);
+      selectionAnchor = key;
+    };
+    const selectAllOnScreen = () => {
+      selectedKeys.value = selectAll(selectedKeys.value, selectableOnScreen());
+    };
+    // Another section, another folder: the selection was of what is gone.
+    watch(activeSection, clearSelection);
+    // After a reload, whatever no longer exists drops out.
+    watch(itemsBySelectionKey, (items) => {
+      if (selectedKeys.value.some((key) => !items.has(key))) {
+        selectedKeys.value = selectedKeys.value.filter((key) => items.has(key));
+      }
+    });
+
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressStart: { x: number; y: number } | null = null;
+    let swallowNextClick = false;
+    const cancelLongPress = () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      longPressTimer = null;
+      longPressStart = null;
+    };
+    const onSelectionPointerDown = (event: PointerEvent) => {
+      if (!isLoggedIn || event.pointerType === 'mouse') return;
+      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-select-key]');
+      if (!card) return;
+      cancelLongPress();
+      longPressStart = { x: event.clientX, y: event.clientY };
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        swallowNextClick = true;
+        toggleSelected(card.dataset.selectKey!);
+        navigator.vibrate?.(10);
+      }, 450);
+    };
+    const onSelectionPointerMove = (event: PointerEvent) => {
+      if (longPressStart && Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelLongPress();
+    };
+    const onSelectionClickCapture = (event: MouseEvent) => {
+      if (swallowNextClick) {
+        // The click that ends a long press must not open the card it ticked.
+        swallowNextClick = false;
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (!isLoggedIn) return;
+      const target = event.target as HTMLElement | null;
+      const card = target?.closest<HTMLElement>('[data-select-key]');
+      if (!card) return;
+      const onBox = Boolean(target?.closest('[data-select-box]'));
+      const withModifier = event.metaKey || event.ctrlKey || event.shiftKey;
+      if (!onBox && !withModifier && !selectedKeys.value.length) return;
+      // The card's own menu and rename field keep working.
+      if (!onBox && target?.closest('.card-manage, .card-menu, .card-title-input')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const key = card.dataset.selectKey!;
+      if (event.shiftKey && selectionAnchor) {
+        selectedKeys.value = selectRange(selectedKeys.value, selectableOnScreen(), selectionAnchor, key);
+      } else {
+        toggleSelected(key);
+      }
+    };
+    const onSelectionKeydown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !selectedKeys.value.length) return;
+      if (folderModal.value.open || openControlMenu.value || openMenuCanvasId.value) return;
+      clearSelection();
+    };
+    onMounted(() => window.addEventListener('keydown', onSelectionKeydown));
+    onBeforeUnmount(() => {
+      window.removeEventListener('keydown', onSelectionKeydown);
+      cancelLongPress();
+    });
+    // Android's Back clears the selection before it leaves the folder.
+    useBackHandler(() => {
+      if (!selectedKeys.value.length) return false;
+      clearSelection();
+      return true;
+    });
+
+    const openBulkMoveModal = () => {
+      closeCardMenu();
+      openControlMenu.value = '';
+      draggingResourceFolderId.value = null;
+      folderModal.value = {
+        open: true,
+        resourceId: '',
+        resourceType: 'canvas',
+        folderId: '',
+        value: '',
+        bulk: [...selectedKeys.value],
+      };
+    };
+    const bulkTogglePinned = async () => {
+      const nextPinned = !bulkAllPinned.value;
+      const items = bulkPinnable.value.filter((item) => Boolean(item.pinned) !== nextPinned);
+      await runAction('bulk-pin', async () => {
+        for (const item of items) {
+          if (item.type === 'canvas') await canvas.update(item.id, { pinned: nextPinned });
+          else if (item.type === 'html-document') await htmlDocuments.update(item.id, { pinned: nextPinned });
+          else await textDocuments.update(item.id, { pinned: nextPinned });
+        }
+      }, t(nextPinned ? 'bulkPinned' : 'bulkUnpinned').replace('{n}', String(items.length)));
+      await load({ showLoading: false });
+    };
+    const bulkDelete = async () => {
+      const items = bulkDeletable.value;
+      const skipped = selectedItems.value.length - items.length;
+      const confirmed = await confirmDialog({
+        title: t('bulkDeleteTitle').replace('{n}', String(items.length)),
+        message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
+        confirmLabel: t('delete'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      await runAction('bulk-delete', async () => {
+        for (const item of items) {
+          if (item.type === 'canvas') {
+            await canvas.delete(item.id);
+            forgetResourceTab('canvas', item.id);
+          } else if (item.type === 'html-document') {
+            await htmlDocuments.delete(item.id);
+            forgetResourceTab('html', item.id);
+          } else if (item.type === 'text-document') {
+            await textDocuments.delete(item.id);
+            forgetResourceTab('doc', item.id);
+          } else {
+            await interactiveTemplates.delete(item.id);
+            forgetResourceTab('template', item.id);
+          }
+        }
+      }, t('bulkDeleted').replace('{n}', String(items.length)));
+      const deleted = new Set(items.map(selectionKey));
+      own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
+      interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
+      clearSelection();
       await load();
     };
 
@@ -4352,6 +4581,24 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
+      folderModalMoves,
+      selectedKeys,
+      isSelected,
+      selectionKey,
+      bulkPinnable,
+      bulkAllPinned,
+      bulkDeletable,
+      allOnScreenSelected,
+      clearSelection,
+      toggleSelected,
+      selectAllOnScreen,
+      onSelectionPointerDown,
+      onSelectionPointerMove,
+      cancelLongPress,
+      onSelectionClickCapture,
+      openBulkMoveModal,
+      bulkTogglePinned,
+      bulkDelete,
       publicOwnerFilterEl,
       openAddFromTile,
       activeFolderEmpty,
