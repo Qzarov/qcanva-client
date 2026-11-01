@@ -72,6 +72,8 @@ const props = defineProps<{
   /** A type or tag filter is on: files have neither, so none of them match. */
   filteredOut?: boolean;
   sortMode?: SortMode;
+  /** Bumped by the dashboard after an upload into this folder: read the files again. */
+  refreshKey?: number;
 }>();
 const emit = defineEmits<{ count: [count: number] }>();
 const { t, locale } = useI18n();
@@ -205,6 +207,7 @@ onBeforeUnmount(() => {
 
 // Last: the first load resets the previews, so everything above must exist by then.
 watch(() => props.folderId, (folderId) => { void load(folderId); }, { immediate: true });
+watch(() => props.refreshKey, () => { void load(props.folderId); });
 
 async function download(file: DriveItem) {
   try {

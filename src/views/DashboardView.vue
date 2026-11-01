@@ -67,20 +67,16 @@
       <Transition name="dashboard-download-status">
         <div
           v-if="downloadStatus.phase !== 'idle'"
+          :data-transfer-kind="downloadStatus.kind"
           class="dashboard-download-status"
           :class="'is-' + downloadStatus.phase"
           role="status"
           aria-live="polite"
           data-download-status
         >
-          <span class="dashboard-download-status-text">{{
-            downloadStatus.phase === 'collect' ? t('downloadCollecting').replace('{done}', String(downloadStatus.done)).replace('{total}', String(downloadStatus.total))
-            : downloadStatus.phase === 'pack' ? t('downloadPacking')
-            : downloadStatus.phase === 'done' ? (downloadStatus.failed ? t('downloadDonePartly').replace('{n}', String(downloadStatus.failed)) : t('downloadDone'))
-            : t('downloadFailed')
-          }}</span>
+          <span class="dashboard-download-status-text">{{ transferStatusText }}</span>
           <span class="dashboard-download-status-track" aria-hidden="true">
-            <span class="dashboard-download-status-bar" :style="{ width: (downloadStatus.phase === 'collect' ? Math.round(downloadStatus.done / Math.max(1, downloadStatus.total) * 90) : downloadStatus.phase === 'pack' ? 95 : 100) + '%' }"></span>
+            <span class="dashboard-download-status-bar" :style="{ width: transferStatusPercent + '%' }"></span>
           </span>
         </div>
       </Transition>
@@ -170,11 +166,12 @@
       @contextmenu.capture="onSelectionContextMenu"
     >
     <input type="file" ref="fileInput" accept=".canvas,.json,.html,.htm,text/html" style="display:none" @change="onFileSelected" />
+    <input type="file" ref="uploadInput" multiple style="display:none" data-upload-input @change="onUploadSelected" />
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
             <button class="btn-primary" @click.stop="toggleNewMenu">
               <Plus class="menu-icon" :size="17" aria-hidden="true" />
-              <span>{{ t('new') }}</span>
+              <span>{{ t('add') }}</span>
             </button>
             <div v-if="openControlMenu === 'new'" class="mobile-action-popover control-popover" @click.stop>
               <label v-if="isLoggedIn && folderOptions.length" class="dashboard-new-destination">
@@ -207,6 +204,10 @@
               <button class="card-menu-item" @click="openCreateGroupModal">
                 <FolderPlus class="menu-icon" :size="17" aria-hidden="true" />
                 <span>{{ t('group') }}</span>
+              </button>
+              <button class="card-menu-item" data-new-upload @click="chooseUploadFiles()">
+                <FileUp class="menu-icon" :size="17" aria-hidden="true" />
+                <span>{{ t('uploadFiles') }}</span>
               </button>
               <button class="card-menu-item" data-new-import @click="openControlMenu = ''; importFile()">
                 <Upload class="menu-icon" :size="17" aria-hidden="true" />
@@ -408,8 +409,8 @@
                   class="folder-manager-trigger folder-create-trigger"
                   data-folder-create-menu
                   @click.stop="toggleFolderCreateMenu(activeFolder.id)"
-                  :title="t('new')"
-                  :aria-label="t('new')"
+                  :title="t('add')"
+                  :aria-label="t('add')"
                   :disabled="isBusy"
                 ><Plus :size="17" aria-hidden="true" /></button>
                 <div v-if="openControlMenu === 'folder-new:' + activeFolder.id" class="mobile-action-popover" @click.stop>
@@ -424,6 +425,9 @@
                   </button>
                   <button class="card-menu-item" data-folder-create="interactive-template" @click="openInteractiveTemplatePicker(activeFolder.id)" :disabled="isBusy">
                     <LayoutTemplate class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('interactiveTemplate') }}</span>
+                  </button>
+                  <button class="card-menu-item" data-folder-create="upload" @click="chooseUploadFiles(activeFolder.id)" :disabled="isBusy">
+                    <FileUp class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('uploadFiles') }}</span>
                   </button>
                 </div>
               </div>
@@ -636,6 +640,7 @@
                     :query="searchQuery"
                     :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
                     :sort-mode="sortMode"
+                    :refresh-key="folderFilesRefreshKey"
                     @count="activeFolderFileCount = $event"
                   />
                 </div>
@@ -916,8 +921,8 @@
         v-if="isLoggedIn"
         type="button"
         class="dashboard-fab"
-        :aria-label="t('new')"
-        :title="t('new')"
+        :aria-label="t('add')"
+        :title="t('add')"
         @click.stop="toggleNewMenu"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
@@ -1224,13 +1229,13 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Trash2, Download, Upload, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, FileCode2, FilePlus2, FileText, Folder, FolderInput, FolderPlus, LayoutTemplate, Menu, Plus, Trash2, Download, FileUp, Upload, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { templateEmoji } from '../dashboard/template-emoji';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
-import { downloadDriveFile } from '../api/drive';
+import { downloadDriveFile, driveApi } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -1238,7 +1243,7 @@ import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { characterSheetTitle } from '../dnd/characterSheet';
-import { useI18n } from '../composables/useI18n';
+import { useI18n, type MessageKey } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -1391,6 +1396,7 @@ export default defineComponent({
     Folder,
     FolderInput,
     Download,
+    FileUp,
     Trash2,
     FolderPlus,
     LayoutTemplate,
@@ -3676,9 +3682,15 @@ export default defineComponent({
      * status bar counts them), then packed; one that fails is left out and
      * counted, the rest still download.
      */
-    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
-      phase: 'idle', done: 0, total: 0, failed: 0,
-    });
+    const downloadStatus = ref<{
+      kind: 'download' | 'upload';
+      phase: 'idle' | 'collect' | 'pack' | 'done' | 'error';
+      done: number;
+      total: number;
+      failed: number;
+      /** Uploads: how far along all the files are, by bytes (0-100). */
+      percent: number;
+    }>({ kind: 'download', phase: 'idle', done: 0, total: 0, failed: 0, percent: 0 });
     let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
       const title = item.title || t('untitled');
@@ -3705,7 +3717,7 @@ export default defineComponent({
       const items = selectedItems.value;
       if (!items.length) return;
       if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { phase: 'collect', done: 0, total: items.length, failed: 0 };
+      downloadStatus.value = { kind: 'download', phase: 'collect', done: 0, total: items.length, failed: 0, percent: 0 };
       const taken = new Set<string>();
       const files: ArchiveFile[] = [];
       for (const item of items) {
@@ -3732,6 +3744,78 @@ export default defineComponent({
       downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
     };
     onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
+
+    /**
+     * Upload files from the device into a folder's Drive (dashboard folders
+     * and Drive folders are the same folders): the folder asked for (a
+     * folder's own "+"), else the Add menu's "Create in", else Unsorted, as
+     * for anything created. The status bar follows all of them by bytes.
+     */
+    const uploadInput = ref<HTMLInputElement | null>(null);
+    const uploadTargetFolderId = ref<string | undefined>(undefined);
+    const folderFilesRefreshKey = ref(0);
+    const chooseUploadFiles = (folderId?: string) => {
+      uploadTargetFolderId.value = folderId;
+      openControlMenu.value = '';
+      uploadInput.value?.click();
+    };
+    const onUploadSelected = (event: Event) => {
+      const input = event.target as HTMLInputElement;
+      const files = Array.from(input.files || []);
+      input.value = '';
+      if (files.length) void uploadFiles(files, uploadTargetFolderId.value);
+    };
+    const uploadFiles = async (files: File[], explicitFolderId?: string) => {
+      const folderId = await resolveCreateFolderId(explicitFolderId);
+      if (!folderId) return;
+      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
+      downloadStatus.value = { kind: 'upload', phase: 'collect', done: 0, total: files.length, failed: 0, percent: 0 };
+      const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
+      const sent = files.map(() => 0);
+      let firstError = '';
+      await Promise.all(files.map(async (file, index) => {
+        try {
+          await driveApi.uploadFile(folderId, file, (percent) => {
+            sent[index] = file.size * percent / 100;
+            downloadStatus.value.percent = Math.min(99, Math.round(sent.reduce((sum, bytes) => sum + bytes, 0) / totalBytes * 100));
+          }).promise;
+        } catch (error) {
+          downloadStatus.value.failed += 1;
+          firstError ||= error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+        }
+        downloadStatus.value.done += 1;
+      }));
+      downloadStatus.value.percent = 100;
+      downloadStatus.value.phase = downloadStatus.value.failed === files.length ? 'error' : 'done';
+      if (firstError) setFeedback('error', firstError);
+      folderFilesRefreshKey.value += 1;
+      refreshFolderFileCounts();
+      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
+    };
+
+    const transferStatusText = computed(() => {
+      const status = downloadStatus.value;
+      const counted = (key: MessageKey) => t(key).replace('{done}', String(status.done)).replace('{total}', String(status.total));
+      if (status.kind === 'upload') {
+        if (status.phase === 'collect') return counted('uploadProgress');
+        if (status.phase === 'done') {
+          return status.failed
+            ? t('uploadDonePartly').replace('{n}', String(status.total - status.failed)).replace('{failed}', String(status.failed))
+            : t('uploadDone').replace('{n}', String(status.total));
+        }
+        return t('uploadFailed');
+      }
+      if (status.phase === 'collect') return counted('downloadCollecting');
+      if (status.phase === 'pack') return t('downloadPacking');
+      if (status.phase === 'done') return status.failed ? t('downloadDonePartly').replace('{n}', String(status.failed)) : t('downloadDone');
+      return t('downloadFailed');
+    });
+    const transferStatusPercent = computed(() => {
+      const status = downloadStatus.value;
+      if (status.phase === 'done' || status.phase === 'error') return 100;
+      if (status.kind === 'upload') return status.percent;
+      return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
+    });
 
     const bulkDelete = async () => {
       const items = bulkDeletable.value;
@@ -4770,6 +4854,12 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
+      uploadInput,
+      chooseUploadFiles,
+      onUploadSelected,
+      folderFilesRefreshKey,
+      transferStatusText,
+      transferStatusPercent,
       templateEmoji,
       marquee,
       startMarquee,
