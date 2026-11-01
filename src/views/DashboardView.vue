@@ -56,7 +56,7 @@
           <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" :title="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
             <Download :size="17" aria-hidden="true" />
           </button>
-          <button v-if="bulkDeletable.length" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" :title="t('delete')" :disabled="isBusy" @click="bulkDelete">
+          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" :title="t('delete')" :disabled="isBusy" @click="bulkDelete">
             <Trash2 :size="17" aria-hidden="true" />
           </button>
         </div>
@@ -585,7 +585,11 @@
                     :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
                     :sort-mode="sortMode"
                     :refresh-key="folderFilesRefreshKey"
+                    :selectable="isLoggedIn"
+                    :selected-keys="selectedKeys"
                     @count="activeFolderFileCount = $event"
+                    @files="folderDriveFiles = $event"
+                    @toggle-select="toggleSelected"
                   />
                 </div>
               </div>
@@ -1192,8 +1196,8 @@ import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, w
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { templateEmoji } from '../dashboard/template-emoji';
-import { buildZip, canvasFileContent, safeFileName, saveBlob, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
-import { downloadDriveFile, driveApi } from '../api/drive';
+import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
+import { downloadDriveFile, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -2866,11 +2870,17 @@ export default defineComponent({
       if (!targetFolder) return;
       if (folderModal.value.bulk?.length) {
         const items = selectedItemsOf(folderModal.value.bulk).filter((item) => item.folderId !== targetFolder.id);
+        const driveFiles = selectedDriveFilesOf(folderModal.value.bulk).filter((file) => file.folderId !== targetFolder.id);
         await runAction('move-folder', async () => {
           for (const item of items) await resourceFolders.move(targetFolder.id, item.type, item.id);
-        }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(items.length)));
+          for (const file of driveFiles) await driveApi.moveFile(file.id, targetFolder.id);
+        }, t('bulkMovedTo').replace('{folder}', targetFolder.name).replace('{n}', String(items.length + driveFiles.length)));
         closeFolderModal();
         clearSelection();
+        if (driveFiles.length) {
+          folderFilesRefreshKey.value += 1;
+          refreshFolderFileCounts();
+        }
         await load();
         return;
       }
@@ -3465,6 +3475,22 @@ export default defineComponent({
       item.type === 'interactive-template' ? (item as { role?: string }).role === 'owner' : isOwnedResource(item)
     );
     const bulkDeletable = computed(() => selectedItems.value.filter(ownsItem));
+    /**
+     * The open folder's Drive files tick like its other items (`drive-file:<id>`)
+     * and take the same actions: moved, downloaded, deleted (to the Drive's
+     * trash) - one way to handle every kind of file.
+     */
+    const folderDriveFiles = ref<DriveItem[]>([]);
+    const driveFilesByKey = computed<ReadonlyMap<string, DriveItem>>(() => new Map(folderDriveFiles.value.map((file) => [`drive-file:${file.id}`, file])));
+    const selectedDriveFilesOf = (keys: readonly string[]) => keys
+      .map((key) => driveFilesByKey.value.get(key))
+      .filter((file): file is DriveItem => Boolean(file));
+    const selectedDriveFiles = computed(() => selectedDriveFilesOf(selectedKeys.value));
+    /** A Drive file goes to the trash when the folder is one's own. */
+    const bulkDeletableDriveFiles = computed(() => (
+      activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : []
+    ));
+    const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length);
     /** Cards on screen that can be ticked, in screen order. */
     const selectableOnScreen = () => Array.from(
       dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
@@ -3490,9 +3516,10 @@ export default defineComponent({
     // Another section, another folder: the selection was of what is gone.
     watch(activeSection, clearSelection);
     // After a reload, whatever no longer exists drops out.
-    watch(itemsBySelectionKey, (items) => {
-      if (selectedKeys.value.some((key) => !items.has(key))) {
-        selectedKeys.value = selectedKeys.value.filter((key) => items.has(key));
+    watch([itemsBySelectionKey, driveFilesByKey], ([items, files]) => {
+      const known = (key: string) => items.has(key) || files.has(key);
+      if (selectedKeys.value.some((key) => !known(key))) {
+        selectedKeys.value = selectedKeys.value.filter(known);
       }
     });
 
@@ -3513,7 +3540,7 @@ export default defineComponent({
     const MARQUEE_IGNORE = [
       '[data-select-key]', 'button', 'a', 'input', 'select', 'textarea', 'label',
       '[draggable="true"]', '.card-menu', '.mobile-action-popover', '.subfolder-card',
-      '.folder-file-card', '.dashboard-modal-backdrop', '[contenteditable="true"]',
+      '.dashboard-modal-backdrop', '[contenteditable="true"]',
     ].join(',');
     const marquee = ref<{ left: number; top: number; width: number; height: number } | null>(null);
     let marqueeStart: { x: number; y: number; base: string[] } | null = null;
@@ -3675,21 +3702,32 @@ export default defineComponent({
         content: JSON.stringify({ title: template.title, templateType: template.templateType, data: template.data }, null, 2),
       };
     };
+    /** A Drive file goes into the zip as it is, fetched by its download link. */
+    const archiveFileOfDrive = async (file: DriveItem, taken: Set<string>): Promise<ArchiveFile> => {
+      const { url } = await driveApi.getDownloadLink(file.id);
+      const response = await fetch(resolveDownloadUrl(url));
+      if (!response.ok) throw new Error(`${response.status}`);
+      const [base, extension] = splitFileName(file.name);
+      return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
+    };
     const bulkDownload = async () => {
       const items = selectedItems.value;
-      if (!items.length) return;
+      const driveFiles = selectedDriveFiles.value;
+      if (!items.length && !driveFiles.length) return;
       if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { kind: 'download', phase: 'collect', done: 0, total: items.length, failed: 0, percent: 0 };
+      downloadStatus.value = { kind: 'download', phase: 'collect', done: 0, total: items.length + driveFiles.length, failed: 0, percent: 0 };
       const taken = new Set<string>();
       const files: ArchiveFile[] = [];
-      for (const item of items) {
+      const add = async (make: () => Promise<ArchiveFile>) => {
         try {
-          files.push(await archiveFileOf(item, taken));
+          files.push(await make());
         } catch {
           downloadStatus.value.failed += 1;
         }
         downloadStatus.value.done += 1;
-      }
+      };
+      for (const item of items) await add(() => archiveFileOf(item, taken));
+      for (const file of driveFiles) await add(() => archiveFileOfDrive(file, taken));
       if (!files.length) {
         downloadStatus.value.phase = 'error';
       } else {
@@ -3768,9 +3806,10 @@ export default defineComponent({
 
     const bulkDelete = async () => {
       const items = bulkDeletable.value;
-      const skipped = selectedItems.value.length - items.length;
+      const driveFiles = bulkDeletableDriveFiles.value;
+      const skipped = selectedItems.value.length + selectedDriveFiles.value.length - items.length - driveFiles.length;
       const confirmed = await confirmDialog({
-        title: t('bulkDeleteTitle').replace('{n}', String(items.length)),
+        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
         confirmLabel: t('delete'),
         danger: true,
@@ -3792,7 +3831,12 @@ export default defineComponent({
             forgetResourceTab('template', item.id);
           }
         }
-      }, t('bulkDeleted').replace('{n}', String(items.length)));
+        for (const file of driveFiles) await driveApi.trashFile(file.id);
+      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length)));
+      if (driveFiles.length) {
+        folderFilesRefreshKey.value += 1;
+        refreshFolderFileCounts();
+      }
       const deleted = new Set(items.map(selectionKey));
       own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
       interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
@@ -4815,6 +4859,8 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
+      folderDriveFiles,
+      bulkDeleteCount,
       addDialog,
       openAddDialog,
       closeAddDialog,

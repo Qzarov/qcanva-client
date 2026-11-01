@@ -11585,7 +11585,7 @@ html { -webkit-tap-highlight-color: transparent; }
   :is(.canvas-card, .dashboard-recent-card):hover .card-select {
     display: inline-flex;
   }
-  :is(.canvas-card, .dashboard-recent-card):hover .card-select + .resource-title-icon {
+  :is(.canvas-card, .dashboard-recent-card):hover .card-select + :is(.resource-title-icon, .folder-file-kind) {
     display: none;
   }
 }
@@ -11593,8 +11593,8 @@ html { -webkit-tap-highlight-color: transparent; }
 [data-selected] .card-select {
   display: inline-flex;
 }
-.dashboard-selecting .card-select + .resource-title-icon,
-[data-selected] .card-select + .resource-title-icon {
+.dashboard-selecting .card-select + :is(.resource-title-icon, .folder-file-kind),
+[data-selected] .card-select + :is(.resource-title-icon, .folder-file-kind) {
   display: none;
 }
 [data-selected] .card-select {

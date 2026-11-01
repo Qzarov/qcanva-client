@@ -11,6 +11,8 @@
     role="button"
     tabindex="0"
     :data-folder-file="file.id"
+    :data-select-key="selectable ? 'drive-file:' + file.id : undefined"
+    :data-selected="selectedKeys?.includes('drive-file:' + file.id) || undefined"
     :title="file.name"
     :aria-label="`${t('folderFileDownload')}: ${file.name}`"
     @click="download(file)"
@@ -18,6 +20,18 @@
     @keydown.space.prevent="download(file)"
   >
     <div class="card-title card-title-with-icon">
+      <!-- Ticked like any other item of the dashboard (the dashboard handles the click). -->
+      <span
+        v-if="selectable"
+        class="card-select"
+        data-select-box
+        role="checkbox"
+        tabindex="0"
+        :aria-checked="selectedKeys?.includes('drive-file:' + file.id) ?? false"
+        :aria-label="t('selectItem')"
+        @keydown.enter.prevent.stop="emit('toggle-select', 'drive-file:' + file.id)"
+        @keydown.space.prevent.stop="emit('toggle-select', 'drive-file:' + file.id)"
+      ><Check :size="12" aria-hidden="true" /></span>
       <span class="folder-file-kind" aria-hidden="true">
         <Video v-if="isVideo(file)" :size="16" />
         <ImageIcon v-else-if="isImage(file)" :size="16" />
@@ -51,7 +65,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { File as FileIcon, Image as ImageIcon, Video } from '@lucide/vue';
+import { Check, File as FileIcon, Image as ImageIcon, Video } from '@lucide/vue';
 import {
   driveApi,
   downloadDriveFile,
@@ -74,8 +88,17 @@ const props = defineProps<{
   sortMode?: SortMode;
   /** Bumped by the dashboard after an upload into this folder: read the files again. */
   refreshKey?: number;
+  /** The files can be ticked like the folder's other items. */
+  selectable?: boolean;
+  /** What is ticked on the dashboard (`drive-file:<id>` for these files). */
+  selectedKeys?: readonly string[];
 }>();
-const emit = defineEmits<{ count: [count: number] }>();
+const emit = defineEmits<{
+  count: [count: number];
+  /** The files shown, for the dashboard's actions on what is ticked. */
+  files: [files: DriveItem[]];
+  'toggle-select': [key: string];
+}>();
 const { t, locale } = useI18n();
 
 /** Files of a folder shown here; the rest are a link away, in the Drive. */
@@ -107,6 +130,7 @@ const shown = computed(() => {
   });
 });
 watch(() => shown.value.length, (count) => emit('count', count), { immediate: true });
+watch(shown, (list) => emit('files', list), { immediate: true });
 
 const formatDate = (value?: string | null) => {
   if (!value) return '';

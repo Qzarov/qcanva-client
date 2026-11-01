@@ -20,9 +20,10 @@ async function openDashboard(page: Page, width = 1280) {
   await serveDashboard(page);
   // Registered after the fake backend, so these answer first: record what the bar sends.
   const calls: Call[] = [];
-  await page.route(/\/api\/(resource-folders\/[^/]+\/resources|canvas\/[^/]+|text-documents\/[^/]+)$/, async (route) => {
+  await page.route(/\/api\/(resource-folders\/[^/]+\/resources|canvas\/[^/]+|text-documents\/[^/]+|drive\/files\/[^/]+)$/, async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/drive/files/') && !['PATCH', 'DELETE'].includes(request.method())) return route.fallback();
     if (request.method() === 'GET') {
       // What a download fetches.
       if (path === '/api/canvas/c-1') return route.fulfill({ json: { canvas: { id: 'c-1', data: '{"nodes":[{"id":"n1"}],"edges":[]}' }, role: 'owner' } });
@@ -64,15 +65,15 @@ test('tick by the box, then a click ticks instead of opening; Select all; move t
   await plan.click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(bar.locator('[data-selection-count]')).toHaveText('(2)');
-  // Both cards of the folder are ticked: nothing left for "Select all".
-  await expect(bar.locator('[data-selection-select-all]')).toHaveCount(0);
+  // The folder's Drive files are not ticked yet: "Select all" is there for them.
+  await expect(bar.locator('[data-selection-select-all]')).toHaveCount(1);
   // No bulk pin.
   await expect(bar.locator('[data-selection-pin]')).toHaveCount(0);
   // Icons only, clear on the left: clear | (N) | move, download, delete.
   await expect(bar.locator('[data-selection-move]')).toHaveText('');
   await expect(bar.locator('[data-selection-move]')).toHaveAttribute('aria-label', 'Move');
   expect(await bar.locator('button').evaluateAll((els) => els.map((el) => Object.keys((el as HTMLElement).dataset)[0])))
-    .toEqual(['selectionClear', 'selectionMove', 'selectionDownload', 'selectionDelete']);
+    .toEqual(['selectionClear', 'selectionSelectAll', 'selectionMove', 'selectionDownload', 'selectionDelete']);
   for (const button of await bar.locator('button').all()) expect((await button.textContent())?.trim()).toBe('');
   // After the bar's entrance, not halfway through it.
   if (SHOTS) await page.waitForTimeout(400);
@@ -104,6 +105,16 @@ test('the box of a document ticks it, though the card is one big open link', asy
   await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(1)');
 });
 
+/** How many tickable cards a frame from `a` to `b` touches. */
+const touchedBy = (page: Page, a: { x: number; y: number }, b: { x: number; y: number }) => page.evaluate(([from, to]) => {
+  const left = Math.min(from.x, to.x); const right = Math.max(from.x, to.x);
+  const top = Math.min(from.y, to.y); const bottom = Math.max(from.y, to.y);
+  return Array.from(document.querySelectorAll('[data-select-key]')).filter((el) => {
+    const r = el.getBoundingClientRect();
+    return r.right >= left && r.left <= right && r.bottom >= top && r.top <= bottom;
+  }).length;
+}, [a, b] as const);
+
 test('a frame drawn from an empty spot ticks every card it touches; with Shift it adds', async ({ page }) => {
   await openDashboard(page);
   await openDashboardFolder(page, 'folder-a');
@@ -116,27 +127,40 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await page.mouse.down();
   await page.mouse.move(start.x + 60, start.y - 80, { steps: 4 });
   await expect(page.locator('[data-marquee]')).toBeVisible();
-  await page.mouse.move(Math.max(plan.x + plan.width, route.x + route.width) - 10, Math.min(plan.y, route.y) + 20, { steps: 8 });
+  const end = { x: Math.max(plan.x + plan.width, route.x + route.width) - 10, y: Math.min(plan.y, route.y) + 20 };
+  await page.mouse.move(end.x, end.y, { steps: 8 });
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/marquee.png` });
+  // Documents and the Drive files on the way, all of them.
+  const touched = await touchedBy(page, start, end);
+  expect(touched).toBeGreaterThan(2);
   await page.mouse.up();
   await expect(page.locator('[data-marquee]')).toHaveCount(0);
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(2)');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText(`(${touched})`);
 
-  // A new frame over one card alone starts over...
-  await page.mouse.move(route.x + route.width / 2, bottom + 200);
+  // A new frame over one column starts over...
+  const routeFrom = { x: route.x + route.width / 2, y: bottom + 200 };
+  const routeTo = { x: route.x + route.width / 2 + 5, y: route.y + route.height - 10 };
+  const routeColumn = await touchedBy(page, routeFrom, routeTo);
+  await page.mouse.move(routeFrom.x, routeFrom.y);
   await page.mouse.down();
-  await page.mouse.move(route.x + route.width / 2 + 5, route.y + route.height - 10, { steps: 6 });
+  await page.mouse.move(routeTo.x, routeTo.y, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(1)');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText(`(${routeColumn})`);
+  await expect(card(page, 'canvas:c-1')).toHaveAttribute('data-selected', 'true');
+  await expect(card(page, 'text-document:doc-1')).not.toHaveAttribute('data-selected', 'true');
   // ...with Shift it adds.
+  const planFrom = { x: plan.x + plan.width / 2, y: bottom + 200 };
+  const planTo = { x: plan.x + plan.width / 2 + 5, y: plan.y + plan.height - 10 };
+  const planColumn = await touchedBy(page, planFrom, planTo);
   await page.keyboard.down('Shift');
-  await page.mouse.move(plan.x + plan.width / 2, bottom + 200);
+  await page.mouse.move(planFrom.x, planFrom.y);
   await page.mouse.down();
-  await page.mouse.move(plan.x + plan.width / 2 + 5, plan.y + plan.height - 10, { steps: 6 });
+  await page.mouse.move(planTo.x, planTo.y, { steps: 6 });
   await page.mouse.up();
   await page.keyboard.up('Shift');
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(2)');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText(`(${routeColumn + planColumn})`);
+  await expect(card(page, 'text-document:doc-1')).toHaveAttribute('data-selected', 'true');
 });
 
 test('no "Pinned" plate on cards: the star says it', async ({ page }) => {
@@ -235,4 +259,56 @@ test('the filter menu opens rightwards, clear of the sidebar', async ({ page }) 
   const popover = (await menu.boundingBox())!;
   expect(popover.x).toBeGreaterThanOrEqual(sidebar.x + sidebar.width);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/filter-menu.png`, clip: { x: 0, y: 0, width: 900, height: 520 } });
+});
+
+test('Drive files in a folder tick like the rest: box, frame, and move / delete / download them all', async ({ page }) => {
+  const calls = await openDashboard(page);
+  await openDashboardFolder(page, 'folder-a');
+  const pdf = page.locator('[data-select-key="drive-file:f-pdf"]');
+  await pdf.hover();
+  await expect(pdf.locator('.folder-file-kind')).toBeHidden();
+  await pdf.locator('[data-select-box]').click();
+  await expect(pdf).toHaveAttribute('data-selected', 'true');
+  const count = page.locator('[data-selection-bar] [data-selection-count]');
+  await expect(count).toHaveText('(1)');
+  // A file's click ticks too, while something is ticked: nothing downloads.
+  await page.locator('[data-select-key="drive-file:f-cat"]').click();
+  await expect(count).toHaveText('(2)');
+  await page.keyboard.press('Escape');
+
+  // The frame takes documents and files alike.
+  const plan = (await card(page, 'text-document:doc-1').boundingBox())!;
+  const doc = (await page.locator('[data-select-key="drive-file:f-pdf"]').boundingBox())!;
+  await page.mouse.move(plan.x + 10, doc.y + doc.height + 200);
+  await page.mouse.down();
+  await page.mouse.move(doc.x + doc.width - 10, plan.y + 20, { steps: 8 });
+  await page.mouse.up();
+  await expect(count).toHaveText('(4)');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/selection-drive.png` });
+
+  // Download: the files go into the zip as they are.
+  const downloading = page.waitForEvent('download');
+  await page.locator('[data-selection-download]').click();
+  const zip = unzipSync(new Uint8Array(await readFile(await (await downloading).path())));
+  expect(Object.keys(zip).sort()).toEqual(['Договор аренды.pdf', 'Кот на окне.png', 'Маршрут.canvas', 'План поездки.html']);
+  expect(zip['Кот на окне.png']![0]).toBe(0x89);
+
+  // Move and delete, a document and a file together.
+  await card(page, 'text-document:doc-1').click({ modifiers: ['ControlOrMeta'] });
+  await page.locator('[data-select-key="drive-file:f-pdf"]').click({ modifiers: ['ControlOrMeta'] });
+  await expect(count).toHaveText('(2)');
+  await page.locator('[data-selection-move]').click();
+  const modal = page.locator('.dashboard-modal');
+  await modal.locator('.folder-destination', { hasText: 'Работа' }).click();
+  await modal.locator('.btn-primary').click();
+  await expect.poll(() => calls.filter((call) => call.method !== 'DELETE').map((call) => `${call.method} ${call.path}`)).toEqual([
+    'PUT /api/resource-folders/folder-b/resources',
+    'PATCH /api/drive/files/f-pdf',
+  ]);
+  expect(calls.find((call) => call.method === 'PATCH')!.body).toMatchObject({ folderId: 'folder-b' });
+
+  await page.locator('[data-select-key="drive-file:f-zip"]').click({ modifiers: ['ControlOrMeta'] });
+  await page.locator('[data-selection-delete]').click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
+  await expect.poll(() => calls.filter((call) => call.method === 'DELETE').map((call) => call.path)).toEqual(['/api/drive/files/f-zip']);
 });

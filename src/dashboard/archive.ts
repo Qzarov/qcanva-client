@@ -5,7 +5,8 @@ import { strToU8, zip, type Zippable } from 'fflate';
  * zip - a canvas its .canvas (the JSON the canvas exports), an HTML document
  * its page, a text document its HTML, a template its data as JSON.
  */
-export type ArchiveFile = { name: string; content: string };
+/** Text for what the dashboard writes itself, bytes for a Drive file taken as it is. */
+export type ArchiveFile = { name: string; content: string | Uint8Array };
 
 /** A title fit for a file name: no path separators or characters the systems refuse. */
 export function safeFileName(title: string | null | undefined, fallback: string): string {
@@ -21,10 +22,17 @@ export function safeFileName(title: string | null | undefined, fallback: string)
 
 /** `base.ext`, or `base (2).ext`, `base (3).ext` once the name is taken. */
 export function uniqueFileName(base: string, extension: string, taken: Set<string>): string {
-  let name = `${base}.${extension}`;
-  for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${base} (${n}).${extension}`;
+  const ext = extension ? `.${extension}` : '';
+  let name = `${base}${ext}`;
+  for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `${base} (${n})${ext}`;
   taken.add(name.toLowerCase());
   return name;
+}
+
+/** `photo.jpg` → ['photo', 'jpg']; a name without an extension keeps it empty. */
+export function splitFileName(name: string): [string, string] {
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? [name.slice(0, dot), name.slice(dot + 1)] : [name, ''];
 }
 
 /** A canvas's stored data, pretty-printed when it is JSON. */
@@ -49,7 +57,7 @@ export function textDocumentFileContent(title: string, fragment: string): string
 
 export function buildZip(files: readonly ArchiveFile[]): Promise<Blob> {
   const entries: Zippable = {};
-  for (const file of files) entries[file.name] = strToU8(file.content);
+  for (const file of files) entries[file.name] = typeof file.content === 'string' ? strToU8(file.content) : file.content;
   return new Promise((resolve, reject) => {
     zip(entries, { level: 6 }, (error, data) => {
       if (error) reject(error);

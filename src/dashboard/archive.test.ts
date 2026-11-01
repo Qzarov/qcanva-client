@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { buildZip, canvasFileContent, safeFileName, textDocumentFileContent, uniqueFileName } from './archive';
+import { buildZip, canvasFileContent, safeFileName, splitFileName, textDocumentFileContent, uniqueFileName } from './archive';
 
 describe('dashboard archive', () => {
   it('makes a title fit for a file name', () => {
@@ -25,6 +25,17 @@ describe('dashboard archive', () => {
     const page = textDocumentFileContent('A <b>', '<p>Hi</p>');
     expect(page).toContain('<title>A &lt;b&gt;</title>');
     expect(page).toContain('<p>Hi</p>');
+  });
+
+  it('packs a Drive file as it is, bytes and all, under its own extension', async () => {
+    expect(splitFileName('Море.jpg')).toEqual(['Море', 'jpg']);
+    expect(splitFileName('README')).toEqual(['README', '']);
+    const taken = new Set<string>();
+    expect(uniqueFileName('README', '', taken)).toBe('README');
+    expect(uniqueFileName('README', '', taken)).toBe('README (2)');
+    const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x00, 0xff]);
+    const blob = await buildZip([{ name: 'cat.png', content: bytes }]);
+    expect(Array.from(unzipSync(new Uint8Array(await blob.arrayBuffer()))['cat.png']!)).toEqual(Array.from(bytes));
   });
 
   it('packs the files into one zip', async () => {
