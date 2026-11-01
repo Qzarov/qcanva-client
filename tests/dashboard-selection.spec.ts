@@ -55,7 +55,7 @@ test('tick by the box, then a click ticks instead of opening; Select all; move t
 
   const bar = page.locator('[data-selection-bar]');
   await expect(bar).toBeVisible();
-  await expect(bar.locator('[data-selection-count]')).toHaveText('Selected: 1');
+  await expect(bar.locator('[data-selection-count]')).toHaveText('(1)');
   await expect(route).toHaveAttribute('data-selected', 'true');
   // Every card shows its box now.
   await expect(plan.locator('[data-select-box]')).toBeVisible();
@@ -63,12 +63,17 @@ test('tick by the box, then a click ticks instead of opening; Select all; move t
   // While something is ticked, a click ticks.
   await plan.click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(bar.locator('[data-selection-count]')).toHaveText('Selected: 2');
+  await expect(bar.locator('[data-selection-count]')).toHaveText('(2)');
   // Both cards of the folder are ticked: nothing left for "Select all".
   await expect(bar.locator('[data-selection-select-all]')).toHaveCount(0);
   // No bulk pin.
   await expect(bar.locator('[data-selection-pin]')).toHaveCount(0);
-  await expect(bar.locator('[data-selection-move]')).toHaveText('Move');
+  // Icons only, clear on the left: clear | (N) | move, download, delete.
+  await expect(bar.locator('[data-selection-move]')).toHaveText('');
+  await expect(bar.locator('[data-selection-move]')).toHaveAttribute('aria-label', 'Move');
+  expect(await bar.locator('button').evaluateAll((els) => els.map((el) => Object.keys((el as HTMLElement).dataset)[0])))
+    .toEqual(['selectionClear', 'selectionMove', 'selectionDownload', 'selectionDelete']);
+  for (const button of await bar.locator('button').all()) expect((await button.textContent())?.trim()).toBe('');
   // After the bar's entrance, not halfway through it.
   if (SHOTS) await page.waitForTimeout(400);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/selection-bar.png` });
@@ -96,7 +101,7 @@ test('the box of a document ticks it, though the card is one big open link', asy
   await plan.locator('[data-select-box]').click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(plan).toHaveAttribute('data-selected', 'true');
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 1');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(1)');
 });
 
 test('a frame drawn from an empty spot ticks every card it touches; with Shift it adds', async ({ page }) => {
@@ -116,14 +121,14 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await page.mouse.up();
   await expect(page.locator('[data-marquee]')).toHaveCount(0);
   await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 2');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(2)');
 
   // A new frame over one card alone starts over...
   await page.mouse.move(route.x + route.width / 2, bottom + 200);
   await page.mouse.down();
   await page.mouse.move(route.x + route.width / 2 + 5, route.y + route.height - 10, { steps: 6 });
   await page.mouse.up();
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 1');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(1)');
   // ...with Shift it adds.
   await page.keyboard.down('Shift');
   await page.mouse.move(plan.x + plan.width / 2, bottom + 200);
@@ -131,7 +136,7 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await page.mouse.move(plan.x + plan.width / 2 + 5, plan.y + plan.height - 10, { steps: 6 });
   await page.mouse.up();
   await page.keyboard.up('Shift');
-  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('Selected: 2');
+  await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText('(2)');
 });
 
 test('no "Pinned" plate on cards: the star says it', async ({ page }) => {
@@ -146,7 +151,7 @@ test('Ctrl/Cmd-click ticks; delete them all after one confirmation', async ({ pa
   await card(page, 'canvas:c-1').click({ modifiers: ['ControlOrMeta'] });
   await card(page, 'text-document:doc-1').click({ modifiers: ['ControlOrMeta'] });
   const bar = page.locator('[data-selection-bar]');
-  await expect(bar.locator('[data-selection-count]')).toHaveText('Selected: 2');
+  await expect(bar.locator('[data-selection-count]')).toHaveText('(2)');
 
   await bar.locator('[data-selection-delete]').click();
   const dialog = page.getByRole('alertdialog');
@@ -165,7 +170,7 @@ test('Shift-click ticks a range in Recents; Escape clears', async ({ page }) => 
   await recents.nth(0).click({ modifiers: ['ControlOrMeta'] });
   await recents.nth(2).click({ modifiers: ['Shift'] });
   const bar = page.locator('[data-selection-bar]');
-  await expect(bar.locator('[data-selection-count]')).toHaveText('Selected: 3');
+  await expect(bar.locator('[data-selection-count]')).toHaveText('(3)');
   await page.keyboard.press('Escape');
   await expect(bar).toHaveCount(0);
   await expect(page.locator('[data-selected]')).toHaveCount(0);
@@ -209,10 +214,10 @@ test.describe('on a phone', () => {
 
     await expect(page).toHaveURL(/\/dashboard$/);
     const count = page.locator('[data-selection-bar] [data-selection-count]');
-    await expect(count).toHaveText('Selected: 1');
+    await expect(count).toHaveText('(1)');
     // A plain tap on another card now ticks it too.
     await cards.nth(1).tap();
-    await expect(count).toHaveText('Selected: 2');
+    await expect(count).toHaveText('(2)');
     await expect(page).toHaveURL(/\/dashboard$/);
     if (SHOTS) {
       await page.waitForTimeout(400);
