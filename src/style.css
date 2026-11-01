@@ -12070,3 +12070,171 @@ html { -webkit-tap-highlight-color: transparent; }
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+/* ===== Dashboard: the uploads panel =====
+   As the Drive shows uploads - a file a row, its own progress and cancel,
+   then done / why it failed / cancelled - in the dashboard's glass, at the
+   bottom right of the central column; on a phone a sheet above the "+". */
+.dashboard-upload-panel {
+  position: absolute;
+  z-index: 330;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100% - 32px));
+  max-height: min(400px, 60vh);
+  overflow: hidden;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 18px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+.dashboard-upload-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-glass-border);
+}
+.dashboard-upload-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dashboard-upload-panel-count {
+  color: var(--ui-text-secondary);
+  font-weight: 500;
+}
+.dashboard-upload-panel-hide {
+  padding: 4px 12px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dashboard-upload-panel-hide:hover {
+  background: var(--ui-glass-btn-hover);
+}
+.dashboard-upload-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  overflow-y: auto;
+  list-style: none;
+}
+.dashboard-upload-item {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
+}
+.dashboard-upload-item.is-error {
+  border-color: color-mix(in srgb, var(--ui-danger) 45%, var(--ui-glass-border));
+}
+.dashboard-upload-item-top,
+.dashboard-upload-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dashboard-upload-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.dashboard-upload-item-size,
+.dashboard-upload-percent {
+  flex: 0 0 auto;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-upload-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ui-surface-subtle);
+}
+.dashboard-upload-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brands);
+  transition: width 0.2s ease;
+}
+.dashboard-upload-cancel {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-upload-cancel:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dashboard-upload-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.dashboard-upload-status.is-done {
+  color: var(--color-brands);
+}
+.dashboard-upload-status.is-error {
+  color: var(--ui-danger);
+}
+.dashboard-upload-panel-enter-active,
+.dashboard-upload-panel-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-upload-panel-enter-from,
+.dashboard-upload-panel-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+@media (max-width: 768px) {
+  .dashboard-upload-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-upload-panel-enter-active,
+  .dashboard-upload-panel-leave-active,
+  .dashboard-upload-fill {
+    transition: none;
+  }
+}

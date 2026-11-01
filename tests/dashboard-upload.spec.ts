@@ -82,7 +82,16 @@ test('files go up into the folder chosen in "Where"', async ({ page }) => {
   await expect(dialog(page).locator('[data-add-submit]')).toHaveText('Upload (2)');
   await dialog(page).locator('[data-add-submit]').click();
   await expect(dialog(page)).toHaveCount(0);
-  await expect(page.locator('[data-download-status]')).toContainText('Files uploaded: 2');
+  // The uploads panel, as the Drive's: a row a file, each done.
+  const panel = page.locator('[data-upload-panel]');
+  await expect(panel).toContainText('(2)');
+  await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/upload-panel.png` });
+  }
+  await panel.locator('[data-upload-hide]').click();
+  await expect(panel).toHaveCount(0);
   expect(uploads).toEqual(['/api/drive/folders/folder-b/files', '/api/drive/folders/folder-b/files']);
 });
 
@@ -138,7 +147,7 @@ test("a folder's Import opens the dialog on uploading, that folder chosen; its +
   await expect(dialog(page).locator('[data-add-folder]')).toHaveValue('folder-a');
   await pick(page, [photo]);
   await dialog(page).locator('[data-add-submit]').click();
-  await expect(page.locator('[data-download-status]')).toContainText('Files uploaded: 1');
+  await expect(page.locator('[data-upload-panel] .dashboard-upload-item.is-done')).toHaveCount(1);
   expect(uploads).toEqual(['/api/drive/folders/folder-a/files']);
 
   await page.locator('[data-folder-create-menu]').click();
@@ -262,4 +271,33 @@ test('Canvas, Document, HTML are named before they are made', async ({ page }) =
   expect(created[0]).toMatchObject({ path: '/api/html-documents', body: { title: 'Отчёт <Q4>', folderId: 'folder-b' } });
   // Its name heads the page, escaped.
   expect(created[0]!.body.html).toBe('<main><h1>Отчёт &lt;Q4&gt;</h1></main>');
+});
+
+test('uploads as the Drive shows them: a file a row, its own cancel, why one failed', async ({ page }) => {
+  await openDashboard(page);
+  // One file the server refuses, one that never finishes (to be cancelled), one that goes up.
+  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
+    const body = route.request().postDataBuffer()?.toString('latin1') || '';
+    if (body.includes('huge.bin')) return route.fulfill({ status: 413, json: { message: 'Too large' } });
+    if (body.includes('slow.bin')) return; // never answered: still uploading
+    return route.fulfill({ status: 201, json: { items: [] } });
+  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="file"]').click();
+  await pick(page, [
+    { name: 'huge.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('x') },
+    { name: 'slow.bin', mimeType: 'application/octet-stream', buffer: Buffer.from('y') },
+    photo,
+  ]);
+  await dialog(page).locator('[data-add-submit]').click();
+  const panel = page.locator('[data-upload-panel]');
+  await expect(panel.locator('[data-upload-item="photo.png"]')).toHaveClass(/is-done/);
+  await expect(panel.locator('[data-upload-item="huge.bin"] [data-upload-error]')).not.toBeEmpty();
+  // Still going: no Hide yet; the slow one is cancelled on its own.
+  await expect(panel.locator('[data-upload-hide]')).toHaveCount(0);
+  await panel.locator('[data-upload-cancel="slow.bin"]').click();
+  await expect(panel.locator('[data-upload-item="slow.bin"]')).toHaveClass(/is-cancelled/);
+  await expect(panel.locator('[data-upload-hide]')).toBeVisible();
 });

@@ -68,10 +68,12 @@
         aria-hidden="true"
         data-marquee
       ></div>
+      <Transition name="dashboard-upload-panel">
+        <DashboardUploadPanel v-if="uploadPanelOpen && uploads.length" :uploads="uploads" @cancel="cancelUpload" @hide="uploadPanelOpen = false" />
+      </Transition>
       <Transition name="dashboard-download-status">
         <div
           v-if="downloadStatus.phase !== 'idle'"
-          :data-transfer-kind="downloadStatus.kind"
           class="dashboard-download-status"
           :class="'is-' + downloadStatus.phase"
           role="status"
@@ -1205,7 +1207,7 @@ import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { characterSheetTitle } from '../dnd/characterSheet';
-import { useI18n, type MessageKey } from '../composables/useI18n';
+import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
@@ -1221,6 +1223,7 @@ import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
+import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1347,6 +1350,7 @@ export default defineComponent({
     DashboardFolderFiles,
     DashboardFilterMenu,
     DashboardSortMenu,
+    DashboardUploadPanel,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -3671,15 +3675,9 @@ export default defineComponent({
      * status bar counts them), then packed; one that fails is left out and
      * counted, the rest still download.
      */
-    const downloadStatus = ref<{
-      kind: 'download' | 'upload';
-      phase: 'idle' | 'collect' | 'pack' | 'done' | 'error';
-      done: number;
-      total: number;
-      failed: number;
-      /** Uploads: how far along all the files are, by bytes (0-100). */
-      percent: number;
-    }>({ kind: 'download', phase: 'idle', done: 0, total: 0, failed: 0, percent: 0 });
+    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
+      phase: 'idle', done: 0, total: 0, failed: 0,
+    });
     let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
       const title = item.title || t('untitled');
@@ -3715,7 +3713,7 @@ export default defineComponent({
       const driveFiles = selectedDriveFiles.value;
       if (!items.length && !driveFiles.length) return;
       if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { kind: 'download', phase: 'collect', done: 0, total: items.length + driveFiles.length, failed: 0, percent: 0 };
+      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length, failed: 0 };
       const taken = new Set<string>();
       const files: ArchiveFile[] = [];
       const add = async (make: () => Promise<ArchiveFile>) => {
@@ -3752,47 +3750,57 @@ export default defineComponent({
      * for anything created. The status bar follows all of them by bytes.
      */
     const folderFilesRefreshKey = ref(0);
+    /** Uploads, newest first: each file its own progress, cancel and outcome (DashboardUploadPanel). */
+    const uploads = ref<Array<DashboardUpload & { abort?: () => void }>>([]);
+    const uploadPanelOpen = ref(false);
+    const cancelUpload = (id: string) => {
+      const upload = uploads.value.find((item) => item.id === id);
+      if (!upload || upload.status !== 'uploading') return;
+      upload.status = 'cancelled';
+      upload.abort?.();
+    };
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
-      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { kind: 'upload', phase: 'collect', done: 0, total: files.length, failed: 0, percent: 0 };
-      const totalBytes = files.reduce((sum, file) => sum + file.size, 0) || 1;
-      const sent = files.map(() => 0);
-      let firstError = '';
-      await Promise.all(files.map(async (file, index) => {
-        try {
-          await driveApi.uploadFile(folderId, file, (percent) => {
-            sent[index] = file.size * percent / 100;
-            downloadStatus.value.percent = Math.min(99, Math.round(sent.reduce((sum, bytes) => sum + bytes, 0) / totalBytes * 100));
-          }).promise;
-        } catch (error) {
-          downloadStatus.value.failed += 1;
-          firstError ||= error instanceof Error && error.message ? error.message : t('driveUploadFailed');
-        }
-        downloadStatus.value.done += 1;
+      const batch = files.map((file) => ({
+        id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        status: 'uploading' as const,
       }));
-      downloadStatus.value.percent = 100;
-      downloadStatus.value.phase = downloadStatus.value.failed === files.length ? 'error' : 'done';
-      if (firstError) setFeedback('error', firstError);
+      uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      uploadPanelOpen.value = true;
+      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
+      await Promise.all(batch.map(async ({ id, file }) => {
+        try {
+          const handle = driveApi.uploadFile(folderId, file, (percent) => {
+            const row = rowOf(id);
+            if (row && row.status === 'uploading') row.progress = Math.round(percent);
+          });
+          const row = rowOf(id);
+          if (row) row.abort = () => handle.abort();
+          await handle.promise;
+          const done = rowOf(id);
+          if (done && done.status === 'uploading') {
+            done.progress = 100;
+            done.status = 'done';
+          }
+        } catch (error) {
+          const failed = rowOf(id);
+          if (!failed || failed.status === 'cancelled') return;
+          failed.status = 'error';
+          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+        }
+      }));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
-      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
     };
 
     const transferStatusText = computed(() => {
       const status = downloadStatus.value;
-      const counted = (key: MessageKey) => t(key).replace('{done}', String(status.done)).replace('{total}', String(status.total));
-      if (status.kind === 'upload') {
-        if (status.phase === 'collect') return counted('uploadProgress');
-        if (status.phase === 'done') {
-          return status.failed
-            ? t('uploadDonePartly').replace('{n}', String(status.total - status.failed)).replace('{failed}', String(status.failed))
-            : t('uploadDone').replace('{n}', String(status.total));
-        }
-        return t('uploadFailed');
-      }
-      if (status.phase === 'collect') return counted('downloadCollecting');
+      if (status.phase === 'collect') return t('downloadCollecting').replace('{done}', String(status.done)).replace('{total}', String(status.total));
       if (status.phase === 'pack') return t('downloadPacking');
       if (status.phase === 'done') return status.failed ? t('downloadDonePartly').replace('{n}', String(status.failed)) : t('downloadDone');
       return t('downloadFailed');
@@ -3800,7 +3808,6 @@ export default defineComponent({
     const transferStatusPercent = computed(() => {
       const status = downloadStatus.value;
       if (status.phase === 'done' || status.phase === 'error') return 100;
-      if (status.kind === 'upload') return status.percent;
       return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
     });
 
@@ -4859,6 +4866,9 @@ export default defineComponent({
       feedColumns,
       dashboardShell,
       navDirection,
+      uploads,
+      uploadPanelOpen,
+      cancelUpload,
       folderDriveFiles,
       bulkDeleteCount,
       addDialog,
