@@ -11,7 +11,7 @@
 
 <script setup lang="ts">
 import { computed, type Component } from 'vue';
-import { File as FileIcon, FileCode2, FilePlus2, FileText, LayoutTemplate, SquareKanban, Swords } from '@lucide/vue';
+import { File as FileIcon, FileCode2, FileText, LayoutTemplate, SquareKanban, Swords, Workflow } from '@lucide/vue';
 import { resourceIconKey, type ResourceIconKey } from './resource-icon';
 
 const props = withDefaults(
@@ -26,7 +26,7 @@ const props = withDefaults(
 );
 
 const ICONS: Record<ResourceIconKey, Component> = {
-  canvas: FilePlus2,
+  canvas: Workflow,
   'text-document': FileText,
   'html-document': FileCode2,
   board: SquareKanban,

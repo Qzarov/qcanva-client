@@ -142,7 +142,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue';
-import { CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, SquareKanban, Swords, X } from '@lucide/vue';
+import { CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FileText, FolderPlus, FolderUp, LayoutTemplate, SquareKanban, Swords, Workflow, X } from '@lucide/vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSegmentThumb } from '../../composables/useSegmentThumb';
 import { heightTransitionHooks } from '../../dashboard/motion';
@@ -196,7 +196,7 @@ const entries = ref<Entry[]>([]);
 let nextId = 0;
 
 const createTiles = computed<Array<{ kind: CreateTile; label: string; icon: Component; expands?: boolean }>>(() => [
-  { kind: 'canvas', label: t('canvas'), icon: FilePlus2, expands: true },
+  { kind: 'canvas', label: t('canvas'), icon: Workflow, expands: true },
   { kind: 'text-document', label: t('document'), icon: FileText, expands: true },
   { kind: 'html-document', label: 'HTML', icon: FileCode2, expands: true },
   { kind: 'interactive-template', label: t('addTemplate'), icon: LayoutTemplate, expands: true },
