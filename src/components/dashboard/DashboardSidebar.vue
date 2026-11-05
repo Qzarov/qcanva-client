@@ -1,11 +1,14 @@
 <template>
-  <div
-    v-if="mobileOpen"
-    class="dashboard-sidebar-backdrop"
-    data-sidebar-backdrop
-    aria-hidden="true"
-    @click="emit('close-mobile')"
-  ></div>
+  <!-- Fades with the drawer sliding in and out (it used to pop). -->
+  <Transition name="dashboard-sidebar-backdrop">
+    <div
+      v-if="mobileOpen"
+      class="dashboard-sidebar-backdrop"
+      data-sidebar-backdrop
+      aria-hidden="true"
+      @click="emit('close-mobile')"
+    ></div>
+  </Transition>
 
   <aside
     ref="sidebarRef"

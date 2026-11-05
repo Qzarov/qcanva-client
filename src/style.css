@@ -553,8 +553,16 @@ body {
 /* The dashboard is a contained application frame: the rail stays put while
    the central pane owns the page scroll. The explicit shell class keeps the
    collapse contract predictable in browsers without relying on :has(). */
+/* Registered so it can be animated: the sidebar column folds and unfolds
+   smoothly instead of jumping between 248 and 72px. */
+@property --dashboard-sidebar-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 248px;
+}
 .dashboard-app-shell {
   --dashboard-sidebar-width: 248px;
+  transition: --dashboard-sidebar-width var(--transition-std);
   display: grid;
   grid-template-columns: var(--dashboard-sidebar-width) minmax(0, 1fr);
   width: 100%;
@@ -12438,4 +12446,37 @@ html { -webkit-tap-highlight-color: transparent; }
 /* The list view hides the picture: the rows keep clear of the "⋯" again. */
 .dashboard .dashboard-list-view .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
   margin-right: 0;
+}
+
+/* Sidebar motion. While the column grows, a label stays on one line and is
+   clipped by its row (never spills over the page), and fades in once there
+   is room; folding hides it at once. */
+.dashboard-sidebar:not(.collapsed) .dashboard-sidebar-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  animation: dashboard-sidebar-label-in 0.24s ease 0.08s both;
+}
+@keyframes dashboard-sidebar-label-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.dashboard-sidebar-backdrop-enter-active,
+.dashboard-sidebar-backdrop-leave-active {
+  transition: opacity var(--transition-std);
+}
+.dashboard-sidebar-backdrop-enter-from,
+.dashboard-sidebar-backdrop-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-app-shell,
+  .dashboard-sidebar,
+  .dashboard-sidebar-backdrop-enter-active,
+  .dashboard-sidebar-backdrop-leave-active {
+    transition: none !important;
+  }
+  .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-label {
+    animation: none;
+  }
 }
