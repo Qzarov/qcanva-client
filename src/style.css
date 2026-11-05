@@ -3897,7 +3897,10 @@ body {
 
   .dashboard .dashboard-list-view .dashboard-folder-content .card-meta-mobile {
     grid-column: 2;
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
     margin-top: 4px;
     color: var(--ui-text-secondary);
     font-size: 12px;
@@ -12307,7 +12310,7 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* Card meta row: role badge, date and - for Shared / Public cards - the
    folder (its icon, then its name, cut short) all on one line. */
-.card-meta .card-folder {
+:is(.card-meta, .card-meta-mobile) .card-folder {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -12316,16 +12319,16 @@ html { -webkit-tap-highlight-color: transparent; }
   margin-top: 0;
   font-size: inherit;
 }
-.card-meta .card-folder svg {
+:is(.card-meta, .card-meta-mobile) .card-folder svg {
   flex: 0 0 auto;
 }
-.card-meta .card-folder-name {
+:is(.card-meta, .card-meta-mobile) .card-folder-name {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.card-meta .card-date {
+:is(.card-meta, .card-meta-mobile) .card-date {
   flex: 0 0 auto;
 }
 
@@ -12350,9 +12353,11 @@ html { -webkit-tap-highlight-color: transparent; }
   flex: 0 0 auto;
   white-space: nowrap;
 }
+.dashboard-recents-list .dashboard-recent-card {
+  grid-template-columns: 22px minmax(0, 1fr) minmax(180px, 40%);
+}
 .dashboard-recents-list .dashboard-recent-info {
   grid-column: 3;
-  justify-content: flex-end;
 }
 @media (max-width: 720px) {
   /* The folder stays on the date's line (the name is cut instead), in the
@@ -12363,9 +12368,11 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard .card-meta .card-folder {
     font-size: 9px;
   }
+  .dashboard-recents-list .dashboard-recent-card {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
   .dashboard-recents-list .dashboard-recent-info {
     grid-column: 2;
-    justify-content: flex-start;
   }
 }
 
@@ -12381,7 +12388,7 @@ html { -webkit-tap-highlight-color: transparent; }
   font-size: 11px;
   font-weight: 600;
 }
-.card-meta .card-date {
+:is(.card-meta, .card-meta-mobile) .card-date {
   margin-left: auto;
   white-space: nowrap;
 }
@@ -12400,4 +12407,14 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-recent-title {
     -webkit-line-clamp: unset;
   }
+}
+
+/* List view: the meta row takes the rest of the line, so its folder starts
+   at the left of it and the date ends at the card's right, as in the grid. */
+.dashboard .dashboard-list-view .card-meta {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.folder-file-card .card-meta .card-folder {
+  flex: 0 1 auto;
 }

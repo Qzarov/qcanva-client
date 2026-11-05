@@ -298,6 +298,27 @@ describe('dashboard sidebar navigation', () => {
     expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(true);
   });
 
+  it('a card in a subfolder shows the folder path on the left and the date after it, no badge for my own', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [
+        { id: 'folder-w', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
+        { id: 'folder-p', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [{ id: 'canvas-9', title: 'Roadmap', folderId: 'folder-p', role: 'owner', updatedAt: '2026-11-01T00:00:00Z' }], htmlDocuments: [] },
+      ],
+      shared: [],
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+    (wrapper.vm as any).selectFolder('folder-p');
+    await nextTick();
+
+    const card = wrapper.findAll('.canvas-card').find((el) => el.find('.card-title-text').exists() && el.get('.card-title-text').text() === 'Roadmap')!;
+    expect(card).toBeTruthy();
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
+    expect(card.get('.card-meta [data-card-folder]').text()).toBe('Work / Plans');
+    expect(card.find('.card-title .badge').exists()).toBe(false);
+    expect(card.find('.badge-owner').exists()).toBe(false);
+  });
+
   it('opens a folder from a tile on the Recent page', async () => {
     const wrapper = mountDashboard();
     await flushPromises();
