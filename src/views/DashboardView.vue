@@ -450,6 +450,7 @@
                     draggable="false"
                     @click="openCanvasFromCard(item.slug || item.id)"
                   >
+                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
                     <input
                       v-if="renamingId === item.id"
                       class="card-title-input"
@@ -492,6 +493,7 @@
                     draggable="false"
                     @click="openHtmlDocumentFromCard(item.slug || item.id)"
                   >
+                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
                     <a
                       class="card-open-link"
                       :href="`/edit/html/${item.slug || item.id}`"
@@ -528,6 +530,7 @@
                     :data-folder-resource="`interactive-template:${item.id}`"
                     @click="openInteractiveTemplate(item.id)"
                   >
+                    <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
                     <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon template-emoji" data-resource-icon="interactive-template" :data-template-emoji="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)">{{ templateEmoji(item.templateType) }}</span><span class="card-title-text">{{ item.title }}</span></div>
                     <div class="card-meta">
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -550,6 +553,7 @@
                     draggable="false"
                     @click="openTextDocumentFromCard(item.slug || item.id)"
                   >
+                    <ResourceThumb :kind="item.type || 'text-document'" :id="item.id" :version="item.updatedAt" />
                     <a
                       class="card-open-link"
                       :href="`/docs/${item.slug || item.id}`"
@@ -615,6 +619,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
             @click="openCanvas(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role }}</span>
@@ -645,6 +650,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
@@ -663,6 +669,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
@@ -711,6 +718,7 @@
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid" data-feed-grid="interactive">
           <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+            <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon template-emoji" data-resource-icon="interactive-template" :data-template-emoji="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)">{{ templateEmoji(item.templateType) }}</span>{{ item.title }}</div>
             <div class="card-meta"><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
@@ -775,6 +783,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
             @click="openCanvas(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
@@ -800,6 +809,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openHtmlDocument(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
@@ -823,6 +833,7 @@
             :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
             @click="openTextDocument(item.slug || item.id)"
           >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
@@ -1214,6 +1225,7 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
+import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
@@ -1347,6 +1359,7 @@ export default defineComponent({
     TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
+    ResourceThumb,
     DashboardFolderFiles,
     DashboardFilterMenu,
     DashboardSortMenu,
