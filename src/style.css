@@ -12418,3 +12418,24 @@ html { -webkit-tap-highlight-color: transparent; }
 .folder-file-card .card-meta .card-folder {
   flex: 0 1 auto;
 }
+
+/* With its picture on top, a card's "⋯" sits over the picture, so the rows
+   under it need not keep clear of it: the title row's access tag and the
+   date reach the picture's right edge (the card pads its right side for the
+   "⋯" - same amount as .resource-thumb reaches past it). */
+.dashboard .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+  margin-right: -28px;
+}
+/* Recents: the folder/date row starts at the card's left, like every card. */
+.dashboard-recents-grid .dashboard-recent-info {
+  grid-column: 1 / -1;
+}
+@media (max-width: 720px) {
+  .dashboard .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+    margin-right: -20px;
+  }
+}
+/* The list view hides the picture: the rows keep clear of the "⋯" again. */
+.dashboard .dashboard-list-view .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+  margin-right: 0;
+}

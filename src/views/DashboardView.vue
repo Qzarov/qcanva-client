@@ -2689,9 +2689,11 @@ export default defineComponent({
       else if (item.type === 'text-document') openTextDocument(item.routeId);
       else openInteractiveTemplate(item.routeId);
     };
-    const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
-      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
-    }).format(openedAt);
+    // Same format as every other card's date ("Oct 13, 05:15 PM"), not a
+    // numeric "11/05, 10:15 PM" of its own.
+    const formatRecentOpenedAt = (openedAt: number) => new Date(openedAt).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
+      day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    });
     const refreshOverflowIndicators = () => {
       void nextTick(() => {
         const tagsList = tagFilterList.value;
