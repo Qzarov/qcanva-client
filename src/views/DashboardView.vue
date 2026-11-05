@@ -42,21 +42,21 @@
           data-selection-bar
         >
           <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
-          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" :title="t('clearSelection')" @click="clearSelection">
+          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" v-hint="t('clearSelection')" @click="clearSelection">
             <X :size="17" aria-hidden="true" />
           </button>
           <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
           <span class="dashboard-selection-sep" aria-hidden="true"></span>
-          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" :title="t('selectAll')" @click="selectAllOnScreen">
+          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
             <CheckCheck :size="17" aria-hidden="true" />
           </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" :title="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
+          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
             <FolderInput :size="17" aria-hidden="true" />
           </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" :title="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
+          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
             <Download :size="17" aria-hidden="true" />
           </button>
-          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" :title="t('delete')" :disabled="isBusy" @click="bulkDelete">
+          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" v-hint="t('delete')" :disabled="isBusy" @click="bulkDelete">
             <Trash2 :size="17" aria-hidden="true" />
           </button>
         </div>
@@ -463,22 +463,20 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
                     <div class="card-meta">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
                       <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
                     </div>
                     <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
@@ -501,22 +499,20 @@
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
                       @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
                     <div class="card-meta">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
                       <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
                     </div>
                     <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
@@ -534,11 +530,9 @@
                     <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
                     <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span><span v-if="item.role && item.role !== 'owner'" class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
                     <div class="card-meta">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
                       <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
                     </div>
                     <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
@@ -561,22 +555,20 @@
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
                       @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
                     <div class="card-meta">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
                       <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <div v-if="item.tags?.length" class="card-tags">
-                      <span
-                        v-for="tag in item.tags"
-                        :key="tag.name"
-                        class="card-tag color-tag"
-                        :style="{ '--tag-color': tag.color }"
-                      >#{{ tag.name }}</span>
                     </div>
                     <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
                     <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
@@ -588,7 +580,6 @@
                   </template>
                   <DashboardFolderFiles
                     :folder-id="activeFolder.id"
-                    :folder-path="folderPathById.get(activeFolder.id) || activeFolder.name"
                     :query="searchQuery"
                     :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
                     :sort-mode="sortMode"
@@ -1225,6 +1216,7 @@ import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
+import { vHint } from '../directives/hint';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
@@ -1354,6 +1346,7 @@ const RECENT_RESOURCES_LIMIT = 12;
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
+  directives: { hint: vHint },
   components: {
     TabsButton,
     DashboardSidebar,

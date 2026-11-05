@@ -40,7 +40,6 @@
       <span class="card-title-text folder-file-name">{{ file.name }}</span>
     </div>
     <div class="card-meta folder-file-meta">
-      <span v-if="folderPath" class="card-folder" data-card-folder :title="folderPath"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ folderPath }}</span></span>
       <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
       <span>{{ formatFileSize(file.sizeBytes) }}</span>
       <span class="card-date">{{ formatDate(file.updatedAt) }}</span>
@@ -66,7 +65,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { Check, File as FileIcon, Image as ImageIcon, Video, Folder } from '@lucide/vue';
+import { Check, File as FileIcon, Image as ImageIcon, Video } from '@lucide/vue';
 import {
   driveApi,
   downloadDriveFile,
@@ -82,8 +81,6 @@ type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 
 const props = defineProps<{
   folderId: string;
-  /** Where the files are ("Work / Plans"), shown on each card like on the folder's documents. */
-  folderPath?: string;
   /** The dashboard's search text: files match it by name. */
   query?: string;
   /** A type or tag filter is on: files have neither, so none of them match. */

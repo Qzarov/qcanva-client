@@ -298,11 +298,11 @@ describe('dashboard sidebar navigation', () => {
     expect(tileNames.some((text) => text.includes('Unsorted'))).toBe(true);
   });
 
-  it('a card in a subfolder shows the folder path on the left and the date after it, no badge for my own', async () => {
+  it('a card in a subfolder shows its tags on the date line and no folder, no badge for my own', async () => {
     vi.mocked(resourceFolders.list).mockResolvedValue({
       own: [
         { id: 'folder-w', name: 'Work', role: 'owner', parentId: null, canvases: [], htmlDocuments: [] },
-        { id: 'folder-p', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [{ id: 'canvas-9', title: 'Roadmap', folderId: 'folder-p', role: 'owner', updatedAt: '2026-11-01T00:00:00Z' }], htmlDocuments: [] },
+        { id: 'folder-p', name: 'Plans', role: 'owner', parentId: 'folder-w', canvases: [{ id: 'canvas-9', title: 'Roadmap', folderId: 'folder-p', role: 'owner', updatedAt: '2026-11-01T00:00:00Z', tags: [{ name: 'plan', color: '#50d1b2' }] }], htmlDocuments: [] },
       ],
       shared: [],
     } as never);
@@ -313,8 +313,9 @@ describe('dashboard sidebar navigation', () => {
 
     const card = wrapper.findAll('.canvas-card').find((el) => el.find('.card-title-text').exists() && el.get('.card-title-text').text() === 'Roadmap')!;
     expect(card).toBeTruthy();
-    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
-    expect(card.get('.card-meta [data-card-folder]').text()).toBe('Work / Plans');
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-tags', 'card-date']);
+    expect(card.get('.card-meta .card-tags').text()).toBe('#plan');
+    expect(card.find('[data-card-folder]').exists()).toBe(false);
     expect(card.find('.card-title .badge').exists()).toBe(false);
     expect(card.find('.badge-owner').exists()).toBe(false);
   });
