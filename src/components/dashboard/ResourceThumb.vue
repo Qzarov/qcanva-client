@@ -41,10 +41,16 @@ async function load() {
   }
   const mine = ++request;
   state.value = 'loading';
-  const url = await loadThumbnail(props.kind as ThumbnailKind, props.id, {
-    version: props.version,
-    theme: effectiveTheme.value === 'dark' ? 'dark' : 'light',
-  });
+  let url: string | null = null;
+  try {
+    url = await loadThumbnail(props.kind as ThumbnailKind, props.id, {
+      version: props.version,
+      theme: effectiveTheme.value === 'dark' ? 'dark' : 'light',
+    });
+  } catch {
+    // A picture is decoration: whatever goes wrong, the card just shows none.
+    url = null;
+  }
   if (mine !== request) return;
   src.value = url;
   state.value = url ? 'ready' : 'none';
