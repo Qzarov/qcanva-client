@@ -3882,11 +3882,10 @@ body {
      purely on being later - explicit here so it doesn't look accidental):
      line-clamp needs the text free to actually wrap across its 2 lines. */
   .dashboard .dashboard-list-view .dashboard-folder-content .card-title-text {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
+    display: block;
     overflow: hidden;
-    white-space: normal;
+    white-space: nowrap;
+    text-overflow: ellipsis;
   }
   .dashboard .dashboard-list-view .dashboard-folder-content .card-title-input {
     font-size: 14px;
@@ -12367,5 +12366,38 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-recents-list .dashboard-recent-info {
     grid-column: 2;
     justify-content: flex-start;
+  }
+}
+
+/* Card title on one line ("…" when it does not fit), the access badge -
+   Shared, an editable Public one - at its right end. The date sits at the
+   right end of the row under it, after the folder. */
+.dashboard .card-title-with-icon .card-title-text {
+  flex: 1 1 auto;
+}
+.card-title-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+}
+.card-meta .card-date {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.dashboard-recent-info :is(.dashboard-recent-meta, .dashboard-recent-meta-mobile) {
+  margin-left: auto;
+}
+.dashboard-recent-title {
+  display: block;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+}
+@media (max-width: 720px) {
+  .dashboard .card-title-badge {
+    font-size: 9px;
+  }
+  .dashboard-recent-title {
+    -webkit-line-clamp: unset;
   }
 }

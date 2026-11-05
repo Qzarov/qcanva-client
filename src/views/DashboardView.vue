@@ -618,11 +618,10 @@
             @click="openCanvas(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -649,11 +648,10 @@
             @click="openHtmlDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" />{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
@@ -669,11 +667,10 @@
             @click="openTextDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" />{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
@@ -719,8 +716,8 @@
         <div class="dash-grid" data-feed-grid="interactive">
           <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
             <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" />{{ item.title }}</div>
-            <div class="card-meta"><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
+            <div class="card-meta"><span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
               <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
@@ -784,11 +781,10 @@
             @click="openCanvas(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEditShort') : t('public') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -809,11 +805,10 @@
             @click="openHtmlDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" />{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ t('public') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -834,11 +829,10 @@
             @click="openTextDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" />{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ t('public') }}</span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -1938,11 +1932,14 @@ export default defineComponent({
     };
     /**
      * The folder a Shared / Public card says it is in: its path in this
-     * user's own tree when known, else the folder name the resource itself
+     * user's own tree when known (by the tree's index, else by the
+     * resource's own folderId), else the folder name the resource itself
      * carries (someone else's resource in their folder).
      */
-    const cardFolderPath = (item: { type: string; id: string; folder?: string | null }) =>
-      recentFolderPath(item) || (typeof item.folder === 'string' ? item.folder.trim() : '');
+    const cardFolderPath = (item: { type?: string; id: string; folder?: string | null; folderId?: string | null }) =>
+      recentFolderPath({ type: item.type || '', id: item.id })
+      || (item.folderId ? folderPathById.value.get(item.folderId) || '' : '')
+      || (typeof item.folder === 'string' ? item.folder.trim() : '');
     /**
      * Destinations for the move dialog, in tree order. Each carries its depth and
      * the path to its parent, so picking a nested folder is unambiguous.

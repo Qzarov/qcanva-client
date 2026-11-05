@@ -407,19 +407,59 @@ describe('dashboard sidebar navigation', () => {
     vi.mocked(canvas.list).mockResolvedValueOnce({
       own: [],
       shared: [],
-      public: [{ id: 'pub-1', title: 'Open board', folder: 'Team', allowPublicEdit: true, ownerName: 'Someone Else', updatedAt: '2026-11-01T00:00:00Z', tags: [] }],
+      public: [
+        { id: 'pub-1', title: 'Open board', folder: 'Team', allowPublicEdit: true, ownerName: 'Someone Else', updatedAt: '2026-11-01T00:00:00Z', tags: [] },
+        { id: 'pub-2', title: 'Read-only board', allowPublicEdit: false, updatedAt: '2026-10-01T00:00:00Z', tags: [] },
+      ],
       welcome: null,
     } as never);
     const wrapper = mountDashboard();
     await flushPromises();
 
-    const card = wrapper.get('[data-feed-section="public"] .canvas-card');
-    expect(card.get('.badge-public').text()).toBe('edit');
+    const cards = wrapper.findAll('[data-feed-section="public"] .canvas-card');
+    const card = cards[0]!;
+    // "edit" sits at the right of the title; a read-only public one has no tag at all.
+    expect(card.get('.card-title .badge-public').text()).toBe('edit');
+    expect(cards[1]!.find('.badge').exists()).toBe(false);
     const folder = card.get('.card-meta [data-card-folder]');
     expect(folder.text()).toBe('Team');
     expect(folder.find('svg').exists()).toBe(true);
+    // Folder first, then the date.
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
     expect(card.text()).not.toContain('Someone Else');
     expect(card.find('.card-owner').exists()).toBe(false);
+  });
+
+  it('a Shared card puts the access at the right of its title, then folder and date under it', async () => {
+    withDefaultFolders();
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [{ id: 'sh-1', title: 'Team board', folder: 'Team', role: 'edit', updatedAt: '2026-11-01T00:00:00Z', tags: [], ownerId: 'someone-else' }],
+      public: [],
+      welcome: null,
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const card = wrapper.get('[data-feed-section="shared"] .canvas-card');
+    expect(card.get('.card-title .card-title-text').text()).toBe('Team board');
+    expect(card.get('.card-title .badge-shared').text()).toBe('edit');
+    expect(card.find('.card-meta .badge').exists()).toBe(false);
+    expect(card.findAll('.card-meta > *').map((el) => el.classes()[0])).toEqual(['card-folder', 'card-date']);
+  });
+
+  it('an interactive template card says which folder it is in', async () => {
+    vi.mocked(resourceFolders.list).mockResolvedValue({
+      own: [{ id: 'folder-g', name: 'Games', role: 'owner', parentId: null, canvases: [], htmlDocuments: [], interactiveTemplates: [{ id: 'hero', title: 'Лира' }] }],
+      shared: [],
+    } as never);
+    vi.mocked(interactiveTemplates.list).mockResolvedValueOnce({ templates: [
+      { id: 'hero', title: 'Лира', templateType: 'dnd-character', folderId: 'folder-g', data: {}, createdAt: '', updatedAt: '2026-11-01T00:00:00Z' },
+    ] } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    expect(wrapper.get('[data-template-resource="hero"] [data-card-folder]').text()).toBe('Games');
   });
 
   it('shows one row of cards per feed section and four rows of Public, sized to the grid', async () => {
