@@ -17,7 +17,10 @@
  *
  * Also `preventDefault`s the checkbox's `pointerdown`: the stock view only
  * does that for `mousedown`, so on touch the tap focused the surrounding
- * contenteditable. (This replaces an earlier plugin that looked for
+ * contenteditable. A touch tick also blurs an editor that is still focused
+ * from an earlier caret: otherwise the transaction's selection sync put the
+ * caret back into the DOM and the keyboard came up anyway.
+ * (This replaces an earlier plugin that looked for
  * `li[data-type="taskItem"]` - an attribute the node view's <li> never has,
  * so it never fired.) The click that follows still toggles the box.
  */
@@ -185,7 +188,14 @@ export const QuietTaskItem = TaskItem.extend<QuietTaskItemOptions>({
       nodeView.ignoreMutation = (mutation) =>
         mutation.type !== 'selection' && meta.contains(mutation.target as globalThis.Node);
 
-      box.addEventListener('pointerdown', (event) => event.preventDefault());
+      let tappedByTouch = false;
+      // On the whole label, not just the box: on a phone the label carries
+      // the box's larger touch area around it (style.css).
+      const pressTarget = box.parentElement ?? box;
+      pressTarget.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        tappedByTouch = event.pointerType === 'touch' || event.pointerType === 'pen';
+      });
       item.addEventListener(
         'change',
         (event) => {
@@ -197,6 +207,13 @@ export const QuietTaskItem = TaskItem.extend<QuietTaskItemOptions>({
           if (typeof pos !== 'number') return;
           const node = editor.state.doc.nodeAt(pos);
           if (!node) return;
+          // A caret left somewhere in the document keeps the editor focused
+          // even with the keyboard put away, and ProseMirror re-applies a
+          // focused editor's selection to the DOM after every transaction -
+          // which is what brought the phone keyboard back up on a tick.
+          // Ticking is not typing: a touch tick lets go of the editor first.
+          if (tappedByTouch && editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
+          tappedByTouch = false;
           editor.view.dispatch(editor.state.tr.setNodeMarkup(pos, undefined, {
             ...node.attrs,
             checked: box.checked,

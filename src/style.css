@@ -6827,11 +6827,20 @@ body.text-doc-outline-resizing {
   display: flex;
   align-items: flex-start;
 }
+/* The label is exactly one text line tall and centres the box in it, so the
+   box sits on the first line's middle at any font size or line-height (a
+   fixed margin-top drifted off it). `em` first for engines without `lh`. */
 .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
   flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.72em;
+  height: 1lh;
   margin-right: 0.5rem;
-  margin-top: 0.3em;
   user-select: none;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  margin: 0;
 }
 .text-doc-paper .ProseMirror ul[data-type="taskList"] li > div {
   flex: 1 1 auto;
@@ -7024,7 +7033,9 @@ body.text-doc-outline-resizing {
   position: relative;
 }
 
-.text-doc-table-menu {
+/* The phone's list nesting strip (list-indent.ts) is the same chrome. */
+.text-doc-table-menu,
+.text-doc-list-menu {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -8324,16 +8335,23 @@ button.text-doc-callout-icon:focus-visible {
   }
 
   /* Checkbox stays visually compact but keeps a >=44px touch target via an
-     invisible padded hit-area on the wrapping label, rather than growing
-     the checkbox itself past what's comfortable to read next to. */
+     invisible hit-area on the wrapping label (its ::before), rather than
+     growing the checkbox itself past what's comfortable to read next to. */
   .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
     position: relative;
-    display: flex;
-    align-items: center;
-    min-width: 44px;
-    min-height: 44px;
-    margin: -11px 0.15rem -11px -11px;
-    padding: 11px;
+    height: 1.55em;
+    height: 1lh;
+    margin-right: 0.65rem;
+  }
+  /* The >=44px touch target, centred on the box without moving it. */
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
   }
 
   .text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
@@ -10176,6 +10194,7 @@ textarea:focus-visible {
 .text-doc-outline-drawer,
 .text-doc-bubble-menu,
 .text-doc-table-menu,
+.text-doc-list-menu,
 .text-doc-link-action-menu,
 .text-doc-slash-menu,
 .text-doc-mention-menu,

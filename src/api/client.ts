@@ -538,8 +538,10 @@ export const textDocuments = {
     request<any>(`/text-documents/${id}/share`, { method: 'DELETE', body: JSON.stringify({ userId }) }),
   permissions: (id: string) => request<any[]>(`/text-documents/${id}/permissions`),
   /** Powers the `@`-mention picker. Server-side filtered to what the caller can read (R2). */
-  search: (query: string, limit = 20) =>
-    request<{ items: MentionSearchResult[] }>(`/text-documents/search?query=${encodeURIComponent(query)}&limit=${limit}`),
+  search: (query: string, limit = 20, options: { titleOnly?: boolean } = {}) =>
+    request<{ items: MentionSearchResult[] }>(
+      `/text-documents/search?query=${encodeURIComponent(query)}&limit=${limit}${options.titleOnly ? '&scope=title' : ''}`,
+    ),
   /** Current title/accessible/deleted for every mention target in one document. */
   mentions: (id: string) =>
     request<{ items: MentionResolution[] }>(`/text-documents/${id}/mentions`, { skipAuthRedirect: true }),

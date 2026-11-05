@@ -543,6 +543,21 @@
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDelete')" :aria-label="t('tableDelete')" @click="tableDeleteTable"><Trash2 :size="15" aria-hidden="true" /></button>
       </BubbleMenu>
 
+      <!-- LIST NESTING on a phone: one level in / out, what Tab and
+           Shift+Tab do on a desktop (list-indent.ts). Same BubbleMenu pattern
+           as the table controls above; @pointerdown.prevent keeps the caret
+           and the keyboard where they are. -->
+      <BubbleMenu
+        v-if="editor && canEditContent"
+        class="text-doc-list-menu"
+        :editor="editor"
+        :should-show="listMenuShouldShow"
+        :tippy-options="{ duration: 100, placement: 'top' }"
+      >
+        <button type="button" class="text-doc-table-btn" data-list-move="outdent" :title="t('listOutdent')" :aria-label="t('listOutdent')" :disabled="!listCanMove.outdent" @pointerdown.prevent @click="listMove(-1)"><ListIndentDecrease :size="17" aria-hidden="true" /></button>
+        <button type="button" class="text-doc-table-btn" data-list-move="indent" :title="t('listIndent')" :aria-label="t('listIndent')" :disabled="!listCanMove.indent" @pointerdown.prevent @click="listMove(1)"><ListIndentIncrease :size="17" aria-hidden="true" /></button>
+      </BubbleMenu>
+
       <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
            instead of the desktop's in-place bubble form. Anchoring here to
            the visual viewport (rather than depending on the browser's own
@@ -764,6 +779,7 @@ import {
   type MentionMenuRender,
 } from '../text-documents/mention-menu';
 import { Mention } from '../text-documents/mention-node';
+import { listIndentState, moveCaretListItem } from '../text-documents/list-indent';
 import {
   BUBBLE_MARK_BUTTONS,
   LINK_ICON,
@@ -808,7 +824,7 @@ import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListIndentDecrease, ListIndentIncrease, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
@@ -1637,6 +1653,33 @@ export default defineComponent({
       }
       return empty();
     };
+    /**
+     * LIST NESTING on a phone (list-indent.ts): no Tab on an on-screen
+     * keyboard, so while the caret sits in a list item two buttons move it
+     * one level in or out. Phone layout only - a desktop has Tab / Shift+Tab -
+     * and never over a text selection (the formatting bubble owns that), a
+     * table (its own menu) or an open slash / @ menu.
+     */
+    const listMenuShouldShow = ({ editor: bubbleEditor }: { editor: Editor }) => {
+      if (!isMobileEditorLayout() || !bubbleEditor.isEditable) return false;
+      if (!bubbleEditor.state.selection.empty || bubbleEditor.isActive('table')) return false;
+      if (slashOpen.value || mentionOpen.value) return false;
+      const { canIndent, canOutdent } = listIndentState(bubbleEditor);
+      return canIndent || canOutdent;
+    };
+    const listCanMove = computed(() => {
+      void editorTransactionTick.value;
+      const current = editor.value;
+      if (!current?.state?.selection?.$from || typeof current.can !== 'function') return { indent: false, outdent: false };
+      const { canIndent, canOutdent } = listIndentState(current);
+      return { indent: canIndent, outdent: canOutdent };
+    });
+    // The buttons keep focus where it is (@pointerdown.prevent), so the
+    // keyboard stays up and typing continues in the moved item.
+    const listMove = (direction: -1 | 1) => {
+      const current = editor.value;
+      if (current) moveCaretListItem(current, direction);
+    };
     const tableAddRow = () => { editor.value?.chain().focus().addRowAfter().run(); };
     const tableAddColumn = () => { editor.value?.chain().focus().addColumnAfter().run(); };
     const tableDeleteRow = () => { editor.value?.chain().focus().deleteRow().run(); };
@@ -2072,9 +2115,14 @@ export default defineComponent({
         : undefined,
     );
 
+    let mentionQuery: string | null = null;
     const applyMentionRender = (render: MentionMenuRender) => {
       mentionItems.value = render.items;
-      mentionIndex.value = 0;
+      // Search results arriving for the SAME typed text keep the row the
+      // arrows are on; new text starts again from the top.
+      const sameQuery = render.query === mentionQuery;
+      mentionQuery = render.query;
+      mentionIndex.value = sameQuery ? Math.min(mentionIndex.value, Math.max(0, render.items.length - 1)) : 0;
       mentionCommand = render.command;
       mentionRect.value = render.rect
         ? { top: render.rect.bottom + 6, left: render.rect.left }
@@ -2086,6 +2134,7 @@ export default defineComponent({
       mentionOpen.value = false;
       mentionItems.value = [];
       mentionIndex.value = 0;
+      mentionQuery = null;
       mentionCommand = null;
     };
 
@@ -2140,7 +2189,9 @@ export default defineComponent({
     const searchMentionCandidates = async (query: string) => {
       if (!canEditContent.value) return [];
       try {
-        const result = await textDocuments.search(query);
+        // Titles only: the picker lists pages by name, and matching their
+        // contents made the server read every readable document per keystroke.
+        const result = await textDocuments.search(query, 20, { titleOnly: true });
         return result.items.map((item: any) => ({ id: item.id, title: item.title }));
       } catch {
         // A failed search still leaves the "Create page ..." row: see
@@ -3519,6 +3570,9 @@ export default defineComponent({
       applyBubbleMark,
       tableMenuShouldShow,
       tableMenuGetReferenceClientRect,
+      listMenuShouldShow,
+      listCanMove,
+      listMove,
       canUndo,
       canRedo,
       undoEdit,

@@ -117,6 +117,12 @@ export type MentionMenuOptions = {
    */
   search: (query: string) => Promise<Array<{ id: string; title: string }>>;
   /**
+   * How long typing has to pause before the NEXT document search goes out.
+   * The first search of an opened menu is never delayed - see
+   * `createMentionSearchCache` for why the menu never waits on any of them.
+   */
+  searchDelayMs: number;
+  /**
    * This SAME document's headings matching the typed query. Synchronous and
    * client-side (see heading-id.ts) - never a wider search, and never
    * another document's headings (out of scope, same boundary `search`
@@ -169,6 +175,97 @@ export function insertHeadingLinkAtRange(editor: Editor, range: Range, attrs: { 
     .run();
 }
 
+type MentionSearchResults = Array<{ id: string; title: string }>;
+
+/** How long a document search answer is reused for the same typed text. */
+export const MENTION_SEARCH_TTL_MS = 30_000;
+
+/**
+ * Keeps the picker from ever WAITING on the network.
+ *
+ * @tiptap/suggestion opens (and re-renders) the popup only once `items()`
+ * resolves, so awaiting the server search there left a blank gap after
+ * every typed `@` and every letter after it - the reported "the @ list
+ * takes long to load". Instead `items()` answers synchronously from what is
+ * already known: a cached answer for this exact text, or else the documents
+ * last shown, narrowed by title to the new text. The real search runs
+ * behind it (the first one of an opened menu at once, later ones only
+ * after typing pauses) and its answer is pushed into the open menu through
+ * `onResults`, unless the typed text has moved on in the meantime.
+ */
+export function createMentionSearchCache(options: {
+  search: (query: string) => Promise<MentionSearchResults>;
+  delayMs: number;
+  onResults: (query: string, results: MentionSearchResults) => void;
+  now?: () => number;
+}) {
+  const now = options.now ?? (() => Date.now());
+  const answers = new Map<string, { at: number; results: MentionSearchResults }>();
+  let shown: MentionSearchResults = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let searchedThisSession = false;
+  let wanted: string | null = null;
+
+  const fresh = (query: string) => {
+    const hit = answers.get(query);
+    if (!hit) return null;
+    if (now() - hit.at > MENTION_SEARCH_TTL_MS) {
+      answers.delete(query);
+      return null;
+    }
+    return hit.results;
+  };
+
+  const run = async (query: string) => {
+    let results: MentionSearchResults;
+    try {
+      results = await options.search(query);
+    } catch {
+      results = [];
+    }
+    answers.set(query, { at: now(), results });
+    // A slower answer for text the user has already typed past is cached
+    // but never shown: it would replace the list they are looking at.
+    if (wanted !== query) return;
+    shown = results;
+    options.onResults(query, results);
+  };
+
+  const cancel = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+  };
+
+  return {
+    /** What to list right now for `query`, starting a search when the answer is not known yet. */
+    lookup(query: string): MentionSearchResults {
+      wanted = query;
+      const hit = fresh(query);
+      if (hit) {
+        cancel();
+        shown = hit;
+        return hit;
+      }
+      cancel();
+      const delay = searchedThisSession ? options.delayMs : 0;
+      searchedThisSession = true;
+      timer = setTimeout(() => {
+        timer = null;
+        void run(query);
+      }, delay);
+      const needle = query.trim().toLowerCase();
+      return needle ? shown.filter((item) => item.title.toLowerCase().includes(needle)) : shown;
+    },
+    /** The menu closed: drop what is in flight; the answers stay cached for the next `@`. */
+    close() {
+      cancel();
+      wanted = null;
+      searchedThisSession = false;
+      shown = [];
+    },
+  };
+}
+
 export const MentionMenu = Extension.create<MentionMenuOptions>({
   name: 'mentionMenu',
 
@@ -176,6 +273,7 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
     return {
       controller: null,
       search: async () => [],
+      searchDelayMs: 150,
       searchHeadings: () => [],
       insertMention: (editor: Editor, range: Range, item: MentionMenuDocumentItem) => {
         insertMentionAtRange(editor, range, { id: item.id, label: item.title });
@@ -189,6 +287,31 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
 
   addProseMirrorPlugins() {
     const options = this.options;
+
+    type RenderProps = {
+      items: MentionMenuItem[];
+      query: string;
+      clientRect?: (() => DOMRect | null) | null;
+      command: (item: MentionMenuItem) => void;
+    };
+    const toRender = (props: RenderProps): MentionMenuRender => ({
+      items: props.items,
+      query: props.query,
+      rect: props.clientRect?.() ?? null,
+      command: props.command,
+    });
+    // The open menu's latest props, so a search answering later can
+    // re-render it with the same command and position.
+    let open: RenderProps | null = null;
+    const searches = createMentionSearchCache({
+      search: (query) => options.search(query),
+      delayMs: options.searchDelayMs,
+      onResults: (query, results) => {
+        if (!open || open.query !== query) return;
+        open = { ...open, items: buildMentionMenuItems(results, query, options.searchHeadings(query)) };
+        options.controller?.onUpdate(toRender(open));
+      },
+    });
 
     return [
       Suggestion<MentionMenuItem, MentionMenuItem>({
@@ -204,8 +327,8 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
         allowedPrefixes: null,
         startOfLine: false,
         allow: ({ state, range }) => mentionMenuAllows(state, range),
-        items: async ({ query }) =>
-          buildMentionMenuItems(await options.search(query), query, options.searchHeadings(query)),
+        // Never awaits the server: see createMentionSearchCache.
+        items: ({ query }) => buildMentionMenuItems(searches.lookup(query), query, options.searchHeadings(query)),
         command: ({ editor, range, props }) => {
           if (props.kind === 'document') {
             options.insertMention(editor, range, props);
@@ -217,26 +340,22 @@ export const MentionMenu = Extension.create<MentionMenuOptions>({
           }
           options.onCreatePage(props.query, { editor, range });
         },
-        render: () => {
-          const toRender = (props: {
-            items: MentionMenuItem[];
-            query: string;
-            clientRect?: (() => DOMRect | null) | null;
-            command: (item: MentionMenuItem) => void;
-          }): MentionMenuRender => ({
-            items: props.items,
-            query: props.query,
-            rect: props.clientRect?.() ?? null,
-            command: props.command,
-          });
-
-          return {
-            onStart: (props) => options.controller?.onOpen(toRender(props)),
-            onUpdate: (props) => options.controller?.onUpdate(toRender(props)),
-            onExit: () => options.controller?.onClose(),
-            onKeyDown: ({ event }) => options.controller?.onKeyDown(event) ?? false,
-          };
-        },
+        render: () => ({
+          onStart: (props) => {
+            open = props;
+            options.controller?.onOpen(toRender(props));
+          },
+          onUpdate: (props) => {
+            open = props;
+            options.controller?.onUpdate(toRender(props));
+          },
+          onExit: () => {
+            open = null;
+            searches.close();
+            options.controller?.onClose();
+          },
+          onKeyDown: ({ event }) => options.controller?.onKeyDown(event) ?? false,
+        }),
       }),
     ];
   },
