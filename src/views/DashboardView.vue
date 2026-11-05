@@ -236,14 +236,16 @@
           <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
           <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
           <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
-          <span
-            v-if="recentFolderPath(item)"
-            class="dashboard-recent-path"
-            :title="recentFolderPath(item)"
-            data-recent-folder-path
-          ><Folder :size="12" aria-hidden="true" />{{ recentFolderPath(item) }}</span>
-          <span class="dashboard-recent-meta">{{ recentResourceTypeLabel(item.type) }} · {{ formatRecentOpenedAt(item.openedAt) }}</span>
-          <span class="dashboard-recent-meta-mobile">{{ recentResourceTypeLabel(item.type) }} · {{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
+          <span class="dashboard-recent-info">
+            <span
+              v-if="recentFolderPath(item)"
+              class="dashboard-recent-path"
+              :title="recentFolderPath(item)"
+              data-recent-folder-path
+            ><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span>
+            <span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span>
+            <span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
+          </span>
         </button>
       </div>
       <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
@@ -467,8 +469,7 @@
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                      <span>{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                     </div>
                     <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
@@ -505,8 +506,7 @@
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                      <span>{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                     </div>
                     <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
@@ -536,8 +536,7 @@
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ item.role === 'owner' ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                      <span>{{ item.role === 'owner' ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                     </div>
                     <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
@@ -565,8 +564,7 @@
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
                     <div class="card-meta-mobile">
-                      <span>{{ folderItemTypeLabel(item.type) }}</span>
-                      <span> · {{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
+                      <span>{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                     </div>
                     <div class="card-date-mobile">{{ formatCardDateMobile(item.updatedAt) }}</div>
                     <div v-if="item.tags?.length" class="card-tags">
@@ -624,8 +622,8 @@
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
-            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
                 v-for="tag in item.tags"
@@ -655,6 +653,7 @@
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
@@ -674,6 +673,7 @@
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
@@ -786,11 +786,10 @@
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
-              <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
+              <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEditShort') : t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
-            <div class="card-owner">{{ item.ownerName || item.ownerEmail || t('unknownOwner') }}</div>
-            <div v-if="item.folder" class="card-folder">{{ item.folder }}</div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
                 v-for="tag in item.tags"
@@ -814,6 +813,7 @@
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -838,6 +838,7 @@
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
             </div>
             <div v-if="item.tags?.length" class="card-tags">
               <span
@@ -1936,6 +1937,13 @@ export default defineComponent({
       return folderId ? folderPathById.value.get(folderId) || '' : '';
     };
     /**
+     * The folder a Shared / Public card says it is in: its path in this
+     * user's own tree when known, else the folder name the resource itself
+     * carries (someone else's resource in their folder).
+     */
+    const cardFolderPath = (item: { type: string; id: string; folder?: string | null }) =>
+      recentFolderPath(item) || (typeof item.folder === 'string' ? item.folder.trim() : '');
+    /**
      * Destinations for the move dialog, in tree order. Each carries its depth and
      * the path to its parent, so picking a nested folder is unambiguous.
      */
@@ -2680,7 +2688,6 @@ export default defineComponent({
       else if (item.type === 'text-document') openTextDocument(item.routeId);
       else openInteractiveTemplate(item.routeId);
     };
-    const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('document') : t('interactiveTemplate');
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
@@ -4673,8 +4680,6 @@ export default defineComponent({
     // "Yesterday · 18:42") instead of formatDate's always-absolute one.
     const formatCardDateMobile = (d: string) => formatRelativeDate(d, locale.value);
 
-    const folderItemTypeLabel = (type: FolderItem['type']) =>
-      type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('docs') : t('interactiveTemplate');
 
     const folderSearchPlaceholder = computed(() => {
       if (activeSection.value.kind === 'folder' && activeFolder.value) {
@@ -4768,7 +4773,6 @@ export default defineComponent({
       openRecentResource,
       openSidebarFile,
       rememberRecentResource,
-      recentResourceTypeLabel,
       formatRecentOpenedAt,
       tagFilterList,
       activeFolderBody,
@@ -4810,7 +4814,6 @@ export default defineComponent({
       toggleMobileSortMenu,
       selectSortMode,
       folderSearchPlaceholder,
-      folderItemTypeLabel,
       formatCardDateMobile,
       folderOptions,
       folderNames,
@@ -4937,6 +4940,7 @@ export default defineComponent({
       closeFolderParentModal,
       saveFolderParentModal,
       recentFolderPath,
+      cardFolderPath,
       goToParentFolder,
       openMoveHtmlFolderModal,
       openMoveInteractiveTemplateFolderModal,

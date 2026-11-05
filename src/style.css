@@ -12305,3 +12305,67 @@ html { -webkit-tap-highlight-color: transparent; }
     grid-template-rows: auto auto auto;
   }
 }
+
+/* Card meta row: role badge, date and - for Shared / Public cards - the
+   folder (its icon, then its name, cut short) all on one line. */
+.card-meta .card-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-top: 0;
+  font-size: inherit;
+}
+.card-meta .card-folder svg {
+  flex: 0 0 auto;
+}
+.card-meta .card-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.card-meta .card-date {
+  flex: 0 0 auto;
+}
+
+/* Recents: where it lives and when it was opened, on one line. */
+.dashboard-recent-info {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dashboard-recent-info .dashboard-recent-path {
+  flex: 0 1 auto;
+}
+.dashboard-recent-path-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dashboard-recent-info :is(.dashboard-recent-meta, .dashboard-recent-meta-mobile) {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.dashboard-recents-list .dashboard-recent-info {
+  grid-column: 3;
+  justify-content: flex-end;
+}
+@media (max-width: 720px) {
+  /* The folder stays on the date's line (the name is cut instead), in the
+     date's own size. */
+  .card-meta:has(> .card-folder) {
+    flex-wrap: nowrap;
+  }
+  .dashboard .card-meta .card-folder {
+    font-size: 9px;
+  }
+  .dashboard-recents-list .dashboard-recent-info {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

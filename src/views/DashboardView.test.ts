@@ -402,6 +402,26 @@ describe('dashboard sidebar navigation', () => {
     expect(cards(wrapper.get('[data-feed-section="shared"]'))).toBe(4);
   });
 
+  it('a Public card shows "edit", its folder with an icon in the date row, and no author', async () => {
+    withDefaultFolders();
+    vi.mocked(canvas.list).mockResolvedValueOnce({
+      own: [],
+      shared: [],
+      public: [{ id: 'pub-1', title: 'Open board', folder: 'Team', allowPublicEdit: true, ownerName: 'Someone Else', updatedAt: '2026-11-01T00:00:00Z', tags: [] }],
+      welcome: null,
+    } as never);
+    const wrapper = mountDashboard();
+    await flushPromises();
+
+    const card = wrapper.get('[data-feed-section="public"] .canvas-card');
+    expect(card.get('.badge-public').text()).toBe('edit');
+    const folder = card.get('.card-meta [data-card-folder]');
+    expect(folder.text()).toBe('Team');
+    expect(folder.find('svg').exists()).toBe(true);
+    expect(card.text()).not.toContain('Someone Else');
+    expect(card.find('.card-owner').exists()).toBe(false);
+  });
+
   it('shows one row of cards per feed section and four rows of Public, sized to the grid', async () => {
     withDefaultFolders();
     const doc = (i: number, owner: string, extra: Record<string, unknown> = {}) => ({
