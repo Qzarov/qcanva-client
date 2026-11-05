@@ -77,11 +77,11 @@
         <div v-if="expanded === 'interactive-template'" key="template" class="dashboard-add-expand" data-add-expand="template">
           <div class="dashboard-add-grid">
             <button type="button" class="dashboard-add-option" data-template-type="dnd-character" :disabled="busy" @click="emit('create-template', 'dnd-character', folderId)">
-              <span class="dashboard-add-option-icon dashboard-add-option-emoji" aria-hidden="true">{{ templateEmoji('dnd-character') }}</span>
+              <span class="dashboard-add-option-icon" aria-hidden="true"><Swords :size="22" /></span>
               <strong>{{ t('templateDnd') }}</strong>
             </button>
             <button type="button" class="dashboard-add-option" data-template-type="trello-board" :disabled="busy" @click="emit('create-template', 'trello-board', folderId)">
-              <span class="dashboard-add-option-icon dashboard-add-option-emoji" aria-hidden="true">{{ templateEmoji('trello-board') }}</span>
+              <span class="dashboard-add-option-icon" aria-hidden="true"><SquareKanban :size="22" /></span>
               <strong>{{ t('templateKanban') }}</strong>
             </button>
             <button type="button" class="dashboard-add-option" data-template-import="dnd-character" :disabled="busy" @click="emit('import-character', folderId)">
@@ -142,11 +142,10 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch, type Component } from 'vue';
-import { CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, X } from '@lucide/vue';
+import { CircleAlert, CircleCheck, File as FileIcon, FileCode2, FileInput, FilePlus2, FileText, FolderPlus, FolderUp, LayoutTemplate, SquareKanban, Swords, X } from '@lucide/vue';
 import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSegmentThumb } from '../../composables/useSegmentThumb';
 import { heightTransitionHooks } from '../../dashboard/motion';
-import { templateEmoji } from '../../dashboard/template-emoji';
 import { checkImportFile, importAccept, type ImportCheck, type ImportKind, type ImportProblem } from '../../dashboard/import-files';
 
 export type AddCreateKind = 'canvas' | 'html-document' | 'text-document';

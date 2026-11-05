@@ -34,8 +34,7 @@
         <span class="dashboard-filter-label">{{ t('filterTypes') }}</span>
         <label v-for="option in typeOptions" :key="option.value" class="dashboard-filter-option" :data-filter-type="option.value">
           <input type="checkbox" :checked="types.includes(option.value)" @change="toggleType(option.value)" />
-          <FileIcon v-if="option.value === 'file'" :size="16" class="dashboard-filter-file-icon" aria-hidden="true" />
-          <span v-else class="resource-title-icon" :class="option.icon" aria-hidden="true"></span>
+          <ResourceIcon :kind="option.value" aria-hidden="true" />
           <span>{{ option.label }}</span>
         </label>
       </div>
@@ -62,7 +61,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { File as FileIcon, SlidersHorizontal } from '@lucide/vue';
+import { SlidersHorizontal } from '@lucide/vue';
+import ResourceIcon from '../ResourceIcon.vue';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardContentType } from '../../dashboard/content-filter';
 
@@ -86,13 +86,13 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const typeOptions = computed(() => {
-  const options: Array<{ value: DashboardContentType; label: string; icon: string }> = [
-    { value: 'canvas', label: t('canvas'), icon: 'icon-canvas' },
-    { value: 'html-document', label: 'HTML', icon: 'icon-html' },
-    { value: 'text-document', label: t('docs'), icon: 'icon-text-doc' },
-    { value: 'interactive-template', label: t('templatesFilter'), icon: 'icon-template' },
+  const options: Array<{ value: DashboardContentType; label: string }> = [
+    { value: 'canvas', label: t('canvas') },
+    { value: 'html-document', label: 'HTML' },
+    { value: 'text-document', label: t('docs') },
+    { value: 'interactive-template', label: t('templatesFilter') },
   ];
-  if (props.withFiles) options.push({ value: 'file', label: t('folderFilesTitle'), icon: 'icon-file' });
+  if (props.withFiles) options.push({ value: 'file', label: t('folderFilesTitle') });
   return options;
 });
 

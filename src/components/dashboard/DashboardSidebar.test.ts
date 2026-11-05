@@ -217,7 +217,7 @@ describe('DashboardSidebar', () => {
 
     const file = wrapper.get('[data-sidebar-file="project/canvas:c1"]');
     expect(file.text()).toBe('Board');
-    expect(file.find('.resource-title-icon.icon-canvas').exists()).toBe(true);
+    expect(file.find('.resource-icon[data-resource-kind="canvas"] svg').exists()).toBe(true);
     await file.trigger('click');
     expect(wrapper.emitted('open-file')?.[0]?.[0]).toMatchObject({ id: 'c1', type: 'canvas' });
 

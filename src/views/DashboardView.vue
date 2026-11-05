@@ -232,9 +232,9 @@
         data-recent-layout
       >
         <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt" />
           <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
-          <span v-if="item.type === 'interactive-template'" class="resource-title-icon template-emoji" data-resource-icon="interactive-template" aria-hidden="true">{{ templateEmoji(item.templateType) }}</span>
-          <span v-else class="resource-title-icon" :class="recentResourceIconClass(item.type)" :data-resource-icon="item.type" aria-hidden="true"></span>
+          <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
           <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
           <span
             v-if="recentFolderPath(item)"
@@ -461,7 +461,7 @@
                       @click.stop
                       ref="renameInput"
                     />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" :aria-label="t('canvas')"></span><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span></div>
                     <div class="card-meta">
                       <span class="badge" :class="isOwnedResource(item) ? 'badge-owner' : 'badge-shared'">{{ isOwnedResource(item) ? t('owner') : (item.role || t('sharedWithMe')) }}</span>
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -500,7 +500,7 @@
                       :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
                       @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
                     <div class="card-meta">
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -531,7 +531,7 @@
                     @click="openInteractiveTemplate(item.id)"
                   >
                     <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon template-emoji" data-resource-icon="interactive-template" :data-template-emoji="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)">{{ templateEmoji(item.templateType) }}</span><span class="card-title-text">{{ item.title }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
                     <div class="card-meta">
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -560,7 +560,7 @@
                       :aria-label="`Open document ${item.title || 'Untitled document'}`"
                       @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
                     ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
                     <div class="card-meta">
                       <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
                     </div>
@@ -620,7 +620,7 @@
             @click="openCanvas(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -651,7 +651,7 @@
             @click="openHtmlDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" />{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -670,7 +670,7 @@
             @click="openTextDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" />{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-shared">{{ item.role || t('sharedWithMe') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -719,7 +719,7 @@
         <div class="dash-grid" data-feed-grid="interactive">
           <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
             <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon template-emoji" data-resource-icon="interactive-template" :data-template-emoji="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)">{{ templateEmoji(item.templateType) }}</span>{{ item.title }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" />{{ item.title }}</div>
             <div class="card-meta"><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
@@ -784,7 +784,7 @@
             @click="openCanvas(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-canvas" data-resource-icon="canvas" aria-label="Canvas"></span>{{ item.title || 'Untitled' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" />{{ item.title || 'Untitled' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ item.allowPublicEdit ? t('publicEdit') : t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -810,7 +810,7 @@
             @click="openHtmlDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-html" data-resource-icon="html-document" aria-label="HTML document"></span>{{ item.title || 'Untitled HTML' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" />{{ item.title || 'Untitled HTML' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -834,7 +834,7 @@
             @click="openTextDocument(item.slug || item.id)"
           >
             <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><span class="resource-title-icon icon-text-doc" data-resource-icon="text-document" aria-label="Document"></span>{{ item.title || 'Untitled document' }}</div>
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" />{{ item.title || 'Untitled document' }}</div>
             <div class="card-meta">
               <span class="badge badge-public">{{ t('public') }}</span>
               <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -1208,7 +1208,6 @@ import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Fold
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
-import { templateEmoji } from '../dashboard/template-emoji';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { downloadDriveFile, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
@@ -1226,6 +1225,7 @@ import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
+import ResourceIcon from '../components/ResourceIcon.vue';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
@@ -1345,7 +1345,7 @@ type RecentResourceType = FolderItem['type'];
 /** The raw open-history store: just enough to look the item up again later. */
 type RecentHistoryEntry = { id: string; routeId: string; type: RecentResourceType; title: string; openedAt: number };
 /** recentResources' joined shape - the history entry plus what filtering needs. */
-type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string; templateType?: InteractiveTemplate['templateType'] };
+type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string; templateType?: InteractiveTemplate['templateType']; updatedAt?: string | null };
 type RecentResourceItem = FolderItem;
 
 const DEFAULT_TAG_COLOR = '#50d1b2';
@@ -1360,6 +1360,7 @@ export default defineComponent({
     DashboardSidebar,
     DashboardViewToggle,
     ResourceThumb,
+    ResourceIcon,
     DashboardFolderFiles,
     DashboardFilterMenu,
     DashboardSortMenu,
@@ -2282,6 +2283,8 @@ export default defineComponent({
           tags: item.tags || [],
           folder: ('folder' in item && item.folder) || '',
           templateType: item.type === 'interactive-template' ? item.templateType : undefined,
+          // The card's picture is versioned by the resource's own last change.
+          updatedAt: ('updatedAt' in item && item.updatedAt) ? String(item.updatedAt) : null,
         }];
       });
     });
@@ -2678,7 +2681,6 @@ export default defineComponent({
       else openInteractiveTemplate(item.routeId);
     };
     const recentResourceTypeLabel = (type: RecentResourceType) => type === 'canvas' ? t('canvas') : type === 'html-document' ? 'HTML' : type === 'text-document' ? t('document') : t('interactiveTemplate');
-    const recentResourceIconClass = (type: RecentResourceType) => type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template';
     const formatRecentOpenedAt = (openedAt: number) => new Intl.DateTimeFormat(locale.value === 'ru' ? 'ru-RU' : 'en-US', {
       day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
     }).format(openedAt);
@@ -4767,7 +4769,6 @@ export default defineComponent({
       openSidebarFile,
       rememberRecentResource,
       recentResourceTypeLabel,
-      recentResourceIconClass,
       formatRecentOpenedAt,
       tagFilterList,
       activeFolderBody,
@@ -4895,7 +4896,6 @@ export default defineComponent({
       folderFilesRefreshKey,
       transferStatusText,
       transferStatusPercent,
-      templateEmoji,
       marquee,
       startMarquee,
       recentRefreshFailed,

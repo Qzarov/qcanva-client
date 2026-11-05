@@ -108,7 +108,7 @@
                         <ImageIcon v-else-if="folder.fileKind === 'image'" :size="16" />
                         <FileIcon v-else :size="16" />
                       </template>
-                      <span v-else class="resource-title-icon" :class="fileIconClass(folder.type)"></span>
+                      <ResourceIcon v-else :kind="folder.type" :template-type="folder.templateType" />
                     </span>
                     <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.title || t('untitled') }}</span>
                   </button>
@@ -233,6 +233,7 @@
 </template>
 
 <script setup lang="ts">
+import ResourceIcon from '../ResourceIcon.vue';
 import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import { heightTransitionHooks } from '../../dashboard/motion';
@@ -247,7 +248,6 @@ import {
   isDashboardSectionActive,
   sidebarNavKey,
   type DashboardFileNavItem,
-  type DashboardFileNavType,
   type DashboardSidebarNavItem,
   type DashboardSection,
   type DashboardTopLevelSection,
@@ -346,9 +346,6 @@ const isActive = (section: DashboardSection) => (
   || (feedTopLevelInView.value && props.feedSection === section.kind)
 );
 
-const fileIconClass = (type: DashboardFileNavType) => (
-  type === 'canvas' ? 'icon-canvas' : type === 'html-document' ? 'icon-html' : type === 'text-document' ? 'icon-text-doc' : 'icon-template'
-);
 
 const folderIndent = (depth: number): CSSProperties => ({
   '--folder-depth': Math.max(0, depth),

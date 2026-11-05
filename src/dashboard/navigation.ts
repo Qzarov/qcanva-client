@@ -38,6 +38,8 @@ export interface DashboardFileNavItem {
   depth: number;
   /** Drive files only: what the icon shows. */
   fileKind?: DashboardDriveFileKind;
+  /** Interactive templates only: which kind, for its icon. */
+  templateType?: string;
 }
 
 /** "… N more" at the end of an opened folder that holds over the limit. */
@@ -65,7 +67,7 @@ export const sidebarNavKey = (item: DashboardSidebarNavItem): string => (
  * "… N more" row. `fileTotalOf` is how many files a folder holds in all,
  * when `filesOf` knows only the first of them (the Drive's).
  */
-export function buildSidebarNavItems<F extends { id: string; title?: string | null; type: DashboardFileNavType; fileKind?: DashboardDriveFileKind }>(
+export function buildSidebarNavItems<F extends { id: string; title?: string | null; type: DashboardFileNavType; fileKind?: DashboardDriveFileKind; templateType?: string | null }>(
   folders: readonly DashboardFolderNavItem[],
   filesOf: (folderId: string) => readonly F[],
   limit = SIDEBAR_FOLDER_CHILD_LIMIT,
@@ -106,6 +108,7 @@ export function buildSidebarNavItems<F extends { id: string; title?: string | nu
         folderId: folder.id,
         depth: folder.depth + 1,
         ...(file.fileKind ? { fileKind: file.fileKind } : {}),
+        ...(file.templateType ? { templateType: file.templateType } : {}),
       });
     }
     const hidden = total - shownFolders.length - shownFiles.length;

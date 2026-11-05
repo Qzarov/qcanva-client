@@ -642,9 +642,11 @@ describe('dashboard sidebar navigation', () => {
     const wrapper = mountDashboard();
     await flushPromises();
     await wrapper.get('[data-dashboard-section="interactive"]').trigger('click');
-    // Each kind wears its emoji in place of a plate naming it.
-    expect(wrapper.get('[data-template-resource="hero"] .card-title').text()).toBe('🐉Лира');
-    expect(wrapper.get('[data-template-resource="board"] .card-title').text()).toBe('📋Планы');
+    // Each kind wears its own icon (a sheet, a board) in place of a plate naming it.
+    expect(wrapper.get('[data-template-resource="hero"] .card-title').text()).toBe('Лира');
+    expect(wrapper.get('[data-template-resource="hero"] .resource-icon').attributes('data-resource-kind')).toBe('sheet');
+    expect(wrapper.get('[data-template-resource="board"] .card-title').text()).toBe('Планы');
+    expect(wrapper.get('[data-template-resource="board"] .resource-icon').attributes('data-resource-kind')).toBe('board');
     expect(wrapper.find('[data-template-resource="hero"] .badge').exists()).toBe(false);
     (wrapper.vm as any).searchQuery = 'Лира';
     await nextTick();

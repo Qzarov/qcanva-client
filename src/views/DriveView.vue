@@ -363,7 +363,7 @@
                 :aria-label="t('driveCreateCanvas')"
                 @click="onCreateCanvas"
               >
-                <span class="resource-title-icon icon-canvas" aria-hidden="true"></span>
+                <ResourceIcon kind="canvas" aria-hidden="true" />
                 <span>{{ t('driveCanvas') }}</span>
               </button>
               <button
@@ -374,7 +374,7 @@
                 :aria-label="t('driveCreateDocument')"
                 @click="onCreateDocument"
               >
-                <span class="resource-title-icon icon-text-doc" aria-hidden="true"></span>
+                <ResourceIcon kind="text-document" aria-hidden="true" />
                 <span>{{ t('driveDocument') }}</span>
               </button>
             </div>
@@ -620,12 +620,12 @@
                   <Folder v-if="item.kind === 'folder'" :size="16" class="drive-folder-inline-icon" aria-hidden="true" />
                   <Video v-else-if="isVideoItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
                   <Image v-else-if="isImageItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
-                  <span
+                  <ResourceIcon
                     v-else-if="item.kind !== 'file'"
-                    class="resource-title-icon"
-                    :class="getItemIconClass(item.kind)"
+                    :kind="item.kind"
+                    :size="16"
                     aria-hidden="true"
-                  ></span>
+                  />
                   <span v-else class="drive-ext-badge drive-ext-badge-sm">{{ getFileExtension(item.name) }}</span>
                   <span class="drive-card-name" :title="item.name">{{ item.name }}</span>
 
@@ -755,12 +755,12 @@
                 <Folder v-if="item.kind === 'folder'" :size="20" class="drive-folder-inline-icon" aria-hidden="true" />
                 <Video v-else-if="isVideoItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
                 <Image v-else-if="isImageItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
-                <span
+                <ResourceIcon
                   v-else-if="item.kind !== 'file'"
-                  class="resource-title-icon"
-                  :class="getItemIconClass(item.kind)"
+                  :kind="item.kind"
+                  :size="20"
                   aria-hidden="true"
-                ></span>
+                />
                 <span v-else class="drive-ext-badge">{{ getFileExtension(item.name) }}</span>
               </div>
               <div class="drive-row-name-col">
@@ -976,6 +976,7 @@
 </template>
 
 <script setup lang="ts">
+import ResourceIcon from '../components/ResourceIcon.vue';
 import {
   ArrowDown,
   ArrowLeft,
@@ -1206,16 +1207,6 @@ function getKindLabel(kind: DriveItemKind): string {
   }
 }
 
-function getItemIconClass(kind: DriveItemKind): string {
-  switch (kind) {
-    case 'canvas': return 'icon-canvas';
-    case 'html-document': return 'icon-html';
-    case 'text-document': return 'icon-text-doc';
-    case 'board':
-    case 'sheet': return 'icon-template';
-    default: return '';
-  }
-}
 
 function isFileKind(item: DriveItem): boolean {
   return item.kind === 'file' || item.kind === 'photo' || item.kind === 'video';

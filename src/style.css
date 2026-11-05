@@ -7,6 +7,13 @@
 /* ===== Frox Design Tokens ===== */
 :root,
 :root[data-theme='dark'] {
+  --resource-icon-canvas: #5fd58a;
+  --resource-icon-text: #9db4ff;
+  --resource-icon-html: #ffad6b;
+  --resource-icon-board: #5ec8e6;
+  --resource-icon-sheet: #c9a2ff;
+  --resource-icon-template: #8fe3a8;
+  --resource-icon-file: #b8bec8;
   --ui-page: #1f2128;
   --ui-surface: rgba(0, 42, 0, 0.5);
   --ui-surface-solid: #171a19;
@@ -170,6 +177,13 @@
 }
 
 :root[data-theme='light'] {
+  --resource-icon-canvas: #1d8a4a;
+  --resource-icon-text: #3558d1;
+  --resource-icon-html: #c25e10;
+  --resource-icon-board: #0b7e9c;
+  --resource-icon-sheet: #7a3fd0;
+  --resource-icon-template: #2b8a4b;
+  --resource-icon-file: #5d6470;
   --ui-page: #f5f7f4;
   --ui-surface: #ffffff;
   --ui-surface-solid: #ffffff;
@@ -1751,20 +1765,23 @@ body {
 .card-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; cursor: text; }
 .card-title-with-icon { display: flex; align-items: center; gap: 8px; }
 .resource-title-icon { position: relative; flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; }
-.resource-title-icon.icon-canvas {
-  border: 1px solid color-mix(in srgb, var(--color-brands) 72%, transparent);
-  background: radial-gradient(circle at 5px 5px, var(--color-brands) 0 2px, transparent 2.5px), radial-gradient(circle at 13px 13px, #44cf6e 0 2px, transparent 2.5px), linear-gradient(135deg, rgba(83,223,221,0.18), rgba(255,255,255,0.04));
+/* Resource icons (ResourceIcon.vue): a lucide icon tinted per kind. */
+.resource-title-icon.resource-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--resource-icon-file);
 }
-.resource-title-icon.icon-canvas::after { content: ""; position: absolute; left: 6px; top: 6px; width: 6px; height: 6px; border-top: 1px solid color-mix(in srgb, var(--color-brands) 76%, transparent); border-left: 1px solid color-mix(in srgb, #44cf6e 76%, transparent); }
-.resource-title-icon.icon-html { border: 1px solid rgba(255,167,96,0.55); background: rgba(255,167,96,0.12); }
-.resource-title-icon.icon-html::before,
-.resource-title-icon.icon-html::after { content: ""; position: absolute; top: 5px; width: 6px; height: 6px; border-color: #ffa760; }
-.resource-title-icon.icon-html::before { left: 4px; border-left: 2px solid #ffa760; border-bottom: 2px solid #ffa760; transform: rotate(45deg); }
-.resource-title-icon.icon-html::after { right: 4px; border-right: 2px solid #ffa760; border-top: 2px solid #ffa760; transform: rotate(45deg); }
-.resource-title-icon.icon-text-doc { border: 1px solid rgba(176,196,255,0.58); background: linear-gradient(135deg, rgba(176,196,255,0.18), rgba(255,255,255,0.04)); }
-.resource-title-icon.icon-text-doc::before { content: ""; position: absolute; left: 4px; top: 5px; width: 9px; height: 1px; background: #b0c4ff; box-shadow: 0 4px 0 rgba(176,196,255,0.8), 0 8px 0 rgba(176,196,255,0.55); }
-.resource-title-icon.icon-template { border: 1px solid rgba(119,238,154,0.62); background: linear-gradient(135deg, rgba(0,255,0,0.18), rgba(68,207,110,0.06)); }
-.resource-title-icon.icon-template::before { content: ""; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border: 1px solid #77ee9a; border-radius: 2px; box-shadow: 3px 3px 0 -1px rgba(119,238,154,0.55); }
+.resource-title-icon.resource-icon svg { flex: 0 0 auto; }
+.resource-icon[data-resource-kind="canvas"] { color: var(--resource-icon-canvas); }
+.resource-icon[data-resource-kind="text-document"] { color: var(--resource-icon-text); }
+.resource-icon[data-resource-kind="html-document"] { color: var(--resource-icon-html); }
+.resource-icon[data-resource-kind="board"] { color: var(--resource-icon-board); }
+.resource-icon[data-resource-kind="sheet"] { color: var(--resource-icon-sheet); }
+.resource-icon[data-resource-kind="template"] { color: var(--resource-icon-template); }
 .card-title-input {
   font-size: 16px;
   font-weight: 600;
@@ -10933,10 +10950,6 @@ html { -webkit-tap-highlight-color: transparent; }
   margin: 0;
   accent-color: var(--ui-focus);
 }
-.dashboard-filter-file-icon {
-  flex: none;
-  color: var(--ui-text-secondary);
-}
 .dashboard-filter-tags {
   display: flex;
   flex-wrap: wrap;
@@ -11811,17 +11824,6 @@ html { -webkit-tap-highlight-color: transparent; }
   user-select: none;
 }
 
-/* An interactive template is known by its kind's emoji, not a plate. */
-.resource-title-icon.template-emoji {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: none;
-  font-size: 15px;
-  line-height: 1;
-}
-
 /* ===== Dashboard: the Add dialog =====
    In the dashboard's glass: the dialog is a glass panel (.dashboard-modal),
    Where an inset glass field, Create / Upload a centred segmented slider
@@ -11951,10 +11953,6 @@ html { -webkit-tap-highlight-color: transparent; }
   border: 1px solid var(--ui-glass-accent-border, var(--ui-border));
   background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
   color: var(--ui-glass-accent-text, var(--ui-text));
-}
-.dashboard-add-option-emoji {
-  font-size: 22px;
-  line-height: 1;
 }
 .dashboard-add-option strong {
   font-size: 13px;
@@ -12286,9 +12284,24 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard .dashboard-list-view .resource-thumb {
   display: none;
 }
+/* A Recents card is a two-column grid (icon | title): the picture spans both,
+   as a first row of its own. */
+.dashboard-recent-card > .resource-thumb {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+}
+.dashboard-recent-card:has(> .resource-thumb) {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
 @media (max-width: 720px) {
   .resource-thumb {
     margin: 0 -20px 8px 0;
     border-radius: 6px;
+  }
+  .dashboard-recent-card > .resource-thumb {
+    margin: 0 0 2px;
+  }
+  .dashboard-recent-card:has(> .resource-thumb) {
+    grid-template-rows: auto auto auto;
   }
 }
