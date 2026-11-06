@@ -20,7 +20,10 @@
         :width-state="sidebarWidthState"
         :mobile-open="mobileSidebarOpen"
         :folders="sidebarFolders"
+        :spaces="isLoggedIn"
+        :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
+        @open-yandex-file="downloadYandexFile"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
@@ -173,7 +176,7 @@
     >
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="openAddDialog()">
+        <button class="btn-primary" data-add-button @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
           <Plus class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('add') }}</span>
         </button>
@@ -595,6 +598,30 @@
           </div>
         </section>
 
+      <section
+        v-if="isLoggedIn && yandexPath !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="yandex"
+      >
+        <DashboardYandexDisk
+          ref="yandexView"
+          :path="yandexPath"
+          :query="searchQuery"
+          :sort-mode="sortMode"
+          :view-mode="recentViewMode"
+          :refresh-key="yandexRefreshKey"
+          :selected-keys="selectedKeys"
+          @navigate="openYandexPath"
+          @update:view-mode="setRecentViewMode"
+          @toggle-select="toggleSelected"
+          @items="yandexFiles = $event"
+          @upload="uploadToYandex"
+          @move="openYandexMove"
+          @changed="yandexRefreshKey += 1"
+          @feedback="setFeedback"
+        />
+      </section>
+
       <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-shared' : undefined"
@@ -874,7 +901,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="openAddDialog()"
+        @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
@@ -968,6 +995,16 @@
         </div>
       </div>
     </div>
+
+    <YandexFolderPicker
+      v-if="yandexMove"
+      ref="yandexPicker"
+      :sources="yandexMove.sources"
+      :start="yandexMove.start"
+      :busy="isBusy"
+      @confirm="confirmYandexMove"
+      @close="yandexMove = null"
+    />
 
     <InteractiveTemplatePicker
       v-if="templatePickerOpen"
@@ -1199,7 +1236,7 @@ import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, w
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
-import { downloadDriveFile, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { downloadDriveFile, downloadFileFromUrl, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -1227,6 +1264,18 @@ import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLi
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
 import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
+import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
+import {
+  fetchYandexContent,
+  joinYandexPath,
+  settleYandexOutcome,
+  uploadYandexFile,
+  yandexDisk,
+  yandexParentPath,
+  type YandexItem,
+} from '../api/yandexDisk';
+import { useYandexDisk } from '../composables/useYandexDisk';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
@@ -1359,6 +1408,8 @@ export default defineComponent({
     DashboardFilterMenu,
     DashboardSortMenu,
     DashboardUploadPanel,
+    DashboardYandexDisk,
+    YandexFolderPicker,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -3514,7 +3565,17 @@ export default defineComponent({
     const bulkDeletableDriveFiles = computed(() => (
       activeSection.value.kind === 'folder' && activeFolder.value?.role === 'owner' ? selectedDriveFiles.value : []
     ));
-    const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length);
+    /**
+     * Files of the open Yandex Disk folder tick the same way (`yandex:<path>`):
+     * moved within the Disk, downloaded into the zip, deleted to its trash.
+     */
+    const yandexFiles = ref<YandexItem[]>([]);
+    const yandexRefreshKey = ref(0);
+    const yandexFilesByKey = computed<ReadonlyMap<string, YandexItem>>(() => new Map(yandexFiles.value.map((file) => [`yandex:${file.path}`, file])));
+    const selectedYandexFiles = computed(() => selectedKeys.value
+      .map((key) => yandexFilesByKey.value.get(key))
+      .filter((file): file is YandexItem => Boolean(file)));
+    const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length);
     /** Cards on screen that can be ticked, in screen order. */
     const selectableOnScreen = () => Array.from(
       dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
@@ -3540,8 +3601,8 @@ export default defineComponent({
     // Another section, another folder: the selection was of what is gone.
     watch(activeSection, clearSelection);
     // After a reload, whatever no longer exists drops out.
-    watch([itemsBySelectionKey, driveFilesByKey], ([items, files]) => {
-      const known = (key: string) => items.has(key) || files.has(key);
+    watch([itemsBySelectionKey, driveFilesByKey, yandexFilesByKey], ([items, files, yandex]) => {
+      const known = (key: string) => items.has(key) || files.has(key) || yandex.has(key);
       if (selectedKeys.value.some((key) => !known(key))) {
         selectedKeys.value = selectedKeys.value.filter(known);
       }
@@ -3678,6 +3739,10 @@ export default defineComponent({
     });
 
     const openBulkMoveModal = () => {
+      if (selectedYandexFiles.value.length) {
+        openYandexMove(selectedYandexFiles.value.map((file) => file.path));
+        return;
+      }
       closeCardMenu();
       openControlMenu.value = '';
       draggingResourceFolderId.value = null;
@@ -3731,9 +3796,10 @@ export default defineComponent({
     const bulkDownload = async () => {
       const items = selectedItems.value;
       const driveFiles = selectedDriveFiles.value;
-      if (!items.length && !driveFiles.length) return;
+      const yandex = selectedYandexFiles.value;
+      if (!items.length && !driveFiles.length && !yandex.length) return;
       if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length, failed: 0 };
+      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length, failed: 0 };
       const taken = new Set<string>();
       const files: ArchiveFile[] = [];
       const add = async (make: () => Promise<ArchiveFile>) => {
@@ -3746,6 +3812,12 @@ export default defineComponent({
       };
       for (const item of items) await add(() => archiveFileOf(item, taken));
       for (const file of driveFiles) await add(() => archiveFileOfDrive(file, taken));
+      for (const file of yandex) {
+        await add(async () => {
+          const [base, extension] = splitFileName(file.name);
+          return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+        });
+      }
       if (!files.length) {
         downloadStatus.value.phase = 'error';
       } else {
@@ -3762,6 +3834,109 @@ export default defineComponent({
       downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
     };
     onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
+
+    // ----- Spaces: the user's Yandex Disk as a dashboard section
+    const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
+    const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
+    const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
+    const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
+    const { load: loadYandexStatus } = useYandexDisk();
+    const openYandexPath = (path: string) => {
+      selectDashboardSection({ kind: 'yandex', path });
+    };
+    const openYandexMove = (sources: string[]) => {
+      closeCardMenu();
+      const first = sources[0];
+      if (!first) return;
+      yandexMove.value = { sources, start: yandexParentPath(first) };
+    };
+    const confirmYandexMove = async (target: string) => {
+      const move = yandexMove.value;
+      if (!move) return;
+      let moved = false;
+      try {
+        await runAction('yandex-move', async () => {
+          for (const source of move.sources) {
+            const name = source.slice(source.lastIndexOf('/') + 1);
+            if (yandexParentPath(source) === target) continue;
+            await settleYandexOutcome(await yandexDisk.move(source, joinYandexPath(target, name)));
+          }
+        }, t('bulkMovedTo')
+          .replace('{folder}', target === '/' ? t('yandexDisk') : target.slice(target.lastIndexOf('/') + 1))
+          .replace('{n}', String(move.sources.length)));
+        moved = true;
+      } catch {
+        // runAction already showed why.
+      }
+      yandexPicker.value?.close();
+      if (!moved) return;
+      clearSelection();
+      yandexRefreshKey.value += 1;
+      // The open folder itself moved: follow it.
+      const open = yandexPath.value;
+      const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
+      if (open && followed) openYandexPath(joinYandexPath(target, followed.slice(followed.lastIndexOf('/') + 1)) + open.slice(followed.length));
+    };
+    const downloadYandexFile = async (item: YandexItem) => {
+      try {
+        const { href } = await yandexDisk.downloadLink(item.path);
+        downloadFileFromUrl(href, item.name);
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+      }
+    };
+    /** Uploads to the Yandex folder go through the same panel as the Drive's. */
+    const uploadToYandex = async (files: File[], path: string) => {
+      const batch = files.map((file) => ({
+        id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        file,
+        name: file.name,
+        size: file.size,
+        progress: 0,
+        status: 'uploading' as const,
+      }));
+      uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
+      uploadPanelOpen.value = true;
+      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
+      await Promise.all(batch.map(async ({ id, file }) => {
+        try {
+          const handle = uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => {
+            const row = rowOf(id);
+            if (row && row.status === 'uploading') row.progress = percent;
+          });
+          const row = rowOf(id);
+          if (row) row.abort = () => handle.abort();
+          await handle.promise;
+          const done = rowOf(id);
+          if (done && done.status === 'uploading') {
+            done.progress = 100;
+            done.status = 'done';
+          }
+        } catch (error) {
+          const failed = rowOf(id);
+          if (!failed || failed.status === 'cancelled') return;
+          failed.status = 'error';
+          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+        }
+      }));
+      yandexRefreshKey.value += 1;
+    };
+    /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
+    const takeYandexReturn = () => {
+      if (typeof window === 'undefined') return;
+      const url = new URL(window.location.href);
+      const space = url.searchParams.get('space');
+      const result = url.searchParams.get('yandex');
+      if (space !== 'yandex' && !result) return;
+      if (isLoggedIn) activeSection.value = { kind: 'yandex', path: '/' };
+      if (result === 'connected') setFeedback('success', t('yandexConnected'));
+      else if (result === 'error') setFeedback('error', url.searchParams.get('reason') === 'denied' ? t('yandexConnectDenied') : t('yandexConnectFailed'));
+      void loadYandexStatus(true);
+      for (const key of ['space', 'yandex', 'reason']) url.searchParams.delete(key);
+      const query = Object.fromEntries(url.searchParams.entries());
+      if (typeof router?.replace === 'function') void router.replace({ query });
+      else window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+    };
 
     /**
      * Upload files from the device into a folder's Drive (dashboard folders
@@ -3834,9 +4009,10 @@ export default defineComponent({
     const bulkDelete = async () => {
       const items = bulkDeletable.value;
       const driveFiles = bulkDeletableDriveFiles.value;
+      const yandex = selectedYandexFiles.value;
       const skipped = selectedItems.value.length + selectedDriveFiles.value.length - items.length - driveFiles.length;
       const confirmed = await confirmDialog({
-        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length)),
+        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length + yandex.length)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
         confirmLabel: t('delete'),
         danger: true,
@@ -3859,7 +4035,9 @@ export default defineComponent({
           }
         }
         for (const file of driveFiles) await driveApi.trashFile(file.id);
-      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length)));
+        for (const file of yandex) await settleYandexOutcome(await yandexDisk.remove(file.path));
+      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length + yandex.length)));
+      if (yandex.length) yandexRefreshKey.value += 1;
       if (driveFiles.length) {
         folderFilesRefreshKey.value += 1;
         refreshFolderFileCounts();
@@ -4736,6 +4914,7 @@ export default defineComponent({
       // Even a fresh native snapshot is refreshed quietly, so moving a
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
+      takeYandexReturn();
       sidebarDesktopMedia = getSidebarDesktopMedia();
       if (sidebarDesktopMedia) {
         addSidebarDesktopListener(sidebarDesktopMedia);
@@ -4755,6 +4934,18 @@ export default defineComponent({
     });
 
     return {
+      yandexView,
+      yandexPicker,
+      yandexRefreshKey,
+      yandexPath,
+      yandexMove,
+      yandexFiles,
+      openYandexPath,
+      openYandexMove,
+      confirmYandexMove,
+      downloadYandexFile,
+      uploadToYandex,
+      setFeedback,
       admin,
       t,
       isLoggedIn,

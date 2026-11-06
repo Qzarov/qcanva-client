@@ -93,7 +93,8 @@ test.describe('the sidebar\'s folder tree', () => {
       if (!(await page.locator('[data-home-children]').count())) await page.locator('[data-home-disclosure]').click();
       const home = page.locator('[data-home-link]');
       const folderB = page.locator('[data-dashboard-folder="folder-b"]');
-      const drive = page.locator('[data-dashboard-section="drive"]');
+      // Any top-level item at rest ("Drive" moved into Spaces as Q Space).
+      const drive = page.locator('[data-dashboard-section="shared"]');
       const look = (locator: ReturnType<Page['locator']>) => locator.evaluate((el) => {
         const s = getComputedStyle(el);
         const icon = el.querySelector('.dashboard-sidebar-icon');
@@ -106,7 +107,7 @@ test.describe('the sidebar\'s folder tree', () => {
       expect(restingFolder.iconColor).toBe(restingItem.iconColor);
       expect(restingFolder.height).toBeLessThanOrEqual(38);
       // The tree hangs off a line under Home.
-      expect(await page.locator('.dashboard-sidebar-home-children').evaluate((el) => getComputedStyle(el).borderLeftStyle)).toBe('solid');
+      expect(await page.locator('[data-home-children]').evaluate((el) => getComputedStyle(el).borderLeftStyle)).toBe('solid');
       if (SHOTS) await page.screenshot({ path: `${SHOTS}/sidebar-home-${theme}.png`, clip: { x: 0, y: 0, width: 260, height: 520 } });
 
       // Selected: the folder takes exactly the selected item's look.

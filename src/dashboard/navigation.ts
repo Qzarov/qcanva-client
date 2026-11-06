@@ -3,7 +3,9 @@ export type DashboardTopLevelSection = 'home' | 'shared' | 'interactive' | 'publ
 export type DashboardSection =
   | { kind: DashboardTopLevelSection }
   | { kind: 'recent' }
-  | { kind: 'folder'; folderId: string };
+  | { kind: 'folder'; folderId: string }
+  /** A folder of the user's Yandex Disk (Spaces), `/` for its root. */
+  | { kind: 'yandex'; path: string };
 
 export type SidebarWidthState = 'expanded' | 'collapsed';
 
@@ -161,6 +163,9 @@ export function isDashboardSectionActive(
 ): boolean {
   if (left.kind === 'folder' && right.kind === 'folder') {
     return left.folderId === right.folderId;
+  }
+  if (left.kind === 'yandex' && right.kind === 'yandex') {
+    return left.path === right.path;
   }
 
   return left.kind === right.kind;

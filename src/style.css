@@ -12539,3 +12539,56 @@ html { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .ui-hint { transition: none; transform: none; }
 }
+
+/* ----- Card and header menus that open with <Transition name="card-menu-pop"> */
+.card-menu-pop-enter-active,
+.card-menu-pop-leave-active {
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+.card-menu-pop-enter-from,
+.card-menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
+/* ----- Spaces: Yandex Disk in the dashboard */
+.yandex-disk-view.yandex-drop-active {
+  outline: 2px dashed color-mix(in srgb, var(--ui-info) 60%, transparent);
+  outline-offset: -6px;
+  border-radius: var(--radius-md);
+}
+.yandex-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  text-align: center;
+}
+.yandex-connect-icon { color: var(--ui-text-secondary); }
+.yandex-connect-title { margin: 0; font-size: 15px; font-weight: 600; }
+.yandex-picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  color: var(--ui-text-secondary);
+}
+.yandex-picker .folder-parent-list { max-height: min(50vh, 360px); overflow-y: auto; }
+.yandex-picker-enter-active,
+.yandex-picker-leave-active { transition: opacity 0.18s ease; }
+.yandex-picker-enter-active .dashboard-modal,
+.yandex-picker-leave-active .dashboard-modal { transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1); }
+.yandex-picker-enter-from,
+.yandex-picker-leave-to { opacity: 0; }
+.yandex-picker-enter-from .dashboard-modal,
+.yandex-picker-leave-to .dashboard-modal { transform: translateY(8px) scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .card-menu-pop-enter-active,
+  .card-menu-pop-leave-active,
+  .yandex-picker-enter-active,
+  .yandex-picker-leave-active,
+  .yandex-picker-enter-active .dashboard-modal,
+  .yandex-picker-leave-active .dashboard-modal { transition: none; }
+}

@@ -177,6 +177,15 @@
         </div>
         </Transition>
 
+        <DashboardSidebarSpaces
+          v-if="spaces"
+          :active-section="activeSection"
+          :compact="compactPresentation"
+          :yandex-refresh-key="yandexRefreshKey"
+          @select="emit('select', $event)"
+          @open-yandex-file="emit('open-yandex-file', $event)"
+        />
+
         <button
           v-for="item in topLevelItems"
           :key="item.kind"
@@ -237,7 +246,9 @@
 
 <script setup lang="ts">
 import ResourceIcon from '../ResourceIcon.vue';
-import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Users, X } from '@lucide/vue';
+import DashboardSidebarSpaces from './DashboardSidebarSpaces.vue';
+import type { YandexItem } from '../../api/yandexDisk';
+import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import AccountMenu from '../AccountMenu.vue';
@@ -267,6 +278,10 @@ const props = defineProps<{
   folders: readonly DashboardSidebarNavItem[];
   /** The user is an admin: the Admin page closes the list. */
   admin?: boolean;
+  /** Signed in: the Spaces block (Q Space, Yandex Disk) is shown. */
+  spaces?: boolean;
+  /** Bumped after the dashboard changed the Yandex Disk. */
+  yandexRefreshKey?: number;
 }>();
 
 const emit = defineEmits<{
@@ -274,6 +289,7 @@ const emit = defineEmits<{
   'toggle-width': [];
   'close-mobile': [];
   'open-file': [file: DashboardFileNavItem];
+  'open-yandex-file': [item: YandexItem];
   'toggle-folder': [folderId: string];
   'folder-drag-start': [event: DragEvent, folderId: string];
   'folder-drag-end': [event: DragEvent, folderId: string];
@@ -313,7 +329,6 @@ const topLevelItems = computed<Array<{
   label: string;
   icon: Component;
 }>>(() => [
-  { kind: 'drive', label: t('drive'), icon: HardDrive },
   { kind: 'shared', label: t('sharedWithMe'), icon: Users },
   { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
   { kind: 'public', label: t('public'), icon: Globe2 },
