@@ -17,8 +17,8 @@ export function useContacts() {
   async function ensureLoaded(force = false) {
     if (!force && Date.now() - loadedAt < FRESH_MS) return;
     if (pending) return pending;
-    pending = contactsApi
-      .list()
+    pending = Promise.resolve()
+      .then(() => contactsApi.list())
       .then(({ contacts }) => {
         list.value = contacts;
         loadedAt = Date.now();

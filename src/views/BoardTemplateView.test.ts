@@ -44,6 +44,7 @@ vi.mock('vue-router', () => {
 
 vi.mock('../api/client', () => ({
   uploadImage: vi.fn(),
+  contacts: { list: vi.fn().mockResolvedValue({ contacts: [] }) },
   textDocuments: { list: vi.fn().mockResolvedValue({ documents: [] }), get: vi.fn().mockRejectedValue(new Error('no access')) },
   interactiveTemplates: {
     get: vi.fn(),
