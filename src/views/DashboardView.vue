@@ -23,7 +23,7 @@
         :spaces="isLoggedIn"
         :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
-        @open-yandex-file="downloadYandexFile"
+        @open-yandex-file="openYandexSidebarFile"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
@@ -592,6 +592,7 @@
                     @count="activeFolderFileCount = $event"
                     @files="folderDriveFiles = $event"
                     @toggle-select="toggleSelected"
+                    @open-image="openDriveImage"
                   />
                 </div>
               </div>
@@ -619,6 +620,7 @@
           @move="openYandexMove"
           @changed="yandexRefreshKey += 1"
           @feedback="setFeedback"
+          @open-image="openYandexImage"
         />
       </section>
 
@@ -996,6 +998,13 @@
       </div>
     </div>
 
+    <DashboardMediaViewer
+      v-if="mediaViewer"
+      :items="mediaViewer.items"
+      :start="mediaViewer.start"
+      @close="mediaViewer = null"
+    />
+
     <YandexFolderPicker
       v-if="yandexMove"
       ref="yandexPicker"
@@ -1266,6 +1275,7 @@ import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/
 import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
+import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import {
   downloadYandexLink,
   fetchYandexContent,
@@ -1274,6 +1284,7 @@ import {
   uploadYandexFile,
   yandexDisk,
   yandexParentPath,
+  yandexPreviewUrl,
   type YandexItem,
 } from '../api/yandexDisk';
 import { useYandexDisk } from '../composables/useYandexDisk';
@@ -1411,6 +1422,7 @@ export default defineComponent({
     DashboardUploadPanel,
     DashboardYandexDisk,
     YandexFolderPicker,
+    DashboardMediaViewer,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -2241,6 +2253,12 @@ export default defineComponent({
       );
     });
     const openSidebarFile = async (file: DashboardFileNavItem) => {
+      if (file.type === 'drive-file' && file.fileKind === 'image') {
+        // As its card in the folder does: a picture opens full screen.
+        mobileSidebarOpen.value = false;
+        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled') })], start: 0 };
+        return;
+      }
       if (file.type === 'drive-file') {
         // As its card in the folder does: a Drive file downloads.
         try {
@@ -3878,6 +3896,47 @@ export default defineComponent({
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
       if (open && followed) openYandexPath(joinYandexPath(target, followed.slice(followed.lastIndexOf('/') + 1)) + open.slice(followed.length));
     };
+    // ----- pictures full screen: the folder's pictures, from the one clicked
+    const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
+    const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
+      key: `yandex:${file.path}`,
+      name: file.name,
+      date: file.modifiedAt,
+      preview: yandexPreviewUrl(file),
+      loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
+      download: () => downloadYandexFile(file),
+    });
+    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null }): MediaViewerItem => ({
+      key: `drive-file:${file.id}`,
+      name: file.name,
+      date: file.updatedAt ?? null,
+      preview: null,
+      loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
+      download: async () => {
+        try {
+          await downloadDriveFile(file.id, file.name);
+        } catch (error) {
+          setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
+        }
+      },
+    });
+    const isDriveImage = (file: DriveItem) => file.kind === 'photo' || Boolean(file.mime?.startsWith('image/'));
+    const openYandexImage = (file: YandexItem) => {
+      const images = yandexFiles.value.filter((item) => item.mediaType === 'image');
+      const list = images.some((item) => item.path === file.path) ? images : [file];
+      mediaViewer.value = { items: list.map(yandexViewerItem), start: list.findIndex((item) => item.path === file.path) };
+    };
+    const openDriveImage = (file: DriveItem) => {
+      const images = folderDriveFiles.value.filter(isDriveImage);
+      const list = images.some((item) => item.id === file.id) ? images : [file];
+      mediaViewer.value = { items: list.map(driveViewerItem), start: list.findIndex((item) => item.id === file.id) };
+    };
+    /** A file of the sidebar's Yandex tree: a picture opens, anything else downloads. */
+    const openYandexSidebarFile = (item: YandexItem) => {
+      mobileSidebarOpen.value = false;
+      if (item.mediaType === 'image') mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      else void downloadYandexFile(item);
+    };
     const downloadYandexFile = async (item: YandexItem) => {
       try {
         const { href } = await yandexDisk.downloadLink(item.path);
@@ -4945,6 +5004,10 @@ export default defineComponent({
       openYandexMove,
       confirmYandexMove,
       downloadYandexFile,
+      openYandexSidebarFile,
+      openYandexImage,
+      openDriveImage,
+      mediaViewer,
       uploadToYandex,
       setFeedback,
       admin,

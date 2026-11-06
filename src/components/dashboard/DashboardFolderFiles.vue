@@ -15,9 +15,9 @@
     :data-selected="selectedKeys?.includes('drive-file:' + file.id) || undefined"
     :title="file.name"
     :aria-label="`${t('folderFileDownload')}: ${file.name}`"
-    @click="download(file)"
-    @keydown.enter.prevent="download(file)"
-    @keydown.space.prevent="download(file)"
+    @click="open(file)"
+    @keydown.enter.prevent="open(file)"
+    @keydown.space.prevent="open(file)"
   >
     <div class="card-title card-title-with-icon">
       <!-- Ticked like any other item of the dashboard (the dashboard handles the click). -->
@@ -98,6 +98,8 @@ const emit = defineEmits<{
   /** The files shown, for the dashboard's actions on what is ticked. */
   files: [files: DriveItem[]];
   'toggle-select': [key: string];
+  /** A picture was clicked: the dashboard shows it full screen. */
+  'open-image': [file: DriveItem];
 }>();
 const { t, locale } = useI18n();
 
@@ -232,6 +234,12 @@ onBeforeUnmount(() => {
 // Last: the first load resets the previews, so everything above must exist by then.
 watch(() => props.folderId, (folderId) => { void load(folderId); }, { immediate: true });
 watch(() => props.refreshKey, () => { void load(props.folderId); });
+
+/** A picture opens in the viewer; any other file downloads. */
+function open(file: DriveItem) {
+  if (isImage(file)) emit('open-image', file);
+  else void download(file);
+}
 
 async function download(file: DriveItem) {
   try {

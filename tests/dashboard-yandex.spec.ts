@@ -174,18 +174,48 @@ test('files are uploaded into the open Disk folder with the dashboard upload pan
   expect(calls.find((call) => call.method === 'PUT')?.body).toBe('hello');
 });
 
-test('a photo opens from Yandex without our Referer (its downloader answers 403 to one)', async ({ page }) => {
+test('a photo opens full screen; the original and the download come from Yandex without our Referer', async ({ page }) => {
   await openDashboard(page, { connected: true });
-  const downloaderHits: Array<string | undefined> = [];
+  // Yandex's downloader answers 403 to a request with another site's Referer.
+  const downloaderHits: Array<{ referer: string | undefined; kind: string }> = [];
   await page.route('https://downloader.disk.yandex.ru/**', async (route) => {
-    downloaderHits.push(await route.request().headerValue('referer') ?? undefined);
+    const request = route.request();
+    downloaderHits.push({ referer: (await request.headerValue('referer')) ?? undefined, kind: request.resourceType() });
+    if (await request.headerValue('referer')) return route.fulfill({ status: 403, body: 'Forbidden' });
     await route.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'Content-Disposition': 'attachment; filename="sea.png"' } });
   });
   await yandexRow(page).click();
-  const download = page.waitForEvent('download');
   await page.locator('[data-yandex-file="/море.jpg"]').click();
+
+  const viewer = page.locator('[data-media-viewer]');
+  await expect(viewer).toBeVisible();
+  await expect(viewer.locator('[data-media-name]')).toHaveText('море.jpg');
+  // The preview shows at once, the original takes its place once loaded.
+  await expect(viewer.locator('[data-media-image]')).toHaveAttribute('data-media-full', 'true');
+  await expect.poll(() => viewer.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+  expect(await viewer.evaluate((el) => getComputedStyle(el).backgroundColor)).toBe('rgb(5, 5, 6)');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/yandex-viewer.png` });
+
+  const download = page.waitForEvent('download');
+  await viewer.locator('[data-media-download]').click();
   await download;
-  expect(downloaderHits).toEqual([undefined]);
+  expect(downloaderHits.length).toBeGreaterThanOrEqual(2);
+  expect(downloaderHits.every((hit) => hit.referer === undefined)).toBe(true);
+
+  await page.keyboard.press('Escape');
+  await expect(viewer).toHaveCount(0);
+});
+
+test('a document that is not a picture still downloads on click', async ({ page }) => {
+  await openDashboard(page, { connected: true });
+  await page.route('https://downloader.disk.yandex.ru/**', (route) => route.fulfill({
+    status: 200, contentType: 'application/pdf', body: 'PDF', headers: { 'Content-Disposition': 'attachment; filename="doc.pdf"' },
+  }));
+  await yandexRow(page).click();
+  const download = page.waitForEvent('download');
+  await page.locator('[data-yandex-file="/договор.pdf"]').click();
+  await download;
+  await expect(page.locator('[data-media-viewer]')).toHaveCount(0);
 });
 
 test('access revoked at Yandex: the Disk asks to connect again', async ({ page }) => {

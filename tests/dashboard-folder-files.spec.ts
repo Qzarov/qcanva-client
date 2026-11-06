@@ -70,6 +70,29 @@ test.describe('a folder\'s files', () => {
     await expect.poll(() => downloads.includes('f-pdf')).toBe(true);
   });
 
+  test('a click on a picture opens it full screen; the arrows go through the folder\'s pictures', async ({ page }) => {
+    const { downloads } = await openFolder(page);
+    await page.locator('[data-folder-file="f-cat"]').click();
+    const viewer = page.locator('[data-media-viewer]');
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Кот на окне.png');
+    await expect(viewer.locator('[data-media-image]')).toHaveAttribute('data-media-full', 'true');
+    // Pictures only, in the folder's order: Море, Кот, Панорама.
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Панорама.png');
+    await expect(viewer.locator('[data-media-next]')).toHaveCount(0);
+    await viewer.locator('[data-media-prev]').click();
+    await viewer.locator('[data-media-prev]').click();
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Море.jpg');
+    await viewer.locator('[data-media-close]').click();
+    await expect(viewer).toHaveCount(0);
+
+    // Last: the fake hub serves the bytes inline, so the browser goes to them.
+    await page.locator('[data-folder-file="f-sea"]').click();
+    const before = downloads.filter((id) => id === 'f-sea').length;
+    await viewer.locator('[data-media-download]').click();
+    await expect.poll(() => downloads.filter((id) => id === 'f-sea').length).toBeGreaterThan(before);
+  });
+
   test('list view: one row per file, the preview on the left', async ({ page }) => {
     await openFolder(page, { list: true });
     await expect(files(page)).toHaveCount(6);

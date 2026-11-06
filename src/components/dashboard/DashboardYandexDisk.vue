@@ -126,8 +126,8 @@
               :data-selected="selectedKeys?.includes(keyOf(file)) || undefined"
               :title="file.name"
               :aria-label="`${t('folderFileDownload')}: ${file.name}`"
-              @click="download(file)"
-              @keydown.enter.prevent="download(file)"
+              @click="open(file)"
+              @keydown.enter.prevent="open(file)"
             >
               <div class="card-title card-title-with-icon">
                 <span
@@ -219,6 +219,8 @@ const emit = defineEmits<{
   /** The files on screen, for the dashboard's actions on what is ticked. */
   items: [items: YandexItem[]];
   upload: [files: File[], path: string];
+  /** A picture was clicked: the dashboard shows it full screen. */
+  'open-image': [file: YandexItem];
   move: [paths: string[]];
   /** Something changed on the Disk: the sidebar tree reads again. */
   changed: [];
@@ -369,6 +371,12 @@ function toggleMenu(name: string) {
 const closeMenu = (event: MouseEvent) => {
   if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, .card-menu, .card-manage')) menu.value = '';
 };
+
+/** A picture opens in the viewer; any other file downloads. */
+function open(file: YandexItem) {
+  if (file.mediaType === 'image') emit('open-image', file);
+  else void download(file);
+}
 
 async function download(file: YandexItem) {
   menu.value = '';
