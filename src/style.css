@@ -7064,9 +7064,54 @@ body.text-doc-outline-resizing {
   position: relative;
 }
 
-/* The phone's list nesting strip (list-indent.ts) is the same chrome. */
-.text-doc-table-menu,
-.text-doc-list-menu {
+/* The phone's list nesting arrows (list-indent.ts): in the left gutter beside
+   the caret's item, the column of the block "+"; placed by placeListArrows. */
+.text-doc-list-arrows {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 2px;
+}
+.text-doc-list-arrow {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text-secondary);
+  box-shadow: var(--shadow-dropdown);
+  touch-action: manipulation;
+}
+.text-doc-list-arrow:active:not(:disabled) {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+.text-doc-list-arrow:disabled {
+  opacity: 0.4;
+  box-shadow: none;
+}
+.text-doc-list-arrows-enter-active,
+.text-doc-list-arrows-leave-active {
+  transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.text-doc-list-arrows-enter-from,
+.text-doc-list-arrows-leave-to {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-doc-list-arrows-enter-active,
+  .text-doc-list-arrows-leave-active { transition: none; }
+}
+/* The "+" beside a list would land on the arrows of its first line. */
+.text-doc-block-controls.text-doc-block-controls--under-list-arrows .text-doc-add-block {
+  visibility: hidden;
+}
+
+.text-doc-table-menu {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -10226,7 +10271,7 @@ textarea:focus-visible {
 .text-doc-outline-drawer,
 .text-doc-bubble-menu,
 .text-doc-table-menu,
-.text-doc-list-menu,
+.text-doc-list-arrow,
 .text-doc-link-action-menu,
 .text-doc-slash-menu,
 .text-doc-mention-menu,

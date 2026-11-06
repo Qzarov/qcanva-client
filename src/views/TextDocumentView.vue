@@ -341,6 +341,42 @@
           ></textarea>
           <h1 v-else class="text-doc-title-page-readonly" @click.stop>{{ title || t('untitledDocument') }}</h1>
           <EditorContent v-if="editor" :editor="editor" />
+          <!-- LIST NESTING on a phone (list-indent.ts): no Tab on an on-screen
+               keyboard, so the left gutter beside the caret's list item holds
+               "→" (one level in, what Tab does) and, from the second level on,
+               "←" (one level out, Shift+Tab). In the gutter column of the "+",
+               never over the text. @pointerdown.prevent keeps the caret and
+               the keyboard where they are. -->
+          <Transition name="text-doc-list-arrows">
+            <div
+              v-if="listArrows"
+              class="text-doc-list-arrows"
+              :style="{ top: listArrows.top + 'px', left: listArrows.left + 'px' }"
+              data-list-arrows
+              @click.stop
+            >
+              <button
+                v-if="listArrows.level >= 2"
+                type="button"
+                class="text-doc-list-arrow"
+                data-list-move="outdent"
+                :title="t('listOutdent')"
+                :aria-label="t('listOutdent')"
+                @pointerdown.prevent
+                @click="listMove(-1)"
+              ><ArrowLeft :size="18" aria-hidden="true" /></button>
+              <button
+                type="button"
+                class="text-doc-list-arrow"
+                data-list-move="indent"
+                :title="t('listIndent')"
+                :aria-label="t('listIndent')"
+                :disabled="!listArrows.canIndent"
+                @pointerdown.prevent
+                @click="listMove(1)"
+              ><ArrowRight :size="18" aria-hidden="true" /></button>
+            </div>
+          </Transition>
         </article>
 
         <!--
@@ -541,21 +577,6 @@
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteRow')" :aria-label="t('tableDeleteRow')" @click="tableDeleteRow"><Rows3 :size="15" aria-hidden="true" /></button>
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDeleteColumn')" :aria-label="t('tableDeleteColumn')" @click="tableDeleteColumn"><Columns3 :size="15" aria-hidden="true" /></button>
         <button type="button" class="text-doc-table-btn text-doc-table-btn-danger" :title="t('tableDelete')" :aria-label="t('tableDelete')" @click="tableDeleteTable"><Trash2 :size="15" aria-hidden="true" /></button>
-      </BubbleMenu>
-
-      <!-- LIST NESTING on a phone: one level in / out, what Tab and
-           Shift+Tab do on a desktop (list-indent.ts). Same BubbleMenu pattern
-           as the table controls above; @pointerdown.prevent keeps the caret
-           and the keyboard where they are. -->
-      <BubbleMenu
-        v-if="editor && canEditContent"
-        class="text-doc-list-menu"
-        :editor="editor"
-        :should-show="listMenuShouldShow"
-        :tippy-options="{ duration: 100, placement: 'top' }"
-      >
-        <button type="button" class="text-doc-table-btn" data-list-move="outdent" :title="t('listOutdent')" :aria-label="t('listOutdent')" :disabled="!listCanMove.outdent" @pointerdown.prevent @click="listMove(-1)"><ListIndentDecrease :size="17" aria-hidden="true" /></button>
-        <button type="button" class="text-doc-table-btn" data-list-move="indent" :title="t('listIndent')" :aria-label="t('listIndent')" :disabled="!listCanMove.indent" @pointerdown.prevent @click="listMove(1)"><ListIndentIncrease :size="17" aria-hidden="true" /></button>
       </BubbleMenu>
 
       <!-- Mobile link editor: a bottom sheet pinned to the visual viewport
@@ -779,7 +800,7 @@ import {
   type MentionMenuRender,
 } from '../text-documents/mention-menu';
 import { Mention } from '../text-documents/mention-node';
-import { listIndentState, moveCaretListItem } from '../text-documents/list-indent';
+import { caretListItem, listIndentState, moveCaretListItem } from '../text-documents/list-indent';
 import {
   BUBBLE_MARK_BUTTONS,
   LINK_ICON,
@@ -824,7 +845,7 @@ import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListIndentDecrease, ListIndentIncrease, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
@@ -1655,30 +1676,71 @@ export default defineComponent({
     };
     /**
      * LIST NESTING on a phone (list-indent.ts): no Tab on an on-screen
-     * keyboard, so while the caret sits in a list item two buttons move it
-     * one level in or out. Phone layout only - a desktop has Tab / Shift+Tab -
-     * and never over a text selection (the formatting bubble owns that), a
-     * table (its own menu) or an open slash / @ menu.
+     * keyboard, so while the caret sits in a list item the left gutter beside
+     * that item's first line holds "→" (one level in) and, from the second
+     * level on, "←" (one level out - never out of the list altogether). In
+     * the column of the block "+", left of the bullet or checkbox, so nothing
+     * covers the text (it used to be a bubble over the caret). Phone layout
+     * only - a desktop has Tab / Shift+Tab - and not over a text selection
+     * (the formatting bubble owns that), a table or an open slash / @ menu.
      */
-    const listMenuShouldShow = ({ editor: bubbleEditor }: { editor: Editor }) => {
-      if (!isMobileEditorLayout() || !bubbleEditor.isEditable) return false;
-      if (!bubbleEditor.state.selection.empty || bubbleEditor.isActive('table')) return false;
-      if (slashOpen.value || mentionOpen.value) return false;
-      const { canIndent, canOutdent } = listIndentState(bubbleEditor);
-      return canIndent || canOutdent;
+    const LIST_ARROW_SIZE = 30;
+    const LIST_ARROW_GAP = 2;
+    const listArrows = ref<{ top: number; left: number; level: number; canIndent: boolean } | null>(null);
+    /** The block "+" would sit on the arrows' line (the list's first line): it steps aside. */
+    const setBlockAddHidden = (hidden: boolean) => {
+      dragHandleElement?.classList.toggle('text-doc-block-controls--under-list-arrows', hidden);
     };
-    const listCanMove = computed(() => {
-      void editorTransactionTick.value;
+    const placeListArrows = () => {
       const current = editor.value;
-      if (!current?.state?.selection?.$from || typeof current.can !== 'function') return { indent: false, outdent: false };
-      const { canIndent, canOutdent } = listIndentState(current);
-      return { indent: canIndent, outdent: canOutdent };
-    });
+      const paper = docPaperRef.value;
+      const hide = () => {
+        listArrows.value = null;
+        setBlockAddHidden(false);
+      };
+      if (!current || current.isDestroyed || !paper || !current.isEditable || !canEditContent.value) return hide();
+      if (!isMobileEditorLayout() || !hasCaret.value) return hide();
+      if (!current.state.selection.empty || current.isActive('table') || slashOpen.value || mentionOpen.value) return hide();
+      const item = caretListItem(current.state);
+      if (!item) return hide();
+      const itemDom = current.view.nodeDOM(item.pos);
+      if (!(itemDom instanceof HTMLElement)) return hide();
+      let line: { top: number; bottom: number };
+      try {
+        // The item's first line: its first text block starts right inside it.
+        line = current.view.coordsAtPos(Math.min(item.pos + 2, current.state.doc.content.size));
+      } catch {
+        return hide();
+      }
+      const paperRect = paper.getBoundingClientRect();
+      const itemRect = itemDom.getBoundingClientRect();
+      const width = item.level >= 2 ? LIST_ARROW_SIZE * 2 + LIST_ARROW_GAP : LIST_ARROW_SIZE;
+      // A bullet hangs left of its item; a todo's checkbox is inside it.
+      const marker = item.type === 'listItem' ? 24 : 6;
+      const top = (line.top + line.bottom) / 2 - paperRect.top - LIST_ARROW_SIZE / 2;
+      const left = Math.max(2, itemRect.left - paperRect.left - marker - width);
+      listArrows.value = { top, left, level: item.level, canIndent: listIndentState(current).canIndent };
+      // The "+" sits beside the whole list, at its first line.
+      const blockDom = dragHandleNodePos >= 0 ? current.view.nodeDOM(dragHandleNodePos) : null;
+      const blockTop = blockDom instanceof HTMLElement ? blockDom.getBoundingClientRect().top - paperRect.top : null;
+      setBlockAddHidden(blockTop !== null && blockDom!.contains(itemDom) && Math.abs(blockTop - top) < LIST_ARROW_SIZE + 6);
+    };
+    // After the DOM caught up with the transaction that moved the caret.
+    let listArrowsFrame = 0;
+    const scheduleListArrows = () => {
+      if (typeof requestAnimationFrame !== 'function') return placeListArrows();
+      if (listArrowsFrame) cancelAnimationFrame(listArrowsFrame);
+      listArrowsFrame = requestAnimationFrame(() => {
+        listArrowsFrame = 0;
+        placeListArrows();
+      });
+    };
     // The buttons keep focus where it is (@pointerdown.prevent), so the
     // keyboard stays up and typing continues in the moved item.
     const listMove = (direction: -1 | 1) => {
       const current = editor.value;
       if (current) moveCaretListItem(current, direction);
+      scheduleListArrows();
     };
     const tableAddRow = () => { editor.value?.chain().focus().addRowAfter().run(); };
     const tableAddColumn = () => { editor.value?.chain().focus().addColumnAfter().run(); };
@@ -2669,6 +2731,8 @@ export default defineComponent({
             dragHandleNodePos = (params as { pos?: number }).pos ?? -1;
             if (!dragHandleElement) return;
             dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
+            // The "+" moved to another block: does it still meet the list arrows?
+            scheduleListArrows();
           },
         }),
         /**
@@ -2815,9 +2879,10 @@ export default defineComponent({
       },
       // Fires for a remote collaborator's change as well as this user's, so
       // the count is the document's, not this keyboard's.
-      onUpdate: () => { refreshBlockCount(); editorTransactionTick.value++; },
+      onUpdate: () => { refreshBlockCount(); editorTransactionTick.value++; scheduleListArrows(); },
       onSelectionUpdate: ({ editor }) => {
         syncActiveOutlineHeading(editor);
+        scheduleListArrows();
         if (!canEditContent.value) return;
         const selection = editor.state.selection;
         sendAwareness({ anchor: selection.anchor, head: selection.head });
@@ -3532,6 +3597,15 @@ export default defineComponent({
     };
     onBeforeUnmount(() => { if (pageScrollFrame) cancelAnimationFrame(pageScrollFrame); });
 
+    // The phone's list arrows follow the caret's item (placeListArrows above);
+    // registered here, once every ref they read exists.
+    watch([slashOpen, mentionOpen, hasCaret], scheduleListArrows);
+    if (typeof window !== 'undefined') window.addEventListener('resize', scheduleListArrows);
+    onBeforeUnmount(() => {
+      if (typeof window !== 'undefined') window.removeEventListener('resize', scheduleListArrows);
+      if (listArrowsFrame) cancelAnimationFrame(listArrowsFrame);
+    });
+
     return {
       t,
       slashOpen,
@@ -3570,8 +3644,7 @@ export default defineComponent({
       applyBubbleMark,
       tableMenuShouldShow,
       tableMenuGetReferenceClientRect,
-      listMenuShouldShow,
-      listCanMove,
+      listArrows,
       listMove,
       canUndo,
       canRedo,

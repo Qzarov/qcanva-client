@@ -3,8 +3,9 @@
  *
  * On a desktop Tab / Shift+Tab already do this (StarterKit's ListItem and
  * the TaskItem's own shortcuts). A phone's on-screen keyboard has no Tab, so
- * a second-level bullet or todo was impossible to make there; the document
- * view shows two buttons instead while the caret sits in a list item, and
+ * a second-level bullet or todo was impossible to make there. The document
+ * view shows an arrow in the left gutter beside the caret's item instead
+ * ("→" one level in; from the second level on also "←" one level out), and
  * they run exactly the commands Tab / Shift+Tab run.
  */
 
@@ -21,6 +22,25 @@ export function caretListItemType(state: EditorState): ListItemType | null {
     if (name === 'listItem' || name === 'taskItem') return name;
   }
   return null;
+}
+
+/**
+ * The caret's innermost list item: its type, how deep it is (1 = a list's own
+ * item, 2 = nested in another item, …; bullets and todos count alike) and the
+ * document position just before it, or null outside any list.
+ */
+export function caretListItem(state: EditorState): { type: ListItemType; level: number; pos: number } | null {
+  const { $from } = state.selection;
+  let found: { type: ListItemType; depth: number } | null = null;
+  let level = 0;
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const name = $from.node(depth).type.name;
+    if (name !== 'listItem' && name !== 'taskItem') continue;
+    level += 1;
+    found ??= { type: name, depth };
+  }
+  if (!found) return null;
+  return { type: found.type, level, pos: $from.before(found.depth) };
 }
 
 /** Whether the caret's list item can move one level in / out right now. */

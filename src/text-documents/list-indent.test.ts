@@ -7,7 +7,7 @@ import StarterKit from '@tiptap/starter-kit';
 import TaskList from '@tiptap/extension-task-list';
 import { afterEach, describe, expect, it } from 'vitest';
 import { QuietTaskItem } from './task-item';
-import { caretListItemType, listIndentState, moveCaretListItem } from './list-indent';
+import { caretListItem, caretListItemType, listIndentState, moveCaretListItem } from './list-indent';
 
 let editor: Editor | null = null;
 afterEach(() => {
@@ -70,5 +70,23 @@ describe('list nesting without Tab', () => {
     caretIn(ed, 'Plain');
     expect(listIndentState(ed)).toEqual({ type: null, canIndent: false, canOutdent: false });
     expect(moveCaretListItem(ed, 1)).toBe(false);
+    expect(caretListItem(ed.state)).toBeNull();
+  });
+
+  it('tells how deep the caret\'s item is, bullets and todos alike, and where it starts', () => {
+    const ed = makeEditor(
+      '<ul><li><p>One</p><ul><li><p>Two</p>' +
+        '<ul data-type="taskList"><li data-type="taskItem" data-checked="false"><p>Three</p></li></ul>' +
+        '</li></ul></li></ul>',
+    );
+    caretIn(ed, 'One');
+    expect(caretListItem(ed.state)).toMatchObject({ type: 'listItem', level: 1 });
+    caretIn(ed, 'Two');
+    expect(caretListItem(ed.state)).toMatchObject({ type: 'listItem', level: 2 });
+    caretIn(ed, 'Three');
+    const three = caretListItem(ed.state)!;
+    expect(three).toMatchObject({ type: 'taskItem', level: 3 });
+    expect(ed.state.doc.nodeAt(three.pos)?.type.name).toBe('taskItem');
+    expect(ed.state.doc.nodeAt(three.pos)?.textContent).toBe('Three');
   });
 });
