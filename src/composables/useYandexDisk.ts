@@ -13,7 +13,9 @@ async function load(force = false): Promise<YandexStatus | null> {
   if (!isAuthenticated()) return (status.value = null);
   if (loading && !force) return loading;
   if (status.value && !force) return status.value;
-  loading = yandexDisk.status()
+  // Through a resolved promise: a call that throws right away is caught below too.
+  loading = Promise.resolve()
+    .then(() => yandexDisk.status())
     .then((value) => (status.value = value))
     // An older hub without the integration: the space is just not there.
     .catch(() => (status.value = { enabled: false, connected: false, reconnectRequired: false, login: null, displayName: null }))
