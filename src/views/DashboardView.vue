@@ -1236,7 +1236,7 @@ import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, w
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
-import { downloadDriveFile, downloadFileFromUrl, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { downloadDriveFile, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -1267,6 +1267,7 @@ import DashboardUploadPanel, { type DashboardUpload } from '../components/dashbo
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import {
+  downloadYandexLink,
   fetchYandexContent,
   joinYandexPath,
   settleYandexOutcome,
@@ -3880,7 +3881,7 @@ export default defineComponent({
     const downloadYandexFile = async (item: YandexItem) => {
       try {
         const { href } = await yandexDisk.downloadLink(item.path);
-        downloadFileFromUrl(href, item.name);
+        downloadYandexLink(href, item.name);
       } catch (error) {
         setFeedback('error', error instanceof Error && error.message ? error.message : t('driveDownloadLinkFailed'));
       }

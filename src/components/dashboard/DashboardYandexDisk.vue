@@ -185,6 +185,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { ArrowLeft, Check, Cloud, File as FileIcon, Image as ImageIcon, Plus, Video } from '@lucide/vue';
 import {
+  downloadYandexLink,
   isYandexReconnectError,
   joinYandexPath,
   settleYandexOutcome,
@@ -194,7 +195,7 @@ import {
   type YandexItem,
   type YandexSort,
 } from '../../api/yandexDisk';
-import { downloadFileFromUrl, formatFileSize, getFileExtension } from '../../api/drive';
+import { formatFileSize, getFileExtension } from '../../api/drive';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
@@ -373,7 +374,7 @@ async function download(file: YandexItem) {
   menu.value = '';
   try {
     const { href } = await yandexDisk.downloadLink(file.path);
-    downloadFileFromUrl(href, file.name);
+    downloadYandexLink(href, file.name);
   } catch (err) {
     failed(err, t('driveDownloadLinkFailed'));
   }

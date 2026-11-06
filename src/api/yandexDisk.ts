@@ -106,6 +106,22 @@ export const yandexPreviewUrl = (item: YandexItem): string | null => (
   item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null
 );
 
+/**
+ * Downloads from a Yandex link. Yandex's downloader answers 403 to a request
+ * that carries another site's Referer, so the link is followed without one.
+ */
+export function downloadYandexLink(href: string, filename?: string): void {
+  const link = document.createElement('a');
+  link.href = href;
+  link.rel = 'noreferrer';
+  link.referrerPolicy = 'no-referrer';
+  link.style.display = 'none';
+  if (filename) link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 /** The file's bytes through the hub (for the zip of a selection). */
 export async function fetchYandexContent(path: string): Promise<Uint8Array> {
   const token = getAccessToken();

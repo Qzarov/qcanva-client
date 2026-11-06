@@ -62,6 +62,9 @@ async function serveYandex(page: Page, state: { connected: boolean; reconnect?: 
       return json({ item: asItem({ path: query.path ?? '/', name: 'disk', type: 'dir' }), items: items.map(asItem), total: items.length, offset: 0, limit: 200 });
     }
     if (path === '/yandex-disk/items' && request.method() === 'DELETE') return json({ status: 'done' });
+    if (path === '/yandex-disk/download') {
+      return json({ href: `https://downloader.disk.yandex.ru/disk/test?filename=${encodeURIComponent(query.path!.slice(1))}&disposition=attachment` });
+    }
     if (path === '/yandex-disk/rename') {
       const body = JSON.parse(request.postData() || '{}');
       return json({ status: 'done', path: `/${body.name}` });
@@ -169,6 +172,20 @@ test('files are uploaded into the open Disk folder with the dashboard upload pan
   await expect(page.locator('[data-upload-panel]')).toContainText('notes.txt');
   await expect.poll(() => calls.find((call) => call.method === 'PUT')?.query.path).toBe('/Работа/notes.txt');
   expect(calls.find((call) => call.method === 'PUT')?.body).toBe('hello');
+});
+
+test('a photo opens from Yandex without our Referer (its downloader answers 403 to one)', async ({ page }) => {
+  await openDashboard(page, { connected: true });
+  const downloaderHits: Array<string | undefined> = [];
+  await page.route('https://downloader.disk.yandex.ru/**', async (route) => {
+    downloaderHits.push(await route.request().headerValue('referer') ?? undefined);
+    await route.fulfill({ status: 200, contentType: 'image/png', body: PNG, headers: { 'Content-Disposition': 'attachment; filename="sea.png"' } });
+  });
+  await yandexRow(page).click();
+  const download = page.waitForEvent('download');
+  await page.locator('[data-yandex-file="/море.jpg"]').click();
+  await download;
+  expect(downloaderHits).toEqual([undefined]);
 });
 
 test('access revoked at Yandex: the Disk asks to connect again', async ({ page }) => {
