@@ -56,7 +56,25 @@
             @click.stop="toggleMenu('folder')"
           >⋯</button>
           <Transition name="card-menu-pop">
-            <div v-if="menu === 'folder'" class="mobile-action-popover" @click.stop>
+            <!-- The folder menu (a bottom sheet on a phone, like every folder's),
+                 headed by the connected account. -->
+            <div v-if="menu === 'folder'" class="mobile-action-popover yandex-space-menu" data-yandex-space-menu @click.stop>
+              <div class="yandex-account-card" data-yandex-account>
+                <img
+                  v-if="status?.avatarUrl && !avatarBroken"
+                  referrerpolicy="no-referrer"
+                  class="yandex-account-avatar"
+                  :src="status.avatarUrl"
+                  alt=""
+                  data-yandex-account-avatar
+                  @error="avatarBroken = true"
+                />
+                <span v-else class="yandex-account-avatar yandex-account-avatar-letter" aria-hidden="true">{{ accountInitial }}</span>
+                <span class="yandex-account-text">
+                  <span class="yandex-account-name" data-yandex-account-name>{{ accountName }}</span>
+                  <span v-if="accountEmail" class="yandex-account-email" data-yandex-account-email>{{ accountEmail }}</span>
+                </span>
+              </div>
               <template v-if="path !== '/'">
                 <button class="card-menu-item" data-yandex-rename-folder @click="rename(currentFolder)">{{ t('rename') }}</button>
                 <button class="card-menu-item" data-yandex-move-folder @click="move([path])">{{ t('moveFolderInto') }}</button>
@@ -250,10 +268,20 @@ const currentFolder = computed<YandexItem>(() => ({
   createdAt: null, modifiedAt: null, publicUrl: null, previewUrl: null,
 }));
 const webUrl = computed(() => `https://disk.yandex.ru/client/disk${props.path === '/' ? '' : props.path.split('/').map(encodeURIComponent).join('/')}`);
-const countLabel = computed(() => {
-  const login = status.value?.login ? `${status.value.login} · ` : '';
-  return `${login}${total.value} ${t('yandexItems')}`;
+const countLabel = computed(() => `${total.value} ${t('yandexItems')}`);
+
+// ----- the account card at the top of "⋯"
+const avatarBroken = ref(false);
+watch(() => status.value?.avatarUrl, () => { avatarBroken.value = false; });
+const accountName = computed(() => status.value?.displayName || status.value?.login || t('yandexDisk'));
+/** The e-mail from Yandex ID; without that scope the login, if the name is not already it. */
+const accountEmail = computed(() => {
+  const email = status.value?.email;
+  if (email) return email;
+  const login = status.value?.login;
+  return login && login !== accountName.value ? login : '';
 });
+const accountInitial = computed(() => accountName.value.trim().charAt(0).toLocaleUpperCase() || 'Я');
 
 const serverSort = computed<YandexSort>(() => {
   switch (props.sortMode) {

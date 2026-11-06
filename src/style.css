@@ -12631,6 +12631,55 @@ html { -webkit-tap-highlight-color: transparent; }
   color: var(--ui-text-secondary);
 }
 .yandex-picker .folder-parent-list { max-height: min(50vh, 360px); overflow-y: auto; }
+/* The Yandex space's "⋯": the account on top, then its actions. */
+.folder-manager-menu .yandex-space-menu {
+  width: min(280px, calc(100vw - 32px));
+}
+.yandex-account-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.yandex-account-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.yandex-account-avatar-letter {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ui-info) 18%, var(--ui-surface-subtle));
+  color: var(--ui-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.yandex-account-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.yandex-account-name,
+.yandex-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yandex-account-name { font-size: 14px; font-weight: 600; color: var(--ui-text); }
+.yandex-account-email { font-size: 12px; color: var(--ui-text-secondary); }
+/* "Open on Yandex" is a link: it looks like the other items. */
+.yandex-space-menu a.card-menu-item { text-decoration: none; color: inherit; }
+/* On a phone it is the bottom sheet every folder menu becomes, full width. */
+@media (max-width: 720px) {
+  .folder-manager-menu .yandex-space-menu {
+    width: auto;
+  }
+}
 .yandex-picker-enter-active,
 .yandex-picker-leave-active { transition: opacity 0.18s ease; }
 .yandex-picker-enter-active .dashboard-modal,

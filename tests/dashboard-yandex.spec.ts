@@ -48,7 +48,15 @@ async function serveYandex(page: Page, state: { connected: boolean; reconnect?: 
     const json = (body: unknown, status = 200) => route.fulfill({ status, json: body });
 
     if (path === '/integrations/yandex' && request.method() === 'GET') {
-      return json({ enabled: true, connected: state.connected, reconnectRequired: Boolean(state.reconnect), login: 'ivan', displayName: 'Иван' });
+      return json({
+        enabled: true,
+        connected: state.connected,
+        reconnectRequired: Boolean(state.reconnect),
+        login: 'ivan',
+        displayName: 'Иван Петров',
+        email: 'ivan@yandex.ru',
+        avatarUrl: 'https://avatars.yandex.net/get-yapic/12345/abc/islands-68',
+      });
     }
     if (path === '/integrations/yandex/connect') {
       state.connected = true;
@@ -216,6 +224,60 @@ test('a document that is not a picture still downloads on click', async ({ page 
   await page.locator('[data-yandex-file="/договор.pdf"]').click();
   await download;
   await expect(page.locator('[data-media-viewer]')).toHaveCount(0);
+});
+
+for (const width of [1280, 390]) {
+  test(`"⋯" opens the folder menu headed by the account - avatar, name, e-mail - with the same actions (${width}px)`, async ({ page }) => {
+    await page.route('https://avatars.yandex.net/**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+    await serveDashboard(page);
+    await serveYandex(page, { connected: true });
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/dashboard?space=yandex');
+    await expect(page.locator('[data-yandex-file="/море.jpg"]')).toBeVisible();
+    // The login moved into the card; the header keeps the count.
+    await expect(page.locator('.folder-manager-count')).toHaveText('4 items');
+
+    const trigger = page.locator('[data-yandex-folder-menu]');
+    await trigger.click();
+    const menu = page.locator('[data-yandex-space-menu]');
+    await expect(menu.locator('[data-yandex-account-name]')).toHaveText('Иван Петров');
+    await expect(menu.locator('[data-yandex-account-email]')).toHaveText('ivan@yandex.ru');
+    await expect(menu.locator('[data-yandex-account-avatar]')).toHaveAttribute('src', /avatars\.yandex\.net/);
+    await expect.poll(() => menu.locator('[data-yandex-account-avatar]').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    await expect(menu.locator('[data-yandex-open-web]')).toBeVisible();
+    await expect(menu.locator('[data-yandex-disconnect]')).toBeVisible();
+
+    // Where every folder menu opens: under "⋯" on a computer, a sheet at the bottom on a phone.
+    await expect.poll(() => menu.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    const triggerBox = (await trigger.boundingBox())!;
+    const menuBox = (await menu.boundingBox())!;
+    if (width > 720) {
+      expect(menuBox.y).toBeGreaterThan(triggerBox.y + triggerBox.height - 1);
+      expect(menuBox.y).toBeLessThan(triggerBox.y + triggerBox.height + 24);
+    } else {
+      expect(menuBox.y + menuBox.height).toBeGreaterThan(844 - 40);
+      expect(menuBox.width).toBeGreaterThan(width - 40);
+    }
+    expect(menuBox.x).toBeGreaterThanOrEqual(0);
+    expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(width);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/yandex-account-menu-${width}.png` });
+  });
+}
+
+test('without a name, e-mail or avatar the card shows the login and its first letter', async ({ page }) => {
+  await serveDashboard(page);
+  await serveYandex(page, { connected: true });
+  // Answer the status first, as a hub without the Yandex ID scopes would.
+  await page.route(/\/api\/integrations\/yandex$/, (route) => route.fulfill({
+    json: { enabled: true, connected: true, reconnectRequired: false, login: 'ivan', displayName: null, email: null, avatarUrl: null },
+  }));
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await page.goto('/dashboard?space=yandex');
+  await page.locator('[data-yandex-folder-menu]').click();
+  const card = page.locator('[data-yandex-account]');
+  await expect(card.locator('[data-yandex-account-name]')).toHaveText('ivan');
+  await expect(card.locator('[data-yandex-account-email]')).toHaveCount(0);
+  await expect(card.locator('.yandex-account-avatar-letter')).toHaveText('I');
 });
 
 test('access revoked at Yandex: the Disk asks to connect again', async ({ page }) => {

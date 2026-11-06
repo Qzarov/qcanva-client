@@ -16,6 +16,9 @@ export type YandexStatus = {
   reconnectRequired: boolean;
   login: string | null;
   displayName: string | null;
+  /** From Yandex ID; null when the app has no `login:*` scopes (older hubs leave them out). */
+  email?: string | null;
+  avatarUrl?: string | null;
 };
 
 export type YandexItem = {
