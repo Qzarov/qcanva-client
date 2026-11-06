@@ -74,20 +74,51 @@
 
       <p v-if="!items.length" class="contacts-note" data-contacts-empty>{{ t('contactsEmpty') }}</p>
       <ul v-else class="contacts-grid">
-        <li v-for="contact in items" :key="contact.id" class="contacts-card-item" :data-contact-row="contact.email">
-          <span class="contacts-avatar" aria-hidden="true">{{ initial(label(contact)) }}</span>
-          <div class="contacts-who">
-            <span class="contacts-label" :title="label(contact)">{{ label(contact) }}</span>
-            <span v-if="label(contact) !== contact.email" class="contacts-sub" :title="contact.email">{{ contact.email }}</span>
-          </div>
-          <div class="contacts-icon-actions">
-            <button type="button" class="btn-ghost contacts-icon-btn" :aria-label="t('contactRenameTitle')" :title="t('contactRenameTitle')" data-contact-rename :disabled="busy" @click="rename(contact)">
-              <Pencil :size="15" aria-hidden="true" />
-            </button>
-            <button type="button" class="btn-ghost contacts-icon-btn danger" :aria-label="t('delete')" :title="t('delete')" data-contact-delete :disabled="busy" @click="remove(contact)">
-              <Trash2 :size="15" aria-hidden="true" />
-            </button>
-          </div>
+        <li v-for="contact in items" :key="contact.id" class="contacts-card-item" :class="{ 'contacts-card-item--editing': editingId === contact.id }" :data-contact-row="contact.email">
+          <!-- Editing turns the card itself into the form: address and label, cancel and save. -->
+          <form v-if="editingId === contact.id" class="contacts-edit" data-contact-edit-form @submit.prevent="saveEdit(contact)" @keydown.esc="cancelEdit">
+            <input
+              ref="editEmailInput"
+              v-model.trim="editEmail"
+              type="email"
+              class="dashboard-modal-input"
+              autocomplete="email"
+              :aria-label="t('contactEmail')"
+              :placeholder="t('contactEmailPlaceholder')"
+              :disabled="busy"
+              data-contact-edit-email
+              @input="editError = ''"
+            />
+            <input
+              v-model.trim="editName"
+              class="dashboard-modal-input"
+              maxlength="120"
+              :aria-label="t('contactName')"
+              :placeholder="t('contactName')"
+              :disabled="busy"
+              data-contact-edit-name
+            />
+            <p v-if="editError" class="contacts-form-error" role="alert" data-contact-edit-error>{{ editError }}</p>
+            <div class="contacts-card-actions">
+              <button type="button" class="btn-ghost btn-sm" :disabled="busy" data-contact-edit-cancel @click="cancelEdit">{{ t('cancel') }}</button>
+              <button type="submit" class="btn-primary btn-sm" :disabled="busy || !editEmail" data-contact-edit-save>{{ t('save') }}</button>
+            </div>
+          </form>
+          <template v-else>
+            <span class="contacts-avatar" aria-hidden="true">{{ initial(label(contact)) }}</span>
+            <div class="contacts-who">
+              <span class="contacts-label" :title="label(contact)">{{ label(contact) }}</span>
+              <span v-if="label(contact) !== contact.email" class="contacts-sub" :title="contact.email">{{ contact.email }}</span>
+            </div>
+            <div class="contacts-icon-actions">
+              <button type="button" class="btn-ghost contacts-icon-btn" :aria-label="t('contactEditTitle')" :title="t('contactEditTitle')" data-contact-edit :disabled="busy" @click="startEdit(contact)">
+                <Pencil :size="15" aria-hidden="true" />
+              </button>
+              <button type="button" class="btn-ghost contacts-icon-btn danger" :aria-label="t('delete')" :title="t('delete')" data-contact-delete :disabled="busy" @click="remove(contact)">
+                <Trash2 :size="15" aria-hidden="true" />
+              </button>
+            </div>
+          </template>
         </li>
       </ul>
     </section>
@@ -123,7 +154,7 @@ import {
   type ContactSuggestionReason,
   type ContactView,
 } from '../../api/client';
-import { alertFailure, confirmDelete, promptText } from '../../composables/appDialog';
+import { alertFailure, confirmDelete } from '../../composables/appDialog';
 import { useToast } from '../../composables/useToast';
 import { useI18n } from '../../composables/useI18n';
 
@@ -239,16 +270,47 @@ async function dismiss(item: ContactSuggestion) {
   }
 }
 
-async function rename(contact: ContactView) {
+const editingId = ref<string | null>(null);
+const editEmail = ref('');
+const editName = ref('');
+const editError = ref('');
+const editEmailInput = ref<HTMLInputElement[] | HTMLInputElement | null>(null);
+
+async function startEdit(contact: ContactView) {
   if (busy.value) return;
-  const next = await promptText('contactRenameTitle', 'save', contact.name ?? '');
-  if (next === null || next.trim() === (contact.name ?? '')) return;
+  editingId.value = contact.id;
+  editEmail.value = contact.email;
+  editName.value = contact.name ?? '';
+  editError.value = '';
+  await nextTick();
+  const input = Array.isArray(editEmailInput.value) ? editEmailInput.value[0] : editEmailInput.value;
+  input?.focus();
+}
+
+function cancelEdit() {
+  editingId.value = null;
+  editError.value = '';
+}
+
+async function saveEdit(contact: ContactView) {
+  if (busy.value || !editEmail.value) return;
+  const email = editEmail.value.toLowerCase();
+  const name = editName.value || null;
+  if (email === contact.email && name === (contact.name || null)) {
+    cancelEdit();
+    return;
+  }
   busy.value = true;
+  editError.value = '';
   try {
-    items.value = (await contactsApi.rename(contact.id, next.trim() || null)).contacts;
-    showToast(t('contactRenamed'), 'success');
+    items.value = (await contactsApi.update(contact.id, { email, name })).contacts;
+    suggestions.value = suggestions.value.filter((item) => item.email !== email);
+    cancelEdit();
+    showToast(t('contactUpdated'), 'success');
   } catch (error) {
-    await alertFailure('contactRenameFailed', error);
+    const code = error instanceof ApiError ? ERROR_TEXT[error.message] : undefined;
+    if (code) editError.value = t(code);
+    else await alertFailure('contactUpdateFailed', error);
   } finally {
     busy.value = false;
   }
@@ -345,6 +407,8 @@ onMounted(load);
 .contacts-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  /* A card being edited grows alone; its neighbours keep their height. */
+  align-items: start;
   gap: 10px;
   margin: 0;
   padding: 0;
@@ -418,6 +482,11 @@ onMounted(load);
   justify-content: flex-end;
   gap: 6px;
 }
+
+.contacts-card-item--editing { grid-template-columns: minmax(0, 1fr); }
+.contacts-edit { display: grid; gap: 8px; min-width: 0; }
+.contacts-edit .dashboard-modal-input { margin: 0; }
+.contacts-edit .contacts-form-error { min-height: 0; }
 
 /* A phone: the fields stack, the buttons go under the name. */
 @media (max-width: 760px) {

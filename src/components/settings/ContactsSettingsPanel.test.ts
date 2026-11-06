@@ -12,7 +12,7 @@ vi.mock('../../api/client', async () => {
     contacts: {
       list: vi.fn(),
       create: vi.fn(),
-      rename: vi.fn(),
+      update: vi.fn(),
       delete: vi.fn(),
       suggestions: vi.fn(),
       accept: vi.fn(),
@@ -23,7 +23,6 @@ vi.mock('../../api/client', async () => {
 vi.mock('../../composables/appDialog', () => ({
   alertFailure: vi.fn(),
   confirmDelete: vi.fn().mockResolvedValue(true),
-  promptText: vi.fn(),
 }));
 vi.mock('../../composables/useToast', () => ({ useToast: () => ({ show: vi.fn() }) }));
 
@@ -139,6 +138,49 @@ describe('ContactsSettingsPanel', () => {
     await wrapper.get('[data-contact-cancel]').trigger('click');
     expect(wrapper.find('[data-contact-form]').exists()).toBe(false);
     expect(contacts.create).not.toHaveBeenCalled();
+  });
+
+  it('edits the address and the label right in the card', async () => {
+    vi.mocked(contacts.update).mockResolvedValue({
+      contacts: [saved('ann.new@example.test', { name: 'Ann W', userName: null })],
+    });
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    await wrapper.get('[data-contact-row="ann@example.test"] [data-contact-edit]').trigger('click');
+    await flushPromises();
+    const email = wrapper.get('[data-contact-edit-email]');
+    expect((email.element as HTMLInputElement).value).toBe('ann@example.test');
+    await email.setValue('Ann.New@Example.test');
+    await wrapper.get('[data-contact-edit-name]').setValue('Ann W');
+    await wrapper.get('[data-contact-edit-form]').trigger('submit');
+    await flushPromises();
+    expect(contacts.update).toHaveBeenCalledWith('id-ann@example.test', { email: 'ann.new@example.test', name: 'Ann W' });
+    expect(wrapper.find('[data-contact-edit-form]').exists()).toBe(false);
+    expect(wrapper.get('[data-contact-row="ann.new@example.test"]').text()).toContain('Ann W');
+  });
+
+  it('keeps the card in edit mode and says why when the new address is taken', async () => {
+    vi.mocked(contacts.update).mockRejectedValue(new ApiError(409, 'contact_exists'));
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    await wrapper.get('[data-contact-edit]').trigger('click');
+    await wrapper.get('[data-contact-edit-email]').setValue('taken@example.test');
+    await wrapper.get('[data-contact-edit-form]').trigger('submit');
+    await flushPromises();
+    expect(wrapper.get('[data-contact-edit-error]').text()).toBe('This address is already in your contacts');
+    await wrapper.get('[data-contact-edit-cancel]').trigger('click');
+    expect(wrapper.find('[data-contact-edit-form]').exists()).toBe(false);
+    expect(wrapper.find('[data-contact-row="ann@example.test"]').exists()).toBe(true);
+  });
+
+  it('saving without changes sends nothing', async () => {
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    await wrapper.get('[data-contact-edit]').trigger('click');
+    await wrapper.get('[data-contact-edit-form]').trigger('submit');
+    await flushPromises();
+    expect(contacts.update).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-contact-edit-form]').exists()).toBe(false);
   });
 
   it('an address without a name is shown once', async () => {

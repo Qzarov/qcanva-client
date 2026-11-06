@@ -589,8 +589,8 @@ export const contacts = {
   list: () => request<{ contacts: ContactView[] }>('/contacts'),
   create: (payload: { email: string; name?: string | null }) =>
     request<{ contacts: ContactView[] }>('/contacts', { method: 'POST', body: JSON.stringify(payload) }),
-  rename: (id: string, name: string | null) =>
-    request<{ contacts: ContactView[] }>(`/contacts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  update: (id: string, payload: { email?: string; name?: string | null }) =>
+    request<{ contacts: ContactView[] }>(`/contacts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   delete: (id: string) =>
     request<{ contacts: ContactView[] }>(`/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   suggestions: () => request<{ suggestions: ContactSuggestion[] }>('/contacts/suggestions'),
