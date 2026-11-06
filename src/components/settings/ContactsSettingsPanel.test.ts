@@ -49,16 +49,38 @@ describe('ContactsSettingsPanel', () => {
     });
   });
 
-  it('shows the suggestions with why they are suggested, and the saved contacts', async () => {
+  it('opens on the contacts when there are any, with both counts on the tabs', async () => {
     const wrapper = mount(ContactsSettingsPanel);
     await flushPromises();
-    const bob = wrapper.get('[data-contact-suggestion="bob@example.test"]');
-    expect(bob.text()).toContain('Bob');
-    expect(bob.text()).toContain('You shared with this address');
-    expect(wrapper.get('[data-contact-suggestion="eve@example.test"]').text()).toContain('Shared with you');
+    expect(wrapper.get('[data-contacts-tab="saved"]').attributes('aria-selected')).toBe('true');
+    expect(wrapper.get('[data-contacts-tab="saved"]').text()).toContain('1');
+    expect(wrapper.get('[data-contacts-tab="suggested"]').text()).toContain('2');
     const ann = wrapper.get('[data-contact-row="ann@example.test"]');
     expect(ann.text()).toContain('Ann');
     expect(ann.text()).toContain('ann@example.test');
+    expect(wrapper.find('[data-contact-suggestion]').exists()).toBe(false);
+    // No intro text and no form until the plus is pressed.
+    expect(wrapper.find('[data-contact-form]').exists()).toBe(false);
+  });
+
+  it('opens on the suggestions when no contact is saved yet', async () => {
+    vi.mocked(contacts.list).mockResolvedValue({ contacts: [] });
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    expect(wrapper.get('[data-contacts-tab="suggested"]').attributes('aria-selected')).toBe('true');
+    const bob = wrapper.get('[data-contact-suggestion="bob@example.test"]');
+    expect(bob.text()).toContain('Bob');
+    expect(bob.text()).toContain('You shared');
+    expect(wrapper.get('[data-contact-suggestion="eve@example.test"]').text()).toContain('Shared with you');
+  });
+
+  it('stays on the contacts when there is nothing at all', async () => {
+    vi.mocked(contacts.list).mockResolvedValue({ contacts: [] });
+    vi.mocked(contacts.suggestions).mockResolvedValue({ suggestions: [] });
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    expect(wrapper.get('[data-contacts-tab="saved"]').attributes('aria-selected')).toBe('true');
+    expect(wrapper.find('[data-contacts-empty]').exists()).toBe(true);
   });
 
   it('an approved suggestion moves into the contacts', async () => {
@@ -67,10 +89,12 @@ describe('ContactsSettingsPanel', () => {
     });
     const wrapper = mount(ContactsSettingsPanel);
     await flushPromises();
+    await wrapper.get('[data-contacts-tab="suggested"]').trigger('click');
     await wrapper.get('[data-contact-suggestion="bob@example.test"] [data-contact-accept]').trigger('click');
     await flushPromises();
     expect(contacts.accept).toHaveBeenCalledWith('bob@example.test');
     expect(wrapper.find('[data-contact-suggestion="bob@example.test"]').exists()).toBe(false);
+    await wrapper.get('[data-contacts-tab="saved"]').trigger('click');
     expect(wrapper.find('[data-contact-row="bob@example.test"]').exists()).toBe(true);
   });
 
@@ -80,33 +104,41 @@ describe('ContactsSettingsPanel', () => {
     });
     const wrapper = mount(ContactsSettingsPanel);
     await flushPromises();
+    await wrapper.get('[data-contacts-tab="suggested"]').trigger('click');
     await wrapper.get('[data-contact-suggestion="eve@example.test"] [data-contact-dismiss]').trigger('click');
     await flushPromises();
     expect(contacts.dismiss).toHaveBeenCalledWith('eve@example.test');
     expect(wrapper.find('[data-contact-suggestion="eve@example.test"]').exists()).toBe(false);
+    await wrapper.get('[data-contacts-tab="saved"]').trigger('click');
     expect(wrapper.find('[data-contact-row="eve@example.test"]').exists()).toBe(false);
   });
 
-  it('hides the suggested block when there is nothing to suggest', async () => {
-    vi.mocked(contacts.suggestions).mockResolvedValue({ suggestions: [] });
+  it('the plus opens the form on the contacts tab; adding closes it', async () => {
+    vi.mocked(contacts.list).mockResolvedValue({ contacts: [] });
+    vi.mocked(contacts.create).mockResolvedValue({ contacts: [saved('partner@mail.test', { name: 'Partner' })] });
     const wrapper = mount(ContactsSettingsPanel);
     await flushPromises();
-    expect(wrapper.find('[data-contacts-suggested]').exists()).toBe(false);
-  });
-
-  it('adds any email with an optional label, and shows the label without repeating it', async () => {
-    vi.mocked(contacts.create).mockResolvedValue({
-      contacts: [saved('ann@example.test', { userName: 'Ann' }), saved('partner@mail.test', { name: 'Partner' })],
-    });
-    const wrapper = mount(ContactsSettingsPanel);
+    expect(wrapper.get('[data-contacts-tab="suggested"]').attributes('aria-selected')).toBe('true');
+    await wrapper.get('[data-contact-add-open]').trigger('click');
     await flushPromises();
+    expect(wrapper.get('[data-contacts-tab="saved"]').attributes('aria-selected')).toBe('true');
     await wrapper.get('[data-contact-email]').setValue('partner@mail.test');
     await wrapper.get('[data-contact-name]').setValue('Partner');
     await wrapper.get('[data-contact-form]').trigger('submit');
     await flushPromises();
     expect(contacts.create).toHaveBeenCalledWith({ email: 'partner@mail.test', name: 'Partner' });
     expect(wrapper.get('[data-contact-row="partner@mail.test"]').text()).toContain('Partner');
-    expect((wrapper.get('[data-contact-email]').element as HTMLInputElement).value).toBe('');
+    expect(wrapper.find('[data-contact-form]').exists()).toBe(false);
+  });
+
+  it('cancel closes the form without adding', async () => {
+    const wrapper = mount(ContactsSettingsPanel);
+    await flushPromises();
+    await wrapper.get('[data-contact-add-open]').trigger('click');
+    await wrapper.get('[data-contact-email]').setValue('x@mail.test');
+    await wrapper.get('[data-contact-cancel]').trigger('click');
+    expect(wrapper.find('[data-contact-form]').exists()).toBe(false);
+    expect(contacts.create).not.toHaveBeenCalled();
   });
 
   it('an address without a name is shown once', async () => {
@@ -117,13 +149,15 @@ describe('ContactsSettingsPanel', () => {
     expect(row.text().split('plain@mail.test').length - 1).toBe(1);
   });
 
-  it('says in words why an address was not added', async () => {
+  it('says in words why an address was not added, and keeps the form open', async () => {
     vi.mocked(contacts.create).mockRejectedValue(new ApiError(409, 'contact_exists'));
     const wrapper = mount(ContactsSettingsPanel);
     await flushPromises();
+    await wrapper.get('[data-contact-add-open]').trigger('click');
     await wrapper.get('[data-contact-email]').setValue('ann@example.test');
     await wrapper.get('[data-contact-form]').trigger('submit');
     await flushPromises();
     expect(wrapper.get('[data-contact-error]').text()).toBe('This address is already in your contacts');
+    expect(wrapper.find('[data-contact-form]').exists()).toBe(true);
   });
 });

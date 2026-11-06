@@ -79,10 +79,7 @@
         </template>
 
         <template v-else-if="section === 'contacts'">
-          <section class="settings-intro">
-            <h2>{{ t('settingsContacts') }}</h2>
-            <p>{{ t('settingsContactsLead') }}</p>
-          </section>
+          <!-- The panel draws its own heading: the "add" button sits beside it. -->
           <ContactsSettingsPanel />
         </template>
 
