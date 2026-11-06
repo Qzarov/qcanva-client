@@ -573,6 +573,33 @@ export const tags = {
     request<{ tags: ResourceTagSummary[] }>(`/tags/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 };
 
+export type ContactView = {
+  id: string;
+  email: string;
+  /** The user's own label for the contact. */
+  name: string | null;
+  /** Name of the registered user with this address; null when nobody has signed up with it. */
+  userName: string | null;
+  createdAt: string;
+};
+export type ContactSuggestionReason = 'shared-by-me' | 'shared-with-me';
+export type ContactSuggestion = { email: string; userName: string; reasons: ContactSuggestionReason[] };
+
+export const contacts = {
+  list: () => request<{ contacts: ContactView[] }>('/contacts'),
+  create: (payload: { email: string; name?: string | null }) =>
+    request<{ contacts: ContactView[] }>('/contacts', { method: 'POST', body: JSON.stringify(payload) }),
+  rename: (id: string, name: string | null) =>
+    request<{ contacts: ContactView[] }>(`/contacts/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ name }) }),
+  delete: (id: string) =>
+    request<{ contacts: ContactView[] }>(`/contacts/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  suggestions: () => request<{ suggestions: ContactSuggestion[] }>('/contacts/suggestions'),
+  accept: (email: string) =>
+    request<{ contacts: ContactView[] }>('/contacts/suggestions/accept', { method: 'POST', body: JSON.stringify({ email }) }),
+  dismiss: (email: string) =>
+    request<{ suggestions: ContactSuggestion[] }>('/contacts/suggestions/dismiss', { method: 'POST', body: JSON.stringify({ email }) }),
+};
+
 export type McpTokenAction = 'read' | 'edit' | 'create' | 'delete' | 'share';
 export type McpTokenResourceType = 'canvas' | 'html-document' | 'text-document' | 'interactive-template';
 export type McpTokenScopeInput =

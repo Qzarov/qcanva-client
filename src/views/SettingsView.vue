@@ -78,6 +78,14 @@
           <TagsSettingsPanel />
         </template>
 
+        <template v-else-if="section === 'contacts'">
+          <section class="settings-intro">
+            <h2>{{ t('settingsContacts') }}</h2>
+            <p>{{ t('settingsContactsLead') }}</p>
+          </section>
+          <ContactsSettingsPanel />
+        </template>
+
         <template v-else-if="section === 'mcp'">
           <section class="settings-intro">
             <h2>{{ t('mcpTokensTitle') }}</h2>
@@ -120,23 +128,25 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, FileCode2, KeyRound, SlidersHorizontal, Tags } from '@lucide/vue';
+import { ArrowLeft, Contact, FileCode2, KeyRound, SlidersHorizontal, Tags } from '@lucide/vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import ThemeSelector from '../components/ThemeSelector.vue';
 import HubOverrideField from '../components/HubOverrideField.vue';
 import McpTokensPanel from '../components/settings/McpTokensPanel.vue';
 import TagsSettingsPanel from '../components/settings/TagsSettingsPanel.vue';
+import ContactsSettingsPanel from '../components/settings/ContactsSettingsPanel.vue';
 import { getCurrentUser, htmlDocuments } from '../api/client';
 import { isHubOverrideAllowed } from '../api/hubOverride';
 import { useI18n, type UiLocale } from '../composables/useI18n';
 
-type SectionKey = 'general' | 'tags' | 'mcp' | 'html';
+type SectionKey = 'general' | 'tags' | 'contacts' | 'mcp' | 'html';
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 
 /** `short`: the label on a phone, where the three share one pill. */
 const SECTIONS: { key: SectionKey; label: MessageKey; short?: string; icon: Component }[] = [
   { key: 'general', label: 'settingsGeneral', icon: SlidersHorizontal },
   { key: 'tags', label: 'settingsTags', icon: Tags },
+  { key: 'contacts', label: 'settingsContacts', icon: Contact },
   { key: 'mcp', label: 'mcpTokensTitle', short: 'MCP', icon: KeyRound },
   { key: 'html', label: 'settingsHtmlGeneration', short: 'HTML', icon: FileCode2 },
 ];
@@ -152,7 +162,7 @@ const router = useRouter();
 /** The open section lives in ?section=, so /mcp and /html-settings can link straight to theirs. */
 const section = computed<SectionKey>(() => {
   const value = route.query.section;
-  return value === 'tags' || value === 'mcp' || value === 'html' ? value : 'general';
+  return value === 'tags' || value === 'contacts' || value === 'mcp' || value === 'html' ? value : 'general';
 });
 const select = (key: SectionKey) => {
   void router.replace({ query: { ...route.query, section: key === 'general' ? undefined : key } });
