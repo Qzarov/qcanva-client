@@ -1684,8 +1684,8 @@ export default defineComponent({
      * only - a desktop has Tab / Shift+Tab - and not over a text selection
      * (the formatting bubble owns that), a table or an open slash / @ menu.
      */
-    const LIST_ARROW_SIZE = 30;
-    const LIST_ARROW_GAP = 2;
+    const LIST_ARROW_SIZE = 26;
+    const LIST_ARROW_GAP = 0;
     const listArrows = ref<{ top: number; left: number; level: number; canIndent: boolean } | null>(null);
     /** The block "+" would sit on the arrows' line (the list's first line): it steps aside. */
     const setBlockAddHidden = (hidden: boolean) => {

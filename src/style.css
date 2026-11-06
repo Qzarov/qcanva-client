@@ -7070,28 +7070,39 @@ body.text-doc-outline-resizing {
   position: absolute;
   z-index: 5;
   display: flex;
-  gap: 2px;
+  gap: 0;
 }
+/* Quiet, like the block "+": no frame, no fill, the muted icon colour; a
+   light fill only while pressed. */
 .text-doc-list-arrow {
+  position: relative;
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 1px solid var(--ui-border);
-  border-radius: 8px;
-  background: var(--ui-surface-elevated);
-  color: var(--ui-text-secondary);
-  box-shadow: var(--shadow-dropdown);
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text-muted);
   touch-action: manipulation;
+}
+/* A finger-sized target around the small icon, without making it look bigger. */
+.text-doc-list-arrow::before {
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+.text-doc-list-arrow svg {
+  width: 16px;
+  height: 16px;
 }
 .text-doc-list-arrow:active:not(:disabled) {
   background: var(--ui-surface-subtle);
-  color: var(--ui-text);
+  color: var(--ui-text-secondary);
 }
 .text-doc-list-arrow:disabled {
-  opacity: 0.4;
-  box-shadow: none;
+  opacity: 0.35;
 }
 .text-doc-list-arrows-enter-active,
 .text-doc-list-arrows-leave-active {
@@ -10271,7 +10282,6 @@ textarea:focus-visible {
 .text-doc-outline-drawer,
 .text-doc-bubble-menu,
 .text-doc-table-menu,
-.text-doc-list-arrow,
 .text-doc-link-action-menu,
 .text-doc-slash-menu,
 .text-doc-mention-menu,
