@@ -1101,7 +1101,7 @@
         <div class="share-section">
           <div class="share-section-title">Invite people</div>
           <div class="share-form">
-            <input v-model.trim="folderShareModal.email" placeholder="Email" type="email" />
+            <ContactEmailInput v-model.trim="folderShareModal.email" placeholder="Email" :exclude="folderShareModal.permissions.map((p: any) => p.user?.email ?? '')" />
             <select v-model="folderShareModal.role">
               <option value="read">Can view</option>
               <option value="edit">Can edit</option>
@@ -1249,6 +1249,7 @@ import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '..
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
+import ContactEmailInput from '../components/ContactEmailInput.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1348,6 +1349,7 @@ const genTagId = () => Math.random().toString(36).slice(2, 10);
 export default defineComponent({
   directives: { hint: vHint },
   components: {
+    ContactEmailInput,
     TabsButton,
     DashboardSidebar,
     DashboardViewToggle,

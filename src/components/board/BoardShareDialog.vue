@@ -12,7 +12,7 @@
       <form class="board-share-dialog__invite" @submit.prevent="share">
         <label>
           <span>Email</span>
-          <input v-model="email" type="email" required autocomplete="email" placeholder="user@example.com" />
+          <ContactEmailInput v-model="email" required placeholder="user@example.com" :exclude="localParticipants.map((p) => p.email ?? '')" />
         </label>
         <label>
           <span>Роль</span>
@@ -46,6 +46,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { interactiveTemplates } from '../../api/client';
+import ContactEmailInput from '../ContactEmailInput.vue';
 
 type Participant = { userId: string; email?: string; name?: string; role: 'read' | 'edit' };
 

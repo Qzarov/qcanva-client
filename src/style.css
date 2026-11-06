@@ -9822,7 +9822,8 @@ textarea:focus-visible {
 .share-panel .share-form {
   flex-wrap: wrap;
 }
-.share-panel .share-form input {
+.share-panel .share-form input,
+.share-panel .share-form > .contact-email-field {
   flex: 1 1 100%;
 }
 .share-panel .share-form select {

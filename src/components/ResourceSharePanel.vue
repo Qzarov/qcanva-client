@@ -123,7 +123,7 @@
         <div class="share-section">
           <div class="share-section-title">{{ t('invitePeople') }}</div>
           <div class="share-form">
-            <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
+            <ContactEmailInput v-model.trim="shareEmail" :placeholder="t('email')" :exclude="permissions.map((p) => p.user?.email ?? '')" />
             <select v-model="shareRole">
               <option value="read">{{ t('canView') }}</option>
               <option value="edit">{{ t('canEdit') }}</option>
@@ -147,6 +147,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Check, Copy, Link2, X } from '@lucide/vue';
 import { useI18n } from '../composables/useI18n';
+import ContactEmailInput from './ContactEmailInput.vue';
 import { slugFormatIsValid } from '../sharing/slug';
 
 export type ShareVisibility = 'private' | 'authenticated' | 'public';

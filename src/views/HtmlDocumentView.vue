@@ -174,7 +174,7 @@
       <div class="share-section">
         <div class="share-section-title">{{ t('invitePeople') }}</div>
         <div class="share-form">
-          <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
+          <ContactEmailInput v-model.trim="shareEmail" :placeholder="t('email')" :exclude="permissions.map((p) => p.user?.email ?? '')" />
           <select v-model="shareRole">
             <option value="read">{{ t('canView') }}</option>
             <option value="edit">{{ t('canEdit') }}</option>
@@ -321,9 +321,10 @@ import { mapHtmlImageUrls } from '../canvas/imageUrls';
 import BackButton from '../components/BackButton.vue';
 import { tabsEnabled } from '../tabs/flag';
 import { Code2, Download, Eye, MoreVertical, Save } from '@lucide/vue';
+import ContactEmailInput from '../components/ContactEmailInput.vue';
 
 export default defineComponent({
-  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate, Code2, Download, Eye, MoreVertical, Save },
+  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate, ContactEmailInput, Code2, Download, Eye, MoreVertical, Save },
   setup() {
     const route = useRoute();
     const router = useRouter();
