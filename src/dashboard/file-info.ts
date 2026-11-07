@@ -38,3 +38,10 @@ export function fileInfo(
     ],
   };
 }
+
+/** A file name split before its extension, for a line break there: `{ base: "Панорама", ext: ".png" }`. */
+export function nameParts(name: string): { base: string; ext: string } {
+  const dot = name.lastIndexOf('.');
+  if (dot <= 0 || dot === name.length - 1) return { base: name, ext: '' };
+  return { base: name.slice(0, dot), ext: name.slice(dot) };
+}

@@ -37,7 +37,8 @@
         <ImageIcon v-else-if="isImage(file)" :size="16" />
         <FileIcon v-else :size="16" />
       </span>
-      <span class="card-title-text folder-file-name">{{ file.name }}</span>
+      <!-- A long name breaks before its extension, not inside a word. -->
+      <span class="card-title-text folder-file-name">{{ nameParts(file.name).base }}<wbr />{{ nameParts(file.name).ext }}</span>
     </div>
     <div class="card-meta folder-file-meta">
       <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
@@ -84,7 +85,7 @@ import {
 import { isBrowserImage, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
-import { fileInfo, formatFileDateTime } from '../../dashboard/file-info';
+import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import { useI18n } from '../../composables/useI18n';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';

@@ -53,8 +53,13 @@ test.describe('a folder\'s files', () => {
       expect(thumb.x + thumb.width).toBeLessThanOrEqual(card.x + card.width);
     }
     await expect.poll(() => page.locator('[data-folder-file="f-sea"] img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
-    for (const id of ['f-huge', 'f-clip', 'f-pdf', 'f-zip']) {
+    // A picture or video without its picture keeps the square, with the kind's icon in it.
+    for (const id of ['f-huge', 'f-clip']) {
       await expect(page.locator(`[data-folder-file="${id}"] img`)).toHaveCount(0);
+      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb.is-empty svg`)).toBeVisible();
+    }
+    for (const id of ['f-pdf', 'f-zip']) {
+      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb`)).toHaveCount(0);
       await expect(page.locator(`[data-folder-file="${id}"] .folder-file-kind svg`)).toBeVisible();
     }
     expect(new Set(linkRequests)).toEqual(new Set(['f-sea', 'f-cat']));

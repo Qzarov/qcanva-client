@@ -137,7 +137,7 @@
               v-for="file in shownFiles"
               :key="file.path"
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': Boolean(previewOf(file)) }"
+              :class="{ 'has-preview': isMedia(file) || Boolean(previewOf(file)) }"
               role="button"
               tabindex="0"
               :data-yandex-file="file.path"
@@ -164,7 +164,8 @@
                   <ImageIcon v-else-if="file.mediaType === 'image'" :size="16" />
                   <FileIcon v-else :size="16" />
                 </span>
-                <span class="card-title-text folder-file-name">{{ file.name }}</span>
+                <!-- A long name breaks before its extension, not inside a word. -->
+                <span class="card-title-text folder-file-name">{{ nameParts(file.name).base }}<wbr />{{ nameParts(file.name).ext }}</span>
               </div>
               <div class="card-meta folder-file-meta">
                 <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
@@ -172,8 +173,12 @@
                 <span v-if="file.size !== null && !isMedia(file)">{{ formatFileSize(file.size) }}</span>
                 <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.modifiedAt, locale) : formatDate(file.modifiedAt) }}</span>
               </div>
-              <span v-if="previewOf(file)" class="folder-file-thumb" aria-hidden="true">
-                <img :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
+              <!-- The square at the top right for every picture and video, as on QCanva's own files;
+                   the kind's icon until (or unless) Yandex has a preview. -->
+              <span v-if="isMedia(file) || previewOf(file)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(file) }" aria-hidden="true">
+                <img v-if="previewOf(file)" :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
+                <span v-else class="folder-file-thumb-icon"><Video v-if="file.mediaType === 'video'" :size="18" /><ImageIcon v-else :size="18" /></span>
+                <span v-if="file.mediaType === 'video' && previewOf(file)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
               <button class="card-manage" :title="t('groupActions')" :data-yandex-file-menu="file.path" @click.stop="toggleMenu('file:' + file.path)">⋯</button>
               <Transition name="card-menu-pop">
@@ -203,7 +208,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { ArrowLeft, Check, Cloud, File as FileIcon, Image as ImageIcon, Plus, Video } from '@lucide/vue';
+import { ArrowLeft, Check, Cloud, File as FileIcon, Image as ImageIcon, Play, Plus, Video } from '@lucide/vue';
 import {
   downloadYandexLink,
   isYandexReconnectError,
@@ -220,7 +225,7 @@ import { alertDialog, confirmDialog, promptDialog } from '../../composables/appD
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
-import { fileInfo, formatFileDateTime } from '../../dashboard/file-info';
+import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
