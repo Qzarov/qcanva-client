@@ -1,0 +1,504 @@
+/* ===== Dashboard: several items at once =====
+   A card's box takes its type icon's place: on hover, and on every card
+   once anything is ticked (.dashboard-selecting). A ticked card wears the
+   accent frame. The bar floats over the top of the central column, above
+   whatever is scrolled, the way Spot Bonus's bar floats over its list. */
+.dashboard-central-shell {
+  position: relative;
+}
+.card-select {
+  display: none;
+  /* Above the card's stretched open link (.card-open-link, z-index 1): the
+     box under it opened the document instead of ticking it. */
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--ui-text-secondary);
+  border-radius: 5px;
+  background: var(--ui-surface-elevated);
+  color: transparent;
+  cursor: pointer;
+}
+.card-select:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  :is(.canvas-card, .dashboard-recent-card):hover .card-select {
+    display: inline-flex;
+  }
+  :is(.canvas-card, .dashboard-recent-card):hover .card-select + :is(.resource-title-icon, .folder-file-kind) {
+    display: none;
+  }
+}
+.dashboard-selecting .card-select,
+[data-selected] .card-select {
+  display: inline-flex;
+}
+.dashboard-selecting .card-select + :is(.resource-title-icon, .folder-file-kind),
+[data-selected] .card-select + :is(.resource-title-icon, .folder-file-kind) {
+  display: none;
+}
+[data-selected] .card-select {
+  border-color: var(--color-brands);
+  background: var(--color-brands);
+  color: var(--color-brand-on);
+}
+.dashboard-view :is(.canvas-card, .dashboard-recent-card)[data-selected] {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  box-shadow: 0 0 0 1px var(--ui-glass-accent-border, var(--color-brands)), var(--ui-glass-accent-glow, none);
+}
+/* A long press ticks a card on a touch screen: no callout or text
+   selection on cards there. */
+@media (pointer: coarse) {
+  :is(.canvas-card, .dashboard-recent-card) {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}
+/* Ticking, not opening: no text selection while picking several. */
+.dashboard-selecting :is(.canvas-card, .dashboard-recent-card) {
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.dashboard-selection-bar {
+  position: absolute;
+  z-index: 330;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 5px 6px;
+  border-radius: var(--radius-full);
+  /* The dashboard's glass, as its sidebar and menus: what is under it is
+     blurred away, not shown through. */
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+/* "(3)": the number alone. */
+.dashboard-selection-count {
+  padding: 0 4px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.dashboard-selection-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--ui-glass-border);
+}
+.dashboard-selection-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 50%;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+  cursor: pointer;
+}
+.dashboard-selection-icon:hover:not(:disabled) {
+  background: var(--ui-glass-btn-hover);
+}
+.dashboard-selection-icon:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.dashboard-selection-icon.danger {
+  color: var(--ui-danger);
+}
+.dashboard-selection-icon[data-selection-clear] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+.dashboard-selection-icon:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.dashboard-selection-bar-enter-active,
+.dashboard-selection-bar-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-selection-bar-enter-from,
+.dashboard-selection-bar-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -12px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-selection-bar-enter-active,
+  .dashboard-selection-bar-leave-active {
+    transition: none;
+  }
+}
+
+/* ===== Dashboard: downloading the selection =====
+   While the zip is put together a status bar sits at the bottom of the
+   central column: what it is doing and how far along; it stays a few
+   seconds once the archive is saved (or could not be). */
+.dashboard-download-status {
+  position: absolute;
+  z-index: 330;
+  left: 50%;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  display: grid;
+  gap: 8px;
+  width: min(360px, calc(100% - 32px));
+  padding: 12px 16px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+  color: var(--ui-text);
+  font-size: 13px;
+}
+.dashboard-download-status-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-subtle);
+}
+.dashboard-download-status-bar {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brands);
+  transition: width 0.3s ease;
+}
+.dashboard-download-status.is-error .dashboard-download-status-bar {
+  background: var(--ui-danger);
+}
+.dashboard-download-status-enter-active,
+.dashboard-download-status-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-download-status-enter-from,
+.dashboard-download-status-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 12px);
+}
+@media (max-width: 768px) {
+  /* Above the floating "+". */
+  .dashboard-download-status {
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-download-status-enter-active,
+  .dashboard-download-status-leave-active,
+  .dashboard-download-status-bar {
+    transition: none;
+  }
+}
+
+/* Recent could not be refreshed but still shows the last list: a quiet line above it. */
+.dashboard-recents-stale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+
+/* The frame drawn with the mouse from an empty spot: every card it touches is ticked. */
+.dashboard-marquee {
+  position: fixed;
+  z-index: 340;
+  /* The accent glass of a selected item, thinned to a veil. */
+  border: 1px solid var(--ui-glass-accent-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--ui-glass-accent-bg) 40%, transparent);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  pointer-events: none;
+}
+.dashboard-marquee-active,
+.dashboard-marquee-active * {
+  user-select: none;
+}
+
+/* ===== Dashboard: the Add dialog =====
+   In the dashboard's glass: the dialog is a glass panel (.dashboard-modal),
+   Where an inset glass field, Create / Upload a centred segmented slider
+   (useSegmentThumb), the tiles square glass cards - icon over name - the
+   chosen one in accent glass. Template, Folder and the uploads unfold
+   their next step under the tiles (motion.ts); on a phone the dialog is a
+   sheet from the bottom. */
+.dashboard-add-dialog {
+  display: grid;
+  gap: 14px;
+  width: min(620px, 100%);
+  max-height: min(88vh, 780px);
+  overflow-y: auto;
+  border-radius: 20px;
+}
+.dashboard-add-head {
+  margin-bottom: 0;
+}
+.dashboard-add-head h3 {
+  margin: 0;
+}
+.dashboard-add-where {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-view .dashboard-add-where select,
+.dashboard-view .dashboard-add-folder-form .dashboard-modal-input {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+  font: inherit;
+}
+/* The slider, centred; its thumb glides (the .dashboard-segmented rules). */
+.dashboard-add-tabs {
+  justify-self: center;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+}
+.dashboard-view .dashboard-add-tabs {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+.dashboard-add-tabs button {
+  min-width: 112px;
+  padding: 7px 18px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dashboard-add-tabs button.active {
+  color: var(--ui-glass-accent-text);
+}
+/* Until the thumb is measured, the chosen tab carries the accent itself. */
+.dashboard-view .dashboard-add-tabs:not(.has-thumb) button.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+}
+.dashboard-view .dashboard-add-tabs.has-thumb::before {
+  border-radius: 999px;
+}
+/* Square tiles: as many to a row as fit, all the same size. */
+.dashboard-add-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 10px;
+}
+.dashboard-add-option {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px 8px;
+  border-radius: 16px;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.dashboard-view .dashboard-add-option {
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  color: var(--ui-text);
+}
+.dashboard-view .dashboard-add-option:hover:not(:disabled, .active) {
+  background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+}
+.dashboard-view .dashboard-add-option.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border-color: var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.dashboard-add-option:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+.dashboard-add-option:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dashboard-add-option-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid var(--ui-glass-accent-border, var(--ui-border));
+  background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
+  color: var(--ui-glass-accent-text, var(--ui-text));
+}
+.dashboard-add-option strong {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.dashboard-add-option small {
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+/* Held by its top edge: whatever unfolds or folds in it, the dialog grows
+   and shrinks downwards only - centred, every change of height moved it. */
+.dashboard-add-backdrop {
+  align-items: flex-start;
+  padding-top: min(12vh, 120px);
+}
+/* A tab change swaps the tiles in place: a quick fade, no movement. */
+.dashboard-add-tab-enter-active,
+.dashboard-add-tab-leave-active {
+  transition: opacity 0.12s ease;
+}
+.dashboard-add-tab-enter-from,
+.dashboard-add-tab-leave-to {
+  opacity: 0;
+}
+/* The step under the tiles: set apart from them, an inset glass panel. */
+.dashboard-add-expand {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+}
+.dashboard-view .dashboard-add-expand {
+  border: 1px solid var(--ui-glass-border);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), inset 0 2px 10px rgba(0, 0, 0, 0.06);
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-add-tab-enter-active,
+  .dashboard-add-tab-leave-active {
+    transition: none;
+  }
+}
+.dashboard-add-folder-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.dashboard-add-drop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 88px;
+  padding: 16px;
+  border: 1.5px dashed var(--ui-glass-border, var(--ui-border));
+  border-radius: 16px;
+}
+.dashboard-add-drop.over {
+  border-color: var(--color-brands);
+  background: color-mix(in srgb, var(--color-brands) 8%, transparent);
+}
+.dashboard-add-files {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dashboard-add-files li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg, transparent);
+  font-size: 13px;
+}
+.dashboard-add-files li.bad {
+  border-color: color-mix(in srgb, var(--ui-danger) 45%, var(--ui-border));
+  background: color-mix(in srgb, var(--ui-danger) 7%, transparent);
+}
+.dashboard-add-file-state {
+  display: inline-flex;
+  width: 16px;
+  color: var(--color-brands);
+}
+.dashboard-add-files li.bad .dashboard-add-file-state {
+  color: var(--ui-danger);
+}
+.dashboard-add-file-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.dashboard-add-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dashboard-add-file-note {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.dashboard-add-files li.bad .dashboard-add-file-note {
+  color: var(--ui-danger);
+}
+.dashboard-add-file-action {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg, var(--ui-surface-elevated));
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+@media (max-width: 720px) {
+  .dashboard-add-backdrop {
+    align-items: flex-end;
+    padding: 0;
+  }
+  .dashboard-add-dialog {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 20px 20px 0 0;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .dashboard-add-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+

@@ -1,0 +1,1132 @@
+/* ===== Canvas chrome: Liquid Glass =====
+   Every floating surface of the canvas - top bar, toolbars and their
+   popovers, mobile mode bar / node toolbar / sheets, side panels, context
+   menu, minimap, zoom controls - on one glass recipe (the --ui-glass-*
+   tokens above). Canvas CONTENT (nodes, their colours, edges, drawings) is
+   untouched. Scoped under .canvas-view so documents and the dashboard keep
+   their own look, and so it outranks CanvasLoader.vue's own (later-loaded)
+   rules for the same elements. */
+.canvas-view :is(
+  .topbar-actions,
+  .sync-events-popover,
+  .node-toolbar-tabs,
+  .toolbar-popover,
+  .block-menu,
+  .history-panel,
+  .embed-picker-panel,
+  .chat-drawer,
+  .chat-pick-hint,
+  .canvas-plugin-panel,
+  .draw-toolbar-panel,
+  .draw-toolbar-toggle,
+  .dice-panel,
+  .drawing-actions-toolbar,
+  .mobile-modebar,
+  .mobile-node-toolbar-row,
+  .mobile-node-subpanel,
+  .mobile-drawing-popup,
+  .mobile-add-sheet,
+  .mobile-draw-panel,
+  .mobile-draw-popup,
+  .context-menu,
+  .minimap,
+  .canvas-controls,
+  .ctrl-add-menu,
+  .edge-action-btn,
+  .edge-label-input
+),
+/* Teleported to <body>, outside .canvas-view - canvas-only classes. */
+.mobile-add-sheet,
+.mobile-overflow-sheet,
+.share-panel.share-panel-glass {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+
+
+/* Phone: the bottom bars float as glass capsules instead of edge-to-edge
+   strips (their height above the screen edge is measured into
+   --canvas-toolbar-height by CanvasView, gap included). */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-view .mobile-modebar {
+    left: 10px;
+    right: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    padding: 4px 8px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 22px;
+  }
+
+  /* A column, centred: the sub-panel sits above the icon row, and both hug
+     their content instead of the row stopping short of the screen edge. The
+     full-width wrapper itself never blocks a tap on the canvas beside them. */
+  .canvas-view .mobile-node-toolbar {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
+    padding: 0 10px;
+    pointer-events: none;
+  }
+  .canvas-view .mobile-node-toolbar > * {
+    pointer-events: auto;
+    max-width: 100%;
+  }
+  .canvas-view :is(.mobile-node-toolbar-row, .mobile-node-subpanel) {
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
+  }
+  .canvas-view .mobile-node-toolbar-row {
+    padding: 4px 6px;
+  }
+  .canvas-view .mobile-node-toolbar-row .mobile-toolbar-btn { min-width: 36px; }
+  .canvas-view .mobile-node-subpanel {
+    max-height: calc(100dvh - var(--canvas-toolbar-height, 61px) - var(--canvas-topbar-height, 60px) - 140px);
+    overflow-y: auto;
+  }
+  .canvas-view .mobile-node-subpanel.mobile-node-subpanel-palette { max-height: none; overflow: visible; }
+  .canvas-view .mobile-node-toolbar > .canvas-panel-page { width: min(100%, 390px); border: 1px solid var(--ui-glass-border); border-radius: 20px; background: var(--ui-glass-tint), var(--ui-glass-bg); backdrop-filter: blur(var(--ui-glass-blur)); }
+  .canvas-view .mobile-node-toolbar :is(.mobile-panel-header, .mobile-node-subpanel, .mobile-node-toolbar-row) { background: transparent; border: 0; border-radius: 0; }
+
+  /* Drawing tools: the same floating glass bar as the node toolbar / mode bar,
+     instead of an edge-to-edge strip (front task). */
+  .canvas-view .mobile-draw-panel {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
+    padding: 4px 6px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
+  }
+  /* The floating bar is narrower than the old edge-to-edge strip, so let the
+     tool buttons share the width evenly instead of each holding a 44px floor
+     (which pushed the colour/width controls off the end). */
+  .canvas-view .mobile-draw-panel .mobile-draw-tool-btn {
+    min-width: 0;
+  }
+  .canvas-view .mobile-draw-popup {
+    left: 8px;
+    right: 8px;
+    margin-bottom: 8px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 18px;
+  }
+
+  /* The "+" opens as the same floating glass panel as the drawing tools, not a
+     bottom sheet (front task): it floats above the mode bar, fully rounded, and
+     its backdrop only catches tap-to-close instead of dimming the canvas. */
+  .mobile-add-sheet {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
+    padding: 10px 12px;
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 24px);
+    overflow-y: auto;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
+    box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  }
+  .mobile-add-sheet-handle { display: none; }
+  .mobile-add-backdrop { background: transparent; }
+}
+
+/* The canvas share sheet must cover the canvas' own floating bars (mode bar
+   z-index 92): the sheet and its dimming backdrop sit above them. */
+.text-doc-share-backdrop.share-backdrop-glass { z-index: 119; }
+.share-panel.share-panel-glass { z-index: 120; }
+
+/* In the narrow share sheet an e-mail / password field gets a row of its own,
+   with the role picker and the button wrapping beneath it. */
+.share-panel .share-form {
+  flex-wrap: wrap;
+}
+.share-panel .share-form input,
+.share-panel .share-form > .contact-email-field {
+  flex: 1 1 100%;
+}
+.share-panel .share-form select {
+  flex: 1 1 auto;
+}
+
+/* ===== Canvas buttons: Liquid Glass =====
+   The top bar is transparent - the canvas runs under it - and its controls
+   float as glass pills (desktop) / circles (phone). Buttons inside glass
+   panels are inset glass panes; icon and menu-row buttons stay bare until
+   hovered / pressed; primary actions and selected states are accent glass. */
+
+/* Transparent top bar: only its own controls take taps, the gaps between
+   them reach the canvas underneath. */
+.canvas-view .canvas-topbar {
+  background: transparent;
+  border-bottom: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+.canvas-view .canvas-topbar > *,
+.canvas-view .canvas-topbar .topbar-right > * {
+  pointer-events: auto;
+}
+.canvas-view .canvas-topbar .topbar-right {
+  pointer-events: none;
+}
+
+/* Floating glass controls in the top bar. */
+.canvas-view .canvas-topbar :is(
+  .back-btn,
+  .topbar-title,
+  .topbar-title-ro,
+  .topbar-sync,
+  .account-menu-trigger,
+  .canvas-topbar-undo,
+  .canvas-topbar-redo,
+  .canvas-topbar-dice,
+  .topbar-menu-btn,
+  .topbar-login
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+.canvas-view .canvas-topbar :is(.back-btn, .canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn) {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 999px;
+  /* No display here: whether each one shows (⋮ and undo/redo only on a
+     phone) stays with their own rules. */
+  align-items: center;
+  justify-content: center;
+}
+.canvas-view .canvas-topbar :is(.topbar-title, .topbar-title-ro) {
+  height: 36px;
+  max-width: min(42vw, 380px);
+  padding: 0 14px;
+  border-radius: 999px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 34px;
+}
+.canvas-view .canvas-topbar :is(.topbar-sync, .account-menu-trigger, .topbar-login) {
+  border-radius: 999px;
+}
+.canvas-view .canvas-topbar :is(.back-btn, .topbar-sync, .account-menu-trigger, .canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn, .topbar-login):hover:not(:disabled) {
+  background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
+}
+
+/* Desktop: the inline actions are glass pills too (on a phone they live in
+   the drop-down menu, where they are menu rows - see below). */
+@media (min-width: 641px) and (min-height: 501px), (min-width: 641px) and (orientation: portrait) {
+  .canvas-view .canvas-topbar .topbar-actions {
+    background: none;
+    border: none;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .canvas-view .canvas-topbar .topbar-actions > :is(.btn-ghost, .canvas-search-input, .topbar-role) {
+    height: 34px;
+    border-radius: 999px;
+    background: var(--ui-glass-tint), var(--ui-glass-bg);
+    border: 1px solid var(--ui-glass-border);
+    box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+    backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+    -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+    color: var(--ui-text);
+  }
+  .canvas-view .canvas-topbar .topbar-actions > .topbar-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 12px;
+    color: var(--ui-glass-accent-text);
+  }
+  .canvas-view .canvas-topbar .topbar-actions > .btn-ghost:hover {
+    background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
+  }
+}
+
+/* Inset glass panes: buttons that sit inside a glass panel. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .btn-ghost,
+  .toolbar-choice,
+  .block-menu-toggle,
+  .share-link-row,
+  .mobile-add-sheet-item,
+  .mobile-draw-width-btn
+):not(.canvas-topbar *) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .btn-ghost,
+  .toolbar-choice,
+  .block-menu-toggle,
+  .share-link-row,
+  .mobile-add-sheet-item,
+  .mobile-draw-width-btn
+):not(.canvas-topbar *):hover:not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+}
+
+/* Bare icon / row buttons: no fill until hovered or pressed. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .tb-btn,
+  .block-menu-item,
+  .ctx-item,
+  .ctrl-add-menu-item,
+  .mobile-toolbar-btn,
+  .mobile-modebar-btn,
+  .mobile-overflow-item,
+  .mobile-draw-tool-btn,
+  .canvas-controls button,
+  .chat-drawer-close,
+  .text-doc-share-close
+) {
+  border-radius: 12px;
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .tb-btn,
+  .block-menu-item,
+  .ctx-item,
+  .ctrl-add-menu-item,
+  .mobile-toolbar-btn,
+  .mobile-modebar-btn,
+  .mobile-overflow-item,
+  .mobile-draw-tool-btn,
+  .canvas-controls button,
+  .chat-drawer-close,
+  .text-doc-share-close
+):is(:hover, :active):not(:disabled, .active, .open, .mobile-toolbar-btn-active) {
+  /* Selected buttons keep their accent: on a touch screen :hover sticks
+     after the tap that selected them. */
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is currently selected. */
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button),
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
+  .toolbar-tab,
+  .toolbar-choice,
+  .tb-btn,
+  .block-menu-toggle,
+  .mobile-modebar-btn,
+  .mobile-draw-tool-btn,
+  .mobile-draw-width-btn
+).active,
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .block-menu-item.open,
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .mobile-toolbar-btn.mobile-toolbar-btn-active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button):hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+:is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button):disabled {
+  opacity: 0.55;
+}
+
+/* Phone: the top bar's drop-down actions are plain menu rows on the
+   drop-down's own glass, not pills. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    min-height: 44px;
+    border-radius: 6px;
+  }
+  .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm:is(:hover, :active) {
+    background: var(--ui-glass-btn-hover);
+  }
+  .canvas-view .canvas-topbar :is(.canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn) {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+  }
+  /* Leave the selected-node More trigger above its backdrop so a second tap
+     can close the menu, while the menu itself floats above that toolbar. */
+  .mobile-overflow-backdrop { z-index: 90; }
+  .mobile-overflow-sheet {
+    left: 10px;
+    right: 10px;
+    bottom: calc(var(--canvas-toolbar-height, 61px) + 68px);
+    z-index: 93;
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 92px);
+    padding-bottom: 6px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: 20px;
+  }
+}
+
+/* ===== Dashboard: Liquid Glass =====
+   Same recipe as the canvas (--ui-glass-* tokens): the page sits on a soft
+   ambient light; the big panels (sidebar, header, control panel, menus,
+   dialogs) are blurred glass; resource cards and folder tiles are glass
+   WITHOUT blur - a dashboard can hold dozens, and a backdrop-filter on each
+   would cost every scroll on a phone. Scoped to .dashboard-view (the
+   dashboard root) - .app-layout is shared with the HTML docs list. */
+.dashboard-view {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.dashboard-view :is(.app-main, .dashboard-app-shell) {
+  background: transparent;
+}
+
+/* Blurred glass panels. */
+.dashboard-view :is(
+  .dashboard-sidebar,
+  .app-header,
+  .resource-control-panel,
+  .card-menu,
+  .mobile-action-popover,
+  .dashboard-modal,
+  .dashboard-tag-sheet
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+/* Edge-to-edge bars: glass, but no floating shadow. */
+.dashboard-view :is(.dashboard-sidebar, .app-header) {
+  box-shadow: inset -1px 0 0 var(--ui-glass-highlight);
+}
+.dashboard-view .app-header {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+}
+
+/* Glass cards and tiles: no blur, a tint, a light top edge, a lift on hover. */
+.dashboard-view :is(
+  .dashboard-recent-card,
+  .canvas-card,
+  .subfolder-card,
+  .folder-manager-row,
+  .access-request-row
+) {
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* The hover lift is the shadow alone. NO transform (nor filter /
+   backdrop-filter) on a card: its "..." menu lives inside it with
+   position: fixed and viewport coordinates, and any of those would make the
+   card the menu's containing block - the menu jumped to a random spot on
+   hover and flickered as the pointer crossed the card's edge. */
+.dashboard-view :is(.dashboard-recent-card, .canvas-card, .subfolder-card):hover {
+  background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  /* Overrides the older .dashboard-recent-card:hover lift - same reason. */
+  transform: none;
+}
+
+/* Segmented controls: a glass track; the chosen segment is accent glass. */
+.dashboard-view :is(.content-type-tabs, .dashboard-recent-view-toggle, .dashboard-public-owner-filter) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Fields: inset glass panes. */
+.dashboard-view :is(
+  .dash-search,
+  .dash-sort-select,
+  .card-title-input,
+  .dashboard-modal-input,
+  .folder-manager-trigger
+) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+
+/* Buttons that stand on their own: inset glass panes. */
+.dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item):hover:not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+}
+
+/* Bare rows and icon buttons: no fill until hovered. */
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .card-menu-item,
+  .card-manage,
+  .card-pin,
+  .dashboard-modal-close,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  border-radius: 12px;
+}
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .card-menu-item,
+  .card-manage,
+  .card-pin,
+  .dashboard-modal-close,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+):is(:hover, :active):not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is selected. */
+.dashboard-view :is(.btn-primary, .dashboard-fab),
+.dashboard-view :is(
+  .dashboard-sidebar-item,
+  .tag-filter,
+  .content-type-tabs button,
+  .dashboard-recent-view-toggle button,
+  .dashboard-public-owner-filter button
+).active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.dashboard-view :is(.btn-primary, .dashboard-fab):hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+/* The floating "+" floats over cards: it gets the blur the cards don't. */
+.dashboard-view .dashboard-fab {
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow), var(--ui-glass-shadow);
+}
+
+/* ===== Text and HTML documents: Liquid Glass =====
+   Same recipe and tokens as the canvas and the dashboard (--ui-glass-*,
+   nothing new): the page on the ambient light, the sticky header and every
+   floating panel as blurred glass, buttons as glass panes / bare rows /
+   accent glass. The document's own content - the text, the HTML preview -
+   keeps its colours. text-doc-* / html-history-* classes exist only here, so
+   the teleported ones need no page scope; shared classes (btn-*, menus,
+   share panel) are scoped to the two pages and their teleported panels. */
+:is(.text-doc-page, .html-editor-page) {
+  background: var(--ui-glass-ambient), var(--ui-page);
+  background-attachment: fixed;
+}
+.html-editor-page :is(.html-editor-main, .html-visual-editor) {
+  background: transparent;
+}
+
+/* Blurred glass: the sticky headers and every floating panel. */
+.text-doc-topbar,
+.html-editor-bar,
+.text-doc-outline-panel,
+.text-doc-outline-drawer,
+.text-doc-bubble-menu,
+.text-doc-table-menu,
+.text-doc-link-action-menu,
+.text-doc-slash-menu,
+.text-doc-mention-menu,
+.text-doc-menu-popover,
+.text-doc-link-sheet,
+.text-doc-slash-sheet,
+.html-history-panel,
+.html-sync-popover,
+.html-editor-page :is(.mobile-action-popover, .html-share-panel) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border-color: var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+/* Edge-to-edge: glass, no floating shadow. */
+.text-doc-topbar,
+.html-editor-bar {
+  box-shadow: inset 0 -1px 0 var(--ui-glass-highlight);
+  border-bottom-color: var(--ui-glass-border);
+}
+.text-doc-outline-panel {
+  box-shadow: inset -1px 0 0 var(--ui-glass-highlight);
+  border-right-color: var(--ui-glass-border);
+}
+
+/* Fields and lists inside the glass: inset panes. */
+.text-doc-bubble-link-input,
+.text-doc-link-sheet-input,
+.html-history-list,
+.html-editor-page :is(.html-structure-item, .html-block-btn) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+.html-editor-page .html-mode-tabs {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Buttons that stand on their own: inset glass panes. */
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet)
+  :is(.btn-ghost, .text-doc-sync, .html-save-state, .account-menu-trigger, .text-doc-capacity-btn) {
+  background: var(--ui-glass-btn-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+}
+@media (hover: hover) {
+  :is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet)
+    :is(.btn-ghost, .text-doc-sync, .html-save-state, .account-menu-trigger, .text-doc-capacity-btn):hover:not(:disabled, .active) {
+    background: var(--ui-glass-btn-hover);
+  }
+}
+/* The back arrow and the outline's own toggles stay bare icons. */
+:is(.text-doc-page, .html-editor-page) :is(.back-btn, .text-doc-outline-collapse-toggle, .text-doc-outline-chevron) {
+  border-radius: 999px;
+}
+
+/* Bare rows and icon buttons: no fill until hovered or highlighted. */
+.text-doc-bubble-btn,
+.text-doc-menu-item,
+.text-doc-slash-item,
+.text-doc-mention-item,
+.text-doc-link-action-btn,
+.text-doc-outline-link,
+.text-doc-backlink-item,
+.text-doc-slash-sheet-close,
+.html-history-item,
+.html-editor-page :is(.card-menu-item, .html-mode-tabs button) {
+  border-radius: 10px;
+}
+:is(
+  .text-doc-bubble-btn,
+  .text-doc-menu-item,
+  .text-doc-slash-item,
+  .text-doc-mention-item,
+  .text-doc-link-action-btn,
+  .text-doc-outline-link,
+  .text-doc-backlink-item,
+  .text-doc-slash-sheet-close,
+  .html-history-item
+):is(:hover, :active):not(:disabled, .active, .is-active),
+.html-editor-page :is(.card-menu-item, .html-mode-tabs button):is(:hover, :active):not(:disabled, .active) {
+  background: var(--ui-glass-btn-hover);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+}
+
+/* Accent glass: primary actions and whatever is selected / highlighted. */
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet) .btn-primary,
+:is(.text-doc-page, .html-editor-page) .btn-ghost.active,
+.text-doc-slash-item.active,
+.text-doc-mention-item.active,
+.text-doc-bubble-btn:is(.active, .is-active),
+.html-history-item.active,
+.text-doc-outline-item-active .text-doc-outline-link,
+.html-editor-page .html-mode-tabs button.active {
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+:is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet) .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+.html-editor-page .html-mode-tabs {
+  border-radius: 999px;
+  padding: 2px;
+}
+.html-editor-page .html-mode-tabs button {
+  border-radius: 999px;
+}
+/* Phone: the document's sync state is a bare dot, not a pane. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .text-doc-page .text-doc-sync {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+  }
+}
+
+/* ===== Notion docs header: transparent + Liquid Glass controls (front task) =====
+   The bar itself turns into a frosted, see-through strip (the page/ambiance
+   shows through a blur instead of a near-solid panel); its controls float as
+   glass pills - the same language the canvas top bar already uses. The HTML
+   document's bar shares it (its own sizes: "HTML document top bar" below). */
+.text-doc-page .text-doc-topbar,
+.html-editor-page .html-editor-bar {
+  /* Fully transparent: no fill, no frost, no edge - only the controls float.
+     The empty stretches between them pass taps through to the document. */
+  background: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  pointer-events: none;
+}
+.text-doc-page .text-doc-topbar > *,
+.text-doc-page .text-doc-topbar .text-doc-topbar-actions > * {
+  pointer-events: auto;
+}
+.text-doc-page .text-doc-topbar .text-doc-topbar-actions {
+  pointer-events: none;
+}
+/* Floating glass pills (bg + blur + lift), readable against the transparent
+   bar - an upgrade from the flat inset panes. `.text-doc-sync` is left out on
+   purpose so the phone bare-dot rule above still holds. */
+.text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger),
+.html-editor-page .html-editor-bar :is(.back-btn, .btn-ghost, .account-menu-trigger) {
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+@media (hover: hover) {
+  .text-doc-page .text-doc-topbar :is(.back-btn, .btn-ghost, .account-menu-trigger):hover:not(:disabled, .active),
+  .html-editor-page .html-editor-bar :is(.back-btn, .btn-ghost, .account-menu-trigger):hover:not(:disabled, .active) {
+    background: var(--ui-glass-tint), var(--ui-glass-card-hover);
+  }
+}
+
+/* ===== HTML document top bar: the editors' common bar =====
+   Same parts and sizes as the text documents' bar: round Back, 44px icon
+   buttons, small text buttons, the fixed-width sync pill, a "⋮" menu on a
+   phone. The bar itself is transparent (rules above); the title is a quiet
+   field that shows its edge only when hovered or typed in. */
+/* Unlike the text documents' bar it covers nothing (the page starts below
+   it), so it takes taps itself rather than passing them through. */
+.html-editor-page .html-editor-bar {
+  pointer-events: auto;
+}
+.html-editor-page .html-editor-bar .back-btn {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  border-radius: 999px;
+}
+.html-editor-page .html-editor-bar .html-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+/* Preview / Source: one pill holding two icon buttons. */
+.html-editor-page .html-editor-bar .html-mode-tabs {
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  border: 1px solid var(--ui-glass-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.html-editor-page .html-editor-bar .html-mode-tabs .html-icon-btn {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-radius: 999px;
+}
+.html-editor-page .html-editor-bar .html-mode-tabs .html-icon-btn:not(.active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.html-editor-page .html-editor-bar .html-title-input:hover:not(:focus) {
+  border-color: var(--ui-glass-border);
+}
+.html-editor-page .html-editor-bar .html-title-input:focus {
+  border-color: var(--ui-glass-accent-border);
+  background: var(--ui-glass-btn-bg);
+  box-shadow: 0 0 0 3px var(--ui-glass-accent-bg);
+}
+.html-editor-page .html-editor-bar .html-title-input::placeholder {
+  color: var(--ui-text-muted);
+}
+/* Same pill as .text-doc-sync: fixed width, so no state reflows the bar. */
+.html-editor-page .html-editor-bar .html-save-state {
+  width: 152px;
+  padding: 6px 10px;
+  font-weight: 650;
+}
+.html-editor-page .html-editor-bar .html-save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 36px;
+}
+.html-editor-page .html-editor-bar .html-save-icon {
+  display: none;
+}
+.html-editor-page .html-editor-bar .html-actions-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  padding: 0;
+}
+.html-editor-page .html-export-menu {
+  left: auto;
+  right: 0;
+}
+/* "⋮" drops down under its button, as on text documents - not the bottom
+   sheet that .mobile-action-popover turns into on a phone. */
+.html-editor-page .html-editor-bar .html-actions-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  width: min(210px, calc(100vw - 16px));
+  max-height: none;
+}
+
+@media (max-width: 760px) {
+  .html-editor-page .html-editor-bar {
+    min-height: 0;
+    gap: 6px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+  .html-editor-page .html-editor-bar-actions {
+    gap: 2px;
+  }
+  .html-editor-page .html-editor-bar .html-title-input,
+  .html-editor-page .html-editor-bar .html-title-readonly {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 16px;
+  }
+  .html-editor-page .html-desktop-action {
+    display: none !important;
+  }
+  .html-editor-page .html-mobile-actions {
+    display: block;
+  }
+  /* The sync state is its dot alone, as on text documents. */
+  .html-editor-page .html-editor-bar .html-save-state {
+    width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    font-size: 0;
+  }
+  .html-editor-page .html-editor-bar .html-save-state::before {
+    width: 9px;
+    height: 9px;
+  }
+  /* The log it opens spans the screen instead of hanging off its right edge. */
+  .html-editor-page .html-sync-popover {
+    position: fixed;
+    top: calc(60px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+  /* Save as an icon: a 44px target, like the other buttons in the row. */
+  .html-editor-page .html-editor-bar .html-save-btn {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    padding: 0;
+    border-radius: 999px;
+  }
+  .html-editor-page .html-editor-bar .html-save-icon {
+    display: block;
+  }
+  .html-editor-page .html-editor-bar .html-save-label {
+    display: none;
+  }
+  .html-editor-page .html-editor-bar .account-menu-trigger.current-user-badge {
+    padding: 6px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+  .html-editor-page .html-editor-bar .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: none;
+  }
+  .html-editor-page .html-actions-popover .card-menu-item {
+    min-height: 40px;
+  }
+}
+
+/* Tab mode puts the tabs button next to Back: on the narrowest phones the
+   bar tightens, and below 340px the account menu (one tap away in the tabs
+   panel) goes - as on the character sheet. */
+@media (max-width: 360px) {
+  .html-editor-page .html-editor-bar.has-tabs {
+    gap: 4px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .html-editor-page .html-editor-bar.has-tabs .back-group {
+    gap: 4px;
+  }
+}
+@media (max-width: 340px) {
+  .html-editor-page .html-editor-bar.has-tabs .account-menu {
+    display: none;
+  }
+}
+
+/* ===== Notion docs ambient gradient: less prominent (front task) =====
+   A translucent page-coloured veil over the ambient tones it down without
+   touching the shared `--ui-glass-ambient` token (the canvas/HTML editor keep
+   the full-strength gradient). */
+.text-doc-page {
+  background:
+    linear-gradient(0deg,
+      color-mix(in srgb, var(--ui-page) 55%, transparent),
+      color-mix(in srgb, var(--ui-page) 55%, transparent)),
+    var(--ui-glass-ambient),
+    var(--ui-page);
+  background-attachment: fixed;
+}
+
+/* Phone: the dashboard's ambient light, toned down. On a narrow screen the
+   large ambient spots cover nearly the whole viewport at full strength, so a
+   page-coloured veil - the same technique as the documents - keeps them a
+   hint rather than a wash. The shared token and desktop are untouched. */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .dashboard-view {
+    background:
+      linear-gradient(0deg,
+        color-mix(in srgb, var(--ui-page) 65%, transparent),
+        color-mix(in srgb, var(--ui-page) 65%, transparent)),
+      var(--ui-glass-ambient),
+      var(--ui-page);
+    background-attachment: fixed;
+  }
+}
+
+/* ===== Text documents: the link menu =====
+   One glass row, like the formatting bubble: a link glyph, where the link
+   goes (truncated, full address in the tooltip), then icon actions - copy,
+   edit, unlink, open. It used to be a 250px box whose four text buttons
+   wrapped into a ragged two-row grid. */
+.text-doc-link-action-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: auto;
+  max-width: min(460px, calc(100vw - 24px));
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-glass-border);
+}
+.text-doc-link-action-icon {
+  flex-shrink: 0;
+  color: var(--ui-text-muted);
+}
+.text-doc-link-action-menu .text-doc-link-action-url {
+  min-width: 0;
+  max-width: 260px;
+  margin: 0 4px 0 2px;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+}
+.text-doc-link-action-sep {
+  flex-shrink: 0;
+  width: 1px;
+  height: 20px;
+  background: var(--ui-glass-border);
+}
+.text-doc-link-action-menu .text-doc-link-action-buttons {
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.text-doc-link-action-menu .text-doc-link-action-btn {
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--ui-text);
+}
+.text-doc-link-action-menu .text-doc-link-action-btn[data-link-action="remove"] {
+  color: var(--ui-danger, #fb464c);
+}
+.text-doc-link-action-menu .text-doc-link-action-open {
+  margin-left: 0;
+  color: var(--ui-glass-accent-text);
+}
+
+/* The link editor's Apply is the primary action: accent glass. */
+.text-doc-bubble-link-form .text-doc-bubble-btn-text[data-bubble-action="apply-link"] {
+  margin-left: 4px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  border: 1px solid var(--ui-glass-accent-border);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  color: var(--ui-glass-accent-text);
+}
+.text-doc-bubble-link-form .text-doc-bubble-link-input {
+  border-radius: 999px;
+}
+
+/* Dialog action buttons stretch to the full row on a phone; their labels
+   sat on the left edge of each wide button - keep them centred. */
+.dashboard-view .dashboard-modal-actions :is(button, .btn-ghost, .btn-primary) {
+  justify-content: center;
+  text-align: center;
+}
+
+/* ===== Text documents: full-height outline panel (desktop) =====
+   The sidebar outline runs the whole height of the window, from the very
+   top, instead of starting under the header. The header is transparent, so
+   the glass Back button floats over the panel's top - and the panel's own
+   content starts below it, so the button never covers an outline entry.
+   Desktop only: below 1100px the outline is a drawer (LAYOUT.outlineDocked in layoutMedia.ts). */
+@media (min-width: 1100px) {
+  .text-doc-page {
+    --text-doc-topbar-height: 64px;
+  }
+  .text-doc-page .text-doc-topbar {
+    height: var(--text-doc-topbar-height);
+    min-height: var(--text-doc-topbar-height);
+    box-sizing: border-box;
+  }
+  .text-doc-page .text-doc-outline-panel {
+    /* Pull it up under the header, which still takes its place in the flow
+       above the document column. */
+    margin-top: calc(-1 * var(--text-doc-topbar-height));
+    top: 0;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    z-index: 1;
+  }
+  .text-doc-page .text-doc-outline-panel-inner {
+    padding-top: calc(var(--text-doc-topbar-height) + 12px);
+  }
+}
+
+/* ===== Press feedback on touch screens =====
+   The system's tap highlight (a blue rectangle that ignores rounded corners)
+   is off. In its place a pressed control gets a soft accent ring that follows
+   its shape. `:where()` keeps this at zero specificity, so a control with its
+   own pressed state keeps it. Touch only: a mouse has hover and focus rings. */
+html { -webkit-tap-highlight-color: transparent; }
+@media (hover: none) {
+  :where(button, [role='button'], [role='tab'], [role='option'], [role='menuitem'], [role='radio'], [role='combobox'], a[class], summary):active:not(:disabled) {
+    outline: 3px solid var(--ui-glass-accent-border);
+    outline-offset: 1px;
+  }
+}
+
+/* List view (the dashboard's grid/list switch): Folders, Shared, Templates,
+   Public and an open folder's contents turn into one-column rows like
+   Recents' own list. Kept late so it beats the phone 2-column grid of equal
+   specificity; the phone folder rows below are more specific still. */
+.dashboard .dashboard-list-view .dash-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.dashboard .dashboard-list-view .canvas-card {
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  padding: 10px 42px 10px 14px;
+}
+.dashboard .dashboard-list-view .card-title {
+  flex: 1 1 220px;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.dashboard .dashboard-list-view :is(.card-owner, .card-folder, .card-tags) {
+  margin-top: 0;
+}
+.dashboard .dashboard-list-view .canvas-card > .card-manage {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* "Reset filters" link inside a filtered-empty state. */
+.dash-empty-reset {
+  display: block;
+  margin: 8px auto 0;
+  padding: 4px 8px;
+  border: none;
+  background: transparent;
+  color: var(--color-brands-light);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dash-empty-reset:hover { text-decoration: underline; }
+.dash-empty-reset:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+/* On the feed every section stays, empty or not: a one-line note each,
+   not the 60px block a whole page's empty state gets. */
+.dashboard-feed-section .dash-empty {
+  padding: 18px 12px;
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+}
+/* Folders lives inside the Recents block: give its heading the gap every
+   other feed section gets from .dash-section. */
+.dashboard-recent-folders-head {
+  margin-top: 28px;
+}
+
+/* An open folder is a heading and its contents on the page, not a framed
+   card: the frame came with the old fixed-height scroll box. */
+.dashboard-view .dashboard-folder-content .folder-manager-row {
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+.folder-view-toggle {
+  flex: 0 0 auto;
+}
+/* In the folder heading the phone sort button lines up with the grid/list
+   switch and the menus next to it. */
+.folder-manager-top .dash-sort-menu-mobile {
+  align-self: center;
+}
+

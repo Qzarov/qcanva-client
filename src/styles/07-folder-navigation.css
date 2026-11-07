@@ -1,0 +1,229 @@
+/* ===== Nested folder tree ===== */
+.folder-nav-twisty {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: transform 0.12s ease;
+}
+.folder-nav-twisty:hover {
+  color: var(--ui-text);
+}
+.folder-nav-twisty.collapsed {
+  transform: rotate(-90deg);
+}
+.folder-nav-twisty-spacer {
+  flex-shrink: 0;
+  width: 14px;
+}
+
+/* ===== Folder parent picker ===== */
+.folder-parent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+.folder-parent-option {
+  text-align: left;
+  padding: 7px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.folder-parent-option:hover {
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
+}
+.folder-parent-option.active {
+  background: color-mix(in srgb, var(--color-brands) 25%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands) 60%, transparent);
+  color: var(--ui-text);
+}
+
+/* ===== Resource description ===== */
+.dashboard-modal-textarea {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 8px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
+  line-height: 1.5;
+  outline: none;
+}
+.dashboard-modal-textarea:focus {
+  border-color: color-mix(in srgb, var(--color-brands) 60%, transparent);
+}
+.description-readonly {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+/* ===== Subfolder navigation inside a folder ===== */
+.folder-back-button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-right: 8px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.folder-back-button:hover {
+  background: var(--ui-brand-soft);
+  color: var(--ui-text);
+}
+.subfolder-grid {
+  margin-bottom: 10px;
+}
+.subfolder-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 52px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-brands) 30%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-brands) 8%, transparent);
+  color: var(--ui-text);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.subfolder-card:hover {
+  background: color-mix(in srgb, var(--color-brands) 16%, transparent);
+  border-color: color-mix(in srgb, var(--color-brands) 55%, transparent);
+  color: var(--ui-text);
+}
+.subfolder-card-icon {
+  flex: 0 0 auto;
+  opacity: 0.6;
+  font-size: 13px;
+}
+.subfolder-card-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.subfolder-card-count {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-subtle);
+  font-size: 11px;
+}
+
+/* ===== Move destination picker ===== */
+.folder-destination {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.folder-destination-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.folder-destination-branch {
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+}
+/* The path to the parent is what makes a nested destination unambiguous. */
+.folder-destination-path {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+}
+.folder-destination.active .folder-destination-path {
+  color: var(--ui-text-secondary);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* ===== Mobile-only visibility helper ===== */
+.mobile-only { display: none !important; }
+
+.mobile-plugin-bar {
+  position: fixed;
+  top: calc(var(--canvas-topbar-height, 52px) + env(safe-area-inset-top, 0px) + 8px);
+  left: max(10px, env(safe-area-inset-left, 0px));
+  z-index: 105;
+  align-items: center;
+  gap: 3px;
+  max-width: calc(100vw - 20px);
+  min-height: 42px;
+  padding: 3px 5px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+}
+.mobile-plugin-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s, transform .15s;
+}
+.mobile-plugin-btn:active { transform: scale(.94); }
+.mobile-plugin-btn.active {
+  background: var(--ui-glass-accent-bg);
+  color: var(--ui-glass-accent-text);
+}
+

@@ -1,0 +1,841 @@
+/* ===== Dashboard: the uploads panel =====
+   As the Drive shows uploads - a file a row, its own progress and cancel,
+   then done / why it failed / cancelled - in the dashboard's glass, at the
+   bottom right of the central column; on a phone a sheet above the "+". */
+.dashboard-upload-panel {
+  position: absolute;
+  z-index: 330;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100% - 32px));
+  max-height: min(400px, 60vh);
+  overflow: hidden;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 18px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+}
+.dashboard-upload-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-glass-border);
+}
+.dashboard-upload-panel-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dashboard-upload-panel-count {
+  color: var(--ui-text-secondary);
+  font-weight: 500;
+}
+.dashboard-upload-panel-hide {
+  padding: 4px 12px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dashboard-upload-panel-hide:hover {
+  background: var(--ui-glass-btn-hover);
+}
+.dashboard-upload-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  overflow-y: auto;
+  list-style: none;
+}
+.dashboard-upload-item {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
+}
+.dashboard-upload-item.is-error {
+  border-color: color-mix(in srgb, var(--ui-danger) 45%, var(--ui-glass-border));
+}
+.dashboard-upload-item-top,
+.dashboard-upload-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dashboard-upload-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.dashboard-upload-item-size,
+.dashboard-upload-percent {
+  flex: 0 0 auto;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-upload-track {
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ui-surface-subtle);
+}
+.dashboard-upload-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--color-brands);
+  transition: width 0.2s ease;
+}
+.dashboard-upload-cancel {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-upload-cancel:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dashboard-upload-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.dashboard-upload-status.is-done {
+  color: var(--color-brands);
+}
+.dashboard-upload-status.is-error {
+  color: var(--ui-danger);
+}
+.dashboard-upload-panel-enter-active,
+.dashboard-upload-panel-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-upload-panel-enter-from,
+.dashboard-upload-panel-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+@media (max-width: 768px) {
+  .dashboard-upload-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-upload-panel-enter-active,
+  .dashboard-upload-panel-leave-active,
+  .dashboard-upload-fill {
+    transition: none;
+  }
+}
+
+/* Resource thumbnails on dashboard cards (ResourceThumb.vue): the card's own
+   picture above its title, the same PNG a shared link previews with. The
+   card is padded more on the right (room for its "⋯"), so the picture
+   reaches that side as far as the left padding instead - centred in the
+   card. Hidden in the list view, where a card is one row. */
+.resource-thumb {
+  position: relative;
+  aspect-ratio: 1200 / 630;
+  margin: 0 -28px 10px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border);
+}
+.resource-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.resource-thumb-loaded img {
+  opacity: 1;
+}
+.dashboard .dashboard-list-view .resource-thumb {
+  display: none;
+}
+/* A Recents card is a two-column grid (icon | title): the picture spans both,
+   as a first row of its own. */
+.dashboard-recent-card > .resource-thumb {
+  grid-column: 1 / -1;
+  margin: 0 0 2px;
+}
+.dashboard-recent-card:has(> .resource-thumb) {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+@media (max-width: 720px) {
+  .resource-thumb {
+    margin: 0 -20px 8px 0;
+    border-radius: 6px;
+  }
+  .dashboard-recent-card > .resource-thumb {
+    margin: 0 0 2px;
+  }
+  .dashboard-recent-card:has(> .resource-thumb) {
+    grid-template-rows: auto auto auto;
+  }
+}
+
+/* Card meta row: role badge, date and - for Shared / Public cards - the
+   folder (its icon, then its name, cut short) all on one line. */
+:is(.card-meta, .card-meta-mobile) .card-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-top: 0;
+  font-size: inherit;
+}
+:is(.card-meta, .card-meta-mobile) .card-folder svg {
+  flex: 0 0 auto;
+}
+:is(.card-meta, .card-meta-mobile) .card-folder-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+:is(.card-meta, .card-meta-mobile) .card-date {
+  flex: 0 0 auto;
+}
+
+/* Recents: where it lives and when it was opened, on one line. */
+.dashboard-recent-info {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.dashboard-recent-info .dashboard-recent-path {
+  flex: 0 1 auto;
+}
+.dashboard-recent-path-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.dashboard-recent-info :is(.dashboard-recent-meta, .dashboard-recent-meta-mobile) {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.dashboard-recents-list .dashboard-recent-card {
+  grid-template-columns: 22px minmax(0, 1fr) minmax(180px, 40%);
+}
+.dashboard-recents-list .dashboard-recent-info {
+  grid-column: 3;
+}
+@media (max-width: 720px) {
+  /* The folder stays on the date's line (the name is cut instead), in the
+     date's own size. */
+  .card-meta:has(> :is(.card-folder, .card-tags)) {
+    flex-wrap: nowrap;
+  }
+  .dashboard .card-meta .card-folder {
+    font-size: 9px;
+  }
+  .dashboard-recents-list .dashboard-recent-card {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+  .dashboard-recents-list .dashboard-recent-info {
+    grid-column: 2;
+  }
+}
+
+/* Card title on one line ("…" when it does not fit), the access badge -
+   Shared, an editable Public one - at its right end. The date sits at the
+   right end of the row under it, after the folder. */
+.dashboard .card-title-with-icon .card-title-text {
+  flex: 1 1 auto;
+}
+.card-title-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+}
+:is(.card-meta, .card-meta-mobile) .card-date {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.dashboard-recent-info :is(.dashboard-recent-meta, .dashboard-recent-meta-mobile) {
+  margin-left: auto;
+}
+.dashboard-recent-title {
+  display: block;
+  white-space: nowrap;
+  -webkit-line-clamp: unset;
+}
+@media (max-width: 720px) {
+  .dashboard .card-title-badge {
+    font-size: 9px;
+  }
+  .dashboard-recent-title {
+    -webkit-line-clamp: unset;
+  }
+}
+
+/* List view: the meta row takes the rest of the line, so its folder starts
+   at the left of it and the date ends at the card's right, as in the grid. */
+.dashboard .dashboard-list-view .card-meta {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+.folder-file-card .card-meta .card-folder {
+  flex: 0 1 auto;
+}
+
+/* With its picture on top, a card's "⋯" sits over the picture, so the rows
+   under it need not keep clear of it: the title row's access tag and the
+   date reach the picture's right edge (the card pads its right side for the
+   "⋯" - same amount as .resource-thumb reaches past it). */
+.dashboard .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+  margin-right: -28px;
+}
+/* Recents: the folder/date row starts at the card's left, like every card. */
+.dashboard-recents-grid .dashboard-recent-info {
+  grid-column: 1 / -1;
+}
+@media (max-width: 720px) {
+  .dashboard .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+    margin-right: -20px;
+  }
+}
+/* The list view hides the picture: the rows keep clear of the "⋯" again. */
+.dashboard .dashboard-list-view .canvas-card:has(> .resource-thumb) > :is(.card-title, .card-meta) {
+  margin-right: 0;
+}
+
+/* Sidebar motion. While the column grows, a label stays on one line and is
+   clipped by its row (never spills over the page), and fades in once there
+   is room; folding hides it at once. */
+.dashboard-sidebar:not(.collapsed) .dashboard-sidebar-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  animation: dashboard-sidebar-label-in 0.24s ease 0.08s both;
+}
+@keyframes dashboard-sidebar-label-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.dashboard-sidebar-backdrop-enter-active,
+.dashboard-sidebar-backdrop-leave-active {
+  transition: opacity var(--transition-std);
+}
+.dashboard-sidebar-backdrop-enter-from,
+.dashboard-sidebar-backdrop-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-app-shell,
+  .dashboard-sidebar,
+  .dashboard-sidebar-backdrop-enter-active,
+  .dashboard-sidebar-backdrop-leave-active {
+    transition: none !important;
+  }
+  .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-label {
+    animation: none;
+  }
+}
+
+/* Tags in the meta row (cards inside a folder): one line, cut at the row's
+   end, the date keeping its place at the right. */
+.card-meta .card-tags {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  gap: 4px;
+  min-width: 0;
+  margin-top: 0;
+  overflow: hidden;
+}
+.card-meta .card-tags .card-tag {
+  flex: 0 0 auto;
+}
+
+/* v-hint (directives/hint.ts): an icon button's name, nothing more. Fades
+   and slides a little toward its button as it comes and goes. */
+.ui-hint {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(240px, calc(100vw - 16px));
+  padding: 5px 9px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 8px;
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  box-shadow: var(--shadow-dropdown);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.14s ease, transform 0.14s ease;
+}
+.ui-hint[data-side="top"] {
+  transform: translateY(4px);
+}
+.ui-hint.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* A long press shows the hint, not the system's own callout / selection. */
+.dashboard-selection-icon {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ui-hint { transition: none; transform: none; }
+}
+
+/* ----- Card and header menus that open with <Transition name="card-menu-pop"> */
+.card-menu-pop-enter-active,
+.card-menu-pop-leave-active {
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+.card-menu-pop-enter-from,
+.card-menu-pop-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+
+/* ----- Spaces: Yandex Disk in the dashboard */
+.yandex-disk-view.yandex-drop-active {
+  outline: 2px dashed color-mix(in srgb, var(--ui-info) 60%, transparent);
+  outline-offset: -6px;
+  border-radius: var(--radius-md);
+}
+.yandex-connect {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 16px;
+  text-align: center;
+}
+.yandex-connect-icon { color: var(--ui-text-secondary); }
+.yandex-connect-title { margin: 0; font-size: 15px; font-weight: 600; }
+.yandex-picker-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  color: var(--ui-text-secondary);
+}
+.yandex-picker .folder-parent-list { max-height: min(50vh, 360px); overflow-y: auto; }
+/* The Yandex space's "⋯": the account on top, then its actions. */
+.folder-manager-menu .yandex-space-menu {
+  width: min(280px, calc(100vw - 32px));
+}
+.yandex-account-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 6px 8px 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.yandex-account-avatar {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.yandex-account-avatar-letter {
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ui-info) 18%, var(--ui-surface-subtle));
+  color: var(--ui-text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.yandex-account-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.yandex-account-name,
+.yandex-account-email {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.yandex-account-name { font-size: 14px; font-weight: 600; color: var(--ui-text); }
+.yandex-account-email { font-size: 12px; color: var(--ui-text-secondary); }
+/* "Open on Yandex" is a link: it looks like the other items. */
+.yandex-space-menu a.card-menu-item { text-decoration: none; color: inherit; }
+/* On a phone it is the bottom sheet every folder menu becomes, full width. */
+@media (max-width: 720px) {
+  .folder-manager-menu .yandex-space-menu {
+    width: auto;
+  }
+}
+.yandex-picker-enter-active,
+.yandex-picker-leave-active { transition: opacity 0.18s ease; }
+.yandex-picker-enter-active .dashboard-modal,
+.yandex-picker-leave-active .dashboard-modal { transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1); }
+.yandex-picker-enter-from,
+.yandex-picker-leave-to { opacity: 0; }
+.yandex-picker-enter-from .dashboard-modal,
+.yandex-picker-leave-to .dashboard-modal { transform: translateY(8px) scale(0.98); }
+@media (prefers-reduced-motion: reduce) {
+  .card-menu-pop-enter-active,
+  .card-menu-pop-leave-active,
+  .yandex-picker-enter-active,
+  .yandex-picker-leave-active,
+  .yandex-picker-enter-active .dashboard-modal,
+  .yandex-picker-leave-active .dashboard-modal { transition: none; }
+}
+
+/* ----- Squarer dashboard cards (grid view): a little narrower, taller;
+   a long title wraps to a second line and is cut only after it. The list
+   view keeps its own rows (its rules are more specific). */
+/* 180px columns (feed-rows.ts counts with the same width); a phone keeps its two columns. */
+@media (min-width: 721px) {
+  .dashboard .dash-grid,
+  .dashboard-recents-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+.dashboard .canvas-card,
+.dashboard-recent-card {
+  min-height: 150px;
+}
+.dashboard .card-title:not(.card-title-input) {
+  align-items: flex-start;
+  white-space: normal;
+}
+.dashboard .card-title:not(.card-title-input) > :is(.resource-title-icon, .card-select, .folder-file-kind) {
+  margin-top: 1px;
+}
+.dashboard .card-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.dashboard-recent-title {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: break-word;
+}
+/* Folder tiles: name and count on the first line, the last change on the
+   second, on the right - QCanva folders and Yandex Disk folders alike. */
+.subfolder-card {
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 2px;
+}
+.subfolder-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.subfolder-card-date {
+  flex: 1 0 100%;
+  text-align: right;
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+/* A file's picture: the square at the card's top right (style above), for
+   every picture and video - its place is kept before the picture arrives. */
+@media (max-width: 720px) {
+  .dashboard .canvas-card { min-height: 140px; }
+  .dashboard-recent-card { min-height: 116px; }
+  .subfolder-card-date { font-size: 10px; }
+}
+
+/* The ticked files' total size, next to the count in the selection bar. */
+.dashboard-selection-size {
+  padding: 0 4px 0 0;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* v-file-info (directives/fileInfo.ts): a file card's full name, size, type
+   and dates on hover. Fades and slides a little, like the other popups. */
+.ui-file-info {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 10px 12px;
+  /* The dashboard's glass panels (card menus, folder menu, dialogs): it lives
+     in <body>, outside .dashboard-view, so it takes the same tokens itself. */
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: var(--radius-md);
+  background: var(--ui-glass-tint), var(--ui-glass-bg, var(--ui-surface-elevated));
+  color: var(--ui-text);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow, var(--shadow-dropdown));
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.ui-file-info[data-side="top"] { transform: translateY(3px); }
+.ui-file-info.visible { opacity: 1; transform: none; }
+.ui-file-info-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ui-file-info-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 6px 0 0;
+}
+.ui-file-info-rows dt { color: var(--ui-text-secondary); }
+.ui-file-info-rows dd { margin: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-file-info { transition: none; transform: none; }
+}
+
+/* A video's card picture carries a play mark, so it reads as a video. */
+.folder-file-thumb .folder-file-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.folder-file-thumb .folder-file-play svg { margin-left: 2px; }
+/* The picture's place before it arrives: the kind's icon on the strip. */
+.folder-file-thumb.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--ui-text-muted);
+}
+.folder-file-thumb-icon { display: grid; place-items: center; opacity: 0.7; }
+
+/* Folder tiles: a little narrower than the cards (162px) and twice as tall as they
+   were - name and count on top, the last change at the bottom right. Home,
+   inside a folder, and Yandex Disk folders alike. */
+@media (min-width: 721px) {
+  .dashboard .dash-grid.subfolder-grid {
+    grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
+  }
+}
+@media (max-width: 720px) {
+  .dashboard .dash-grid.subfolder-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.subfolder-card {
+  min-height: 104px;
+  align-items: flex-start;
+  align-content: space-between;
+}
+@media (max-width: 720px) {
+  .subfolder-card { min-height: 96px; }
+}
+/* A picture's or a video's card (QCanva's and Yandex Disk's): the picture
+   square across the card's top, the kind's icon and the name under it. Size,
+   type and dates are in the hover panel. The list view keeps its one row. */
+.dashboard .dash-grid .folder-file-card.has-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 12px;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  position: relative;
+  top: auto;
+  right: auto;
+  order: -1;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .card-title {
+  margin: 0 4px;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-meta {
+  display: none;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-play {
+  width: 34px;
+  height: 34px;
+}
+/* The list's own row (style above: `.dashboard-list-view .canvas-card`). */
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview {
+  flex-direction: row;
+  padding: 10px 42px 10px 14px;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  position: static;
+  order: -1;
+  width: 32px;
+  height: 32px;
+  aspect-ratio: auto;
+  margin: 0;
+  border-radius: 8px;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .card-title {
+  margin: 0;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-meta {
+  display: flex;
+}
+
+/* FilePlaceholder.vue: a picture's or a video's square while it has no
+   picture - a tint of its kind's colour, the extension in a hand-drawn loop. */
+.file-placeholder {
+  --file-placeholder-tone: #3fcf8e;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--file-placeholder-tone) 32%, transparent), transparent 62%),
+    linear-gradient(160deg, color-mix(in srgb, var(--file-placeholder-tone) 12%, var(--ui-surface-subtle)), var(--ui-surface-subtle));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--file-placeholder-tone) 38%, transparent);
+  overflow: hidden;
+}
+.file-placeholder.is-video { --file-placeholder-tone: #b260f2; }
+.file-placeholder.is-file { --file-placeholder-tone: #4cc0e6; }
+.file-placeholder-art { display: grid; place-items: center; }
+.file-placeholder-label {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  padding: 0.6em 1em 0.7em;
+  transform: rotate(var(--file-placeholder-tilt, -4deg));
+}
+.file-placeholder-loop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.file-placeholder-loop path {
+  fill: none;
+  stroke: var(--file-placeholder-tone);
+  stroke-width: 1.5;
+}
+.file-placeholder-text {
+  position: relative;
+  color: var(--file-placeholder-tone);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.file-placeholder-icon { display: none; }
+/* Light theme: the same colours a little deeper, to read on a light tint. */
+:root[data-theme="light"] .file-placeholder-text,
+:root[data-theme="light"] .file-placeholder-loop path {
+  color: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000);
+  stroke: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .file-placeholder-text { color: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000); }
+  :root:not([data-theme="dark"]) .file-placeholder-loop path { stroke: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000); }
+}
+/* The list's 32px square: the kind's icon on the tint, no loop. */
+.dashboard .dashboard-list-view .file-placeholder-art { display: none; }
+.dashboard .dashboard-list-view .file-placeholder-icon {
+  display: grid;
+  place-items: center;
+  color: var(--file-placeholder-tone);
+}
+@media (max-width: 720px) {
+  .file-placeholder-text { font-size: 18px; }
+}
+/* The kind's line figure, in the square's lower right corner under the label. */
+.file-placeholder-art {
+  position: absolute;
+  inset: 0;
+}
+.file-placeholder-figure {
+  position: absolute;
+  right: 9%;
+  bottom: 9%;
+  width: 42%;
+  height: 42%;
+  opacity: 0.45;
+  transform: rotate(calc(var(--file-placeholder-tilt, -4deg) * -1.5));
+}
+.file-placeholder-figure path {
+  fill: none;
+  stroke: var(--file-placeholder-tone);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.file-placeholder-art > .file-placeholder-label {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  translate: -50% -50%;
+}
