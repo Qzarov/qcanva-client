@@ -832,6 +832,7 @@ import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
 import { useCanvasCamera } from '../canvas/useCanvasCamera';
+import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1008,7 +1009,16 @@ export default defineComponent({
     const setDrawWidth = (w: number) => { drawWidth.value = w; };
 
     // Drawing selection + drag state
-    const selectedDrawingIds = ref<string[]>([]);
+    const {
+      selectedNodeIds,
+      selectedNodeId,
+      selectedEdgeId,
+      selectedDrawingIds,
+      isNodeSelected,
+      selBox,
+      selBoxStyle,
+      clearSelection: clearSelectionState,
+    } = useCanvasSelectionState();
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
@@ -1739,30 +1749,6 @@ export default defineComponent({
       return node.firstLineTextAlign || node.textAlign || undefined;
     };
 
-    // Selection state (multi-select)
-    const selectedNodeIds = ref<string[]>([]);
-    // Convenience: single selected node ID (for backwards compat in template)
-    const selectedNodeId = computed(() => selectedNodeIds.value.length === 1 ? selectedNodeIds.value[0] : null);
-
-    const isNodeSelected = (id: string) => selectedNodeIds.value.includes(id);
-
-    // Selection box state
-    const selBox = reactive({ active: false, startX: 0, startY: 0, curX: 0, curY: 0 });
-    const selBoxStyle = computed(() => {
-      if (!selBox.active) return { display: "none" };
-      const x1 = Math.min(selBox.startX, selBox.curX);
-      const y1 = Math.min(selBox.startY, selBox.curY);
-      const x2 = Math.max(selBox.startX, selBox.curX);
-      const y2 = Math.max(selBox.startY, selBox.curY);
-      return {
-        display: "block",
-        left: `${x1}px`,
-        top: `${y1}px`,
-        width: `${x2 - x1}px`,
-        height: `${y2 - y1}px`,
-      };
-    });
-
     // Editing state
     const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
@@ -2130,8 +2116,6 @@ export default defineComponent({
     };
 
     // Edge selection
-    const selectedEdgeId = ref<string | null>(null);
-
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
       selectedNodeIds.value = [];
@@ -2473,9 +2457,7 @@ export default defineComponent({
     // Clears all selection state and closes element-bound UI.
     // Does NOT close global canvas panels (history, chat, plugins, minimap).
     const clearSelection = () => {
-      selectedNodeIds.value = [];
-      selectedDrawingIds.value = [];
-      selectedEdgeId.value = null;
+      clearSelectionState();
       if (editingNodeId.value) onEditEnd();
       closeContextMenu();
     };
