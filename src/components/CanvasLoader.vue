@@ -570,52 +570,7 @@
     <CanvasContextMenu :context="contextMenuProps" />
 
     <!-- Controls -->
-    <div class="canvas-controls">
-      <button @click="zoomIn" :title="t('zoomIn')">+</button>
-      <span class="zoom-level">{{ zoomPercent }}%</span>
-      <button @click="zoomOut" :title="t('zoomOut')">−</button>
-      <button @click="resetView" :title="t('resetView')">⌂</button>
-      <span class="controls-divider"></span>
-      <button @click="undo" :disabled="!canUndo" :title="t('textUndo')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-      </button>
-      <button @click="redo" :disabled="!canRedo" :title="t('textRedo')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-      </button>
-      <span class="controls-divider"></span>
-      <div v-if="!readonly" ref="addMenuWrap" class="ctrl-add-wrap">
-        <button
-          class="ctrl-add-node ctrl-add-trigger"
-          :class="{ active: addMenuOpen }"
-          :title="t('add')"
-          :aria-label="t('add')"
-          aria-haspopup="true"
-          :aria-expanded="addMenuOpen ? 'true' : 'false'"
-          @click.stop="toggleAddMenu"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-        <div v-if="addMenuOpen" class="ctrl-add-menu" role="menu" @click.stop>
-          <button
-            v-for="entry in addMenuEntries"
-            :key="entry.key"
-            class="ctrl-add-menu-item"
-            role="menuitem"
-            @click="runAddMenuEntry(entry.key)"
-          >
-            <span class="ctrl-add-menu-icon" v-html="entry.icon"></span>
-            <span>{{ entry.label }}</span>
-          </button>
-        </div>
-      </div>
-      <button @click="duplicateSelection" :title="t('duplicateSelection')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-      </button>
-      <span class="controls-divider"></span>
-      <button @click="onExportCanvas" :title="t('exportCanvas')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
-    </div>
+    <CanvasControls :context="controlsProps" />
     <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
     <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
     <input type="file" ref="dndPortraitInput" accept="image/*" style="display:none" @change="onDndPortraitSelected" />
@@ -663,6 +618,7 @@ import CanvasNodeGroup from './canvas/CanvasNodeGroup.vue';
 import CanvasNodeTemplate from './canvas/CanvasNodeTemplate.vue';
 import CanvasMinimap from './canvas/CanvasMinimap.vue';
 import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
+import CanvasControls from './canvas/CanvasControls.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
@@ -759,7 +715,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
@@ -3424,6 +3380,25 @@ export default defineComponent({
       deleteSelectedDrawing,
       closeContextMenu,
     }));
+    const controlsProps = computed(() => ({
+      t,
+      zoomIn,
+      zoomPercent: zoomPercent.value,
+      zoomOut,
+      resetView,
+      undo,
+      canUndo: canUndo.value,
+      redo,
+      canRedo: canRedo.value,
+      readonly: props.readonly,
+      addMenuOpen: addMenuOpen.value,
+      addMenuEntries: addMenuEntries.value,
+      toggleAddMenu,
+      runAddMenuEntry,
+      duplicateSelection,
+      onExportCanvas,
+      setAddMenuWrap: (element: HTMLElement | null) => { addMenuWrap.value = element; },
+    }));
 
     const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
@@ -3664,6 +3639,7 @@ export default defineComponent({
       minimapSize,
       minimapProps,
       contextMenuProps,
+      controlsProps,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,
