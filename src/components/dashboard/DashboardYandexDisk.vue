@@ -118,7 +118,8 @@
             >
               <span class="subfolder-card-icon" aria-hidden="true">▤</span>
               <span class="subfolder-card-name">{{ folder.name }}</span>
-              <span class="subfolder-card-count">{{ formatDate(folder.modifiedAt) }}</span>
+              <span v-if="dirCounts[folder.path] !== undefined" class="subfolder-card-count" data-yandex-subfolder-count>{{ dirCounts[folder.path] || t('emptyFolder') }}</span>
+              <span v-if="folder.modifiedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDateTime(folder.modifiedAt) }}</span>
             </button>
           </div>
           <div v-if="!shownFolders.length && !shownFiles.length && query" class="dash-empty" data-yandex-empty>{{ t('noFilterMatches') }}</div>
@@ -297,6 +298,31 @@ const matching = computed(() => {
 });
 const shownFolders = computed(() => matching.value.filter((item) => item.type === 'dir'));
 const shownFiles = computed(() => matching.value.filter((item) => item.type === 'file'));
+
+/**
+ * How many items each subfolder holds, as a dashboard folder tile shows: the
+ * Disk's listing does not say, so each shown subfolder is asked for its total
+ * (one item per request), a few at a time.
+ */
+const dirCounts = reactive<Record<string, number>>({});
+const DIR_COUNT_CONCURRENCY = 4;
+let dirCountRun = 0;
+async function loadDirCounts(dirs: readonly YandexItem[]) {
+  const run = ++dirCountRun;
+  const queue = dirs.filter((dir) => dirCounts[dir.path] === undefined).slice(0, 100);
+  const worker = async () => {
+    for (let dir = queue.shift(); dir; dir = queue.shift()) {
+      try {
+        const listing = await yandexDisk.list(dir.path, { limit: 1 });
+        if (run === dirCountRun) dirCounts[dir.path] = listing.total;
+      } catch {
+        /* no count: the tile shows the name and date only */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: DIR_COUNT_CONCURRENCY }, worker));
+}
+watch(shownFolders, (dirs) => { if (dirs.length) void loadDirCounts(dirs); });
 watch(shownFiles, (files) => emit('items', files), { immediate: true });
 
 const formatDate = (value?: string | null) => {
@@ -304,6 +330,13 @@ const formatDate = (value?: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', year: 'numeric' });
+};
+/** A folder tile's last change, in the dashboard folder tiles' format. */
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 };
 
 const errorText = (err: unknown, fallback: string) => (err instanceof Error && err.message ? err.message : fallback);
@@ -324,6 +357,9 @@ async function load() {
   const current = ++loadId;
   loaded.value = false;
   error.value = '';
+  // Counts are read again with the listing: what was inside may have changed.
+  dirCountRun += 1;
+  for (const key of Object.keys(dirCounts)) delete dirCounts[key];
   if (!connected.value) return;
   try {
     const listing = await yandexDisk.list(props.path, { sort: serverSort.value });

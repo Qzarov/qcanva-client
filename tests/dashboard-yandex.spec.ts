@@ -120,6 +120,10 @@ test('the Disk reads like a folder: subfolders, files with previews, the tree in
   await expect(page.locator('[data-yandex-subfolder]')).toHaveCount(2);
   await expect(page.locator('[data-yandex-file]')).toHaveCount(2);
   await expect(page.locator('[data-yandex-file="/море.jpg"] [data-yandex-preview]')).toBeVisible();
+  // A folder tile, as on the dashboard: how many items, and the last change below.
+  await expect(page.locator('[data-yandex-subfolder="/Фото"] [data-yandex-subfolder-count]')).toHaveText('1');
+  await expect(page.locator('[data-yandex-subfolder="/Работа"] [data-yandex-subfolder-count]')).toHaveText('Empty');
+  await expect(page.locator('[data-yandex-subfolder="/Фото"] [data-folder-tile-date]')).toHaveText(/Nov 2/);
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/yandex-root.png` });
 
   await page.locator('[data-yandex-subfolder="/Фото"]').click();

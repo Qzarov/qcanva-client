@@ -116,11 +116,25 @@ test.describe('a folder\'s files', () => {
 });
 
 test.describe('folder counts', () => {
-  test('count the files too: on the home tiles and on a subfolder', async ({ page }) => {
+  test('count the files and subfolders too: on the home tiles and on a subfolder', async ({ page }) => {
     await openDashboard(page);
-    // "Поездки": a canvas and a document, plus six files.
-    await expect(page.locator('[data-recent-folder-tile="folder-a"] .subfolder-card-count')).toHaveText('8');
+    // "Поездки": a canvas and a document, six files, and its subfolder "Фото" as one item.
+    await expect(page.locator('[data-recent-folder-tile="folder-a"] .subfolder-card-count')).toHaveText('9');
     await expect(page.locator('[data-recent-folder-tile="folder-b"] .subfolder-card-count')).toHaveText('2');
+    // The last change, on a second line on the right.
+    const date = page.locator('[data-recent-folder-tile="folder-a"] [data-folder-tile-date]');
+    await expect(date).toHaveText(/\d/);
+    const nameBox = (await page.locator('[data-recent-folder-tile="folder-a"] .subfolder-card-name').boundingBox())!;
+    const tileBox = (await page.locator('[data-recent-folder-tile="folder-a"]').boundingBox())!;
+    const dateRight = await date.evaluate((el) => {
+      // The text's own width, not the full-width line it sits on.
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      return range.getBoundingClientRect().right;
+    });
+    const dateBox = (await date.boundingBox())!;
+    expect(dateBox.y).toBeGreaterThanOrEqual(nameBox.y + nameBox.height - 1);
+    expect(tileBox.x + tileBox.width - dateRight).toBeLessThan(20);
     // A tag filter leaves the files out: they carry no tags.
     await desktop(page, 'filter').click();
     await page.locator('[data-filter-tag="отпуск"]').click();
@@ -212,6 +226,8 @@ test.describe('filters and sort', () => {
     await openFolder(page, { width: 390 });
     await expect(files(page)).toHaveCount(6);
     await expect(page.locator('[data-folder-file="f-sea"] .folder-file-thumb')).toBeVisible();
+    // The layout at rest: the folder slides in, so wait for that to finish.
+    await page.waitForFunction(() => document.getAnimations().every((animation) => animation.playState !== 'running'));
     const boxes = await files(page).evaluateAll((els) => els.map((el) => el.getBoundingClientRect()).map((r) => ({ left: r.left, right: r.right })));
     for (const box of boxes) {
       expect(box.left).toBeGreaterThanOrEqual(0);

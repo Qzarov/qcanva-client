@@ -262,7 +262,8 @@ test('the filter menu opens rightwards, clear of the sidebar', async ({ page }) 
 });
 
 test('Drive files in a folder tick like the rest: box, frame, and move / delete / download them all', async ({ page }) => {
-  const calls = await openDashboard(page);
+  // Four columns: the frame below spans two of them across two rows.
+  const calls = await openDashboard(page, 1200);
   await openDashboardFolder(page, 'folder-a');
   const pdf = page.locator('[data-select-key="drive-file:f-pdf"]');
   await pdf.hover();

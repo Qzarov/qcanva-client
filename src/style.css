@@ -12696,3 +12696,101 @@ html { -webkit-tap-highlight-color: transparent; }
   .yandex-picker-enter-active .dashboard-modal,
   .yandex-picker-leave-active .dashboard-modal { transition: none; }
 }
+
+/* ----- Squarer dashboard cards (grid view): a little narrower, taller;
+   a long title wraps to a second line and is cut only after it. The list
+   view keeps its own rows (its rules are more specific). */
+/* 180px columns (feed-rows.ts counts with the same width); a phone keeps its two columns. */
+@media (min-width: 721px) {
+  .dashboard .dash-grid,
+  .dashboard-recents-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+.dashboard .canvas-card,
+.dashboard-recent-card {
+  min-height: 150px;
+}
+.dashboard .card-title:not(.card-title-input) {
+  align-items: flex-start;
+  white-space: normal;
+}
+.dashboard .card-title:not(.card-title-input) > :is(.resource-title-icon, .card-select, .folder-file-kind) {
+  margin-top: 1px;
+}
+.dashboard .card-title-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.dashboard-recent-title {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: break-word;
+}
+/* Folder tiles: name and count on the first line, the last change on the
+   second, on the right - QCanva folders and Yandex Disk folders alike. */
+.subfolder-card {
+  flex-wrap: wrap;
+  align-content: center;
+  row-gap: 2px;
+}
+.subfolder-card-name {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+.subfolder-card-date {
+  flex: 1 0 100%;
+  text-align: right;
+  font-size: 11px;
+  color: var(--ui-text-secondary);
+}
+/* A file's picture: a strip across the card's foot in the grid, so the name
+   keeps the card's whole width (it used to take a corner beside the name). */
+.dashboard .dash-grid .folder-file-card.has-preview {
+  padding-right: 42px;
+  padding-bottom: 88px;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  top: auto;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  width: auto;
+  height: 64px;
+  border-radius: 10px;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview {
+  padding-bottom: 12px;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  position: static;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+@media (max-width: 720px) {
+  .dashboard .dash-grid .folder-file-card.has-preview {
+    padding-right: 32px;
+    padding-bottom: 72px;
+  }
+  .dashboard .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    height: 52px;
+  }
+}
+@media (max-width: 720px) {
+  .dashboard .canvas-card { min-height: 140px; }
+  .dashboard-recent-card { min-height: 116px; }
+  .subfolder-card-date { font-size: 10px; }
+}

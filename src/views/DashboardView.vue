@@ -291,6 +291,7 @@
           <span class="subfolder-card-icon" aria-hidden="true">▤</span>
           <span class="subfolder-card-name">{{ folder.name }}</span>
           <span class="subfolder-card-count">{{ folder.displayCount }}</span>
+          <span v-if="folder.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(folder.latest) }}</span>
         </button>
       </div>
       <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
@@ -431,6 +432,7 @@
                     <span class="subfolder-card-icon" aria-hidden="true">▤</span>
                     <span class="subfolder-card-name">{{ child.name }}</span>
                     <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
+                    <span v-if="child.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(child.latest) }}</span>
                   </button>
                 </div>
                 <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
@@ -1308,6 +1310,7 @@ import { animateHeight, heightOfFirstChildren } from '../dashboard/motion';
 import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
+import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
@@ -4410,6 +4413,10 @@ export default defineComponent({
       value: '',
     });
 
+    /** Subfolders count as one item each in a folder's tile; the tile also shows its subtree's last change. */
+    const subfolderCounts = computed(() => childFolderCounts(allResourceFolders.value.map(({ id, parentId }) => ({ id, parentId }))));
+    const folderLatest = computed(() => folderLatestChange(allFolderSummaries.value));
+
     /** Direct children of the folder currently open, shown ahead of its items. */
     const activeSubfolders = computed(() => {
       const parentId = activeFolder.value?.id;
@@ -4424,7 +4431,9 @@ export default defineComponent({
             (folder.htmlDocumentCount || 0) +
             (folder.textDocumentCount || 0) +
             (folder.interactiveTemplateCount || 0) +
-            (folderFiles.counts[folder.id] ?? 0),
+            (folderFiles.counts[folder.id] ?? 0) +
+            (subfolderCounts.value.get(folder.id) ?? 0),
+          latest: folderLatest.value.get(folder.id) ?? null,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     });
@@ -4467,11 +4476,19 @@ export default defineComponent({
           return matchesFolderItem(enriched, folder.name);
         }).length;
         const files = filesCounted.value ? (folderFiles.counts[folder.id] ?? 0) : 0;
-        const count = (hasActiveFilter.value ? matchingCount : totalCount) + files;
+        // A subfolder is one item; under a filter only one whose name matches the search counts.
+        const needle = searchQuery.value.trim().toLocaleLowerCase();
+        const subfolders = !hasActiveFilter.value
+          ? (subfolderCounts.value.get(folder.id) ?? 0)
+          : (needle && !selectedTags.value.length && !contentTypes.value.length
+            ? allResourceFolders.value.filter((child) => child.parentId === folder.id && child.name.toLocaleLowerCase().includes(needle)).length
+            : 0);
+        const count = (hasActiveFilter.value ? matchingCount : totalCount) + files + subfolders;
         return {
           id: folder.id,
           name: folder.name,
           count,
+          latest: folderLatest.value.get(folder.id) ?? null,
           // A folder that's genuinely empty reads as "Empty"; one that's
           // empty only because of the active filter shows a literal "0" -
           // "Empty" would wrongly suggest nothing was ever put in it.
