@@ -834,6 +834,7 @@ import { resolveCanvasImageUrl } from '../canvas/imageUrls';
 import { useCanvasCamera } from '../canvas/useCanvasCamera';
 import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
 import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
+import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1017,22 +1018,8 @@ export default defineComponent({
     const panStart = reactive({ x: 0, y: 0 });
     const cameraStart = reactive({ x: 0, y: 0 });
 
-    // Touch state
-    const lastTouchDist = ref(0);
-    const lastTouchCenter = reactive({ x: 0, y: 0 });
-    // Single-finger tap / drag tracking
-    const TAP_MOVE_THRESHOLD = 8; // px before a touch becomes a drag/pan
-    const DOUBLE_TAP_MS = 300;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchMoved = false;
-    let touchNodeId: string | null = null; // node under the active single-finger touch
-    let touchDrawingId: string | null = null; // drawing under the active single-finger touch
-    let touchDragging = false; // an actual node drag is in progress
-    let touchResizing = false; // a resize via a touch on a resize handle is in progress
-    let touchConnecting = false; // a connection drag via a touch on a connection point is in progress
-    let lastTapTime = 0;
-    let lastTapTarget = ""; // node id, or "__empty__" for blank canvas
+    const touchState = useCanvasTouchState();
+    const { lastTouchDist, lastTouchCenter, TAP_MOVE_THRESHOLD, DOUBLE_TAP_MS, getTouchDist, getTouchCenter } = touchState;
 
     // Configure marked
     marked.setOptions({
@@ -1152,9 +1139,9 @@ export default defineComponent({
         selectedDrawingIds.value = [];
         if (editingNodeId.value) onEditEnd();
         dragNodeId.value = null;
-        touchDragging = false;
-        touchResizing = false;
-        touchConnecting = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
+        touchState.touchConnecting = false;
         connDragging.value = false;
         connFromEdge.value = '';
         isPanning.value = false;
@@ -3354,25 +3341,6 @@ export default defineComponent({
     };
 
     // Touch handlers
-    const getTouchDist = (e: TouchEvent) => {
-      if (e.touches.length < 2) return 0;
-      const t0 = e.touches[0]!;
-      const t1 = e.touches[1]!;
-      const dx = t0.clientX - t1.clientX;
-      const dy = t0.clientY - t1.clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    };
-
-    const getTouchCenter = (e: TouchEvent) => {
-      const t0 = e.touches[0]!;
-      if (e.touches.length < 2) return { x: t0.clientX, y: t0.clientY };
-      const t1 = e.touches[1]!;
-      return {
-        x: (t0.clientX + t1.clientX) / 2,
-        y: (t0.clientY + t1.clientY) / 2,
-      };
-    };
-
     // Is the touch on a text-editing field? If so, let the browser handle it
     // natively (caret placement, on-screen keyboard) instead of hijacking it.
     const isEditableTarget = (target: EventTarget | null) => {
@@ -3386,11 +3354,11 @@ export default defineComponent({
 
       if (e.touches.length === 1) {
         const t = e.touches[0]!;
-        touchStartX = t.clientX;
-        touchStartY = t.clientY;
-        touchMoved = false;
-        touchDragging = false;
-        touchResizing = false;
+        touchState.touchStartX = t.clientX;
+        touchState.touchStartY = t.clientY;
+        touchState.touchMoved = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
         if (contextMenu.visible) closeContextMenu();
 
         // Hand mode: read-only pan — skip ALL node/resize/connect interaction.
@@ -3414,7 +3382,7 @@ export default defineComponent({
             selectedNodeIds.value = [handleNodeId];
             selectedEdgeId.value = null;
             if (node.positionLocked) return;
-            touchResizing = true;
+            touchState.touchResizing = true;
             onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node, handle);
             return;
           }
@@ -3431,30 +3399,30 @@ export default defineComponent({
           const side = connEl.dataset.connSide ?? "";
           if (node && side && !node.positionLocked) {
             onConnStart({ clientX: t.clientX, clientY: t.clientY } as MouseEvent, node, side);
-            touchConnecting = true;
+            touchState.touchConnecting = true;
             return;
           }
         }
 
         // Did we start on a node/group?
         const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
-        touchNodeId = nodeEl?.dataset.nodeId ?? null;
+        touchState.touchNodeId = nodeEl?.dataset.nodeId ?? null;
 
-        const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        const touchNode = touchState.touchNodeId ? nodes.value.find((n) => n.id === touchState.touchNodeId) : null;
         // Empty group interiors behave like empty canvas, just as on desktop.
         // Keep a screen-sized border hit area usable at every zoom level.
         if (touchNode?.type === 'group') {
           const rect = viewport.value!.getBoundingClientRect();
           const wx = (t.clientX - rect.left - camera.x) / camera.scale;
           const wy = (t.clientY - rect.top - camera.y) / camera.scale;
-          if (!hitTestGroupBorder(touchNode, wx, wy, 12 / camera.scale)) touchNodeId = null;
+          if (!hitTestGroupBorder(touchNode, wx, wy, 12 / camera.scale)) touchState.touchNodeId = null;
         }
 
-        if (touchNodeId && !props.readonly) {
+        if (touchState.touchNodeId && !props.readonly) {
           // Select immediately (so the style toolbar appears).
-          if (!selectedNodeIds.value.includes(touchNodeId)) {
+          if (!selectedNodeIds.value.includes(touchState.touchNodeId)) {
             selectedDrawingIds.value = [];
-            selectedNodeIds.value = [touchNodeId];
+            selectedNodeIds.value = [touchState.touchNodeId];
           }
           selectedEdgeId.value = null;
           if (touchNode?.positionLocked) {
@@ -3467,10 +3435,10 @@ export default defineComponent({
           dragMouseStart.y = t.clientY;
           dragCameraStart.x = camera.x;
           dragCameraStart.y = camera.y;
-        } else if (touchNodeId && props.readonly) {
+        } else if (touchState.touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
           selectedDrawingIds.value = [];
-          selectedNodeIds.value = [touchNodeId];
+          selectedNodeIds.value = [touchState.touchNodeId];
         } else {
           // Empty canvas — route by mobile interaction mode
           if (isTouchDevice && mobileInteractionMode.value === 'cursor') {
@@ -3488,7 +3456,7 @@ export default defineComponent({
                   selectedNodeIds.value = [];
                   selectedEdgeId.value = null;
                 }
-                touchDrawingId = hitD.id;
+                touchState.touchDrawingId = hitD.id;
                 lastPointer.x = t.clientX;
                 lastPointer.y = t.clientY;
                 dragMouseStart.x = t.clientX;
@@ -3520,12 +3488,12 @@ export default defineComponent({
         // Second finger down → cancel any single-finger operation, start pinch/pan
         selBox.active = false; // cancel marquee without committing
         onDrawPointerCancel(); // cancel any in-progress draw stroke
-        touchNodeId = null;
-        touchDrawingId = null;
+        touchState.touchNodeId = null;
+        touchState.touchDrawingId = null;
         dragDrawingsInitial.value = new Map();
-        touchDragging = false;
-        touchResizing = false;
-        touchConnecting = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
+        touchState.touchConnecting = false;
         dragNodeId.value = null;
         resizeNodeId.value = null;
         connDragging.value = false;
@@ -3549,7 +3517,7 @@ export default defineComponent({
         const t = e.touches[0]!;
 
         // Resize via touch on a handle — drive the shared resize math.
-        if (touchResizing && resizeNodeId.value) {
+        if (touchState.touchResizing && resizeNodeId.value) {
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           applyResize();
@@ -3557,29 +3525,29 @@ export default defineComponent({
         }
 
         // Connection drag via touch on a connection point — track the finger as the temp edge end.
-        if (touchConnecting && connDragging.value) {
+        if (touchState.touchConnecting && connDragging.value) {
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
           return;
         }
 
-        if (!touchMoved) {
-          const dx = t.clientX - touchStartX;
-          const dy = t.clientY - touchStartY;
-          if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) touchMoved = true;
+        if (!touchState.touchMoved) {
+          const dx = t.clientX - touchState.touchStartX;
+          const dy = t.clientY - touchState.touchStartY;
+          if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) touchState.touchMoved = true;
         }
-        if (!touchMoved) return;
+        if (!touchState.touchMoved) return;
 
-        const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        const activeTouchNode = touchState.touchNodeId ? nodes.value.find((n) => n.id === touchState.touchNodeId) : null;
         if (activeTouchNode?.positionLocked) return;
 
-        if (touchNodeId && !props.readonly) {
+        if (touchState.touchNodeId && !props.readonly) {
           // Cursor mode: drag the node once the threshold is crossed.
-          if (!touchDragging) {
-            touchDragging = true;
+          if (!touchState.touchDragging) {
+            touchState.touchDragging = true;
             pushUndo();
-            dragNodeId.value = touchNodeId;
+            dragNodeId.value = touchState.touchNodeId;
             dragNodesInitial.value = new Map();
             for (const id of getSelectionWithGroupContents()) {
               const n = nodes.value.find((nd) => nd.id === id);
@@ -3596,10 +3564,10 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchDrawingId) {
+        } else if (touchState.touchDrawingId) {
           // Drawing drag once threshold is crossed.
-          if (!touchDragging) {
-            touchDragging = true;
+          if (!touchState.touchDragging) {
+            touchState.touchDragging = true;
             pushUndo();
             dragDrawingsInitial.value = new Map();
             for (const id of selectedDrawingIds.value) {
@@ -3616,7 +3584,7 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchNodeId && props.readonly) {
+        } else if (touchState.touchNodeId && props.readonly) {
           emit('readonly-action');
         } else if (selBox.active) {
           const rect = viewport.value!.getBoundingClientRect();
@@ -3659,7 +3627,7 @@ export default defineComponent({
       stopAutoPan();
 
       // Finalize a touch connection — create the edge if released over another node.
-      if (touchConnecting) {
+      if (touchState.touchConnecting) {
         if (connDragging.value && viewport.value) {
           const rect = viewport.value.getBoundingClientRect();
           const wx = (lastPointer.x - rect.left - camera.x) / camera.scale;
@@ -3680,26 +3648,26 @@ export default defineComponent({
         }
         connDragging.value = false;
         connFromEdge.value = "";
-        touchConnecting = false;
-        touchNodeId = null;
+        touchState.touchConnecting = false;
+        touchState.touchNodeId = null;
         return;
       }
 
       // Finalize a touch resize — emit the op and reset, skip tap/drag handling.
-      if (touchResizing) {
+      if (touchState.touchResizing) {
         if (resizeNodeId.value) {
           const n = nodes.value.find((nd) => nd.id === resizeNodeId.value);
           if (n) emitOp({ type: 'node-resize', id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
         }
         resizeNodeId.value = null;
-        touchResizing = false;
-        touchNodeId = null;
+        touchState.touchResizing = false;
+        touchState.touchNodeId = null;
         return;
       }
 
       // Finalize a drawing touch (tap or drag)
-      if (touchDrawingId) {
-        if (touchDragging && dragDrawingsInitial.value.size > 0) {
+      if (touchState.touchDrawingId) {
+        if (touchState.touchDragging && dragDrawingsInitial.value.size > 0) {
           commitDrawingDrags();
           if (dragNodesInitial.value.size > 0) {
             const moves = getDraggedMoves();
@@ -3709,9 +3677,9 @@ export default defineComponent({
         dragDrawingsInitial.value = new Map();
         dragNodesInitial.value = new Map();
         dragNodeId.value = null;
-        touchDragging = false;
-        touchDrawingId = null;
-        touchNodeId = null;
+        touchState.touchDragging = false;
+        touchState.touchDrawingId = null;
+        touchState.touchNodeId = null;
         isPanning.value = false;
         lastTouchDist.value = 0;
         return;
@@ -3720,8 +3688,8 @@ export default defineComponent({
       // Hand mode: pan only — no tap-select, no double-tap edit, no create-on-tap.
       if (isTouchDevice && mobileInteractionMode.value === 'hand') {
         dragNodeId.value = null;
-        touchDragging = false;
-        touchNodeId = null;
+        touchState.touchDragging = false;
+        touchState.touchNodeId = null;
         isPanning.value = false;
         lastTouchDist.value = 0;
         return;
@@ -3741,51 +3709,51 @@ export default defineComponent({
         }
         selBox.active = false;
         isPanning.value = false;
-        touchNodeId = null;
+        touchState.touchNodeId = null;
         return;
       }
 
       const now = performance.now();
 
-      if (!touchMoved && touchNodeId) {
+      if (!touchState.touchMoved && touchState.touchNodeId) {
         // Tap on a node
-        const node = nodes.value.find((candidate) => candidate.id === touchNodeId);
+        const node = nodes.value.find((candidate) => candidate.id === touchState.touchNodeId);
         if (node?.templateId === 'trello-board-preview') {
           emitOpenBoardPreview(boardPreviewId(node));
-          lastTapTime = 0;
-          lastTapTarget = "";
+          touchState.lastTapTime = 0;
+          touchState.lastTapTarget = "";
         } else {
-          const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === touchNodeId;
+          const isDouble = now - touchState.lastTapTime < DOUBLE_TAP_MS && touchState.lastTapTarget === touchState.touchNodeId;
           if (isDouble && !props.readonly) {
             if (node && node.type === 'text') onNodeDblClick(node);
-            lastTapTime = 0;
-            lastTapTarget = "";
+            touchState.lastTapTime = 0;
+            touchState.lastTapTarget = "";
           } else if (isDouble && props.readonly) {
             emit('readonly-action');
           } else {
-            lastTapTime = now;
-            lastTapTarget = touchNodeId;
+            touchState.lastTapTime = now;
+            touchState.lastTapTarget = touchState.touchNodeId;
           }
         }
-      } else if (!touchMoved && !touchNodeId) {
+      } else if (!touchState.touchMoved && !touchState.touchNodeId) {
         // Tap on empty canvas
-        const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === "__empty__";
+        const isDouble = now - touchState.lastTapTime < DOUBLE_TAP_MS && touchState.lastTapTarget === "__empty__";
         if (isDouble && !props.readonly) {
-          createTextNodeAtClient(touchStartX, touchStartY);
-          lastTapTime = 0;
-          lastTapTarget = "";
+          createTextNodeAtClient(touchState.touchStartX, touchState.touchStartY);
+          touchState.lastTapTime = 0;
+          touchState.lastTapTarget = "";
         } else if (isDouble && props.readonly) {
           emit('readonly-action');
         } else {
           // Single tap on blank space → clear all selection
           clearSelection();
-          lastTapTime = now;
-          lastTapTarget = "__empty__";
+          touchState.lastTapTime = now;
+          touchState.lastTapTarget = "__empty__";
         }
       }
 
       // Commit a node move op at the end of a touch drag
-      if (touchDragging && dragNodeId.value) {
+      if (touchState.touchDragging && dragNodeId.value) {
         const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
         commitDrawingDrags(); // emit ops for any drawings that moved with the nodes
@@ -3793,8 +3761,8 @@ export default defineComponent({
 
       dragDrawingsInitial.value = new Map();
       dragNodeId.value = null;
-      touchDragging = false;
-      touchNodeId = null;
+      touchState.touchDragging = false;
+      touchState.touchNodeId = null;
       isPanning.value = false;
       lastTouchDist.value = 0;
     };
