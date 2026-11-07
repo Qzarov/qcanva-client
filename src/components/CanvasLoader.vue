@@ -838,6 +838,7 @@ import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
 import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
 import { useCanvasHistory } from '../canvas/useCanvasHistory';
 import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
+import { useCanvasMinimap } from '../canvas/useCanvasMinimap';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -3720,67 +3721,13 @@ export default defineComponent({
       setTimeout(() => { if (flashNodeId.value === nodeId) flashNodeId.value = null; }, 1400);
     };
 
-    // Minimap drag-to-pan
-    const minimapDragging = ref(false);
-
-    const minimapScreenToWorld = (e: MouseEvent) => {
-      const el = (e.currentTarget as HTMLElement).querySelector('svg')!;
-      const rect = el.getBoundingClientRect();
-      const vb = minimapData.value!;
-      const [vbX = 0, vbY = 0, vbW = 1, vbH = 1] = vb.viewBox.split(' ').map(Number);
-      // Account for SVG xMidYMid meet letterboxing, not only its DOM rect.
-      const scale = Math.min(rect.width / vbW, rect.height / vbH);
-      const wx = vbX + (e.clientX - rect.left - (rect.width - vbW * scale) / 2) / scale;
-      const wy = vbY + (e.clientY - rect.top - (rect.height - vbH * scale) / 2) / scale;
-      return { wx, wy };
-    };
-
-    const onMinimapDown = (e: MouseEvent) => {
-      if (e.button !== 0 || !minimapData.value) return;
-      minimapDragging.value = true;
-      const { wx, wy } = minimapScreenToWorld(e);
-      centerCameraOn(wx, wy);
-    };
-
-    const onMinimapMove = (e: MouseEvent) => {
-      if (!minimapDragging.value || !minimapData.value) return;
-      const { wx, wy } = minimapScreenToWorld(e);
-      centerCameraOn(wx, wy);
-    };
-
-    const onMinimapUp = () => {
-      minimapDragging.value = false;
-    };
-
-    // Minimap computed
-    const minimapData = computed(() => {
-      if (!viewerNodes.value.length || !viewport.value) return null;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of viewerNodes.value) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.width);
-        maxY = Math.max(maxY, n.y + n.height);
-      }
-      const vw = viewportSize.width || viewport.value.clientWidth;
-      const vh = viewportSize.height || viewport.value.clientHeight;
-      // Viewport in world coords
-      const vpX = -camera.x / camera.scale;
-      const vpY = -camera.y / camera.scale;
-      const vpW = vw / camera.scale;
-      const vpH = vh / camera.scale;
-      // Include the entire viewport so its outline never disappears outside
-      // the nodes' bounds, including when zoomed out or panned away.
-      const pad = 100;
-      minX = Math.min(minX, vpX) - pad;
-      minY = Math.min(minY, vpY) - pad;
-      maxX = Math.max(maxX, vpX + vpW) + pad;
-      maxY = Math.max(maxY, vpY + vpH) + pad;
-      return {
-        viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
-        vpX, vpY, vpW, vpH,
-      };
-    });
+    const { minimapData, onMinimapDown, onMinimapMove, onMinimapUp } = useCanvasMinimap(
+      viewerNodes,
+      viewport,
+      viewportSize,
+      camera,
+      centerCameraOn,
+    );
 
     const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
