@@ -661,7 +661,7 @@
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { confirmRestoreRevision } from '../composables/appDialog';
-import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
+import { useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import { useRoute, useRouter } from 'vue-router';
@@ -685,10 +685,9 @@ import { TextDocumentImageNodeViewExtension } from '../text-documents/image-node
 import { QuietTaskItem } from '../text-documents/task-item';
 import { Callout } from '../text-documents/callout';
 import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
-import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
+import { TableOfContents, type TableOfContentsLabels, focusHeading } from '../text-documents/table-of-contents';
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
 import { BlockId } from '../text-documents/block-id';
-import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtReadingLine } from '../text-documents/outline-tree';
 import { HeadingLink } from '../text-documents/heading-link-node';
 import {
   SLASH_MENU_ITEMS,
@@ -745,6 +744,7 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
+import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -1123,343 +1123,45 @@ export default defineComponent({
     paintI18nLabels();
     watch(locale, paintI18nLabels);
 
-    /**
-     * OUTLINE PANEL (auto-generated, separate from the manually-inserted
-     * `tableOfContents` block above - both stay, see the design discussion
-     * this shipped from).
-     *
-     * Desktop ("there's room" = the viewport is wide enough that a 240px
-     * sidebar and the paper's own 920px reading width both fit without
-     * squeezing either uncomfortably): a persistent sidebar, open by
-     * default, collapsible - the collapse choice is a per-browser UI
-     * preference (`localStorage`, never the document), same reasoning as
-     * `useTheme.ts`'s own preference storage.
-     *
-     * Narrower than that (including mobile): no sidebar at all - opened via
-     * the header's outline button as a bottom-sheet-style overlay, closed
-     * again by the backdrop, Escape, or picking a heading.
-     */
-    const OUTLINE_DESKTOP_MIN_WIDTH = BREAKPOINTS.outlineDocked;
-    const OUTLINE_COLLAPSED_STORAGE_KEY = 'qcanva-outline-collapsed';
-    const OUTLINE_WIDTH_STORAGE_KEY = 'qcanva-outline-width';
-    // "Использовать значения, лучше соответствующие текущему layout" - 240
-    // is the sidebar's own original fixed width, kept as both the default
-    // and the double-click-to-reset target; 220/480 leave enough room for
-    // .text-doc-editor-shell's 920px reading width at the desktop breakpoint
-    // this panel starts showing at (OUTLINE_DESKTOP_MIN_WIDTH) without
-    // squeezing it into scrollbar territory - see the live-checked widths
-    // in this task's own report.
-    const OUTLINE_DEFAULT_WIDTH = 240;
-    const OUTLINE_MIN_WIDTH = 220;
-    const OUTLINE_MAX_WIDTH = 480;
-
     // Fullscreen (full-width) reading mode - web only, session-scoped. When on,
     // the editor shell drops its 920px cap and fills the space beside the
     // outline panel (or the whole width when the panel is collapsed).
     const fullscreenDoc = ref(false);
 
-    function readOutlineCollapsedPref(): boolean {
-      try {
-        return localStorage.getItem(OUTLINE_COLLAPSED_STORAGE_KEY) === '1';
-      } catch {
-        return false;
-      }
-    }
-    function writeOutlineCollapsedPref(collapsed: boolean): void {
-      try {
-        localStorage.setItem(OUTLINE_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
-      } catch {
-        // Best-effort only, same as useTheme.ts's own storage guard - a
-        // blocked/full localStorage must not break the toggle itself.
-      }
-    }
-    function readOutlineWidth(): number {
-      try {
-        const raw = localStorage.getItem(OUTLINE_WIDTH_STORAGE_KEY);
-        const parsed = raw === null ? NaN : Number(raw);
-        return Number.isFinite(parsed) ? clampOutlineWidth(parsed, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH) : OUTLINE_DEFAULT_WIDTH;
-      } catch {
-        return OUTLINE_DEFAULT_WIDTH;
-      }
-    }
-    function writeOutlineWidth(width: number): void {
-      try {
-        localStorage.setItem(OUTLINE_WIDTH_STORAGE_KEY, String(width));
-      } catch {
-        // Best-effort, same as the collapse preference above.
-      }
-    }
-
-    const outlineIsDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH : true);
-    const outlineCollapsedPref = ref(readOutlineCollapsedPref());
-    const outlineMobileOpen = ref(false);
-    const outlineWidth = ref(readOutlineWidth());
-    // A resize is in progress: adds the "no text selection, col-resize
-    // cursor everywhere" body class (style.css) for the duration of the
-    // drag, since the cursor can slide off the 6px handle itself onto the
-    // document text at any moment mid-drag.
-    const outlineResizing = ref(false);
-
-    function updateOutlineIsDesktop(): void {
-      outlineIsDesktop.value = window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH;
-    }
-    useActiveListener(window, 'resize', updateOutlineIsDesktop);
-
-    /** Visible right now, on WHICHEVER breakpoint currently applies. */
-    const outlinePanelOpen = computed(() => (outlineIsDesktop.value ? !outlineCollapsedPref.value : outlineMobileOpen.value));
-
-    function toggleOutlinePanel(): void {
-      if (outlineIsDesktop.value) {
-        outlineCollapsedPref.value = !outlineCollapsedPref.value;
-        writeOutlineCollapsedPref(outlineCollapsedPref.value);
-        return;
-      }
-      outlineMobileOpen.value = !outlineMobileOpen.value;
-    }
-    function closeOutlineMobile(): void {
-      outlineMobileOpen.value = false;
-    }
-    const onOutlineMobileEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeOutlineMobile();
-    };
-    watch(outlineMobileOpen, (open) => {
-      if (open) window.addEventListener('keydown', onOutlineMobileEscape);
-      else window.removeEventListener('keydown', onOutlineMobileEscape);
-      // Open the drawer on the current section (caret, or on-screen without
-      // one), not at the top.
-      if (open && editor.value) syncActiveOutlineHeading(editor.value);
-      const activeId = activeOutlineHeadingId.value;
-      if (open && activeId) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-drawer', activeId));
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onOutlineMobileEscape));
-
-    /**
-     * RESIZE (desktop sidebar only - the mobile drawer has no handle and
-     * always fills its own bottom-sheet width). Plain mousemove/mouseup on
-     * `window`, not the handle itself: the cursor routinely outruns a 6px
-     * strip mid-drag, and losing tracking the instant that happens would
-     * leave the drag "stuck" from the user's perspective.
-     */
-    let outlineResizeStartX = 0;
-    let outlineResizeStartWidth = 0;
-
-    function onOutlineResizeMove(event: MouseEvent): void {
-      const delta = event.clientX - outlineResizeStartX;
-      outlineWidth.value = clampOutlineWidth(outlineResizeStartWidth + delta, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH);
-    }
-    function stopOutlineResize(): void {
-      outlineResizing.value = false;
-      document.body.classList.remove('text-doc-outline-resizing');
-      window.removeEventListener('mousemove', onOutlineResizeMove);
-      window.removeEventListener('mouseup', stopOutlineResize);
-      writeOutlineWidth(outlineWidth.value);
-    }
-    function startOutlineResize(event: MouseEvent): void {
-      // Not a click on the outline's own content: prevents text selection
-      // starting in the document/panel as the mouse sweeps across it.
-      event.preventDefault();
-      outlineResizeStartX = event.clientX;
-      outlineResizeStartWidth = outlineWidth.value;
-      outlineResizing.value = true;
-      // A BODY class, not a class on the handle: the cursor routinely
-      // outruns the 6px strip mid-drag, and `col-resize`/no-selection must
-      // hold everywhere it wanders until the button is released, not just
-      // while it happens to still be over the handle itself.
-      document.body.classList.add('text-doc-outline-resizing');
-      window.addEventListener('mousemove', onOutlineResizeMove);
-      window.addEventListener('mouseup', stopOutlineResize);
-    }
-    /** Double-click the handle: back to the original width, same as a fresh install. */
-    function resetOutlineWidth(): void {
-      outlineWidth.value = OUTLINE_DEFAULT_WIDTH;
-      writeOutlineWidth(OUTLINE_DEFAULT_WIDTH);
-    }
-    onBeforeUnmount(() => {
-      window.removeEventListener('mousemove', onOutlineResizeMove);
-      window.removeEventListener('mouseup', stopOutlineResize);
-      document.body.classList.remove('text-doc-outline-resizing');
-    });
-
-    /**
-     * The live outline this panel and the in-document `tableOfContents`
-     * block both draw from - `documentOutline` is a pure read of
-     * `editor.state.doc`, so `editorTransactionTick` is what actually makes
-     * this recompute (see the UNDO/REDO section's own comment on why that
-     * ref exists at all). Flat, in document order - the mobile drawer
-     * renders this directly and unchanged; the desktop sidebar renders the
-     * TREE built from it instead (below), so the two stay independent by
-     * construction rather than by remembering not to touch one from the
-     * other's code path.
-     */
-    const outlineEntries = computed(() => {
-      void editorTransactionTick.value;
-      return editor.value?.state?.doc ? documentOutline(editor.value.state.doc) : [];
-    });
-
-    /**
-     * DESKTOP SIDEBAR TREE. Which sections are folded is a per-viewer
-     * browsing convenience local to this panel - never persisted, never
-     * touching the document's own (unrelated) per-heading `collapsed`
-     * attribute (collapsible-heading.ts) - see outline-tree.ts's file
-     * comment for why the two must stay separate.
-     */
-    const outlineCollapsedSections = ref<Set<string>>(new Set());
-    const outlineTree = computed(() => buildOutlineTree(outlineEntries.value));
-    const outlineVisibleRows = computed(() => flattenVisibleOutline(outlineTree.value, outlineCollapsedSections.value));
-
-    function toggleOutlineSection(id: string): void {
-      const next = new Set(outlineCollapsedSections.value);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      outlineCollapsedSections.value = next;
-    }
-
-    // Expand / collapse every heading section at once from the panel header.
-    const allCollapsibleOutlineIds = computed(() => collectCollapsibleIds(outlineTree.value));
-    const hasCollapsibleOutline = computed(() => allCollapsibleOutlineIds.value.length > 0);
-    const allOutlineSectionsCollapsed = computed(() =>
-      hasCollapsibleOutline.value &&
-      allCollapsibleOutlineIds.value.every((id) => outlineCollapsedSections.value.has(id)),
-    );
-    function toggleAllOutlineSections(): void {
-      outlineCollapsedSections.value = allOutlineSectionsCollapsed.value
-        ? new Set()
-        : new Set(allCollapsibleOutlineIds.value);
-    }
-
-    /**
-     * Which outline row is "active": the section the CARET is in (the last
-     * heading at or before it), following the caret as it moves - and so
-     * also the heading just picked from the outline, since that puts the
-     * caret there. Tracked from the selection, not the scroll position:
-     * recomputed in onSelectionUpdate straight from the editor's current
-     * document (which also fires when typing or a collaborator's edit shifts
-     * the caret). Not a watch on outlineEntries - that would keep the
-     * computed cached between a no-emit setContent and its lazy refresh.
-     */
-    const activeOutlineHeadingId = ref<string | null>(null);
     const pageRef = ref<HTMLElement | null>(null);
-    /**
-     * Whether the user has placed a caret: on from the first focus, off
-     * once system Back takes it away (so the next Back leaves). NOT plain
-     * `isFocused`: tapping the outline button blurs the editor, yet the caret
-     * the user placed is still there. The outline follows the screen, not
-     * the caret, whatever this says.
-     */
+    const editorTransactionTick = ref(0);
     const hasCaret = ref(false);
-
-    /** With no caret, the section being read: the last heading above the reading line. */
-    function headingIdInView(ed: Editor): string | null {
-      const page = pageRef.value;
-      if (!page) return null;
-      const pageTop = page.getBoundingClientRect().top;
-      const line = pageTop + Math.min(120, page.clientHeight * 0.25);
-      const headings = documentOutline(ed.state.doc).flatMap((entry) => {
-        const dom = ed.view.nodeDOM(entry.pos);
-        // A heading folded inside a collapsed section has no layout (and a
-        // zero rect that would otherwise read as "scrolled past").
-        if (!(dom instanceof HTMLElement) || dom.getClientRects().length === 0) return [];
-        return [{ id: entry.id, top: dom.getBoundingClientRect().top }];
-      });
-      const reading = headingIdAtReadingLine(headings, line);
-      if (reading) return reading;
-      // At the top of the document no heading has reached the reading line
-      // yet - point at the first one already on screen rather than at nothing.
-      const screenBottom = pageTop + page.clientHeight;
-      return headings.find((heading) => heading.top < screenBottom)?.id ?? null;
-    }
-
-    /**
-     * The outline marks the section on SCREEN - the one being read - not the
-     * one holding the caret: scrolling away from where you typed moves the
-     * pointer with you, on the web and on a phone alike.
-     */
-    function syncActiveOutlineHeading(ed: Editor): void {
-      const id = headingIdInView(ed);
-      if (id === activeOutlineHeadingId.value) return;
-      activeOutlineHeadingId.value = id;
-      // Keep it in view in the sidebar (scrollTop only - see the helper).
-      if (id && outlineIsDesktop.value) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', id));
-    }
-
-    /**
-     * Brings the outline's own list item into view within the SIDEBAR's own
-     * scroll area - deliberately NOT `Element.scrollIntoView` (which
-     * `scrollHighlightedIntoView` below already wraps for the slash/mention
-     * menus): found live that calling `scrollIntoView` a SECOND time, even
-     * with `block: 'nearest'`, even on this totally unrelated scroll
-     * container (the outline panel's own list, never the document), reliably
-     * CANCELS a smooth `scrollIntoView` already animating elsewhere (the
-     * heading's own, from `focusHeading`) - a real Chromium scroll-queue
-     * quirk, confirmed by removing this call entirely and watching the
-     * heading scroll land correctly. Deferring it (`nextTick`, even a full
-     * `requestAnimationFrame`) narrowed but never fully closed the window.
-     * A plain `scrollTop` assignment doesn't touch that queue at all, so it
-     * can never re-trigger the interference regardless of timing.
-     */
-    function scrollOutlineItemIntoView(containerSelector: string, headingId: string): void {
-      const container = document.querySelector(containerSelector);
-      const item = Array.from(container?.querySelectorAll<HTMLElement>('[data-outline-item]') ?? [])
-        .find((el) => el.dataset.outlineItem === headingId);
-      if (!(container instanceof HTMLElement) || !(item instanceof HTMLElement)) return;
-      const itemTop = item.offsetTop;
-      const itemBottom = itemTop + item.offsetHeight;
-      if (itemTop < container.scrollTop) {
-        container.scrollTop = itemTop;
-      } else if (itemBottom > container.scrollTop + container.clientHeight) {
-        container.scrollTop = itemBottom - container.clientHeight;
-      }
-    }
-
-    function navigateFromOutline(pos: number, headingId: string): void {
-      if (!editor.value) return;
-      focusHeading(editor.value, pos);
-      activeOutlineHeadingId.value = headingId;
-      if (!outlineIsDesktop.value) {
-        outlineMobileOpen.value = false;
-        return;
-      }
-      void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', headingId));
-    }
-
-    /**
-     * A native browser tooltip, but only when the single-line, ellipsized
-     * heading title (style.css's `.text-doc-outline-link`) is ACTUALLY
-     * truncated - measured on hover rather than kept as reactive state per
-     * row, since it only ever matters at the one moment a reader's pointer
-     * is already sitting on the element asking for it. Comparing scrollWidth
-     * against clientWidth is exactly what "does this need an ellipsis"
-     * means for a single `white-space: nowrap` line.
-     */
-    function onOutlineLinkHover(event: MouseEvent): void {
-      const link = event.currentTarget as HTMLElement;
-      link.title = link.scrollWidth > link.clientWidth ? link.textContent?.trim() ?? '' : '';
-    }
-
-    const outlineLabels = {
-      title: '',
-      empty: '',
-      toggle: '',
-      hide: '',
-      show: '',
-      collapseSection: '',
-      expandSection: '',
-      expandAll: '',
-      collapseAll: '',
-    };
-    const paintOutlineLabels = () => {
-      outlineLabels.title = t('outlineTitle');
-      outlineLabels.empty = t('outlineEmpty');
-      outlineLabels.toggle = t('outlineToggle');
-      outlineLabels.hide = t('outlineHide');
-      outlineLabels.show = t('outlineShow');
-      outlineLabels.collapseSection = t('outlineCollapseSection');
-      outlineLabels.expandSection = t('outlineExpandSection');
-      outlineLabels.expandAll = t('outlineExpandAll');
-      outlineLabels.collapseAll = t('outlineCollapseAll');
-    };
-    paintOutlineLabels();
-    watch(locale, paintOutlineLabels);
+    let readEditor: () => Editor | null = () => null;
+    const outline = useTextDocumentOutline({
+      getEditor: () => readEditor(),
+      pageRef,
+      editorTransactionTick,
+      t,
+    });
+    const {
+      outlineIsDesktop,
+      outlineMobileOpen,
+      outlinePanelOpen,
+      outlineWidth,
+      outlineResizing,
+      outlineEntries,
+      outlineVisibleRows,
+      outlineCollapsedSections,
+      activeOutlineHeadingId,
+      outlineLabels,
+      allOutlineSectionsCollapsed,
+      hasCollapsibleOutline,
+      toggleOutlinePanel,
+      closeOutlineMobile,
+      navigateFromOutline,
+      toggleOutlineSection,
+      toggleAllOutlineSections,
+      startOutlineResize,
+      stopOutlineResize,
+      resetOutlineWidth,
+      onOutlineLinkHover,
+      syncActiveOutlineHeading,
+    } = outline;
 
     /** Scrolls to and selects the heading `headingId` names, in THIS document only (see heading-id.ts). */
     function navigateToHeadingLink(headingId: string): void {
@@ -2515,7 +2217,6 @@ export default defineComponent({
      * is bumped on every transaction (onUpdate below) purely to give these
      * two computeds a reactive dependency to re-run on.
      */
-    const editorTransactionTick = ref(0);
     const editor = useEditor({
       editable: true,
       extensions: [
@@ -2835,6 +2536,7 @@ export default defineComponent({
         },
       },
     });
+    readEditor = () => editor.value ?? null;
 
     // Both use ?.can?.(), not just ?.value?. - the Collaboration extension
     // (real production editors) always has .can(), but the several

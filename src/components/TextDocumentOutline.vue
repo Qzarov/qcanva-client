@@ -96,17 +96,7 @@ import type { PropType } from 'vue';
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, PanelLeftClose, PanelLeftOpen } from '@lucide/vue';
 import type { HeadingOutlineEntry } from '../documents/heading-anchors';
 import type { OutlineVisibleRow } from '../text-documents/outline-tree';
-
-export type TextDocumentOutlineLabels = {
-  title: string;
-  empty: string;
-  hide: string;
-  show: string;
-  collapseSection: string;
-  expandSection: string;
-  expandAll: string;
-  collapseAll: string;
-};
+import type { TextDocumentOutlineLabels } from '../composables/useTextDocumentOutline';
 
 defineProps({
   isDesktop: { type: Boolean, required: true },
