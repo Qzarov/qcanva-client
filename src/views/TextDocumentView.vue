@@ -700,7 +700,6 @@ import {
   BUBBLE_MARK_BUTTONS,
   LINK_ICON,
   UNLINK_ICON,
-  resolveLinkHref,
   shouldShowBubbleMenu,
 } from '../text-documents/bubble-menu';
 import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
@@ -739,6 +738,7 @@ import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
 import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
 import { useTextDocumentMentionMenu } from '../composables/useTextDocumentMentionMenu';
 import { useTextDocumentLinkActions } from '../composables/useTextDocumentLinkActions';
+import { useTextDocumentLinkEditor } from '../composables/useTextDocumentLinkEditor';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -912,6 +912,7 @@ export default defineComponent({
     let applyingInitialState = false;
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
+    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
     // The server's copy was rebuilt from scratch (content replace or history
     // restore) and can no longer be merged into this ydoc: read-only until reload.
     const replacedOnServer = ref(false);
@@ -1200,8 +1201,22 @@ export default defineComponent({
      * asserted without a popup. The link editor is deliberately the smallest
      * thing that can take a url: one input, inside the bubble.
      */
-    const linkEditorOpen = ref(false);
-    const linkInput = ref('');
+    const linkEditor = useTextDocumentLinkEditor({
+      getEditor: () => readEditor(),
+      isMobileLayout: isMobileEditorLayout,
+      showToast,
+      rejectedMessage: () => t('linkRejected'),
+    });
+    const {
+      linkEditorOpen,
+      linkInput,
+      linkEditorHadLink,
+      openLinkEditor,
+      closeLinkEditor,
+      closeLinkEditorOnDocumentInput,
+      applyLink,
+      removeLink,
+    } = linkEditor;
     const bubbleMarkButtons = computed(() =>
       BUBBLE_MARK_BUTTONS.map((button) => ({ ...button, label: t(button.labelKey) })),
     );
@@ -1379,88 +1394,6 @@ export default defineComponent({
      * what happened to focus or to the document (a collaborator's edit)
      * while the sheet was open - see text-documents/preserve-range.ts.
      */
-    let linkRangeTracker: ReturnType<typeof trackRange> | null = null;
-    // Captured at open time rather than read live from editor.isActive('link')
-    // in the template: moving focus to the sheet's <input> can leave the
-    // editor's selection collapsed/without marks by the time of the next
-    // render, which would wrongly hide the Remove button for an existing
-    // link - exactly the "don't trust selection after blur" risk this sheet
-    // exists to guard against elsewhere too.
-    const linkEditorHadLink = ref(false);
-
-    const openLinkEditor = () => {
-      linkInput.value = editor.value?.getAttributes('link').href || '';
-      linkEditorHadLink.value = editor.value?.isActive('link') ?? false;
-      if (editor.value) {
-        const { from, to } = editor.value.state.selection;
-        linkRangeTracker = trackRange(editor.value, { from, to });
-      }
-      linkEditorOpen.value = true;
-      // Desktop: straight into the box as soon as it renders, so typing goes
-      // to the URL, not over the selected text in the document - and a
-      // keystroke meant for the box can't count as "back to the doc". (Callers
-      // must not leave an editor focus() pending - tiptap's lands a frame
-      // later and would take focus back; see editLinkAction.)
-      if (!isMobileEditorLayout()) {
-        void nextTick(() => {
-          if (!linkEditorOpen.value) return;
-          (document.querySelector('[data-bubble-link-input]') as HTMLInputElement | null)?.focus();
-        });
-      }
-    };
-
-    /**
-     * The desktop link box stays up while it's open (bubbleShouldShow), so
-     * it has to go away once the user goes back to the document - otherwise
-     * it followed the caret around forever (the "link box hangs over the
-     * cursor" bug). Wired to a mousedown/keydown IN THE EDITOR (see
-     * editorProps.handleDOMEvents): a mousedown arrives before the click
-     * moves the selection, so the bubble's next check already sees the box
-     * closed; and a collaborator's edit never counts as "going back".
-     */
-    const closeLinkEditorOnDocumentInput = () => {
-      if (linkEditorOpen.value && !isMobileEditorLayout()) closeLinkEditor();
-    };
-
-    const closeLinkEditor = () => {
-      linkEditorOpen.value = false;
-      linkInput.value = '';
-      linkEditorHadLink.value = false;
-      linkRangeTracker?.stop();
-      linkRangeTracker = null;
-    };
-
-    const restoreLinkSelection = () => {
-      if (!editor.value || !linkRangeTracker) return;
-      const range = linkRangeTracker.resolve();
-      editor.value.chain().focus().setTextSelection(range).run();
-    };
-
-    const removeLink = () => {
-      restoreLinkSelection();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
-      closeLinkEditor();
-    };
-
-    const applyLink = () => {
-      if (!linkInput.value.trim()) {
-        // An emptied field reads as "take the link off", which is what the
-        // separate unlink button does - not as "link to nothing".
-        removeLink();
-        return;
-      }
-      const href = resolveLinkHref(linkInput.value);
-      if (!href) {
-        // Refused by documents/link-policy.ts. Saying so beats silently
-        // dropping the click, because the input looks perfectly fine.
-        showToast(t('linkRejected'), 'error');
-        return;
-      }
-      restoreLinkSelection();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').setLink({ href }).run();
-      closeLinkEditor();
-    };
-
     /**
      * LINK TAP/CLICK ACTIONS (front task 4/5). `Link.configure({ openOnClick:
      * false })` above means nothing already opens a link or offers to on a
@@ -1525,7 +1458,6 @@ export default defineComponent({
       },
     });
 
-    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
     const slashMenu = useTextDocumentSlashMenu({
       getEditor: () => readEditor(),
       t,
