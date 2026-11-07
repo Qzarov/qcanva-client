@@ -836,6 +836,7 @@ import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
 import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
 import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
 import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
+import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1597,23 +1598,43 @@ export default defineComponent({
     };
 
     // Editing state
-    const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
     const fullscreenEditorRef = ref<HTMLTextAreaElement | null>(null);
-    const textHistory = ref<{ past: string[]; future: string[]; current: string }>({ past: [], future: [], current: '' });
-    const textDirty = ref(false);
-    const canUndoText = computed(() => !!editingNodeId.value && textHistory.value.past.length > 0);
-    const canRedoText = computed(() => !!editingNodeId.value && textHistory.value.future.length > 0);
-    const resetTextHistory = (text: string) => { textHistory.value = { past: [], future: [], current: text }; };
-    // Remote edits/resyncs must never become something a local Undo can overwrite.
-    watch(() => nodes.value.find(n => n.id === editingNodeId.value)?.text, text => {
-      if (editingNodeId.value && (text ?? '') !== textHistory.value.current) resetTextHistory(text ?? '');
-    }, { flush: 'sync' });
-    const textSaveStatus = computed(() => {
-      const status = props.textSyncStatus;
-      if (status.kind === 'offline' || status.kind === 'failed') return { ...status, label: status.label || t('syncOffline') };
-      return textDirty.value ? { kind: 'saving', label: t('syncSaving') } : status;
+    let scheduleChangeForEditor: () => void = () => {};
+    const textEditor = useCanvasTextEditor({
+      nodes,
+      readonly: () => props.readonly,
+      isMobileLayout,
+      editorRefs,
+      fullscreenEditorRef,
+      getTextSyncStatus: () => props.textSyncStatus,
+      t,
+      emitNodeEditStart: (id) => emit('node-edit-start', id),
+      emitNodeUpdate: (id, text) => emitOp({ type: 'node-update', id, changes: { text } }),
+      scheduleChange: () => scheduleChangeForEditor(),
+      registerBackHandler,
     });
+    const {
+      editingNodeId,
+      textSaveStatus,
+      canUndoText,
+      canRedoText,
+      undoText,
+      redoText,
+      onTextEditorKeydown,
+      fullscreenEditingNode,
+      openTextEditor,
+      closeTextEditor,
+      onEditInput,
+      onEditEnd,
+      startTextEditing,
+      focusTextEditor,
+      isTextNode,
+    } = textEditor;
+    const onNodeDblClick = (node: CanvasNode) => {
+      if (node.type !== 'text' || isMobileLayout.value) return;
+      startTextEditing(node);
+    };
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
@@ -1814,127 +1835,6 @@ export default defineComponent({
       }
       startAutoPan();
     };
-
-    const focusTextEditor = () => {
-      const textarea = isMobileLayout.value ? fullscreenEditorRef.value : editorRefs.value?.[0];
-      textarea?.focus();
-    };
-
-    const startTextEditing = (node: CanvasNode) => {
-      if (editingNodeId.value && editingNodeId.value !== node.id) onEditEnd();
-      resetTextHistory(node.text ?? '');
-      emit('node-edit-start', node.id);
-      editingNodeId.value = node.id;
-      nextTick(focusTextEditor);
-    };
-
-    // Double-click to edit text. Not on the phone layout, where a tap on a
-    // moving canvas is too easy to misfire - there editing is explicit only.
-    const onNodeDblClick = (node: CanvasNode) => {
-      if (node.type !== "text" || isMobileLayout.value) return;
-      startTextEditing(node);
-    };
-
-    // The bottom toolbar's "edit text" action.
-    const openTextEditor = (id: string | null | undefined) => {
-      const node = nodes.value.find((n) => n.id === id);
-      if (!node || node.type !== "text" || props.readonly) return;
-      startTextEditing(node);
-    };
-
-    const isTextNode = (id: string | null | undefined): boolean =>
-      nodes.value.some((n) => n.id === id && n.type === "text");
-
-    let editSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    const lastEmittedText = new Map<string, string | undefined>();
-
-    const emitTextUpdate = (node: CanvasNode) => {
-      if (editSaveTimer) {
-        clearTimeout(editSaveTimer);
-        editSaveTimer = null;
-      }
-      textDirty.value = false;
-      if (lastEmittedText.get(node.id) === node.text) return;
-      lastEmittedText.set(node.id, node.text);
-      emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
-    };
-
-    const scheduleTextUpdate = (node: CanvasNode) => {
-      textDirty.value = true;
-      if (editSaveTimer) clearTimeout(editSaveTimer);
-      editSaveTimer = setTimeout(() => emitTextUpdate(node), 500);
-    };
-
-    const onEditInput = (e: Event, node: CanvasNode) => {
-      const text = (e.target as HTMLTextAreaElement).value;
-      if (text === node.text) return;
-      textHistory.value.past.push(node.text ?? '');
-      if (textHistory.value.past.length > 100) textHistory.value.past.shift();
-      textHistory.value.future = [];
-      textHistory.value.current = text;
-      node.text = text;
-      scheduleTextUpdate(node);
-      scheduleChange();
-    };
-
-    const stepTextHistory = (redo: boolean) => {
-      const node = nodes.value.find(n => n.id === editingNodeId.value);
-      if (!node || props.readonly) return;
-      const from = redo ? textHistory.value.future : textHistory.value.past;
-      const to = redo ? textHistory.value.past : textHistory.value.future;
-      if (!from.length) return;
-      to.push(node.text ?? '');
-      const text = from.pop()!;
-      textHistory.value.current = text;
-      node.text = text;
-      scheduleTextUpdate(node);
-      scheduleChange();
-      nextTick(focusTextEditor);
-    };
-    const undoText = () => stepTextHistory(false);
-    const redoText = () => stepTextHistory(true);
-    const onTextEditorKeydown = (event: KeyboardEvent) => {
-      if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
-      event.preventDefault();
-      if (event.shiftKey || key === 'y') redoText(); else undoText();
-    };
-
-    const onEditEnd = () => {
-      if (editingNodeId.value) {
-        const node = nodes.value.find((n) => n.id === editingNodeId.value);
-        if (node) emitTextUpdate(node);
-      }
-      editingNodeId.value = null;
-      scheduleChange();
-    };
-
-    const fullscreenEditingNode = computed<CanvasNode | null>(() => {
-      if (!isMobileLayout.value || !editingNodeId.value) return null;
-      return nodes.value.find((n) => n.id === editingNodeId.value && n.type === "text") ?? null;
-    });
-
-    const closeTextEditor = () => {
-      fullscreenEditorRef.value?.blur();
-      onEditEnd();
-    };
-
-    // While the full-screen editor is open, Android's system Back closes it and
-    // returns to the canvas. Registered on open (not on mount) so it is the most
-    // recent handler and wins over the view's own ones.
-    let unregisterEditorBack: (() => void) | null = null;
-    watch(() => !!fullscreenEditingNode.value, (open) => {
-      if (open && !unregisterEditorBack) {
-        unregisterEditorBack = registerBackHandler(() => {
-          closeTextEditor();
-          return true;
-        });
-      } else if (!open && unregisterEditorBack) {
-        unregisterEditorBack();
-        unregisterEditorBack = null;
-      }
-    });
 
     // Resize handlers
     const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
@@ -2706,6 +2606,7 @@ export default defineComponent({
       if (changeTimer) clearTimeout(changeTimer);
       changeTimer = setTimeout(emitChange, 300);
     };
+    scheduleChangeForEditor = scheduleChange;
 
     const pushUndo = () => {
       undoStack.value.push(takeSnapshot());
@@ -4024,8 +3925,7 @@ export default defineComponent({
 
     onUnmounted(() => {
       viewportObserver?.disconnect();
-      if (editSaveTimer) clearTimeout(editSaveTimer);
-      unregisterEditorBack?.();
+      textEditor.dispose();
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
     });
 
