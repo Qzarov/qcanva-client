@@ -833,6 +833,7 @@ import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '.
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
 import { useCanvasCamera } from '../canvas/useCanvasCamera';
 import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
+import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -906,22 +907,6 @@ type CanvasOp =
   | { type: 'draw-add'; drawing: Drawing }
   | { type: 'draw-remove'; id: string }
   | { type: 'draw-update'; id: string; changes: Partial<Drawing> };
-
-interface RenderedEdge {
-  id: string;
-  path: string;
-  label?: string;
-  labelX: number;
-  labelY: number;
-  labelW: number;
-  midX: number;
-  midY: number;
-  color?: string;
-  dashArray?: string;
-  thickness: number;
-  arrowType: string;
-  hidden?: boolean;
-}
 
 export interface CanvasChangePayload {
   nodes: CanvasNode[];
@@ -1483,131 +1468,12 @@ export default defineComponent({
       return `translate(${-b.minX}, ${-b.minY})`;
     });
 
-    // Build a node map for edge lookups
-    const nodeMap = computed(() => {
-      const map = new Map<string, CanvasNode>();
-      for (const n of nodes.value) map.set(n.id, n);
-      return map;
-    });
-
-    // Get connection point on a node's side
-    const getAnchor = (node: CanvasNode, side: string) => {
-      const cx = node.x + node.width / 2;
-      const cy = node.y + node.height / 2;
-      switch (side) {
-        case "top": return { x: cx, y: node.y };
-        case "bottom": return { x: cx, y: node.y + node.height };
-        case "left": return { x: node.x, y: cy };
-        case "right": return { x: node.x + node.width, y: cy };
-        default: return { x: cx, y: cy };
-      }
-    };
-
-    // Control point offset for bezier curves
-    const getControlOffset = (side: string, dist: number) => {
-      const offset = Math.min(Math.max(dist * 0.4, 40), 200);
-      switch (side) {
-        case "top": return { dx: 0, dy: -offset };
-        case "bottom": return { dx: 0, dy: offset };
-        case "left": return { dx: -offset, dy: 0 };
-        case "right": return { dx: offset, dy: 0 };
-        default: return { dx: 0, dy: 0 };
-      }
-    };
-
-    // Helper to find midpoint of a rendered edge by id (for fromEdge support)
-    const getEdgeMidpoint = (edgeId: string): { x: number; y: number } | null => {
-      const srcEdge = edges.value.find((e) => e.id === edgeId);
-      if (!srcEdge) return null;
-      const srcFrom = nodeMap.value.get(srcEdge.fromNode);
-      const srcTo = nodeMap.value.get(srcEdge.toNode);
-      if (!srcFrom || !srcTo) return null;
-      const a = getAnchor(srcFrom, srcEdge.fromSide || "bottom");
-      const b = getAnchor(srcTo, srcEdge.toSide || "top");
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    };
-
-    const renderedEdges = computed<RenderedEdge[]>(() => {
-      return edges.value.flatMap((edge) => {
-        // Non-owners: skip hidden edges and edges whose endpoints are hidden-for-viewer.
-        if (!canViewerSee(edge)) return [];
-        if (!viewerNodeIds.value.has(edge.toNode)) return [];
-        if (!edge.fromEdge && !viewerNodeIds.value.has(edge.fromNode)) return [];
-
-        const toNode = nodeMap.value.get(edge.toNode);
-        if (!toNode) {
-          return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-        }
-
-        let from: { x: number; y: number };
-        let fromSide: string;
-
-        if (edge.fromEdge) {
-          // Source is another edge's midpoint
-          const mid = getEdgeMidpoint(edge.fromEdge);
-          if (!mid) {
-            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-          }
-          from = mid;
-          // Guess direction toward target
-          const toAnchor = getAnchor(toNode, edge.toSide || "top");
-          const dx = toAnchor.x - from.x;
-          const dy = toAnchor.y - from.y;
-          fromSide = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "bottom" : "top");
-        } else {
-          const fromNode = nodeMap.value.get(edge.fromNode);
-          if (!fromNode) {
-            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-          }
-          fromSide = edge.fromSide || "bottom";
-          from = getAnchor(fromNode, fromSide);
-        }
-
-        const toSide = edge.toSide || "top";
-        const to = getAnchor(toNode, toSide);
-
-        const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-        const c1 = getControlOffset(fromSide, dist);
-        const c2 = getControlOffset(toSide, dist);
-
-        const path = `M ${from.x} ${from.y} C ${from.x + c1.dx} ${from.y + c1.dy}, ${to.x + c2.dx} ${to.y + c2.dy}, ${to.x} ${to.y}`;
-
-        const thickness = edge.thickness || 2;
-        const arrowType = edge.arrowType || "end";
-        const dashMap: Record<string, string> = { dashed: "8 4", dotted: "3 3" };
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
-        return [{
-          id: edge.id,
-          path,
-          label: edge.label,
-          labelX: midX,
-          labelY: midY - 8,
-          labelW: edge.label ? edge.label.length * 7.5 : 0,
-          midX,
-          midY,
-          color: edge.color,
-          dashArray: edge.lineStyle ? dashMap[edge.lineStyle] : undefined,
-          thickness,
-          arrowType,
-          hidden: edge.hidden,
-        }];
-      });
-    });
-
-    // Unique edge colors for dynamic arrow markers
-    const edgeColors = computed(() => {
-      const colors = new Set<string>();
-      for (const edge of edges.value) {
-        if (edge.color) colors.add(edge.color);
-      }
-      return Array.from(colors);
-    });
-
-    const arrowMarkerId = (color: string | undefined, start: boolean) => {
-      if (!color) return start ? 'arrowhead-start' : 'arrowhead';
-      return (start ? 'arrowhead-start-' : 'arrowhead-') + color.replace('#', '');
-    };
+    const { nodeMap, getAnchor, getControlOffset, getEdgeMidpoint, renderedEdges, edgeColors, arrowMarkerId } = useCanvasEdgeGeometry(
+      nodes,
+      edges,
+      viewerNodeIds,
+      canViewerSee,
+    );
 
     // Style helpers
     const nodePosition = (node: CanvasNode) => {
