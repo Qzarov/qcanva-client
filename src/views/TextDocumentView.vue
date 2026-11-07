@@ -220,91 +220,28 @@
         drawer variant further down, opened by the header button instead.
       -->
       <div ref="docBodyRef" class="text-doc-body">
-        <aside
-          v-if="outlineIsDesktop"
-          class="text-doc-outline-panel"
-          :class="{ 'text-doc-outline-panel-collapsed': !outlinePanelOpen, 'text-doc-outline-panel-resizing': outlineResizing }"
-          :style="outlinePanelOpen ? { width: outlineWidth + 'px', flexBasis: outlineWidth + 'px' } : {}"
-          :aria-label="outlineLabels.title"
-        >
-          <div v-if="outlinePanelOpen" class="text-doc-outline-panel-inner">
-            <div class="text-doc-outline-panel-title">
-              <span class="text-doc-outline-panel-title-text">{{ outlineLabels.title }}</span>
-              <button
-                v-if="hasCollapsibleOutline"
-                type="button"
-                class="btn-ghost text-doc-outline-expand-all"
-                :title="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
-                :aria-label="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
-                @click="toggleAllOutlineSections"
-              ><ChevronsUpDown v-if="allOutlineSectionsCollapsed" :size="15" aria-hidden="true" /><ChevronsDownUp v-else :size="15" aria-hidden="true" /></button>
-            </div>
-            <ol v-if="outlineVisibleRows.length" class="text-doc-outline-list">
-              <li
-                v-for="row in outlineVisibleRows"
-                :key="row.entry.id"
-                class="text-doc-outline-item"
-                :class="{ 'text-doc-outline-item-active': row.entry.id === activeOutlineHeadingId }"
-                :data-level="row.entry.level"
-                :data-outline-item="row.entry.id"
-              >
-                <!-- @mousedown.stop.prevent: `.stop` so grabbing the chevron
-                     never also fires the link's own @mousedown right next to
-                     it (siblings, not nested, but a pointer can technically
-                     land on both during a fast drag-like click), `.prevent`
-                     so a mouse click never steals focus away from wherever
-                     it already was (matches every other toolbar control's
-                     click-without-stealing-focus convention in this file).
-                     The actual toggle is on @click, not @mousedown, on
-                     purpose: `.prevent` on mousedown does not suppress the
-                     click that still fires afterward on mouseup, and click
-                     is also what a keyboard Enter/Space on a focused button
-                     dispatches - @mousedown alone left this unreachable from
-                     the keyboard entirely (caught in review before merge). -->
-                <button
-                  v-if="row.hasChildren"
-                  type="button"
-                  class="text-doc-outline-chevron"
-                  :title="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
-                  :aria-label="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
-                  :aria-expanded="!outlineCollapsedSections.has(row.entry.id)"
-                  @mousedown.stop.prevent
-                  @click="toggleOutlineSection(row.entry.id)"
-                ><ChevronRight v-if="outlineCollapsedSections.has(row.entry.id)" :size="13" aria-hidden="true" /><ChevronDown v-else :size="13" aria-hidden="true" /></button>
-                <span v-else class="text-doc-outline-chevron-spacer" aria-hidden="true"></span>
-                <!-- Same @mousedown/@click split as the chevron above, and
-                     for the same reason (pre-existing on this link, fixed
-                     alongside the chevron in the same review pass): a
-                     mousedown-only handler is unreachable from the
-                     keyboard. -->
-                <button
-                  type="button"
-                  class="text-doc-outline-link"
-                  @mousedown.prevent
-                  @click="navigateFromOutline(row.entry.pos, row.entry.id)"
-                  @mouseenter="onOutlineLinkHover($event)"
-                >
-                  {{ row.entry.text || outlineLabels.empty }}
-                </button>
-              </li>
-            </ol>
-            <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
-          </div>
-          <div
-            v-if="outlinePanelOpen"
-            class="text-doc-outline-resize-handle"
-            @mousedown="startOutlineResize"
-            @dblclick="resetOutlineWidth"
-          ></div>
-          <button
-            type="button"
-            class="text-doc-outline-collapse-toggle"
-            :title="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
-            :aria-label="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
-            :aria-pressed="!outlinePanelOpen"
-            @click="toggleOutlinePanel"
-          ><PanelLeftClose v-if="outlinePanelOpen" :size="16" aria-hidden="true" /><PanelLeftOpen v-else :size="16" aria-hidden="true" /></button>
-        </aside>
+        <TextDocumentOutline
+          :is-desktop="outlineIsDesktop"
+          :panel-open="outlinePanelOpen"
+          :mobile-open="outlineMobileOpen"
+          :resizing="outlineResizing"
+          :width="outlineWidth"
+          :labels="outlineLabels"
+          :entries="outlineEntries"
+          :visible-rows="outlineVisibleRows"
+          :collapsed-sections="outlineCollapsedSections"
+          :active-heading-id="activeOutlineHeadingId"
+          :all-sections-collapsed="allOutlineSectionsCollapsed"
+          :has-collapsible="hasCollapsibleOutline"
+          @toggle-panel="toggleOutlinePanel"
+          @close-mobile="closeOutlineMobile"
+          @navigate="navigateFromOutline"
+          @toggle-section="toggleOutlineSection"
+          @toggle-all="toggleAllOutlineSections"
+          @start-resize="startOutlineResize"
+          @reset-width="resetOutlineWidth"
+          @outline-link-hover="onOutlineLinkHover"
+        />
 
       <main ref="docShellRef" class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
         <article
@@ -434,38 +371,6 @@
         </section>
       </main>
       </div>
-
-      <!--
-        MOBILE/NARROW outline drawer - same backdrop+Escape primitive as the
-        Share sheet and link editor sheet (front task 6's "use the existing
-        primitive" rule), teleported for the same reason the doc-menu
-        popover is: the topbar's own backdrop-filter makes it a stacking
-        context, so a plain child z-index cannot win against it.
-      -->
-      <Teleport to="body">
-        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer-backdrop" @click="closeOutlineMobile"></div>
-        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer" role="dialog" :aria-label="outlineLabels.title">
-          <div class="text-doc-outline-drawer-title">{{ outlineLabels.title }}</div>
-          <ol v-if="outlineEntries.length" class="text-doc-outline-list">
-            <li
-              v-for="entry in outlineEntries"
-              :key="entry.id"
-              class="text-doc-outline-item"
-              :class="{ 'text-doc-outline-item-active': entry.id === activeOutlineHeadingId }"
-              :data-level="entry.level"
-              :data-outline-item="entry.id"
-              :aria-current="entry.id === activeOutlineHeadingId ? 'location' : undefined"
-            >
-              <!-- @mousedown/@click split, same reasoning as the desktop
-                   panel's own outline link. -->
-              <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos, entry.id)">
-                {{ entry.text || outlineLabels.empty }}
-              </button>
-            </li>
-          </ol>
-          <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
-        </div>
-      </Teleport>
 
       <!--
         The access-request dialog (ruling R3): one component for both an
@@ -845,11 +750,12 @@ import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
+import TextDocumentOutline from '../components/TextDocumentOutline.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
