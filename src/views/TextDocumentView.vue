@@ -136,40 +136,18 @@
         @revoke="doRevoke"
       />
 
-      <!-- History (front task 6): same missing-outside-close gap the Share
-           panel had, fixed the same way (backdrop + window Escape listener). -->
-      <Teleport to="body">
-        <div v-if="showHistory" class="text-doc-share-backdrop" @click="closeHistory"></div>
-        <section v-if="showHistory" class="html-history-panel text-doc-history-panel" role="dialog" aria-modal="true" :aria-label="t('history')" @click.stop>
-          <div class="html-history-list">
-            <div class="html-history-head">
-              <strong>{{ t('history') }}</strong>
-              <button class="btn-ghost btn-sm" @click="closeHistory">x</button>
-            </div>
-            <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
-            <button v-for="entry in historyItems" :key="entry.id" class="html-history-item" :class="{ active: selectedHistory?.id === entry.id }" @click="openHistoryEntry(entry)">
-              <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
-              <small>{{ new Date(entry.createdAt).toLocaleString() }}</small>
-            </button>
-            <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
-          </div>
-          <div class="html-history-preview">
-            <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
-            <template v-else>
-              <div class="html-history-preview-head">
-                <div>
-                  <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
-                  <small>{{ selectedHistory.plainText || t('snapshotLabel') }}</small>
-                </div>
-                <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-                  {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
-                </button>
-              </div>
-              <div class="text-doc-history-preview" v-html="selectedHistory.html"></div>
-            </template>
-          </div>
-        </section>
-      </Teleport>
+      <TextDocumentHistoryPanel
+        :open="showHistory"
+        :loading="historyLoading"
+        :items="historyItems"
+        :selected="selectedHistory"
+        :can-edit="canEditContent"
+        :restoring="restoringHistory"
+        :labels="historyLabels"
+        @close="closeHistory"
+        @select="openHistoryEntry"
+        @restore="restoreSelectedHistory"
+      />
 
       <!-- CAPACITY. Chrome in the app's themed --ui-* palette, never the
            fixed paper palette; nothing here reaches the Yjs document. It
@@ -745,11 +723,12 @@ import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
 import TextDocumentOutline from '../components/TextDocumentOutline.vue';
+import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -907,6 +886,16 @@ export default defineComponent({
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
     const restoringHistory = ref(false);
+    const historyLabels = computed<TextDocumentHistoryLabels>(() => ({
+      title: t('history'),
+      loading: t('loadingDots'),
+      revision: t('revisionLabel'),
+      empty: t('noHistoryYet'),
+      select: t('selectARevision'),
+      snapshot: t('snapshotLabel'),
+      restore: t('restoreLabel'),
+      restoring: t('restoringEllipsis'),
+    }));
     const syncIssue = ref<'conflict' | ''>('');
     let socketInitialized = false;
     let applyingInitialState = false;
@@ -3031,6 +3020,7 @@ export default defineComponent({
       historyItems,
       selectedHistory,
       restoringHistory,
+      historyLabels,
       saveTitle,
       titleTextareaRef,
       docBodyRef,
