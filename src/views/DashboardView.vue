@@ -286,129 +286,10 @@
         v-if="isLoggedIn && (activeSection.kind === 'interactive' || isHomeFeed)"
         :context="interactiveSectionProps"
       />
-      <div
+      <DashboardPublicSection
         v-if="activeSection.kind === 'public' || isHomeFeed"
-        :id="isHomeFeed ? 'feed-public' : undefined"
-        class="dash-section"
-        :class="{ 'dashboard-feed-section': isHomeFeed }"
-        :data-dashboard-view="isHomeFeed ? undefined : 'public'"
-        :data-feed-section="isHomeFeed ? 'public' : undefined"
-        data-section="public"
-      >
-        <!-- Heading row like Recents': title, Mine/Others, and the phone sort
-             control (it used to sit in the toolbar, a row above the title). -->
-        <div class="dash-section-head dashboard-public-head">
-          <h2>{{ t('public') }}</h2>
-          <div class="dashboard-public-head-controls">
-            <div v-if="isLoggedIn" ref="publicOwnerFilterEl" class="dashboard-public-owner-filter dashboard-segmented" role="group" :aria-label="t('publicOwnerFilter')">
-              <button
-                v-for="option in PUBLIC_OWNER_FILTERS"
-                :key="option"
-                type="button"
-                :class="{ active: publicOwnerFilter === option }"
-                :aria-pressed="publicOwnerFilter === option"
-                :data-public-owner-filter="option"
-                @click.stop="publicOwnerFilter = option"
-              >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
-            </div>
-          </div>
-        </div>
-        <div class="dash-grid" data-feed-grid="public">
-          <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
-          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-        </div>
-        <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
-          {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
-          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-        </div>
-        <button
-          v-if="isHomeFeed && publicFiltered.length > feedLimit('public')"
-          type="button"
-          class="dashboard-recent-show-all"
-          :data-feed-show-all="'public'"
-          :aria-expanded="isFeedSectionExpanded('public')"
-          @click="toggleFeedSectionExpanded('public')"
-        >
-          <span>{{ isFeedSectionExpanded('public') ? t('showLess') : `${t('showAll')} ${publicFiltered.length}` }}</span>
-          <ChevronDown v-if="!isFeedSectionExpanded('public')" :size="15" aria-hidden="true" />
-          <ChevronUp v-else :size="15" aria-hidden="true" />
-        </button>
-      </div>
+        :context="publicSectionProps"
+      />
 
     </template>
     </div>
@@ -834,6 +715,7 @@ import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequ
 import DashboardFolderSection from '../components/dashboard/DashboardFolderSection.vue';
 import DashboardSharedSection from '../components/dashboard/DashboardSharedSection.vue';
 import DashboardInteractiveSection from '../components/dashboard/DashboardInteractiveSection.vue';
+import DashboardPublicSection from '../components/dashboard/DashboardPublicSection.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -951,6 +833,7 @@ export default defineComponent({
     DashboardFolderSection,
     DashboardSharedSection,
     DashboardInteractiveSection,
+    DashboardPublicSection,
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardAddDialog,
@@ -4550,6 +4433,41 @@ export default defineComponent({
       toggleFeedSectionExpanded,
     }));
 
+    const publicSectionProps = computed(() => ({
+      isLoggedIn,
+      isHomeFeed: isHomeFeed.value,
+      publicFiltered: publicFiltered.value,
+      publicAnyOwner: publicAnyOwner.value,
+      publicOwnerFilter: publicOwnerFilter.value,
+      PUBLIC_OWNER_FILTERS,
+      PUBLIC_OWNER_FILTER_LABELS,
+      t,
+      feedItems,
+      selectionKey,
+      isSelected,
+      toggleSelected,
+      openCanvas,
+      openHtmlDocument,
+      openTextDocument,
+      cardFolderPath,
+      formatDate,
+      toggleCardMenu,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      isBusy: isBusy.value,
+      openMoveFolderModal,
+      openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
+      openAddFromTile,
+      hasActiveFilter: hasActiveFilter.value,
+      resetFilters,
+      feedLimit,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+      setPublicOwnerFilter: (value: (typeof PUBLIC_OWNER_FILTERS)[number]) => { publicOwnerFilter.value = value; },
+      setPublicOwnerFilterEl: (element: HTMLElement | null) => { publicOwnerFilterEl.value = element; },
+    }));
+
     const sharedSectionProps = computed(() => ({
       isLoggedIn,
       isHomeFeed: isHomeFeed.value,
@@ -4655,6 +4573,7 @@ export default defineComponent({
       folderSectionProps,
       sharedSectionProps,
       interactiveSectionProps,
+      publicSectionProps,
       yandexView,
       yandexPicker,
       yandexRefreshKey,
