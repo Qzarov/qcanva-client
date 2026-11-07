@@ -136,40 +136,18 @@
         @revoke="doRevoke"
       />
 
-      <!-- History (front task 6): same missing-outside-close gap the Share
-           panel had, fixed the same way (backdrop + window Escape listener). -->
-      <Teleport to="body">
-        <div v-if="showHistory" class="text-doc-share-backdrop" @click="closeHistory"></div>
-        <section v-if="showHistory" class="html-history-panel text-doc-history-panel" role="dialog" aria-modal="true" :aria-label="t('history')" @click.stop>
-          <div class="html-history-list">
-            <div class="html-history-head">
-              <strong>{{ t('history') }}</strong>
-              <button class="btn-ghost btn-sm" @click="closeHistory">x</button>
-            </div>
-            <div v-if="historyLoading" class="html-history-empty">{{ t('loadingDots') }}</div>
-            <button v-for="entry in historyItems" :key="entry.id" class="html-history-item" :class="{ active: selectedHistory?.id === entry.id }" @click="openHistoryEntry(entry)">
-              <span>{{ t('revisionLabel') }} {{ entry.revision }}</span>
-              <small>{{ new Date(entry.createdAt).toLocaleString() }}</small>
-            </button>
-            <div v-if="!historyLoading && !historyItems.length" class="html-history-empty">{{ t('noHistoryYet') }}</div>
-          </div>
-          <div class="html-history-preview">
-            <div v-if="!selectedHistory" class="html-history-empty">{{ t('selectARevision') }}</div>
-            <template v-else>
-              <div class="html-history-preview-head">
-                <div>
-                  <strong>{{ t('revisionLabel') }} {{ selectedHistory.revision }}</strong>
-                  <small>{{ selectedHistory.plainText || t('snapshotLabel') }}</small>
-                </div>
-                <button v-if="canEditContent" class="btn-ghost btn-sm" :disabled="restoringHistory" @click="restoreSelectedHistory">
-                  {{ restoringHistory ? t('restoringEllipsis') : t('restoreLabel') }}
-                </button>
-              </div>
-              <div class="text-doc-history-preview" v-html="selectedHistory.html"></div>
-            </template>
-          </div>
-        </section>
-      </Teleport>
+      <TextDocumentHistoryPanel
+        :open="showHistory"
+        :loading="historyLoading"
+        :items="historyItems"
+        :selected="selectedHistory"
+        :can-edit="canEditContent"
+        :restoring="restoringHistory"
+        :labels="historyLabels"
+        @close="closeHistory"
+        @select="openHistoryEntry"
+        @restore="restoreSelectedHistory"
+      />
 
       <!-- CAPACITY. Chrome in the app's themed --ui-* palette, never the
            fixed paper palette; nothing here reaches the Yjs document. It
@@ -220,91 +198,28 @@
         drawer variant further down, opened by the header button instead.
       -->
       <div ref="docBodyRef" class="text-doc-body">
-        <aside
-          v-if="outlineIsDesktop"
-          class="text-doc-outline-panel"
-          :class="{ 'text-doc-outline-panel-collapsed': !outlinePanelOpen, 'text-doc-outline-panel-resizing': outlineResizing }"
-          :style="outlinePanelOpen ? { width: outlineWidth + 'px', flexBasis: outlineWidth + 'px' } : {}"
-          :aria-label="outlineLabels.title"
-        >
-          <div v-if="outlinePanelOpen" class="text-doc-outline-panel-inner">
-            <div class="text-doc-outline-panel-title">
-              <span class="text-doc-outline-panel-title-text">{{ outlineLabels.title }}</span>
-              <button
-                v-if="hasCollapsibleOutline"
-                type="button"
-                class="btn-ghost text-doc-outline-expand-all"
-                :title="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
-                :aria-label="allOutlineSectionsCollapsed ? outlineLabels.expandAll : outlineLabels.collapseAll"
-                @click="toggleAllOutlineSections"
-              ><ChevronsUpDown v-if="allOutlineSectionsCollapsed" :size="15" aria-hidden="true" /><ChevronsDownUp v-else :size="15" aria-hidden="true" /></button>
-            </div>
-            <ol v-if="outlineVisibleRows.length" class="text-doc-outline-list">
-              <li
-                v-for="row in outlineVisibleRows"
-                :key="row.entry.id"
-                class="text-doc-outline-item"
-                :class="{ 'text-doc-outline-item-active': row.entry.id === activeOutlineHeadingId }"
-                :data-level="row.entry.level"
-                :data-outline-item="row.entry.id"
-              >
-                <!-- @mousedown.stop.prevent: `.stop` so grabbing the chevron
-                     never also fires the link's own @mousedown right next to
-                     it (siblings, not nested, but a pointer can technically
-                     land on both during a fast drag-like click), `.prevent`
-                     so a mouse click never steals focus away from wherever
-                     it already was (matches every other toolbar control's
-                     click-without-stealing-focus convention in this file).
-                     The actual toggle is on @click, not @mousedown, on
-                     purpose: `.prevent` on mousedown does not suppress the
-                     click that still fires afterward on mouseup, and click
-                     is also what a keyboard Enter/Space on a focused button
-                     dispatches - @mousedown alone left this unreachable from
-                     the keyboard entirely (caught in review before merge). -->
-                <button
-                  v-if="row.hasChildren"
-                  type="button"
-                  class="text-doc-outline-chevron"
-                  :title="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
-                  :aria-label="outlineCollapsedSections.has(row.entry.id) ? outlineLabels.expandSection : outlineLabels.collapseSection"
-                  :aria-expanded="!outlineCollapsedSections.has(row.entry.id)"
-                  @mousedown.stop.prevent
-                  @click="toggleOutlineSection(row.entry.id)"
-                ><ChevronRight v-if="outlineCollapsedSections.has(row.entry.id)" :size="13" aria-hidden="true" /><ChevronDown v-else :size="13" aria-hidden="true" /></button>
-                <span v-else class="text-doc-outline-chevron-spacer" aria-hidden="true"></span>
-                <!-- Same @mousedown/@click split as the chevron above, and
-                     for the same reason (pre-existing on this link, fixed
-                     alongside the chevron in the same review pass): a
-                     mousedown-only handler is unreachable from the
-                     keyboard. -->
-                <button
-                  type="button"
-                  class="text-doc-outline-link"
-                  @mousedown.prevent
-                  @click="navigateFromOutline(row.entry.pos, row.entry.id)"
-                  @mouseenter="onOutlineLinkHover($event)"
-                >
-                  {{ row.entry.text || outlineLabels.empty }}
-                </button>
-              </li>
-            </ol>
-            <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
-          </div>
-          <div
-            v-if="outlinePanelOpen"
-            class="text-doc-outline-resize-handle"
-            @mousedown="startOutlineResize"
-            @dblclick="resetOutlineWidth"
-          ></div>
-          <button
-            type="button"
-            class="text-doc-outline-collapse-toggle"
-            :title="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
-            :aria-label="outlinePanelOpen ? outlineLabels.hide : outlineLabels.show"
-            :aria-pressed="!outlinePanelOpen"
-            @click="toggleOutlinePanel"
-          ><PanelLeftClose v-if="outlinePanelOpen" :size="16" aria-hidden="true" /><PanelLeftOpen v-else :size="16" aria-hidden="true" /></button>
-        </aside>
+        <TextDocumentOutline
+          :is-desktop="outlineIsDesktop"
+          :panel-open="outlinePanelOpen"
+          :mobile-open="outlineMobileOpen"
+          :resizing="outlineResizing"
+          :width="outlineWidth"
+          :labels="outlineLabels"
+          :entries="outlineEntries"
+          :visible-rows="outlineVisibleRows"
+          :collapsed-sections="outlineCollapsedSections"
+          :active-heading-id="activeOutlineHeadingId"
+          :all-sections-collapsed="allOutlineSectionsCollapsed"
+          :has-collapsible="hasCollapsibleOutline"
+          @toggle-panel="toggleOutlinePanel"
+          @close-mobile="closeOutlineMobile"
+          @navigate="navigateFromOutline"
+          @toggle-section="toggleOutlineSection"
+          @toggle-all="toggleAllOutlineSections"
+          @start-resize="startOutlineResize"
+          @reset-width="resetOutlineWidth"
+          @outline-link-hover="onOutlineLinkHover"
+        />
 
       <main ref="docShellRef" class="text-doc-editor-shell" :class="{ 'text-doc-editor-shell--full': fullscreenDoc }">
         <article
@@ -434,38 +349,6 @@
         </section>
       </main>
       </div>
-
-      <!--
-        MOBILE/NARROW outline drawer - same backdrop+Escape primitive as the
-        Share sheet and link editor sheet (front task 6's "use the existing
-        primitive" rule), teleported for the same reason the doc-menu
-        popover is: the topbar's own backdrop-filter makes it a stacking
-        context, so a plain child z-index cannot win against it.
-      -->
-      <Teleport to="body">
-        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer-backdrop" @click="closeOutlineMobile"></div>
-        <div v-if="!outlineIsDesktop && outlineMobileOpen" class="text-doc-outline-drawer" role="dialog" :aria-label="outlineLabels.title">
-          <div class="text-doc-outline-drawer-title">{{ outlineLabels.title }}</div>
-          <ol v-if="outlineEntries.length" class="text-doc-outline-list">
-            <li
-              v-for="entry in outlineEntries"
-              :key="entry.id"
-              class="text-doc-outline-item"
-              :class="{ 'text-doc-outline-item-active': entry.id === activeOutlineHeadingId }"
-              :data-level="entry.level"
-              :data-outline-item="entry.id"
-              :aria-current="entry.id === activeOutlineHeadingId ? 'location' : undefined"
-            >
-              <!-- @mousedown/@click split, same reasoning as the desktop
-                   panel's own outline link. -->
-              <button type="button" class="text-doc-outline-link" @mousedown.prevent @click="navigateFromOutline(entry.pos, entry.id)">
-                {{ entry.text || outlineLabels.empty }}
-              </button>
-            </li>
-          </ol>
-          <div v-else class="text-doc-outline-empty">{{ outlineLabels.empty }}</div>
-        </div>
-      </Teleport>
 
       <!--
         The access-request dialog (ruling R3): one component for both an
@@ -756,7 +639,7 @@
 <script lang="ts">
 import { computed, defineComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { confirmRestoreRevision } from '../composables/appDialog';
-import { useActiveListener, useViewActivity } from '../composables/useViewActivity';
+import { useViewActivity } from '../composables/useViewActivity';
 import { useTab } from '../tabs/tabContext';
 import { useLivenessChecks } from '../tabs/useLivenessChecks';
 import { useRoute, useRouter } from 'vue-router';
@@ -767,64 +650,27 @@ import { BubbleMenu, EditorContent, useEditor } from '@tiptap/vue-3';
 import { Capacitor } from '@capacitor/core';
 import type { Editor, Range } from '@tiptap/core';
 import { trackRange } from '../text-documents/preserve-range';
-import StarterKit from '@tiptap/starter-kit';
-import { CodeBlockWithLanguage } from '../text-documents/code-block-language';
-import { lowlight } from '../text-documents/code-highlighting';
-import Underline from '@tiptap/extension-underline';
-import Link from '@tiptap/extension-link';
-import { isRenderableHref } from '../documents/link-policy';
-import TaskList from '@tiptap/extension-task-list';
-import Image from '@tiptap/extension-image';
 import { useResourceImageTokens } from '../composables/useResourceImageTokens';
-import { TextDocumentImageNodeViewExtension } from '../text-documents/image-node';
-import { QuietTaskItem } from '../text-documents/task-item';
-import { Callout } from '../text-documents/callout';
-import { CollapsibleHeading, type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
-import { TableOfContents, type TableOfContentsLabels, documentOutline, focusHeading } from '../text-documents/table-of-contents';
-import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
-import { BlockId } from '../text-documents/block-id';
-import { buildOutlineTree, clampOutlineWidth, collectCollapsibleIds, flattenVisibleOutline, headingIdAtReadingLine } from '../text-documents/outline-tree';
-import { HeadingLink } from '../text-documents/heading-link-node';
-import {
-  SLASH_MENU_ITEMS,
-  SlashMenu,
-  type SlashMenuController,
-  type SlashMenuItem,
-  type SlashMenuRender,
-} from '../text-documents/slash-menu';
-import {
-  insertMentionAtRange,
-  MentionMenu,
-  type MentionMenuController,
-  type MentionMenuItem,
-  type MentionMenuRender,
-} from '../text-documents/mention-menu';
-import { Mention } from '../text-documents/mention-node';
+import { type HeadingCollapseLabels } from '../text-documents/collapsible-heading';
+import { type TableOfContentsLabels, focusHeading } from '../text-documents/table-of-contents';
+import { ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
+import { createTextDocumentExtensions } from '../text-documents/create-text-document-extensions';
+import { insertMentionAtRange } from '../text-documents/mention-menu';
 import { caretListItem, listIndentState, moveCaretListItem } from '../text-documents/list-indent';
 import {
   BUBBLE_MARK_BUTTONS,
   LINK_ICON,
   UNLINK_ICON,
-  resolveLinkHref,
   shouldShowBubbleMenu,
 } from '../text-documents/bubble-menu';
 import { EDITOR_GLYPHS, lucideIcon } from '../text-documents/editor-icons';
-import DragHandle from '@tiptap/extension-drag-handle';
-import NodeRange from '@tiptap/extension-node-range';
-import Table from '@tiptap/extension-table';
-import TableRow from '@tiptap/extension-table-row';
-import TableHeader from '@tiptap/extension-table-header';
-import TableCell from '@tiptap/extension-table-cell';
 import {
   MAX_TOP_LEVEL_BLOCKS,
   capacityLevel,
 } from '../documents/document-capacity';
-import { CAPACITY_OVERRIDE_META, CapacityGuard } from '../text-documents/capacity-guard';
+import { CAPACITY_OVERRIDE_META } from '../text-documents/capacity-guard';
 import { resolveSyncStatus, useCalmSaving } from '../composables/useCalmSyncStatus';
-import { TableMoveHandles, canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
-import { PinColumnWidthsOnLastColumnResize } from '../text-documents/table-column-widths';
-import Collaboration from '../text-documents/collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
+import { canMoveCurrentTableLine, moveCurrentTableLine, type TableAxis } from '../text-documents/table-move';
 import { yUndoPluginKey } from 'y-prosemirror';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
@@ -840,16 +686,23 @@ import { readNativeResourceCache, writeNativeResourceCache } from '../composable
 import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projection';
 import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
-import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
+import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
+import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
+import { useTextDocumentMentionMenu } from '../composables/useTextDocumentMentionMenu';
+import { useTextDocumentLinkActions } from '../composables/useTextDocumentLinkActions';
+import { useTextDocumentLinkEditor } from '../composables/useTextDocumentLinkEditor';
+import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
 import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
+import TextDocumentOutline from '../components/TextDocumentOutline.vue';
+import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -1007,11 +860,22 @@ export default defineComponent({
     const historyItems = ref<any[]>([]);
     const selectedHistory = ref<any | null>(null);
     const restoringHistory = ref(false);
+    const historyLabels = computed<TextDocumentHistoryLabels>(() => ({
+      title: t('history'),
+      loading: t('loadingDots'),
+      revision: t('revisionLabel'),
+      empty: t('noHistoryYet'),
+      select: t('selectARevision'),
+      snapshot: t('snapshotLabel'),
+      restore: t('restoreLabel'),
+      restoring: t('restoringEllipsis'),
+    }));
     const syncIssue = ref<'conflict' | ''>('');
     let socketInitialized = false;
     let applyingInitialState = false;
 
     const canEditContent = computed(() => role.value === 'owner' || role.value === 'edit');
+    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
     // The server's copy was rebuilt from scratch (content replace or history
     // restore) and can no longer be merged into this ydoc: read-only until reload.
     const replacedOnServer = ref(false);
@@ -1120,6 +984,14 @@ export default defineComponent({
     // Which block the handle is currently parked beside, tracked via
     // onNodeChange so the "+" knows where to insert.
     let dragHandleNodePos = -1;
+    let scheduleListArrows: () => void = () => {};
+    const onDragNodeChange = (params: unknown) => {
+      const { node, pos } = params as { node?: { type?: { name?: string } }; pos?: number };
+      dragHandleNodePos = pos ?? -1;
+      if (!dragHandleElement) return;
+      dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type?.name === 'heading');
+      scheduleListArrows();
+    };
     const paintDragHandleLabel = () => {
       if (!dragGripElement) return;
       dragGripElement.setAttribute('aria-label', t('dragBlock'));
@@ -1217,343 +1089,45 @@ export default defineComponent({
     paintI18nLabels();
     watch(locale, paintI18nLabels);
 
-    /**
-     * OUTLINE PANEL (auto-generated, separate from the manually-inserted
-     * `tableOfContents` block above - both stay, see the design discussion
-     * this shipped from).
-     *
-     * Desktop ("there's room" = the viewport is wide enough that a 240px
-     * sidebar and the paper's own 920px reading width both fit without
-     * squeezing either uncomfortably): a persistent sidebar, open by
-     * default, collapsible - the collapse choice is a per-browser UI
-     * preference (`localStorage`, never the document), same reasoning as
-     * `useTheme.ts`'s own preference storage.
-     *
-     * Narrower than that (including mobile): no sidebar at all - opened via
-     * the header's outline button as a bottom-sheet-style overlay, closed
-     * again by the backdrop, Escape, or picking a heading.
-     */
-    const OUTLINE_DESKTOP_MIN_WIDTH = BREAKPOINTS.outlineDocked;
-    const OUTLINE_COLLAPSED_STORAGE_KEY = 'qcanva-outline-collapsed';
-    const OUTLINE_WIDTH_STORAGE_KEY = 'qcanva-outline-width';
-    // "Использовать значения, лучше соответствующие текущему layout" - 240
-    // is the sidebar's own original fixed width, kept as both the default
-    // and the double-click-to-reset target; 220/480 leave enough room for
-    // .text-doc-editor-shell's 920px reading width at the desktop breakpoint
-    // this panel starts showing at (OUTLINE_DESKTOP_MIN_WIDTH) without
-    // squeezing it into scrollbar territory - see the live-checked widths
-    // in this task's own report.
-    const OUTLINE_DEFAULT_WIDTH = 240;
-    const OUTLINE_MIN_WIDTH = 220;
-    const OUTLINE_MAX_WIDTH = 480;
-
     // Fullscreen (full-width) reading mode - web only, session-scoped. When on,
     // the editor shell drops its 920px cap and fills the space beside the
     // outline panel (or the whole width when the panel is collapsed).
     const fullscreenDoc = ref(false);
 
-    function readOutlineCollapsedPref(): boolean {
-      try {
-        return localStorage.getItem(OUTLINE_COLLAPSED_STORAGE_KEY) === '1';
-      } catch {
-        return false;
-      }
-    }
-    function writeOutlineCollapsedPref(collapsed: boolean): void {
-      try {
-        localStorage.setItem(OUTLINE_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
-      } catch {
-        // Best-effort only, same as useTheme.ts's own storage guard - a
-        // blocked/full localStorage must not break the toggle itself.
-      }
-    }
-    function readOutlineWidth(): number {
-      try {
-        const raw = localStorage.getItem(OUTLINE_WIDTH_STORAGE_KEY);
-        const parsed = raw === null ? NaN : Number(raw);
-        return Number.isFinite(parsed) ? clampOutlineWidth(parsed, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH) : OUTLINE_DEFAULT_WIDTH;
-      } catch {
-        return OUTLINE_DEFAULT_WIDTH;
-      }
-    }
-    function writeOutlineWidth(width: number): void {
-      try {
-        localStorage.setItem(OUTLINE_WIDTH_STORAGE_KEY, String(width));
-      } catch {
-        // Best-effort, same as the collapse preference above.
-      }
-    }
-
-    const outlineIsDesktop = ref(typeof window !== 'undefined' ? window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH : true);
-    const outlineCollapsedPref = ref(readOutlineCollapsedPref());
-    const outlineMobileOpen = ref(false);
-    const outlineWidth = ref(readOutlineWidth());
-    // A resize is in progress: adds the "no text selection, col-resize
-    // cursor everywhere" body class (style.css) for the duration of the
-    // drag, since the cursor can slide off the 6px handle itself onto the
-    // document text at any moment mid-drag.
-    const outlineResizing = ref(false);
-
-    function updateOutlineIsDesktop(): void {
-      outlineIsDesktop.value = window.innerWidth >= OUTLINE_DESKTOP_MIN_WIDTH;
-    }
-    useActiveListener(window, 'resize', updateOutlineIsDesktop);
-
-    /** Visible right now, on WHICHEVER breakpoint currently applies. */
-    const outlinePanelOpen = computed(() => (outlineIsDesktop.value ? !outlineCollapsedPref.value : outlineMobileOpen.value));
-
-    function toggleOutlinePanel(): void {
-      if (outlineIsDesktop.value) {
-        outlineCollapsedPref.value = !outlineCollapsedPref.value;
-        writeOutlineCollapsedPref(outlineCollapsedPref.value);
-        return;
-      }
-      outlineMobileOpen.value = !outlineMobileOpen.value;
-    }
-    function closeOutlineMobile(): void {
-      outlineMobileOpen.value = false;
-    }
-    const onOutlineMobileEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeOutlineMobile();
-    };
-    watch(outlineMobileOpen, (open) => {
-      if (open) window.addEventListener('keydown', onOutlineMobileEscape);
-      else window.removeEventListener('keydown', onOutlineMobileEscape);
-      // Open the drawer on the current section (caret, or on-screen without
-      // one), not at the top.
-      if (open && editor.value) syncActiveOutlineHeading(editor.value);
-      const activeId = activeOutlineHeadingId.value;
-      if (open && activeId) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-drawer', activeId));
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onOutlineMobileEscape));
-
-    /**
-     * RESIZE (desktop sidebar only - the mobile drawer has no handle and
-     * always fills its own bottom-sheet width). Plain mousemove/mouseup on
-     * `window`, not the handle itself: the cursor routinely outruns a 6px
-     * strip mid-drag, and losing tracking the instant that happens would
-     * leave the drag "stuck" from the user's perspective.
-     */
-    let outlineResizeStartX = 0;
-    let outlineResizeStartWidth = 0;
-
-    function onOutlineResizeMove(event: MouseEvent): void {
-      const delta = event.clientX - outlineResizeStartX;
-      outlineWidth.value = clampOutlineWidth(outlineResizeStartWidth + delta, OUTLINE_MIN_WIDTH, OUTLINE_MAX_WIDTH);
-    }
-    function stopOutlineResize(): void {
-      outlineResizing.value = false;
-      document.body.classList.remove('text-doc-outline-resizing');
-      window.removeEventListener('mousemove', onOutlineResizeMove);
-      window.removeEventListener('mouseup', stopOutlineResize);
-      writeOutlineWidth(outlineWidth.value);
-    }
-    function startOutlineResize(event: MouseEvent): void {
-      // Not a click on the outline's own content: prevents text selection
-      // starting in the document/panel as the mouse sweeps across it.
-      event.preventDefault();
-      outlineResizeStartX = event.clientX;
-      outlineResizeStartWidth = outlineWidth.value;
-      outlineResizing.value = true;
-      // A BODY class, not a class on the handle: the cursor routinely
-      // outruns the 6px strip mid-drag, and `col-resize`/no-selection must
-      // hold everywhere it wanders until the button is released, not just
-      // while it happens to still be over the handle itself.
-      document.body.classList.add('text-doc-outline-resizing');
-      window.addEventListener('mousemove', onOutlineResizeMove);
-      window.addEventListener('mouseup', stopOutlineResize);
-    }
-    /** Double-click the handle: back to the original width, same as a fresh install. */
-    function resetOutlineWidth(): void {
-      outlineWidth.value = OUTLINE_DEFAULT_WIDTH;
-      writeOutlineWidth(OUTLINE_DEFAULT_WIDTH);
-    }
-    onBeforeUnmount(() => {
-      window.removeEventListener('mousemove', onOutlineResizeMove);
-      window.removeEventListener('mouseup', stopOutlineResize);
-      document.body.classList.remove('text-doc-outline-resizing');
-    });
-
-    /**
-     * The live outline this panel and the in-document `tableOfContents`
-     * block both draw from - `documentOutline` is a pure read of
-     * `editor.state.doc`, so `editorTransactionTick` is what actually makes
-     * this recompute (see the UNDO/REDO section's own comment on why that
-     * ref exists at all). Flat, in document order - the mobile drawer
-     * renders this directly and unchanged; the desktop sidebar renders the
-     * TREE built from it instead (below), so the two stay independent by
-     * construction rather than by remembering not to touch one from the
-     * other's code path.
-     */
-    const outlineEntries = computed(() => {
-      void editorTransactionTick.value;
-      return editor.value?.state?.doc ? documentOutline(editor.value.state.doc) : [];
-    });
-
-    /**
-     * DESKTOP SIDEBAR TREE. Which sections are folded is a per-viewer
-     * browsing convenience local to this panel - never persisted, never
-     * touching the document's own (unrelated) per-heading `collapsed`
-     * attribute (collapsible-heading.ts) - see outline-tree.ts's file
-     * comment for why the two must stay separate.
-     */
-    const outlineCollapsedSections = ref<Set<string>>(new Set());
-    const outlineTree = computed(() => buildOutlineTree(outlineEntries.value));
-    const outlineVisibleRows = computed(() => flattenVisibleOutline(outlineTree.value, outlineCollapsedSections.value));
-
-    function toggleOutlineSection(id: string): void {
-      const next = new Set(outlineCollapsedSections.value);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      outlineCollapsedSections.value = next;
-    }
-
-    // Expand / collapse every heading section at once from the panel header.
-    const allCollapsibleOutlineIds = computed(() => collectCollapsibleIds(outlineTree.value));
-    const hasCollapsibleOutline = computed(() => allCollapsibleOutlineIds.value.length > 0);
-    const allOutlineSectionsCollapsed = computed(() =>
-      hasCollapsibleOutline.value &&
-      allCollapsibleOutlineIds.value.every((id) => outlineCollapsedSections.value.has(id)),
-    );
-    function toggleAllOutlineSections(): void {
-      outlineCollapsedSections.value = allOutlineSectionsCollapsed.value
-        ? new Set()
-        : new Set(allCollapsibleOutlineIds.value);
-    }
-
-    /**
-     * Which outline row is "active": the section the CARET is in (the last
-     * heading at or before it), following the caret as it moves - and so
-     * also the heading just picked from the outline, since that puts the
-     * caret there. Tracked from the selection, not the scroll position:
-     * recomputed in onSelectionUpdate straight from the editor's current
-     * document (which also fires when typing or a collaborator's edit shifts
-     * the caret). Not a watch on outlineEntries - that would keep the
-     * computed cached between a no-emit setContent and its lazy refresh.
-     */
-    const activeOutlineHeadingId = ref<string | null>(null);
     const pageRef = ref<HTMLElement | null>(null);
-    /**
-     * Whether the user has placed a caret: on from the first focus, off
-     * once system Back takes it away (so the next Back leaves). NOT plain
-     * `isFocused`: tapping the outline button blurs the editor, yet the caret
-     * the user placed is still there. The outline follows the screen, not
-     * the caret, whatever this says.
-     */
+    const editorTransactionTick = ref(0);
     const hasCaret = ref(false);
-
-    /** With no caret, the section being read: the last heading above the reading line. */
-    function headingIdInView(ed: Editor): string | null {
-      const page = pageRef.value;
-      if (!page) return null;
-      const pageTop = page.getBoundingClientRect().top;
-      const line = pageTop + Math.min(120, page.clientHeight * 0.25);
-      const headings = documentOutline(ed.state.doc).flatMap((entry) => {
-        const dom = ed.view.nodeDOM(entry.pos);
-        // A heading folded inside a collapsed section has no layout (and a
-        // zero rect that would otherwise read as "scrolled past").
-        if (!(dom instanceof HTMLElement) || dom.getClientRects().length === 0) return [];
-        return [{ id: entry.id, top: dom.getBoundingClientRect().top }];
-      });
-      const reading = headingIdAtReadingLine(headings, line);
-      if (reading) return reading;
-      // At the top of the document no heading has reached the reading line
-      // yet - point at the first one already on screen rather than at nothing.
-      const screenBottom = pageTop + page.clientHeight;
-      return headings.find((heading) => heading.top < screenBottom)?.id ?? null;
-    }
-
-    /**
-     * The outline marks the section on SCREEN - the one being read - not the
-     * one holding the caret: scrolling away from where you typed moves the
-     * pointer with you, on the web and on a phone alike.
-     */
-    function syncActiveOutlineHeading(ed: Editor): void {
-      const id = headingIdInView(ed);
-      if (id === activeOutlineHeadingId.value) return;
-      activeOutlineHeadingId.value = id;
-      // Keep it in view in the sidebar (scrollTop only - see the helper).
-      if (id && outlineIsDesktop.value) void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', id));
-    }
-
-    /**
-     * Brings the outline's own list item into view within the SIDEBAR's own
-     * scroll area - deliberately NOT `Element.scrollIntoView` (which
-     * `scrollHighlightedIntoView` below already wraps for the slash/mention
-     * menus): found live that calling `scrollIntoView` a SECOND time, even
-     * with `block: 'nearest'`, even on this totally unrelated scroll
-     * container (the outline panel's own list, never the document), reliably
-     * CANCELS a smooth `scrollIntoView` already animating elsewhere (the
-     * heading's own, from `focusHeading`) - a real Chromium scroll-queue
-     * quirk, confirmed by removing this call entirely and watching the
-     * heading scroll land correctly. Deferring it (`nextTick`, even a full
-     * `requestAnimationFrame`) narrowed but never fully closed the window.
-     * A plain `scrollTop` assignment doesn't touch that queue at all, so it
-     * can never re-trigger the interference regardless of timing.
-     */
-    function scrollOutlineItemIntoView(containerSelector: string, headingId: string): void {
-      const container = document.querySelector(containerSelector);
-      const item = Array.from(container?.querySelectorAll<HTMLElement>('[data-outline-item]') ?? [])
-        .find((el) => el.dataset.outlineItem === headingId);
-      if (!(container instanceof HTMLElement) || !(item instanceof HTMLElement)) return;
-      const itemTop = item.offsetTop;
-      const itemBottom = itemTop + item.offsetHeight;
-      if (itemTop < container.scrollTop) {
-        container.scrollTop = itemTop;
-      } else if (itemBottom > container.scrollTop + container.clientHeight) {
-        container.scrollTop = itemBottom - container.clientHeight;
-      }
-    }
-
-    function navigateFromOutline(pos: number, headingId: string): void {
-      if (!editor.value) return;
-      focusHeading(editor.value, pos);
-      activeOutlineHeadingId.value = headingId;
-      if (!outlineIsDesktop.value) {
-        outlineMobileOpen.value = false;
-        return;
-      }
-      void nextTick(() => scrollOutlineItemIntoView('.text-doc-outline-panel-inner', headingId));
-    }
-
-    /**
-     * A native browser tooltip, but only when the single-line, ellipsized
-     * heading title (style.css's `.text-doc-outline-link`) is ACTUALLY
-     * truncated - measured on hover rather than kept as reactive state per
-     * row, since it only ever matters at the one moment a reader's pointer
-     * is already sitting on the element asking for it. Comparing scrollWidth
-     * against clientWidth is exactly what "does this need an ellipsis"
-     * means for a single `white-space: nowrap` line.
-     */
-    function onOutlineLinkHover(event: MouseEvent): void {
-      const link = event.currentTarget as HTMLElement;
-      link.title = link.scrollWidth > link.clientWidth ? link.textContent?.trim() ?? '' : '';
-    }
-
-    const outlineLabels = {
-      title: '',
-      empty: '',
-      toggle: '',
-      hide: '',
-      show: '',
-      collapseSection: '',
-      expandSection: '',
-      expandAll: '',
-      collapseAll: '',
-    };
-    const paintOutlineLabels = () => {
-      outlineLabels.title = t('outlineTitle');
-      outlineLabels.empty = t('outlineEmpty');
-      outlineLabels.toggle = t('outlineToggle');
-      outlineLabels.hide = t('outlineHide');
-      outlineLabels.show = t('outlineShow');
-      outlineLabels.collapseSection = t('outlineCollapseSection');
-      outlineLabels.expandSection = t('outlineExpandSection');
-      outlineLabels.expandAll = t('outlineExpandAll');
-      outlineLabels.collapseAll = t('outlineCollapseAll');
-    };
-    paintOutlineLabels();
-    watch(locale, paintOutlineLabels);
+    let readEditor: () => Editor | null = () => null;
+    const outline = useTextDocumentOutline({
+      getEditor: () => readEditor(),
+      pageRef,
+      editorTransactionTick,
+      t,
+    });
+    const {
+      outlineIsDesktop,
+      outlineMobileOpen,
+      outlinePanelOpen,
+      outlineWidth,
+      outlineResizing,
+      outlineEntries,
+      outlineVisibleRows,
+      outlineCollapsedSections,
+      activeOutlineHeadingId,
+      outlineLabels,
+      allOutlineSectionsCollapsed,
+      hasCollapsibleOutline,
+      toggleOutlinePanel,
+      closeOutlineMobile,
+      navigateFromOutline,
+      toggleOutlineSection,
+      toggleAllOutlineSections,
+      startOutlineResize,
+      stopOutlineResize,
+      resetOutlineWidth,
+      onOutlineLinkHover,
+      syncActiveOutlineHeading,
+    } = outline;
 
     /** Scrolls to and selects the heading `headingId` names, in THIS document only (see heading-id.ts). */
     function navigateToHeadingLink(headingId: string): void {
@@ -1598,8 +1172,22 @@ export default defineComponent({
      * asserted without a popup. The link editor is deliberately the smallest
      * thing that can take a url: one input, inside the bubble.
      */
-    const linkEditorOpen = ref(false);
-    const linkInput = ref('');
+    const linkEditor = useTextDocumentLinkEditor({
+      getEditor: () => readEditor(),
+      isMobileLayout: isMobileEditorLayout,
+      showToast,
+      rejectedMessage: () => t('linkRejected'),
+    });
+    const {
+      linkEditorOpen,
+      linkInput,
+      linkEditorHadLink,
+      openLinkEditor,
+      closeLinkEditor,
+      closeLinkEditorOnDocumentInput,
+      applyLink,
+      removeLink,
+    } = linkEditor;
     const bubbleMarkButtons = computed(() =>
       BUBBLE_MARK_BUTTONS.map((button) => ({ ...button, label: t(button.labelKey) })),
     );
@@ -1727,7 +1315,7 @@ export default defineComponent({
     };
     // After the DOM caught up with the transaction that moved the caret.
     let listArrowsFrame = 0;
-    const scheduleListArrows = () => {
+    scheduleListArrows = () => {
       if (typeof requestAnimationFrame !== 'function') return placeListArrows();
       if (listArrowsFrame) cancelAnimationFrame(listArrowsFrame);
       listArrowsFrame = requestAnimationFrame(() => {
@@ -1777,88 +1365,6 @@ export default defineComponent({
      * what happened to focus or to the document (a collaborator's edit)
      * while the sheet was open - see text-documents/preserve-range.ts.
      */
-    let linkRangeTracker: ReturnType<typeof trackRange> | null = null;
-    // Captured at open time rather than read live from editor.isActive('link')
-    // in the template: moving focus to the sheet's <input> can leave the
-    // editor's selection collapsed/without marks by the time of the next
-    // render, which would wrongly hide the Remove button for an existing
-    // link - exactly the "don't trust selection after blur" risk this sheet
-    // exists to guard against elsewhere too.
-    const linkEditorHadLink = ref(false);
-
-    const openLinkEditor = () => {
-      linkInput.value = editor.value?.getAttributes('link').href || '';
-      linkEditorHadLink.value = editor.value?.isActive('link') ?? false;
-      if (editor.value) {
-        const { from, to } = editor.value.state.selection;
-        linkRangeTracker = trackRange(editor.value, { from, to });
-      }
-      linkEditorOpen.value = true;
-      // Desktop: straight into the box as soon as it renders, so typing goes
-      // to the URL, not over the selected text in the document - and a
-      // keystroke meant for the box can't count as "back to the doc". (Callers
-      // must not leave an editor focus() pending - tiptap's lands a frame
-      // later and would take focus back; see editLinkAction.)
-      if (!isMobileEditorLayout()) {
-        void nextTick(() => {
-          if (!linkEditorOpen.value) return;
-          (document.querySelector('[data-bubble-link-input]') as HTMLInputElement | null)?.focus();
-        });
-      }
-    };
-
-    /**
-     * The desktop link box stays up while it's open (bubbleShouldShow), so
-     * it has to go away once the user goes back to the document - otherwise
-     * it followed the caret around forever (the "link box hangs over the
-     * cursor" bug). Wired to a mousedown/keydown IN THE EDITOR (see
-     * editorProps.handleDOMEvents): a mousedown arrives before the click
-     * moves the selection, so the bubble's next check already sees the box
-     * closed; and a collaborator's edit never counts as "going back".
-     */
-    const closeLinkEditorOnDocumentInput = () => {
-      if (linkEditorOpen.value && !isMobileEditorLayout()) closeLinkEditor();
-    };
-
-    const closeLinkEditor = () => {
-      linkEditorOpen.value = false;
-      linkInput.value = '';
-      linkEditorHadLink.value = false;
-      linkRangeTracker?.stop();
-      linkRangeTracker = null;
-    };
-
-    const restoreLinkSelection = () => {
-      if (!editor.value || !linkRangeTracker) return;
-      const range = linkRangeTracker.resolve();
-      editor.value.chain().focus().setTextSelection(range).run();
-    };
-
-    const removeLink = () => {
-      restoreLinkSelection();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
-      closeLinkEditor();
-    };
-
-    const applyLink = () => {
-      if (!linkInput.value.trim()) {
-        // An emptied field reads as "take the link off", which is what the
-        // separate unlink button does - not as "link to nothing".
-        removeLink();
-        return;
-      }
-      const href = resolveLinkHref(linkInput.value);
-      if (!href) {
-        // Refused by documents/link-policy.ts. Saying so beats silently
-        // dropping the click, because the input looks perfectly fine.
-        showToast(t('linkRejected'), 'error');
-        return;
-      }
-      restoreLinkSelection();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').setLink({ href }).run();
-      closeLinkEditor();
-    };
-
     /**
      * LINK TAP/CLICK ACTIONS (front task 4/5). `Link.configure({ openOnClick:
      * false })` above means nothing already opens a link or offers to on a
@@ -1872,129 +1378,30 @@ export default defineComponent({
      * output) rather than resolved through ProseMirror mark lookup, since
      * that's exactly what's under the pointer.
      */
-    const linkActionOpen = ref(false);
-    const linkActionHref = ref('');
-    // Above the link it is anchored by its BOTTOM edge, so however tall it
-    // renders (its buttons wrap to two rows in Russian), it ends just above
-    // the link instead of overlapping it; below the link, by its top.
-    const linkActionRect = ref<{ top?: number; bottom?: number; left: number } | null>(null);
-    const linkActionMenuStyle = computed(() => {
-      const r = linkActionRect.value;
-      if (!r) return undefined;
-      return {
-        left: `${r.left}px`,
-        ...(r.bottom !== undefined ? { bottom: `${r.bottom}px` } : { top: `${r.top ?? 0}px` }),
-      };
+    const linkActions = useTextDocumentLinkActions({
+      getEditor: () => readEditor(),
+      canEdit: () => canEditContent.value,
+      showToast,
+      copySuccessMessage: () => t('copied'),
+      copyFailureMessage: () => t('copyLinkFailed'),
+      openLinkEditor,
     });
-    /**
-     * Keeps the link menu on screen. Its left edge starts at the link, and
-     * its width is whatever the address and icons need - so it is measured
-     * once rendered and slid back in (12px from each edge) if it would cross
-     * the right side, as it did on a phone.
+    const {
+      linkActionOpen,
+      linkActionHref,
+      linkActionMenuStyle,
+      linkActionMenuEl,
+      closeLinkActionMenu,
+      copyLinkActionHref,
+      openLinkActionHref,
+      editLinkAction,
+      removeLinkAction,
+      handleEditorLinkClick,
+    } = linkActions;
+    /*
+     * LINK TAP/ACTION state now lives in useTextDocumentLinkActions.
+     * The view keeps only the editor-specific link form below.
      */
-    const LINK_MENU_EDGE = 12;
-    const linkActionMenuEl = ref<HTMLElement | null>(null);
-    const keepLinkActionMenuOnScreen = () => {
-      const el = linkActionMenuEl.value;
-      const current = linkActionRect.value;
-      if (!el || !current) return;
-      const width = el.getBoundingClientRect().width;
-      const maxLeft = Math.max(LINK_MENU_EDGE, window.innerWidth - width - LINK_MENU_EDGE);
-      const left = Math.min(Math.max(LINK_MENU_EDGE, current.left), maxLeft);
-      if (left !== current.left) linkActionRect.value = { ...current, left };
-    };
-    // Also when it moves straight to another link while still open.
-    watch([linkActionOpen, linkActionHref], ([open]) => {
-      if (open) void nextTick(keepLinkActionMenuOnScreen);
-    });
-    const closeLinkActionMenu = () => {
-      linkActionOpen.value = false;
-      linkActionHref.value = '';
-      linkActionRect.value = null;
-    };
-    const onLinkActionEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeLinkActionMenu();
-    };
-    watch(linkActionOpen, (open) => {
-      if (open) window.addEventListener('keydown', onLinkActionEscape);
-      else window.removeEventListener('keydown', onLinkActionEscape);
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onLinkActionEscape));
-
-    async function copyLinkActionHref() {
-      try {
-        await navigator.clipboard.writeText(linkActionHref.value);
-        showToast(t('copied'), 'success');
-      } catch {
-        showToast(t('copyLinkFailed'), 'error');
-      }
-      closeLinkActionMenu();
-    }
-    function openLinkActionHref() {
-      window.open(linkActionHref.value, '_blank', 'noopener,noreferrer');
-      closeLinkActionMenu();
-    }
-    /**
-     * Hands off to the SAME edit flow the bubble menu's link button uses.
-     * Unlike applyLink/removeLink (which extend a collapsed selection to the
-     * whole mark when APPLYING), this has to extend it FIRST: on desktop the
-     * edit form only renders inside <BubbleMenu>, whose shouldShowBubbleMenu
-     * requires a non-empty text selection - a click leaves the cursor
-     * collapsed, so without this the desktop form would never appear at all
-     * (the mobile sheet doesn't share that gate, but extending here keeps
-     * both platforms consistent and gives openLinkEditor the correct full
-     * range to capture via trackRange).
-     */
-    /** Takes the link off the clicked link's whole text (the caret sits inside it after the click). */
-    function removeLinkAction() {
-      closeLinkActionMenu();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
-    }
-    function editLinkAction() {
-      closeLinkActionMenu();
-      // No .focus() here: the link box takes focus itself (openLinkEditor),
-      // and tiptap's deferred focus would steal it back a frame later.
-      editor.value?.chain().extendMarkRange('link').run();
-      openLinkEditor();
-    }
-
-    /**
-     * Named and exposed (like openLinkEditor/applyLink/removeLink already
-     * are) so it can be called directly in a test: jsdom does not reliably
-     * deliver a real click through ProseMirror's own DOM event pipeline the
-     * way a browser does - the same class of limitation
-     * TextDocumentView.linkEditor.test.ts already documents for the tippy-
-     * based bubble menu. Registered below as editorProps.handleClick.
-     */
-    function handleEditorLinkClick(event: MouseEvent): boolean {
-      if (!canEditContent.value) return false;
-      const anchor = (event.target as HTMLElement | null)?.closest?.('a');
-      if (!anchor) {
-        closeLinkActionMenu();
-        return false;
-      }
-      const href = anchor.getAttribute('href') || '';
-      if (!href) return false;
-      const rect = anchor.getBoundingClientRect();
-      // Only decides above vs below; the menu's real height doesn't matter
-      // for placement (see linkActionRect). A single row now.
-      const ESTIMATED_MENU_HEIGHT = 56;
-      // Opens ABOVE the link by default (front task: it used to sit right on
-      // top of the link text, which the popover's own background then hid) -
-      // falls back to below only when there isn't enough room above.
-      const opensBelow = rect.top - 6 - ESTIMATED_MENU_HEIGHT < 8;
-      linkActionHref.value = href;
-      linkActionRect.value = {
-        ...(opensBelow ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - (rect.top - 6) }),
-        // Final placement once its real width is known: keepLinkActionMenuOnScreen.
-        left: rect.left,
-      };
-      linkActionOpen.value = true;
-      // Not `true`: this only shows the popover, it never suppresses
-      // ProseMirror's own click handling, so the caret still lands exactly
-      // where a plain click on that text would put it.
-      return false;
-    }
 
     /**
      * How far the on-screen keyboard currently pushes up from the bottom of
@@ -2022,6 +1429,24 @@ export default defineComponent({
       },
     });
 
+    const slashMenu = useTextDocumentSlashMenu({
+      getEditor: () => readEditor(),
+      t,
+      isMobileLayout: isMobileEditorLayout,
+    });
+    const {
+      slashOpen,
+      slashItems,
+      slashIndex,
+      slashMenuStyle,
+      slashLabel,
+      slashController,
+      selectSlashItem,
+      cancelSlashMenu,
+      closeSlashMenu,
+      SLASH_MENU_ITEMS,
+    } = slashMenu;
+
     /**
      * SLASH MENU state.
      *
@@ -2031,7 +1456,6 @@ export default defineComponent({
      * callback, kept so a click or Enter goes through the plugin's path (which
      * knows the range to replace) rather than reimplementing it.
      */
-    const slashOpen = ref(false);
     // Asleep in a background tab the document closes its menus and sheets
     // (teleported to <body>, and each holding a window listener while open).
     useViewActivity({
@@ -2041,121 +1465,20 @@ export default defineComponent({
         linkActionOpen.value = false;
         linkEditorOpen.value = false;
         showHistory.value = false;
-        slashOpen.value = false;
+        closeSlashMenu();
         if (outlineResizing.value) stopOutlineResize();
       },
     });
-    const slashItems = ref<SlashMenuItem[]>([]);
-    const slashIndex = ref(0);
-    const slashRect = ref<{ top: number; left: number } | null>(null);
-    let slashCommand: ((item: SlashMenuItem) => void) | null = null;
-    // Escape dismisses the popup while the caret stays inside the typed
-    // `/query`, so the suggestion plugin is still "active". Without this flag
-    // the very next keystroke would pop it straight back open.
-    let slashDismissed = false;
-
-    const slashLabel = (item: SlashMenuItem) => t(item.labelKey);
-    const slashMenuStyle = computed(() =>
-      slashRect.value
-        ? { top: `${slashRect.value.top}px`, left: `${slashRect.value.left}px` }
-        : undefined,
-    );
-
-    const applySlashRender = (render: SlashMenuRender) => {
-      slashItems.value = render.items;
-      slashIndex.value = 0;
-      slashCommand = render.command;
-      // A DOMRect is not reactive and jsdom reports zeroes; only the two
-      // numbers the popup needs are copied out.
-      slashRect.value = render.rect
-        ? { top: render.rect.bottom + 6, left: render.rect.left }
-        : null;
-      slashOpen.value = !slashDismissed;
-    };
-
-    const closeSlashMenu = () => {
-      slashOpen.value = false;
-      slashItems.value = [];
-      slashIndex.value = 0;
-      slashCommand = null;
-    };
-
-    // Same as pressing Escape (backdrop tap / the sheet's own close button
-    // have no keyboard to send that through) - the caret stays inside the
-    // typed "/query", so slashDismissed stops the very next keystroke from
-    // reopening the menu the instant it closes.
-    const cancelSlashMenu = () => {
-      slashDismissed = true;
-      closeSlashMenu();
-    };
-
-    const selectSlashItem = (index: number) => {
-      const item = slashItems.value[index];
-      if (!item || !slashCommand) return;
-      slashCommand(item);
-    };
-
-    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
-
-    const slashController: SlashMenuController = {
-      onOpen: (render) => {
-        slashDismissed = false;
-        applySlashRender(render);
-        // On mobile the menu IS the primary UI once "/" is typed - the
-        // keyboard has nothing left to do (no further typing is expected;
-        // the user taps an item) and just covers the sheet, so it's closed
-        // here rather than left open underneath. Each item's own run()
-        // already calls .chain().focus() when applying a command, which
-        // reopens the keyboard exactly when the chosen block needs typing.
-        if (isMobileEditorLayout()) editor.value?.view.dom.blur();
-      },
-      onUpdate: (render) => applySlashRender(render),
-      onClose: () => {
-        slashDismissed = false;
-        closeSlashMenu();
-      },
-      onKeyDown: (event) => {
-        if (!slashOpen.value) return false;
-        const total = slashItems.value.length;
-        if (event.key === 'Escape') {
-          slashDismissed = true;
-          closeSlashMenu();
-          return true;
-        }
-        if (event.key === 'ArrowDown') {
-          if (total) slashIndex.value = (slashIndex.value + 1) % total;
-          return true;
-        }
-        if (event.key === 'ArrowUp') {
-          if (total) slashIndex.value = (slashIndex.value - 1 + total) % total;
-          return true;
-        }
-        if (event.key === 'Enter') {
-          // Nothing to insert is still a consumed Enter: the query is showing
-          // "no matching blocks", and a newline there would be a surprise.
-          selectSlashItem(slashIndex.value);
-          return true;
-        }
-        return false;
-      },
-    };
-
-    /**
-     * The arrow keys move `slashIndex`/`mentionIndex` past the popup's own
-     * `max-height`/`overflow-y: auto` window without touching scroll at all,
-     * so the highlight can walk off the visible area while the popup itself
-     * stays put. `block: 'nearest'` only moves the popup (its own nearest
-     * scrollable ancestor), never the page.
-     */
-    const scrollHighlightedIntoView = async (selector: string) => {
-      await nextTick();
-      document.querySelector(selector)?.scrollIntoView({ block: 'nearest' });
-    };
-
-    watch(slashIndex, () => {
-      const item = slashItems.value[slashIndex.value];
-      if (item) void scrollHighlightedIntoView(`[data-slash-item="${item.id}"]`);
-    });
+    const mentionMenu = useTextDocumentMentionMenu();
+    const {
+      mentionOpen,
+      mentionItems,
+      mentionIndex,
+      mentionMenuStyle,
+      mentionController,
+      selectMentionItem,
+      cancelMentionMenu,
+    } = mentionMenu;
 
     /**
      * MENTION MENU state, structurally the same as the slash menu above
@@ -2164,89 +1487,6 @@ export default defineComponent({
      * than a fixed table, and the LAST item is always "create page named
      * ...", carrying the typed text.
      */
-    const mentionOpen = ref(false);
-    const mentionItems = ref<MentionMenuItem[]>([]);
-    const mentionIndex = ref(0);
-    const mentionRect = ref<{ top: number; left: number } | null>(null);
-    let mentionCommand: ((item: MentionMenuItem) => void) | null = null;
-    let mentionDismissed = false;
-
-    const mentionMenuStyle = computed(() =>
-      mentionRect.value
-        ? { top: `${mentionRect.value.top}px`, left: `${mentionRect.value.left}px` }
-        : undefined,
-    );
-
-    let mentionQuery: string | null = null;
-    const applyMentionRender = (render: MentionMenuRender) => {
-      mentionItems.value = render.items;
-      // Search results arriving for the SAME typed text keep the row the
-      // arrows are on; new text starts again from the top.
-      const sameQuery = render.query === mentionQuery;
-      mentionQuery = render.query;
-      mentionIndex.value = sameQuery ? Math.min(mentionIndex.value, Math.max(0, render.items.length - 1)) : 0;
-      mentionCommand = render.command;
-      mentionRect.value = render.rect
-        ? { top: render.rect.bottom + 6, left: render.rect.left }
-        : null;
-      mentionOpen.value = !mentionDismissed;
-    };
-
-    const closeMentionMenu = () => {
-      mentionOpen.value = false;
-      mentionItems.value = [];
-      mentionIndex.value = 0;
-      mentionQuery = null;
-      mentionCommand = null;
-    };
-
-    const selectMentionItem = (index: number) => {
-      const item = mentionItems.value[index];
-      if (!item || !mentionCommand) return;
-      mentionCommand(item);
-    };
-
-    const mentionController: MentionMenuController = {
-      onOpen: (render) => {
-        mentionDismissed = false;
-        applyMentionRender(render);
-      },
-      onUpdate: (render) => applyMentionRender(render),
-      onClose: () => {
-        mentionDismissed = false;
-        closeMentionMenu();
-      },
-      onKeyDown: (event) => {
-        if (!mentionOpen.value) return false;
-        const total = mentionItems.value.length;
-        if (event.key === 'Escape') {
-          mentionDismissed = true;
-          closeMentionMenu();
-          return true;
-        }
-        if (event.key === 'ArrowDown') {
-          if (total) mentionIndex.value = (mentionIndex.value + 1) % total;
-          return true;
-        }
-        if (event.key === 'ArrowUp') {
-          if (total) mentionIndex.value = (mentionIndex.value - 1 + total) % total;
-          return true;
-        }
-        if (event.key === 'Enter') {
-          selectMentionItem(mentionIndex.value);
-          return true;
-        }
-        return false;
-      },
-    };
-
-    watch(mentionIndex, () => {
-      const item = mentionItems.value[mentionIndex.value];
-      if (!item) return;
-      const value = item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create';
-      void scrollHighlightedIntoView(`[data-mention-item="${value}"]`);
-    });
-
     /** Powers the picker's search. Server-side filtered to what this user can read (R2) - no client-side widening. */
     const searchMentionCandidates = async (query: string) => {
       if (!canEditContent.value) return [];
@@ -2609,264 +1849,44 @@ export default defineComponent({
      * is bumped on every transaction (onUpdate below) purely to give these
      * two computeds a reactive dependency to re-run on.
      */
-    const editorTransactionTick = ref(0);
     const editor = useEditor({
       editable: true,
-      extensions: [
-        // codeBlock: false disables StarterKit's own code block node so
-        // CodeBlockLowlight (added below) is the only node registered for
-        // "codeBlock" - having both would register the name twice.
-        StarterKit.configure({ history: false, codeBlock: false }),
-        // CodeBlockLowlight plus a language picker in the block's corner
-        // (code-block-language.ts).
-        CodeBlockWithLanguage.configure({
-          lowlight,
-          labels: { auto: t('codeLanguageAuto'), plaintext: t('codeLanguagePlain'), choose: t('codeLanguageChoose') },
-        }),
-        Underline,
-        // A collaborator's Yjs update reaches this editor without passing the
-        // backend's renderer, so the href filter has to live here too.
-        Link.configure({
-          openOnClick: false,
-          isAllowedUri: (href, ctx) => isRenderableHref(href, ctx.defaultValidate),
-        }),
-        TaskList,
-        // Ticking a todo never focuses the editor (on a phone that opened
-        // the keyboard and scrolled the page to the caret) - see task-item.ts.
-        // Also stamps when a todo was ticked and shows "Done N of M" above
-        // each list - the labels are read at paint time, so they follow the locale.
-        QuietTaskItem.configure({
-          nested: true,
-          labels: {
-            progress: (done, total) =>
-              t('taskProgress').replace('{done}', String(done)).replace('{total}', String(total)),
-            checkedAt: (date) => new Intl.DateTimeFormat(locale.value, {
-              day: 'numeric',
-              month: 'short',
-              ...(date.getFullYear() === new Date().getFullYear() ? {} : { year: 'numeric' }),
-              hour: '2-digit',
-              minute: '2-digit',
-            }).format(date),
-          },
-        }),
-        // Uploaded images are referenced by URL; base64 would bloat the shared Yjs doc.
-        Image.configure({ inline: false, allowBase64: false }),
-        TextDocumentImageNodeViewExtension.configure({
-          getDocumentId: () => resolvedId.value,
-          getImageToken: () => imageToken.value,
-          onImageError: (imageId, src) => handleImageError(imageId, src),
-        }),
-        // Clicking a callout's icon picks its kind (icon + colour) - callout.ts.
-        Callout.configure({
-          labels: {
-            info: t('calloutInfo'),
-            warning: t('calloutWarning'),
-            success: t('calloutSuccess'),
-            danger: t('calloutDanger'),
-            choose: t('calloutChoose'),
-          },
-        }),
-        // Adds `collapsed` to StarterKit's own heading node (see the file
-        // comment in collapsible-heading.ts for why this is a global
-        // attribute and not a second heading node).
-        CollapsibleHeading.configure({ labels: headingCollapseLabels }),
-        TableOfContents.configure({ labels: tableOfContentsLabels }),
-        // Adds the stable `headingId` a headingLink resolves against - see
-        // heading-id.ts's file comment for why this is separate from the
-        // derived, text-based anchor collapsibleHeading/TableOfContents use.
-        HeadingId,
-        // Stable blockId per block: the address MCP block edits use (block-id.ts).
-        BlockId,
-        HeadingLink.configure({
-          onNavigate: navigateToHeadingLink,
-          labels: headingLinkNodeLabels,
-        }),
-        SlashMenu.configure({
-          controller: slashController,
-          label: slashLabel,
-          // The image item cannot insert a node on its own: the file
-          // has to be uploaded first, so it reuses the toolbar's picker.
-          requestImage: () => openImagePicker(),
-        }),
-        Mention.configure({
-          resolveMention: resolveMentionTitle,
-          onNavigate: navigateToMention,
-          onInaccessibleClick: handleMentionInaccessibleClick,
-          labels: mentionNodeLabels,
-        }),
-        MentionMenu.configure({
-          controller: mentionController,
-          search: searchMentionCandidates,
-          searchHeadings,
-          onCreatePage: (query, context) => void handleMentionCreatePage(query, context),
-          // Resolve the picked document into the live resolution map right away.
-          // Without this a freshly inserted mention stayed `unresolved` (plain
-          // text, not a styled/clickable link) until a page reload re-ran
-          // loadMentionResolutions - the reported "links only render correctly
-          // after reload". The target came from THIS user's own mention search,
-          // so it is accessible to them. Then dispatch a no-op to repaint the
-          // just-inserted node view from the updated map.
-          insertMention: (ed, range, item) => {
-            insertMentionAtRange(ed, range, { id: item.id, label: item.title });
-            mentionResolutions.set(item.id, { id: item.id, title: item.title, accessible: true, deleted: false });
-            const view = ed.view;
-            if (view) view.dispatch(view.state.tr);
-          },
-        }),
-        NodeRange,
-        DragHandle.configure({
-          render: renderDragHandle,
-          // 8px into the left gutter. On mobile the paper reserves a wider
-          // left padding (see the 760px rule in style.css) so this gutter has
-          // room for the "+" without it landing on the text.
-          tippyOptions: { offset: [0, 8] },
-          // The 8px offset above is tuned for an ordinary block. A heading
-          // reserves its own -28px slot for the collapse chevron
-          // (.text-doc-heading-toggle in style.css), which the handle would
-          // otherwise land right on top of, so nudge it further left there.
-          // `pos` is passed at runtime (see the extension's update() dispatch)
-          // but is missing from its published callback type, hence the cast.
-          onNodeChange: (params) => {
-            const { node } = params;
-            dragHandleNodePos = (params as { pos?: number }).pos ?? -1;
-            if (!dragHandleElement) return;
-            dragHandleElement.classList.toggle('text-doc-drag-handle--heading', node?.type.name === 'heading');
-            // The "+" moved to another block: does it still meet the list arrows?
-            scheduleListArrows();
-          },
-        }),
-        /**
-         * TABLE (front task 13-19, column resizing added later). The
-         * official extension family, not a custom engine: schema, cell
-         * selection, keyboard navigation (Tab/Shift+Tab), commands
-         * (addRowAfter, deleteColumn, etc.), colgroup/colwidth serialization
-         * and now column-drag resizing all come from it - no reason to hand-
-         * roll any of that ourselves.
-         *
-         * `resizable: true`: turns on the extension's own `columnResizing`
-         * plugin and `TableView` NodeView (a drag handle per column
-         * boundary, `.column-resize-handle`/`.resize-cursor` styled below in
-         * style.css). This was `false` in v1 - the schema, colgroup
-         * rendering and colwidth attribute were ALREADY present the whole
-         * time regardless (`Table.renderHTML` calls `createColGroup`
-         * unconditionally); `resizable` only withheld the plugin that WRITES
-         * colwidth via dragging, and the NodeView that keeps the colgroup in
-         * sync as columns are added/removed afterward. Read-only viewers are
-         * unaffected either way: `columnResizing` guards `!view.editable` at
-         * its own mousedown/mousemove handlers (prosemirror-tables), so no
-         * drag and no handle decoration ever appears for someone who cannot
-         * edit.
-         *
-         * `cellMinWidth: 100` (not the extension's own default of 25):
-         * matches this file's own `min-width: 100px` CSS floor on td/th
-         * exactly (style.css). Leaving the extension's smaller default would
-         * have meant a column could be dragged to e.g. 60px and STORE 60,
-         * while the CSS floor keeps rendering it at 100 - the next drag then
-         * computes from that mismatched geometry, producing the classic
-         * "width snaps back" bug. Caught this via review before it shipped,
-         * not live.
-         *
-         * DELIBERATE CONSEQUENCE, not a bug: with this floor, any table with
-         * more than ~4 columns (mobile, ~311px of editor content width) or
-         * more than ~8 (this app's desktop reading width, ~744px) already
-         * needs to scroll horizontally by default, with nothing dragged -
-         * `cellMinWidth` feeds the SAME total-width computation used to
-         * decide whether the table needs more room than its container.
-         * Measured live, not estimated. Accepted: narrow columns that
-         * actually scroll beat columns squeezed illegibly thin.
-         *
-         * `lastColumnResizable: true` (it was false until the table
-         * wrapper learnt to shrink-wrap its table - see .tableWrapper in
-         * style.css): once EVERY column has a stored width, `updateColumns`
-         * gives the table an inline `width: <sum>px`, beating the CSS
-         * `width: 100%`. That used to detach the table from the page width
-         * for good; now it is exactly what "resize the last column" should
-         * do - narrow it and the table ends short of the text column's right
-         * edge, widen it and the table grows into the page's free width,
-         * then scrolls, like any other wide table. While some column is
-         * still unsized, the table keeps `width: 100%` and those columns
-         * absorb the slack.
-         *
-         * `renderWrapper: true` (front task 33/40, fixed after a live
-         * Playwright check caught it): the extension's `.tableWrapper` div -
-         * where style.css puts `overflow-x: auto` so the table scrolls
-         * within itself instead of the page - is the resizable NodeView's
-         * own wrapper now that `resizable: true` is on (`editable: true` is
-         * set unconditionally at construction here, so that NodeView is
-         * always what's active, viewer or not - see `isResizable`/
-         * `view.editable` in the extension's own source for why a
-         * subsequent `setEditable(false)` for a read-only role still
-         * disables the drag itself without swapping NodeViews). Kept
-         * anyway: it is a costless flag already proven correct for the
-         * pre-resizing state, and there is no reason to remove it on a
-         * flip that does not need its removal. Confirmed live, pre-
-         * resizing: without this flag no `.tableWrapper` element exists in
-         * the DOM at all, `overflow-x: auto` on a bare `<table>` is a no-op
-         * in Chromium, and a wide table's excess width bled straight into
-         * `#app`'s global `overflow-x: hidden` and was silently clipped
-         * rather than scrollable.
-         *
-         * A SEPARATE, PREREXISTING bug this resurfaced: `.text-doc-editor-
-         * shell` (a flex item) was missing `min-width: 0`, so a table (or
-         * any block) wide enough to matter stretched the WHOLE SHELL
-         * sideways instead of staying put and letting `.tableWrapper` scroll
-         * internally - fixed as its own commit, see that commit's message,
-         * since it is a prerequisite for resizing to work at all rather than
-         * something this change introduces.
-         *
-         * Resize-handle affordance hidden under the existing 760px mobile
-         * breakpoint via CSS only (see style.css) - `columnResizing` binds
-         * `mousedown`/`mousemove` only, no touch handling exists in the
-         * library, so dragging to resize is not attemptable on a touchscreen
-         * regardless. The config itself stays the SAME for every viewport
-         * (gating `Table.configure` on viewport would only change which
-         * render path draws the table per device for no reason, and would
-         * never react to a later resize since the editor is constructed
-         * once) - only the handle's own CSS visibility differs.
-         *
-         * ARCHITECTURAL NOTE (front task 26, still true and now more clearly
-         * a deliberate deferral than an oversight): this only touches the
-         * editor's own ProseMirror schema and the Yjs document it syncs -
-         * collaboration itself is schema-agnostic, so no realtime-protocol
-         * change is needed, and resized widths sync/persist/undo exactly
-         * like any other node attribute. What IS incomplete: the backend
-         * keeps its own separate hand-written HTML/plainText renderer
-         * (canvas-server-back text-documents/schema/document-nodes.ts,
-         * duplicated in this repo at src/documents/document-nodes.ts) for
-         * search snippets, the public HTML page, PDF export, and link
-         * previews - it doesn't know about table/tableRow/tableCell/
-         * tableHeader AT ALL yet (falls through to a generic tag-only
-         * fallback, confirmed by reading render-html.ts), so a table shows
-         * as plain un-gridded text in those contexts regardless of column
-         * width - reflecting resized widths there would mean first teaching
-         * that renderer to draw a grid at all, a materially bigger, separate,
-         * cross-repo feature. Left as a follow-up, not a blocker for the
-         * live collaborative editor.
-         */
-        Table.configure({ resizable: true, renderWrapper: true, cellMinWidth: 100, lastColumnResizable: true }),
-        TableRow,
-        TableHeader,
-        TableCell,
-        // Desktop drag grips for reordering rows/columns (none on phones -
-        // the table menu's arrows cover that). See table-move.ts.
-        // Grabbing the LAST column's border stores every column's current
-        // width first, so the table's right edge follows the drag. See
-        // table-column-widths.ts.
-        PinColumnWidthsOnLastColumnResize,
-        TableMoveHandles.configure({ columnLabel: () => t('tableDragColumn'), rowLabel: () => t('tableDragRow'), mobileMaxWidth: BREAKPOINTS.phone }),
-        // Refuses a transaction that would add a top-level block past the
-        // ceiling, and NOTHING else - never a Yjs transaction, never an edit
-        // or a deletion. See capacity-guard.ts.
-        CapacityGuard.configure({ limit: capacityLimit, onBlocked: onCapacityBlocked }),
-        Collaboration.configure({ document: ydoc }),
-        CollaborationCursor.configure({
-          provider: awarenessProvider,
-          user: {
-            name: currentUser.value?.name || currentUser.value?.email || 'Guest',
-            color: '#50d1b2',
-          },
-        }),
-      ],
+      extensions: createTextDocumentExtensions({
+        t,
+        locale,
+        headingCollapseLabels,
+        tableOfContentsLabels,
+        headingLinkNodeLabels,
+        getDocumentId: () => resolvedId.value,
+        getImageToken: () => imageToken.value || '',
+        onImageError: (imageId, src) => handleImageError(imageId, src),
+        onNavigateHeading: navigateToHeadingLink,
+        slashController,
+        slashLabel,
+        requestImage: () => openImagePicker(),
+        resolveMention: resolveMentionTitle,
+        onNavigateMention: navigateToMention,
+        onMentionInaccessible: handleMentionInaccessibleClick,
+        mentionNodeLabels,
+        mentionController,
+        searchMentionCandidates,
+        searchHeadings,
+        onCreateMentionPage: (query, context) => void handleMentionCreatePage(query, context),
+        insertMention: (ed, range, item) => {
+          insertMentionAtRange(ed, range, { id: item.id, label: item.title });
+          mentionResolutions.set(item.id, { id: item.id, title: item.title, accessible: true, deleted: false });
+          const view = ed.view;
+          if (view) view.dispatch(view.state.tr);
+        },
+        mentionResolutions,
+        renderDragHandle,
+        onDragNodeChange,
+        capacityLimit,
+        onCapacityBlocked,
+        ydoc,
+        awarenessProvider,
+        collaborationUser: { name: currentUser.value?.name, email: currentUser.value?.email },
+      }),
       onCreate: ({ editor: createdEditor }) => {
         refreshBlockCount();
         ensureRedoTracked(createdEditor);
@@ -2929,6 +1949,7 @@ export default defineComponent({
         },
       },
     });
+    readEditor = () => editor.value ?? null;
 
     // Both use ?.can?.(), not just ?.value?. - the Collaboration extension
     // (real production editors) always has .can(), but the several
@@ -3570,7 +2591,7 @@ export default defineComponent({
     // the first press hiding it before the app ever sees one.
     useBackHandler(() => {
       if (slashOpen.value) { cancelSlashMenu(); return true; }
-      if (mentionOpen.value) { mentionDismissed = true; closeMentionMenu(); return true; }
+      if (mentionOpen.value) { cancelMentionMenu(); return true; }
       if (linkEditorOpen.value) { closeLinkEditor(); return true; }
       if (linkActionOpen.value) { closeLinkActionMenu(); return true; }
       if (docMenuOpen.value) { closeDocMenu(); return true; }
@@ -3762,6 +2783,7 @@ export default defineComponent({
       historyItems,
       selectedHistory,
       restoringHistory,
+      historyLabels,
       saveTitle,
       titleTextareaRef,
       docBodyRef,

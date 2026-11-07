@@ -30,264 +30,59 @@
     <CanvasRulerOverlay :measurements="rulerMeasurements" :settings="rulerSettings" :camera="camera" :viewport-size="viewportSize" />
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
-      <div
+      <CanvasNodeGroup
         v-for="group in groups"
         :key="group.id"
-        class="canvas-group"
-        :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'border-select-only': !isTouchDevice, 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
-        :style="[nodePosition(group), {
-          '--group-content-surface': 'var(--content-canvas-group-surface)',
-          '--group-content-border': 'var(--content-canvas-group-border)',
-        }]"
-        @mousedown.stop="onNodeDragStart($event, group)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
-      >
-        <svg v-if="!isTouchDevice" class="group-border-hit" aria-hidden="true"
-          :style="{ left: `${-(group.borderWidth || 1.5)}px`, top: `${-(group.borderWidth || 1.5)}px`, width: `${group.width}px`, height: `${group.height}px` }">
-          <rect v-bind="groupBorderRect(group)" fill="none" stroke="transparent" stroke-linejoin="round"
-            :stroke-width="Math.max(12 / camera.scale, group.borderWidth || 1.5)" />
-        </svg>
-        <span v-if="group.label" class="group-label">{{ group.label }}</span>
-        <template v-if="isNodeSelected(group.id) && !readonly && !isNodePositionLocked(group.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, group, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, group, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, group, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, group, 'tl')"></div>
-          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, group, 'r')"></div>
-          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, group, 'l')"></div>
-          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, group, 't')"></div>
-          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, group, 'b')"></div>
-        </template>
-      </div>
+        :node="group"
+        :state-class="{ 'is-dragging': dragNodeId === group.id, 'is-selected': isNodeSelected(group.id), 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }"
+        :group-color-class="groupColorClass"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-touch-device="isTouchDevice"
+        :readonly="readonly"
+        :camera-scale="camera.scale"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :group-border-rect="groupBorderRect"
+      />
 
       <!-- Edges (SVG layer) -->
-      <svg class="canvas-edges" :style="edgesSvgStyle">
-        <defs>
-          <marker
-            id="arrowhead"
-            markerWidth="8"
-            markerHeight="6"
-            refX="7"
-            refY="3"
-            orient="auto"
-          >
-            <polygon points="0 0, 8 3, 0 6" fill="var(--content-canvas-edge-arrow)" />
-          </marker>
-          <marker
-            id="arrowhead-start"
-            markerWidth="8"
-            markerHeight="6"
-            refX="1"
-            refY="3"
-            orient="auto"
-          >
-            <polygon points="8 0, 0 3, 8 6" fill="var(--content-canvas-edge-arrow)" />
-          </marker>
-          <template v-for="color in edgeColors" :key="color">
-            <marker
-              :id="'arrowhead-' + color.replace('#', '')"
-              markerWidth="8"
-              markerHeight="6"
-              refX="7"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="0 0, 8 3, 0 6" :fill="color" />
-            </marker>
-            <marker
-              :id="'arrowhead-start-' + color.replace('#', '')"
-              markerWidth="8"
-              markerHeight="6"
-              refX="1"
-              refY="3"
-              orient="auto"
-            >
-              <polygon points="8 0, 0 3, 8 6" :fill="color" />
-            </marker>
-          </template>
-        </defs>
-        <g :transform="edgesSvgTransform">
-          <g v-for="edge in renderedEdges" :key="edge.id" :style="{ opacity: edge.hidden ? 0.4 : 1 }">
-            <!-- Invisible wide hit area for clicking -->
-            <path
-              :d="edge.path"
-              class="edge-hit"
-              @mousedown.stop="onEdgeClick(edge.id)"
-              @dblclick.stop="onEdgeDblClick(edge.id)"
-              @contextmenu.prevent.stop="onEdgeContextMenu($event, edge)"
-            />
-            <path
-              :d="edge.path"
-              class="edge-line"
-              :class="{ 'edge-selected': selectedEdgeId === edge.id }"
-              :style="{
-                stroke: edge.color || 'var(--content-canvas-edge)',
-                strokeWidth: edge.thickness,
-                strokeDasharray: edge.dashArray || undefined,
-              }"
-              :marker-end="(edge.arrowType === 'end' || edge.arrowType === 'both') ? 'url(#' + arrowMarkerId(edge.color, false) + ')' : undefined"
-              :marker-start="(edge.arrowType === 'start' || edge.arrowType === 'both') ? 'url(#' + arrowMarkerId(edge.color, true) + ')' : undefined"
-            />
-            <!-- Label on edge -->
-            <g v-if="edge.label && editingEdgeId !== edge.id" class="edge-label-group">
-              <rect
-                :x="edge.labelX - edge.labelW / 2 - 8"
-                :y="edge.labelY - 12"
-                :width="edge.labelW + 16"
-                :height="24"
-                rx="4"
-                class="edge-label-bg"
-              />
-              <text
-                :x="edge.labelX"
-                :y="edge.labelY + 4"
-                class="edge-label"
-              >{{ edge.label }}</text>
-            </g>
-            <!-- Midpoint connector for branching -->
-            <circle
-              :cx="edge.midX"
-              :cy="edge.midY"
-              r="5"
-              class="edge-midpoint-conn"
-              @mousedown.stop="onConnStartFromEdge($event, edge.id)"
-            />
-          </g>
-          <!-- Temporary edge while creating connection -->
-          <path
-            v-if="connDragging && tempEdgePath"
-            :d="tempEdgePath"
-            class="edge-line edge-temp"
-          />
-        </g>
-      </svg>
-
-      <!-- Edge action buttons (DOM overlay) -->
-      <div
-        v-if="selectedEdgeId && selectedEdgeMidpoint"
-        class="edge-actions"
-        :style="{ left: selectedEdgeMidpoint.x + 'px', top: selectedEdgeMidpoint.y + 'px' }"
-        @dblclick.stop
-      >
-        <button class="edge-action-btn edge-delete-btn" @mousedown.stop="onDeleteEdge" :title="t('delete')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-          </svg>
-        </button>
-        <button class="edge-action-btn edge-label-btn" @mousedown.stop="onEdgeDblClick(selectedEdgeId!)" :title="t('edgeAddLabel')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-          </svg>
-        </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeToggleStyle" :title="t('lineStyle')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="3" y1="12" x2="7" y2="12"/><line x1="10" y1="12" x2="14" y2="12"/><line x1="17" y1="12" x2="21" y2="12"/>
-          </svg>
-        </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleArrow" :title="t('arrowType')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="15 8 19 12 15 16"/>
-          </svg>
-        </button>
-        <button class="edge-action-btn" @mousedown.stop="onEdgeCycleColor" :title="t('edgeChangeColor')">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/>
-          </svg>
-        </button>
-        <button v-if="isOwner" class="edge-action-btn" @mousedown.stop="toggleEdgeHidden(selectedEdgeId!)" :title="isEdgeHidden(selectedEdgeId!) ? 'Показать' : 'Скрыть'">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/><line v-if="isEdgeHidden(selectedEdgeId!)" x1="2" y1="2" x2="22" y2="22"/>
-          </svg>
-        </button>
-      </div>
-
-      <!-- Edge label editor (DOM overlay) -->
-      <div
-        v-if="editingEdgeId && editingEdgeMidpoint"
-        class="edge-label-editor"
-        :style="{ left: editingEdgeMidpoint.x + 'px', top: editingEdgeMidpoint.y + 'px' }"
-      >
-        <input
-          ref="edgeLabelInput"
-          class="edge-label-input"
-          :value="editingEdgeLabel"
-          @input="onEdgeLabelInput"
-          @blur="onEdgeLabelEnd"
-          @keydown.enter="onEdgeLabelEnd"
-          @keydown.escape="onEdgeLabelEnd"
-          :placeholder="t('edgeLabelPlaceholder')"
-          @mousedown.stop
-        />
-      </div>
+      <CanvasEdgeLayer :context="edgeLayerProps" />
 
       <!-- Selection box -->
       <div v-if="selBox.active" class="selection-box" :style="selBoxStyle"></div>
 
       <!-- Text nodes -->
-      <div
+      <CanvasNodeText
         v-for="node in textNodes"
         :key="node.id"
-        class="canvas-node"
-        :data-node-id="node.id"
-        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @dblclick.prevent.stop="onNodeDblClick(node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-      >
-        <!-- Edit mode -->
-        <textarea
-          v-if="editingNodeId === node.id && !isMobileLayout"
-          class="node-editor"
-          :style="{
-            backgroundColor: 'var(--content-canvas-editor-surface)',
-            color: resolveNodeFontColor(node.fontColor) || 'var(--content-canvas-editor-text)',
-          }"
-          :value="node.text"
-          @input="onEditInput($event, node)"
-          @blur="onEditEnd"
-          @mousedown.stop
-          @mousemove.stop
-          @mouseup.stop
-          @click.stop
-          @dblclick.stop
-          @keydown.stop="onTextEditorKeydown"
-          @keyup.stop
-          @keydown.escape="onEditEnd"
-          ref="editorRefs"
-        ></textarea>
-        <!-- View mode -->
-        <div v-else class="node-content" :style="{ color: resolveNodeFontColor(node.fontColor) || undefined }">
-          <div
-            class="node-first-line"
-            :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
-            v-html="renderMarkdown(getNodeFirstLine(node.text || ''))"
-          ></div>
-          <div
-            v-if="getNodeRestText(node.text || '')"
-            class="node-rest-content"
-            :style="{ textAlign: node.textAlign || undefined }"
-            v-html="renderMarkdown(getNodeRestText(node.text || ''))"
-          ></div>
-        </div>
-        <!-- Resize handles (visible when selected) -->
-        <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, node, 'r')"></div>
-          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, node, 'l')"></div>
-          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, node, 't')"></div>
-          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
-        </template>
-        <!-- Connection points (visible on hover) -->
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-color-class="nodeColorClass"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :editing-node-id="editingNodeId"
+        :is-mobile-layout="isMobileLayout"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-dbl-click="onNodeDblClick"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :resolve-node-font-color="resolveNodeFontColor"
+        :on-edit-input="onEditInput"
+        :on-edit-end="onEditEnd"
+        :on-text-editor-keydown="onTextEditorKeydown"
+        :render-markdown="renderMarkdown"
+        :get-node-first-line="getNodeFirstLine"
+        :get-node-rest-text="getNodeRestText"
+        :get-node-first-line-align-value="getNodeFirstLineAlignValue"
+        :editor-refs="editorRefs"
+      />
 
       <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
       <Teleport to="body">
@@ -331,339 +126,118 @@
       </Teleport>
 
       <!-- Link nodes -->
-      <div
+      <CanvasNodeLink
         v-for="node in linkNodes"
         :key="node.id"
-        class="canvas-node canvas-node-link"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-      >
-        <div class="node-link-header">
-          <a :href="node.url" target="_blank" rel="noopener">{{ node.url }}</a>
-        </div>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :on-node-drag-start="onNodeDragStart"
+      />
       <!-- Image nodes -->
-      <div
+      <CanvasNodeImage
         v-for="node in imageNodes"
         :key="node.id"
-        class="canvas-node canvas-node-image"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-      >
-        <div v-if="node.label" class="node-image-title">{{ node.label }}</div>
-        <img class="node-image" :src="getImageSrc(node.file)" :alt="node.label || 'Image'" draggable="false" @error="onImageError(node.id, node.file)" />
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :get-image-src="getImageSrc"
+        :on-image-error="onImageError"
+      />
       <!-- Interactive template nodes -->
-      <div
+      <CanvasNodeTemplate
         v-for="node in templateNodes"
         :key="node.id"
-        class="canvas-node canvas-node-template"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        :tabindex="isNodeSelected(node.id) ? 0 : -1"
-        @keydown.enter.prevent="enterDndInteraction(node)"
-        @keydown.esc.stop="exitDndInteraction(node)"
-      >
-        <template v-if="node.templateId === 'dnd-character'">
-          <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480, 'is-interacting': isDndInteracting(node) }" @mousedown="onDndSheetMouseDown($event, node)">
-            <button class="dnd-mode-toggle" type="button" :class="{ active: isDndInteracting(node) }" :title="isDndInteracting(node) ? 'Завершить взаимодействие (Esc)' : 'Редактировать карточку (Enter)'" :aria-label="isDndInteracting(node) ? 'Завершить взаимодействие' : 'Редактировать карточку'" @mousedown.stop @click.stop="toggleDndInteraction(node)">{{ isDndInteracting(node) ? '✓' : '✎' }}</button>
-            <div class="dnd-sheet-content" :inert="!isDndInteracting(node)">
-            <header class="dnd-sheet-head">
-              <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="getImageSrc(dndSheet(node).identity.portraitUrl)" @error="onImageError(node.id + '-portrait', dndSheet(node).identity.portraitUrl)" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
-              <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
-              <label class="dnd-level">ур.<input aria-label="Уровень" type="number" min="1" :readonly="readonly" :value="dndSheet(node).identity.level" @change="setDndNumber(node, 'level', ($event.target as HTMLInputElement).value)" /></label>
-              <button class="dnd-collapse" :aria-label="dndSheet(node).displayMode === 'compact' ? 'Развернуть карточку' : 'Свернуть карточку'" :disabled="readonly" @click.stop="toggleDndMode(node)">{{ dndSheet(node).displayMode === 'compact' ? '⤢' : '⤡' }}</button>
-            </header>
-            <div class="dnd-combat-row"><label>КД <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.armorClass" @change="setDndCombat(node, 'armorClass', ($event.target as HTMLInputElement).value)" /></label><label>Скорость <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.speed" @change="setDndCombat(node, 'speed', ($event.target as HTMLInputElement).value)" /></label><label>HP <button :disabled="readonly" @click.stop="changeDndHp(node, -1)">−</button><input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.currentHp" @change="setDndCombat(node, 'currentHp', ($event.target as HTMLInputElement).value)" /><b>/</b><input type="number" min="1" :readonly="readonly" :value="dndSheet(node).combat.maxHp" @change="setDndCombat(node, 'maxHp', ($event.target as HTMLInputElement).value)" /><button :disabled="readonly" @click.stop="changeDndHp(node, 1)">+</button></label><label class="dnd-temp">Врем. <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.temporaryHp" @change="setDndCombat(node, 'temporaryHp', ($event.target as HTMLInputElement).value)" /></label></div>
-            <div class="dnd-card-abilities"><article v-for="ability in dndAbilities" :key="ability.key"><button :disabled="readonly" @click.stop="rollTemplateAbility(node, ability.key)"><span>{{ ability.short }}</span><strong>{{ dndSheet(node).abilities[ability.key].score }}</strong><em>{{ formatDndModifier(dndSheet(node).abilities[ability.key].score) }}</em></button><input aria-label="Значение характеристики" type="number" min="1" max="30" :readonly="readonly" :value="dndSheet(node).abilities[ability.key].score" @change="setDndAbilityScore(node, ability.key, ($event.target as HTMLInputElement).value)" /><label title="Владение спасброском"><input type="checkbox" :checked="dndSheet(node).abilities[ability.key].savingThrowProficient" :disabled="readonly" @change="toggleDndSave(node, ability.key)" /> Спас {{ formatDndModifier(dndSavingThrow(node, ability.key)) }}</label></article></div>
-            <div v-if="dndSheet(node).displayMode !== 'compact' && node.width >= 720 && node.height >= 480" class="dnd-full-content"><nav class="dnd-tabs"><button v-for="tab in dndTabs" :key="tab.key" :class="{ active: dndSheet(node).activeTab === tab.key }" :disabled="readonly" @click.stop="setDndTab(node, tab.key)">{{ tab.label }}</button></nav><div class="dnd-tab-panel"><template v-if="dndSheet(node).activeTab === 'notes'"><textarea aria-label="Заметки персонажа" :readonly="readonly" :value="dndSheet(node).notes" placeholder="Заметки персонажа" @change="setDndNotes(node, ($event.target as HTMLTextAreaElement).value)" /></template><template v-else-if="dndSheet(node).activeTab === 'personality'"><label v-for="field in dndPersonalityFields" :key="field.key">{{ field.label }}<textarea :readonly="readonly" :value="dndSheet(node).personality[field.key]" @change="setDndPersonality(node, field.key, ($event.target as HTMLTextAreaElement).value)" /></label></template><template v-else><div class="dnd-list"><div v-for="item in dndTabItems(node)" :key="item.id" class="dnd-list-row"><input aria-label="Название" :readonly="readonly" :value="item.name" placeholder="Название" @change="updateDndListItem(node, item.id, 'name', ($event.target as HTMLInputElement).value)" /><template v-if="dndSheet(node).activeTab === 'equipment'"><input aria-label="Количество" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" @change="updateDndListItem(node, item.id, 'quantity', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.equipped" :disabled="readonly" @change="updateDndListItem(node, item.id, 'equipped', !item.equipped)" /> экипировано</label></template><template v-else-if="dndSheet(node).activeTab === 'goals'"><label><input type="checkbox" :checked="item.completed" :disabled="readonly" @change="updateDndListItem(node, item.id, 'completed', !item.completed)" /> готово</label></template><template v-else-if="dndSheet(node).activeTab === 'spells'"><input aria-label="Уровень заклинания" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" @change="updateDndListItem(node, item.id, 'level', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.prepared" :disabled="readonly" @change="updateDndListItem(node, item.id, 'prepared', !item.prepared)" /> подготовлено</label></template><template v-else-if="dndSheet(node).activeTab === 'features'"><input aria-label="Использований" type="number" min="0" :readonly="readonly" :value="item.currentUses || 0" @change="updateDndListItem(node, item.id, 'currentUses', Number(($event.target as HTMLInputElement).value) || 0)" /><span>/</span><input aria-label="Максимум использований" type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" @change="updateDndListItem(node, item.id, 'maxUses', Number(($event.target as HTMLInputElement).value) || 0)" /></template><input aria-label="Описание" :readonly="readonly" :value="item.description || ''" placeholder="Описание" @change="updateDndListItem(node, item.id, 'description', ($event.target as HTMLInputElement).value)" /><button class="dnd-list-remove" aria-label="Удалить запись" :disabled="readonly" @click.stop="removeDndListItem(node, item.id)">×</button></div><button class="dnd-list-add" :disabled="readonly" @click.stop="addDndListItem(node)">+ Добавить</button></div></template></div></div>
-            </div>
-          </section>
-        </template>
-        <BoardPreview
-          v-else-if="node.templateId === 'trello-board-preview'"
-          :board-id="boardPreviewId(node)"
-          @open-board="openBoardPreview"
-        />
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id) && !isDndInteracting(node)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :enter-dnd-interaction="enterDndInteraction"
+        :exit-dnd-interaction="exitDndInteraction"
+        :readonly="readonly"
+        :dnd-sheet="dndSheet"
+        :is-dnd-interacting="isDndInteracting"
+        :on-dnd-sheet-mouse-down="onDndSheetMouseDown"
+        :toggle-dnd-interaction="toggleDndInteraction"
+        :toggle-dnd-mode="toggleDndMode"
+        :get-image-src="getImageSrc"
+        :on-image-error="onImageError"
+        :open-dnd-portrait-picker="openDndPortraitPicker"
+        :set-dnd-identity="setDndIdentity"
+        :set-dnd-number="setDndNumber"
+        :set-dnd-combat="setDndCombat"
+        :change-dnd-hp="changeDndHp"
+        :dnd-abilities="dndAbilities"
+        :roll-template-ability="rollTemplateAbility"
+        :format-dnd-modifier="formatDndModifier"
+        :set-dnd-ability-score="setDndAbilityScore"
+        :toggle-dnd-save="toggleDndSave"
+        :dnd-saving-throw="dndSavingThrow"
+        :dnd-tabs="dndTabs"
+        :set-dnd-tab="setDndTab"
+        :dnd-personality-fields="dndPersonalityFields"
+        :set-dnd-notes="setDndNotes"
+        :set-dnd-personality="setDndPersonality"
+        :dnd-tab-items="dndTabItems"
+        :update-dnd-list-item="updateDndListItem"
+        :remove-dnd-list-item="removeDndListItem"
+        :add-dnd-list-item="addDndListItem"
+        :board-preview-id="boardPreviewId"
+        :open-board-preview="openBoardPreview"
+        :on-resize-start="onResizeStart"
+      />
       <!-- Canvas embed nodes -->
-      <div
+      <CanvasNodeEmbed
         v-for="node in canvasNodes"
         :key="node.id"
-        class="canvas-node canvas-node-embed"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        @dblclick.stop="onCanvasEmbedDblClick(node.canvasId!)"
-      >
-        <div class="embed-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
-          </svg>
-          <span class="embed-title">{{ getEmbeddedCanvasData(node.canvasId!).title || 'Loading...' }}</span>
-        </div>
-        <div class="embed-preview">
-          <div v-if="getEmbeddedCanvasData(node.canvasId!).loading" class="embed-loading">Loading...</div>
-          <div v-else-if="getEmbeddedCanvasData(node.canvasId!).error" class="embed-error">{{ t('cannotLoadCanvas') }}</div>
-          <svg v-else class="embed-minimap" :viewBox="embeddedCanvasViewBox(node.canvasId!)" preserveAspectRatio="xMidYMid meet">
-            <rect
-              v-for="en in getEmbeddedCanvasData(node.canvasId!).nodes"
-              :key="'emb-' + en.id"
-              :x="en.x"
-              :y="en.y"
-              :width="en.width || 100"
-              :height="en.height || 60"
-              :fill="en.type === 'group' ? 'rgba(255,255,255,0.05)' : 'rgba(124,138,255,0.25)'"
-              :stroke="en.type === 'group' ? 'rgba(255,255,255,0.1)' : 'rgba(124,138,255,0.5)'"
-              stroke-width="2"
-              rx="3"
-            />
-            <path
-              v-for="ee in getEmbeddedCanvasData(node.canvasId!).edges"
-              :key="'embe-' + ee.id"
-              :d="embeddedEdgePath(ee, getEmbeddedCanvasData(node.canvasId!).nodes)"
-              stroke="rgba(255,255,255,0.2)"
-              stroke-width="1.5"
-              fill="none"
-            />
-          </svg>
-        </div>
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
-
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :data="getEmbeddedCanvasData(node.canvasId!)"
+        :t="t"
+        :on-canvas-embed-dbl-click="onCanvasEmbedDblClick"
+        :embedded-canvas-view-box="embeddedCanvasViewBox"
+        :embedded-edge-path="embeddedEdgePath"
+      />
       <!-- Document embed nodes -->
-      <div
+      <CanvasNodeDocument
         v-for="node in documentNodes"
         :key="node.id"
-        class="canvas-node canvas-node-doc"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        @dblclick.stop="onDocumentEmbedDblClick(node)"
-      >
-        <div class="embed-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-            <template v-if="node.documentKind === 'text'"><path d="M8 13h8M8 17h5"/></template>
-            <template v-else><path d="M9.5 12.5L8 14l1.5 1.5"/><path d="M14.5 12.5L16 14l-1.5 1.5"/></template>
-          </svg>
-          <span class="embed-title">{{ documentData(node).title || 'Loading...' }}</span>
-          <span class="doc-kind-badge">{{ node.documentKind === 'text' ? 'DOC' : 'HTML' }}</span>
-        </div>
-        <div class="embed-preview doc-preview">
-          <div v-if="documentData(node).loading" class="embed-loading">Loading...</div>
-          <div v-else-if="documentData(node).error" class="embed-error">{{ documentData(node).errorText }}</div>
-          <iframe
-            v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
-            :class="['doc-frame', node.documentKind === 'text' ? 'doc-frame-text' : 'doc-frame-html']"
-            :srcdoc="documentSrcdoc(node)"
-            sandbox=""
-            loading="lazy"
-            tabindex="-1"
-            aria-hidden="true"
-          ></iframe>
-          <p v-else class="doc-excerpt">{{ documentData(node).excerpt || 'Пустой документ' }}</p>
-        </div>
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
-
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :entry="documentData(node)"
+        :is-doc-preview-rich="isDocPreviewRich"
+        :document-srcdoc="documentSrcdoc"
+        :on-document-embed-dbl-click="onDocumentEmbedDblClick"
+      />
       <!-- Drawings SVG layer (above nodes) -->
-      <svg class="canvas-drawings" :style="edgesSvgStyle">
-        <g :transform="edgesSvgTransform">
-        <g v-for="d in renderList" :key="d.id" :style="{ opacity: d.hidden ? 0.4 : 1 }">
-          <!-- pen / highlighter: wide transparent hit path + visible path -->
-          <template v-if="d.tool === 'pen' || d.tool === 'highlighter'">
-            <path
-              :d="strokeToPath(d.points || [], d.width)"
-              fill="transparent" stroke="transparent" stroke-width="18"
-              stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"
-              :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
-              @pointermove="onDrawingPointerMove"
-              @pointerup="onDrawingPointerUp"
-              @pointercancel="onDrawingPointerUp"
-              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
-            />
-            <path
-              :d="strokeToPath(d.points || [], d.width)"
-              :fill="d.color" :opacity="d.opacity ?? 1"
-              :style="d.tool === 'highlighter' ? { mixBlendMode: 'multiply', pointerEvents: 'none' } : { pointerEvents: 'none' }"
-            />
-          </template>
-          <!-- rect: wide transparent border hit + visible -->
-          <template v-else-if="d.tool === 'rect'">
-            <rect
-              :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
-              :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
-              fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
-              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
-              @pointermove="onDrawingPointerMove"
-              @pointerup="onDrawingPointerUp"
-              @pointercancel="onDrawingPointerUp"
-              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
-            />
-            <rect
-              :x="Math.min((d.x ?? 0), (d.x ?? 0) + (d.w ?? 0))" :y="Math.min((d.y ?? 0), (d.y ?? 0) + (d.h ?? 0))"
-              :width="Math.abs(d.w ?? 0)" :height="Math.abs(d.h ?? 0)"
-              fill="none" :stroke="d.color" :stroke-width="d.width"
-              :style="{ pointerEvents: 'none' }"
-            />
-          </template>
-          <!-- ellipse: wide transparent border hit + visible -->
-          <template v-else-if="d.tool === 'ellipse'">
-            <ellipse
-              :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
-              :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
-              fill="none" stroke="transparent" stroke-width="18" vector-effect="non-scaling-stroke"
-              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
-              @pointermove="onDrawingPointerMove"
-              @pointerup="onDrawingPointerUp"
-              @pointercancel="onDrawingPointerUp"
-              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
-            />
-            <ellipse
-              :cx="(d.x ?? 0) + (d.w ?? 0) / 2" :cy="(d.y ?? 0) + (d.h ?? 0) / 2"
-              :rx="Math.abs((d.w ?? 0) / 2)" :ry="Math.abs((d.h ?? 0) / 2)"
-              fill="none" :stroke="d.color" :stroke-width="d.width"
-              :style="{ pointerEvents: 'none' }"
-            />
-          </template>
-          <!-- line / arrow: wide transparent hit line + visible line -->
-          <template v-else-if="d.tool === 'line' || d.tool === 'arrow'">
-            <marker
-              v-if="d.tool === 'arrow'"
-              :id="'draw-arrow-' + d.id"
-              viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6"
-              orient="auto-start-reverse"
-            >
-              <path d="M 0 0 L 10 5 L 0 10 z" :fill="d.color" />
-            </marker>
-            <line
-              :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
-              stroke="transparent" stroke-width="18" stroke-linecap="round" vector-effect="non-scaling-stroke"
-              :style="{ pointerEvents: drawTool === 'select' ? 'stroke' : 'none', cursor: drawTool === 'select' ? 'pointer' : 'default' }"
-              @mousedown.stop @pointerdown.stop="onDrawingPointerDown(d, $event)"
-              @pointermove="onDrawingPointerMove"
-              @pointerup="onDrawingPointerUp"
-              @pointercancel="onDrawingPointerUp"
-              @contextmenu.prevent.stop="onDrawingContextMenu($event, d)"
-            />
-            <line
-              :x1="d.x1 ?? 0" :y1="d.y1 ?? 0" :x2="d.x2 ?? 0" :y2="d.y2 ?? 0"
-              :stroke="d.color" :stroke-width="d.width"
-              :marker-end="d.tool === 'arrow' ? 'url(#draw-arrow-' + d.id + ')' : undefined"
-              :style="{ pointerEvents: 'none' }"
-            />
-          </template>
-        </g>
-        <!-- Selection highlight + animated outline (hidden while drawing or moving) -->
-        <g v-if="selectedDrawingObj && drawTool === 'select'" :style="{ pointerEvents: 'none' }">
-          <template v-if="!isDraggingDrawing">
-            <rect
-              :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
-              :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="color-mix(in srgb, var(--ui-focus) 12%, transparent)" stroke="none"
-            />
-            <rect
-              :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
-              :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-              rx="4" fill="none" stroke="var(--ui-focus)" stroke-width="2"
-              stroke-dasharray="6 4" vector-effect="non-scaling-stroke"
-              class="drawing-selection-outline"
-            />
-          </template>
-          <!-- move handle: drag anywhere inside the selection box -->
-          <rect
-            :x="selectedBounds.x - 6" :y="selectedBounds.y - 6"
-            :width="selectedBounds.w + 12" :height="selectedBounds.h + 12"
-            fill="transparent" stroke="none"
-            :style="{ pointerEvents: drawTool === 'select' ? 'all' : 'none', cursor: 'move' }"
-            @mousedown.stop @pointerdown.stop="onDrawingPointerDown(selectedDrawingObj, $event)"
-            @pointermove="onDrawingPointerMove"
-            @pointerup="onDrawingPointerUp"
-            @pointercancel="onDrawingPointerUp"
-          />
-        </g>
-        <!-- in-progress preview -->
-        <path
-          v-if="draftDrawing && (draftDrawing.tool === 'pen' || draftDrawing.tool === 'highlighter')"
-          :d="strokeToPath(draftDrawing.points || [], draftDrawing.width)"
-          :fill="draftDrawing.color" :opacity="draftDrawing.opacity ?? 1"
-          :style="draftDrawing.tool === 'highlighter' ? 'mix-blend-mode: multiply' : undefined"
-        />
-        <rect
-          v-else-if="draftDrawing && draftDrawing.tool === 'rect'"
-          :x="Math.min((draftDrawing.x ?? 0), (draftDrawing.x ?? 0) + (draftDrawing.w ?? 0))" :y="Math.min((draftDrawing.y ?? 0), (draftDrawing.y ?? 0) + (draftDrawing.h ?? 0))"
-          :width="Math.abs(draftDrawing.w ?? 0)" :height="Math.abs(draftDrawing.h ?? 0)"
-          fill="none" :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
-        />
-        <ellipse
-          v-else-if="draftDrawing && draftDrawing.tool === 'ellipse'"
-          :cx="(draftDrawing.x ?? 0) + (draftDrawing.w ?? 0) / 2" :cy="(draftDrawing.y ?? 0) + (draftDrawing.h ?? 0) / 2"
-          :rx="Math.abs((draftDrawing.w ?? 0) / 2)" :ry="Math.abs((draftDrawing.h ?? 0) / 2)"
-          fill="none" :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
-        />
-        <template v-else-if="draftDrawing && (draftDrawing.tool === 'line' || draftDrawing.tool === 'arrow')">
-          <marker
-            v-if="draftDrawing.tool === 'arrow'"
-            id="draw-arrow-draft"
-            viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6"
-            orient="auto-start-reverse"
-          >
-            <path d="M 0 0 L 10 5 L 0 10 z" :fill="draftDrawing.color" />
-          </marker>
-          <line
-            :x1="draftDrawing.x1 ?? 0" :y1="draftDrawing.y1 ?? 0" :x2="draftDrawing.x2 ?? 0" :y2="draftDrawing.y2 ?? 0"
-            :stroke="draftDrawing.color" :stroke-width="draftDrawing.width"
-            :marker-end="draftDrawing.tool === 'arrow' ? 'url(#draw-arrow-draft)' : undefined"
-          />
-        </template>
-        </g>
-      </svg>
+      <CanvasDrawingLayer :context="drawingLayerProps" />
 
       <!-- Remote cursors -->
       <div
@@ -680,115 +254,13 @@
     </div>
 
     <!-- Minimap (device-local visibility and size) -->
-    <div
-      class="minimap"
-      :class="{ 'is-large': minimapSize === 'large' }"
-      v-if="minimapData && minimapEnabled"
-      @mousedown.stop="onMinimapDown"
-      @mousemove.stop="onMinimapMove"
-      @mouseup.stop="onMinimapUp"
-      @mouseleave="onMinimapUp"
-    >
-      <svg :viewBox="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
-        <rect
-          v-for="node in viewerNodes"
-          :key="'mm-' + node.id"
-          class="minimap-node"
-          :class="{ 'is-group': node.type === 'group' }"
-          :x="node.x"
-          :y="node.y"
-          :width="node.width"
-          :height="node.height"
-          rx="2"
-        />
-        <rect
-          class="minimap-viewport"
-          vector-effect="non-scaling-stroke"
-          :x="minimapData.vpX"
-          :y="minimapData.vpY"
-          :width="minimapData.vpW"
-          :height="minimapData.vpH"
-          rx="2"
-        />
-      </svg>
-    </div>
+    <CanvasMinimap :context="minimapProps" />
 
     <!-- Context menu -->
-    <div
-      v-if="contextMenu.visible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @mousedown.stop
-    >
-      <template v-if="contextMenu.kind === 'edge'">
-        <button class="ctx-item" @click="onEdgeToggleStyle(); closeContextMenu()">Стиль линии</button>
-        <button class="ctx-item" @click="onEdgeCycleArrow(); closeContextMenu()">Тип стрелки</button>
-        <button class="ctx-item" @click="onEdgeCycleColor(); closeContextMenu()">Цвет линии</button>
-        <button class="ctx-item" @click="onEdgeDblClick(contextMenu.id); closeContextMenu()">Подпись</button>
-        <button v-if="isOwner" class="ctx-item" @click="toggleEdgeHidden(contextMenu.id); closeContextMenu()">{{ isEdgeHidden(contextMenu.id) ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item ctx-item-danger" @click="onDeleteEdge(); closeContextMenu()">Удалить</button>
-      </template>
-      <template v-else-if="contextMenu.kind === 'drawing'">
-        <div class="ctx-colors">
-          <span class="ctx-label">Цвет</span>
-          <button class="ctx-color-btn" :style="{ background: selectedDrawingObj?.color }" :aria-label="t('color')" :aria-expanded="contextColorPopup === 'drawing'" @click="toggleContextColorMenu('drawing', $event)" />
-        </div>
-        <CanvasColorMenu :open="contextColorPopup === 'drawing'" :anchor="contextColorAnchor" :label="t('color')" @close="contextColorPopup = null">
-          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c)"></button>
-        </CanvasColorMenu>
-        <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
-        <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item ctx-item-danger" @click="deleteSelectedDrawing(); closeContextMenu()">Удалить</button>
-      </template>
-    </div>
+    <CanvasContextMenu :context="contextMenuProps" />
 
     <!-- Controls -->
-    <div class="canvas-controls">
-      <button @click="zoomIn" :title="t('zoomIn')">+</button>
-      <span class="zoom-level">{{ zoomPercent }}%</span>
-      <button @click="zoomOut" :title="t('zoomOut')">−</button>
-      <button @click="resetView" :title="t('resetView')">⌂</button>
-      <span class="controls-divider"></span>
-      <button @click="undo" :disabled="!canUndo" :title="t('textUndo')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-2"/></svg>
-      </button>
-      <button @click="redo" :disabled="!canRedo" :title="t('textRedo')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h2"/></svg>
-      </button>
-      <span class="controls-divider"></span>
-      <div v-if="!readonly" ref="addMenuWrap" class="ctrl-add-wrap">
-        <button
-          class="ctrl-add-node ctrl-add-trigger"
-          :class="{ active: addMenuOpen }"
-          :title="t('add')"
-          :aria-label="t('add')"
-          aria-haspopup="true"
-          :aria-expanded="addMenuOpen ? 'true' : 'false'"
-          @click.stop="toggleAddMenu"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        </button>
-        <div v-if="addMenuOpen" class="ctrl-add-menu" role="menu" @click.stop>
-          <button
-            v-for="entry in addMenuEntries"
-            :key="entry.key"
-            class="ctrl-add-menu-item"
-            role="menuitem"
-            @click="runAddMenuEntry(entry.key)"
-          >
-            <span class="ctrl-add-menu-icon" v-html="entry.icon"></span>
-            <span>{{ entry.label }}</span>
-          </button>
-        </div>
-      </div>
-      <button @click="duplicateSelection" :title="t('duplicateSelection')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></svg>
-      </button>
-      <span class="controls-divider"></span>
-      <button @click="onExportCanvas" :title="t('exportCanvas')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      </button>
-    </div>
+    <CanvasControls :context="controlsProps" />
     <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
     <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
     <input type="file" ref="dndPortraitInput" accept="image/*" style="display:none" @change="onDndPortraitSelected" />
@@ -821,16 +293,37 @@ import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
 import { useMinimapPreference } from "../composables/useMinimapPreference";
 import { registerBackHandler } from "../composables/useBackHandler";
 import { computeResizedRect } from "../canvas/resizeMath";
-import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
-import { type Drawing, type ActiveDrawingTool, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { type Drawing, type ActiveDrawingTool, strokeToPath, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
 import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
+import CanvasNodeLink from './canvas/CanvasNodeLink.vue';
+import CanvasNodeImage from './canvas/CanvasNodeImage.vue';
+import CanvasNodeEmbed from './canvas/CanvasNodeEmbed.vue';
+import CanvasNodeDocument from './canvas/CanvasNodeDocument.vue';
+import CanvasNodeText from './canvas/CanvasNodeText.vue';
+import CanvasNodeGroup from './canvas/CanvasNodeGroup.vue';
+import CanvasNodeTemplate from './canvas/CanvasNodeTemplate.vue';
+import CanvasMinimap from './canvas/CanvasMinimap.vue';
+import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
+import CanvasControls from './canvas/CanvasControls.vue';
+import CanvasEdgeLayer from './canvas/CanvasEdgeLayer.vue';
+import CanvasDrawingLayer from './canvas/CanvasDrawingLayer.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
+import { useCanvasCamera } from '../canvas/useCanvasCamera';
+import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
+import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
+import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
+import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
+import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
+import { useCanvasHistory } from '../canvas/useCanvasHistory';
+import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
+import { useCanvasMinimap } from '../canvas/useCanvasMinimap';
+import { useCanvasEmbeds } from '../canvas/useCanvasEmbeds';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -905,22 +398,6 @@ type CanvasOp =
   | { type: 'draw-remove'; id: string }
   | { type: 'draw-update'; id: string; changes: Partial<Drawing> };
 
-interface RenderedEdge {
-  id: string;
-  path: string;
-  label?: string;
-  labelX: number;
-  labelY: number;
-  labelW: number;
-  midX: number;
-  midY: number;
-  color?: string;
-  dashArray?: string;
-  thickness: number;
-  arrowType: string;
-  hidden?: boolean;
-}
-
 export interface CanvasChangePayload {
   nodes: CanvasNode[];
   edges: CanvasEdge[];
@@ -930,7 +407,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasEdgeLayer, CanvasDrawingLayer },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
@@ -999,47 +476,32 @@ export default defineComponent({
     const drawTool = ref<ActiveDrawingTool>("select");
     const drawColor = ref("#e03131");
     const drawWidth = ref(4);
-    let drawErasing = false;
-    let drawGestureStarted = false;
-
-    const setDrawTool = (t: ActiveDrawingTool) => { drawTool.value = t; };
-    const setDrawColor = (c: string) => { drawColor.value = c; };
-    const setDrawWidth = (w: number) => { drawWidth.value = w; };
-
     // Drawing selection + drag state
-    const selectedDrawingIds = ref<string[]>([]);
+    const {
+      selectedNodeIds,
+      selectedNodeId,
+      selectedEdgeId,
+      selectedDrawingIds,
+      isNodeSelected,
+      selBox,
+      selBoxStyle,
+      clearSelection: clearSelectionState,
+    } = useCanvasSelectionState();
     let drawMoveStart: { x: number; y: number } | null = null;
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
 
-    // Pan & zoom state
-    const camera = reactive({
-      x: 0,
-      y: 0,
-      scale: 1,
-    });
+    // Camera state and viewport transforms live in one small composable so
+    // pointer handlers can focus on interaction semantics instead of math.
+    const { camera, worldStyle, zoomPercent, fitToContent: fitCameraToContent, zoomAt, zoomIn, zoomOut, resetView: resetCameraView, centerOn: centerCameraOn } = useCanvasCamera(viewport);
     const rulerGesture=useRulerGesture({viewport,active:computed(()=>props.rulerActive),camera,
       begin:point=>emit('ruler-begin',point),move:point=>emit('ruler-move',point),finish:point=>emit('ruler-finish',point),cancel:()=>emit('ruler-cancel')});
     const isPanning = ref(false);
     const panStart = reactive({ x: 0, y: 0 });
     const cameraStart = reactive({ x: 0, y: 0 });
 
-    // Touch state
-    const lastTouchDist = ref(0);
-    const lastTouchCenter = reactive({ x: 0, y: 0 });
-    // Single-finger tap / drag tracking
-    const TAP_MOVE_THRESHOLD = 8; // px before a touch becomes a drag/pan
-    const DOUBLE_TAP_MS = 300;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchMoved = false;
-    let touchNodeId: string | null = null; // node under the active single-finger touch
-    let touchDrawingId: string | null = null; // drawing under the active single-finger touch
-    let touchDragging = false; // an actual node drag is in progress
-    let touchResizing = false; // a resize via a touch on a resize handle is in progress
-    let touchConnecting = false; // a connection drag via a touch on a connection point is in progress
-    let lastTapTime = 0;
-    let lastTapTarget = ""; // node id, or "__empty__" for blank canvas
+    const touchState = useCanvasTouchState();
+    const { lastTouchDist, lastTouchCenter, TAP_MOVE_THRESHOLD, DOUBLE_TAP_MS, getTouchDist, getTouchCenter } = touchState;
 
     // Configure marked
     marked.setOptions({
@@ -1084,61 +546,14 @@ export default defineComponent({
       emit("op", op);
     };
 
-    // Apply a remote operation without triggering change/op emit
-    const applyRemoteOp = (op: CanvasOp) => {
-      switch (op.type) {
-        case 'nodes-move':
-          for (const m of op.moves) {
-            const node = nodes.value.find((n) => n.id === m.id);
-            if (node) { node.x = m.x; node.y = m.y; }
-          }
-          break;
-        case 'node-resize': {
-          const node = nodes.value.find((n) => n.id === op.id);
-          if (node) { node.x = op.x; node.y = op.y; node.width = op.width; node.height = op.height; }
-          break;
-        }
-        case 'node-add':
-          if (!nodes.value.find((n) => n.id === op.node.id)) {
-            nodes.value.push({ ...op.node });
-          }
-          break;
-        case 'node-delete': {
-          const ids = new Set(op.ids);
-          edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
-          nodes.value = nodes.value.filter((n) => !ids.has(n.id));
-          break;
-        }
-        case 'node-update': {
-          const node = nodes.value.find((n) => n.id === op.id);
-          if (node) {
-            Object.assign(node, op.changes);
-            if (Object.prototype.hasOwnProperty.call(op.changes, 'positionLocked') || Object.prototype.hasOwnProperty.call(op.changes, 'zIndex')) {
-              rebalanceNodeLayers(false);
-            }
-          }
-          break;
-        }
-        case 'edge-add':
-          if (!edges.value.find((e) => e.id === op.edge.id)) {
-            edges.value.push({ ...op.edge });
-          }
-          break;
-        case 'edge-delete':
-          edges.value = edges.value.filter((e) => e.id !== op.id);
-          break;
-        case 'edge-update': {
-          const edge = edges.value.find((e) => e.id === op.id);
-          if (edge) Object.assign(edge, op.changes);
-          break;
-        }
-        case 'draw-add':
-        case 'draw-remove':
-        case 'draw-update':
-          drawings.value = applyDrawOp(drawings.value, op as any);
-          break;
-      }
-    };
+    const remoteSync = useCanvasRemoteSync({
+      nodes,
+      edges,
+      drawings,
+      rebalanceNodeLayers: () => rebalanceNodeLayers(false),
+    });
+    const applyRemoteOp = (op: CanvasOp) => remoteSync.applyRemoteOp(op as never);
+    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => remoteSync.applyRemoteData(data);
 
     // Watch for prop changes
     watch(() => props.initialData, (newData) => {
@@ -1159,9 +574,9 @@ export default defineComponent({
         selectedDrawingIds.value = [];
         if (editingNodeId.value) onEditEnd();
         dragNodeId.value = null;
-        touchDragging = false;
-        touchResizing = false;
-        touchConnecting = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
+        touchState.touchConnecting = false;
         connDragging.value = false;
         connFromEdge.value = '';
         isPanning.value = false;
@@ -1172,42 +587,6 @@ export default defineComponent({
         drawMovePreview.value = null;
       }
     });
-
-    // Fit all content in view
-    const fitToContent = () => {
-      if (!viewerNodes.value.length || !viewport.value) return;
-
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of viewerNodes.value) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.width);
-        maxY = Math.max(maxY, n.y + n.height);
-      }
-
-      const contentW = maxX - minX;
-      const contentH = maxY - minY;
-      const vw = viewport.value.clientWidth;
-      const vh = viewport.value.clientHeight;
-
-      const padding = 80;
-      const scaleX = (vw - padding * 2) / contentW;
-      const scaleY = (vh - padding * 2) / contentH;
-      camera.scale = Math.min(scaleX, scaleY, 1);
-
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      camera.x = vw / 2 - centerX * camera.scale;
-      camera.y = vh / 2 - centerY * camera.scale;
-    };
-
-    // Computed styles
-    const worldStyle = computed(() => ({
-      transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
-      transformOrigin: "0 0",
-    }));
-
-    const zoomPercent = computed(() => Math.round(camera.scale * 100));
 
     // Node filtering
     // Viewer-visibility helpers: owner sees all nodes (including hidden, dimmed); non-owners see only non-hidden ones.
@@ -1222,6 +601,7 @@ export default defineComponent({
     const templateNodes = computed(() => viewerNodes.value.filter((n) => n.type === "template"));
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
     const documentNodes = computed(() => viewerNodes.value.filter((n) => n.type === "document"));
+    const fitToContent = () => fitCameraToContent(viewerNodes.value);
 
     const dndAbilities = DND_ABILITIES;
     const dndTabs = [
@@ -1288,198 +668,6 @@ export default defineComponent({
     const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
     const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { if (!isDndInteracting(node)) return; const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
 
-    // ===== Embedded document nodes =====
-    type EmbeddedDocumentEntry = {
-      title: string;
-      srcdoc: string;
-      excerpt: string;
-      loading: boolean;
-      error: boolean;
-      errorText: string;
-      empty: boolean;
-    };
-
-    const embeddedDocumentCache = reactive<Record<string, EmbeddedDocumentEntry>>({});
-
-    const documentCacheKey = (kind: "html" | "text", id: string) => kind + ":" + id;
-
-    const documentNodeKind = (node: CanvasNode): "html" | "text" =>
-      node.documentKind === "text" ? "text" : "html";
-
-    const stripHtmlToText = (html: string) =>
-      html
-        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
-        .replace(/<[^>]*>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    /** A document with no text and no embedded media renders as a blank frame, so label it instead. */
-    const isBlankDocument = (html: string) =>
-      !stripHtmlToText(html) && !/<(img|svg|video|canvas|iframe|table|hr)\b/i.test(html);
-
-    /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
-    const wrapDocumentFragment = (html: string, theme: 'light' | 'dark') => {
-      const palette = theme === 'light'
-        ? {
-            surface: '#ffffff', text: '#172019', muted: '#536156', link: '#0b626b',
-            border: 'rgba(23,32,25,0.16)', code: '#f6f8fa',
-          }
-        : {
-            surface: '#191b20', text: '#f8fafc', muted: 'rgba(248,250,252,0.7)', link: '#7dd3fc',
-            border: 'rgba(255,255,255,0.16)', code: 'rgba(255,255,255,0.06)',
-          };
-      return (
-      '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      `html,body{margin:0;padding:12px 14px;background:${palette.surface};color:${palette.text};` +
-      "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
-      "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
-      "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}" +
-      `blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid ${palette.border};color:${palette.muted}}` +
-      `a{color:${palette.link}}` +
-      `img{max-width:100%;height:auto}hr{border:0;border-top:1px solid ${palette.border};margin:1em 0}` +
-      `table{border-collapse:collapse;max-width:100%}td,th{border:1px solid ${palette.border};padding:4px 6px}` +
-      `pre{background:${palette.code};padding:8px;border-radius:4px;overflow:auto}` +
-      "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
-      "</style></head><body>" + html + "</body></html>"
-      );
-    };
-
-    const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
-      const key = documentCacheKey(kind, id);
-      if (embeddedDocumentCache[key]) return;
-      embeddedDocumentCache[key] = { title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false };
-      try {
-        const { htmlDocuments, textDocuments } = await import("../api/client");
-        let title = "";
-        let html = "";
-        if (kind === "html") {
-          const res: any = await htmlDocuments.get(id);
-          title = res?.document?.title || "Untitled";
-          html = res?.document?.html || "";
-        } else {
-          const res: any = await textDocuments.get(id);
-          title = res?.document?.title || "Untitled";
-          html = res?.document?.snapshot?.html || "";
-        }
-        embeddedDocumentCache[key] = {
-          title,
-          // HTML documents are stored as complete documents; text documents come back as a fragment.
-          // Keep text fragments raw so their iframe palette reacts to a live theme switch.
-          srcdoc: html,
-          excerpt: stripHtmlToText(html).slice(0, 400),
-          loading: false,
-          error: false,
-          errorText: "",
-          empty: isBlankDocument(html),
-        };
-      } catch {
-        embeddedDocumentCache[key] = { title: "Error", srcdoc: "", excerpt: "", loading: false, error: true, errorText: "Cannot load document", empty: false };
-      }
-    };
-
-    const EMPTY_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
-      title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false,
-    };
-    const MISSING_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
-      title: "Документ не выбран", srcdoc: "", excerpt: "", loading: false, error: true,
-      errorText: "Документ не выбран", empty: false,
-    };
-
-    const documentData = (node: CanvasNode): EmbeddedDocumentEntry => {
-      if (!node.documentId) return MISSING_DOCUMENT_ENTRY;
-      const key = documentCacheKey(documentNodeKind(node), node.documentId);
-      if (!embeddedDocumentCache[key]) {
-        loadEmbeddedDocument(documentNodeKind(node), node.documentId);
-      }
-      return embeddedDocumentCache[key] || EMPTY_DOCUMENT_ENTRY;
-    };
-
-    const documentSrcdoc = (node: CanvasNode) => {
-      const entry = documentData(node);
-      return documentNodeKind(node) === 'html'
-        ? entry.srcdoc
-        : wrapDocumentFragment(entry.srcdoc, effectiveTheme.value);
-    };
-
-    /** Below this size an iframe is unreadable, so fall back to a plain-text excerpt. */
-    const isDocPreviewRich = (node: CanvasNode) => node.width >= 220 && node.height >= 140;
-
-    const onDocumentEmbedDblClick = (node: CanvasNode) => {
-      if (!node.documentId) return;
-      emit("open-document", { kind: documentNodeKind(node), id: node.documentId });
-    };
-
-    const addDocumentEmbed = (kind: "html" | "text", documentId: string) => {
-      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
-      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const newNode: CanvasNode = {
-        id: genId(),
-        type: "document",
-        x: centerX - 210,
-        y: centerY - 160,
-        width: 420,
-        height: 320,
-        documentKind: kind,
-        documentId,
-      };
-      pushUndo();
-      nodes.value.push(newNode);
-      emitOp({ type: 'node-add', node: { ...newNode } });
-      selectedNodeIds.value = [newNode.id];
-      loadEmbeddedDocument(kind, documentId);
-    };
-
-    const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
-
-    const loadEmbeddedCanvas = async (canvasId: string) => {
-      if (embeddedCanvasCache[canvasId]) return;
-      embeddedCanvasCache[canvasId] = { title: '', nodes: [], edges: [], loading: true, error: false };
-      try {
-        const { canvas: canvasApi } = await import('../api/client');
-        const res = await canvasApi.get(canvasId);
-        const data = JSON.parse(res.canvas.data || '{"nodes":[],"edges":[]}');
-        embeddedCanvasCache[canvasId] = { title: res.canvas.title || 'Untitled', nodes: data.nodes || [], edges: data.edges || [], loading: false, error: false };
-      } catch {
-        embeddedCanvasCache[canvasId] = { title: t('cannotLoadCanvas'), nodes: [], edges: [], loading: false, error: true };
-      }
-    };
-
-    const getEmbeddedCanvasData = (canvasId: string) => {
-      if (!embeddedCanvasCache[canvasId]) {
-        loadEmbeddedCanvas(canvasId);
-      }
-      return embeddedCanvasCache[canvasId] || { title: '', nodes: [], edges: [], loading: true, error: false };
-    };
-
-    const embeddedCanvasViewBox = (canvasId: string) => {
-      const data = embeddedCanvasCache[canvasId];
-      if (!data || data.nodes.length === 0) return '0 0 800 600';
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of data.nodes) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + (n.width || 100));
-        maxY = Math.max(maxY, n.y + (n.height || 60));
-      }
-      const pad = 40;
-      return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
-    };
-
-    const embeddedEdgePath = (edge: any, allNodes: any[]) => {
-      const from = allNodes.find((n: any) => n.id === edge.fromNode);
-      const to = allNodes.find((n: any) => n.id === edge.toNode);
-      if (!from || !to) return '';
-      const fx = from.x + (from.width || 100) / 2;
-      const fy = from.y + (from.height || 60) / 2;
-      const tx = to.x + (to.width || 100) / 2;
-      const ty = to.y + (to.height || 60) / 2;
-      return `M${fx},${fy} L${tx},${ty}`;
-    };
-
     // Bounding box for SVG edges — explicit position & size
     const contentBounds = computed(() => {
       if (!nodes.value.length) return { minX: 0, minY: 0, w: 1, h: 1 };
@@ -1510,131 +698,12 @@ export default defineComponent({
       return `translate(${-b.minX}, ${-b.minY})`;
     });
 
-    // Build a node map for edge lookups
-    const nodeMap = computed(() => {
-      const map = new Map<string, CanvasNode>();
-      for (const n of nodes.value) map.set(n.id, n);
-      return map;
-    });
-
-    // Get connection point on a node's side
-    const getAnchor = (node: CanvasNode, side: string) => {
-      const cx = node.x + node.width / 2;
-      const cy = node.y + node.height / 2;
-      switch (side) {
-        case "top": return { x: cx, y: node.y };
-        case "bottom": return { x: cx, y: node.y + node.height };
-        case "left": return { x: node.x, y: cy };
-        case "right": return { x: node.x + node.width, y: cy };
-        default: return { x: cx, y: cy };
-      }
-    };
-
-    // Control point offset for bezier curves
-    const getControlOffset = (side: string, dist: number) => {
-      const offset = Math.min(Math.max(dist * 0.4, 40), 200);
-      switch (side) {
-        case "top": return { dx: 0, dy: -offset };
-        case "bottom": return { dx: 0, dy: offset };
-        case "left": return { dx: -offset, dy: 0 };
-        case "right": return { dx: offset, dy: 0 };
-        default: return { dx: 0, dy: 0 };
-      }
-    };
-
-    // Helper to find midpoint of a rendered edge by id (for fromEdge support)
-    const getEdgeMidpoint = (edgeId: string): { x: number; y: number } | null => {
-      const srcEdge = edges.value.find((e) => e.id === edgeId);
-      if (!srcEdge) return null;
-      const srcFrom = nodeMap.value.get(srcEdge.fromNode);
-      const srcTo = nodeMap.value.get(srcEdge.toNode);
-      if (!srcFrom || !srcTo) return null;
-      const a = getAnchor(srcFrom, srcEdge.fromSide || "bottom");
-      const b = getAnchor(srcTo, srcEdge.toSide || "top");
-      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-    };
-
-    const renderedEdges = computed<RenderedEdge[]>(() => {
-      return edges.value.flatMap((edge) => {
-        // Non-owners: skip hidden edges and edges whose endpoints are hidden-for-viewer.
-        if (!canViewerSee(edge)) return [];
-        if (!viewerNodeIds.value.has(edge.toNode)) return [];
-        if (!edge.fromEdge && !viewerNodeIds.value.has(edge.fromNode)) return [];
-
-        const toNode = nodeMap.value.get(edge.toNode);
-        if (!toNode) {
-          return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-        }
-
-        let from: { x: number; y: number };
-        let fromSide: string;
-
-        if (edge.fromEdge) {
-          // Source is another edge's midpoint
-          const mid = getEdgeMidpoint(edge.fromEdge);
-          if (!mid) {
-            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-          }
-          from = mid;
-          // Guess direction toward target
-          const toAnchor = getAnchor(toNode, edge.toSide || "top");
-          const dx = toAnchor.x - from.x;
-          const dy = toAnchor.y - from.y;
-          fromSide = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? "right" : "left") : (dy > 0 ? "bottom" : "top");
-        } else {
-          const fromNode = nodeMap.value.get(edge.fromNode);
-          if (!fromNode) {
-            return [{ id: edge.id, path: "", labelX: 0, labelY: 0, labelW: 0, midX: 0, midY: 0, thickness: 2, arrowType: "end" }];
-          }
-          fromSide = edge.fromSide || "bottom";
-          from = getAnchor(fromNode, fromSide);
-        }
-
-        const toSide = edge.toSide || "top";
-        const to = getAnchor(toNode, toSide);
-
-        const dist = Math.sqrt((to.x - from.x) ** 2 + (to.y - from.y) ** 2);
-        const c1 = getControlOffset(fromSide, dist);
-        const c2 = getControlOffset(toSide, dist);
-
-        const path = `M ${from.x} ${from.y} C ${from.x + c1.dx} ${from.y + c1.dy}, ${to.x + c2.dx} ${to.y + c2.dy}, ${to.x} ${to.y}`;
-
-        const thickness = edge.thickness || 2;
-        const arrowType = edge.arrowType || "end";
-        const dashMap: Record<string, string> = { dashed: "8 4", dotted: "3 3" };
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2;
-        return [{
-          id: edge.id,
-          path,
-          label: edge.label,
-          labelX: midX,
-          labelY: midY - 8,
-          labelW: edge.label ? edge.label.length * 7.5 : 0,
-          midX,
-          midY,
-          color: edge.color,
-          dashArray: edge.lineStyle ? dashMap[edge.lineStyle] : undefined,
-          thickness,
-          arrowType,
-          hidden: edge.hidden,
-        }];
-      });
-    });
-
-    // Unique edge colors for dynamic arrow markers
-    const edgeColors = computed(() => {
-      const colors = new Set<string>();
-      for (const edge of edges.value) {
-        if (edge.color) colors.add(edge.color);
-      }
-      return Array.from(colors);
-    });
-
-    const arrowMarkerId = (color: string | undefined, start: boolean) => {
-      if (!color) return start ? 'arrowhead-start' : 'arrowhead';
-      return (start ? 'arrowhead-start-' : 'arrowhead-') + color.replace('#', '');
-    };
+    const { nodeMap, getAnchor, getControlOffset, getEdgeMidpoint, renderedEdges, edgeColors, arrowMarkerId } = useCanvasEdgeGeometry(
+      nodes,
+      edges,
+      viewerNodeIds,
+      canViewerSee,
+    );
 
     // Style helpers
     const nodePosition = (node: CanvasNode) => {
@@ -1776,48 +845,44 @@ export default defineComponent({
       return node.firstLineTextAlign || node.textAlign || undefined;
     };
 
-    // Selection state (multi-select)
-    const selectedNodeIds = ref<string[]>([]);
-    // Convenience: single selected node ID (for backwards compat in template)
-    const selectedNodeId = computed(() => selectedNodeIds.value.length === 1 ? selectedNodeIds.value[0] : null);
-
-    const isNodeSelected = (id: string) => selectedNodeIds.value.includes(id);
-
-    // Selection box state
-    const selBox = reactive({ active: false, startX: 0, startY: 0, curX: 0, curY: 0 });
-    const selBoxStyle = computed(() => {
-      if (!selBox.active) return { display: "none" };
-      const x1 = Math.min(selBox.startX, selBox.curX);
-      const y1 = Math.min(selBox.startY, selBox.curY);
-      const x2 = Math.max(selBox.startX, selBox.curX);
-      const y2 = Math.max(selBox.startY, selBox.curY);
-      return {
-        display: "block",
-        left: `${x1}px`,
-        top: `${y1}px`,
-        width: `${x2 - x1}px`,
-        height: `${y2 - y1}px`,
-      };
-    });
-
     // Editing state
-    const editingNodeId = ref<string | null>(null);
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
     const fullscreenEditorRef = ref<HTMLTextAreaElement | null>(null);
-    const textHistory = ref<{ past: string[]; future: string[]; current: string }>({ past: [], future: [], current: '' });
-    const textDirty = ref(false);
-    const canUndoText = computed(() => !!editingNodeId.value && textHistory.value.past.length > 0);
-    const canRedoText = computed(() => !!editingNodeId.value && textHistory.value.future.length > 0);
-    const resetTextHistory = (text: string) => { textHistory.value = { past: [], future: [], current: text }; };
-    // Remote edits/resyncs must never become something a local Undo can overwrite.
-    watch(() => nodes.value.find(n => n.id === editingNodeId.value)?.text, text => {
-      if (editingNodeId.value && (text ?? '') !== textHistory.value.current) resetTextHistory(text ?? '');
-    }, { flush: 'sync' });
-    const textSaveStatus = computed(() => {
-      const status = props.textSyncStatus;
-      if (status.kind === 'offline' || status.kind === 'failed') return { ...status, label: status.label || t('syncOffline') };
-      return textDirty.value ? { kind: 'saving', label: t('syncSaving') } : status;
+    let scheduleChangeForEditor: () => void = () => {};
+    const textEditor = useCanvasTextEditor({
+      nodes,
+      readonly: () => props.readonly,
+      isMobileLayout,
+      editorRefs,
+      fullscreenEditorRef,
+      getTextSyncStatus: () => props.textSyncStatus,
+      t,
+      emitNodeEditStart: (id) => emit('node-edit-start', id),
+      emitNodeUpdate: (id, text) => emitOp({ type: 'node-update', id, changes: { text } }),
+      scheduleChange: () => scheduleChangeForEditor(),
+      registerBackHandler,
     });
+    const {
+      editingNodeId,
+      textSaveStatus,
+      canUndoText,
+      canRedoText,
+      undoText,
+      redoText,
+      onTextEditorKeydown,
+      fullscreenEditingNode,
+      openTextEditor,
+      closeTextEditor,
+      onEditInput,
+      onEditEnd,
+      startTextEditing,
+      focusTextEditor,
+      isTextNode,
+    } = textEditor;
+    const onNodeDblClick = (node: CanvasNode) => {
+      if (node.type !== 'text' || isMobileLayout.value) return;
+      startTextEditing(node);
+    };
 
     // Drag node state
     const dragNodeId = ref<string | null>(null);
@@ -2019,127 +1084,6 @@ export default defineComponent({
       startAutoPan();
     };
 
-    const focusTextEditor = () => {
-      const textarea = isMobileLayout.value ? fullscreenEditorRef.value : editorRefs.value?.[0];
-      textarea?.focus();
-    };
-
-    const startTextEditing = (node: CanvasNode) => {
-      if (editingNodeId.value && editingNodeId.value !== node.id) onEditEnd();
-      resetTextHistory(node.text ?? '');
-      emit('node-edit-start', node.id);
-      editingNodeId.value = node.id;
-      nextTick(focusTextEditor);
-    };
-
-    // Double-click to edit text. Not on the phone layout, where a tap on a
-    // moving canvas is too easy to misfire - there editing is explicit only.
-    const onNodeDblClick = (node: CanvasNode) => {
-      if (node.type !== "text" || isMobileLayout.value) return;
-      startTextEditing(node);
-    };
-
-    // The bottom toolbar's "edit text" action.
-    const openTextEditor = (id: string | null | undefined) => {
-      const node = nodes.value.find((n) => n.id === id);
-      if (!node || node.type !== "text" || props.readonly) return;
-      startTextEditing(node);
-    };
-
-    const isTextNode = (id: string | null | undefined): boolean =>
-      nodes.value.some((n) => n.id === id && n.type === "text");
-
-    let editSaveTimer: ReturnType<typeof setTimeout> | null = null;
-    const lastEmittedText = new Map<string, string | undefined>();
-
-    const emitTextUpdate = (node: CanvasNode) => {
-      if (editSaveTimer) {
-        clearTimeout(editSaveTimer);
-        editSaveTimer = null;
-      }
-      textDirty.value = false;
-      if (lastEmittedText.get(node.id) === node.text) return;
-      lastEmittedText.set(node.id, node.text);
-      emitOp({ type: 'node-update', id: node.id, changes: { text: node.text } });
-    };
-
-    const scheduleTextUpdate = (node: CanvasNode) => {
-      textDirty.value = true;
-      if (editSaveTimer) clearTimeout(editSaveTimer);
-      editSaveTimer = setTimeout(() => emitTextUpdate(node), 500);
-    };
-
-    const onEditInput = (e: Event, node: CanvasNode) => {
-      const text = (e.target as HTMLTextAreaElement).value;
-      if (text === node.text) return;
-      textHistory.value.past.push(node.text ?? '');
-      if (textHistory.value.past.length > 100) textHistory.value.past.shift();
-      textHistory.value.future = [];
-      textHistory.value.current = text;
-      node.text = text;
-      scheduleTextUpdate(node);
-      scheduleChange();
-    };
-
-    const stepTextHistory = (redo: boolean) => {
-      const node = nodes.value.find(n => n.id === editingNodeId.value);
-      if (!node || props.readonly) return;
-      const from = redo ? textHistory.value.future : textHistory.value.past;
-      const to = redo ? textHistory.value.past : textHistory.value.future;
-      if (!from.length) return;
-      to.push(node.text ?? '');
-      const text = from.pop()!;
-      textHistory.value.current = text;
-      node.text = text;
-      scheduleTextUpdate(node);
-      scheduleChange();
-      nextTick(focusTextEditor);
-    };
-    const undoText = () => stepTextHistory(false);
-    const redoText = () => stepTextHistory(true);
-    const onTextEditorKeydown = (event: KeyboardEvent) => {
-      if (event.isComposing || !(event.ctrlKey || event.metaKey)) return;
-      const key = event.key.toLowerCase();
-      if (key !== 'z' && key !== 'y') return;
-      event.preventDefault();
-      if (event.shiftKey || key === 'y') redoText(); else undoText();
-    };
-
-    const onEditEnd = () => {
-      if (editingNodeId.value) {
-        const node = nodes.value.find((n) => n.id === editingNodeId.value);
-        if (node) emitTextUpdate(node);
-      }
-      editingNodeId.value = null;
-      scheduleChange();
-    };
-
-    const fullscreenEditingNode = computed<CanvasNode | null>(() => {
-      if (!isMobileLayout.value || !editingNodeId.value) return null;
-      return nodes.value.find((n) => n.id === editingNodeId.value && n.type === "text") ?? null;
-    });
-
-    const closeTextEditor = () => {
-      fullscreenEditorRef.value?.blur();
-      onEditEnd();
-    };
-
-    // While the full-screen editor is open, Android's system Back closes it and
-    // returns to the canvas. Registered on open (not on mount) so it is the most
-    // recent handler and wins over the view's own ones.
-    let unregisterEditorBack: (() => void) | null = null;
-    watch(() => !!fullscreenEditingNode.value, (open) => {
-      if (open && !unregisterEditorBack) {
-        unregisterEditorBack = registerBackHandler(() => {
-          closeTextEditor();
-          return true;
-        });
-      } else if (!open && unregisterEditorBack) {
-        unregisterEditorBack();
-        unregisterEditorBack = null;
-      }
-    });
-
     // Resize handlers
     const onResizeStart = (e: PointerLike, node: CanvasNode, handle: string) => {
       updateLastPointer(e);
@@ -2167,8 +1111,6 @@ export default defineComponent({
     };
 
     // Edge selection
-    const selectedEdgeId = ref<string | null>(null);
-
     const onEdgeClick = (edgeId: string) => {
       selectedEdgeId.value = edgeId;
       selectedNodeIds.value = [];
@@ -2500,6 +1442,7 @@ export default defineComponent({
       contextColorAnchor.value = event.currentTarget as HTMLElement;
       contextColorPopup.value = contextColorPopup.value === kind ? null : kind;
     };
+    const closeContextColorPopup = () => { contextColorPopup.value = null; };
     const contextMenuStyle = computed(() => ({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
@@ -2510,9 +1453,7 @@ export default defineComponent({
     // Clears all selection state and closes element-bound UI.
     // Does NOT close global canvas panels (history, chat, plugins, minimap).
     const clearSelection = () => {
-      selectedNodeIds.value = [];
-      selectedDrawingIds.value = [];
-      selectedEdgeId.value = null;
+      clearSelectionState();
       if (editingNodeId.value) onEditEnd();
       closeContextMenu();
     };
@@ -2895,59 +1836,60 @@ export default defineComponent({
     };
 
     // Undo/redo history
-    interface Snapshot { nodes: string; edges: string; drawings: string; }
-    const undoStack = ref<Snapshot[]>([]);
-    const redoStack = ref<Snapshot[]>([]);
-    const MAX_HISTORY = 50;
-    const canUndo = computed(() => undoStack.value.length > 0);
-    const canRedo = computed(() => redoStack.value.length > 0);
-
-    const takeSnapshot = (): Snapshot => ({
-      nodes: JSON.stringify(nodes.value),
-      edges: JSON.stringify(edges.value),
-      drawings: JSON.stringify(drawings.value),
-    });
-
     let changeTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleChange = (forceSnapshot = false) => {
       forceNextChange = forceNextChange || forceSnapshot;
       if (changeTimer) clearTimeout(changeTimer);
       changeTimer = setTimeout(emitChange, 300);
     };
+    scheduleChangeForEditor = scheduleChange;
 
-    const pushUndo = () => {
-      undoStack.value.push(takeSnapshot());
-      if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
-      redoStack.value = [];
-      scheduleChange();
-    };
+    const { canUndo, canRedo, pushUndo, undo, redo } = useCanvasHistory({
+      nodes,
+      edges,
+      drawings,
+      scheduleChange,
+      clearSelection: clearSelectionState,
+    });
 
-    const undo = () => {
-      if (!undoStack.value.length) return;
-      redoStack.value.push(takeSnapshot());
-      // will call scheduleChange below
-      const snap = undoStack.value.pop()!;
-      nodes.value = JSON.parse(snap.nodes);
-      edges.value = JSON.parse(snap.edges);
-      drawings.value = JSON.parse(snap.drawings);
-      selectedNodeIds.value = [];
-      selectedEdgeId.value = null;
-      selectedDrawingIds.value = [];
-      scheduleChange(true);
-    };
+    const {
+      setDrawTool,
+      setDrawColor,
+      setDrawWidth,
+      toWorld,
+      onDrawPointerDown,
+      onDrawPointerMove,
+      onDrawPointerUp,
+      onDrawPointerCancel,
+    } = useCanvasDrawing({
+      viewport,
+      camera,
+      drawings,
+      draftDrawing,
+      drawTool,
+      drawColor,
+      drawWidth,
+      genId,
+      pushUndo,
+      emitOp: (operation) => emitOp(operation as CanvasOp),
+    });
 
-    const redo = () => {
-      if (!redoStack.value.length) return;
-      undoStack.value.push(takeSnapshot());
-      const snap = redoStack.value.pop()!;
-      nodes.value = JSON.parse(snap.nodes);
-      edges.value = JSON.parse(snap.edges);
-      drawings.value = JSON.parse(snap.drawings);
-      selectedNodeIds.value = [];
-      selectedEdgeId.value = null;
-      selectedDrawingIds.value = [];
-      scheduleChange(true);
-    };
+    const embeds = useCanvasEmbeds({
+      viewport,
+      camera,
+      effectiveTheme,
+      t,
+      genId,
+      pushUndo,
+      addNode: (node) => {
+        const canvasNode = node as CanvasNode;
+        nodes.value.push(canvasNode);
+        emitOp({ type: 'node-add', node: { ...canvasNode } });
+      },
+      selectNode: (id) => { selectedNodeIds.value = [id]; },
+      openDocument: (payload) => emit('open-document', payload),
+    });
+    const { documentData, documentSrcdoc, isDocPreviewRich, onDocumentEmbedDblClick, addDocumentEmbed, loadEmbeddedDocument, loadEmbeddedCanvas, getEmbeddedCanvasData, embeddedCanvasViewBox, embeddedEdgePath } = embeds;
 
     // Clipboard for copy/paste
     const clipboard = ref<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>({ nodes: [], edges: [] });
@@ -3015,9 +1957,7 @@ export default defineComponent({
       }
       if (e.key === "Escape" && drawTool.value !== "select") {
         drawTool.value = "select";
-        draftDrawing.value = null;
-        drawGestureStarted = false;
-        drawErasing = false;
+        onDrawPointerCancel();
         return;
       }
       // Undo/redo
@@ -3106,95 +2046,6 @@ export default defineComponent({
           deleteSelectedDrawing();
         }
       }
-    };
-
-    // Drawing pointer handlers
-    const toWorld = (e: PointerEvent): { x: number; y: number } => {
-      const rect = viewport.value!.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left - camera.x) / camera.scale,
-        y: (e.clientY - rect.top - camera.y) / camera.scale,
-      };
-    };
-
-    // NOTE: each erased drawing emits an immediate draw-remove op to peers. Local Ctrl+Z
-    // restores the local array but does not emit compensating draw-add ops to peers — a
-    // known limitation of the snapshot-undo + op-broadcast model (shared by nodes/edges). TODO: reconcile undo with collab.
-    const eraseAt = (x: number, y: number) => {
-      const tol = 6 / camera.scale;
-      const hit = [...drawings.value].reverse().find((d) => hitTestDrawing(d, x, y, tol));
-      if (!hit) return;
-      drawings.value = drawings.value.filter((d) => d.id !== hit.id);
-      emitOp({ type: "draw-remove", id: hit.id } as CanvasOp);
-    };
-
-    const onDrawPointerDown = (e: PointerEvent) => {
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      const { x, y } = toWorld(e);
-      drawGestureStarted = true;
-
-      if (drawTool.value === "eraser") {
-        drawErasing = true;
-        pushUndo();
-        eraseAt(x, y);
-        return;
-      }
-      const base = {
-        id: genId(),
-        color: drawColor.value,
-        width: drawWidth.value,
-        createdBy: "me",
-        createdAt: new Date().toISOString(),
-      };
-      if (drawTool.value === "pen" || drawTool.value === "highlighter") {
-        draftDrawing.value = {
-          ...base,
-          tool: drawTool.value,
-          points: [x, y],
-          opacity: drawTool.value === "highlighter" ? 0.3 : 1,
-        };
-      } else if (drawTool.value === "line" || drawTool.value === "arrow") {
-        draftDrawing.value = { ...base, tool: drawTool.value, x1: x, y1: y, x2: x, y2: y };
-      } else {
-        // rect / ellipse
-        draftDrawing.value = { ...base, tool: drawTool.value as Drawing["tool"], x, y, w: 0, h: 0 };
-      }
-    };
-
-    const onDrawPointerMove = (e: PointerEvent) => {
-      if (!drawGestureStarted) return;
-      const { x, y } = toWorld(e);
-      if (drawErasing) { eraseAt(x, y); return; }
-      const d = draftDrawing.value;
-      if (!d) return;
-      if (d.tool === "pen" || d.tool === "highlighter") {
-        d.points = [...(d.points || []), x, y];
-      } else if (d.tool === "line" || d.tool === "arrow") {
-        d.x2 = x; d.y2 = y;
-      } else {
-        d.w = x - (d.x as number); d.h = y - (d.y as number);
-      }
-    };
-
-    const onDrawPointerUp = () => {
-      if (!drawGestureStarted) return;
-      drawGestureStarted = false;
-      if (drawErasing) { drawErasing = false; return; }
-      const d = draftDrawing.value;
-      draftDrawing.value = null;
-      if (!d) return;
-      if ((d.tool === "pen" || d.tool === "highlighter") && (d.points || []).length < 4) return;
-      if ((d.tool === "rect" || d.tool === "ellipse") && (Math.abs(d.w ?? 0) < 3 || Math.abs(d.h ?? 0) < 3)) return;
-      if ((d.tool === "line" || d.tool === "arrow") && Math.hypot((d.x2 ?? 0) - (d.x1 ?? 0), (d.y2 ?? 0) - (d.y1 ?? 0)) < 3) return;
-      pushUndo();
-      drawings.value = [...drawings.value, d];
-      emitOp({ type: "draw-add", drawing: d } as CanvasOp);
-    };
-
-    const onDrawPointerCancel = () => {
-      drawGestureStarted = false;
-      drawErasing = false;
-      draftDrawing.value = null;
     };
 
     // Drawing selection computeds
@@ -3531,15 +2382,10 @@ export default defineComponent({
       if (e.ctrlKey || e.metaKey) {
         // Pinch-to-zoom on trackpad (or Ctrl+wheel)
         const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
-        const newScale = Math.max(0.05, Math.min(5, camera.scale * zoomFactor));
-
         const rect = viewport.value!.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-
-        camera.x = mx - (mx - camera.x) * (newScale / camera.scale);
-        camera.y = my - (my - camera.y) * (newScale / camera.scale);
-        camera.scale = newScale;
+        zoomAt(mx, my, zoomFactor);
       } else {
         // Two-finger scroll on trackpad → pan
         camera.x -= e.deltaX;
@@ -3548,25 +2394,6 @@ export default defineComponent({
     };
 
     // Touch handlers
-    const getTouchDist = (e: TouchEvent) => {
-      if (e.touches.length < 2) return 0;
-      const t0 = e.touches[0]!;
-      const t1 = e.touches[1]!;
-      const dx = t0.clientX - t1.clientX;
-      const dy = t0.clientY - t1.clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    };
-
-    const getTouchCenter = (e: TouchEvent) => {
-      const t0 = e.touches[0]!;
-      if (e.touches.length < 2) return { x: t0.clientX, y: t0.clientY };
-      const t1 = e.touches[1]!;
-      return {
-        x: (t0.clientX + t1.clientX) / 2,
-        y: (t0.clientY + t1.clientY) / 2,
-      };
-    };
-
     // Is the touch on a text-editing field? If so, let the browser handle it
     // natively (caret placement, on-screen keyboard) instead of hijacking it.
     const isEditableTarget = (target: EventTarget | null) => {
@@ -3580,11 +2407,11 @@ export default defineComponent({
 
       if (e.touches.length === 1) {
         const t = e.touches[0]!;
-        touchStartX = t.clientX;
-        touchStartY = t.clientY;
-        touchMoved = false;
-        touchDragging = false;
-        touchResizing = false;
+        touchState.touchStartX = t.clientX;
+        touchState.touchStartY = t.clientY;
+        touchState.touchMoved = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
         if (contextMenu.visible) closeContextMenu();
 
         // Hand mode: read-only pan — skip ALL node/resize/connect interaction.
@@ -3608,7 +2435,7 @@ export default defineComponent({
             selectedNodeIds.value = [handleNodeId];
             selectedEdgeId.value = null;
             if (node.positionLocked) return;
-            touchResizing = true;
+            touchState.touchResizing = true;
             onResizeStart({ clientX: t.clientX, clientY: t.clientY }, node, handle);
             return;
           }
@@ -3625,30 +2452,30 @@ export default defineComponent({
           const side = connEl.dataset.connSide ?? "";
           if (node && side && !node.positionLocked) {
             onConnStart({ clientX: t.clientX, clientY: t.clientY } as MouseEvent, node, side);
-            touchConnecting = true;
+            touchState.touchConnecting = true;
             return;
           }
         }
 
         // Did we start on a node/group?
         const nodeEl = (e.target as HTMLElement | null)?.closest('[data-node-id]') as HTMLElement | null;
-        touchNodeId = nodeEl?.dataset.nodeId ?? null;
+        touchState.touchNodeId = nodeEl?.dataset.nodeId ?? null;
 
-        const touchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        const touchNode = touchState.touchNodeId ? nodes.value.find((n) => n.id === touchState.touchNodeId) : null;
         // Empty group interiors behave like empty canvas, just as on desktop.
         // Keep a screen-sized border hit area usable at every zoom level.
         if (touchNode?.type === 'group') {
           const rect = viewport.value!.getBoundingClientRect();
           const wx = (t.clientX - rect.left - camera.x) / camera.scale;
           const wy = (t.clientY - rect.top - camera.y) / camera.scale;
-          if (!hitTestGroupBorder(touchNode, wx, wy, 12 / camera.scale)) touchNodeId = null;
+          if (!hitTestGroupBorder(touchNode, wx, wy, 12 / camera.scale)) touchState.touchNodeId = null;
         }
 
-        if (touchNodeId && !props.readonly) {
+        if (touchState.touchNodeId && !props.readonly) {
           // Select immediately (so the style toolbar appears).
-          if (!selectedNodeIds.value.includes(touchNodeId)) {
+          if (!selectedNodeIds.value.includes(touchState.touchNodeId)) {
             selectedDrawingIds.value = [];
-            selectedNodeIds.value = [touchNodeId];
+            selectedNodeIds.value = [touchState.touchNodeId];
           }
           selectedEdgeId.value = null;
           if (touchNode?.positionLocked) {
@@ -3661,10 +2488,10 @@ export default defineComponent({
           dragMouseStart.y = t.clientY;
           dragCameraStart.x = camera.x;
           dragCameraStart.y = camera.y;
-        } else if (touchNodeId && props.readonly) {
+        } else if (touchState.touchNodeId && props.readonly) {
           // read-only: tap just selects, no drag/pan
           selectedDrawingIds.value = [];
-          selectedNodeIds.value = [touchNodeId];
+          selectedNodeIds.value = [touchState.touchNodeId];
         } else {
           // Empty canvas — route by mobile interaction mode
           if (isTouchDevice && mobileInteractionMode.value === 'cursor') {
@@ -3682,7 +2509,7 @@ export default defineComponent({
                   selectedNodeIds.value = [];
                   selectedEdgeId.value = null;
                 }
-                touchDrawingId = hitD.id;
+                touchState.touchDrawingId = hitD.id;
                 lastPointer.x = t.clientX;
                 lastPointer.y = t.clientY;
                 dragMouseStart.x = t.clientX;
@@ -3714,12 +2541,12 @@ export default defineComponent({
         // Second finger down → cancel any single-finger operation, start pinch/pan
         selBox.active = false; // cancel marquee without committing
         onDrawPointerCancel(); // cancel any in-progress draw stroke
-        touchNodeId = null;
-        touchDrawingId = null;
+        touchState.touchNodeId = null;
+        touchState.touchDrawingId = null;
         dragDrawingsInitial.value = new Map();
-        touchDragging = false;
-        touchResizing = false;
-        touchConnecting = false;
+        touchState.touchDragging = false;
+        touchState.touchResizing = false;
+        touchState.touchConnecting = false;
         dragNodeId.value = null;
         resizeNodeId.value = null;
         connDragging.value = false;
@@ -3743,7 +2570,7 @@ export default defineComponent({
         const t = e.touches[0]!;
 
         // Resize via touch on a handle — drive the shared resize math.
-        if (touchResizing && resizeNodeId.value) {
+        if (touchState.touchResizing && resizeNodeId.value) {
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           applyResize();
@@ -3751,29 +2578,29 @@ export default defineComponent({
         }
 
         // Connection drag via touch on a connection point — track the finger as the temp edge end.
-        if (touchConnecting && connDragging.value) {
+        if (touchState.touchConnecting && connDragging.value) {
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
           return;
         }
 
-        if (!touchMoved) {
-          const dx = t.clientX - touchStartX;
-          const dy = t.clientY - touchStartY;
-          if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) touchMoved = true;
+        if (!touchState.touchMoved) {
+          const dx = t.clientX - touchState.touchStartX;
+          const dy = t.clientY - touchState.touchStartY;
+          if (Math.hypot(dx, dy) > TAP_MOVE_THRESHOLD) touchState.touchMoved = true;
         }
-        if (!touchMoved) return;
+        if (!touchState.touchMoved) return;
 
-        const activeTouchNode = touchNodeId ? nodes.value.find((n) => n.id === touchNodeId) : null;
+        const activeTouchNode = touchState.touchNodeId ? nodes.value.find((n) => n.id === touchState.touchNodeId) : null;
         if (activeTouchNode?.positionLocked) return;
 
-        if (touchNodeId && !props.readonly) {
+        if (touchState.touchNodeId && !props.readonly) {
           // Cursor mode: drag the node once the threshold is crossed.
-          if (!touchDragging) {
-            touchDragging = true;
+          if (!touchState.touchDragging) {
+            touchState.touchDragging = true;
             pushUndo();
-            dragNodeId.value = touchNodeId;
+            dragNodeId.value = touchState.touchNodeId;
             dragNodesInitial.value = new Map();
             for (const id of getSelectionWithGroupContents()) {
               const n = nodes.value.find((nd) => nd.id === id);
@@ -3790,10 +2617,10 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchDrawingId) {
+        } else if (touchState.touchDrawingId) {
           // Drawing drag once threshold is crossed.
-          if (!touchDragging) {
-            touchDragging = true;
+          if (!touchState.touchDragging) {
+            touchState.touchDragging = true;
             pushUndo();
             dragDrawingsInitial.value = new Map();
             for (const id of selectedDrawingIds.value) {
@@ -3810,7 +2637,7 @@ export default defineComponent({
           lastPointer.x = t.clientX;
           lastPointer.y = t.clientY;
           updateActiveDragFromPointer();
-        } else if (touchNodeId && props.readonly) {
+        } else if (touchState.touchNodeId && props.readonly) {
           emit('readonly-action');
         } else if (selBox.active) {
           const rect = viewport.value!.getBoundingClientRect();
@@ -3853,7 +2680,7 @@ export default defineComponent({
       stopAutoPan();
 
       // Finalize a touch connection — create the edge if released over another node.
-      if (touchConnecting) {
+      if (touchState.touchConnecting) {
         if (connDragging.value && viewport.value) {
           const rect = viewport.value.getBoundingClientRect();
           const wx = (lastPointer.x - rect.left - camera.x) / camera.scale;
@@ -3874,26 +2701,26 @@ export default defineComponent({
         }
         connDragging.value = false;
         connFromEdge.value = "";
-        touchConnecting = false;
-        touchNodeId = null;
+        touchState.touchConnecting = false;
+        touchState.touchNodeId = null;
         return;
       }
 
       // Finalize a touch resize — emit the op and reset, skip tap/drag handling.
-      if (touchResizing) {
+      if (touchState.touchResizing) {
         if (resizeNodeId.value) {
           const n = nodes.value.find((nd) => nd.id === resizeNodeId.value);
           if (n) emitOp({ type: 'node-resize', id: n.id, x: n.x, y: n.y, width: n.width, height: n.height });
         }
         resizeNodeId.value = null;
-        touchResizing = false;
-        touchNodeId = null;
+        touchState.touchResizing = false;
+        touchState.touchNodeId = null;
         return;
       }
 
       // Finalize a drawing touch (tap or drag)
-      if (touchDrawingId) {
-        if (touchDragging && dragDrawingsInitial.value.size > 0) {
+      if (touchState.touchDrawingId) {
+        if (touchState.touchDragging && dragDrawingsInitial.value.size > 0) {
           commitDrawingDrags();
           if (dragNodesInitial.value.size > 0) {
             const moves = getDraggedMoves();
@@ -3903,9 +2730,9 @@ export default defineComponent({
         dragDrawingsInitial.value = new Map();
         dragNodesInitial.value = new Map();
         dragNodeId.value = null;
-        touchDragging = false;
-        touchDrawingId = null;
-        touchNodeId = null;
+        touchState.touchDragging = false;
+        touchState.touchDrawingId = null;
+        touchState.touchNodeId = null;
         isPanning.value = false;
         lastTouchDist.value = 0;
         return;
@@ -3914,8 +2741,8 @@ export default defineComponent({
       // Hand mode: pan only — no tap-select, no double-tap edit, no create-on-tap.
       if (isTouchDevice && mobileInteractionMode.value === 'hand') {
         dragNodeId.value = null;
-        touchDragging = false;
-        touchNodeId = null;
+        touchState.touchDragging = false;
+        touchState.touchNodeId = null;
         isPanning.value = false;
         lastTouchDist.value = 0;
         return;
@@ -3935,51 +2762,51 @@ export default defineComponent({
         }
         selBox.active = false;
         isPanning.value = false;
-        touchNodeId = null;
+        touchState.touchNodeId = null;
         return;
       }
 
       const now = performance.now();
 
-      if (!touchMoved && touchNodeId) {
+      if (!touchState.touchMoved && touchState.touchNodeId) {
         // Tap on a node
-        const node = nodes.value.find((candidate) => candidate.id === touchNodeId);
+        const node = nodes.value.find((candidate) => candidate.id === touchState.touchNodeId);
         if (node?.templateId === 'trello-board-preview') {
           emitOpenBoardPreview(boardPreviewId(node));
-          lastTapTime = 0;
-          lastTapTarget = "";
+          touchState.lastTapTime = 0;
+          touchState.lastTapTarget = "";
         } else {
-          const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === touchNodeId;
+          const isDouble = now - touchState.lastTapTime < DOUBLE_TAP_MS && touchState.lastTapTarget === touchState.touchNodeId;
           if (isDouble && !props.readonly) {
             if (node && node.type === 'text') onNodeDblClick(node);
-            lastTapTime = 0;
-            lastTapTarget = "";
+            touchState.lastTapTime = 0;
+            touchState.lastTapTarget = "";
           } else if (isDouble && props.readonly) {
             emit('readonly-action');
           } else {
-            lastTapTime = now;
-            lastTapTarget = touchNodeId;
+            touchState.lastTapTime = now;
+            touchState.lastTapTarget = touchState.touchNodeId;
           }
         }
-      } else if (!touchMoved && !touchNodeId) {
+      } else if (!touchState.touchMoved && !touchState.touchNodeId) {
         // Tap on empty canvas
-        const isDouble = now - lastTapTime < DOUBLE_TAP_MS && lastTapTarget === "__empty__";
+        const isDouble = now - touchState.lastTapTime < DOUBLE_TAP_MS && touchState.lastTapTarget === "__empty__";
         if (isDouble && !props.readonly) {
-          createTextNodeAtClient(touchStartX, touchStartY);
-          lastTapTime = 0;
-          lastTapTarget = "";
+          createTextNodeAtClient(touchState.touchStartX, touchState.touchStartY);
+          touchState.lastTapTime = 0;
+          touchState.lastTapTarget = "";
         } else if (isDouble && props.readonly) {
           emit('readonly-action');
         } else {
           // Single tap on blank space → clear all selection
           clearSelection();
-          lastTapTime = now;
-          lastTapTarget = "__empty__";
+          touchState.lastTapTime = now;
+          touchState.lastTapTarget = "__empty__";
         }
       }
 
       // Commit a node move op at the end of a touch drag
-      if (touchDragging && dragNodeId.value) {
+      if (touchState.touchDragging && dragNodeId.value) {
         const moves = getDraggedMoves();
         if (moves.length) emitOp({ type: 'nodes-move', moves });
         commitDrawingDrags(); // emit ops for any drawings that moved with the nodes
@@ -3987,32 +2814,13 @@ export default defineComponent({
 
       dragDrawingsInitial.value = new Map();
       dragNodeId.value = null;
-      touchDragging = false;
-      touchNodeId = null;
+      touchState.touchDragging = false;
+      touchState.touchNodeId = null;
       isPanning.value = false;
       lastTouchDist.value = 0;
     };
 
-    // Zoom controls
-    const zoomIn = () => {
-      const vw = viewport.value!.clientWidth / 2;
-      const vh = viewport.value!.clientHeight / 2;
-      const newScale = Math.min(5, camera.scale * 1.2);
-      camera.x = vw - (vw - camera.x) * (newScale / camera.scale);
-      camera.y = vh - (vh - camera.y) * (newScale / camera.scale);
-      camera.scale = newScale;
-    };
-
-    const zoomOut = () => {
-      const vw = viewport.value!.clientWidth / 2;
-      const vh = viewport.value!.clientHeight / 2;
-      const newScale = Math.max(0.05, camera.scale / 1.2);
-      camera.x = vw - (vw - camera.x) * (newScale / camera.scale);
-      camera.y = vh - (vh - camera.y) * (newScale / camera.scale);
-      camera.scale = newScale;
-    };
-
-    const resetView = () => fitToContent();
+    const resetView = () => resetCameraView(viewerNodes.value);
 
     // File operations
     const fileInput = ref<HTMLInputElement | null>(null);
@@ -4224,83 +3032,109 @@ export default defineComponent({
       setTimeout(() => { if (flashNodeId.value === nodeId) flashNodeId.value = null; }, 1400);
     };
 
-    // Minimap drag-to-pan
-    const minimapDragging = ref(false);
-
-    const minimapScreenToWorld = (e: MouseEvent) => {
-      const el = (e.currentTarget as HTMLElement).querySelector('svg')!;
-      const rect = el.getBoundingClientRect();
-      const vb = minimapData.value!;
-      const [vbX = 0, vbY = 0, vbW = 1, vbH = 1] = vb.viewBox.split(' ').map(Number);
-      // Account for SVG xMidYMid meet letterboxing, not only its DOM rect.
-      const scale = Math.min(rect.width / vbW, rect.height / vbH);
-      const wx = vbX + (e.clientX - rect.left - (rect.width - vbW * scale) / 2) / scale;
-      const wy = vbY + (e.clientY - rect.top - (rect.height - vbH * scale) / 2) / scale;
-      return { wx, wy };
-    };
-
-    const centerCameraOn = (wx: number, wy: number) => {
-      const vw = viewport.value!.clientWidth;
-      const vh = viewport.value!.clientHeight;
-      camera.x = -(wx * camera.scale - vw / 2);
-      camera.y = -(wy * camera.scale - vh / 2);
-    };
-
-    const onMinimapDown = (e: MouseEvent) => {
-      if (e.button !== 0 || !minimapData.value) return;
-      minimapDragging.value = true;
-      const { wx, wy } = minimapScreenToWorld(e);
-      centerCameraOn(wx, wy);
-    };
-
-    const onMinimapMove = (e: MouseEvent) => {
-      if (!minimapDragging.value || !minimapData.value) return;
-      const { wx, wy } = minimapScreenToWorld(e);
-      centerCameraOn(wx, wy);
-    };
-
-    const onMinimapUp = () => {
-      minimapDragging.value = false;
-    };
-
-    // Minimap computed
-    const minimapData = computed(() => {
-      if (!viewerNodes.value.length || !viewport.value) return null;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of viewerNodes.value) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.width);
-        maxY = Math.max(maxY, n.y + n.height);
-      }
-      const vw = viewportSize.width || viewport.value.clientWidth;
-      const vh = viewportSize.height || viewport.value.clientHeight;
-      // Viewport in world coords
-      const vpX = -camera.x / camera.scale;
-      const vpY = -camera.y / camera.scale;
-      const vpW = vw / camera.scale;
-      const vpH = vh / camera.scale;
-      // Include the entire viewport so its outline never disappears outside
-      // the nodes' bounds, including when zoomed out or panned away.
-      const pad = 100;
-      minX = Math.min(minX, vpX) - pad;
-      minY = Math.min(minY, vpY) - pad;
-      maxX = Math.max(maxX, vpX + vpW) + pad;
-      maxY = Math.max(maxY, vpY + vpH) + pad;
-      return {
-        viewBox: `${minX} ${minY} ${maxX - minX} ${maxY - minY}`,
-        vpX, vpY, vpW, vpH,
-      };
-    });
-
-    // Apply remote canvas data without triggering change event. In THIS
-    // client's element order (see keepLocalOrder): a collaborator's snapshot
-    // taken verbatim reshuffled the DOM and repainted every image.
-    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => {
-      nodes.value = keepLocalOrder(nodes.value, data.nodes || []);
-      edges.value = keepLocalOrder(edges.value, data.edges || []);
-      drawings.value = data.drawings || [];
-    };
+    const { minimapData, onMinimapDown, onMinimapMove, onMinimapUp } = useCanvasMinimap(
+      viewerNodes,
+      viewport,
+      viewportSize,
+      camera,
+      centerCameraOn,
+    );
+    const minimapProps = computed(() => ({
+      minimapData: minimapData.value,
+      minimapEnabled: minimapEnabled.value,
+      minimapSize: minimapSize.value,
+      viewerNodes: viewerNodes.value,
+      onMinimapDown,
+      onMinimapMove,
+      onMinimapUp,
+    }));
+    const contextMenuProps = computed(() => ({
+      contextMenu,
+      contextMenuStyle: contextMenuStyle.value,
+      contextColorPopup: contextColorPopup.value,
+      contextColorAnchor: contextColorAnchor.value,
+      selectedDrawingObj: selectedDrawingObj.value,
+      isOwner: props.isOwner,
+      t,
+      onEdgeToggleStyle,
+      onEdgeCycleArrow,
+      onEdgeCycleColor,
+      onEdgeDblClick,
+      toggleEdgeHidden,
+      isEdgeHidden,
+      onDeleteEdge,
+      toggleContextColorMenu,
+      closeContextColorPopup,
+      setSelectedDrawingColor,
+      duplicateSelectedDrawing,
+      toggleSelectedDrawingHidden,
+      isSelectedDrawingHidden,
+      deleteSelectedDrawing,
+      closeContextMenu,
+    }));
+    const controlsProps = computed(() => ({
+      t,
+      zoomIn,
+      zoomPercent: zoomPercent.value,
+      zoomOut,
+      resetView,
+      undo,
+      canUndo: canUndo.value,
+      redo,
+      canRedo: canRedo.value,
+      readonly: props.readonly,
+      addMenuOpen: addMenuOpen.value,
+      addMenuEntries: addMenuEntries.value,
+      toggleAddMenu,
+      runAddMenuEntry,
+      duplicateSelection,
+      onExportCanvas,
+      setAddMenuWrap: (element: HTMLElement | null) => { addMenuWrap.value = element; },
+    }));
+    const edgeLayerProps = computed(() => ({
+      edgesSvgStyle: edgesSvgStyle.value,
+      edgeColors: edgeColors.value,
+      edgesSvgTransform: edgesSvgTransform.value,
+      renderedEdges: renderedEdges.value,
+      arrowMarkerId,
+      selectedEdgeId: selectedEdgeId.value,
+      onEdgeClick,
+      onEdgeDblClick,
+      onEdgeContextMenu,
+      onConnStartFromEdge,
+      connDragging: connDragging.value,
+      tempEdgePath: tempEdgePath.value,
+      selectedEdgeMidpoint: selectedEdgeMidpoint.value,
+      t,
+      onDeleteEdge,
+      onEdgeToggleStyle,
+      onEdgeCycleArrow,
+      onEdgeCycleColor,
+      isOwner: props.isOwner,
+      toggleEdgeHidden,
+      isEdgeHidden,
+      editingEdgeId: editingEdgeId.value,
+      editingEdgeMidpoint: editingEdgeMidpoint.value,
+      editingEdgeLabel: editingEdgeLabel.value,
+      onEdgeLabelInput,
+      onEdgeLabelEnd,
+      setEdgeLabelInput: (element: HTMLInputElement | null) => { edgeLabelInput.value = element; },
+    }));
+    const drawingLayerProps = computed(() => ({
+      edgesSvgStyle: edgesSvgStyle.value,
+      edgesSvgTransform: edgesSvgTransform.value,
+      renderList: renderList.value,
+      drawTool: drawTool.value,
+      strokeToPath,
+      onDrawingPointerDown,
+      onDrawingPointerMove,
+      onDrawingPointerUp,
+      onDrawingContextMenu,
+      selectedDrawingObj: selectedDrawingObj.value,
+      isDraggingDrawing: isDraggingDrawing.value,
+      selectedBounds: selectedBounds.value,
+      draftDrawing: draftDrawing.value,
+    }));
 
     const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
@@ -4351,8 +3185,7 @@ export default defineComponent({
 
     onUnmounted(() => {
       viewportObserver?.disconnect();
-      if (editSaveTimer) clearTimeout(editSaveTimer);
-      unregisterEditorBack?.();
+      textEditor.dispose();
       if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
     });
 
@@ -4540,6 +3373,11 @@ export default defineComponent({
       minimapData,
       minimapEnabled,
       minimapSize,
+      minimapProps,
+      contextMenuProps,
+      controlsProps,
+      edgeLayerProps,
+      drawingLayerProps,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,

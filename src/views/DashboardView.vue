@@ -36,36 +36,22 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-      <Transition name="dashboard-selection-bar">
-        <div
-          v-if="isLoggedIn && selectedKeys.length"
-          class="dashboard-selection-bar"
-          role="region"
-          :aria-label="t('selectionActions')"
-          data-selection-bar
-        >
-          <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
-          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" v-hint="t('clearSelection')" @click="clearSelection">
-            <X :size="17" aria-hidden="true" />
-          </button>
-          <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
-          <!-- What the ticked files weigh together (documents have no size of their own). -->
-          <span v-if="selectedSize > 0" class="dashboard-selection-size" data-selection-size>{{ formatFileSize(selectedSize) }}</span>
-          <span class="dashboard-selection-sep" aria-hidden="true"></span>
-          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
-            <CheckCheck :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
-            <FolderInput :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
-            <Download :size="17" aria-hidden="true" />
-          </button>
-          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" v-hint="t('delete')" :disabled="isBusy" @click="bulkDelete">
-            <Trash2 :size="17" aria-hidden="true" />
-          </button>
-        </div>
-      </Transition>
+      <DashboardSelectionBar
+        :visible="isLoggedIn"
+        :selected-count="selectedKeys.length"
+        :selected-size="selectedSize"
+        :format-file-size="formatFileSize"
+        :all-on-screen-selected="allOnScreenSelected"
+        :is-busy="isBusy"
+        :download-phase="downloadStatus.phase"
+        :bulk-delete-count="bulkDeleteCount"
+        :t="t"
+        :clear-selection="clearSelection"
+        :select-all-on-screen="selectAllOnScreen"
+        :open-bulk-move-modal="openBulkMoveModal"
+        :bulk-download="bulkDownload"
+        :bulk-delete="bulkDelete"
+      />
       <div
         v-if="marquee"
         class="dashboard-marquee"
@@ -176,35 +162,26 @@
       @pointercancel.capture="cancelLongPress"
       @contextmenu.capture="onSelectionContextMenu"
     >
-    <div class="dash-toolbar">
-      <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
-          <Plus class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('add') }}</span>
-        </button>
-      </div>
-      <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
-      <DashboardFilterMenu
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'filter:desktop'"
-        :types="contentTypes"
-        :tags="allTagNames"
-        :selected-tags="selectedTags"
-        :with-files="activeSection.kind === 'folder'"
-        @toggle="toggleToolbarMenu('filter:desktop')"
-        @update:types="contentTypes = $event"
-        @toggle-tag="toggleSelectedTag"
-        @reset="clearTypeAndTagFilters"
-      />
-      <DashboardSortMenu
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'sort:desktop'"
-        :mode="sortMode"
-        @toggle="toggleToolbarMenu('sort:desktop')"
-        @select="selectSortMode"
-      />
-      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-    </div>
+    <DashboardToolbar
+      :open-control-menu="openControlMenu"
+      :content-types="contentTypes"
+      :all-tag-names="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :search-query="searchQuery"
+      :folder-search-placeholder="folderSearchPlaceholder"
+      :yandex-path="yandexPath"
+      :t="t"
+      :pick-yandex-files="() => yandexView?.pickFiles()"
+      :open-add-dialog="openAddDialog"
+      :toggle-toolbar-menu="toggleToolbarMenu"
+      :update-content-types="(value) => contentTypes = value"
+      :toggle-selected-tag="toggleSelectedTag"
+      :clear-type-and-tag-filters="clearTypeAndTagFilters"
+      :select-sort-mode="selectSortMode"
+      :update-search-query="(value) => searchQuery = value"
+    />
 
     <!-- Floating (style.css), never in the page flow: the list must not
          shift down and back up around a refresh or an action's result. -->
@@ -212,96 +189,34 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section
-      v-if="isLoggedIn && activeSection.kind === 'recent'"
-      id="feed-recent"
-      class="dash-section dashboard-recents dashboard-feed-section"
-      data-dashboard-view="recent"
-      data-feed-section="recent"
-    >
-      <div class="dash-section-head dashboard-recent-head">
-        <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recent-head-controls">
-          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
-        </div>
-      </div>
-      <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
-        {{ t('recentStale') }}
-        <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
-      </p>
-      <div
-        v-if="visibleRecent.length"
-        class="dashboard-recents-layout"
-        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
-        :aria-label="t('recentResources')"
-        data-recent-layout
-      >
-        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-          <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt" />
-          <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
-          <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
-          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
-          <span class="dashboard-recent-info">
-            <span
-              v-if="recentFolderPath(item)"
-              class="dashboard-recent-path"
-              :title="recentFolderPath(item)"
-              data-recent-folder-path
-            ><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span>
-            <span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span>
-            <span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
-          </span>
-        </button>
-      </div>
-      <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
-        {{ t('recentLoadFailed') }}
-        <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
-      </div>
-      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
-        {{ t('noRecentMatches') }}
-        <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-      </div>
-      <div v-else class="dash-grid" data-feed-grid="recent">
-          <button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-      </div>
-      <button
-        v-if="recentShowAllAvailable"
-        type="button"
-        class="dashboard-recent-show-all"
-        @click="toggleRecentExpanded"
-      >
-        <span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span>
-        <ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" />
-        <ChevronUp v-else :size="15" aria-hidden="true" />
-      </button>
-
-      <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
-        <h2>{{ t('folders') }}</h2>
-      </div>
-      <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
-        <button
-          v-for="folder in recentFolderTiles"
-          :key="'recent-folder-' + folder.id"
-          type="button"
-          class="subfolder-card"
-          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
-          :data-recent-folder-tile="folder.id"
-          @click="selectFolder(folder.id)"
-        >
-          <span class="subfolder-card-icon" aria-hidden="true">▤</span>
-          <span class="subfolder-card-name">{{ folder.name }}</span>
-          <span class="subfolder-card-count">{{ folder.displayCount }}</span>
-          <span v-if="folder.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(folder.latest) }}</span>
-        </button>
-      </div>
-      <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
-        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="folders" @click.stop="openAddFromTile('folders')">
-          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-        </button>
-      </div>
-    </section>
+    <DashboardRecentSection
+      :is-logged-in="isLoggedIn"
+      :active-section-kind="activeSection.kind"
+      :visible-recent="visibleRecent"
+      :recent-view-mode="recentViewMode"
+      :recent-refresh-failed="recentRefreshFailed"
+      :recent-resources-length="recentResources.length"
+      :has-active-filter="hasActiveFilter"
+      :recent-show-all-available="recentShowAllAvailable"
+      :recent-expanded="recentExpanded"
+      :recent-total="recentTotal"
+      :recent-folder-tiles="recentFolderTiles"
+      :t="t"
+      :selection-key="selectionKey"
+      :is-selected="isSelected"
+      :toggle-selected="toggleSelected"
+      :open-recent-resource="openRecentResource"
+      :recent-folder-path="recentFolderPath"
+      :format-recent-opened-at="formatRecentOpenedAt"
+      :format-card-date-mobile="formatCardDateMobile"
+      :retry-recent="retryRecent"
+      :reset-filters="resetFilters"
+      :open-add-from-tile="openAddFromTile"
+      :set-recent-view-mode="setRecentViewMode"
+      :toggle-recent-expanded="toggleRecentExpanded"
+      :select-folder="selectFolder"
+      :format-date="formatDate"
+    />
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
       class="dashboard-pull-status"
@@ -327,282 +242,19 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
-        <div class="dash-section-head">
-          <h2>{{ t('accessRequests') }}</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-        </div>
-        <div class="access-request-list">
-          <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
-            <div>
-              <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
-              <div class="access-request-meta">
-                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : request.resourceType === 'text-document' ? 'document' : 'HTML' }}
-              </div>
-            </div>
-            <div class="access-request-actions">
-              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">{{ t('decline') }}</button>
-              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">{{ t('approve') }}</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardAccessRequests
+        :visible="isLoggedIn && activeSection.kind === 'recent'"
+        :requests="incomingRequests"
+        :is-busy="isBusy"
+        :t="t"
+        :refresh="load"
+        :resolve-request="resolveAccessRequest"
+      />
 
-      <section
+      <DashboardFolderSection
         v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
-        class="dashboard-folder-content"
-        data-dashboard-view="folder"
-      >
-          <div
-            :key="activeFolder.id"
-            class="folder-manager-row"
-          >
-              <div class="folder-manager-top">
-              <div class="folder-manager-main">
-                <button
-                  type="button"
-                  class="folder-back-button"
-                  :title="t('back')"
-                  :aria-label="t('back')"
-                  data-folder-back-button
-                  @click.stop="goToParentFolder"
-                ><ArrowLeft :size="16" aria-hidden="true" /></button>
-                <span class="folder-manager-title">
-                  <span class="folder-manager-name">{{ activeFolder.name }}</span>
-                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}<template v-if="activeFolderFileCount"> / {{ activeFolderFileCount }} {{ t('folderFilesTitle').toLowerCase() }}</template></span>
-                </span>
-              </div>
-              <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
-              <!-- Веб: «+» слева от «⋯» — окно «Добавить» с этой папкой. На мобильном скрыт:
-                   там добавляет плавающая «+», она сама подставляет открытую папку. -->
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
-                <button
-                  class="folder-manager-trigger folder-create-trigger"
-                  data-folder-create-menu
-                  @click.stop="openAddDialog({ folderId: activeFolder.id })"
-                  :title="t('add')"
-                  :aria-label="t('add')"
-                  :disabled="isBusy"
-                ><Plus :size="17" aria-hidden="true" /></button>
-              </div>
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
-                <button
-                  class="folder-manager-trigger"
-                  @click.stop="toggleFolderMenu(activeFolder.id)"
-                  :title="t('groupActions')"
-                  :disabled="isBusy"
-                >⋯</button>
-                <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
-                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    @click="openRenameFolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('rename') }}</button>
-                  <button
-                    class="card-menu-item"
-                    @click="openSubfolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('addFolder') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    data-action="move-folder-parent"
-                    @click="openFolderParentModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('moveFolderInto') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item danger"
-                    @click="deleteFolder(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('delete') }}</button>
-                </div>
-              </div>
-              </div>
-              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
-                <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
-                  <button
-                    v-for="child in activeSubfolders"
-                    :key="'subfolder-' + child.id"
-                    type="button"
-                    class="subfolder-card"
-                    @click="selectFolder(child.id)"
-                  >
-                    <span class="subfolder-card-icon" aria-hidden="true">▤</span>
-                    <span class="subfolder-card-name">{{ child.name }}</span>
-                    <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
-                    <span v-if="child.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(child.latest) }}</span>
-                  </button>
-                </div>
-                <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
-                  {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
-                  <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-                </div>
-                <div class="dash-grid">
-                  <button
-                    v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
-                    type="button"
-                    class="dashboard-add-tile"
-                    data-feed-add="folder" data-folder-empty
-                    @click.stop="openAddFromTile('folder')"
-                  >
-                    <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-                  </button>
-                  <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
-                  <div
-                    v-if="item.type === 'canvas'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openCanvasFromCard(item.slug || item.id)"
-                  >
-                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-                    <input
-                      v-if="renamingId === item.id"
-                      class="card-title-input"
-                      :value="item.title"
-                      @blur="finishRename($event, item)"
-                      @keydown.enter="($event.target as HTMLInputElement).blur()"
-                      @keydown.escape="renamingId = ''"
-                      @click.stop
-                      ref="renameInput"
-                    />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </div>
-                  <article
-                    v-else-if="item.type === 'html-document'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openHtmlDocumentFromCard(item.slug || item.id)"
-                  >
-                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-                    <a
-                      class="card-open-link"
-                      :href="`/edit/html/${item.slug || item.id}`"
-                      :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
-                      @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
-                  <article
-                    v-else-if="item.type === 'interactive-template'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card"
-                    :data-folder-resource="`interactive-template:${item.id}`"
-                    @click="openInteractiveTemplate(item.id)"
-                  >
-                    <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span><span v-if="item.role && item.role !== 'owner'" class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
-                    <div class="card-meta">
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-                    </div>
-                  </article>
-                  <article
-                    v-else
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openTextDocumentFromCard(item.slug || item.id)"
-                  >
-                    <ResourceThumb :kind="item.type || 'text-document'" :id="item.id" :version="item.updatedAt" />
-                    <a
-                      class="card-open-link"
-                      :href="`/docs/${item.slug || item.id}`"
-                      :aria-label="`Open document ${item.title || 'Untitled document'}`"
-                      @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
-                  </template>
-                  <DashboardFolderFiles
-                    :folder-id="activeFolder.id"
-                    :query="searchQuery"
-                    :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
-                    :sort-mode="sortMode"
-                    :refresh-key="folderFilesRefreshKey"
-                    :selectable="isLoggedIn"
-                    :selected-keys="selectedKeys"
-                    @count="activeFolderFileCount = $event"
-                    @files="folderDriveFiles = $event"
-                    @toggle-select="toggleSelected"
-                    @open-image="openDriveImage"
-                    @previews="folderDrivePreviews = $event"
-                  />
-                </div>
-              </div>
-          </div>
-        </section>
+        :context="folderSectionProps"
+      />
 
       <section
         v-if="isLoggedIn && yandexPath !== null"
@@ -629,275 +281,18 @@
         />
       </section>
 
-      <div
+      <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
-        :id="isHomeFeed ? 'feed-shared' : undefined"
-        class="dash-section"
-        :class="{ 'dashboard-feed-section': isHomeFeed }"
-        :data-dashboard-view="isHomeFeed ? undefined : 'shared'"
-        :data-feed-section="isHomeFeed ? 'shared' : undefined"
-        data-section="shared"
-      >
-        <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="shared">
-          <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button
-              class="card-manage"
-              :data-menu-trigger="`shared:${item.type}:${item.id}`"
-              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
-              title="Canvas actions"
-              :disabled="isBusy"
-            >⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
-          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-        </div>
-        <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
-          {{ t('noFilterMatches') }}
-          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-        </div>
-        <button
-          v-if="isHomeFeed && sharedFiltered.length > feedLimit('shared')"
-          type="button"
-          class="dashboard-recent-show-all"
-          :data-feed-show-all="'shared'"
-          :aria-expanded="isFeedSectionExpanded('shared')"
-          @click="toggleFeedSectionExpanded('shared')"
-        >
-          <span>{{ isFeedSectionExpanded('shared') ? t('showLess') : `${t('showAll')} ${sharedFiltered.length}` }}</span>
-          <ChevronDown v-if="!isFeedSectionExpanded('shared')" :size="15" aria-hidden="true" />
-          <ChevronUp v-else :size="15" aria-hidden="true" />
-        </button>
-      </div>
-
-      <section
+        :context="sharedSectionProps"
+      />
+      <DashboardInteractiveSection
         v-if="isLoggedIn && (activeSection.kind === 'interactive' || isHomeFeed)"
-        :id="isHomeFeed ? 'feed-interactive' : undefined"
-        class="dash-section"
-        :class="{ 'dashboard-feed-section': isHomeFeed }"
-        :data-dashboard-view="isHomeFeed ? undefined : 'interactive'"
-        :data-feed-section="isHomeFeed ? 'interactive' : undefined"
-        data-section="interactive-templates"
-      >
-        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="interactive">
-          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
-            <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
-            <div class="card-meta"><span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-            </div>
-          </article>
-          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-        </div>
-        <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
-          {{ t('noFilterMatches') }}
-          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-        </div>
-        <button
-          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > feedLimit('interactive')"
-          type="button"
-          class="dashboard-recent-show-all"
-          :data-feed-show-all="'interactive'"
-          :aria-expanded="isFeedSectionExpanded('interactive')"
-          @click="toggleFeedSectionExpanded('interactive')"
-        >
-          <span>{{ isFeedSectionExpanded('interactive') ? t('showLess') : `${t('showAll')} ${visibleInteractiveTemplateItems.length}` }}</span>
-          <ChevronDown v-if="!isFeedSectionExpanded('interactive')" :size="15" aria-hidden="true" />
-          <ChevronUp v-else :size="15" aria-hidden="true" />
-        </button>
-      </section>
-
-      <div
+        :context="interactiveSectionProps"
+      />
+      <DashboardPublicSection
         v-if="activeSection.kind === 'public' || isHomeFeed"
-        :id="isHomeFeed ? 'feed-public' : undefined"
-        class="dash-section"
-        :class="{ 'dashboard-feed-section': isHomeFeed }"
-        :data-dashboard-view="isHomeFeed ? undefined : 'public'"
-        :data-feed-section="isHomeFeed ? 'public' : undefined"
-        data-section="public"
-      >
-        <!-- Heading row like Recents': title, Mine/Others, and the phone sort
-             control (it used to sit in the toolbar, a row above the title). -->
-        <div class="dash-section-head dashboard-public-head">
-          <h2>{{ t('public') }}</h2>
-          <div class="dashboard-public-head-controls">
-            <div v-if="isLoggedIn" ref="publicOwnerFilterEl" class="dashboard-public-owner-filter dashboard-segmented" role="group" :aria-label="t('publicOwnerFilter')">
-              <button
-                v-for="option in PUBLIC_OWNER_FILTERS"
-                :key="option"
-                type="button"
-                :class="{ active: publicOwnerFilter === option }"
-                :aria-pressed="publicOwnerFilter === option"
-                :data-public-owner-filter="option"
-                @click.stop="publicOwnerFilter = option"
-              >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
-            </div>
-          </div>
-        </div>
-        <div class="dash-grid" data-feed-grid="public">
-          <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
-          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-        </div>
-        <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
-          {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
-          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-        </div>
-        <button
-          v-if="isHomeFeed && publicFiltered.length > feedLimit('public')"
-          type="button"
-          class="dashboard-recent-show-all"
-          :data-feed-show-all="'public'"
-          :aria-expanded="isFeedSectionExpanded('public')"
-          @click="toggleFeedSectionExpanded('public')"
-        >
-          <span>{{ isFeedSectionExpanded('public') ? t('showLess') : `${t('showAll')} ${publicFiltered.length}` }}</span>
-          <ChevronDown v-if="!isFeedSectionExpanded('public')" :size="15" aria-hidden="true" />
-          <ChevronUp v-else :size="15" aria-hidden="true" />
-        </button>
-      </div>
+        :context="publicSectionProps"
+      />
 
     </template>
     </div>
@@ -913,41 +308,7 @@
       </div>
     </div>
 
-    <!-- Mobile tag multi-select: replaces the old popover-that-quietly-
-         appears-at-the-bottom with a proper sheet - visible backdrop, stays
-         open across multiple taps, and only ever commits to selectedTags on
-         Apply (see openTagSheet/applyTagSheet). -->
-    <div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
-      <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
-        <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
-        <div class="dashboard-modal-head">
-          <div>
-            <h3>{{ t('filterByTags') }}</h3>
-            <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
-          </div>
-          <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
-            <X :size="16" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="dashboard-tag-sheet-list">
-          <button
-            v-for="tag in allTagNames"
-            :key="tag"
-            type="button"
-            class="dashboard-tag-sheet-item"
-            :class="{ active: tagSheetDraft.includes(tag) }"
-            @click="toggleDraftTag(tag)"
-          >
-            <span>#{{ tag }}</span>
-            <Check v-if="tagSheetDraft.includes(tag)" :size="14" aria-hidden="true" />
-          </button>
-        </div>
-        <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
-          <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
-          <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
-        </div>
-      </div>
-    </div>
+    <DashboardModalLayer :context="modalProps" />
 
     <DashboardAddDialog
       v-if="addDialog.open"
@@ -962,46 +323,6 @@
       @create-folder="onAddCreateFolder"
       @import="onAddImport"
     />
-
-    <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ folderModal.bulk?.length ? t('moveSelectedTitle').replace('{n}', String(folderModal.bulk.length)) : folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
-          <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
-        </div>
-        <input
-          v-if="!folderModalMoves"
-          v-model.trim="folderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('groupNameTitle')"
-          @input="folderModal.folderId = ''"
-          @keydown.enter.prevent="saveFolderModal"
-        />
-        <div v-if="folderModalMoves" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
-        <div v-if="folderModalMoves && folderOptions.length" class="folder-parent-list">
-          <button
-            v-for="folder in folderOptions"
-            :key="folder.id"
-            class="folder-parent-option folder-destination"
-            :class="{ active: folderModal.folderId === folder.id }"
-            :style="{ paddingLeft: 12 + folder.depth * 16 + 'px' }"
-            @click="folderModal.folderId = folder.id; folderModal.value = folder.name"
-          >
-            <span class="folder-destination-name">
-              <span v-if="folder.depth" class="folder-destination-branch" aria-hidden="true">└</span>
-              {{ folder.name }}
-            </span>
-            <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
-          </button>
-        </div>
-        <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
-          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
-            {{ actionLabel(folderModalMoves ? 'move-folder' : 'create-folder', folderModalMoves ? t('move') : t('create')) }}
-          </button>
-        </div>
-      </div>
-    </div>
 
     <DashboardMediaViewer
       v-if="mediaViewer"
@@ -1028,219 +349,6 @@
       @import="importCharacter"
     />
 
-    <div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('addFolderTitle') }}: {{ subfolderModal.parentName }}</h3>
-          <button class="dashboard-modal-close" @click="closeSubfolderModal">x</button>
-        </div>
-        <input
-          v-model.trim="subfolderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('folderName')"
-          @keydown.enter.prevent="saveSubfolderModal"
-        />
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button
-            class="btn-primary"
-            @click="saveSubfolderModal"
-            :disabled="isBusy || !subfolderModal.value.trim()"
-          >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
-          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
-        </div>
-        <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
-        <div v-if="folderParentOptions.length" class="folder-parent-list">
-          <button
-            v-for="option in folderParentOptions"
-            :key="option.id"
-            class="folder-parent-option folder-destination"
-            :class="{ active: folderParentModal.targetId === option.id }"
-            :style="{ paddingLeft: 12 + option.depth * 16 + 'px' }"
-            :data-folder-parent-option="option.id"
-            @click="folderParentModal.targetId = option.id"
-          >
-            <span class="folder-destination-name">
-              <span v-if="option.depth" class="folder-destination-branch" aria-hidden="true">└</span>
-              {{ option.id === 'root' ? t('moveFolderToRoot') : option.name }}
-            </span>
-            <span v-if="option.id !== 'root'" class="folder-destination-path">{{ option.path || t('inRoot') }}</span>
-          </button>
-        </div>
-        <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
-        <div class="dashboard-modal-actions dashboard-modal-actions-row">
-          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button
-            class="btn-primary"
-            data-folder-parent-save
-            @click="saveFolderParentModal"
-            :disabled="isBusy || !folderParentModal.targetId"
-          >{{ actionLabel('move-folder-parent', t('move')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ descriptionModal.title || t('description') }}</h3>
-          <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
-        </div>
-        <textarea
-          v-if="descriptionModal.canEdit"
-          v-model="descriptionModal.value"
-          class="dashboard-modal-textarea"
-          :maxlength="MAX_DESCRIPTION_LENGTH"
-          :placeholder="t('descriptionPlaceholder')"
-        ></textarea>
-        <p v-else-if="descriptionModal.value" class="description-readonly">{{ descriptionModal.value }}</p>
-        <p v-else class="dashboard-modal-note">{{ t('descriptionEmpty') }}</p>
-        <p v-if="descriptionModal.canEdit" class="dashboard-modal-note">
-          {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
-        </p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
-            {{ descriptionModal.canEdit ? t('cancel') : t('close') }}
-          </button>
-          <button
-            v-if="descriptionModal.canEdit"
-            class="btn-primary"
-            @click="saveDescriptionModal"
-            :disabled="isBusy"
-          >{{ actionLabel('save-description', t('save')) }}</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>{{ t('editGroup') }}</h3>
-          <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
-        </div>
-        <input
-          v-model.trim="renameFolderModal.value"
-          class="dashboard-modal-input"
-          :placeholder="t('groupNameTitle')"
-          @keydown.enter.prevent="saveRenameFolderModal"
-        />
-        <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-          <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
-            {{ actionLabel('rename-folder', t('save')) }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="folderShareModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderShareModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Share group</h3>
-          <button class="dashboard-modal-close" @click="closeFolderShareModal">x</button>
-        </div>
-        <p class="dashboard-modal-note">Sharing "{{ folderShareModal.name }}" grants access to all resources in this Group.</p>
-        <div class="share-section">
-          <div class="share-section-title">Invite people</div>
-          <div class="share-form">
-            <ContactEmailInput v-model.trim="folderShareModal.email" placeholder="Email" :exclude="folderShareModal.permissions.map((p: any) => p.user?.email ?? '')" />
-            <select v-model="folderShareModal.role">
-              <option value="read">Can view</option>
-              <option value="edit">Can edit</option>
-            </select>
-            <button @click="shareFolder" :disabled="isBusy || !folderShareModal.email.trim()">
-              {{ actionLabel('share-folder', 'Invite') }}
-            </button>
-          </div>
-          <div v-if="folderShareModal.loading" class="dashboard-modal-note">Loading access...</div>
-          <div v-else-if="!folderShareModal.permissions.length" class="dashboard-modal-note">No invited people yet.</div>
-          <div v-else class="share-list">
-            <div v-for="permission in folderShareModal.permissions" :key="permission.id || permission.userId" class="share-item">
-              <span>{{ permission.user?.email || permission.userId }}</span>
-              <span class="share-item-role">{{ permission.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
-              <button @click="revokeFolderAccess(permission.userId)" :disabled="isBusy">x</button>
-            </div>
-          </div>
-        </div>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Edit tags</h3>
-          <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
-        </div>
-        <div v-if="tagSuggestions.length" class="tag-filter-list">
-          <button
-            v-for="tag in tagSuggestions"
-            :key="tag.name"
-            class="tag-filter color-tag"
-            :style="{ '--tag-color': tag.color }"
-            @click="addSuggestedTag(tag)"
-          >#{{ tag.name }}</button>
-        </div>
-        <div class="tag-editor-list">
-          <div v-for="(tag, index) in tagsModal.tags" :key="tag.id" class="tag-editor-row">
-            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
-            <div class="tag-color-palette">
-              <button
-                v-for="color in tagColors"
-                :key="color"
-                class="tag-color-option"
-                :class="{ active: tag.color === color }"
-                :style="{ background: color }"
-                @click="tag.color = color"
-                :disabled="isBusy"
-              ></button>
-            </div>
-            <button class="tag-remove-btn" @click="removeTag(index)" :disabled="isBusy">x</button>
-          </div>
-        </div>
-        <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="isBusy">+ Add tag</button>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</button>
-          <button class="btn-primary" @click="saveTagsModal" :disabled="isBusy">
-            {{ actionLabel('save-tags', 'Save tags') }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="transferModal.open" class="dashboard-modal-backdrop" @click.self="closeTransferModal">
-      <div class="dashboard-modal">
-        <div class="dashboard-modal-head">
-          <h3>Transfer ownership</h3>
-          <button class="dashboard-modal-close" @click="closeTransferModal">x</button>
-        </div>
-        <input
-          v-model.trim="transferModal.email"
-          class="dashboard-modal-input"
-          placeholder="User email"
-          type="email"
-          @keydown.enter.prevent="saveTransferModal"
-        />
-        <p class="dashboard-modal-note">The current owner will become an editor.</p>
-        <div class="dashboard-modal-actions">
-          <button class="btn-ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</button>
-          <button class="btn-primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
-            {{ actionLabel('transfer-ownership', 'Transfer') }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -1318,6 +426,15 @@ import { isPictureFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
+import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
+import DashboardToolbar from '../components/dashboard/DashboardToolbar.vue';
+import DashboardRecentSection from '../components/dashboard/DashboardRecentSection.vue';
+import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
+import DashboardFolderSection from '../components/dashboard/DashboardFolderSection.vue';
+import DashboardSharedSection from '../components/dashboard/DashboardSharedSection.vue';
+import DashboardInteractiveSection from '../components/dashboard/DashboardInteractiveSection.vue';
+import DashboardPublicSection from '../components/dashboard/DashboardPublicSection.vue';
+import DashboardModalLayer from '../components/dashboard/DashboardModalLayer.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1428,6 +545,15 @@ export default defineComponent({
     DashboardSortMenu,
     DashboardUploadPanel,
     DashboardYandexDisk,
+    DashboardSelectionBar,
+    DashboardToolbar,
+    DashboardRecentSection,
+    DashboardAccessRequests,
+    DashboardFolderSection,
+    DashboardSharedSection,
+    DashboardInteractiveSection,
+    DashboardPublicSection,
+    DashboardModalLayer,
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardAddDialog,
@@ -5021,7 +4147,224 @@ export default defineComponent({
       restoreBodyOverflow();
     });
 
+    const interactiveSectionProps = computed(() => ({
+      isLoggedIn,
+      isHomeFeed: isHomeFeed.value,
+      visibleInteractiveTemplateItems: visibleInteractiveTemplateItems.value,
+      hasActiveFilter: hasActiveFilter.value,
+      t,
+      feedItems,
+      selectionKey,
+      isSelected,
+      toggleSelected,
+      openInteractiveTemplate,
+      interactiveTemplateTypeLabel,
+      cardFolderPath,
+      formatDate,
+      toggleCardMenu,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      isBusy: isBusy.value,
+      openMoveInteractiveTemplateFolderModal,
+      deleteInteractiveTemplate,
+      openAddFromTile,
+      resetFilters,
+      feedLimit,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+    }));
+
+    const publicSectionProps = computed(() => ({
+      isLoggedIn,
+      isHomeFeed: isHomeFeed.value,
+      publicFiltered: publicFiltered.value,
+      publicAnyOwner: publicAnyOwner.value,
+      publicOwnerFilter: publicOwnerFilter.value,
+      PUBLIC_OWNER_FILTERS,
+      PUBLIC_OWNER_FILTER_LABELS,
+      t,
+      feedItems,
+      selectionKey,
+      isSelected,
+      toggleSelected,
+      openCanvas,
+      openHtmlDocument,
+      openTextDocument,
+      cardFolderPath,
+      formatDate,
+      toggleCardMenu,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      isBusy: isBusy.value,
+      openMoveFolderModal,
+      openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
+      openAddFromTile,
+      hasActiveFilter: hasActiveFilter.value,
+      resetFilters,
+      feedLimit,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+      setPublicOwnerFilter: (value: (typeof PUBLIC_OWNER_FILTERS)[number]) => { publicOwnerFilter.value = value; },
+      setPublicOwnerFilterEl: (element: HTMLElement | null) => { publicOwnerFilterEl.value = element; },
+    }));
+
+    const sharedSectionProps = computed(() => ({
+      isLoggedIn,
+      isHomeFeed: isHomeFeed.value,
+      sharedFiltered: sharedFiltered.value,
+      isBusy: isBusy.value,
+      hasActiveFilter: hasActiveFilter.value,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      t,
+      feedItems,
+      selectionKey,
+      isSelected,
+      toggleSelected,
+      openCanvas,
+      openHtmlDocument,
+      openTextDocument,
+      cardFolderPath,
+      formatDate,
+      toggleCardMenu,
+      openMoveFolderModal,
+      openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
+      openAddFromTile,
+      resetFilters,
+      feedLimit,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+    }));
+
+    const folderSectionProps = computed(() => ({
+      t,
+      activeFolder: activeFolder.value,
+      goToParentFolder,
+      activeSubfolders: activeSubfolders.value,
+      isLoggedIn,
+      searchQuery: searchQuery.value,
+      selectedTags: selectedTags.value,
+      contentTypes: contentTypes.value,
+      sortMode: sortMode.value,
+      recentViewMode: recentViewMode.value,
+      setRecentViewMode,
+      activeFolderEmpty: activeFolderEmpty.value,
+      hasActiveFilter: hasActiveFilter.value,
+      resetFilters,
+      openAddFromTile,
+      openControlMenu: openControlMenu.value,
+      openAddDialog,
+      activeFolderFileCount: activeFolderFileCount.value,
+      folderFilesRefreshKey: folderFilesRefreshKey.value,
+      selectedKeys: selectedKeys.value,
+      openFolderShareModal,
+      openFolderParentModal,
+      openRenameFolderModal,
+      openSubfolderModal,
+      toggleFolderMenu,
+      openMoveFolderModal,
+      openCanvasFromCard,
+      openHtmlDocumentFromCard,
+      openTextDocumentFromCard,
+      openInteractiveTemplate,
+      toggleCardMenu,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      isBusy: isBusy.value,
+      selectionKey,
+      isSelected,
+      formatDate,
+      formatCardDateMobile,
+      interactiveTemplateTypeLabel,
+      isOwnedResource,
+      rememberRecentResource,
+      togglePinned,
+      openDescriptionModal,
+      openTagsModal,
+      openTransferModal,
+      deleteCanvas,
+      deleteHtmlDocument,
+      deleteTextDocument,
+      deleteInteractiveTemplate,
+      duplicateCanvas,
+      duplicateHtmlDocument,
+      duplicateTextDocument,
+      openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
+      openMoveInteractiveTemplateFolderModal,
+      deleteFolder,
+      startRename,
+      finishRename,
+      renamingId: renamingId.value,
+      renameInput: renameInput.value,
+      typePasses,
+      setActiveFolderBody: (element: HTMLElement | null) => { activeFolderBody.value = element; },
+      onFolderBodyScroll,
+      selectFolder,
+      setActiveFolderFileCount: (value: number) => { activeFolderFileCount.value = value; },
+      setFolderDriveFiles: (value: DriveItem[]) => { folderDriveFiles.value = value; },
+      setFolderDrivePreviews: (value: Readonly<Record<string, string>>) => { folderDrivePreviews.value = value; },
+      openDriveImage,
+      toggleSelected,
+      draggingResourceId: draggingResourceId.value,
+    }));
+
+    const modalProps = computed(() => ({
+      t,
+      isBusy: isBusy.value,
+      actionLabel,
+      MAX_DESCRIPTION_LENGTH,
+      tagSheetOpen: tagSheetOpen.value,
+      closeTagSheet,
+      allTagNames: allTagNames.value,
+      tagSheetDraft: tagSheetDraft.value,
+      toggleDraftTag,
+      resetTagSheetDraft,
+      applyTagSheet,
+      folderModal: folderModal.value,
+      closeFolderModal,
+      folderModalMoves: folderModalMoves.value,
+      folderOptions: folderOptions.value,
+      canSaveFolderModal: canSaveFolderModal.value,
+      saveFolderModal,
+      subfolderModal: subfolderModal.value,
+      closeSubfolderModal,
+      saveSubfolderModal,
+      folderParentModal: folderParentModal.value,
+      folderParentOptions: folderParentOptions.value,
+      closeFolderParentModal,
+      saveFolderParentModal,
+      descriptionModal: descriptionModal.value,
+      closeDescriptionModal,
+      saveDescriptionModal,
+      renameFolderModal: renameFolderModal.value,
+      closeRenameFolderModal,
+      saveRenameFolderModal,
+      folderShareModal: folderShareModal.value,
+      closeFolderShareModal,
+      shareFolder,
+      revokeFolderAccess,
+      tagsModal: tagsModal.value,
+      tagSuggestions: tagSuggestions.value,
+      addSuggestedTag,
+      tagColors,
+      removeTag,
+      addTag,
+      closeTagsModal,
+      saveTagsModal,
+      transferModal: transferModal.value,
+      closeTransferModal,
+      saveTransferModal,
+    }));
+
     return {
+      folderSectionProps,
+      sharedSectionProps,
+      interactiveSectionProps,
+      publicSectionProps,
+      modalProps,
       yandexView,
       yandexPicker,
       yandexRefreshKey,

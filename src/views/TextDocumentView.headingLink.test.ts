@@ -93,6 +93,15 @@ async function type(wrapper: any, text: string) {
   await wrapper.vm.$nextTick();
 }
 
+/**
+ * The real collaborative editor publishes its transaction tick from
+ * ProseMirror's update callback. Give that callback one turn to settle before
+ * asserting the derived outline, as the dedicated outline tests already do.
+ */
+async function settleContentUpdate() {
+  await new Promise((resolve) => setTimeout(resolve, 50));
+}
+
 function findNode(node: any, name: string): any {
   if (node?.type === name) return node;
   for (const child of node?.content ?? []) {
@@ -250,6 +259,7 @@ describe('outline panel', () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<h1>First</h1><p>x</p><h2>Second</h2>');
     await flushPromises();
+    await settleContentUpdate();
 
     expect(wrapper.vm.outlineEntries.map((e: any) => e.text)).toEqual(['First', 'Second']);
 
@@ -278,6 +288,7 @@ describe('outline panel', () => {
     const wrapper = await mountEditableDoc();
     wrapper.vm.editor.commands.setContent('<h1>First</h1><p>x</p><h2>Second</h2>');
     await flushPromises();
+    await settleContentUpdate();
     wrapper.vm.outlineIsDesktop = false;
     wrapper.vm.outlineMobileOpen = true;
     await wrapper.vm.$nextTick();
