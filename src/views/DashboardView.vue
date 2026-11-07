@@ -36,34 +36,20 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-      <Transition name="dashboard-selection-bar">
-        <div
-          v-if="isLoggedIn && selectedKeys.length"
-          class="dashboard-selection-bar"
-          role="region"
-          :aria-label="t('selectionActions')"
-          data-selection-bar
-        >
-          <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
-          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" v-hint="t('clearSelection')" @click="clearSelection">
-            <X :size="17" aria-hidden="true" />
-          </button>
-          <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
-          <span class="dashboard-selection-sep" aria-hidden="true"></span>
-          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
-            <CheckCheck :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
-            <FolderInput :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
-            <Download :size="17" aria-hidden="true" />
-          </button>
-          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" v-hint="t('delete')" :disabled="isBusy" @click="bulkDelete">
-            <Trash2 :size="17" aria-hidden="true" />
-          </button>
-        </div>
-      </Transition>
+      <DashboardSelectionBar
+        :visible="isLoggedIn"
+        :selected-count="selectedKeys.length"
+        :all-on-screen-selected="allOnScreenSelected"
+        :is-busy="isBusy"
+        :download-phase="downloadStatus.phase"
+        :bulk-delete-count="bulkDeleteCount"
+        :t="t"
+        :clear-selection="clearSelection"
+        :select-all-on-screen="selectAllOnScreen"
+        :open-bulk-move-modal="openBulkMoveModal"
+        :bulk-download="bulkDownload"
+        :bulk-delete="bulkDelete"
+      />
       <div
         v-if="marquee"
         class="dashboard-marquee"
@@ -174,35 +160,26 @@
       @pointercancel.capture="cancelLongPress"
       @contextmenu.capture="onSelectionContextMenu"
     >
-    <div class="dash-toolbar">
-      <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
-          <Plus class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('add') }}</span>
-        </button>
-      </div>
-      <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
-      <DashboardFilterMenu
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'filter:desktop'"
-        :types="contentTypes"
-        :tags="allTagNames"
-        :selected-tags="selectedTags"
-        :with-files="activeSection.kind === 'folder'"
-        @toggle="toggleToolbarMenu('filter:desktop')"
-        @update:types="contentTypes = $event"
-        @toggle-tag="toggleSelectedTag"
-        @reset="clearTypeAndTagFilters"
-      />
-      <DashboardSortMenu
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'sort:desktop'"
-        :mode="sortMode"
-        @toggle="toggleToolbarMenu('sort:desktop')"
-        @select="selectSortMode"
-      />
-      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-    </div>
+    <DashboardToolbar
+      :open-control-menu="openControlMenu"
+      :content-types="contentTypes"
+      :all-tag-names="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :search-query="searchQuery"
+      :folder-search-placeholder="folderSearchPlaceholder"
+      :yandex-path="yandexPath"
+      :t="t"
+      :pick-yandex-files="() => yandexView?.pickFiles()"
+      :open-add-dialog="openAddDialog"
+      :toggle-toolbar-menu="toggleToolbarMenu"
+      :update-content-types="(value) => contentTypes = value"
+      :toggle-selected-tag="toggleSelectedTag"
+      :clear-type-and-tag-filters="clearTypeAndTagFilters"
+      :select-sort-mode="selectSortMode"
+      :update-search-query="(value) => searchQuery = value"
+    />
 
     <!-- Floating (style.css), never in the page flow: the list must not
          shift down and back up around a refresh or an action's result. -->
@@ -1311,6 +1288,8 @@ import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dash
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
+import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
+import DashboardToolbar from '../components/dashboard/DashboardToolbar.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1421,6 +1400,8 @@ export default defineComponent({
     DashboardSortMenu,
     DashboardUploadPanel,
     DashboardYandexDisk,
+    DashboardSelectionBar,
+    DashboardToolbar,
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardAddDialog,
