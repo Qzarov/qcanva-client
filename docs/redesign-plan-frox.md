@@ -6,7 +6,60 @@
 
 **Architecture:** Adopt Frox's CSS Custom Properties as design tokens without migrating to TailwindCSS. Replace ad-hoc `rgba` color literals in `style.css` with CSS variables, update layout to a sidebar+content grid, and apply Frox card/button/input patterns across all views.
 
-**Tech Stack:** Vue 3, TypeScript, Vite, plain CSS (`style.css` ~2400 lines)
+**Tech Stack:** Vue 3, TypeScript, Vite, plain CSS with an ordered global
+entrypoint (`style.css`) and domain modules under `src/styles/`
+
+## Актуальный статус рефакторинга (2026-11-08)
+
+Этот документ начинался как план визуального редизайна, но теперь также служит
+roadmap для структурного рефакторинга клиентской части. Старые пошаговые
+чекбоксы ниже сохраняются как исторический контекст исходного Frox-плана;
+текущий порядок работ фиксируется в этом разделе.
+
+### Уже сделано
+
+- Canvas: state-композиторы, загрузка embed-ресурсов, history/remote sync,
+  selection, camera/touch/drawing/edge geometry, text editor, node renderers,
+  edge/drawing layers, minimap, context menu и controls вынесены из
+  `CanvasLoader.vue`.
+- Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
+  sections и modal layer вынесены из `DashboardView.vue`.
+- Text documents: outline, history, link/mention/slash actions и editor
+  extensions вынесены из `TextDocumentView.vue`.
+- `src/style.css` разложен на 14 упорядоченных модулей в `src/styles/`; файл
+  остался единственным global entrypoint, порядок каскада сохранён.
+- Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
+- После каждого крупного среза проходят build и полный unit suite.
+
+### Следующий порядок
+
+1. **UI component library.** Инвентаризировать повторяющийся application
+   chrome и создать минимальный набор в `src/components/ui/`: `UiButton`,
+   `UiIconButton`, `UiModal`, `UiMenu`, `UiInput`, `UiTextarea`, `UiCard`,
+   `UiBadge`, `UiEmptyState`, `UiSegmentedControl`, `UiToast`. Начинать с
+   Dashboard, затем переносить Text Documents и Canvas. Не обобщать resource-
+   specific cards и canvas toolbar до появления двух независимых потребителей.
+2. **Shared sidebar shell.** Вынести общий header/footer/backdrop/focus-trap
+   из `AppSidebar` и `DashboardSidebar`; в dashboard оставить только дерево,
+   Spaces и section-specific navigation.
+3. **TextDocumentView.** Вынести оставшиеся topbar/menu, backlinks, selection
+   bubble, link action, slash и mention UI-блоки.
+4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, file
+   input/draw capture и оставшуюся template orchestration.
+5. **DashboardView.** Вынести shell/header, Yandex section, drag/drop
+   orchestration и оставшиеся bulk/feed callbacks.
+6. **Final cleanup.** Перенести component-only CSS из global modules в scoped
+   styles, удалить дубли и провести desktop/mobile visual smoke.
+
+### UI library guardrails
+
+- Общие компоненты используют токены из `src/styles/01-global.css` и не
+  дублируют значения из доменных модулей.
+- Каждый компонент имеет один небольшой API (`variant`, `size`, `disabled`,
+  `loading` где это применимо) и keyboard/focus/ARIA контракт.
+- Миграция идёт вертикальными срезами с тестом до удаления старой разметки.
+- Компонент считается общим только после двух реальных потребителей; иначе
+  стиль остаётся в доменном компоненте.
 
 ---
 
@@ -932,7 +985,10 @@ git commit -m "design: update section labels, dividers, and tag pills to Frox st
 - **DaisyUI components** — not added. Too invasive without Tailwind.
 - **Light mode** — the project is dark-only. Adding light mode support is a separate future initiative.
 - **Editor UX** — Canvas editor (Excalidraw) and HTML source editor (CodeMirror) internals are not touched.
-- **Component extraction** — sidebar is duplicated in Dashboard and HtmlDocs views. Extraction to a shared `<AppSidebar>` component is a natural next step after this plan completes.
+- **Component extraction** — the static HTML Docs sidebar now lives in shared
+  `<AppSidebar>`. Dashboard keeps a specialized `<DashboardSidebar>` for its
+  folder tree and Spaces; the shared shell extraction is tracked in the current
+  refactor roadmap above.
 - **Responsive / mobile** — out of scope for this redesign pass.
 
 ---
@@ -940,7 +996,7 @@ git commit -m "design: update section labels, dividers, and tag pills to Frox st
 ## Execution Order
 
 ```
-Phase 1 (tokens) → Phase 2 (cards/buttons/inputs) → Phase 3 (sidebar) → Phase 4 (view polish) → Phase 5 (details)
+Phase 1 (tokens) → Phase 2 (cards/buttons/inputs) → Phase 3 (sidebar) → Phase 4 (view polish) → Phase 5 (details) → current refactor follow-up (UI library → shared shell → view extraction → CSS cleanup)
 ```
 
 Each phase is independently deployable — the app will look progressively more aligned with Frox after each phase.
