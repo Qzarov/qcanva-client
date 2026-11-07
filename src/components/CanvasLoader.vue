@@ -831,6 +831,7 @@ import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
+import { useCanvasCamera } from '../canvas/useCanvasCamera';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1012,12 +1013,9 @@ export default defineComponent({
     let drawMoveOrigin: Drawing | null = null;
     const drawMovePreview = ref<Drawing | null>(null);
 
-    // Pan & zoom state
-    const camera = reactive({
-      x: 0,
-      y: 0,
-      scale: 1,
-    });
+    // Camera state and viewport transforms live in one small composable so
+    // pointer handlers can focus on interaction semantics instead of math.
+    const { camera, worldStyle, zoomPercent, fitToContent: fitCameraToContent, zoomAt, zoomIn, zoomOut, resetView: resetCameraView, centerOn: centerCameraOn } = useCanvasCamera(viewport);
     const rulerGesture=useRulerGesture({viewport,active:computed(()=>props.rulerActive),camera,
       begin:point=>emit('ruler-begin',point),move:point=>emit('ruler-move',point),finish:point=>emit('ruler-finish',point),cancel:()=>emit('ruler-cancel')});
     const isPanning = ref(false);
@@ -1173,42 +1171,6 @@ export default defineComponent({
       }
     });
 
-    // Fit all content in view
-    const fitToContent = () => {
-      if (!viewerNodes.value.length || !viewport.value) return;
-
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of viewerNodes.value) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + n.width);
-        maxY = Math.max(maxY, n.y + n.height);
-      }
-
-      const contentW = maxX - minX;
-      const contentH = maxY - minY;
-      const vw = viewport.value.clientWidth;
-      const vh = viewport.value.clientHeight;
-
-      const padding = 80;
-      const scaleX = (vw - padding * 2) / contentW;
-      const scaleY = (vh - padding * 2) / contentH;
-      camera.scale = Math.min(scaleX, scaleY, 1);
-
-      const centerX = (minX + maxX) / 2;
-      const centerY = (minY + maxY) / 2;
-      camera.x = vw / 2 - centerX * camera.scale;
-      camera.y = vh / 2 - centerY * camera.scale;
-    };
-
-    // Computed styles
-    const worldStyle = computed(() => ({
-      transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})`,
-      transformOrigin: "0 0",
-    }));
-
-    const zoomPercent = computed(() => Math.round(camera.scale * 100));
-
     // Node filtering
     // Viewer-visibility helpers: owner sees all nodes (including hidden, dimmed); non-owners see only non-hidden ones.
     const canViewerSee = (o: { hidden?: boolean } | null | undefined): boolean => props.isOwner || !o?.hidden;
@@ -1222,6 +1184,7 @@ export default defineComponent({
     const templateNodes = computed(() => viewerNodes.value.filter((n) => n.type === "template"));
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
     const documentNodes = computed(() => viewerNodes.value.filter((n) => n.type === "document"));
+    const fitToContent = () => fitCameraToContent(viewerNodes.value);
 
     const dndAbilities = DND_ABILITIES;
     const dndTabs = [
@@ -3531,15 +3494,10 @@ export default defineComponent({
       if (e.ctrlKey || e.metaKey) {
         // Pinch-to-zoom on trackpad (or Ctrl+wheel)
         const zoomFactor = e.deltaY > 0 ? 0.92 : 1.08;
-        const newScale = Math.max(0.05, Math.min(5, camera.scale * zoomFactor));
-
         const rect = viewport.value!.getBoundingClientRect();
         const mx = e.clientX - rect.left;
         const my = e.clientY - rect.top;
-
-        camera.x = mx - (mx - camera.x) * (newScale / camera.scale);
-        camera.y = my - (my - camera.y) * (newScale / camera.scale);
-        camera.scale = newScale;
+        zoomAt(mx, my, zoomFactor);
       } else {
         // Two-finger scroll on trackpad → pan
         camera.x -= e.deltaX;
@@ -3993,26 +3951,7 @@ export default defineComponent({
       lastTouchDist.value = 0;
     };
 
-    // Zoom controls
-    const zoomIn = () => {
-      const vw = viewport.value!.clientWidth / 2;
-      const vh = viewport.value!.clientHeight / 2;
-      const newScale = Math.min(5, camera.scale * 1.2);
-      camera.x = vw - (vw - camera.x) * (newScale / camera.scale);
-      camera.y = vh - (vh - camera.y) * (newScale / camera.scale);
-      camera.scale = newScale;
-    };
-
-    const zoomOut = () => {
-      const vw = viewport.value!.clientWidth / 2;
-      const vh = viewport.value!.clientHeight / 2;
-      const newScale = Math.max(0.05, camera.scale / 1.2);
-      camera.x = vw - (vw - camera.x) * (newScale / camera.scale);
-      camera.y = vh - (vh - camera.y) * (newScale / camera.scale);
-      camera.scale = newScale;
-    };
-
-    const resetView = () => fitToContent();
+    const resetView = () => resetCameraView(viewerNodes.value);
 
     // File operations
     const fileInput = ref<HTMLInputElement | null>(null);
@@ -4237,13 +4176,6 @@ export default defineComponent({
       const wx = vbX + (e.clientX - rect.left - (rect.width - vbW * scale) / 2) / scale;
       const wy = vbY + (e.clientY - rect.top - (rect.height - vbH * scale) / 2) / scale;
       return { wx, wy };
-    };
-
-    const centerCameraOn = (wx: number, wy: number) => {
-      const vw = viewport.value!.clientWidth;
-      const vh = viewport.value!.clientHeight;
-      camera.x = -(wx * camera.scale - vw / 2);
-      camera.y = -(wy * camera.scale - vh / 2);
     };
 
     const onMinimapDown = (e: MouseEvent) => {
