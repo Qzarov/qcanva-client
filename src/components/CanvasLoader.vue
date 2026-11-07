@@ -837,6 +837,7 @@ import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
 import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
 import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
 import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
+import { useCanvasHistory } from '../canvas/useCanvasHistory';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -2587,19 +2588,6 @@ export default defineComponent({
     };
 
     // Undo/redo history
-    interface Snapshot { nodes: string; edges: string; drawings: string; }
-    const undoStack = ref<Snapshot[]>([]);
-    const redoStack = ref<Snapshot[]>([]);
-    const MAX_HISTORY = 50;
-    const canUndo = computed(() => undoStack.value.length > 0);
-    const canRedo = computed(() => redoStack.value.length > 0);
-
-    const takeSnapshot = (): Snapshot => ({
-      nodes: JSON.stringify(nodes.value),
-      edges: JSON.stringify(edges.value),
-      drawings: JSON.stringify(drawings.value),
-    });
-
     let changeTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleChange = (forceSnapshot = false) => {
       forceNextChange = forceNextChange || forceSnapshot;
@@ -2608,12 +2596,13 @@ export default defineComponent({
     };
     scheduleChangeForEditor = scheduleChange;
 
-    const pushUndo = () => {
-      undoStack.value.push(takeSnapshot());
-      if (undoStack.value.length > MAX_HISTORY) undoStack.value.shift();
-      redoStack.value = [];
-      scheduleChange();
-    };
+    const { canUndo, canRedo, pushUndo, undo, redo } = useCanvasHistory({
+      nodes,
+      edges,
+      drawings,
+      scheduleChange,
+      clearSelection: clearSelectionState,
+    });
 
     const {
       setDrawTool,
@@ -2636,33 +2625,6 @@ export default defineComponent({
       pushUndo,
       emitOp: (operation) => emitOp(operation as CanvasOp),
     });
-
-    const undo = () => {
-      if (!undoStack.value.length) return;
-      redoStack.value.push(takeSnapshot());
-      // will call scheduleChange below
-      const snap = undoStack.value.pop()!;
-      nodes.value = JSON.parse(snap.nodes);
-      edges.value = JSON.parse(snap.edges);
-      drawings.value = JSON.parse(snap.drawings);
-      selectedNodeIds.value = [];
-      selectedEdgeId.value = null;
-      selectedDrawingIds.value = [];
-      scheduleChange(true);
-    };
-
-    const redo = () => {
-      if (!redoStack.value.length) return;
-      undoStack.value.push(takeSnapshot());
-      const snap = redoStack.value.pop()!;
-      nodes.value = JSON.parse(snap.nodes);
-      edges.value = JSON.parse(snap.edges);
-      drawings.value = JSON.parse(snap.drawings);
-      selectedNodeIds.value = [];
-      selectedEdgeId.value = null;
-      selectedDrawingIds.value = [];
-      scheduleChange(true);
-    };
 
     // Clipboard for copy/paste
     const clipboard = ref<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>({ nodes: [], edges: [] });
