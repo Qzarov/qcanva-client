@@ -30,36 +30,24 @@
     <CanvasRulerOverlay :measurements="rulerMeasurements" :settings="rulerSettings" :camera="camera" :viewport-size="viewportSize" />
     <div class="canvas-world" :style="worldStyle">
       <!-- Groups (rendered behind everything) -->
-      <div
+      <CanvasNodeGroup
         v-for="group in groups"
         :key="group.id"
-        class="canvas-group"
-        :data-node-id="group.id"
-        :class="[groupColorClass(group), nodePresentationClass(group), { 'border-select-only': !isTouchDevice, 'is-selected': isNodeSelected(group.id), 'is-dragging': dragNodeId === group.id, 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }]"
-        :style="[nodePosition(group), {
-          '--group-content-surface': 'var(--content-canvas-group-surface)',
-          '--group-content-border': 'var(--content-canvas-group-border)',
-        }]"
-        @mousedown.stop="onNodeDragStart($event, group)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, group)"
-      >
-        <svg v-if="!isTouchDevice" class="group-border-hit" aria-hidden="true"
-          :style="{ left: `${-(group.borderWidth || 1.5)}px`, top: `${-(group.borderWidth || 1.5)}px`, width: `${group.width}px`, height: `${group.height}px` }">
-          <rect v-bind="groupBorderRect(group)" fill="none" stroke="transparent" stroke-linejoin="round"
-            :stroke-width="Math.max(12 / camera.scale, group.borderWidth || 1.5)" />
-        </svg>
-        <span v-if="group.label" class="group-label">{{ group.label }}</span>
-        <template v-if="isNodeSelected(group.id) && !readonly && !isNodePositionLocked(group.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, group, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, group, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, group, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, group, 'tl')"></div>
-          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, group, 'r')"></div>
-          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, group, 'l')"></div>
-          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, group, 't')"></div>
-          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, group, 'b')"></div>
-        </template>
-      </div>
+        :node="group"
+        :state-class="{ 'is-dragging': dragNodeId === group.id, 'is-selected': isNodeSelected(group.id), 'is-locked': isNodePositionLocked(group.id), 'is-flash': flashNodeId === group.id, 'is-hidden': group.hidden }"
+        :group-color-class="groupColorClass"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-touch-device="isTouchDevice"
+        :readonly="readonly"
+        :camera-scale="camera.scale"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :group-border-rect="groupBorderRect"
+      />
 
       <!-- Edges (SVG layer) -->
       <svg class="canvas-edges" :style="edgesSvgStyle">
@@ -321,47 +309,51 @@
         :on-image-error="onImageError"
       />
       <!-- Interactive template nodes -->
-      <div
+      <CanvasNodeTemplate
         v-for="node in templateNodes"
         :key="node.id"
-        class="canvas-node canvas-node-template"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        :tabindex="isNodeSelected(node.id) ? 0 : -1"
-        @keydown.enter.prevent="enterDndInteraction(node)"
-        @keydown.esc.stop="exitDndInteraction(node)"
-      >
-        <template v-if="node.templateId === 'dnd-character'">
-          <section class="dnd-sheet" :class="{ 'is-compact': dndSheet(node).displayMode === 'compact' || node.width < 720 || node.height < 480, 'is-interacting': isDndInteracting(node) }" @mousedown="onDndSheetMouseDown($event, node)">
-            <button class="dnd-mode-toggle" type="button" :class="{ active: isDndInteracting(node) }" :title="isDndInteracting(node) ? 'Завершить взаимодействие (Esc)' : 'Редактировать карточку (Enter)'" :aria-label="isDndInteracting(node) ? 'Завершить взаимодействие' : 'Редактировать карточку'" @mousedown.stop @click.stop="toggleDndInteraction(node)">{{ isDndInteracting(node) ? '✓' : '✎' }}</button>
-            <div class="dnd-sheet-content" :inert="!isDndInteracting(node)">
-            <header class="dnd-sheet-head">
-              <div class="dnd-portrait-wrap"><div class="dnd-portrait" :class="{ empty: !dndSheet(node).identity.portraitUrl }"><img v-if="dndSheet(node).identity.portraitUrl" :src="getImageSrc(dndSheet(node).identity.portraitUrl)" @error="onImageError(node.id + '-portrait', dndSheet(node).identity.portraitUrl)" alt="Портрет персонажа" /><span v-else>{{ dndSheet(node).identity.name.slice(0, 1).toUpperCase() }}</span></div><div v-if="!readonly" class="dnd-portrait-actions"><button aria-label="Загрузить портрет" @click.stop="openDndPortraitPicker(node)">▣</button><button v-if="dndSheet(node).identity.portraitUrl" aria-label="Удалить портрет" @click.stop="setDndIdentity(node, 'portraitUrl', '')">×</button></div></div>
-              <div class="dnd-identity"><input aria-label="Имя персонажа" :readonly="readonly" :value="dndSheet(node).identity.name" @change="setDndIdentity(node, 'name', ($event.target as HTMLInputElement).value)" /><span><input aria-label="Раса" :readonly="readonly" :value="dndSheet(node).identity.race" placeholder="Раса" @change="setDndIdentity(node, 'race', ($event.target as HTMLInputElement).value)" /> · <input aria-label="Класс" :readonly="readonly" :value="dndSheet(node).identity.className" placeholder="Класс" @change="setDndIdentity(node, 'className', ($event.target as HTMLInputElement).value)" /></span></div>
-              <label class="dnd-level">ур.<input aria-label="Уровень" type="number" min="1" :readonly="readonly" :value="dndSheet(node).identity.level" @change="setDndNumber(node, 'level', ($event.target as HTMLInputElement).value)" /></label>
-              <button class="dnd-collapse" :aria-label="dndSheet(node).displayMode === 'compact' ? 'Развернуть карточку' : 'Свернуть карточку'" :disabled="readonly" @click.stop="toggleDndMode(node)">{{ dndSheet(node).displayMode === 'compact' ? '⤢' : '⤡' }}</button>
-            </header>
-            <div class="dnd-combat-row"><label>КД <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.armorClass" @change="setDndCombat(node, 'armorClass', ($event.target as HTMLInputElement).value)" /></label><label>Скорость <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.speed" @change="setDndCombat(node, 'speed', ($event.target as HTMLInputElement).value)" /></label><label>HP <button :disabled="readonly" @click.stop="changeDndHp(node, -1)">−</button><input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.currentHp" @change="setDndCombat(node, 'currentHp', ($event.target as HTMLInputElement).value)" /><b>/</b><input type="number" min="1" :readonly="readonly" :value="dndSheet(node).combat.maxHp" @change="setDndCombat(node, 'maxHp', ($event.target as HTMLInputElement).value)" /><button :disabled="readonly" @click.stop="changeDndHp(node, 1)">+</button></label><label class="dnd-temp">Врем. <input type="number" min="0" :readonly="readonly" :value="dndSheet(node).combat.temporaryHp" @change="setDndCombat(node, 'temporaryHp', ($event.target as HTMLInputElement).value)" /></label></div>
-            <div class="dnd-card-abilities"><article v-for="ability in dndAbilities" :key="ability.key"><button :disabled="readonly" @click.stop="rollTemplateAbility(node, ability.key)"><span>{{ ability.short }}</span><strong>{{ dndSheet(node).abilities[ability.key].score }}</strong><em>{{ formatDndModifier(dndSheet(node).abilities[ability.key].score) }}</em></button><input aria-label="Значение характеристики" type="number" min="1" max="30" :readonly="readonly" :value="dndSheet(node).abilities[ability.key].score" @change="setDndAbilityScore(node, ability.key, ($event.target as HTMLInputElement).value)" /><label title="Владение спасброском"><input type="checkbox" :checked="dndSheet(node).abilities[ability.key].savingThrowProficient" :disabled="readonly" @change="toggleDndSave(node, ability.key)" /> Спас {{ formatDndModifier(dndSavingThrow(node, ability.key)) }}</label></article></div>
-            <div v-if="dndSheet(node).displayMode !== 'compact' && node.width >= 720 && node.height >= 480" class="dnd-full-content"><nav class="dnd-tabs"><button v-for="tab in dndTabs" :key="tab.key" :class="{ active: dndSheet(node).activeTab === tab.key }" :disabled="readonly" @click.stop="setDndTab(node, tab.key)">{{ tab.label }}</button></nav><div class="dnd-tab-panel"><template v-if="dndSheet(node).activeTab === 'notes'"><textarea aria-label="Заметки персонажа" :readonly="readonly" :value="dndSheet(node).notes" placeholder="Заметки персонажа" @change="setDndNotes(node, ($event.target as HTMLTextAreaElement).value)" /></template><template v-else-if="dndSheet(node).activeTab === 'personality'"><label v-for="field in dndPersonalityFields" :key="field.key">{{ field.label }}<textarea :readonly="readonly" :value="dndSheet(node).personality[field.key]" @change="setDndPersonality(node, field.key, ($event.target as HTMLTextAreaElement).value)" /></label></template><template v-else><div class="dnd-list"><div v-for="item in dndTabItems(node)" :key="item.id" class="dnd-list-row"><input aria-label="Название" :readonly="readonly" :value="item.name" placeholder="Название" @change="updateDndListItem(node, item.id, 'name', ($event.target as HTMLInputElement).value)" /><template v-if="dndSheet(node).activeTab === 'equipment'"><input aria-label="Количество" type="number" min="0" :readonly="readonly" :value="item.quantity || 1" @change="updateDndListItem(node, item.id, 'quantity', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.equipped" :disabled="readonly" @change="updateDndListItem(node, item.id, 'equipped', !item.equipped)" /> экипировано</label></template><template v-else-if="dndSheet(node).activeTab === 'goals'"><label><input type="checkbox" :checked="item.completed" :disabled="readonly" @change="updateDndListItem(node, item.id, 'completed', !item.completed)" /> готово</label></template><template v-else-if="dndSheet(node).activeTab === 'spells'"><input aria-label="Уровень заклинания" type="number" min="0" max="9" :readonly="readonly" :value="item.level || 0" @change="updateDndListItem(node, item.id, 'level', Number(($event.target as HTMLInputElement).value) || 0)" /><label><input type="checkbox" :checked="item.prepared" :disabled="readonly" @change="updateDndListItem(node, item.id, 'prepared', !item.prepared)" /> подготовлено</label></template><template v-else-if="dndSheet(node).activeTab === 'features'"><input aria-label="Использований" type="number" min="0" :readonly="readonly" :value="item.currentUses || 0" @change="updateDndListItem(node, item.id, 'currentUses', Number(($event.target as HTMLInputElement).value) || 0)" /><span>/</span><input aria-label="Максимум использований" type="number" min="0" :readonly="readonly" :value="item.maxUses || 0" @change="updateDndListItem(node, item.id, 'maxUses', Number(($event.target as HTMLInputElement).value) || 0)" /></template><input aria-label="Описание" :readonly="readonly" :value="item.description || ''" placeholder="Описание" @change="updateDndListItem(node, item.id, 'description', ($event.target as HTMLInputElement).value)" /><button class="dnd-list-remove" aria-label="Удалить запись" :disabled="readonly" @click.stop="removeDndListItem(node, item.id)">×</button></div><button class="dnd-list-add" :disabled="readonly" @click.stop="addDndListItem(node)">+ Добавить</button></div></template></div></div>
-            </div>
-          </section>
-        </template>
-        <BoardPreview
-          v-else-if="node.templateId === 'trello-board-preview'"
-          :board-id="boardPreviewId(node)"
-          @open-board="openBoardPreview"
-        />
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id) && !isDndInteracting(node)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :enter-dnd-interaction="enterDndInteraction"
+        :exit-dnd-interaction="exitDndInteraction"
+        :readonly="readonly"
+        :dnd-sheet="dndSheet"
+        :is-dnd-interacting="isDndInteracting"
+        :on-dnd-sheet-mouse-down="onDndSheetMouseDown"
+        :toggle-dnd-interaction="toggleDndInteraction"
+        :toggle-dnd-mode="toggleDndMode"
+        :get-image-src="getImageSrc"
+        :on-image-error="onImageError"
+        :open-dnd-portrait-picker="openDndPortraitPicker"
+        :set-dnd-identity="setDndIdentity"
+        :set-dnd-number="setDndNumber"
+        :set-dnd-combat="setDndCombat"
+        :change-dnd-hp="changeDndHp"
+        :dnd-abilities="dndAbilities"
+        :roll-template-ability="rollTemplateAbility"
+        :format-dnd-modifier="formatDndModifier"
+        :set-dnd-ability-score="setDndAbilityScore"
+        :toggle-dnd-save="toggleDndSave"
+        :dnd-saving-throw="dndSavingThrow"
+        :dnd-tabs="dndTabs"
+        :set-dnd-tab="setDndTab"
+        :dnd-personality-fields="dndPersonalityFields"
+        :set-dnd-notes="setDndNotes"
+        :set-dnd-personality="setDndPersonality"
+        :dnd-tab-items="dndTabItems"
+        :update-dnd-list-item="updateDndListItem"
+        :remove-dnd-list-item="removeDndListItem"
+        :add-dnd-list-item="addDndListItem"
+        :board-preview-id="boardPreviewId"
+        :open-board-preview="openBoardPreview"
+        :on-resize-start="onResizeStart"
+      />
       <!-- Canvas embed nodes -->
       <CanvasNodeEmbed
         v-for="node in canvasNodes"
@@ -724,6 +716,8 @@ import CanvasNodeImage from './canvas/CanvasNodeImage.vue';
 import CanvasNodeEmbed from './canvas/CanvasNodeEmbed.vue';
 import CanvasNodeDocument from './canvas/CanvasNodeDocument.vue';
 import CanvasNodeText from './canvas/CanvasNodeText.vue';
+import CanvasNodeGroup from './canvas/CanvasNodeGroup.vue';
+import CanvasNodeTemplate from './canvas/CanvasNodeTemplate.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
@@ -820,7 +814,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
