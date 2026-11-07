@@ -564,67 +564,10 @@
     </div>
 
     <!-- Minimap (device-local visibility and size) -->
-    <div
-      class="minimap"
-      :class="{ 'is-large': minimapSize === 'large' }"
-      v-if="minimapData && minimapEnabled"
-      @mousedown.stop="onMinimapDown"
-      @mousemove.stop="onMinimapMove"
-      @mouseup.stop="onMinimapUp"
-      @mouseleave="onMinimapUp"
-    >
-      <svg :viewBox="minimapData.viewBox" preserveAspectRatio="xMidYMid meet">
-        <rect
-          v-for="node in viewerNodes"
-          :key="'mm-' + node.id"
-          class="minimap-node"
-          :class="{ 'is-group': node.type === 'group' }"
-          :x="node.x"
-          :y="node.y"
-          :width="node.width"
-          :height="node.height"
-          rx="2"
-        />
-        <rect
-          class="minimap-viewport"
-          vector-effect="non-scaling-stroke"
-          :x="minimapData.vpX"
-          :y="minimapData.vpY"
-          :width="minimapData.vpW"
-          :height="minimapData.vpH"
-          rx="2"
-        />
-      </svg>
-    </div>
+    <CanvasMinimap :context="minimapProps" />
 
     <!-- Context menu -->
-    <div
-      v-if="contextMenu.visible"
-      class="context-menu"
-      :style="contextMenuStyle"
-      @mousedown.stop
-    >
-      <template v-if="contextMenu.kind === 'edge'">
-        <button class="ctx-item" @click="onEdgeToggleStyle(); closeContextMenu()">Стиль линии</button>
-        <button class="ctx-item" @click="onEdgeCycleArrow(); closeContextMenu()">Тип стрелки</button>
-        <button class="ctx-item" @click="onEdgeCycleColor(); closeContextMenu()">Цвет линии</button>
-        <button class="ctx-item" @click="onEdgeDblClick(contextMenu.id); closeContextMenu()">Подпись</button>
-        <button v-if="isOwner" class="ctx-item" @click="toggleEdgeHidden(contextMenu.id); closeContextMenu()">{{ isEdgeHidden(contextMenu.id) ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item ctx-item-danger" @click="onDeleteEdge(); closeContextMenu()">Удалить</button>
-      </template>
-      <template v-else-if="contextMenu.kind === 'drawing'">
-        <div class="ctx-colors">
-          <span class="ctx-label">Цвет</span>
-          <button class="ctx-color-btn" :style="{ background: selectedDrawingObj?.color }" :aria-label="t('color')" :aria-expanded="contextColorPopup === 'drawing'" @click="toggleContextColorMenu('drawing', $event)" />
-        </div>
-        <CanvasColorMenu :open="contextColorPopup === 'drawing'" :anchor="contextColorAnchor" :label="t('color')" @close="contextColorPopup = null">
-          <button v-for="c in ['#e03131','#f08c00','#2f9e44','#1971c2','#000000']" :key="'ctxd-'+c" class="ctx-color-btn" :style="{ background: c }" @click="setSelectedDrawingColor(c)"></button>
-        </CanvasColorMenu>
-        <button class="ctx-item" @click="duplicateSelectedDrawing(); closeContextMenu()">Дублировать</button>
-        <button v-if="isOwner" class="ctx-item" @click="toggleSelectedDrawingHidden(); closeContextMenu()">{{ isSelectedDrawingHidden() ? 'Показать' : 'Скрыть' }}</button>
-        <button class="ctx-item ctx-item-danger" @click="deleteSelectedDrawing(); closeContextMenu()">Удалить</button>
-      </template>
-    </div>
+    <CanvasContextMenu :context="contextMenuProps" />
 
     <!-- Controls -->
     <div class="canvas-controls">
@@ -718,6 +661,8 @@ import CanvasNodeDocument from './canvas/CanvasNodeDocument.vue';
 import CanvasNodeText from './canvas/CanvasNodeText.vue';
 import CanvasNodeGroup from './canvas/CanvasNodeGroup.vue';
 import CanvasNodeTemplate from './canvas/CanvasNodeTemplate.vue';
+import CanvasMinimap from './canvas/CanvasMinimap.vue';
+import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
@@ -814,7 +759,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
@@ -1849,6 +1794,7 @@ export default defineComponent({
       contextColorAnchor.value = event.currentTarget as HTMLElement;
       contextColorPopup.value = contextColorPopup.value === kind ? null : kind;
     };
+    const closeContextColorPopup = () => { contextColorPopup.value = null; };
     const contextMenuStyle = computed(() => ({
       left: contextMenu.x + 'px',
       top: contextMenu.y + 'px',
@@ -3445,6 +3391,39 @@ export default defineComponent({
       camera,
       centerCameraOn,
     );
+    const minimapProps = computed(() => ({
+      minimapData: minimapData.value,
+      minimapEnabled: minimapEnabled.value,
+      minimapSize: minimapSize.value,
+      viewerNodes: viewerNodes.value,
+      onMinimapDown,
+      onMinimapMove,
+      onMinimapUp,
+    }));
+    const contextMenuProps = computed(() => ({
+      contextMenu,
+      contextMenuStyle: contextMenuStyle.value,
+      contextColorPopup: contextColorPopup.value,
+      contextColorAnchor: contextColorAnchor.value,
+      selectedDrawingObj: selectedDrawingObj.value,
+      isOwner: props.isOwner,
+      t,
+      onEdgeToggleStyle,
+      onEdgeCycleArrow,
+      onEdgeCycleColor,
+      onEdgeDblClick,
+      toggleEdgeHidden,
+      isEdgeHidden,
+      onDeleteEdge,
+      toggleContextColorMenu,
+      closeContextColorPopup,
+      setSelectedDrawingColor,
+      duplicateSelectedDrawing,
+      toggleSelectedDrawingHidden,
+      isSelectedDrawingHidden,
+      deleteSelectedDrawing,
+      closeContextMenu,
+    }));
 
     const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
@@ -3683,6 +3662,8 @@ export default defineComponent({
       minimapData,
       minimapEnabled,
       minimapSize,
+      minimapProps,
+      contextMenuProps,
       onMinimapDown,
       onMinimapMove,
       onMinimapUp,
