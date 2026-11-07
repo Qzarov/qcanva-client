@@ -738,6 +738,7 @@ import { useI18n } from '../composables/useI18n';
 import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
 import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
 import { useTextDocumentMentionMenu } from '../composables/useTextDocumentMentionMenu';
+import { useTextDocumentLinkActions } from '../composables/useTextDocumentLinkActions';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -1473,129 +1474,30 @@ export default defineComponent({
      * output) rather than resolved through ProseMirror mark lookup, since
      * that's exactly what's under the pointer.
      */
-    const linkActionOpen = ref(false);
-    const linkActionHref = ref('');
-    // Above the link it is anchored by its BOTTOM edge, so however tall it
-    // renders (its buttons wrap to two rows in Russian), it ends just above
-    // the link instead of overlapping it; below the link, by its top.
-    const linkActionRect = ref<{ top?: number; bottom?: number; left: number } | null>(null);
-    const linkActionMenuStyle = computed(() => {
-      const r = linkActionRect.value;
-      if (!r) return undefined;
-      return {
-        left: `${r.left}px`,
-        ...(r.bottom !== undefined ? { bottom: `${r.bottom}px` } : { top: `${r.top ?? 0}px` }),
-      };
+    const linkActions = useTextDocumentLinkActions({
+      getEditor: () => readEditor(),
+      canEdit: () => canEditContent.value,
+      showToast,
+      copySuccessMessage: () => t('copied'),
+      copyFailureMessage: () => t('copyLinkFailed'),
+      openLinkEditor,
     });
-    /**
-     * Keeps the link menu on screen. Its left edge starts at the link, and
-     * its width is whatever the address and icons need - so it is measured
-     * once rendered and slid back in (12px from each edge) if it would cross
-     * the right side, as it did on a phone.
+    const {
+      linkActionOpen,
+      linkActionHref,
+      linkActionMenuStyle,
+      linkActionMenuEl,
+      closeLinkActionMenu,
+      copyLinkActionHref,
+      openLinkActionHref,
+      editLinkAction,
+      removeLinkAction,
+      handleEditorLinkClick,
+    } = linkActions;
+    /*
+     * LINK TAP/ACTION state now lives in useTextDocumentLinkActions.
+     * The view keeps only the editor-specific link form below.
      */
-    const LINK_MENU_EDGE = 12;
-    const linkActionMenuEl = ref<HTMLElement | null>(null);
-    const keepLinkActionMenuOnScreen = () => {
-      const el = linkActionMenuEl.value;
-      const current = linkActionRect.value;
-      if (!el || !current) return;
-      const width = el.getBoundingClientRect().width;
-      const maxLeft = Math.max(LINK_MENU_EDGE, window.innerWidth - width - LINK_MENU_EDGE);
-      const left = Math.min(Math.max(LINK_MENU_EDGE, current.left), maxLeft);
-      if (left !== current.left) linkActionRect.value = { ...current, left };
-    };
-    // Also when it moves straight to another link while still open.
-    watch([linkActionOpen, linkActionHref], ([open]) => {
-      if (open) void nextTick(keepLinkActionMenuOnScreen);
-    });
-    const closeLinkActionMenu = () => {
-      linkActionOpen.value = false;
-      linkActionHref.value = '';
-      linkActionRect.value = null;
-    };
-    const onLinkActionEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeLinkActionMenu();
-    };
-    watch(linkActionOpen, (open) => {
-      if (open) window.addEventListener('keydown', onLinkActionEscape);
-      else window.removeEventListener('keydown', onLinkActionEscape);
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onLinkActionEscape));
-
-    async function copyLinkActionHref() {
-      try {
-        await navigator.clipboard.writeText(linkActionHref.value);
-        showToast(t('copied'), 'success');
-      } catch {
-        showToast(t('copyLinkFailed'), 'error');
-      }
-      closeLinkActionMenu();
-    }
-    function openLinkActionHref() {
-      window.open(linkActionHref.value, '_blank', 'noopener,noreferrer');
-      closeLinkActionMenu();
-    }
-    /**
-     * Hands off to the SAME edit flow the bubble menu's link button uses.
-     * Unlike applyLink/removeLink (which extend a collapsed selection to the
-     * whole mark when APPLYING), this has to extend it FIRST: on desktop the
-     * edit form only renders inside <BubbleMenu>, whose shouldShowBubbleMenu
-     * requires a non-empty text selection - a click leaves the cursor
-     * collapsed, so without this the desktop form would never appear at all
-     * (the mobile sheet doesn't share that gate, but extending here keeps
-     * both platforms consistent and gives openLinkEditor the correct full
-     * range to capture via trackRange).
-     */
-    /** Takes the link off the clicked link's whole text (the caret sits inside it after the click). */
-    function removeLinkAction() {
-      closeLinkActionMenu();
-      editor.value?.chain().focus(undefined, { scrollIntoView: false }).extendMarkRange('link').unsetLink().run();
-    }
-    function editLinkAction() {
-      closeLinkActionMenu();
-      // No .focus() here: the link box takes focus itself (openLinkEditor),
-      // and tiptap's deferred focus would steal it back a frame later.
-      editor.value?.chain().extendMarkRange('link').run();
-      openLinkEditor();
-    }
-
-    /**
-     * Named and exposed (like openLinkEditor/applyLink/removeLink already
-     * are) so it can be called directly in a test: jsdom does not reliably
-     * deliver a real click through ProseMirror's own DOM event pipeline the
-     * way a browser does - the same class of limitation
-     * TextDocumentView.linkEditor.test.ts already documents for the tippy-
-     * based bubble menu. Registered below as editorProps.handleClick.
-     */
-    function handleEditorLinkClick(event: MouseEvent): boolean {
-      if (!canEditContent.value) return false;
-      const anchor = (event.target as HTMLElement | null)?.closest?.('a');
-      if (!anchor) {
-        closeLinkActionMenu();
-        return false;
-      }
-      const href = anchor.getAttribute('href') || '';
-      if (!href) return false;
-      const rect = anchor.getBoundingClientRect();
-      // Only decides above vs below; the menu's real height doesn't matter
-      // for placement (see linkActionRect). A single row now.
-      const ESTIMATED_MENU_HEIGHT = 56;
-      // Opens ABOVE the link by default (front task: it used to sit right on
-      // top of the link text, which the popover's own background then hid) -
-      // falls back to below only when there isn't enough room above.
-      const opensBelow = rect.top - 6 - ESTIMATED_MENU_HEIGHT < 8;
-      linkActionHref.value = href;
-      linkActionRect.value = {
-        ...(opensBelow ? { top: rect.bottom + 6 } : { bottom: window.innerHeight - (rect.top - 6) }),
-        // Final placement once its real width is known: keepLinkActionMenuOnScreen.
-        left: rect.left,
-      };
-      linkActionOpen.value = true;
-      // Not `true`: this only shows the popover, it never suppresses
-      // ProseMirror's own click handling, so the caret still lands exactly
-      // where a plain click on that text would put it.
-      return false;
-    }
 
     /**
      * How far the on-screen keyboard currently pushes up from the bottom of
