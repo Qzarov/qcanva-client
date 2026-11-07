@@ -278,109 +278,10 @@
         />
       </section>
 
-      <div
+      <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
-        :id="isHomeFeed ? 'feed-shared' : undefined"
-        class="dash-section"
-        :class="{ 'dashboard-feed-section': isHomeFeed }"
-        :data-dashboard-view="isHomeFeed ? undefined : 'shared'"
-        :data-feed-section="isHomeFeed ? 'shared' : undefined"
-        data-section="shared"
-      >
-        <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
-        <div class="dash-grid" data-feed-grid="shared">
-          <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
-          <div
-            v-if="item.type === 'canvas'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-            @click="openCanvas(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span
-                v-for="tag in item.tags"
-                :key="tag.name"
-                class="card-tag color-tag"
-                :style="{ '--tag-color': tag.color }"
-              >#{{ tag.name }}</span>
-            </div>
-            <button
-              class="card-manage"
-              :data-menu-trigger="`shared:${item.type}:${item.id}`"
-              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
-              title="Canvas actions"
-              :disabled="isBusy"
-            >⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </div>
-          <article
-            v-else-if="item.type === 'html-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openHtmlDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          <article
-            v-else-if="item.type === 'text-document'"
-            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-            @click="openTextDocument(item.slug || item.id)"
-          >
-            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
-            <div class="card-meta">
-              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
-              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-            </div>
-            <div v-if="item.tags?.length" class="card-tags">
-              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
-            </div>
-            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
-          </article>
-          </template>
-          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-        </div>
-        <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
-          {{ t('noFilterMatches') }}
-          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-        </div>
-        <button
-          v-if="isHomeFeed && sharedFiltered.length > feedLimit('shared')"
-          type="button"
-          class="dashboard-recent-show-all"
-          :data-feed-show-all="'shared'"
-          :aria-expanded="isFeedSectionExpanded('shared')"
-          @click="toggleFeedSectionExpanded('shared')"
-        >
-          <span>{{ isFeedSectionExpanded('shared') ? t('showLess') : `${t('showAll')} ${sharedFiltered.length}` }}</span>
-          <ChevronDown v-if="!isFeedSectionExpanded('shared')" :size="15" aria-hidden="true" />
-          <ChevronUp v-else :size="15" aria-hidden="true" />
-        </button>
-      </div>
-
+        :context="sharedSectionProps"
+      />
       <section
         v-if="isLoggedIn && (activeSection.kind === 'interactive' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-interactive' : undefined"
@@ -970,6 +871,7 @@ import DashboardToolbar from '../components/dashboard/DashboardToolbar.vue';
 import DashboardRecentSection from '../components/dashboard/DashboardRecentSection.vue';
 import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import DashboardFolderSection from '../components/dashboard/DashboardFolderSection.vue';
+import DashboardSharedSection from '../components/dashboard/DashboardSharedSection.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1085,6 +987,7 @@ export default defineComponent({
     DashboardRecentSection,
     DashboardAccessRequests,
     DashboardFolderSection,
+    DashboardSharedSection,
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardAddDialog,
@@ -4657,6 +4560,35 @@ export default defineComponent({
       restoreBodyOverflow();
     });
 
+    const sharedSectionProps = computed(() => ({
+      isLoggedIn,
+      isHomeFeed: isHomeFeed.value,
+      sharedFiltered: sharedFiltered.value,
+      isBusy: isBusy.value,
+      hasActiveFilter: hasActiveFilter.value,
+      openMenuCanvasId: openMenuCanvasId.value,
+      cardMenuStyle: cardMenuStyle.value,
+      t,
+      feedItems,
+      selectionKey,
+      isSelected,
+      toggleSelected,
+      openCanvas,
+      openHtmlDocument,
+      openTextDocument,
+      cardFolderPath,
+      formatDate,
+      toggleCardMenu,
+      openMoveFolderModal,
+      openMoveHtmlFolderModal,
+      openMoveTextDocumentFolderModal,
+      openAddFromTile,
+      resetFilters,
+      feedLimit,
+      isFeedSectionExpanded,
+      toggleFeedSectionExpanded,
+    }));
+
     const folderSectionProps = computed(() => ({
       t,
       activeFolder: activeFolder.value,
@@ -4731,6 +4663,7 @@ export default defineComponent({
 
     return {
       folderSectionProps,
+      sharedSectionProps,
       yandexView,
       yandexPicker,
       yandexRefreshKey,
