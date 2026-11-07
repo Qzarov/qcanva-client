@@ -331,39 +331,31 @@
       </Teleport>
 
       <!-- Link nodes -->
-      <div
+      <CanvasNodeLink
         v-for="node in linkNodes"
         :key="node.id"
-        class="canvas-node canvas-node-link"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-      >
-        <div class="node-link-header">
-          <a :href="node.url" target="_blank" rel="noopener">{{ node.url }}</a>
-        </div>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :on-node-drag-start="onNodeDragStart"
+      />
       <!-- Image nodes -->
-      <div
+      <CanvasNodeImage
         v-for="node in imageNodes"
         :key="node.id"
-        class="canvas-node canvas-node-image"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-      >
-        <div v-if="node.label" class="node-image-title">{{ node.label }}</div>
-        <img class="node-image" :src="getImageSrc(node.file)" :alt="node.label || 'Image'" draggable="false" @error="onImageError(node.id, node.file)" />
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :get-image-src="getImageSrc"
+        :on-image-error="onImageError"
+      />
       <!-- Interactive template nodes -->
       <div
         v-for="node in templateNodes"
@@ -407,108 +399,44 @@
         </template>
       </div>
       <!-- Canvas embed nodes -->
-      <div
+      <CanvasNodeEmbed
         v-for="node in canvasNodes"
         :key="node.id"
-        class="canvas-node canvas-node-embed"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        @dblclick.stop="onCanvasEmbedDblClick(node.canvasId!)"
-      >
-        <div class="embed-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
-            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>
-          </svg>
-          <span class="embed-title">{{ getEmbeddedCanvasData(node.canvasId!).title || 'Loading...' }}</span>
-        </div>
-        <div class="embed-preview">
-          <div v-if="getEmbeddedCanvasData(node.canvasId!).loading" class="embed-loading">Loading...</div>
-          <div v-else-if="getEmbeddedCanvasData(node.canvasId!).error" class="embed-error">{{ t('cannotLoadCanvas') }}</div>
-          <svg v-else class="embed-minimap" :viewBox="embeddedCanvasViewBox(node.canvasId!)" preserveAspectRatio="xMidYMid meet">
-            <rect
-              v-for="en in getEmbeddedCanvasData(node.canvasId!).nodes"
-              :key="'emb-' + en.id"
-              :x="en.x"
-              :y="en.y"
-              :width="en.width || 100"
-              :height="en.height || 60"
-              :fill="en.type === 'group' ? 'rgba(255,255,255,0.05)' : 'rgba(124,138,255,0.25)'"
-              :stroke="en.type === 'group' ? 'rgba(255,255,255,0.1)' : 'rgba(124,138,255,0.5)'"
-              stroke-width="2"
-              rx="3"
-            />
-            <path
-              v-for="ee in getEmbeddedCanvasData(node.canvasId!).edges"
-              :key="'embe-' + ee.id"
-              :d="embeddedEdgePath(ee, getEmbeddedCanvasData(node.canvasId!).nodes)"
-              stroke="rgba(255,255,255,0.2)"
-              stroke-width="1.5"
-              fill="none"
-            />
-          </svg>
-        </div>
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
-
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :data="getEmbeddedCanvasData(node.canvasId!)"
+        :t="t"
+        :on-canvas-embed-dbl-click="onCanvasEmbedDblClick"
+        :embedded-canvas-view-box="embeddedCanvasViewBox"
+        :embedded-edge-path="embeddedEdgePath"
+      />
       <!-- Document embed nodes -->
-      <div
+      <CanvasNodeDocument
         v-for="node in documentNodes"
         :key="node.id"
-        class="canvas-node canvas-node-doc"
-        :data-node-id="node.id"
-        :class="[nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-        @dblclick.stop="onDocumentEmbedDblClick(node)"
-      >
-        <div class="embed-header">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="embed-icon">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>
-            <template v-if="node.documentKind === 'text'"><path d="M8 13h8M8 17h5"/></template>
-            <template v-else><path d="M9.5 12.5L8 14l1.5 1.5"/><path d="M14.5 12.5L16 14l-1.5 1.5"/></template>
-          </svg>
-          <span class="embed-title">{{ documentData(node).title || 'Loading...' }}</span>
-          <span class="doc-kind-badge">{{ node.documentKind === 'text' ? 'DOC' : 'HTML' }}</span>
-        </div>
-        <div class="embed-preview doc-preview">
-          <div v-if="documentData(node).loading" class="embed-loading">Loading...</div>
-          <div v-else-if="documentData(node).error" class="embed-error">{{ documentData(node).errorText }}</div>
-          <iframe
-            v-else-if="isDocPreviewRich(node) && !documentData(node).empty"
-            :class="['doc-frame', node.documentKind === 'text' ? 'doc-frame-text' : 'doc-frame-html']"
-            :srcdoc="documentSrcdoc(node)"
-            sandbox=""
-            loading="lazy"
-            tabindex="-1"
-            aria-hidden="true"
-          ></iframe>
-          <p v-else class="doc-excerpt">{{ documentData(node).excerpt || 'Пустой документ' }}</p>
-        </div>
-        <template v-if="isNodeSelected(node.id) && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-        </template>
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
-
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :entry="documentData(node)"
+        :is-doc-preview-rich="isDocPreviewRich"
+        :document-srcdoc="documentSrcdoc"
+        :on-document-embed-dbl-click="onDocumentEmbedDblClick"
+      />
       <!-- Drawings SVG layer (above nodes) -->
       <svg class="canvas-drawings" :style="edgesSvgStyle">
         <g :transform="edgesSvgTransform">
@@ -827,6 +755,10 @@ import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
 import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
+import CanvasNodeLink from './canvas/CanvasNodeLink.vue';
+import CanvasNodeImage from './canvas/CanvasNodeImage.vue';
+import CanvasNodeEmbed from './canvas/CanvasNodeEmbed.vue';
+import CanvasNodeDocument from './canvas/CanvasNodeDocument.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
@@ -923,7 +855,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
