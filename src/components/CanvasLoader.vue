@@ -835,6 +835,7 @@ import { useCanvasCamera } from '../canvas/useCanvasCamera';
 import { useCanvasSelectionState } from '../canvas/useCanvasSelectionState';
 import { useCanvasEdgeGeometry } from '../canvas/useCanvasEdgeGeometry';
 import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
+import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -987,13 +988,6 @@ export default defineComponent({
     const drawTool = ref<ActiveDrawingTool>("select");
     const drawColor = ref("#e03131");
     const drawWidth = ref(4);
-    let drawErasing = false;
-    let drawGestureStarted = false;
-
-    const setDrawTool = (t: ActiveDrawingTool) => { drawTool.value = t; };
-    const setDrawColor = (c: string) => { drawColor.value = c; };
-    const setDrawWidth = (w: number) => { drawWidth.value = w; };
-
     // Drawing selection + drag state
     const {
       selectedNodeIds,
@@ -2720,6 +2714,28 @@ export default defineComponent({
       scheduleChange();
     };
 
+    const {
+      setDrawTool,
+      setDrawColor,
+      setDrawWidth,
+      toWorld,
+      onDrawPointerDown,
+      onDrawPointerMove,
+      onDrawPointerUp,
+      onDrawPointerCancel,
+    } = useCanvasDrawing({
+      viewport,
+      camera,
+      drawings,
+      draftDrawing,
+      drawTool,
+      drawColor,
+      drawWidth,
+      genId,
+      pushUndo,
+      emitOp: (operation) => emitOp(operation as CanvasOp),
+    });
+
     const undo = () => {
       if (!undoStack.value.length) return;
       redoStack.value.push(takeSnapshot());
@@ -2813,9 +2829,7 @@ export default defineComponent({
       }
       if (e.key === "Escape" && drawTool.value !== "select") {
         drawTool.value = "select";
-        draftDrawing.value = null;
-        drawGestureStarted = false;
-        drawErasing = false;
+        onDrawPointerCancel();
         return;
       }
       // Undo/redo
@@ -2904,95 +2918,6 @@ export default defineComponent({
           deleteSelectedDrawing();
         }
       }
-    };
-
-    // Drawing pointer handlers
-    const toWorld = (e: PointerEvent): { x: number; y: number } => {
-      const rect = viewport.value!.getBoundingClientRect();
-      return {
-        x: (e.clientX - rect.left - camera.x) / camera.scale,
-        y: (e.clientY - rect.top - camera.y) / camera.scale,
-      };
-    };
-
-    // NOTE: each erased drawing emits an immediate draw-remove op to peers. Local Ctrl+Z
-    // restores the local array but does not emit compensating draw-add ops to peers — a
-    // known limitation of the snapshot-undo + op-broadcast model (shared by nodes/edges). TODO: reconcile undo with collab.
-    const eraseAt = (x: number, y: number) => {
-      const tol = 6 / camera.scale;
-      const hit = [...drawings.value].reverse().find((d) => hitTestDrawing(d, x, y, tol));
-      if (!hit) return;
-      drawings.value = drawings.value.filter((d) => d.id !== hit.id);
-      emitOp({ type: "draw-remove", id: hit.id } as CanvasOp);
-    };
-
-    const onDrawPointerDown = (e: PointerEvent) => {
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      const { x, y } = toWorld(e);
-      drawGestureStarted = true;
-
-      if (drawTool.value === "eraser") {
-        drawErasing = true;
-        pushUndo();
-        eraseAt(x, y);
-        return;
-      }
-      const base = {
-        id: genId(),
-        color: drawColor.value,
-        width: drawWidth.value,
-        createdBy: "me",
-        createdAt: new Date().toISOString(),
-      };
-      if (drawTool.value === "pen" || drawTool.value === "highlighter") {
-        draftDrawing.value = {
-          ...base,
-          tool: drawTool.value,
-          points: [x, y],
-          opacity: drawTool.value === "highlighter" ? 0.3 : 1,
-        };
-      } else if (drawTool.value === "line" || drawTool.value === "arrow") {
-        draftDrawing.value = { ...base, tool: drawTool.value, x1: x, y1: y, x2: x, y2: y };
-      } else {
-        // rect / ellipse
-        draftDrawing.value = { ...base, tool: drawTool.value as Drawing["tool"], x, y, w: 0, h: 0 };
-      }
-    };
-
-    const onDrawPointerMove = (e: PointerEvent) => {
-      if (!drawGestureStarted) return;
-      const { x, y } = toWorld(e);
-      if (drawErasing) { eraseAt(x, y); return; }
-      const d = draftDrawing.value;
-      if (!d) return;
-      if (d.tool === "pen" || d.tool === "highlighter") {
-        d.points = [...(d.points || []), x, y];
-      } else if (d.tool === "line" || d.tool === "arrow") {
-        d.x2 = x; d.y2 = y;
-      } else {
-        d.w = x - (d.x as number); d.h = y - (d.y as number);
-      }
-    };
-
-    const onDrawPointerUp = () => {
-      if (!drawGestureStarted) return;
-      drawGestureStarted = false;
-      if (drawErasing) { drawErasing = false; return; }
-      const d = draftDrawing.value;
-      draftDrawing.value = null;
-      if (!d) return;
-      if ((d.tool === "pen" || d.tool === "highlighter") && (d.points || []).length < 4) return;
-      if ((d.tool === "rect" || d.tool === "ellipse") && (Math.abs(d.w ?? 0) < 3 || Math.abs(d.h ?? 0) < 3)) return;
-      if ((d.tool === "line" || d.tool === "arrow") && Math.hypot((d.x2 ?? 0) - (d.x1 ?? 0), (d.y2 ?? 0) - (d.y1 ?? 0)) < 3) return;
-      pushUndo();
-      drawings.value = [...drawings.value, d];
-      emitOp({ type: "draw-add", drawing: d } as CanvasOp);
-    };
-
-    const onDrawPointerCancel = () => {
-      drawGestureStarted = false;
-      drawErasing = false;
-      draftDrawing.value = null;
     };
 
     // Drawing selection computeds
