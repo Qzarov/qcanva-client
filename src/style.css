@@ -12905,3 +12905,97 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-meta {
   display: flex;
 }
+
+/* FilePlaceholder.vue: a picture's or a video's square while it has no
+   picture - a tint of its kind's colour, the extension in a hand-drawn loop. */
+.file-placeholder {
+  --file-placeholder-tone: #3fcf8e;
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--file-placeholder-tone) 32%, transparent), transparent 62%),
+    linear-gradient(160deg, color-mix(in srgb, var(--file-placeholder-tone) 12%, var(--ui-surface-subtle)), var(--ui-surface-subtle));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--file-placeholder-tone) 38%, transparent);
+  overflow: hidden;
+}
+.file-placeholder.is-video { --file-placeholder-tone: #b260f2; }
+.file-placeholder.is-file { --file-placeholder-tone: #4cc0e6; }
+.file-placeholder-art { display: grid; place-items: center; }
+.file-placeholder-label {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  padding: 0.6em 1em 0.7em;
+  transform: rotate(var(--file-placeholder-tilt, -4deg));
+}
+.file-placeholder-loop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.file-placeholder-loop path {
+  fill: none;
+  stroke: var(--file-placeholder-tone);
+  stroke-width: 1.5;
+}
+.file-placeholder-text {
+  position: relative;
+  color: var(--file-placeholder-tone);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+.file-placeholder-icon { display: none; }
+/* Light theme: the same colours a little deeper, to read on a light tint. */
+:root[data-theme="light"] .file-placeholder-text,
+:root[data-theme="light"] .file-placeholder-loop path {
+  color: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000);
+  stroke: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .file-placeholder-text { color: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000); }
+  :root:not([data-theme="dark"]) .file-placeholder-loop path { stroke: color-mix(in srgb, var(--file-placeholder-tone) 78%, #000); }
+}
+/* The list's 32px square: the kind's icon on the tint, no loop. */
+.dashboard .dashboard-list-view .file-placeholder-art { display: none; }
+.dashboard .dashboard-list-view .file-placeholder-icon {
+  display: grid;
+  place-items: center;
+  color: var(--file-placeholder-tone);
+}
+@media (max-width: 720px) {
+  .file-placeholder-text { font-size: 18px; }
+}
+/* The kind's line figure, in the square's lower right corner under the label. */
+.file-placeholder-art {
+  position: absolute;
+  inset: 0;
+}
+.file-placeholder-figure {
+  position: absolute;
+  right: 9%;
+  bottom: 9%;
+  width: 42%;
+  height: 42%;
+  opacity: 0.45;
+  transform: rotate(calc(var(--file-placeholder-tilt, -4deg) * -1.5));
+}
+.file-placeholder-figure path {
+  fill: none;
+  stroke: var(--file-placeholder-tone);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.file-placeholder-art > .file-placeholder-label {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  translate: -50% -50%;
+}

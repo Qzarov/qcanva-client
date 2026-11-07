@@ -53,10 +53,12 @@ test.describe('a folder\'s files', () => {
       expect(thumb.x + thumb.width).toBeLessThanOrEqual(card.x + card.width);
     }
     await expect.poll(() => page.locator('[data-folder-file="f-sea"] img').evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(2);
-    // A picture or video without its picture keeps the square, with the kind's icon in it.
-    for (const id of ['f-huge', 'f-clip']) {
+    // A picture or video without its picture keeps the square: its extension in a loop, a line figure.
+    for (const [id, ext] of [['f-huge', 'png'], ['f-clip', 'mp4']] as const) {
       await expect(page.locator(`[data-folder-file="${id}"] img`)).toHaveCount(0);
-      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb.is-empty svg`)).toBeVisible();
+      const placeholder = page.locator(`[data-folder-file="${id}"] .folder-file-thumb.is-empty [data-file-placeholder]`);
+      await expect(placeholder.locator('[data-file-placeholder-text]')).toHaveText(ext);
+      await expect(placeholder.locator('[data-file-placeholder-figure]')).toBeVisible();
     }
     for (const id of ['f-pdf', 'f-zip']) {
       await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb`)).toHaveCount(0);

@@ -57,7 +57,7 @@
         data-folder-file-preview
         @error="dropPreview(file.id)"
       />
-      <span v-else class="folder-file-thumb-icon"><Video v-if="isVideo(file)" :size="18" /><ImageIcon v-else :size="18" /></span>
+      <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : 'picture'" />
       <span v-if="isVideo(file) && previews[file.id]" class="folder-file-play" data-folder-file-play><Play :size="14" aria-hidden="true" /></span>
     </span>
   </article>
@@ -85,6 +85,7 @@ import {
 import { isBrowserImage, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
+import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import { useI18n } from '../../composables/useI18n';
 

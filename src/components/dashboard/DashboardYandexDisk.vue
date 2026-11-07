@@ -177,7 +177,7 @@
                    the kind's icon until (or unless) Yandex has a preview. -->
               <span v-if="isMedia(file) || previewOf(file)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(file) }" aria-hidden="true">
                 <img v-if="previewOf(file)" :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
-                <span v-else class="folder-file-thumb-icon"><Video v-if="file.mediaType === 'video'" :size="18" /><ImageIcon v-else :size="18" /></span>
+                <FilePlaceholder v-else :name="file.name" :kind="file.mediaType === 'video' ? 'video' : 'picture'" />
                 <span v-if="file.mediaType === 'video' && previewOf(file)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
               <button class="card-manage" :title="t('groupActions')" :data-yandex-file-menu="file.path" @click.stop="toggleMenu('file:' + file.path)">⋯</button>
@@ -225,6 +225,7 @@ import { alertDialog, confirmDialog, promptDialog } from '../../composables/appD
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
+import FilePlaceholder from './FilePlaceholder.vue';
 import { fileInfo, formatFileDateTime, nameParts } from '../../dashboard/file-info';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 
