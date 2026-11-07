@@ -187,95 +187,33 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <section
-      v-if="isLoggedIn && activeSection.kind === 'recent'"
-      id="feed-recent"
-      class="dash-section dashboard-recents dashboard-feed-section"
-      data-dashboard-view="recent"
-      data-feed-section="recent"
-    >
-      <div class="dash-section-head dashboard-recent-head">
-        <h2>{{ t('recents') }}</h2>
-        <div class="dashboard-recent-head-controls">
-          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
-        </div>
-      </div>
-      <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
-        {{ t('recentStale') }}
-        <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
-      </p>
-      <div
-        v-if="visibleRecent.length"
-        class="dashboard-recents-layout"
-        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
-        :aria-label="t('recentResources')"
-        data-recent-layout
-      >
-        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-          <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt" />
-          <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
-          <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
-          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
-          <span class="dashboard-recent-info">
-            <span
-              v-if="recentFolderPath(item)"
-              class="dashboard-recent-path"
-              :title="recentFolderPath(item)"
-              data-recent-folder-path
-            ><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span>
-            <span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span>
-            <span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
-          </span>
-        </button>
-      </div>
-      <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
-        {{ t('recentLoadFailed') }}
-        <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
-      </div>
-      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
-        {{ t('noRecentMatches') }}
-        <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-      </div>
-      <div v-else class="dash-grid" data-feed-grid="recent">
-          <button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
-            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-          </button>
-      </div>
-      <button
-        v-if="recentShowAllAvailable"
-        type="button"
-        class="dashboard-recent-show-all"
-        @click="toggleRecentExpanded"
-      >
-        <span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span>
-        <ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" />
-        <ChevronUp v-else :size="15" aria-hidden="true" />
-      </button>
-
-      <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
-        <h2>{{ t('folders') }}</h2>
-      </div>
-      <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
-        <button
-          v-for="folder in recentFolderTiles"
-          :key="'recent-folder-' + folder.id"
-          type="button"
-          class="subfolder-card"
-          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
-          :data-recent-folder-tile="folder.id"
-          @click="selectFolder(folder.id)"
-        >
-          <span class="subfolder-card-icon" aria-hidden="true">▤</span>
-          <span class="subfolder-card-name">{{ folder.name }}</span>
-          <span class="subfolder-card-count">{{ folder.displayCount }}</span>
-        </button>
-      </div>
-      <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
-        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="folders" @click.stop="openAddFromTile('folders')">
-          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-        </button>
-      </div>
-    </section>
+    <DashboardRecentSection
+      :is-logged-in="isLoggedIn"
+      :active-section-kind="activeSection.kind"
+      :visible-recent="visibleRecent"
+      :recent-view-mode="recentViewMode"
+      :recent-refresh-failed="recentRefreshFailed"
+      :recent-resources-length="recentResources.length"
+      :has-active-filter="hasActiveFilter"
+      :recent-show-all-available="recentShowAllAvailable"
+      :recent-expanded="recentExpanded"
+      :recent-total="recentTotal"
+      :recent-folder-tiles="recentFolderTiles"
+      :t="t"
+      :selection-key="selectionKey"
+      :is-selected="isSelected"
+      :toggle-selected="toggleSelected"
+      :open-recent-resource="openRecentResource"
+      :recent-folder-path="recentFolderPath"
+      :format-recent-opened-at="formatRecentOpenedAt"
+      :format-card-date-mobile="formatCardDateMobile"
+      :retry-recent="retryRecent"
+      :reset-filters="resetFilters"
+      :open-add-from-tile="openAddFromTile"
+      :set-recent-view-mode="setRecentViewMode"
+      :toggle-recent-expanded="toggleRecentExpanded"
+      :select-folder="selectFolder"
+    />
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
       class="dashboard-pull-status"
@@ -1290,6 +1228,7 @@ import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
 import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
 import DashboardToolbar from '../components/dashboard/DashboardToolbar.vue';
+import DashboardRecentSection from '../components/dashboard/DashboardRecentSection.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1402,6 +1341,7 @@ export default defineComponent({
     DashboardYandexDisk,
     DashboardSelectionBar,
     DashboardToolbar,
+    DashboardRecentSection,
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardAddDialog,
