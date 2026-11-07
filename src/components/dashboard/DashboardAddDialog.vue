@@ -2,16 +2,14 @@
   <!-- "+ Add": Where, the Create / Upload slider, square tiles. Canvas, HTML
        and Document are made at once; Template, Folder and every upload open
        their next step right under the tiles, the dialog growing smoothly. -->
-  <div class="dashboard-modal-backdrop dashboard-add-backdrop" @click.self="emit('close')">
-    <section
-      ref="dialog"
-      class="dashboard-modal dashboard-add-dialog"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="t('add')"
-      data-add-dialog
-      @keydown.esc.prevent.stop="emit('close')"
-    >
+  <UiModal
+    ref="dialog"
+    class="dashboard-modal dashboard-add-dialog"
+    backdrop-class="dashboard-add-backdrop"
+    :label="t('add')"
+    data-add-dialog
+    @close="emit('close')"
+  >
       <header class="dashboard-modal-head dashboard-add-head">
         <h3>{{ t('add') }}</h3>
         <button type="button" class="dashboard-modal-close" :aria-label="t('close')" @click="emit('close')"><X :size="16" aria-hidden="true" /></button>
@@ -99,7 +97,7 @@
             :placeholder="expanded === 'folder' ? t('groupNameTitle') : t('itemName')"
             data-add-name
           />
-          <button type="submit" class="btn-primary" data-add-name-create :disabled="busy || !name">{{ t('create') }}</button>
+          <UiButton type="submit" class="btn-primary" variant="primary" data-add-name-create :disabled="busy || !name">{{ t('create') }}</UiButton>
         </form>
         <div v-else-if="expanded === 'upload'" key="upload" class="dashboard-add-expand" data-add-expand="upload">
           <div
@@ -110,7 +108,7 @@
             @dragleave="dragOver = false"
             @drop.prevent="onDrop"
           >
-            <button type="button" class="btn-ghost btn-sm" data-add-choose @click="input?.click()">{{ t('chooseFiles') }}</button>
+            <UiButton class="btn-ghost btn-sm" variant="ghost" data-add-choose @click="input?.click()">{{ t('chooseFiles') }}</UiButton>
             <input ref="input" type="file" multiple :accept="importAccept(kind)" hidden data-add-input @change="onPicked" />
           </div>
           <ul v-if="entries.length" class="dashboard-add-files" data-add-files>
@@ -129,15 +127,14 @@
             </li>
           </ul>
           <div class="dashboard-modal-actions dashboard-modal-actions-row">
-            <button type="button" class="btn-ghost" @click="emit('close')">{{ t('cancel') }}</button>
-            <button type="button" class="btn-primary" data-add-submit :disabled="busy || !readyCount || checking" @click="submit">
+            <UiButton class="btn-ghost" variant="ghost" @click="emit('close')">{{ t('cancel') }}</UiButton>
+            <UiButton class="btn-primary" variant="primary" data-add-submit :disabled="busy || !readyCount || checking" @click="submit">
               {{ t('importRun').replace('{n}', String(readyCount)) }}
-            </button>
+            </UiButton>
           </div>
         </div>
       </Transition>
-    </section>
-  </div>
+  </UiModal>
 </template>
 
 <script setup lang="ts">
@@ -147,6 +144,8 @@ import { useI18n, type MessageKey } from '../../composables/useI18n';
 import { useSegmentThumb } from '../../composables/useSegmentThumb';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import { checkImportFile, importAccept, type ImportCheck, type ImportKind, type ImportProblem } from '../../dashboard/import-files';
+import UiButton from '../ui/UiButton.vue';
+import UiModal from '../ui/UiModal.vue';
 
 export type AddCreateKind = 'canvas' | 'html-document' | 'text-document';
 type CreateTile = AddCreateKind | 'interactive-template' | 'folder';
@@ -178,7 +177,7 @@ const expanded = ref<'' | CreateTile | 'upload'>(props.initialImport ? 'upload' 
 /** The step is a name to give: everything made here but a template. */
 const namedStep = computed(() => expanded.value !== '' && expanded.value !== 'upload' && expanded.value !== 'interactive-template');
 const kind = ref<ImportKind>(props.initialImport || 'file');
-const dialog = ref<HTMLElement | null>(null);
+const dialog = ref<{ root: HTMLElement | null } | null>(null);
 const tabsEl = ref<HTMLElement | null>(null);
 const input = ref<HTMLInputElement | null>(null);
 const nameInput = ref<HTMLInputElement | null>(null);
@@ -285,6 +284,6 @@ const submit = () => {
 };
 
 onMounted(() => {
-  void nextTick(() => dialog.value?.querySelector<HTMLElement>('button, select')?.focus());
+  void nextTick(() => dialog.value?.root?.querySelector<HTMLElement>('button, select')?.focus());
 });
 </script>
