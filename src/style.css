@@ -12776,12 +12776,16 @@ html { -webkit-tap-highlight-color: transparent; }
   position: fixed;
   z-index: 1000;
   max-width: min(320px, calc(100vw - 16px));
-  padding: 8px 10px;
+  padding: 10px 12px;
+  /* The dashboard's glass panels (card menus, folder menu, dialogs): it lives
+     in <body>, outside .dashboard-view, so it takes the same tokens itself. */
   border: 1px solid var(--ui-glass-border, var(--ui-border));
-  border-radius: 10px;
-  background: var(--ui-surface-elevated);
+  border-radius: var(--radius-md);
+  background: var(--ui-glass-tint), var(--ui-glass-bg, var(--ui-surface-elevated));
   color: var(--ui-text);
-  box-shadow: var(--shadow-dropdown);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow, var(--shadow-dropdown));
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   font-size: 12px;
   line-height: 1.35;
   pointer-events: none;
@@ -12831,12 +12835,12 @@ html { -webkit-tap-highlight-color: transparent; }
 }
 .folder-file-thumb-icon { display: grid; place-items: center; opacity: 0.7; }
 
-/* Folder tiles: a quarter narrower than the cards and twice as tall as they
+/* Folder tiles: a little narrower than the cards (162px) and twice as tall as they
    were - name and count on top, the last change at the bottom right. Home,
    inside a folder, and Yandex Disk folders alike. */
 @media (min-width: 721px) {
   .dashboard .dash-grid.subfolder-grid {
-    grid-template-columns: repeat(auto-fill, minmax(135px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(162px, 1fr));
   }
 }
 @media (max-width: 720px) {
@@ -12852,27 +12856,52 @@ html { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 720px) {
   .subfolder-card { min-height: 96px; }
 }
-/* A card with its picture square at the top right: the picture tells the
-   kind, so the name gets the icon's room (the tick still shows on hover). */
-.dashboard .folder-file-card.has-preview .folder-file-kind {
-  display: none;
+/* A picture's or a video's card (QCanva's and Yandex Disk's): the picture
+   square across the card's top, the kind's icon and the name under it. Size,
+   type and dates are in the hover panel. The list view keeps its one row. */
+.dashboard .dash-grid .folder-file-card.has-preview {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 12px;
 }
-/* The name sits beside the square; the type and date go under it, the
-   card's whole width (a photo's date with its time is longer than the room
-   beside the picture). The list view keeps its one row. */
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  position: relative;
+  top: auto;
+  right: auto;
+  order: -1;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  margin-bottom: 10px;
+  border-radius: 10px;
+}
 .dashboard .dash-grid .folder-file-card.has-preview .card-title {
-  min-height: 64px;
+  margin: 0 4px;
 }
 .dashboard .dash-grid .folder-file-card.has-preview .folder-file-meta {
-  margin-right: -50px;
+  display: none;
+}
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-play {
+  width: 34px;
+  height: 34px;
+}
+/* The list's own row (style above: `.dashboard-list-view .canvas-card`). */
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview {
+  flex-direction: row;
+  padding: 10px 42px 10px 14px;
+}
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-thumb {
+  position: static;
+  order: -1;
+  width: 32px;
+  height: 32px;
+  aspect-ratio: auto;
+  margin: 0;
+  border-radius: 8px;
 }
 .dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .card-title {
-  min-height: 0;
+  margin: 0;
 }
 .dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-meta {
-  margin-right: 0;
-}
-@media (max-width: 720px) {
-  .dashboard .dash-grid .folder-file-card.has-preview .card-title { min-height: 44px; }
-  .dashboard .dash-grid .folder-file-card.has-preview .folder-file-meta { margin-right: -32px; }
+  display: flex;
 }

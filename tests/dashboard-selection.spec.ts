@@ -140,7 +140,7 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await expect(page.locator('[data-selection-bar] [data-selection-count]')).toHaveText(`(${touched})`);
 
   // A new frame over one column starts over...
-  const routeFrom = { x: route.x + route.width / 2, y: bottom + 200 };
+  const routeFrom = { x: route.x + route.width / 2, y: bottom + 40 };
   const routeTo = { x: route.x + route.width / 2 + 5, y: route.y + route.height - 10 };
   const routeColumn = await touchedBy(page, routeFrom, routeTo);
   await page.mouse.move(routeFrom.x, routeFrom.y);
@@ -151,7 +151,7 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await expect(card(page, 'canvas:c-1')).toHaveAttribute('data-selected', 'true');
   await expect(card(page, 'text-document:doc-1')).not.toHaveAttribute('data-selected', 'true');
   // ...with Shift it adds.
-  const planFrom = { x: plan.x + plan.width / 2, y: bottom + 200 };
+  const planFrom = { x: plan.x + plan.width / 2, y: bottom + 40 };
   const planTo = { x: plan.x + plan.width / 2 + 5, y: plan.y + plan.height - 10 };
   const planColumn = await touchedBy(page, planFrom, planTo);
   await page.keyboard.down('Shift');
@@ -285,7 +285,8 @@ test('Drive files in a folder tick like the rest: box, frame, and move / delete 
   // The frame takes documents and files alike.
   const plan = (await card(page, 'text-document:doc-1').boundingBox())!;
   const doc = (await page.locator('[data-select-key="drive-file:f-pdf"]').boundingBox())!;
-  await page.mouse.move(plan.x + 10, doc.y + doc.height + 200);
+  // From just under the last row (the rows are as tall as their tallest card).
+  await page.mouse.move(plan.x + 10, doc.y + doc.height + 30);
   await page.mouse.down();
   await page.mouse.move(doc.x + doc.width - 10, plan.y + 20, { steps: 8 });
   await page.mouse.up();
