@@ -821,9 +821,8 @@ import { useMobileCanvasMode } from "../composables/useMobileCanvasMode";
 import { useMinimapPreference } from "../composables/useMinimapPreference";
 import { registerBackHandler } from "../composables/useBackHandler";
 import { computeResizedRect } from "../canvas/resizeMath";
-import { keepLocalOrder } from '../canvas/keepLocalOrder';
 import { uploadImage } from "../api/client";
-import { type Drawing, type ActiveDrawingTool, strokeToPath, applyDrawOp, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
+import { type Drawing, type ActiveDrawingTool, strokeToPath, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
 import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
@@ -838,6 +837,7 @@ import { useCanvasTouchState } from '../canvas/useCanvasTouchState';
 import { useCanvasDrawing } from '../canvas/useCanvasDrawing';
 import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
 import { useCanvasHistory } from '../canvas/useCanvasHistory';
+import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1060,61 +1060,14 @@ export default defineComponent({
       emit("op", op);
     };
 
-    // Apply a remote operation without triggering change/op emit
-    const applyRemoteOp = (op: CanvasOp) => {
-      switch (op.type) {
-        case 'nodes-move':
-          for (const m of op.moves) {
-            const node = nodes.value.find((n) => n.id === m.id);
-            if (node) { node.x = m.x; node.y = m.y; }
-          }
-          break;
-        case 'node-resize': {
-          const node = nodes.value.find((n) => n.id === op.id);
-          if (node) { node.x = op.x; node.y = op.y; node.width = op.width; node.height = op.height; }
-          break;
-        }
-        case 'node-add':
-          if (!nodes.value.find((n) => n.id === op.node.id)) {
-            nodes.value.push({ ...op.node });
-          }
-          break;
-        case 'node-delete': {
-          const ids = new Set(op.ids);
-          edges.value = edges.value.filter((ed) => !ids.has(ed.fromNode) && !ids.has(ed.toNode));
-          nodes.value = nodes.value.filter((n) => !ids.has(n.id));
-          break;
-        }
-        case 'node-update': {
-          const node = nodes.value.find((n) => n.id === op.id);
-          if (node) {
-            Object.assign(node, op.changes);
-            if (Object.prototype.hasOwnProperty.call(op.changes, 'positionLocked') || Object.prototype.hasOwnProperty.call(op.changes, 'zIndex')) {
-              rebalanceNodeLayers(false);
-            }
-          }
-          break;
-        }
-        case 'edge-add':
-          if (!edges.value.find((e) => e.id === op.edge.id)) {
-            edges.value.push({ ...op.edge });
-          }
-          break;
-        case 'edge-delete':
-          edges.value = edges.value.filter((e) => e.id !== op.id);
-          break;
-        case 'edge-update': {
-          const edge = edges.value.find((e) => e.id === op.id);
-          if (edge) Object.assign(edge, op.changes);
-          break;
-        }
-        case 'draw-add':
-        case 'draw-remove':
-        case 'draw-update':
-          drawings.value = applyDrawOp(drawings.value, op as any);
-          break;
-      }
-    };
+    const remoteSync = useCanvasRemoteSync({
+      nodes,
+      edges,
+      drawings,
+      rebalanceNodeLayers: () => rebalanceNodeLayers(false),
+    });
+    const applyRemoteOp = (op: CanvasOp) => remoteSync.applyRemoteOp(op as never);
+    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => remoteSync.applyRemoteData(data);
 
     // Watch for prop changes
     watch(() => props.initialData, (newData) => {
@@ -3828,15 +3781,6 @@ export default defineComponent({
         vpX, vpY, vpW, vpH,
       };
     });
-
-    // Apply remote canvas data without triggering change event. In THIS
-    // client's element order (see keepLocalOrder): a collaborator's snapshot
-    // taken verbatim reshuffled the DOM and repainted every image.
-    const applyRemoteData = (data: { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings?: Drawing[] }) => {
-      nodes.value = keepLocalOrder(nodes.value, data.nodes || []);
-      edges.value = keepLocalOrder(edges.value, data.edges || []);
-      drawings.value = data.drawings || [];
-    };
 
     const getCanvasData = (): { nodes: CanvasNode[]; edges: CanvasEdge[]; drawings: Drawing[] } => ({
       nodes: JSON.parse(JSON.stringify(nodes.value)),
