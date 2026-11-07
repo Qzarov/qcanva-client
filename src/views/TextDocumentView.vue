@@ -689,13 +689,7 @@ import { TableOfContents, type TableOfContentsLabels, focusHeading } from '../te
 import { HeadingId, ensureHeadingIds, findHeadingById, headingIdEntries } from '../text-documents/heading-id';
 import { BlockId } from '../text-documents/block-id';
 import { HeadingLink } from '../text-documents/heading-link-node';
-import {
-  SLASH_MENU_ITEMS,
-  SlashMenu,
-  type SlashMenuController,
-  type SlashMenuItem,
-  type SlashMenuRender,
-} from '../text-documents/slash-menu';
+import { SlashMenu } from '../text-documents/slash-menu';
 import {
   insertMentionAtRange,
   MentionMenu,
@@ -745,6 +739,7 @@ import { base64ToUint8Array, uint8ArrayToBase64 } from '../text-documents/projec
 import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
 import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
+import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -1630,6 +1625,25 @@ export default defineComponent({
       },
     });
 
+    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
+    const slashMenu = useTextDocumentSlashMenu({
+      getEditor: () => readEditor(),
+      t,
+      isMobileLayout: isMobileEditorLayout,
+    });
+    const {
+      slashOpen,
+      slashItems,
+      slashIndex,
+      slashMenuStyle,
+      slashLabel,
+      slashController,
+      selectSlashItem,
+      cancelSlashMenu,
+      closeSlashMenu,
+      SLASH_MENU_ITEMS,
+    } = slashMenu;
+
     /**
      * SLASH MENU state.
      *
@@ -1639,7 +1653,6 @@ export default defineComponent({
      * callback, kept so a click or Enter goes through the plugin's path (which
      * knows the range to replace) rather than reimplementing it.
      */
-    const slashOpen = ref(false);
     // Asleep in a background tab the document closes its menus and sheets
     // (teleported to <body>, and each holding a window listener while open).
     useViewActivity({
@@ -1649,105 +1662,10 @@ export default defineComponent({
         linkActionOpen.value = false;
         linkEditorOpen.value = false;
         showHistory.value = false;
-        slashOpen.value = false;
+        closeSlashMenu();
         if (outlineResizing.value) stopOutlineResize();
       },
     });
-    const slashItems = ref<SlashMenuItem[]>([]);
-    const slashIndex = ref(0);
-    const slashRect = ref<{ top: number; left: number } | null>(null);
-    let slashCommand: ((item: SlashMenuItem) => void) | null = null;
-    // Escape dismisses the popup while the caret stays inside the typed
-    // `/query`, so the suggestion plugin is still "active". Without this flag
-    // the very next keystroke would pop it straight back open.
-    let slashDismissed = false;
-
-    const slashLabel = (item: SlashMenuItem) => t(item.labelKey);
-    const slashMenuStyle = computed(() =>
-      slashRect.value
-        ? { top: `${slashRect.value.top}px`, left: `${slashRect.value.left}px` }
-        : undefined,
-    );
-
-    const applySlashRender = (render: SlashMenuRender) => {
-      slashItems.value = render.items;
-      slashIndex.value = 0;
-      slashCommand = render.command;
-      // A DOMRect is not reactive and jsdom reports zeroes; only the two
-      // numbers the popup needs are copied out.
-      slashRect.value = render.rect
-        ? { top: render.rect.bottom + 6, left: render.rect.left }
-        : null;
-      slashOpen.value = !slashDismissed;
-    };
-
-    const closeSlashMenu = () => {
-      slashOpen.value = false;
-      slashItems.value = [];
-      slashIndex.value = 0;
-      slashCommand = null;
-    };
-
-    // Same as pressing Escape (backdrop tap / the sheet's own close button
-    // have no keyboard to send that through) - the caret stays inside the
-    // typed "/query", so slashDismissed stops the very next keystroke from
-    // reopening the menu the instant it closes.
-    const cancelSlashMenu = () => {
-      slashDismissed = true;
-      closeSlashMenu();
-    };
-
-    const selectSlashItem = (index: number) => {
-      const item = slashItems.value[index];
-      if (!item || !slashCommand) return;
-      slashCommand(item);
-    };
-
-    const isMobileEditorLayout = () => matchesMedia(LAYOUT.phone);
-
-    const slashController: SlashMenuController = {
-      onOpen: (render) => {
-        slashDismissed = false;
-        applySlashRender(render);
-        // On mobile the menu IS the primary UI once "/" is typed - the
-        // keyboard has nothing left to do (no further typing is expected;
-        // the user taps an item) and just covers the sheet, so it's closed
-        // here rather than left open underneath. Each item's own run()
-        // already calls .chain().focus() when applying a command, which
-        // reopens the keyboard exactly when the chosen block needs typing.
-        if (isMobileEditorLayout()) editor.value?.view.dom.blur();
-      },
-      onUpdate: (render) => applySlashRender(render),
-      onClose: () => {
-        slashDismissed = false;
-        closeSlashMenu();
-      },
-      onKeyDown: (event) => {
-        if (!slashOpen.value) return false;
-        const total = slashItems.value.length;
-        if (event.key === 'Escape') {
-          slashDismissed = true;
-          closeSlashMenu();
-          return true;
-        }
-        if (event.key === 'ArrowDown') {
-          if (total) slashIndex.value = (slashIndex.value + 1) % total;
-          return true;
-        }
-        if (event.key === 'ArrowUp') {
-          if (total) slashIndex.value = (slashIndex.value - 1 + total) % total;
-          return true;
-        }
-        if (event.key === 'Enter') {
-          // Nothing to insert is still a consumed Enter: the query is showing
-          // "no matching blocks", and a newline there would be a surprise.
-          selectSlashItem(slashIndex.value);
-          return true;
-        }
-        return false;
-      },
-    };
-
     /**
      * The arrow keys move `slashIndex`/`mentionIndex` past the popup's own
      * `max-height`/`overflow-y: auto` window without touching scroll at all,
@@ -1759,11 +1677,6 @@ export default defineComponent({
       await nextTick();
       document.querySelector(selector)?.scrollIntoView({ block: 'nearest' });
     };
-
-    watch(slashIndex, () => {
-      const item = slashItems.value[slashIndex.value];
-      if (item) void scrollHighlightedIntoView(`[data-slash-item="${item.id}"]`);
-    });
 
     /**
      * MENTION MENU state, structurally the same as the slash menu above
