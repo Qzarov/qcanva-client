@@ -597,6 +597,7 @@
                     @files="folderDriveFiles = $event"
                     @toggle-select="toggleSelected"
                     @open-image="openDriveImage"
+                    @previews="folderDrivePreviews = $event"
                   />
                 </div>
               </div>
@@ -1313,6 +1314,7 @@ import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
+import { isPictureFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
@@ -3916,11 +3918,13 @@ export default defineComponent({
       loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
       download: () => downloadYandexFile(file),
     });
+    /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
+    const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
     const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null }): MediaViewerItem => ({
       key: `drive-file:${file.id}`,
       name: file.name,
       date: file.updatedAt ?? null,
-      preview: null,
+      preview: folderDrivePreviews.value[file.id] ?? null,
       loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
       download: async () => {
         try {
@@ -3930,7 +3934,7 @@ export default defineComponent({
         }
       },
     });
-    const isDriveImage = (file: DriveItem) => file.kind === 'photo' || Boolean(file.mime?.startsWith('image/'));
+    const isDriveImage = (file: DriveItem) => isPictureFile(file);
     const openYandexImage = (file: YandexItem) => {
       const images = yandexFiles.value.filter((item) => item.mediaType === 'image');
       const list = images.some((item) => item.path === file.path) ? images : [file];
@@ -5032,6 +5036,7 @@ export default defineComponent({
       openYandexImage,
       openDriveImage,
       mediaViewer,
+      folderDrivePreviews,
       uploadToYandex,
       setFeedback,
       selectedSize,

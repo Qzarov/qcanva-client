@@ -120,9 +120,10 @@ test('a frame drawn from an empty spot ticks every card it touches; with Shift i
   await openDashboardFolder(page, 'folder-a');
   const plan = (await card(page, 'text-document:doc-1').boundingBox())!;
   const route = (await card(page, 'canvas:c-1').boundingBox())!;
-  const bottom = Math.max(plan.y + plan.height, route.y + route.height);
+  // The empty space under every card (whatever the rows' heights are).
+  const bottom = Math.max(...(await page.locator('[data-select-key]').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().bottom))));
   // From the empty space under the cards, up over both of them.
-  const start = { x: Math.min(plan.x, route.x) + 10, y: bottom + 260 };
+  const start = { x: Math.min(plan.x, route.x) + 10, y: bottom + 60 };
   await page.mouse.move(start.x, start.y);
   await page.mouse.down();
   await page.mouse.move(start.x + 60, start.y - 80, { steps: 4 });

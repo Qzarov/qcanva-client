@@ -5,7 +5,7 @@
  */
 
 import { expect, test, type Page } from '@playwright/test';
-import { openDashboardFolder, serveDashboard } from './support/fake-dashboard-server';
+import { openDashboardFolder, PNG, serveDashboard } from './support/fake-dashboard-server';
 
 const SHOTS = process.env.SHOT_DIR;
 
@@ -85,6 +85,38 @@ test.describe('a folder\'s files', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/file-info.png` });
     await page.mouse.move(5, 500);
     await expect(info).not.toHaveClass(/visible/);
+  });
+
+  test('videos and big or unusual pictures get the card picture the hub made; one still being made comes a moment later', async ({ page }) => {
+    await openDashboard(page);
+    const asked: string[][] = [];
+    let catAsks = 0;
+    await page.route('http://localhost:3001/api/drive/thumbs/links', async (route) => {
+      const { fileIds } = JSON.parse(route.request().postData() || '{}') as { fileIds: string[] };
+      asked.push(fileIds);
+      const links: Record<string, unknown> = {};
+      for (const id of fileIds) {
+        if (id === 'f-cat') links[id] = ++catAsks > 1 ? { status: 'ready', url: `/api/test-thumb/${id}` } : { status: 'pending' };
+        else links[id] = { status: 'ready', url: `/api/test-thumb/${id}` };
+      }
+      await route.fulfill({ json: { links } });
+    });
+    await page.route('http://localhost:3001/api/test-thumb/**', (route) => route.fulfill({ status: 200, contentType: 'image/webp', body: PNG }));
+    await openDashboardFolder(page, 'folder-a');
+    await expect(page.locator('[data-dashboard-view="folder"]')).toBeVisible();
+
+    // A video: a frame, with a play mark.
+    const clip = page.locator('[data-folder-file="f-clip"]');
+    await expect(clip.locator('[data-folder-file-preview]')).toHaveAttribute('src', /test-thumb\/f-clip/);
+    await expect(clip.locator('[data-folder-file-play]')).toBeVisible();
+    // A 40 MB picture, too big to load as it is: the small one.
+    await expect(page.locator('[data-folder-file="f-huge"] [data-folder-file-preview]')).toHaveAttribute('src', /test-thumb\/f-huge/);
+    // Still being made: the original meanwhile, then the card picture.
+    await expect(page.locator('[data-folder-file="f-cat"] [data-folder-file-preview]')).toHaveAttribute('src', /test-thumb\/f-cat/, { timeout: 10000 });
+    // Asked in batches, and only for pictures and videos.
+    expect(asked.flat()).not.toContain('f-pdf');
+    expect(asked[0]!.length).toBeGreaterThan(1);
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/drive-thumbs.png` });
   });
 
   test('a click downloads the file', async ({ page }) => {

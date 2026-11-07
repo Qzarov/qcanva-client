@@ -70,6 +70,8 @@ export interface DriveItem {
   snippet?: string | null;
 }
 
+export type DriveThumbLink = { status: 'ready'; url: string } | { status: 'pending' } | { status: 'none' };
+
 export interface DriveItemsResponse {
   items: DriveItem[];
   nextCursor: string | null;
@@ -578,6 +580,18 @@ export const driveApi = {
   getDownloadLink(id: string): Promise<{ url: string; expiresAt: string }> {
     return request<{ url: string; expiresAt: string }>(`/drive/files/${encodeURIComponent(id)}/download-link`, {
       method: 'POST',
+    });
+  },
+
+  /**
+   * Card pictures the hub made (videos, HEIC, RAW, photos): a signed link
+   * where one is ready, "pending" while it is being made, "none" when there
+   * will be none. Files the viewer cannot read are left out.
+   */
+  getThumbLinks(fileIds: string[]): Promise<{ links: Record<string, DriveThumbLink> }> {
+    return request<{ links: Record<string, DriveThumbLink> }>('/drive/thumbs/links', {
+      method: 'POST',
+      body: JSON.stringify({ fileIds }),
     });
   },
 

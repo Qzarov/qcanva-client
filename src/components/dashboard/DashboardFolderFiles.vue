@@ -7,7 +7,7 @@
     :key="file.id"
     :ref="(el) => watchVisible(el as Element | null, file)"
     class="canvas-card folder-file-card"
-    :class="{ 'has-preview': Boolean(previews[file.id]) }"
+    :class="{ 'has-preview': isMedia(file) }"
     role="button"
     tabindex="0"
     :data-folder-file="file.id"
@@ -45,14 +45,19 @@
       <span v-if="!isMedia(file)">{{ formatFileSize(file.sizeBytes) }}</span>
       <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.updatedAt, locale) : formatDate(file.updatedAt) }}</span>
     </div>
-    <span v-if="previews[file.id]" class="folder-file-thumb" aria-hidden="true">
+    <!-- A picture's or a video's place is kept from the start, so the card does
+         not grow when its picture arrives; until then the kind's icon. -->
+    <span v-if="isMedia(file)" class="folder-file-thumb" :class="{ 'is-empty': !previews[file.id] }" aria-hidden="true">
       <img
+        v-if="previews[file.id]"
         :src="previews[file.id]"
         alt=""
         decoding="async"
         data-folder-file-preview
         @error="dropPreview(file.id)"
       />
+      <span v-else class="folder-file-thumb-icon"><Video v-if="isVideo(file)" :size="18" /><ImageIcon v-else :size="18" /></span>
+      <span v-if="isVideo(file) && previews[file.id]" class="folder-file-play" data-folder-file-play><Play :size="14" aria-hidden="true" /></span>
     </span>
   </article>
   <p v-if="failed" class="folder-files-note" role="alert" data-folder-files-error>{{ t('folderFilesLoadFailed') }}</p>
@@ -66,7 +71,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { Check, File as FileIcon, Image as ImageIcon, Video } from '@lucide/vue';
+import { Check, File as FileIcon, Image as ImageIcon, Play, Video } from '@lucide/vue';
 import {
   driveApi,
   downloadDriveFile,
@@ -74,7 +79,9 @@ import {
   getFileExtension,
   resolveDownloadUrl,
   type DriveItem,
+  type DriveThumbLink,
 } from '../../api/drive';
+import { isBrowserImage, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, formatFileDateTime } from '../../dashboard/file-info';
@@ -101,6 +108,8 @@ const emit = defineEmits<{
   /** The files shown, for the dashboard's actions on what is ticked. */
   files: [files: DriveItem[]];
   'toggle-select': [key: string];
+  /** The card pictures found so far, for the full-screen viewer. */
+  previews: [previews: Readonly<Record<string, string>>];
   /** A picture was clicked: the dashboard shows it full screen. */
   'open-image': [file: DriveItem];
 }>();
@@ -117,8 +126,9 @@ const files = ref<DriveItem[]>([]);
 const hasMore = ref(false);
 const failed = ref(false);
 
-const isImage = (file: DriveItem) => file.kind === 'photo' || Boolean(file.mime?.startsWith('image/'));
-const isVideo = (file: DriveItem) => file.kind === 'video' || Boolean(file.mime?.startsWith('video/'));
+// By type or by extension: a HEIC or a RAW often comes as application/octet-stream.
+const isImage = (file: DriveItem) => isPictureFile(file);
+const isVideo = (file: DriveItem) => isVideoFile(file);
 const isMedia = (file: DriveItem) => isImage(file) || isVideo(file);
 const infoOf = (file: DriveItem) => fileInfo({
   name: file.name,
@@ -189,13 +199,23 @@ const observed = new Map<Element, DriveItem>();
 function resetPreviews() {
   for (const key of Object.keys(previews)) delete previews[key];
   queue.length = 0;
+  waiting.clear();
+  retries.clear();
+  if (batchTimer) clearTimeout(batchTimer);
+  if (retryTimer) clearTimeout(retryTimer);
+  batchTimer = null;
+  retryTimer = null;
   requested.clear();
   observer?.disconnect();
   observed.clear();
 }
 
-const wantsPreview = (file: DriveItem) => isImage(file) && (file.sizeBytes ?? 0) <= PREVIEW_MAX_BYTES;
+/** Every picture and video: the hub makes card pictures for them (HEIC, RAW and video frames too). */
+const wantsPreview = (file: DriveItem) => isMedia(file);
+/** No card picture from the hub: a picture the browser shows as it is, if not too big. */
+const canShowOriginal = (file: DriveItem) => isBrowserImage(file) && (file.sizeBytes ?? 0) <= PREVIEW_MAX_BYTES;
 
+// The original, by its download link: the fallback when the hub has no card picture.
 function pump() {
   while (running < PREVIEW_CONCURRENCY && queue.length) {
     const file = queue.shift()!;
@@ -207,12 +227,73 @@ function pump() {
       .finally(() => { running -= 1; pump(); });
   }
 }
+function showOriginal(file: DriveItem) {
+  if (!canShowOriginal(file)) return;
+  queue.push(file);
+  pump();
+}
+
+// Card pictures from the hub, asked for in batches of what came on screen.
+const THUMB_BATCH_DELAY_MS = 120;
+const THUMB_RETRY_MS = 4000;
+const THUMB_RETRIES = 15;
+const waiting = new Map<string, DriveItem>();
+const retries = new Map<string, number>();
+let batchTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+/** An older hub without card pictures: back to the originals for good. */
+let hubThumbs = true;
+
+function scheduleBatch(delay = THUMB_BATCH_DELAY_MS) {
+  if (batchTimer) return;
+  batchTimer = setTimeout(() => { batchTimer = null; void flushThumbs(); }, delay);
+}
+
+async function flushThumbs() {
+  const batch = [...waiting.values()];
+  waiting.clear();
+  if (!batch.length) return;
+  const forLoad = loadId;
+  if (!hubThumbs) {
+    batch.forEach(showOriginal);
+    return;
+  }
+  let links: Record<string, DriveThumbLink>;
+  try {
+    links = (await driveApi.getThumbLinks(batch.map((file) => file.id)))?.links ?? {};
+  } catch (error) {
+    if (forLoad !== loadId) return;
+    if ((error as { status?: number } | null)?.status === 404) hubThumbs = false;
+    batch.forEach(showOriginal);
+    return;
+  }
+  if (forLoad !== loadId) return;
+  const again: DriveItem[] = [];
+  for (const file of batch) {
+    const link = links[file.id];
+    if (link?.status === 'ready') previews[file.id] = resolveDownloadUrl(link.url);
+    else if (link?.status === 'pending' && (retries.get(file.id) ?? 0) < THUMB_RETRIES) {
+      retries.set(file.id, (retries.get(file.id) ?? 0) + 1);
+      again.push(file);
+      // Meanwhile the original, where the browser shows it.
+      if (!previews[file.id]) showOriginal(file);
+    } else if (!previews[file.id]) showOriginal(file);
+  }
+  if (again.length) {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => {
+      retryTimer = null;
+      for (const file of again) waiting.set(file.id, file);
+      void flushThumbs();
+    }, THUMB_RETRY_MS);
+  }
+}
 
 function requestPreview(file: DriveItem) {
   if (requested.has(file.id) || !wantsPreview(file)) return;
   requested.add(file.id);
-  queue.push(file);
-  pump();
+  waiting.set(file.id, file);
+  scheduleBatch();
 }
 
 function watchVisible(el: Element | null, file: DriveItem) {
@@ -238,8 +319,12 @@ function dropPreview(id: string) {
   delete previews[id];
 }
 
+watch(previews, (value) => emit('previews', { ...value }), { deep: true });
+
 onBeforeUnmount(() => {
   loadId += 1;
+  if (batchTimer) clearTimeout(batchTimer);
+  if (retryTimer) clearTimeout(retryTimer);
   observer?.disconnect();
 });
 

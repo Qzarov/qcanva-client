@@ -12840,3 +12840,27 @@ html { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .ui-file-info { transition: none; transform: none; }
 }
+
+/* A video's card picture carries a play mark, so it reads as a video. */
+.folder-file-thumb .folder-file-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.folder-file-thumb .folder-file-play svg { margin-left: 2px; }
+/* The picture's place before it arrives: the kind's icon on the strip. */
+.folder-file-thumb.is-empty {
+  display: grid;
+  place-items: center;
+  color: var(--ui-text-muted);
+}
+.folder-file-thumb-icon { display: grid; place-items: center; opacity: 0.7; }
