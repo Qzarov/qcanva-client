@@ -225,69 +225,33 @@
       <div v-if="selBox.active" class="selection-box" :style="selBoxStyle"></div>
 
       <!-- Text nodes -->
-      <div
+      <CanvasNodeText
         v-for="node in textNodes"
         :key="node.id"
-        class="canvas-node"
-        :data-node-id="node.id"
-        :class="[nodeColorClass(node), nodePresentationClass(node), { 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }]"
-        :style="nodePosition(node)"
-        @mousedown.stop="onNodeDragStart($event, node)"
-        @dblclick.prevent.stop="onNodeDblClick(node)"
-        @contextmenu.prevent.stop="onNodeContextMenu($event, node)"
-      >
-        <!-- Edit mode -->
-        <textarea
-          v-if="editingNodeId === node.id && !isMobileLayout"
-          class="node-editor"
-          :style="{
-            backgroundColor: 'var(--content-canvas-editor-surface)',
-            color: resolveNodeFontColor(node.fontColor) || 'var(--content-canvas-editor-text)',
-          }"
-          :value="node.text"
-          @input="onEditInput($event, node)"
-          @blur="onEditEnd"
-          @mousedown.stop
-          @mousemove.stop
-          @mouseup.stop
-          @click.stop
-          @dblclick.stop
-          @keydown.stop="onTextEditorKeydown"
-          @keyup.stop
-          @keydown.escape="onEditEnd"
-          ref="editorRefs"
-        ></textarea>
-        <!-- View mode -->
-        <div v-else class="node-content" :style="{ color: resolveNodeFontColor(node.fontColor) || undefined }">
-          <div
-            class="node-first-line"
-            :style="{ textAlign: getNodeFirstLineAlignValue(node) }"
-            v-html="renderMarkdown(getNodeFirstLine(node.text || ''))"
-          ></div>
-          <div
-            v-if="getNodeRestText(node.text || '')"
-            class="node-rest-content"
-            :style="{ textAlign: node.textAlign || undefined }"
-            v-html="renderMarkdown(getNodeRestText(node.text || ''))"
-          ></div>
-        </div>
-        <!-- Resize handles (visible when selected) -->
-        <template v-if="isNodeSelected(node.id) && editingNodeId !== node.id && !isNodePositionLocked(node.id)">
-          <div class="resize-handle resize-handle-br" data-handle="br" @mousedown.stop="onResizeStart($event, node, 'br')"></div>
-          <div class="resize-handle resize-handle-bl" data-handle="bl" @mousedown.stop="onResizeStart($event, node, 'bl')"></div>
-          <div class="resize-handle resize-handle-tr" data-handle="tr" @mousedown.stop="onResizeStart($event, node, 'tr')"></div>
-          <div class="resize-handle resize-handle-tl" data-handle="tl" @mousedown.stop="onResizeStart($event, node, 'tl')"></div>
-          <div class="resize-handle resize-handle-r" data-handle="r" @mousedown.stop="onResizeStart($event, node, 'r')"></div>
-          <div class="resize-handle resize-handle-l" data-handle="l" @mousedown.stop="onResizeStart($event, node, 'l')"></div>
-          <div class="resize-handle resize-handle-t" data-handle="t" @mousedown.stop="onResizeStart($event, node, 't')"></div>
-          <div class="resize-handle resize-handle-b" data-handle="b" @mousedown.stop="onResizeStart($event, node, 'b')"></div>
-        </template>
-        <!-- Connection points (visible on hover) -->
-        <div class="conn-point conn-top" data-conn-side="top" @mousedown.stop="onConnStart($event, node, 'top')"></div>
-        <div class="conn-point conn-bottom" data-conn-side="bottom" @mousedown.stop="onConnStart($event, node, 'bottom')"></div>
-        <div class="conn-point conn-left" data-conn-side="left" @mousedown.stop="onConnStart($event, node, 'left')"></div>
-        <div class="conn-point conn-right" data-conn-side="right" @mousedown.stop="onConnStart($event, node, 'right')"></div>
-      </div>
+        :node="node"
+        :state-class="{ 'is-dragging': dragNodeId === node.id, 'is-selected': isNodeSelected(node.id), 'is-locked': isNodePositionLocked(node.id), 'is-flash': flashNodeId === node.id, 'is-hidden': node.hidden }"
+        :node-color-class="nodeColorClass"
+        :node-presentation-class="nodePresentationClass"
+        :node-position="nodePosition"
+        :editing-node-id="editingNodeId"
+        :is-mobile-layout="isMobileLayout"
+        :is-node-selected="isNodeSelected"
+        :is-node-position-locked="isNodePositionLocked"
+        :on-node-drag-start="onNodeDragStart"
+        :on-node-dbl-click="onNodeDblClick"
+        :on-node-context-menu="onNodeContextMenu"
+        :on-resize-start="onResizeStart"
+        :on-conn-start="onConnStart"
+        :resolve-node-font-color="resolveNodeFontColor"
+        :on-edit-input="onEditInput"
+        :on-edit-end="onEditEnd"
+        :on-text-editor-keydown="onTextEditorKeydown"
+        :render-markdown="renderMarkdown"
+        :get-node-first-line="getNodeFirstLine"
+        :get-node-rest-text="getNodeRestText"
+        :get-node-first-line-align-value="getNodeFirstLineAlignValue"
+        :editor-refs="editorRefs"
+      />
 
       <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
       <Teleport to="body">
@@ -759,6 +723,7 @@ import CanvasNodeLink from './canvas/CanvasNodeLink.vue';
 import CanvasNodeImage from './canvas/CanvasNodeImage.vue';
 import CanvasNodeEmbed from './canvas/CanvasNodeEmbed.vue';
 import CanvasNodeDocument from './canvas/CanvasNodeDocument.vue';
+import CanvasNodeText from './canvas/CanvasNodeText.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
 import {DEFAULT_RULER_SETTINGS,type RulerSettings,type RulerMeasurement} from '../canvas/ruler';
 import { resolveCanvasImageUrl } from '../canvas/imageUrls';
@@ -855,7 +820,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
