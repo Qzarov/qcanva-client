@@ -839,6 +839,7 @@ import { useCanvasTextEditor } from '../canvas/useCanvasTextEditor';
 import { useCanvasHistory } from '../canvas/useCanvasHistory';
 import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
 import { useCanvasMinimap } from '../canvas/useCanvasMinimap';
+import { useCanvasEmbeds } from '../canvas/useCanvasEmbeds';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1182,198 +1183,6 @@ export default defineComponent({
     const formatDndModifier = (score: number) => formatModifier(abilityModifier(score));
     const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
     const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { if (!isDndInteracting(node)) return; const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
-
-    // ===== Embedded document nodes =====
-    type EmbeddedDocumentEntry = {
-      title: string;
-      srcdoc: string;
-      excerpt: string;
-      loading: boolean;
-      error: boolean;
-      errorText: string;
-      empty: boolean;
-    };
-
-    const embeddedDocumentCache = reactive<Record<string, EmbeddedDocumentEntry>>({});
-
-    const documentCacheKey = (kind: "html" | "text", id: string) => kind + ":" + id;
-
-    const documentNodeKind = (node: CanvasNode): "html" | "text" =>
-      node.documentKind === "text" ? "text" : "html";
-
-    const stripHtmlToText = (html: string) =>
-      html
-        .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
-        .replace(/<[^>]*>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&amp;/gi, "&")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/\s+/g, " ")
-        .trim();
-
-    /** A document with no text and no embedded media renders as a blank frame, so label it instead. */
-    const isBlankDocument = (html: string) =>
-      !stripHtmlToText(html) && !/<(img|svg|video|canvas|iframe|table|hr)\b/i.test(html);
-
-    /** Wrap a rich-text fragment into a standalone document so the preview iframe renders readable typography. */
-    const wrapDocumentFragment = (html: string, theme: 'light' | 'dark') => {
-      const palette = theme === 'light'
-        ? {
-            surface: '#ffffff', text: '#172019', muted: '#536156', link: '#0b626b',
-            border: 'rgba(23,32,25,0.16)', code: '#f6f8fa',
-          }
-        : {
-            surface: '#191b20', text: '#f8fafc', muted: 'rgba(248,250,252,0.7)', link: '#7dd3fc',
-            border: 'rgba(255,255,255,0.16)', code: 'rgba(255,255,255,0.06)',
-          };
-      return (
-      '<!doctype html><html><head><meta charset="utf-8"><style>' +
-      `html,body{margin:0;padding:12px 14px;background:${palette.surface};color:${palette.text};` +
-      "font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}" +
-      "h1,h2,h3,h4{line-height:1.25;margin:0 0 .4em;}h1{font-size:1.5em}h2{font-size:1.25em}h3{font-size:1.1em}" +
-      "p{margin:0 0 .7em}ul,ol{margin:0 0 .7em;padding-left:1.3em}" +
-      `blockquote{margin:0 0 .7em;padding-left:10px;border-left:3px solid ${palette.border};color:${palette.muted}}` +
-      `a{color:${palette.link}}` +
-      `img{max-width:100%;height:auto}hr{border:0;border-top:1px solid ${palette.border};margin:1em 0}` +
-      `table{border-collapse:collapse;max-width:100%}td,th{border:1px solid ${palette.border};padding:4px 6px}` +
-      `pre{background:${palette.code};padding:8px;border-radius:4px;overflow:auto}` +
-      "code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}" +
-      "</style></head><body>" + html + "</body></html>"
-      );
-    };
-
-    const loadEmbeddedDocument = async (kind: "html" | "text", id: string) => {
-      const key = documentCacheKey(kind, id);
-      if (embeddedDocumentCache[key]) return;
-      embeddedDocumentCache[key] = { title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false };
-      try {
-        const { htmlDocuments, textDocuments } = await import("../api/client");
-        let title = "";
-        let html = "";
-        if (kind === "html") {
-          const res: any = await htmlDocuments.get(id);
-          title = res?.document?.title || "Untitled";
-          html = res?.document?.html || "";
-        } else {
-          const res: any = await textDocuments.get(id);
-          title = res?.document?.title || "Untitled";
-          html = res?.document?.snapshot?.html || "";
-        }
-        embeddedDocumentCache[key] = {
-          title,
-          // HTML documents are stored as complete documents; text documents come back as a fragment.
-          // Keep text fragments raw so their iframe palette reacts to a live theme switch.
-          srcdoc: html,
-          excerpt: stripHtmlToText(html).slice(0, 400),
-          loading: false,
-          error: false,
-          errorText: "",
-          empty: isBlankDocument(html),
-        };
-      } catch {
-        embeddedDocumentCache[key] = { title: "Error", srcdoc: "", excerpt: "", loading: false, error: true, errorText: "Cannot load document", empty: false };
-      }
-    };
-
-    const EMPTY_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
-      title: "", srcdoc: "", excerpt: "", loading: true, error: false, errorText: "", empty: false,
-    };
-    const MISSING_DOCUMENT_ENTRY: EmbeddedDocumentEntry = {
-      title: "Документ не выбран", srcdoc: "", excerpt: "", loading: false, error: true,
-      errorText: "Документ не выбран", empty: false,
-    };
-
-    const documentData = (node: CanvasNode): EmbeddedDocumentEntry => {
-      if (!node.documentId) return MISSING_DOCUMENT_ENTRY;
-      const key = documentCacheKey(documentNodeKind(node), node.documentId);
-      if (!embeddedDocumentCache[key]) {
-        loadEmbeddedDocument(documentNodeKind(node), node.documentId);
-      }
-      return embeddedDocumentCache[key] || EMPTY_DOCUMENT_ENTRY;
-    };
-
-    const documentSrcdoc = (node: CanvasNode) => {
-      const entry = documentData(node);
-      return documentNodeKind(node) === 'html'
-        ? entry.srcdoc
-        : wrapDocumentFragment(entry.srcdoc, effectiveTheme.value);
-    };
-
-    /** Below this size an iframe is unreadable, so fall back to a plain-text excerpt. */
-    const isDocPreviewRich = (node: CanvasNode) => node.width >= 220 && node.height >= 140;
-
-    const onDocumentEmbedDblClick = (node: CanvasNode) => {
-      if (!node.documentId) return;
-      emit("open-document", { kind: documentNodeKind(node), id: node.documentId });
-    };
-
-    const addDocumentEmbed = (kind: "html" | "text", documentId: string) => {
-      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
-      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const newNode: CanvasNode = {
-        id: genId(),
-        type: "document",
-        x: centerX - 210,
-        y: centerY - 160,
-        width: 420,
-        height: 320,
-        documentKind: kind,
-        documentId,
-      };
-      pushUndo();
-      nodes.value.push(newNode);
-      emitOp({ type: 'node-add', node: { ...newNode } });
-      selectedNodeIds.value = [newNode.id];
-      loadEmbeddedDocument(kind, documentId);
-    };
-
-    const embeddedCanvasCache = reactive<Record<string, { title: string; nodes: any[]; edges: any[]; loading: boolean; error: boolean }>>({});
-
-    const loadEmbeddedCanvas = async (canvasId: string) => {
-      if (embeddedCanvasCache[canvasId]) return;
-      embeddedCanvasCache[canvasId] = { title: '', nodes: [], edges: [], loading: true, error: false };
-      try {
-        const { canvas: canvasApi } = await import('../api/client');
-        const res = await canvasApi.get(canvasId);
-        const data = JSON.parse(res.canvas.data || '{"nodes":[],"edges":[]}');
-        embeddedCanvasCache[canvasId] = { title: res.canvas.title || 'Untitled', nodes: data.nodes || [], edges: data.edges || [], loading: false, error: false };
-      } catch {
-        embeddedCanvasCache[canvasId] = { title: t('cannotLoadCanvas'), nodes: [], edges: [], loading: false, error: true };
-      }
-    };
-
-    const getEmbeddedCanvasData = (canvasId: string) => {
-      if (!embeddedCanvasCache[canvasId]) {
-        loadEmbeddedCanvas(canvasId);
-      }
-      return embeddedCanvasCache[canvasId] || { title: '', nodes: [], edges: [], loading: true, error: false };
-    };
-
-    const embeddedCanvasViewBox = (canvasId: string) => {
-      const data = embeddedCanvasCache[canvasId];
-      if (!data || data.nodes.length === 0) return '0 0 800 600';
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const n of data.nodes) {
-        minX = Math.min(minX, n.x);
-        minY = Math.min(minY, n.y);
-        maxX = Math.max(maxX, n.x + (n.width || 100));
-        maxY = Math.max(maxY, n.y + (n.height || 60));
-      }
-      const pad = 40;
-      return `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
-    };
-
-    const embeddedEdgePath = (edge: any, allNodes: any[]) => {
-      const from = allNodes.find((n: any) => n.id === edge.fromNode);
-      const to = allNodes.find((n: any) => n.id === edge.toNode);
-      if (!from || !to) return '';
-      const fx = from.x + (from.width || 100) / 2;
-      const fy = from.y + (from.height || 60) / 2;
-      const tx = to.x + (to.width || 100) / 2;
-      const ty = to.y + (to.height || 60) / 2;
-      return `M${fx},${fy} L${tx},${ty}`;
-    };
 
     // Bounding box for SVG edges — explicit position & size
     const contentBounds = computed(() => {
@@ -2579,6 +2388,23 @@ export default defineComponent({
       pushUndo,
       emitOp: (operation) => emitOp(operation as CanvasOp),
     });
+
+    const embeds = useCanvasEmbeds({
+      viewport,
+      camera,
+      effectiveTheme,
+      t,
+      genId,
+      pushUndo,
+      addNode: (node) => {
+        const canvasNode = node as CanvasNode;
+        nodes.value.push(canvasNode);
+        emitOp({ type: 'node-add', node: { ...canvasNode } });
+      },
+      selectNode: (id) => { selectedNodeIds.value = [id]; },
+      openDocument: (payload) => emit('open-document', payload),
+    });
+    const { documentData, documentSrcdoc, isDocPreviewRich, onDocumentEmbedDblClick, addDocumentEmbed, loadEmbeddedDocument, loadEmbeddedCanvas, getEmbeddedCanvasData, embeddedCanvasViewBox, embeddedEdgePath } = embeds;
 
     // Clipboard for copy/paste
     const clipboard = ref<{ nodes: CanvasNode[]; edges: CanvasEdge[] }>({ nodes: [], edges: [] });
