@@ -693,9 +693,6 @@ import { SlashMenu } from '../text-documents/slash-menu';
 import {
   insertMentionAtRange,
   MentionMenu,
-  type MentionMenuController,
-  type MentionMenuItem,
-  type MentionMenuRender,
 } from '../text-documents/mention-menu';
 import { Mention } from '../text-documents/mention-node';
 import { caretListItem, listIndentState, moveCaretListItem } from '../text-documents/list-indent';
@@ -740,6 +737,7 @@ import { hasPendingUpdates, mergeServerState } from '../text-documents/resync';
 import { useI18n } from '../composables/useI18n';
 import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
 import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
+import { useTextDocumentMentionMenu } from '../composables/useTextDocumentMentionMenu';
 import { BREAKPOINTS, LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { isCoarsePointer } from '../composables/pointer';
 import AccountMenu from '../components/AccountMenu.vue';
@@ -1666,17 +1664,16 @@ export default defineComponent({
         if (outlineResizing.value) stopOutlineResize();
       },
     });
-    /**
-     * The arrow keys move `slashIndex`/`mentionIndex` past the popup's own
-     * `max-height`/`overflow-y: auto` window without touching scroll at all,
-     * so the highlight can walk off the visible area while the popup itself
-     * stays put. `block: 'nearest'` only moves the popup (its own nearest
-     * scrollable ancestor), never the page.
-     */
-    const scrollHighlightedIntoView = async (selector: string) => {
-      await nextTick();
-      document.querySelector(selector)?.scrollIntoView({ block: 'nearest' });
-    };
+    const mentionMenu = useTextDocumentMentionMenu();
+    const {
+      mentionOpen,
+      mentionItems,
+      mentionIndex,
+      mentionMenuStyle,
+      mentionController,
+      selectMentionItem,
+      cancelMentionMenu,
+    } = mentionMenu;
 
     /**
      * MENTION MENU state, structurally the same as the slash menu above
@@ -1685,89 +1682,6 @@ export default defineComponent({
      * than a fixed table, and the LAST item is always "create page named
      * ...", carrying the typed text.
      */
-    const mentionOpen = ref(false);
-    const mentionItems = ref<MentionMenuItem[]>([]);
-    const mentionIndex = ref(0);
-    const mentionRect = ref<{ top: number; left: number } | null>(null);
-    let mentionCommand: ((item: MentionMenuItem) => void) | null = null;
-    let mentionDismissed = false;
-
-    const mentionMenuStyle = computed(() =>
-      mentionRect.value
-        ? { top: `${mentionRect.value.top}px`, left: `${mentionRect.value.left}px` }
-        : undefined,
-    );
-
-    let mentionQuery: string | null = null;
-    const applyMentionRender = (render: MentionMenuRender) => {
-      mentionItems.value = render.items;
-      // Search results arriving for the SAME typed text keep the row the
-      // arrows are on; new text starts again from the top.
-      const sameQuery = render.query === mentionQuery;
-      mentionQuery = render.query;
-      mentionIndex.value = sameQuery ? Math.min(mentionIndex.value, Math.max(0, render.items.length - 1)) : 0;
-      mentionCommand = render.command;
-      mentionRect.value = render.rect
-        ? { top: render.rect.bottom + 6, left: render.rect.left }
-        : null;
-      mentionOpen.value = !mentionDismissed;
-    };
-
-    const closeMentionMenu = () => {
-      mentionOpen.value = false;
-      mentionItems.value = [];
-      mentionIndex.value = 0;
-      mentionQuery = null;
-      mentionCommand = null;
-    };
-
-    const selectMentionItem = (index: number) => {
-      const item = mentionItems.value[index];
-      if (!item || !mentionCommand) return;
-      mentionCommand(item);
-    };
-
-    const mentionController: MentionMenuController = {
-      onOpen: (render) => {
-        mentionDismissed = false;
-        applyMentionRender(render);
-      },
-      onUpdate: (render) => applyMentionRender(render),
-      onClose: () => {
-        mentionDismissed = false;
-        closeMentionMenu();
-      },
-      onKeyDown: (event) => {
-        if (!mentionOpen.value) return false;
-        const total = mentionItems.value.length;
-        if (event.key === 'Escape') {
-          mentionDismissed = true;
-          closeMentionMenu();
-          return true;
-        }
-        if (event.key === 'ArrowDown') {
-          if (total) mentionIndex.value = (mentionIndex.value + 1) % total;
-          return true;
-        }
-        if (event.key === 'ArrowUp') {
-          if (total) mentionIndex.value = (mentionIndex.value - 1 + total) % total;
-          return true;
-        }
-        if (event.key === 'Enter') {
-          selectMentionItem(mentionIndex.value);
-          return true;
-        }
-        return false;
-      },
-    };
-
-    watch(mentionIndex, () => {
-      const item = mentionItems.value[mentionIndex.value];
-      if (!item) return;
-      const value = item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create';
-      void scrollHighlightedIntoView(`[data-mention-item="${value}"]`);
-    });
-
     /** Powers the picker's search. Server-side filtered to what this user can read (R2) - no client-side widening. */
     const searchMentionCandidates = async (query: string) => {
       if (!canEditContent.value) return [];
@@ -3091,7 +3005,7 @@ export default defineComponent({
     // the first press hiding it before the app ever sees one.
     useBackHandler(() => {
       if (slashOpen.value) { cancelSlashMenu(); return true; }
-      if (mentionOpen.value) { mentionDismissed = true; closeMentionMenu(); return true; }
+      if (mentionOpen.value) { cancelMentionMenu(); return true; }
       if (linkEditorOpen.value) { closeLinkEditor(); return true; }
       if (linkActionOpen.value) { closeLinkActionMenu(); return true; }
       if (docMenuOpen.value) { closeDocMenu(); return true; }
