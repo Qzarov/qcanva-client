@@ -1,0 +1,553 @@
+/* ===== Mobile Modebar (Hand / Cursor / Draw) ===== */
+.mobile-modebar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 92;
+  display: flex;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 12px;
+  padding-bottom: calc(4px + env(safe-area-inset-bottom));
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+.mobile-modebar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1 1 0;
+  max-width: 80px;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-modebar-btn:active { background: var(--ui-surface-subtle); transform: scale(.94); }
+.mobile-modebar-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+/* Add is an action; its highlight signals the open panel, not a canvas mode. */
+
+/* Long-press tooltip above the modebar */
+.mobile-modebar-tooltip {
+  position: fixed;
+  bottom: calc(var(--canvas-toolbar-height, 52px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ui-text);
+  color: var(--ui-surface-elevated);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 500;
+}
+.mobile-modebar-tap-hint {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  z-index: 1;
+  transform: translateX(-50%);
+  max-width: min(160px, calc(100vw - 20px));
+  padding: 5px 9px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: var(--ui-glass-shadow);
+  color: var(--ui-text);
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: mobile-modebar-hint-in .14s ease-out both;
+}
+@keyframes mobile-modebar-hint-in {
+  from { opacity: 0; transform: translate(-50%, 4px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-modebar-tap-hint { animation: none; }
+}
+
+/* An explanation that opens on tap next to its button (useAnchoredHint):
+   a full sentence or two, so a solid card like a menu, not a glass pill.
+   Teleported to <body>, so it only uses the global --ui-* tokens. */
+.ui-explain-hint {
+  position: fixed;
+  z-index: 3100; /* above the sheet's roll toasts */
+  margin: 0;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 12px;
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+  box-shadow: var(--ui-glass-shadow);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+/* ===== Mobile Node Toolbar ===== */
+.mobile-node-toolbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  /* Use the measured modebar height (set by ResizeObserver in CanvasView) */
+  bottom: var(--canvas-toolbar-height, 61px);
+  z-index: 91;
+}
+.mobile-node-toolbar-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-items: stretch;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+}
+.mobile-toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 4px 2px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  flex: 1 1 0;
+  max-width: none;
+}
+.mobile-toolbar-caption { font-size: 10px; line-height: 1.15; overflow-wrap: anywhere; text-align: center; }
+.text-node-toolbar-tabs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); width: 390px; }
+.text-node-toolbar-tabs .toolbar-tab { height: 44px; flex-direction: column; justify-content: center; gap: 3px; font-size: 11px; }
+.mobile-toolbar-btn svg { flex-shrink: 0; }
+.mobile-toolbar-btn:active { background: var(--ui-surface-subtle); }
+.mobile-toolbar-btn.mobile-toolbar-btn-active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+.mobile-toolbar-btn.mobile-toolbar-btn-danger { color: var(--ui-danger-foreground); }
+.mobile-toolbar-btn:disabled { opacity: 0.35; pointer-events: none; }
+
+/* Sub-panel: expands above the icon row */
+.mobile-node-subpanel {
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 8px 12px;
+}
+.mobile-subpanel-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.mobile-subpanel-colors .tb-color { width: 28px; height: 28px; border-radius: 50%; }
+.mobile-subpanel-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mobile-subpanel-title-input {
+  width: 100%;
+  margin: 0;
+}
+.mobile-settings-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  margin-top: 0;
+  padding: 2px 0;
+}
+.mobile-settings-row + .mobile-settings-row { margin-top: 4px; }
+.mobile-settings-row > * { flex-shrink: 0; }
+.mobile-settings-row .tb-btn { min-width: 36px; min-height: 36px; }
+.mobile-settings-row .block-menu-sublabel { width: auto; flex: 0 0 48px; }
+.mobile-node-color-trigger { flex: 0 0 28px; }
+.mobile-node-color-palette { padding-top: 8px; }
+.mobile-panel-header { display: flex; align-items: center; justify-content: center; min-height: 24px; box-sizing: border-box; padding: 2px 12px; text-align: center; background: var(--ui-surface-elevated); color: var(--ui-text); }
+.mobile-panel-header strong { min-width: 0; font-size: 13px; font-weight: 500; }
+.mobile-panel-back { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 0; border-radius: 10px; min-height: 40px; padding: 6px 10px; color: var(--ui-text); background: transparent; font: inherit; font-size: 12px; }
+.mobile-panel-back:hover { background: var(--ui-surface-subtle); }
+.mobile-panel-navigation { padding: 0 8px; }
+.mobile-node-subpanel .mobile-settings-row { flex-wrap: wrap; overflow: visible; }
+.mobile-node-subpanel .mobile-settings-compact-row { flex-wrap: nowrap; align-items: stretch; }
+.mobile-node-subpanel .mobile-settings-compact-row > .mobile-panel-back { flex-direction: column; justify-content: center; font-size: 11px; }
+.mobile-node-subpanel .mobile-settings-compact-row > button > span:last-child { max-width: 100%; overflow-wrap: anywhere; }
+.mobile-node-subpanel .mobile-settings-row .tb-btn,
+.mobile-node-subpanel .mobile-node-color-trigger { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: auto; height: auto; min-width: 48px; min-height: 52px; padding: 6px; border-radius: 10px; background: transparent; color: var(--ui-text); flex: 1 1 0; font-size: 11px; }
+.mobile-node-subpanel .mobile-settings-row.mobile-settings-compact-row > button { flex: 1 1 0; min-width: 0; padding: 4px; min-height: 52px; font-size: 10px; }
+.mobile-node-subpanel .mobile-settings-compact-row > .mobile-panel-back > span:first-child { font-size: 20px; line-height: 20px; }
+.mobile-node-subpanel .mobile-settings-row .tb-btn.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+.mobile-node-subpanel .canvas-palette-swatch { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--ui-border); }
+.mobile-node-subpanel .mobile-node-color-palette { flex-direction: column; flex-wrap: nowrap; }
+.mobile-node-options button { display: flex; align-items: center; gap: 10px; border: 0; background: transparent; color: var(--ui-text); text-align: left; font: inherit; font-size: 13px; }
+.mobile-node-options button > :first-child { flex-shrink: 0; }
+.mobile-node-options button.active { background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent); }
+
+/* Overflow backdrop */
+.mobile-overflow-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 310;
+  background: rgba(0,0,0,.35);
+}
+
+/* Overflow bottom sheet */
+.mobile-overflow-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 311;
+  background: var(--ui-surface-elevated);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  max-height: 60dvh;
+  overflow-y: auto;
+  box-shadow: 0 -4px 24px rgba(0,0,0,.18);
+}
+.mobile-overflow-sheet-handle {
+  width: 40px;
+  height: 4px;
+  background: var(--ui-border);
+  border-radius: 2px;
+  margin: 10px auto 4px;
+}
+.mobile-overflow-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+.mobile-overflow-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0 20px;
+  background: transparent;
+  border: none;
+  color: var(--ui-text);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-overflow-item:active { background: var(--ui-surface-subtle); }
+.mobile-overflow-item:disabled { opacity: 0.35; pointer-events: none; }
+.mobile-overflow-item-danger { color: var(--ui-danger-foreground); }
+
+/* ===== Drawing popup (MobileNodeToolbar — floats above icon row) ===== */
+.mobile-drawing-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 12px 16px;
+  z-index: 92;
+}
+.mobile-drawing-popup-colors {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-drawing-popup-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-drawing-popup-swatch.active {
+  border-color: var(--ui-accent-strong);
+  transform: scale(1.15);
+}
+.mobile-drawing-popup-width {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-drawing-popup-width-slider {
+  flex: 1;
+  accent-color: var(--color-brands);
+}
+.mobile-drawing-popup-width-label {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mobile-drawing-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+/* ===== Mobile Draw Panel (above modebar when draw mode active) ===== */
+/* Mobile Add bottom sheet */
+.mobile-add-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0, 0, 0, 0.35);
+}
+.mobile-add-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 201;
+  background: var(--ui-surface-elevated);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+}
+.mobile-add-sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: var(--ui-border);
+  border-radius: 2px;
+  margin: 0 auto 12px;
+}
+.mobile-add-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+.mobile-add-sheet-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  gap: 4px;
+  min-height: 60px;
+  background: var(--ui-surface-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 6px 2px;
+  color: var(--ui-text);
+  font-size: 10px;
+  font-weight: 500;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, transform 0.15s;
+}
+.mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); transform: scale(.94); }
+.mobile-modebar.is-add-open { z-index: 202; }
+.mobile-add-sheet-icon { display: flex; align-items: center; justify-content: center; }
+.mobile-add-sheet-icon svg { width: 18px; height: 18px; }
+.mobile-add-sheet-label { text-align: center; line-height: 1.2; overflow-wrap: anywhere; }
+
+.mobile-draw-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--canvas-toolbar-height, 52px);
+  z-index: 91;
+  flex-direction: column;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 6px 12px;
+  gap: 4px;
+}
+.mobile-draw-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.mobile-draw-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  flex: 1 1 0;
+}
+.mobile-draw-tool-btn:active { background: var(--ui-surface-subtle); }
+.mobile-draw-tool-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+.mobile-draw-vsep {
+  width: 1px;
+  height: 24px;
+  background: var(--ui-border);
+  flex-shrink: 0;
+  margin: 0 4px;
+}
+.mobile-draw-color-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--ui-border);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.mobile-draw-color-btn.active {
+  border-color: var(--ui-accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-accent-strong) 30%, transparent);
+}
+.mobile-draw-width-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+.mobile-draw-width-btn:active { background: var(--ui-surface-subtle); }
+.mobile-draw-width-btn.active {
+  background: color-mix(in srgb, var(--ui-accent-strong) 14%, transparent);
+  color: var(--ui-accent-strong);
+}
+
+/* Draw mode popup (floats above the draw panel) */
+.mobile-draw-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--ui-surface-elevated);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--ui-border);
+  padding: 12px 16px;
+  z-index: 92;
+}
+.mobile-draw-popup-colors {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+}
+.mobile-draw-popup-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mobile-draw-popup-swatch.active {
+  border-color: var(--ui-accent-strong);
+  transform: scale(1.15);
+}
+.mobile-draw-popup-width {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mobile-draw-popup-width-slider {
+  flex: 1;
+  accent-color: var(--color-brands);
+}
+.mobile-draw-popup-width-label {
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  min-width: 22px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mobile-draw-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+/* Show mobile components and adjust layout at mobile breakpoint */
+@media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
+  .mobile-only { display: flex !important; }
+  .canvas-view :is(.node-toolbar, .node-floating-toolbar).desktop-only { display: none !important; }
+  .canvas-view .canvas-topbar .canvas-ruler-button,
+  .canvas-view .canvas-topbar .canvas-plugin-settings-action { display: none !important; }
+  .canvas-plugin-panel {
+    position: fixed;
+    top: calc(var(--canvas-topbar-height, 60px) + env(safe-area-inset-top, 0px) + 56px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - env(safe-area-inset-top, 0px) - 76px);
+    overflow-y: auto;
+  }
+  .canvas-shortcuts-button { display: none !important; }
+  .dice-toolbar > .draw-toolbar-toggle { display: none; }
+  .dice-toolbar {
+    position: fixed;
+    top: calc(var(--canvas-topbar-height, 60px) + env(safe-area-inset-top, 0px) + 56px);
+    left: auto;
+    right: max(10px, env(safe-area-inset-right));
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - env(safe-area-inset-top, 0px) - 76px);
+    overflow: auto;
+  }
+
+  /* Hide the old vertical block-menu on mobile — replaced by MobileNodeToolbar */
+  .block-menu { display: none !important; }
+
+  /* Hide the floating desktop draw-toolbar toggle on mobile — Draw button is in the modebar */
+  .draw-toolbar { display: none !important; }
+}
+
+/* Landscape: allow slightly smaller touch targets to fit more on screen */
+@media (max-width: 640px) and (orientation: landscape) {
+  .mobile-modebar-btn { min-height: 40px; }
+  .mobile-toolbar-btn { min-height: 40px; }
+  .mobile-draw-tool-btn { min-height: 40px; }
+}
+
+/* Very narrow screens: keep touch targets */
+@media (max-width: 360px) {
+  .mobile-modebar-btn { max-width: 64px; }
+}
+

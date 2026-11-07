@@ -1,0 +1,457 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* ===== Frox Design Tokens ===== */
+:root,
+:root[data-theme='dark'] {
+  --resource-icon-canvas: #5fd58a;
+  --resource-icon-text: #9db4ff;
+  --resource-icon-html: #ffad6b;
+  --resource-icon-board: #5ec8e6;
+  --resource-icon-sheet: #c9a2ff;
+  --resource-icon-template: #8fe3a8;
+  --resource-icon-file: #b8bec8;
+  --ui-page: #1f2128;
+  --ui-surface: rgba(0, 42, 0, 0.5);
+  --ui-surface-solid: #171a19;
+  --ui-surface-elevated: rgba(0, 32, 0, 0.94);
+  --ui-surface-subtle: rgba(255, 255, 255, 0.05);
+  --ui-canvas: #17181f;
+  --ui-text: #f8fff8;
+  --ui-text-secondary: #d6f2d6;
+  --ui-text-muted: #a8c6a8;
+  --ui-border: #313442;
+  --ui-overlay: rgba(0, 0, 0, 0.64);
+  --ui-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+  /* QCanva Liquid Glass: a translucent, blurred surface with a faint tint,
+     a light top edge and a soft drop shadow (canvas chrome, the mobile
+     full-screen editor). One recipe so a palette can recolour it in one place. */
+  --ui-glass-bg: rgba(13, 17, 14, 0.72);
+  --ui-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
+  --ui-glass-border: rgba(130, 210, 155, 0.28);
+  --ui-glass-highlight: rgba(255, 255, 255, 0.10);
+  --ui-glass-sheen: rgba(255, 255, 255, 0.08);
+  --ui-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
+  --ui-glass-blur: 18px;
+  --ui-glass-focus-glow: rgba(140, 255, 140, 0.22);
+  /* Buttons on glass: a faint inset "pane" at rest, brighter on hover; the
+     accent (primary action, selected state) is tinted glass with a glow. */
+  --ui-glass-btn-bg: rgba(255, 255, 255, 0.06);
+  --ui-glass-btn-hover: rgba(255, 255, 255, 0.12);
+  --ui-glass-accent-bg: rgba(0, 255, 0, 0.16);
+  --ui-glass-accent-border: rgba(140, 255, 140, 0.45);
+  --ui-glass-accent-text: #8cff8c;
+  --ui-glass-accent-glow: 0 0 18px rgba(0, 255, 0, 0.18);
+  /* What glass pages sit on: soft brand-tinted light, so the glass has
+     something to refract. Cards are glass without blur (cheap in numbers). */
+  --ui-glass-ambient:
+    radial-gradient(1100px 620px at 8% -12%, rgba(0, 255, 0, 0.10), transparent 62%),
+    radial-gradient(900px 560px at 108% 4%, rgba(83, 223, 221, 0.08), transparent 60%),
+    radial-gradient(800px 600px at 60% 120%, rgba(168, 130, 255, 0.07), transparent 60%);
+  --ui-glass-card-bg: rgba(255, 255, 255, 0.04);
+  --ui-glass-card-hover: rgba(255, 255, 255, 0.08);
+  --ui-brand: #00ff00;
+  --ui-accent-strong: #8cff8c;
+  --ui-brand-on: #071307;
+  --ui-brand-soft: rgba(0, 255, 0, 0.12);
+  --ui-brand-soft-on: #f8fff8;
+  --ui-success: #44cf6e;
+  --ui-success-foreground: #44cf6e;
+  --ui-success-soft: rgba(68, 207, 110, 0.14);
+  --ui-warning: #e0de71;
+  --ui-warning-foreground: #e0de71;
+  --ui-warning-soft: rgba(224, 222, 113, 0.14);
+  --ui-info: #53dfdd;
+  --ui-info-foreground: #53dfdd;
+  --ui-info-soft: rgba(83, 223, 221, 0.14);
+  --ui-danger: #fb464c;
+  --ui-danger-foreground: #fb464c;
+  --ui-danger-soft: rgba(251, 70, 76, 0.14);
+  --ui-danger-on: #071307;
+  --ui-focus: #8cff8c;
+  --ui-focus-on: #071307;
+
+  /* Canvas infrastructure (themed for contrast against --ui-canvas: #17181f) */
+  --content-canvas-group-surface: rgba(255, 255, 255, 0.03);
+  --content-canvas-group-border: rgba(255, 255, 255, 0.35); /* 3.23:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-group-label: rgba(255, 255, 255, 0.62);   /* 7.38:1 on #17181f (WCAG 1.4.3) */
+  --content-canvas-edge: rgba(255, 255, 255, 0.42);        /* 4.08:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-edge-arrow: rgba(255, 255, 255, 0.5);   /* 5.24:1 on #17181f (WCAG 1.4.11) */
+  --content-canvas-edge-label-surface: rgba(30, 30, 30, 0.85);
+  --content-canvas-edge-label-border: rgba(255, 255, 255, 0.12);
+  --content-canvas-edge-label-text: rgba(255, 255, 255, 0.75);
+  --content-canvas-group-1-border: rgba(251, 70, 76, 0.45);
+  --content-canvas-group-1-surface: rgba(251, 70, 76, 0.06);
+  --content-canvas-group-1-label: #fb464c;
+  --content-canvas-group-2-border: rgba(233, 151, 63, 0.45);
+  --content-canvas-group-2-surface: rgba(233, 151, 63, 0.06);
+  --content-canvas-group-2-label: #e9973f;
+  --content-canvas-group-3-border: rgba(224, 222, 113, 0.45);
+  --content-canvas-group-3-surface: rgba(224, 222, 113, 0.06);
+  --content-canvas-group-3-label: #e0de71;
+  --content-canvas-group-4-border: rgba(68, 207, 110, 0.45);
+  --content-canvas-group-4-surface: rgba(68, 207, 110, 0.06);
+  --content-canvas-group-4-label: #44cf6e;
+  --content-canvas-group-5-border: rgba(83, 223, 221, 0.45);
+  --content-canvas-group-5-surface: rgba(83, 223, 221, 0.06);
+  --content-canvas-group-5-label: #53dfdd;
+  --content-canvas-group-6-border: rgba(168, 130, 255, 0.45);
+  --content-canvas-group-6-surface: rgba(168, 130, 255, 0.06);
+  --content-canvas-group-6-label: #a882ff;
+  --ui-minimap-node: rgba(255, 255, 255, 0.45);            /* 4.47:1 on dark surface */
+  --ui-minimap-group: rgba(255, 255, 255, 0.12);
+  --ui-minimap-viewport-fill: rgba(124, 138, 255, 0.12);
+  --ui-minimap-viewport-stroke: #7c8aff;                   /* 5.79:1 on dark surface */
+
+  /* Authored document content tokens (dark theme) */
+  --content-document-surface: #191b20;
+  --content-document-surface-readonly: #17191d;
+  --content-document-text: #f8fafc;                         /* 15.82:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-text-muted: #94a3b8;                   /* 6.32:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-border: rgba(255, 255, 255, 0.1);
+  --content-document-link: #7dd3fc;                         /* 9.38:1 on #191b20 (WCAG 1.4.3) */
+  --content-document-slash-query-bg: rgba(0, 255, 0, 0.14);
+  --content-document-slash-query-text: #f8fff8;
+
+  /* Code block syntax tokens (dark theme) */
+  --content-code-surface: rgba(255, 255, 255, 0.04);
+  --content-code-border: rgba(255, 255, 255, 0.08);
+  --content-code-comment: #8b949e;                         /* 5.60:1 on #191b20 */
+  --content-code-keyword: #ff7b72;                         /* 6.83:1 on #191b20 */
+  --content-code-string: #a5d6ff;                          /* 11.21:1 on #191b20 */
+  --content-code-number: #f2cc60;                          /* 11.14:1 on #191b20 */
+  --content-code-function: #d2a8ff;                        /* 8.85:1 on #191b20 */
+  --content-code-punctuation: #c9d1d9;                     /* 11.16:1 on #191b20 */
+
+  /* Callout tokens inside document (dark theme) */
+  --content-callout-info-accent: #53dfdd;                  /* 8.94:1 on #191b20 */
+  --content-callout-info-surface: rgba(83, 223, 221, 0.1);
+  --content-callout-info-border: rgba(83, 223, 221, 0.4);
+  --content-callout-warning-accent: #e0de71;               /* 11.12:1 on #191b20 */
+  --content-callout-warning-surface: rgba(224, 222, 113, 0.1);
+  --content-callout-warning-border: rgba(224, 222, 113, 0.4);
+  --content-callout-success-accent: #6fdc8c;               /* 9.51:1 on #191b20 */
+  --content-callout-success-surface: rgba(111, 220, 140, 0.1);
+  --content-callout-success-border: rgba(111, 220, 140, 0.4);
+  --content-callout-danger-accent: #ff8a8f;                /* 7.55:1 on #191b20 */
+  --content-callout-danger-surface: rgba(255, 138, 143, 0.1);
+  --content-callout-danger-border: rgba(255, 138, 143, 0.4);
+
+  /* Canvas node content tokens (dark theme) */
+  --content-canvas-node-surface: #262626;
+  --content-canvas-node-border: rgba(255, 255, 255, 0.1);
+  --content-canvas-node-border-hover: rgba(255, 255, 255, 0.2);
+  --content-canvas-node-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+  --content-canvas-node-text: rgba(255, 255, 255, 0.85);
+  --content-canvas-node-text-muted: rgba(255, 255, 255, 0.6);
+  --content-canvas-code-bg: rgba(255, 255, 255, 0.08);
+  --content-canvas-link: #7c8aff;
+  --content-canvas-callout-text: rgba(255, 255, 255, 0.7);
+  --content-canvas-editor-surface: rgba(0, 0, 0, 0.2);
+  --content-canvas-editor-text: rgba(255, 255, 255, 0.9);
+  --content-canvas-image-title: rgba(255, 255, 255, 0.82);
+  --content-canvas-selection: #4dabf7;                     /* 6.11:1 against #262626 */
+  --content-canvas-node-text-1: #fb464c;
+  --content-canvas-node-text-2: #e9973f;
+  --content-canvas-node-text-3: #e0de71;
+  --content-canvas-node-text-4: #44cf6e;
+  --content-canvas-node-text-5: #53dfdd;
+  --content-canvas-node-text-6: #a882ff;
+
+  /* Interactive canvas cards (D&D and future structured templates) */
+  --content-interactive-surface: #171a19;
+  --content-interactive-surface-subtle: #1e2421;
+  --content-interactive-input: #222825;
+  --content-interactive-border: #354039;
+  --content-interactive-border-strong: #435248;
+  --content-interactive-text: #edf5ef;
+  --content-interactive-text-muted: #aab7ae;
+  --content-interactive-accent: #77ee9a;
+  --content-interactive-accent-strong: #baf5c7;
+  --content-interactive-accent-soft: #1d3924;
+  --content-interactive-shadow: 0 8px 25px rgba(0, 0, 0, 0.28);
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --resource-icon-canvas: #1d8a4a;
+  --resource-icon-text: #3558d1;
+  --resource-icon-html: #c25e10;
+  --resource-icon-board: #0b7e9c;
+  --resource-icon-sheet: #7a3fd0;
+  --resource-icon-template: #2b8a4b;
+  --resource-icon-file: #5d6470;
+  --ui-page: #f5f7f4;
+  --ui-surface: #ffffff;
+  --ui-surface-solid: #ffffff;
+  --ui-surface-elevated: #ffffff;
+  --ui-surface-subtle: #f4f6f3;
+  --ui-canvas: #eef2ee;
+  --ui-text: #172019;
+  --ui-text-secondary: #667269;
+  --ui-text-muted: #98a39a;
+  --ui-border: #dce3dd;
+  --ui-overlay: rgba(23, 32, 25, 0.34);
+  --ui-shadow: 0 18px 50px rgba(26, 48, 31, 0.12);
+  --ui-glass-bg: rgba(255, 255, 255, 0.72);
+  --ui-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
+  --ui-glass-border: rgba(20, 91, 37, 0.16);
+  --ui-glass-highlight: rgba(255, 255, 255, 0.9);
+  --ui-glass-sheen: rgba(255, 255, 255, 0.55);
+  --ui-glass-shadow: 0 10px 34px rgba(26, 48, 31, 0.12);
+  --ui-glass-blur: 18px;
+  --ui-glass-focus-glow: rgba(20, 91, 37, 0.14);
+  --ui-glass-btn-bg: rgba(255, 255, 255, 0.55);
+  --ui-glass-btn-hover: rgba(255, 255, 255, 0.9);
+  --ui-glass-accent-bg: rgba(32, 207, 69, 0.16);
+  --ui-glass-accent-border: rgba(20, 91, 37, 0.35);
+  --ui-glass-accent-text: #145b25;
+  --ui-glass-accent-glow: 0 0 16px rgba(32, 207, 69, 0.16);
+  --ui-glass-ambient:
+    radial-gradient(1100px 620px at 8% -12%, rgba(32, 207, 69, 0.14), transparent 62%),
+    radial-gradient(900px 560px at 108% 4%, rgba(83, 223, 221, 0.14), transparent 60%),
+    radial-gradient(800px 600px at 60% 120%, rgba(168, 130, 255, 0.10), transparent 60%);
+  --ui-glass-card-bg: rgba(255, 255, 255, 0.62);
+  --ui-glass-card-hover: rgba(255, 255, 255, 0.85);
+  --ui-brand: #20cf45;
+  --ui-accent-strong: #145b25;
+  --ui-brand-on: #06220c;
+  --ui-brand-soft: #ddf7e2;
+  --ui-brand-soft-on: #172019;
+  --ui-success: #23864a;
+  --ui-success-foreground: #176334;
+  --ui-success-soft: #e0f5e7;
+  --ui-warning: #8a6f00;
+  --ui-warning-foreground: #695400;
+  --ui-warning-soft: #fff3c0;
+  --ui-info: #117d88;
+  --ui-info-foreground: #0b626b;
+  --ui-info-soft: #dff7fa;
+  --ui-danger: #c9343d;
+  --ui-danger-foreground: #9e2630;
+  --ui-danger-soft: #fae4e6;
+  --ui-danger-on: #ffffff;
+  --ui-focus: #145b25;
+  --ui-focus-on: #ffffff;
+
+  /* Canvas infrastructure (themed for contrast against --ui-canvas: #eef2ee) */
+  --content-canvas-group-surface: rgba(23, 32, 25, 0.03);
+  --content-canvas-group-border: rgba(23, 32, 25, 0.5);    /* 3.16:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-label: #465049;                   /* 7.42:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-edge: rgba(23, 32, 25, 0.6);            /* 4.25:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-edge-arrow: rgba(23, 32, 25, 0.7);      /* 5.81:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-edge-label-surface: #ffffff;
+  --content-canvas-edge-label-border: #dce3dd;
+  --content-canvas-edge-label-text: #172019;
+  --content-canvas-group-1-border: rgba(180, 30, 40, 0.72);  /* 3.74:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-1-surface: rgba(201, 52, 61, 0.08);
+  --content-canvas-group-1-label: #a82028;                   /* 6.40:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-2-border: rgba(155, 80, 0, 0.82);   /* 3.76:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-2-surface: rgba(184, 107, 18, 0.08);
+  --content-canvas-group-2-label: #8a4e00;                   /* 5.86:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-3-border: rgba(115, 105, 0, 0.88);  /* 3.94:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-3-surface: rgba(138, 133, 10, 0.08);
+  --content-canvas-group-3-label: #6b6600;                   /* 5.27:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-4-border: rgba(20, 110, 50, 0.8);   /* 3.79:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-4-surface: rgba(35, 134, 74, 0.08);
+  --content-canvas-group-4-label: #176334;                   /* 6.47:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-5-border: rgba(10, 105, 115, 0.8);  /* 3.82:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-5-surface: rgba(17, 125, 136, 0.08);
+  --content-canvas-group-5-label: #0b626b;                   /* 6.25:1 on #eef2ee (WCAG 1.4.3) */
+  --content-canvas-group-6-border: rgba(95, 60, 185, 0.75);  /* 3.85:1 on #eef2ee (WCAG 1.4.11) */
+  --content-canvas-group-6-surface: rgba(112, 78, 204, 0.08);
+  --content-canvas-group-6-label: #5028aa;                   /* 8.35:1 on #eef2ee (WCAG 1.4.3) */
+  --ui-minimap-node: rgba(23, 32, 25, 0.55);               /* 3.80:1 on #ffffff */
+  --ui-minimap-group: rgba(23, 32, 25, 0.18);
+  --ui-minimap-viewport-fill: rgba(75, 87, 201, 0.12);
+  --ui-minimap-viewport-stroke: #4b57c9;                  /* 5.99:1 on #ffffff */
+
+  /* Authored document content tokens (light theme) */
+  --content-document-surface: #ffffff;
+  --content-document-surface-readonly: #f8faf8;
+  --content-document-text: #172019;                         /* 16.71:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-text-muted: #536156;                   /* 6.54:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-border: rgba(23, 32, 25, 0.12);
+  --content-document-link: #0b626b;                         /* 7.06:1 on #ffffff (WCAG 1.4.3) */
+  --content-document-slash-query-bg: rgba(32, 207, 69, 0.14);
+  --content-document-slash-query-text: #172019;             /* 14.86:1 on composite */
+
+  /* Code block syntax tokens (light theme - GitHub Light style) */
+  --content-code-surface: #f6f8fa;
+  --content-code-border: #d0d7de;
+  --content-code-comment: #57606a;                         /* 6.39:1 on #ffffff */
+  --content-code-keyword: #cf222e;                         /* 5.36:1 on #ffffff */
+  --content-code-string: #0a3069;                          /* 12.81:1 on #ffffff */
+  --content-code-number: #0550ae;                          /* 7.59:1 on #ffffff */
+  --content-code-function: #8250df;                        /* 5.05:1 on #ffffff */
+  --content-code-punctuation: #24292f;                     /* 14.65:1 on #ffffff */
+
+  /* Callout tokens inside document (light theme) */
+  --content-callout-info-accent: var(--ui-info-foreground);
+  --content-callout-info-surface: var(--ui-info-soft);
+  --content-callout-info-border: rgba(17, 125, 136, 0.4);
+  --content-callout-warning-accent: var(--ui-warning-foreground);
+  --content-callout-warning-surface: var(--ui-warning-soft);
+  --content-callout-warning-border: rgba(138, 111, 0, 0.4);
+  --content-callout-success-accent: var(--ui-success-foreground);
+  --content-callout-success-surface: var(--ui-success-soft);
+  --content-callout-success-border: rgba(35, 134, 74, 0.4);
+  --content-callout-danger-accent: var(--ui-danger-foreground);
+  --content-callout-danger-surface: var(--ui-danger-soft);
+  --content-callout-danger-border: rgba(201, 52, 61, 0.4);
+
+  /* Canvas node content tokens (light theme) */
+  --content-canvas-node-surface: #ffffff;
+  --content-canvas-node-border: rgba(23, 32, 25, 0.5);      /* 3.25:1 on #ffffff, 3.16:1 on #eef2ee */
+  --content-canvas-node-border-hover: rgba(23, 32, 25, 0.7);
+  --content-canvas-node-shadow: 0 2px 12px rgba(26, 48, 31, 0.08);
+  --content-canvas-node-text: #172019;                     /* 16.71:1 on #ffffff */
+  --content-canvas-node-text-muted: #536156;               /* 6.54:1 on #ffffff, 5.78:1 on #eef2ee */
+  --content-canvas-code-bg: rgba(23, 32, 25, 0.06);
+  --content-canvas-link: #0b626b;                         /* 7.06:1 on #ffffff */
+  --content-canvas-callout-text: #536156;
+  --content-canvas-editor-surface: rgba(23, 32, 25, 0.03);
+  --content-canvas-editor-text: #172019;
+  --content-canvas-image-title: #172019;
+  --content-canvas-selection: #145b25;                     /* 8.23:1 on #ffffff, 7.27:1 on #eef2ee */
+  --content-canvas-node-text-1: #a82028;                   /* 7.24:1 on #ffffff */
+  --content-canvas-node-text-2: #8a4e00;                   /* 6.62:1 on #ffffff */
+  --content-canvas-node-text-3: #6b6600;                   /* 5.96:1 on #ffffff */
+  --content-canvas-node-text-4: #176334;                   /* 7.32:1 on #ffffff */
+  --content-canvas-node-text-5: #0b626b;                   /* 7.06:1 on #ffffff */
+  --content-canvas-node-text-6: #5028aa;                   /* 9.44:1 on #ffffff */
+
+  /* Interactive canvas cards */
+  --content-interactive-surface: #ffffff;
+  --content-interactive-surface-subtle: #f4f6f3;
+  --content-interactive-input: #f8faf8;
+  --content-interactive-border: #dce3dd;
+  --content-interactive-border-strong: #667269;
+  --content-interactive-text: #172019;
+  --content-interactive-text-muted: #536156;
+  --content-interactive-accent: #176334;
+  --content-interactive-accent-strong: #145b25;
+  --content-interactive-accent-soft: #ddf7e2;
+  --content-interactive-shadow: 0 8px 25px rgba(26, 48, 31, 0.12);
+  color-scheme: light;
+}
+
+:root {
+  /* Fixed dark preview tokens: board-label card and microcopy previews keep
+     a fixed dark palette across both themes (tested in contrast.test.ts). */
+  --content-board-label-card-surface: #1a211e;
+  --content-board-label-preview-surface: #172019;
+  --content-board-label-dialog-surface: #1e2521;
+  --content-board-label-text: #f4fff6;
+  --content-board-label-dialog-text: #f2fff5;
+  --content-preview-text: #f8fff8;
+  --content-preview-muted: #b9c8ba;
+
+  /* Brand */
+  --color-brands: var(--ui-brand);
+  --color-brands-light: var(--ui-focus);
+  --color-brand-on: var(--ui-brand-on);
+
+  /* Dark surfaces */
+  --dark-neutral-bg: var(--ui-page);
+  --dark-neutral-border: var(--ui-border);
+  --dark-card-bg: var(--ui-surface);
+  --dark-menu-bg: var(--ui-surface-elevated);
+  --dark-input-bg: var(--ui-surface-subtle);
+
+  /* Dark text scale */
+  --dark-text-primary: var(--ui-text);
+  --dark-text-secondary: var(--ui-text-secondary);
+  --dark-text-muted: var(--ui-text-muted);
+
+  /* Accents */
+  --accent-green: #50d1b2;
+  --accent-red: #e23738;
+  --accent-yellow: #ece663;
+
+  /* Radii */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-std: 0.3s ease;
+
+  /* Shadows */
+  --shadow-dropdown: 0 40px 120px 0 rgba(0, 0, 0, 0.24);
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.28);
+
+  font-family: 'Noto Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--ui-text);
+  background-color: var(--ui-page);
+  /* `style` (not `none`): allow the browser to synthesize an OBLIQUE slant when
+     the active face has no real italic. Noto Sans is loaded with an italic axis
+     (see index.html) so italic normally uses real glyphs, but the Capacitor app
+     / offline / a CSP block can leave the italic face unavailable — without
+     synthesis, `font-style: italic` then rendered upright (italic "not
+     displaying"). Weight synthesis stays OFF (real bold weights are loaded), so
+     this does not reintroduce faux-bold. */
+  font-synthesis: style;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  /* QCanva-styled main scrollbar: narrow, muted (never the bright
+     --ui-brand green as a resting state - that stays reserved for actual
+     brand accents), a little brighter on hover so it still reads as
+     interactive without shouting. Firefox first (scrollbar-width/-color
+     apply to any element, including html/body); WebKit reads the
+     ::-webkit-scrollbar* pseudo-elements below instead and ignores these
+     two properties. */
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-muted) var(--ui-surface-subtle);
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 10px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: var(--ui-surface-subtle);
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: var(--ui-text-muted);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover {
+  background: var(--ui-accent-strong);
+  background-clip: padding-box;
+}
+
+body {
+  color: var(--ui-text);
+  background: var(--ui-page);
+}
+
+/* A dashboard card or folder name must never make the app wider than a phone. */
+#app {
+  min-width: 0;
+  overflow-x: hidden;
+}
+

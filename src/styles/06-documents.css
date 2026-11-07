@@ -1,0 +1,2971 @@
+/* ===== Text documents ===== */
+.text-doc-page {
+  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  background: var(--ui-page);
+  color: var(--ui-text);
+  /* .text-doc-topbar is `position: sticky` and overlays the top of THIS
+     element (the actual scroll container - see that rule's own comment),
+     so scrolling a heading to the very top of the viewport lands it BEHIND
+     the header, not merely near it. `scroll-margin-top` on headings below
+     reads this to land clear of it instead - see `focusHeading` in
+     table-of-contents.ts, which relies on the browser honouring this
+     property for its native `scrollIntoView` call.
+     Not derived from .text-doc-topbar's own `min-height`/`padding` (there
+     is no single existing token for its rendered height - own layout
+     depends on the account menu/icons it lays out, not a fixed value) -
+     a bit taller than its ~56-65px measured height on purpose, for a
+     little visual breathing room below it rather than a heading landing
+     flush against its bottom edge. */
+  --text-doc-sticky-offset: 80px;
+}
+
+/* Two children only now that the title has moved into the page body
+   (.text-doc-title-page-input below) - back button on the left, actions on
+   the right, nothing to reserve a middle column for. */
+.text-doc-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--ui-border);
+  background: var(--ui-surface-solid);
+  backdrop-filter: blur(10px);
+}
+
+.text-doc-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.text-doc-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* UNDO/REDO (front task). Icon-only, sized like .text-doc-back-btn - a
+   real 44px touch target, not just a visually-44px box with a smaller
+   hit area. */
+.text-doc-undo-btn,
+.text-doc-redo-btn,
+.text-doc-fullscreen-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.text-doc-fullscreen-btn.active {
+  color: var(--ui-accent-strong);
+}
+
+/* OUTLINE TOGGLE. Same icon-only 44px touch target as Undo/Redo above -
+   hidden at mobile widths (see the 760px media query below), reachable
+   there through the "⋮" popover instead, exactly like Share/History. */
+.text-doc-outline-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.text-doc-outline-btn.active {
+  color: var(--ui-accent-strong);
+}
+
+/* THE PAGE TITLE (front task: title placement). Lives inside .text-doc-paper,
+   above EditorContent - visually the document's own first line, not header
+   chrome. Bigger than the body's own H1 (see collapsible-heading.ts's
+   heading styles) so it reads as the ONE title, matching the mockup's
+   "Яр вишлист 2026" sitting above ordinary content. No border/box until
+   focus, so it never looks like a form field dropped onto the page. */
+.text-doc-title-page-input,
+.text-doc-title-page-readonly {
+  display: block;
+  width: 100%;
+  margin: 0 0 20px;
+  padding: 4px 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 34px;
+  font-weight: 750;
+  line-height: 1.25;
+  outline: none;
+  /* A long title WRAPS rather than being cut off - the bug this fixed. */
+  overflow-wrap: break-word;
+}
+
+.text-doc-title-page-readonly {
+  font-weight: 750;
+}
+
+/* A <textarea> (not the single-line <input> it replaced, which could never
+   wrap at all): height is driven entirely by autosizeTitleTextarea's own
+   scrollHeight measurement, so the native resize handle and scrollbar would
+   only fight that - and font-family is reset because a textarea, unlike an
+   input, is not guaranteed to inherit the page's font in every browser. */
+.text-doc-title-page-input {
+  resize: none;
+  overflow: hidden;
+  font-family: inherit;
+}
+
+/* Frameless title: focusing it shows only the caret, no box (background/border)
+   - it reads as the document's first line, like Notion, matching the now
+   card-less .text-doc-paper. */
+.text-doc-title-page-input:focus {
+  border-color: transparent;
+  background: transparent;
+}
+
+.text-doc-title-page-input::placeholder {
+  color: var(--ui-text-muted);
+  font-weight: 750;
+}
+
+/* Mobile-only "⋮" document menu (Access/History live here instead of as
+   permanent topbar buttons) - hidden by default, shown by the mobile media
+   query below. */
+.text-doc-menu-mobile {
+  display: none;
+}
+
+/* Fixed width, not min-width: the label's own length changes
+   (Synced/Saving…/Offline/Sync failed, each translated - never a pending
+   count, see useCalmSyncStatus.ts) must never resize this flex item, or
+   every transition reflows AccountMenu/the doc-menu trigger sitting to its
+   right. Sized to fit the longest label ("Синхронизировано") plus the status
+   dot without ellipsis; anything longer truncates rather than growing. */
+.text-doc-sync {
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  width: 152px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  cursor: default;
+}
+/* The status dot (green Synced, amber Saving…, grey Offline, red Sync
+   failed) - coloured by the kind rules below via currentColor. On phones
+   it is all that shows (see the mobile block). */
+.text-doc-sync::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.text-doc-sync-synced { color: var(--ui-success-foreground); }
+.text-doc-sync-saving { color: var(--ui-warning-foreground); }
+.text-doc-sync-failed { color: var(--ui-danger-foreground); }
+.text-doc-sync-offline { color: var(--ui-text-secondary); }
+
+/* Invisible hit-target by default (same convention as
+   .account-menu-backdrop) - closes the sheet on outside click/tap at every
+   breakpoint (front task 6); the mobile media query below adds the visible
+   dim, matching .text-doc-link-sheet-backdrop's own desktop/mobile split. */
+.text-doc-share-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.text-doc-share-panel {
+  position: fixed;
+  top: 68px;
+  right: 16px;
+  z-index: 91;
+  overflow-y: auto;
+}
+
+.text-doc-share-grabber {
+  display: none;
+}
+
+.text-doc-share-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.text-doc-share-close:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.share-section-divider {
+  margin: 14px 0;
+  border-top: 1px solid var(--dark-neutral-border);
+}
+
+/* THE LINK ROW (front task: the whole row is the control, no separate
+   Copy button beside it). A real <button>, not a div+click handler, so
+   focus/keyboard activation and screen readers get it for free. */
+.share-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.share-link-row:hover {
+  border-color: var(--dark-text-muted);
+  background: var(--ui-surface-elevated);
+}
+.share-link-row:active {
+  background: color-mix(in srgb, var(--ui-text) 8%, var(--ui-surface-subtle));
+  transform: scale(0.99);
+}
+.share-link-icon {
+  flex-shrink: 0;
+  color: var(--ui-text-secondary);
+}
+.share-link-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ui-text);
+}
+.share-link-copy-icon {
+  flex-shrink: 0;
+  color: var(--ui-text-secondary);
+}
+.share-link-copied {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  color: var(--ui-success-foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.share-password-form {
+  margin-top: 8px;
+}
+
+.slug-error {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ui-danger-foreground);
+}
+
+.share-save-slug-btn {
+  margin-top: 8px;
+  width: 100%;
+}
+
+.text-doc-history-panel {
+  position: fixed;
+  inset: 70px 24px 24px;
+  z-index: 45;
+}
+
+.text-doc-toolbar {
+  position: sticky;
+  top: 56px;
+  z-index: 25;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  border-bottom: 1px solid var(--ui-border);
+  padding: 8px 18px;
+  background: var(--ui-surface-solid);
+}
+
+.text-doc-toolbar .btn-ghost.active {
+  background: var(--ui-info-soft);
+  color: var(--ui-info-foreground);
+}
+
+/* ===== Capacity notice =====
+   Chrome, like .text-doc-toolbar: it draws the semantic --ui-* tokens, which
+   already carry a light and a dark value, so nothing here is written twice
+   per theme and the paper's fixed palette is untouched. The two states reuse
+   the warning and danger token families rather than inventing colours. */
+.text-doc-capacity {
+  position: sticky;
+  top: 100px;
+  z-index: 24;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin: 0 18px 4px;
+  padding: 10px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.text-doc-capacity-warn {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-soft);
+  color: var(--ui-warning-foreground);
+}
+
+.text-doc-capacity-full {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger-foreground);
+}
+
+.text-doc-capacity-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.text-doc-capacity-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-capacity-text {
+  flex: 1 1 260px;
+}
+
+.text-doc-capacity-count {
+  flex: none;
+  padding: 2px 8px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.text-doc-capacity-btn {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-solid);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-doc-capacity-btn:hover:not(:disabled) {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-capacity-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.text-doc-capacity-btn-icon {
+  display: inline-flex;
+}
+
+.text-doc-capacity-btn-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* OUTLINE PANEL body wrapper. A flex row so the desktop sidebar and
+   .text-doc-editor-shell share one row; .text-doc-editor-shell's own
+   `margin: 0 auto` still centers IT in whatever space is left over once the
+   sidebar (a fixed flex-basis, not growing) has taken its own - the standard
+   "center one flex item among siblings" technique, so adding the sidebar
+   never requires touching .text-doc-editor-shell's own centering rule. */
+.text-doc-body {
+  display: flex;
+  align-items: flex-start;
+}
+
+.text-doc-outline-panel {
+  position: sticky;
+  top: 56px;
+  align-self: stretch;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 56px);
+  border-right: 1px solid var(--ui-border);
+  /* The positioning context for .text-doc-outline-resize-handle below -
+     `position: sticky` already establishes one, same as `relative` would. */
+}
+
+/* Collapsed to a narrow, always-visible strip - never `display: none` or
+   width:0: the collapse toggle below has to stay reachable to expand again,
+   and an instant jump (rather than this narrow handle) would read as the
+   panel vanishing rather than tucking away. */
+.text-doc-outline-panel-collapsed {
+  width: 28px;
+  border-right: none;
+}
+
+/* Only the LIST scrolls - the collapse toggle sits outside this element (a
+   flex sibling, not a descendant), so a long outline can never scroll it
+   out of reach without resorting to `position: sticky` tricks inside the
+   scroll container itself. */
+.text-doc-outline-panel-inner {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 16px;
+}
+
+.text-doc-outline-panel-title,
+.text-doc-outline-drawer-title {
+  margin-bottom: 10px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+/* Panel title holds the "collapse/expand all headings" control on its right. */
+.text-doc-outline-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.text-doc-outline-expand-all {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-outline-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The row: an optional chevron (or its spacer, for a leaf, so every title
+   still starts at the same x regardless) then the link, side by side -
+   indent (below) lands on the ROW, not the link alone, so the two shift
+   right together. Scoped to the DESKTOP panel specifically: the mobile
+   drawer's own `<li>` has no chevron in its markup at all and keeps its
+   original block layout untouched (see the mobile scope note this task
+   shipped from). */
+.text-doc-outline-panel .text-doc-outline-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.text-doc-outline-chevron,
+.text-doc-outline-chevron-spacer {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-outline-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.text-doc-outline-chevron:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+
+.text-doc-outline-link {
+  display: block;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: break-word;
+}
+
+.text-doc-outline-link:hover {
+  background: var(--ui-surface-subtle);
+}
+
+/* The row last navigated to FROM the outline (activeOutlineHeadingId in
+   TextDocumentView.vue) - a persistent "you picked this one" marker, not a
+   continuous scroll-spy (see that ref's own comment for why). Desktop panel
+   only: the mobile drawer closes the instant a pick is made, so it would
+   never actually be seen there. */
+.text-doc-outline-panel .text-doc-outline-item-active .text-doc-outline-link,
+.text-doc-outline-drawer .text-doc-outline-item-active .text-doc-outline-link {
+  background: var(--ui-brand-soft);
+  color: var(--ui-accent-strong);
+  font-weight: 600;
+}
+
+/* DESKTOP PANEL ONLY: one line, ellipsized - never a horizontal scrollbar
+   on the panel itself. A native title tooltip is set on hover (see
+   onOutlineLinkHover in TextDocumentView.vue), and ONLY when this actually
+   truncates. Left as multi-line word-wrap for the mobile drawer above (see
+   the mobile scope note this task shipped from) - a bottom sheet has the
+   vertical room a fixed-height sidebar does not. */
+.text-doc-outline-panel .text-doc-outline-link {
+  width: auto;
+  flex: 1 1 auto;
+  /* Without this, a flex item's default min-width:auto refuses to shrink
+     below its own text's natural width, and text-overflow: ellipsis below
+     never gets the chance to apply at all. */
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+}
+
+/* Indent by heading depth - the same tree read `data-level` already gives
+   the in-document tableOfContents block (table-of-contents.ts's own CSS).
+   Shallower than that block's own indent: a chevron/spacer already pushes
+   the link text over by 20px (18px + the row's own 2px gap) on every row,
+   so the FIRST level of nesting needs less additional padding here to land
+   in the same visual place. */
+.text-doc-outline-panel .text-doc-outline-item[data-level='2'] { padding-left: 10px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='3'] { padding-left: 22px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='4'] { padding-left: 34px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='5'] { padding-left: 46px; }
+.text-doc-outline-panel .text-doc-outline-item[data-level='6'] { padding-left: 58px; }
+
+.text-doc-outline-empty {
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* Straddles the panel's own right edge (half inside, half in the 3px slack
+   next to the border) so it is easy to grab without adding a dead 6px gap
+   between the outline and the document. Absolutely positioned against the
+   panel (`position: sticky` above already gives it a containing block), so
+   it spans the full height regardless of how much of that height the
+   scrollable list versus the pinned collapse toggle end up taking. */
+.text-doc-outline-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.text-doc-outline-resize-handle:hover {
+  background: var(--ui-border);
+}
+
+/* A body class (see startOutlineResize in TextDocumentView.vue), not
+   something scoped to the handle: mid-drag the cursor is routinely well
+   past the 6px strip, over the document or the sidebar's own list, and both
+   the cursor and "no accidental text selection" need to hold everywhere
+   until the button is released. */
+body.text-doc-outline-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* Bottom of the panel, pinned outside the scrollable list (see
+   .text-doc-outline-panel-inner's own comment) so it survives an outline
+   long enough to scroll. Right-aligned per the request ("ближе к правому
+   краю") rather than centered, so it reads as belonging to the panel's own
+   edge next to the document, not as a generic centered footer control. */
+.text-doc-outline-collapse-toggle {
+  align-self: flex-end;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 6px 6px 8px auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+/* Collapsed: the list no longer fills the panel. Keep the toggle at the
+   bottom with an auto top margin, horizontally centered in the strip. */
+.text-doc-outline-panel-collapsed .text-doc-outline-collapse-toggle {
+  align-self: center;
+  margin: auto auto 8px;
+}
+
+.text-doc-outline-collapse-toggle:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+}
+
+/* Thin, muted, QCanva-styled scrollbar for the outline's own scroll area -
+   see the page-wide scrollbar rule (html, body) for the shared color logic;
+   duplicated rather than a shared selector list because Firefox's
+   `scrollbar-width: thin` and WebKit's pixel `::-webkit-scrollbar` sizing
+   are set to different concrete values here (a narrow sidebar can afford an
+   even thinner bar than the full page). */
+.text-doc-outline-panel-inner {
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-text-muted) transparent;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar {
+  width: 6px;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-thumb {
+  background: var(--ui-text-muted);
+  border-radius: 999px;
+}
+
+.text-doc-outline-panel-inner::-webkit-scrollbar-thumb:hover {
+  background: var(--ui-accent-strong);
+}
+
+/* MOBILE/NARROW drawer - same bottom-sheet shape as .text-doc-link-sheet,
+   but not confined to a max-width media query: it is only ever in the DOM
+   when outlineIsDesktop is false (the `v-if` in the template), so no media
+   query is needed here to keep it from also rendering on desktop. */
+.text-doc-outline-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.text-doc-outline-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 71;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top-left-radius: var(--radius-lg);
+  border-top-right-radius: var(--radius-lg);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+}
+
+.text-doc-outline-drawer .text-doc-outline-link {
+  min-height: 44px;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.text-doc-outline-drawer .text-doc-outline-item[data-level='2'] .text-doc-outline-link { padding-left: 24px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='3'] .text-doc-outline-link { padding-left: 36px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='4'] .text-doc-outline-link { padding-left: 48px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='5'] .text-doc-outline-link { padding-left: 60px; }
+.text-doc-outline-drawer .text-doc-outline-item[data-level='6'] .text-doc-outline-link { padding-left: 72px; }
+
+.text-doc-editor-shell {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 32px 24px 80px;
+  /* A flex item's automatic minimum size defaults to its min-content width
+     (`min-width: auto`) - without this override, a wide block's intrinsic
+     width (a table with enough columns/cellMinWidth to need more than the
+     shell's own width) stretches THIS shell sideways instead of staying put
+     and letting the block's own overflow wrapper (.tableWrapper) scroll
+     internally. The `--full` variant below already carries this; this base
+     rule was missing it - the same flex-sizing rule applies regardless of
+     the reading-width cap. Any future wide block (not just resized table
+     columns) is exposed to this the moment its own min-content width
+     exceeds the shell's. */
+  min-width: 0;
+}
+
+/* Fullscreen (full-width) mode: drop the 920px reading cap and grow to fill the
+   flex row. The outline panel is a flex SIBLING, so "fill the row" already
+   means "all width except the panel"; when the panel is collapsed to its narrow
+   strip the shell takes essentially the whole width. */
+.text-doc-editor-shell--full {
+  max-width: none;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.text-doc-paper {
+  position: relative;
+  min-height: 72vh;
+  /* Frameless: no border, no shadow, and a TRANSPARENT background so the doc
+     blends into the page instead of reading as a card. Removing only the
+     border/shadow was not enough - the paper's own surface colour
+     (--content-document-surface) differs from --ui-page in BOTH themes (white
+     on off-white in light, #191b20 on #1f2128 in dark), which still drew a
+     visible rectangle. The document text colour follows the theme alongside the
+     page, so contrast is preserved on the page background. */
+  background: transparent;
+  padding: 56px 64px;
+}
+
+.text-doc-paper.readonly {
+  background: transparent;
+}
+
+.text-doc-paper .ProseMirror {
+  min-height: 58vh;
+  outline: none;
+  color: var(--content-document-text);
+  font-size: 16px;
+  line-height: 1.72;
+  cursor: text;
+  /* We deliberately do NOT suppress the OS selection menu (no
+     -webkit-touch-callout: none). The chosen behaviour is coexistence: keep the
+     native copy/paste/select-all menu on every touch platform, and push OUR
+     formatting bubble further ABOVE the selection (see bubbleTippyOptions in
+     TextDocumentView.vue) so the native toolbar fits in the gap between the
+     selection and our bubble instead of overlapping it - both above the
+     selection, clear of the on-screen keyboard. Avoids losing native
+     copy/paste on iOS and keeps one behaviour across iOS + Android. */
+}
+
+/* Explicit selection highlight. Vertical keyboard selection (Shift+ArrowUp/Down,
+   across lines/blocks) left the DOM selection present but UNPAINTED in Chromium
+   forks (reported in Yandex) while horizontal keyboard and mouse selection
+   painted fine on the browser default. Declaring the highlight ourselves forces
+   it to render for every selection path. Both `::selection` and
+   `::-moz-selection` for cross-engine cover. */
+.text-doc-paper .ProseMirror ::selection,
+.text-doc-paper .ProseMirror::selection {
+  background: color-mix(in srgb, var(--content-document-link) 28%, transparent);
+}
+.text-doc-paper .ProseMirror ::-moz-selection,
+.text-doc-paper .ProseMirror::-moz-selection {
+  background: color-mix(in srgb, var(--content-document-link) 28%, transparent);
+}
+
+.text-doc-paper .ProseMirror h1,
+.text-doc-paper .ProseMirror h2,
+.text-doc-paper .ProseMirror h3,
+.text-doc-paper .ProseMirror h4,
+.text-doc-paper .ProseMirror h5,
+.text-doc-paper .ProseMirror h6 {
+  margin: 1.1em 0 0.45em;
+  line-height: 1.2;
+  /* .text-doc-topbar is `position: sticky` - a heading scrolled to the very
+     top of its scroll container (.text-doc-page, see that rule's own
+     comment, which also defines --text-doc-sticky-offset below) lands
+     directly BEHIND it, not merely near it, since the topbar overlays the
+     top of the SAME scroll area rather than pushing content down. Native
+     `Element.scrollIntoView` (used by `focusHeading` in
+     table-of-contents.ts) respects this automatically; ProseMirror's own
+     `scrollIntoView` command does not, which is why `focusHeading` was
+     rewritten to call the native one directly. */
+  scroll-margin-top: var(--text-doc-sticky-offset);
+}
+
+/* No font-size was ever set for headings here, so they fell back to the
+   browser's UA defaults relative to the 16px body above: h4 at 1em landed
+   exactly at body size and h5/h6 (0.83em/0.67em) landed BELOW it - the
+   deepest heading levels looked smaller than plain text instead of standing
+   out from it. */
+.text-doc-paper .ProseMirror h1 { font-size: 30px; }
+.text-doc-paper .ProseMirror h2 { font-size: 26px; }
+.text-doc-paper .ProseMirror h3 { font-size: 23px; }
+.text-doc-paper .ProseMirror h4 { font-size: 20px; }
+.text-doc-paper .ProseMirror h5 { font-size: 18px; }
+.text-doc-paper .ProseMirror h6 { font-size: 17px; }
+
+.text-doc-paper .ProseMirror p {
+  margin: 0.7em 0;
+}
+
+.text-doc-paper .ProseMirror ul,
+.text-doc-paper .ProseMirror ol {
+  padding-left: 1.5rem;
+  margin: 0.7em 0;
+}
+
+/* Horizontal rule: had no styling at all. A browser's own UA default relies
+   on its own implicit margin for spacing, which the global `* { margin: 0 }`
+   reset here zeroes out, squashing it flush against its neighbors; its
+   default border color/style is also not guaranteed to read well against
+   this app's themed surfaces. */
+.text-doc-paper .ProseMirror hr {
+  margin: 1.5em 0;
+  border: none;
+  border-top: 1px solid var(--content-document-border);
+}
+
+/* TaskList/TaskItem (@tiptap/extension-task-list, -task-item) render a plain
+   <li><label><input type=checkbox><span></span></label><div>content</div></li>
+   with no list markup of their own. Without this, the generic ul/ol rule
+   above still gives every task item a bullet, and the checkbox+content stay
+   block-stacked instead of sitting on one line. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+}
+/* The label is exactly one text line tall and centres the box in it, so the
+   box sits on the first line's middle at any font size or line-height (a
+   fixed margin-top drifted off it). `em` first for engines without `lh`. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.72em;
+  height: 1lh;
+  margin-right: 0.5rem;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  margin: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li > div > p {
+  margin: 0;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+  cursor: pointer;
+}
+/* Nested task lists sit inside the parent item's content div; drop the
+   generic ul/ol indent there too so nesting reads as depth, not double indent. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] ul[data-type="taskList"] {
+  padding-left: 1.5rem;
+}
+
+/* "Done N of M" above a todo list (a widget decoration, see task-item.ts). */
+.text-doc-paper .ProseMirror .task-list-progress {
+  margin: 0.75em 0 -0.25em;
+  color: var(--ui-text-muted);
+  font-size: 0.8em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror .task-list-progress[data-complete="true"] {
+  color: var(--ui-accent-strong);
+}
+
+/* A ticked todo: its own text struck through and folded to one line. Nested
+   todos under it stay visible; the todo the caret is in stays expanded so its
+   full text can still be edited. */
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"] > div > p {
+  color: var(--ui-text-muted);
+  text-decoration: line-through;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"]:not(.task-item-has-caret) > div > p:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-doc-paper .ProseMirror ul[data-type="taskList"] li[data-checked="true"]:not(.task-item-has-caret) > div > :not(:first-child):not(ul) {
+  display: none;
+}
+
+/* When the todo was ticked. */
+.text-doc-paper .ProseMirror .task-item-meta {
+  flex: 0 0 auto;
+  margin: 0.25em 0 0 0.5rem;
+  color: var(--ui-text-muted);
+  font-size: 0.75em;
+  white-space: nowrap;
+  user-select: none;
+}
+.text-doc-paper .ProseMirror .task-item-meta[hidden] {
+  display: none;
+}
+
+.text-doc-paper .ProseMirror img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1em 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.text-doc-paper .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-brands);
+  outline-offset: 2px;
+}
+
+.text-doc-paper .ProseMirror a {
+  color: var(--content-document-link);
+}
+
+.text-doc-paper .ProseMirror-focused {
+  outline: none;
+}
+
+/* Blockquote (StarterKit's default node, no custom extension). The global
+   `* { margin: 0 }` reset zeroes the one thing a bare <blockquote> gets for
+   free in a browser, so without this rule it renders pixel-for-pixel like a
+   plain paragraph - no visual sign it is a quote at all. */
+.text-doc-paper .ProseMirror blockquote {
+  margin: 1em 0;
+  padding: 2px 16px;
+  border-left: 3px solid var(--content-document-border);
+  color: var(--content-document-text-muted);
+}
+.text-doc-paper .ProseMirror blockquote p {
+  margin: 0.3em 0;
+}
+
+/*
+  TABLE (front task 13-19, column resizing added later). `.tableWrapper` is
+  the extension's own wrapping element, emitted by `renderWrapper: true`
+  (see the long comment on Table.configure in TextDocumentView.vue for the
+  full story, including a prerequisite fix on .text-doc-editor-shell this
+  depended on) - overflow-x:auto goes there, not on the table itself, so the
+  TABLE scrolls horizontally within its own box and the document page never
+  gets horizontal overflow (front task 16/20). Document-palette tokens
+  throughout, since this is content, not chrome - same rule
+  blockquote/codeBlock above already follow.
+
+  `.column-resize-handle`/`.resize-cursor` below style prosemirror-tables'
+  OWN plugin decorations - that library ships a stylesheet
+  (prosemirror-tables/style/tables.css) this app never imports, so without
+  these the resize affordance is functionally there (dragging works) but
+  invisible. `td`/`th`'s existing `position: relative` (below) is what the
+  absolutely-positioned handle needs; nothing new added for that.
+*/
+/* Shrink-wraps the table, but never narrower than the text column: a table
+   that fits keeps the column's width exactly as before, a wider one grows to
+   the RIGHT (left edge stays aligned with the text) into the page's free
+   width up to --text-doc-table-bleed (measured in TextDocumentView.vue), and
+   only past that does it scroll horizontally inside this wrapper. fit-content
+   works here because the table uses fixed layout: its intrinsic width is the
+   inline min-width prosemirror-tables stamps on it (column widths /
+   cellMinWidth), not its cell text. */
+.text-doc-paper .ProseMirror .tableWrapper {
+  margin: 1em 0;
+  overflow-x: auto;
+  /* Only ever scrolls sideways (overflow-x: auto alone would make y auto
+     too, so a pixel of anything overhanging a row showed a vertical bar). */
+  overflow-y: hidden;
+  width: fit-content;
+  min-width: 100%;
+  max-width: calc(100% + var(--text-doc-table-bleed, 0px));
+}
+.text-doc-paper .ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+}
+.text-doc-paper .ProseMirror td,
+.text-doc-paper .ProseMirror th {
+  min-width: 100px;
+  padding: 6px 10px;
+  border: 1px solid var(--content-document-border);
+  vertical-align: top;
+}
+/* The drag handle prosemirror-tables' columnResizing plugin decorates onto
+   the cell right before a column boundary - a Decoration.widget, so it must
+   stay `pointer-events: none` itself (the LIBRARY's own mousedown/mousemove
+   handling on view.dom is what actually drives the drag, not this element). */
+/* Invisible on purpose: hovering a border only switches the cursor
+   (.resize-cursor below) - a painted bar read as noise. It stays inside the
+   row's box (bottom: 0, and right: 0 on a row's last cell): anything poking
+   out of .tableWrapper, which scrolls, made a scrollbar pop up on hover. */
+.text-doc-paper .ProseMirror .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  z-index: 3;
+  background: transparent;
+  pointer-events: none;
+}
+.text-doc-paper .ProseMirror tr > :last-child > .column-resize-handle {
+  right: 0;
+}
+/* Added to the editor's own root element (view.dom) only while a handle is
+   being dragged or hovered - prosemirror-tables' own doing, not this app's. */
+.text-doc-paper .ProseMirror.resize-cursor {
+  cursor: col-resize;
+}
+.text-doc-paper .ProseMirror th {
+  background: var(--content-document-surface-readonly);
+  font-weight: 650;
+  text-align: left;
+}
+.text-doc-paper .ProseMirror td > p,
+.text-doc-paper .ProseMirror th > p {
+  margin: 0;
+}
+/* The extension's own cell-selection highlight (a decoration, not a class on
+   the cell) - kept visible against both themes' document palette. */
+.text-doc-paper .ProseMirror .selectedCell::after {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: color-mix(in srgb, var(--ui-info) 20%, transparent);
+  content: '';
+  pointer-events: none;
+}
+.text-doc-paper .ProseMirror td,
+.text-doc-paper .ProseMirror th {
+  position: relative;
+}
+
+/* The phone's list nesting arrows (list-indent.ts): in the left gutter beside
+   the caret's item, the column of the block "+"; placed by placeListArrows. */
+.text-doc-list-arrows {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 0;
+}
+/* Quiet, like the block "+": no frame, no fill, the muted icon colour; a
+   light fill only while pressed. */
+.text-doc-list-arrow {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  touch-action: manipulation;
+}
+/* A finger-sized target around the small icon, without making it look bigger. */
+.text-doc-list-arrow::before {
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+.text-doc-list-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-list-arrow:active:not(:disabled) {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+.text-doc-list-arrow:disabled {
+  opacity: 0.35;
+}
+.text-doc-list-arrows-enter-active,
+.text-doc-list-arrows-leave-active {
+  transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.text-doc-list-arrows-enter-from,
+.text-doc-list-arrows-leave-to {
+  opacity: 0;
+  transform: translateX(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .text-doc-list-arrows-enter-active,
+  .text-doc-list-arrows-leave-active { transition: none; }
+}
+/* The "+" beside a list would land on the arrows of its first line. */
+.text-doc-block-controls.text-doc-block-controls--under-list-arrows .text-doc-add-block {
+  visibility: hidden;
+}
+
+.text-doc-table-menu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+/* Icon-only (front task: was five text labels, now a compact strip of
+   icons) - width/height match so every button is a plain square regardless
+   of icon shape. */
+.text-doc-table-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  cursor: pointer;
+}
+.text-doc-table-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+.text-doc-table-btn-danger {
+  color: var(--ui-danger-foreground);
+}
+.text-doc-table-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.text-doc-table-btn:disabled:hover {
+  background: transparent;
+}
+.text-doc-table-menu-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 2px 2px;
+  background: var(--ui-border);
+}
+
+/* Row/column drag grips (table-move.ts). Fixed-position chrome on <body>,
+   placed from the hovered cell's rect - never inside the document. */
+.text-doc-table-grip {
+  position: fixed;
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text-muted, var(--ui-text));
+  box-shadow: var(--shadow-dropdown);
+  cursor: grab;
+  touch-action: none;
+}
+.text-doc-table-grip svg {
+  width: 12px;
+  height: 12px;
+}
+/* The glyph is grip-vertical; the column grip lies across the column. */
+.text-doc-table-grip-column svg {
+  transform: rotate(90deg);
+}
+.text-doc-table-grip:hover,
+.text-doc-table-grip.is-active {
+  background: var(--ui-info);
+  border-color: var(--ui-info);
+  color: #fff;
+}
+.text-doc-table-grip.is-active,
+body.text-doc-table-dragging,
+body.text-doc-table-dragging * {
+  cursor: grabbing !important;
+  user-select: none;
+}
+.text-doc-table-drop-indicator,
+.text-doc-table-drag-source {
+  position: fixed;
+  z-index: 59;
+  pointer-events: none;
+}
+.text-doc-table-drop-indicator {
+  border-radius: 2px;
+  background: var(--ui-info);
+}
+.text-doc-table-drag-source {
+  background: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--ui-info) 55%, transparent);
+  outline-offset: -1px;
+}
+
+/* CodeBlockLowlight. Syntax colours are themed via --content-code-* tokens
+   (calibrated for WCAG >= 4.5:1 on both light and dark document paper). */
+/* Code block node view (code-block-language.ts): the language picker sits
+   in the block's top-right corner, over the <pre>. */
+.text-doc-paper .ProseMirror .text-doc-code-block {
+  position: relative;
+  margin: 1em 0;
+}
+.text-doc-paper .ProseMirror .text-doc-code-block > pre {
+  margin: 0;
+  padding-top: 30px;
+}
+.text-doc-code-language {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  z-index: 1;
+  max-width: 45%;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.text-doc-code-block:hover .text-doc-code-language,
+.text-doc-code-language:focus-visible {
+  opacity: 1;
+  border-color: var(--content-code-border);
+  background: var(--ui-surface-elevated);
+}
+.text-doc-code-language:disabled {
+  cursor: default;
+  border-color: transparent;
+  background: transparent;
+}
+.text-doc-paper .ProseMirror pre {
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-code-border);
+  border-radius: var(--radius-sm);
+  background: var(--content-code-surface);
+  overflow-x: auto;
+}
+
+.text-doc-paper .ProseMirror pre code {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+}
+
+.text-doc-paper .ProseMirror pre .hljs-comment,
+.text-doc-paper .ProseMirror pre .hljs-quote {
+  color: var(--content-code-comment);
+  font-style: italic;
+}
+
+.text-doc-paper .ProseMirror pre .hljs-keyword,
+.text-doc-paper .ProseMirror pre .hljs-selector-tag {
+  color: var(--content-code-keyword);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-string,
+.text-doc-paper .ProseMirror pre .hljs-regexp {
+  color: var(--content-code-string);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-number,
+.text-doc-paper .ProseMirror pre .hljs-literal {
+  color: var(--content-code-number);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-title {
+  color: var(--content-code-function);
+}
+
+.text-doc-paper .ProseMirror pre .hljs-punctuation {
+  color: var(--content-code-punctuation);
+}
+
+/* The callout block.
+   Two contexts, deliberately different token sets:
+   1. .text-doc-paper - the editing surface, whose background is fixed dark in
+      both app themes (see --content-document-surface), so it uses the fixed
+      --content-callout-* tokens.
+   2. .text-doc-history-preview and any other themed surface rendering the
+      stored html - these DO follow the theme selector, so they draw the
+      semantic --ui-<variant>-* tokens, which are already defined for light and
+      for dark and therefore need no colour written twice here. */
+.text-doc-paper .ProseMirror aside {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-callout-info-border);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--content-callout-info-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='warning'] {
+  border-color: var(--content-callout-warning-border);
+  background: var(--content-callout-warning-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='success'] {
+  border-color: var(--content-callout-success-border);
+  background: var(--content-callout-success-surface);
+}
+
+.text-doc-paper .ProseMirror aside[data-variant='danger'] {
+  border-color: var(--content-callout-danger-border);
+  background: var(--content-callout-danger-surface);
+}
+
+/* The icon is node-view chrome, never document content: it must not take the
+   caret, and it must not be draggable out of the block. */
+.text-doc-callout-icon {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  height: 1.72em;
+  user-select: none;
+  color: var(--content-callout-info-accent);
+}
+
+aside[data-variant='warning'] > .text-doc-callout-icon {
+  color: var(--content-callout-warning-accent);
+}
+
+aside[data-variant='success'] > .text-doc-callout-icon {
+  color: var(--content-callout-success-accent);
+}
+
+aside[data-variant='danger'] > .text-doc-callout-icon {
+  color: var(--content-callout-danger-accent);
+}
+
+.text-doc-callout-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* The icon is also a button that opens the kind menu (callout.ts). */
+button.text-doc-callout-icon {
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+button.text-doc-callout-icon:hover,
+button.text-doc-callout-icon[aria-expanded='true'] {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+button.text-doc-callout-icon:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+}
+.ProseMirror[contenteditable='false'] button.text-doc-callout-icon {
+  cursor: default;
+  background: transparent;
+}
+.text-doc-paper .ProseMirror aside {
+  position: relative;
+}
+.text-doc-callout-menu {
+  position: absolute;
+  top: calc(1.72em + 14px);
+  left: 8px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+  user-select: none;
+}
+.text-doc-callout-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.text-doc-callout-menu-item:hover,
+.text-doc-callout-menu-item:focus-visible {
+  background: var(--ui-surface-subtle);
+  outline: none;
+}
+.text-doc-callout-menu-item[aria-checked='true'] {
+  font-weight: 650;
+}
+.text-doc-callout-menu-icon {
+  display: inline-flex;
+  color: var(--content-callout-info-accent);
+}
+.text-doc-callout-menu-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-callout-menu-item[data-variant='warning'] .text-doc-callout-menu-icon { color: var(--content-callout-warning-accent); }
+.text-doc-callout-menu-item[data-variant='success'] .text-doc-callout-menu-icon { color: var(--content-callout-success-accent); }
+.text-doc-callout-menu-item[data-variant='danger'] .text-doc-callout-menu-icon { color: var(--content-callout-danger-accent); }
+
+.text-doc-callout-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.text-doc-callout-body > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-callout-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* Toolbar affordance. Inserting a callout is one button; the four variant
+   buttons appear only while the caret is inside one. A slash menu is separate
+   work. */
+.text-doc-callout-variant-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-doc-callout-variant-icon {
+  display: inline-flex;
+}
+
+.text-doc-callout-variant-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text-doc-callout-variant-btn[data-variant='info'] .text-doc-callout-variant-icon {
+  color: var(--ui-info-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='warning'] .text-doc-callout-variant-icon {
+  color: var(--ui-warning-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='success'] .text-doc-callout-variant-icon {
+  color: var(--ui-success-foreground);
+}
+
+.text-doc-callout-variant-btn[data-variant='danger'] .text-doc-callout-variant-icon {
+  color: var(--ui-danger-foreground);
+}
+
+/* Collapsible headings and the table of contents.
+   The chevron and the ToC node view are DECORATIONS/node-view chrome drawn
+   INSIDE .text-doc-paper .ProseMirror, on the paper's own DOM. They draw
+   the themed --content-document-text and --content-document-text-muted tokens. */
+.text-doc-paper .ProseMirror h1,
+.text-doc-paper .ProseMirror h2,
+.text-doc-paper .ProseMirror h3,
+.text-doc-paper .ProseMirror h4,
+.text-doc-paper .ProseMirror h5,
+.text-doc-paper .ProseMirror h6 {
+  position: relative;
+}
+
+.text-doc-heading-toggle {
+  position: absolute;
+  left: -28px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--content-document-text-muted);
+  cursor: pointer;
+}
+
+.text-doc-heading-toggle:hover:not(:disabled) {
+  background: var(--content-code-surface);
+  color: var(--content-document-text);
+}
+
+.text-doc-heading-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.text-doc-heading-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* The blocks a collapsed heading hides. Never applied in a read-only editor
+   (see collapsible-heading.ts) and never touches html or plainText: this is
+   the only place anything is actually hidden, and it hides DOM, not content. */
+.text-doc-paper .ProseMirror .text-doc-collapsed-block {
+  display: none;
+}
+
+.text-doc-paper .ProseMirror .text-doc-toc {
+  margin: 1em 0;
+  padding: 14px 16px;
+  border: 1px solid var(--content-code-border);
+  border-radius: var(--radius-sm);
+  background: var(--content-code-surface);
+}
+
+.text-doc-toc-title {
+  margin-bottom: 8px;
+  color: var(--content-document-text);
+  font-weight: 600;
+}
+
+.text-doc-toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.text-doc-toc-item[data-level='2'] { padding-left: 16px; }
+.text-doc-toc-item[data-level='3'] { padding-left: 32px; }
+.text-doc-toc-item[data-level='4'] { padding-left: 48px; }
+.text-doc-toc-item[data-level='5'] { padding-left: 64px; }
+.text-doc-toc-item[data-level='6'] { padding-left: 80px; }
+
+.text-doc-toc-link {
+  display: block;
+  width: 100%;
+  padding: 2px 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--content-document-text-muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-doc-toc-link:hover {
+  background: var(--content-code-surface);
+  color: var(--content-document-text);
+}
+
+.text-doc-toc-empty {
+  padding: 2px 6px;
+  color: var(--content-document-text-muted);
+  font-style: italic;
+}
+
+/* The stored projection's table of contents, wherever it is rendered outside
+   the live editor - currently .text-doc-history-preview, which DOES follow
+   the app's theme, so it draws the semantic --ui-* tokens rather than the
+   fixed --content-* ones above (same split as .text-doc-history-preview
+   aside further down). */
+.text-doc-history-preview nav[data-toc] {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-history-preview nav[data-toc] ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.text-doc-history-preview nav[data-toc] li[data-level='2'] { padding-left: 16px; }
+.text-doc-history-preview nav[data-toc] li[data-level='3'] { padding-left: 32px; }
+.text-doc-history-preview nav[data-toc] li[data-level='4'] { padding-left: 48px; }
+.text-doc-history-preview nav[data-toc] li[data-level='5'] { padding-left: 64px; }
+.text-doc-history-preview nav[data-toc] li[data-level='6'] { padding-left: 80px; }
+
+.text-doc-history-preview nav[data-toc] a {
+  color: var(--ui-text-secondary);
+  text-decoration: none;
+}
+
+.text-doc-history-preview nav[data-toc] a:hover {
+  color: var(--ui-accent-strong);
+  text-decoration: underline;
+}
+
+/* ===== Editor input affordances: slash menu, bubble menu, drag handle =====
+   These are CHROME, not authored content. The document paper deliberately
+   keeps a fixed palette (see --content-document-surface above), but a popup
+   that floats over the app belongs to the app: it draws the semantic --ui-*
+   tokens, which already carry a light and a dark value, exactly like
+   .text-doc-toolbar does. Nothing here is written twice per theme. */
+.text-doc-slash-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-slash-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-doc-slash-item.active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
+.text-doc-slash-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-slash-item.active .text-doc-slash-icon {
+  color: var(--ui-accent-strong);
+}
+
+.text-doc-slash-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-slash-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mobile-only slash-command bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop popup instead. */
+.text-doc-slash-sheet-backdrop,
+.text-doc-slash-sheet {
+  display: none;
+}
+
+.text-doc-slash-empty {
+  padding: 9px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* The @-mention picker: same shape as the slash menu above, its sibling
+   trigger, not its variant - see mention-menu.ts for why it is a separate
+   plugin rather than a second item type on the same one. */
+.text-doc-mention-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 232px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-mention-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.text-doc-mention-item.active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
+.text-doc-mention-item-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-mention-item.active .text-doc-mention-item-icon {
+  color: var(--ui-accent-strong);
+}
+
+.text-doc-mention-item-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.text-doc-mention-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-doc-mention-empty {
+  padding: 9px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* LINK TAP/CLICK ACTIONS popover (front task 4/5) - same invisible
+   hit-target backdrop as the Share sheet, one implementation for both
+   desktop and mobile (see the comment on editorProps.handleClick). */
+.text-doc-link-action-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+
+.text-doc-link-action-menu {
+  position: fixed;
+  z-index: 61;
+  width: 250px;
+  max-width: calc(100vw - 24px);
+  padding: 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-link-action-url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ui-text-secondary);
+}
+
+/* Wraps rather than overflowing the fixed-width menu: four actions
+   (Copy / Edit / Remove link / Open) don't fit one row in Russian. */
+.text-doc-link-action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.text-doc-link-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 10px;
+  min-height: 36px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.text-doc-link-action-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-link-action-open {
+  margin-left: auto;
+  color: var(--ui-info);
+}
+
+/* The backlinks block (front task 10): chrome at the end of the document,
+   in .text-doc-editor-shell's max-width column - not inside .text-doc-paper,
+   since backlinks are not document content. Renders once loaded so an empty
+   list is never shown as a false flash before the fetch resolves. */
+.text-doc-backlinks {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--ui-border);
+}
+/* A full-width tappable row, not a decorative heading: the whole section is
+   collapsed by default (see backlinksExpanded), so the row IS the control
+   that reveals it. min-height keeps the ~44px touch target regardless of
+   the compact 13px label. */
+.text-doc-backlinks-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.text-doc-backlinks-icon {
+  display: inline-flex;
+}
+.text-doc-backlinks-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-backlinks-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0;
+}
+.text-doc-backlinks-count {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlinks-chevron {
+  flex-shrink: 0;
+  color: var(--ui-text-muted);
+}
+.text-doc-backlinks-panel {
+  padding-top: 2px;
+}
+.text-doc-backlinks-hint {
+  margin: 6px 0 14px;
+  font-size: 12px;
+  color: var(--ui-text-muted);
+}
+.text-doc-backlinks-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.text-doc-backlink-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.text-doc-backlink-item:hover {
+  background: var(--ui-surface-subtle);
+}
+.text-doc-backlink-item-inaccessible {
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlink-item-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  color: var(--ui-text-secondary);
+}
+.text-doc-backlink-item-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.text-doc-backlink-item-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.text-doc-backlinks-empty {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--ui-text-muted);
+  font-size: 13px;
+}
+
+/* The mention itself, INSIDE the document paper - so unlike the chrome
+   above, it stays on the fixed --content-* paper palette used everywhere
+   else inside .text-doc-paper. */
+/* Document mentions render as a distinct chip - "@" + title inside a rounded
+   frame - so a link to another document is unmistakably not plain text (a bare
+   coloured/underlined title was reported as indistinguishable). The "@" is a
+   ::before so it never enters the node text or serialization. */
+.text-doc-mention {
+  display: inline;
+  border-radius: 4px;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--content-document-link) 40%, transparent);
+  background: color-mix(in srgb, var(--content-document-link) 10%, transparent);
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.text-doc-mention-accessible::before,
+.text-doc-mention-inaccessible::before {
+  content: '@';
+  opacity: 0.6;
+  margin-right: 1px;
+}
+
+/* Link colour for mentions in document paper follows themed --content-document-link */
+.text-doc-mention-accessible {
+  color: var(--content-document-link);
+  cursor: pointer;
+}
+
+.text-doc-mention-inaccessible {
+  color: var(--content-document-link);
+  opacity: 0.65;
+  cursor: pointer;
+}
+
+.text-doc-mention-deleted {
+  color: var(--content-code-comment);
+  border-color: color-mix(in srgb, var(--content-code-comment) 40%, transparent);
+  background: transparent;
+  text-decoration: line-through;
+  cursor: default;
+}
+
+/* headingLink follows the same visual language as mention above - a link to
+   a heading in the SAME document, styled identically to a link to another
+   document, so an author never has to guess which kind they're looking at. */
+.text-doc-heading-link {
+  display: inline;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.text-doc-heading-link-accessible {
+  color: var(--content-document-link);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.text-doc-heading-link-deleted {
+  color: var(--content-code-comment);
+  text-decoration: line-through;
+  cursor: default;
+}
+
+/* The block controls popup: "+" (add block) on the left, drag grip on the
+   right. One flex row so both sit in the single drag-handle popup and stay
+   visible together on hover. */
+.text-doc-block-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.text-doc-add-block {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+
+.text-doc-add-block:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-add-block svg {
+  width: 16px;
+  height: 16px;
+}
+
+.text-doc-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 26px;
+  border-radius: 5px;
+  color: var(--ui-text-muted);
+  cursor: grab;
+}
+
+.text-doc-drag-handle:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+
+.text-doc-drag-handle:active {
+  cursor: grabbing;
+}
+
+.text-doc-drag-handle svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Headings reserve their own -28px slot for the collapse chevron
+   (.text-doc-heading-toggle above), which sits in the exact spot the
+   handle's normal 8px offset would otherwise land it on. */
+.text-doc-drag-handle--heading {
+  transform: translateX(-28px);
+}
+
+.text-doc-bubble-menu {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--shadow-dropdown);
+}
+
+.text-doc-bubble-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.text-doc-bubble-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+
+.text-doc-bubble-btn.active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-soft-on);
+}
+
+.text-doc-bubble-icon {
+  display: inline-flex;
+}
+
+.text-doc-bubble-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.text-doc-bubble-link-form {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.text-doc-bubble-link-input {
+  width: 220px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: 6px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
+}
+
+.text-doc-bubble-link-input::placeholder {
+  color: var(--ui-text-muted);
+}
+
+.text-doc-bubble-link-input:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 1px;
+}
+
+.text-doc-bubble-btn-text {
+  color: var(--ui-accent-strong);
+}
+
+/* Mobile-only link editor bottom sheet - hidden by default; the mobile
+   media query below shows it and hides the desktop in-bubble form instead. */
+.text-doc-link-sheet-backdrop,
+.text-doc-link-sheet {
+  display: none;
+}
+
+/* The typed `/query` while the menu is open, so it is visible that the
+   characters are a query and not prose yet. */
+.text-doc-paper .ProseMirror .qcanva-slash-query {
+  border-radius: 4px;
+  background: var(--content-document-slash-query-bg);
+  color: var(--content-document-slash-query-text);
+}
+
+.text-doc-history-preview {
+  height: 100%;
+  overflow: auto;
+  padding: 28px;
+  background: var(--ui-surface);
+  color: var(--ui-text);
+}
+
+/* This surface DOES follow the theme selector, so the callout draws the
+   semantic --ui-<variant>-* tokens, which carry a light and a dark value
+   already. No icon here: the stored html carries only data-variant, by design
+   (an inline svg per callout would bloat every stored document), so the
+   accent border is what tells the variants apart in a read-only preview. */
+.text-doc-history-preview aside {
+  margin: 1em 0;
+  padding: 12px 14px;
+  border: 1px solid var(--ui-info);
+  border-left-width: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--ui-info-soft);
+}
+
+.text-doc-history-preview aside[data-variant='warning'] {
+  border-color: var(--ui-warning);
+  background: var(--ui-warning-soft);
+}
+
+.text-doc-history-preview aside[data-variant='success'] {
+  border-color: var(--ui-success);
+  background: var(--ui-success-soft);
+}
+
+.text-doc-history-preview aside[data-variant='danger'] {
+  border-color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+}
+
+.text-doc-history-preview aside > :first-child {
+  margin-top: 0;
+}
+
+.text-doc-history-preview aside > :last-child {
+  margin-bottom: 0;
+}
+
+.text-doc-page .btn-ghost { color: var(--ui-text-secondary); }
+.text-doc-page .btn-ghost:hover { background: var(--ui-surface-subtle); color: var(--ui-text); }
+.text-doc-page .share-panel,
+.text-doc-page .html-history-panel {
+  border-color: var(--ui-border);
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+  box-shadow: var(--ui-shadow);
+}
+/* Form inputs inside the doc page (share dialog, settings, etc.) get a filled,
+   bordered field look. The page TITLE is an <input> too but must stay frameless
+   (it is the document's first line, not a form field), so it is excluded here -
+   otherwise this rule's specificity overrode the title's own transparent
+   background/border and drew a persistent box around it. */
+.text-doc-page input:not(.text-doc-title-page-input),
+.text-doc-page select {
+  color: var(--ui-text);
+  background-color: var(--ui-surface-subtle);
+  border-color: var(--ui-border);
+}
+
+@media (max-width: 760px) {
+  .text-doc-topbar {
+    min-height: 0;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+
+  /* THE PAGE TITLE, mobile size - smaller than desktop's 34px but still
+     bigger than any body heading. */
+  .text-doc-title-page-input,
+  .text-doc-title-page-readonly {
+    font-size: 24px;
+    margin-bottom: 14px;
+  }
+
+  /* Both Share and History move into the "⋮" popover on mobile now (compact
+     header: back / undo / redo / sync / user / kebab) - neither needs its
+     own permanent button once the popover holds both, matching the sync
+     chip's own move from a standalone pill down to a small inline label in
+     the same row. Outline joins them here for the same reason - the popover
+     already carries its own toggle entry (see the template). */
+  .text-doc-history-btn,
+  .text-doc-access-btn {
+    display: none;
+  }
+
+  /* Undo/redo add two more 44px touch targets to a row that already didn't
+     have room to spare - a tighter gap (not smaller buttons: touch target
+     stays 44px, see .text-doc-undo-btn/.text-doc-redo-btn) is the "more
+     compact spacing on very narrow screens" the front task allows. */
+  .text-doc-topbar-actions {
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 2px;
+  }
+
+  /* On mobile the sync indicator becomes a fixed-size colour DOT, not a text
+     badge. Two birds: (1) the reported "jump while typing" was an auto-width
+     text badge changing size as the label cycled Saving/Synced/Offline (+ " · N")
+     and shoving undo/redo/user on every sync tick — a fixed 16px box can't
+     reflow anything; (2) a text badge wide enough to read ate ~64px the tight
+     mobile header (back/outline/undo/redo/sync/user/kebab) does not have at
+     320px. The dot inherits its colour from the .text-doc-sync-<kind> rules via
+     currentColor, so status still reads at a glance; font-size:0 hides the label
+     and the pending suffix. */
+  .text-doc-sync {
+    width: 16px;
+    max-width: 16px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font-size: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .text-doc-sync::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: none;
+  }
+
+  .account-menu-trigger.current-user-badge {
+    padding: 6px;
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  /* Sidebar AccountMenu: restore username display (header/canvas keep icon-only) */
+  .account-menu--sidebar .account-menu-trigger.current-user-badge span:not(.current-user-icon) {
+    display: inline;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .text-doc-menu-mobile {
+    display: inline-block;
+    position: relative;
+  }
+
+  .text-doc-menu-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+  }
+
+  .text-doc-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    background: transparent;
+  }
+
+  .text-doc-menu-popover {
+    position: fixed;
+    top: 56px;
+    right: 12px;
+    z-index: 56;
+    width: 180px;
+    padding: 6px;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--radius-md);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+    backdrop-filter: blur(10px);
+  }
+
+  .text-doc-menu-item {
+    display: block;
+    width: 100%;
+    padding: 10px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ui-text);
+    text-align: left;
+    font-size: 14px;
+    cursor: pointer;
+    min-height: 44px;
+  }
+
+  .text-doc-menu-item:hover {
+    background: var(--ui-surface-subtle);
+  }
+
+  /* The document should feel like it merges with the page background,
+     not like a framed sheet floating inside another frame. */
+  .text-doc-editor-shell {
+    padding: 20px 4px calc(40px + env(safe-area-inset-bottom));
+  }
+
+  .text-doc-paper {
+    min-height: 0;
+    /* Wider LEFT padding on mobile: a real gutter that holds the block
+       controls ("+" on a paragraph, the collapse chevron on a heading) without
+       either landing on the text. Also shifts all content - headings included -
+       a little right, as asked. */
+    padding: 4px 16px 4px 40px;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  .text-doc-paper.readonly {
+    background: transparent;
+  }
+
+  .text-doc-paper .ProseMirror {
+    min-height: 50vh;
+    font-size: 17px;
+    line-height: 1.55;
+  }
+
+  .text-doc-paper .ProseMirror h1 { font-size: 30px; }
+  .text-doc-paper .ProseMirror h2 { font-size: 25px; }
+  .text-doc-paper .ProseMirror h3 { font-size: 21px; }
+
+  .text-doc-paper .ProseMirror h1,
+  .text-doc-paper .ProseMirror h2,
+  .text-doc-paper .ProseMirror h3,
+  .text-doc-paper .ProseMirror h4,
+  .text-doc-paper .ProseMirror h5,
+  .text-doc-paper .ProseMirror h6 {
+    margin: 0.9em 0 0.35em;
+  }
+
+  .text-doc-paper .ProseMirror p {
+    margin: 0.55em 0;
+  }
+
+  /* Checkbox stays visually compact but keeps a >=44px touch target via an
+     invisible hit-area on the wrapping label (its ::before), rather than
+     growing the checkbox itself past what's comfortable to read next to. */
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label {
+    position: relative;
+    height: 1.55em;
+    height: 1lh;
+    margin-right: 0.65rem;
+  }
+  /* The >=44px touch target, centred on the box without moving it. */
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] li > label::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 44px;
+    height: 44px;
+    transform: translate(-50%, -50%);
+  }
+
+  .text-doc-paper .ProseMirror ul[data-type="taskList"] input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+
+  /* Mobile: a bigger, easier-to-tap collapse chevron, sitting in the paper's
+     wider left gutter (see .text-doc-paper padding above). -32px drops it into
+     that gutter, on screen, clear of the heading text. */
+  .text-doc-heading-toggle {
+    left: -32px;
+    width: 30px;
+    height: 30px;
+  }
+  .text-doc-heading-toggle svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* On a heading the collapse chevron is the control; the "+" would land in the
+     same gutter and collide with it, so hide the "+" there (as the drag grip
+     already is). It stays available on ordinary blocks. */
+  .text-doc-block-controls.text-doc-drag-handle--heading .text-doc-add-block {
+    display: none;
+  }
+
+  /* The handle is a `draggable=true` div reordering blocks via native HTML5
+     drag-and-drop, which never fires from touch input - a drag gesture on it
+     is inert on a touch device (verified: touchstart/touchmove/touchend on
+     the handle changes nothing). Mobile browsers still reveal it on a plain
+     tap though (they synthesize a mousemove), where it only gets in the way:
+     at mobile's ~20px paper padding there isn't room for it next to the
+     -18px heading-collapse chevron above without the two overlapping, so a
+     revealed handle on a heading swallows taps meant for the chevron. Since
+     it does nothing useful here anyway, hide it outright rather than try to
+     fit a non-functional control into a gutter that can't hold it and the
+     chevron both. */
+  .text-doc-drag-handle {
+    display: none;
+  }
+
+  .text-doc-history-panel {
+    inset: 64px 10px 10px;
+  }
+
+  /*
+    SHARE BOTTOM SHEET (front task 7/8). Same markup as desktop's floating
+    panel, repositioned/restyled into a proper mobile sheet: pinned to the
+    bottom, rounded top corners, a grabber, safe-area padding, internal
+    scroll with the page behind it non-scrolling (position:fixed already
+    achieves that - nothing under a fixed, full-height sheet is reachable).
+    Sections stack vertically and every control goes full width (front task
+    8's explicit "no tight single row" requirement) via the scoped overrides
+    below, rather than changing the shared .share-form/.share-visibility-select
+    rules that CanvasView/HtmlDocumentView's own Access panels also use.
+  */
+  .text-doc-share-backdrop {
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-share-panel {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: min(85dvh, 720px);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 10px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+
+  .text-doc-share-grabber {
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto 10px;
+    border-radius: 999px;
+    background: var(--ui-border);
+  }
+
+  .text-doc-share-panel .share-visibility-select,
+  .text-doc-share-panel .slug-input,
+  .text-doc-share-panel .share-form,
+  .text-doc-share-panel .share-form input,
+  .text-doc-share-panel .share-form select,
+  .text-doc-share-panel .share-form button,
+  .text-doc-share-panel .share-link-row,
+  .text-doc-share-panel .share-save-slug-btn,
+  .text-doc-share-panel .slug-row {
+    width: 100%;
+  }
+
+  .text-doc-share-panel .share-form {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .text-doc-share-panel .share-form input,
+  .text-doc-share-panel .share-form select,
+  .text-doc-share-panel .share-form button,
+  .text-doc-share-panel .share-visibility-select,
+  .text-doc-share-panel .slug-input,
+  .text-doc-share-panel .share-checkbox,
+  .text-doc-share-panel .share-link-row,
+  .text-doc-share-panel .share-save-slug-btn {
+    min-height: 44px;
+  }
+
+  /* front task: "/docs/" was visually oversized/misaligned on mobile - this
+     `stretch` made the prefix span match the input's 44px touch-target
+     height, and unlike the input it has no vertical centering of its own,
+     so its text sat at the top of that tall box instead of level with the
+     input's own text. `center` (the desktop default) fixes it without
+     needing a second rule on .slug-prefix itself. */
+  .text-doc-share-panel .slug-row {
+    align-items: center;
+  }
+
+  .text-doc-link-action-btn {
+    min-height: 44px;
+  }
+
+  /* Icon-only buttons at a proper touch-target size; five of them at 36px
+     plus gaps/padding comfortably fit even a 320px screen, so (unlike the
+     old five-text-label version) this menu no longer needs to wrap or clamp
+     its own width. */
+  .text-doc-table-btn {
+    width: 36px;
+    height: 36px;
+  }
+  /* Nine buttons (+ the move arrows) no longer fit a 320px screen in one
+     row; wrap them instead of overflowing it. */
+  .text-doc-table-menu {
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: calc(100vw - 24px);
+  }
+  /* A wrapped row would leave a separator dangling at its end. */
+  .text-doc-table-menu-sep {
+    display: none;
+  }
+  /* Reordering on a phone is the menu arrows; the drag grips are desktop
+     only (table-move.ts also never shows them below this breakpoint). */
+  .text-doc-table-grip {
+    display: none !important;
+  }
+
+  .text-doc-paper .ProseMirror td,
+  .text-doc-paper .ProseMirror th {
+    min-width: 88px;
+    padding: 6px 8px;
+  }
+
+  /* Not a config change (Table.configure stays the same for every viewport -
+     see its own comment) - prosemirror-tables' columnResizing plugin binds
+     mousedown/mousemove only, so dragging to resize a column is not
+     attemptable on a touchscreen regardless of whether this handle is
+     visible. Hidden here purely so mobile doesn't show an affordance that
+     cannot be used there. */
+  .text-doc-paper .ProseMirror .column-resize-handle {
+    display: none;
+  }
+
+  /* No room to stretch into on a phone: the table stays exactly the text
+     column's width and a wider one scrolls horizontally inside it. */
+  .text-doc-paper .ProseMirror .tableWrapper {
+    max-width: 100%;
+  }
+
+  /* Collapsed by default (backlinksExpanded), so the section no longer needs
+     the desktop's generous 40px/24px breathing room just to hold one row. */
+  .text-doc-backlinks {
+    margin-top: 16px;
+    padding-top: 4px;
+  }
+
+  .text-doc-bubble-link-form-desktop {
+    display: none;
+  }
+
+  .text-doc-link-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-link-sheet {
+    display: block;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 71;
+    padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-link-sheet-title {
+    margin-bottom: 10px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-link-sheet-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .text-doc-link-sheet-input {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    background: var(--ui-surface-subtle);
+    color: var(--ui-text);
+    font-size: 15px;
+  }
+
+  .text-doc-link-sheet-input:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 1px;
+  }
+
+  .text-doc-link-sheet-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  .text-doc-link-sheet-actions .btn-ghost,
+  .text-doc-link-sheet-apply {
+    min-height: 44px;
+  }
+
+  .text-doc-slash-menu {
+    display: none;
+  }
+
+  .text-doc-slash-sheet-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(0, 0, 0, 0.35);
+  }
+
+  .text-doc-slash-sheet {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 60vh;
+    z-index: 71;
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    border-top-left-radius: var(--radius-lg);
+    border-top-right-radius: var(--radius-lg);
+    background: var(--ui-surface-elevated);
+    box-shadow: var(--ui-shadow);
+  }
+
+  .text-doc-slash-sheet-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding: 0 4px;
+    color: var(--ui-text);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .text-doc-slash-sheet-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ui-text-secondary);
+  }
+
+  .text-doc-slash-sheet-list {
+    overflow-y: auto;
+  }
+
+  .text-doc-slash-sheet-item {
+    min-height: 44px;
+    padding: 10px 12px;
+    font-size: 15px;
+  }
+
+  .text-doc-slash-sheet-item .text-doc-slash-icon svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* ── Standalone draw toolbar ───────────────────────────────────── */
+.draw-toolbar {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.draw-toolbar-toggle {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md, 10px);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-border);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.draw-toolbar-toggle:hover {
+  background: var(--ui-surface-subtle);
+  color: var(--dark-text-primary);
+}
+.draw-toolbar-toggle.active {
+  color: var(--ui-accent-strong);
+  border-color: var(--color-brands);
+}
+.draw-toolbar-panel {
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--ui-shadow);
+}
+/* vertical icon tool column */
+.draw-tools-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* 3-column palette: [icons col1][icons col2] | [vertical slider] */
+.draw-panel-3col {
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+}
+.draw-panel-left {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.draw-tools-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 34px);
+  gap: 4px;
+}
+.draw-panel-vsep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--ui-border);
+}
+.draw-panel-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.draw-action-color-pop-left {
+  top: 0;
+  left: auto;
+  right: calc(100% + 8px);
+}
+.draw-tool-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.draw-panel-sep {
+  width: 80%;
+  height: 1px;
+  background: var(--ui-border);
+}
+.draw-panel-width {
+  width: 100%;
+  accent-color: var(--color-brands);
+}
+.draw-panel-width-vertical {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  -webkit-appearance: slider-vertical;
+  width: 24px;
+  height: 96px;
+  accent-color: var(--color-brands);
+}
+
+/* current-colour button + palette popover (shared by both menus) */
+.draw-action-color { position: relative; display: inline-flex; }
+.draw-action-color-current {
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 2px solid var(--ui-border);
+}
+.draw-action-color-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: 8px;
+  box-shadow: var(--ui-shadow);
+  z-index: 130;
+}
+.draw-action-color-pop-right {
+  top: 0;
+  left: calc(100% + 8px);
+}
+
+/* ── Dice toolbar ──────────────────────────────────────────────── */
+.dice-toolbar {
+  position: absolute;
+  left: 12px;
+  top: calc(50% + 28px);
+  z-index: 120;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.dice-panel {
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md, 12px);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 180px;
+  backdrop-filter: blur(12px);
+  box-shadow: var(--ui-shadow);
+}
+.dice-row { display: flex; flex-wrap: wrap; gap: 4px; }
+.dice-die { padding: 4px 8px; border-radius: 8px; border: 1px solid var(--ui-border); background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
+.dice-die.active { border-color: var(--color-brands); color: var(--ui-accent-strong); }
+.dice-controls { display: flex; align-items: center; gap: 6px; }
+.dice-controls label { font-size: 12px; opacity: 0.7; min-width: 44px; }
+.dice-step { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--ui-border); background: transparent; color: inherit; cursor: pointer; }
+.dice-val { min-width: 28px; text-align: center; font-size: 13px; }
+.dice-roll-btn { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--ui-border); background: var(--color-brands); color: var(--color-brand-on); cursor: pointer; font-weight: 600; }
+
+/* ── Floating actions menu for a selected drawing (horizontal) ───── */
+.drawing-actions-toolbar {
+  position: absolute;
+  z-index: 120;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 7px;
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  pointer-events: all;
+}
+.drawing-actions-toolbar .draw-action-width { width: 90px; accent-color: var(--color-brands); }
+.draw-action-sep { width: 1px; height: 22px; background: var(--ui-border); }
+
+/* Native app: a cached resource is visible while the latest version arrives. */
+.resource-cache-status {
+  position: fixed;
+  z-index: 500;
+  top: calc(env(safe-area-inset-top, 0px) + 58px);
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 8px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: 10px;
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  font-size: 13px;
+  box-shadow: var(--ui-shadow);
+  pointer-events: none;
+}
+.resource-cache-status-refreshing { border-color: var(--ui-info); }
+.resource-cache-status-success { border-color: var(--ui-success); }
+.resource-cache-status-error { border-color: var(--ui-warning); }
+

@@ -1,0 +1,1794 @@
+/* ===== Admin ===== */
+.admin-section-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ui-text-secondary);
+  margin: 24px 0 12px;
+}
+.admin-stats { display: flex; gap: 16px; margin-bottom: 24px; }
+.stat-card {
+  background: var(--dark-card-bg);
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-lg);
+  padding: 20px 32px;
+  box-shadow: var(--shadow-card);
+  text-align: center;
+}
+.stat-value { font-size: 32px; font-weight: 700; color: var(--ui-accent-strong); }
+.stat-label { font-size: 13px; color: var(--ui-text-secondary); margin-top: 4px; }
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.admin-table th {
+  text-align: left;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--dark-neutral-border);
+  color: var(--dark-text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+}
+.admin-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--ui-border);
+}
+.admin-table tr:hover td { background: var(--ui-surface-subtle); }
+.role-select {
+  padding: 4px 8px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-full);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+}
+.badge-superadmin { background: var(--ui-danger-soft); color: var(--ui-danger-foreground); }
+
+.dash-loading, .dash-empty {
+  text-align: center;
+  color: var(--ui-text-secondary);
+  padding: 60px;
+}
+.dashboard-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--ui-overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+  padding: 24px;
+}
+.dashboard-modal {
+  width: min(560px, 100%);
+  background: var(--ui-surface-elevated);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(10px);
+}
+.dashboard-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.dashboard-modal-head h3 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.dashboard-modal-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-modal-close:hover { background: var(--ui-surface-subtle); color: var(--ui-text); }
+.dashboard-modal-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font-size: 14px;
+  outline: none;
+}
+.dashboard-modal-input:focus {
+  border-color: color-mix(in srgb, var(--color-brands) 45%, transparent);
+}
+.dashboard-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+.dashboard-modal-note {
+  margin-top: 10px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+/* The tag filter sheet is always a bottom sheet, not a centered dialog -
+   only ever opened from the mobile compact tag bar's "+N" button, so this
+   isn't gated behind a media query the way the rest of the mobile layout
+   is. */
+.dashboard-tag-sheet-backdrop {
+  align-items: flex-end;
+  padding: 0;
+}
+.dashboard-tag-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: min(70dvh, 560px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  padding: 10px 18px calc(16px + env(safe-area-inset-bottom));
+}
+.dashboard-tag-sheet-grabber {
+  align-self: center;
+  width: 36px;
+  height: 4px;
+  margin-bottom: 10px;
+  border-radius: 2px;
+  background: var(--ui-border);
+}
+.dashboard-tag-sheet-subtitle {
+  margin: 2px 0 0;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.dashboard-tag-sheet-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  overflow-y: auto;
+  padding-bottom: 4px;
+}
+.dashboard-tag-sheet-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+.dashboard-tag-sheet-item.active {
+  border-color: color-mix(in srgb, var(--color-brands) 55%, transparent);
+  color: var(--color-brands-light);
+  background: color-mix(in srgb, var(--color-brands) 12%, transparent);
+}
+.dashboard-tag-sheet-actions {
+  flex: 0 0 auto;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+.dashboard-tag-sheet-actions .btn-primary,
+.dashboard-tag-sheet-actions .btn-ghost {
+  min-height: 44px;
+}
+.folder-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+.folder-chip {
+  padding: 7px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 999px;
+  background: var(--dark-input-bg);
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+.folder-chip:hover,
+.folder-chip.active {
+  background: var(--ui-surface-subtle);
+  border-color: color-mix(in srgb, var(--color-brands) 45%, transparent);
+  color: var(--ui-text);
+}
+.tag-editor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tag-editor-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+}
+.tag-name-input {
+  min-width: 0;
+}
+.tag-color-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tag-color-option {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  cursor: pointer;
+}
+.tag-color-option.active {
+  border-color: var(--ui-text);
+  box-shadow: 0 0 0 1px var(--ui-border);
+}
+.tag-remove-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.tag-remove-btn:hover {
+  color: var(--ui-danger-foreground);
+  background: var(--ui-danger-soft);
+}
+.tag-add-btn {
+  margin-top: 14px;
+}
+.tag-manager-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.tag-manager-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto auto auto auto;
+  gap: 10px;
+  align-items: center;
+}
+.tag-manager-count {
+  color: var(--dark-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.html-generate-panel,
+.settings-panel {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding: 16px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-lg);
+  background: var(--dark-card-bg);
+  box-shadow: var(--shadow-card);
+}
+.html-generate-panel {
+  grid-template-columns: minmax(160px, 0.8fr) minmax(180px, 1fr) minmax(260px, 2fr) auto;
+  align-items: end;
+}
+.html-generate-panel h2 {
+  margin: 0;
+  font-size: 16px;
+}
+.html-generate-panel p {
+  margin: 4px 0 0;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.html-prompt,
+.html-source {
+  width: 100%;
+  min-height: 74px;
+  padding: 10px 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  outline: none;
+  resize: vertical;
+}
+.html-drop-zone {
+  border-style: dashed;
+}
+.html-doc-card {
+  min-height: 126px;
+}
+.html-select {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+}
+.html-select input {
+  width: 18px;
+  height: 18px;
+}
+.html-editor-page {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dark-neutral-bg);
+}
+.html-editor-bar {
+  position: relative;
+  z-index: 30;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 18px;
+}
+.html-editor-bar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: none;
+}
+.html-mode-tabs,
+.html-editor-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.html-mode-tabs .active {
+  border-color: color-mix(in srgb, var(--color-brands) 35%, transparent);
+  background: color-mix(in srgb, var(--color-brands) 20%, transparent);
+  color: var(--ui-accent-strong);
+}
+.html-sync-wrap {
+  position: relative;
+}
+.html-export-wrap {
+  position: relative;
+}
+.html-export-menu {
+  left: 0;
+  right: auto;
+  min-width: 164px;
+}
+.html-mobile-actions {
+  display: none;
+  position: relative;
+}
+/* Fixed size with a status dot, same as the text-doc/canvas badges: no
+   state change (and no pending count - see useCalmSyncStatus.ts) may
+   resize it and shove the header buttons around. */
+.html-save-state {
+  border: 0;
+  width: 150px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--ui-success-soft);
+  color: var(--ui-success-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.html-save-state::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.html-save-state-dirty,
+.html-save-state-saving {
+  background: var(--ui-warning-soft);
+  color: var(--ui-warning-foreground);
+}
+.html-save-state-failed {
+  background: var(--ui-danger-soft);
+  color: var(--ui-danger-foreground);
+}
+.html-save-state-offline {
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+}
+.html-sync-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--dark-card-bg);
+  box-shadow: var(--shadow-dropdown);
+  z-index: 120;
+}
+.html-sync-head,
+.html-sync-event {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.html-sync-head {
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--dark-neutral-border);
+}
+.html-sync-head strong,
+.html-sync-event strong {
+  color: var(--ui-text);
+  font-size: 12px;
+}
+.html-sync-head span,
+.html-sync-event span,
+.html-sync-event time,
+.html-sync-empty {
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+}
+.html-sync-event {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+.html-sync-event > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.html-sync-event-rejected strong {
+  color: var(--ui-danger-foreground);
+}
+.html-sync-event-warning strong {
+  color: var(--ui-warning-foreground);
+}
+.html-sync-event-confirmed strong {
+  color: var(--ui-success-foreground);
+}
+.html-editor-tools {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--dark-neutral-border);
+  background: var(--dark-neutral-bg);
+}
+.html-title-input {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  outline: none;
+}
+.html-title-readonly {
+  flex: 1;
+  min-width: 0;
+  padding: 0 10px;
+  color: var(--ui-text);
+  font-size: 16px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.html-access-select {
+  padding: 9px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--dark-card-bg);
+  color: var(--dark-text-primary);
+  font-size: 13px;
+}
+.html-share-panel {
+  position: static;
+  width: auto;
+  border-radius: 0;
+  border-width: 0 0 1px;
+}
+.html-history-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  min-height: 360px;
+  padding: 12px;
+  border-bottom: 1px solid var(--dark-neutral-border);
+  background: var(--ui-page);
+}
+.html-history-list,
+.html-history-preview {
+  min-height: 320px;
+  overflow: hidden;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+}
+.html-history-list {
+  overflow-y: auto;
+}
+.html-history-preview {
+  display: flex;
+  flex-direction: column;
+}
+.html-history-head,
+.html-history-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--dark-neutral-border);
+  color: var(--ui-text);
+}
+.html-history-preview-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.html-history-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.html-history-item:hover,
+.html-history-item.active {
+  background: color-mix(in srgb, var(--color-brands) 15%, transparent);
+}
+.html-history-item span {
+  color: var(--ui-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.html-history-item small,
+.html-history-preview-head small,
+.html-history-empty {
+  color: var(--ui-text-secondary);
+}
+.html-history-empty {
+  padding: 16px;
+}
+.html-editor-main,
+.html-editor-grid {
+  min-height: 0;
+  flex: 1;
+}
+.html-editor-main {
+  display: flex;
+  background: var(--ui-page);
+}
+.html-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  width: 100%;
+}
+.html-visual-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(300px, 0.9fr) minmax(0, 1.1fr);
+  width: 100%;
+  min-height: 0;
+  background: var(--ui-page);
+}
+.html-visual-editor {
+  display: grid;
+  grid-template-columns: 210px minmax(330px, 0.9fr) minmax(0, 1.1fr);
+  width: 100%;
+  min-height: 0;
+  background: var(--ui-page);
+}
+.html-block-sidebar {
+  padding: 14px;
+  border-right: 1px solid var(--dark-neutral-border);
+  overflow: auto;
+}
+.html-panel-title {
+  margin: 8px 0;
+  color: var(--ui-text-secondary);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.html-block-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 7px;
+  background: var(--dark-input-bg);
+  color: var(--ui-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.html-block-btn:hover {
+  background: var(--ui-surface-subtle);
+}
+.html-block-btn.active {
+  border-color: color-mix(in srgb, var(--color-brands) 35%, transparent);
+  background: color-mix(in srgb, var(--color-brands) 20%, transparent);
+  color: var(--ui-accent-strong);
+}
+.html-block-editor {
+  padding: 14px;
+  overflow: auto;
+}
+.html-visual-panel {
+  min-height: 0;
+  padding: 14px;
+  overflow: auto;
+  border-right: 1px solid var(--dark-neutral-border);
+}
+.html-structure-list {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+.html-structure-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 7px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+.html-structure-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.html-structure-item small {
+  color: var(--ui-text-secondary);
+}
+.html-structure-item.active {
+  border-color: color-mix(in srgb, var(--ui-info) 45%, transparent);
+  background: var(--ui-info-soft);
+  color: var(--ui-info-foreground);
+}
+.html-block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.html-property-grid {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.html-property-grid label {
+  display: grid;
+  gap: 5px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.html-property-grid input,
+.html-property-grid textarea,
+.html-property-grid select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: 7px;
+  background: var(--ui-surface-subtle);
+  color: var(--ui-text);
+  font: inherit;
+}
+.html-property-grid textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+.html-style-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.html-checkbox-row {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+.html-checkbox-row input {
+  width: auto;
+}
+.html-dom-editor-note {
+  align-content: start;
+  color: var(--ui-text-secondary);
+}
+.html-dom-editor-note h3 {
+  margin: 0 0 8px;
+  color: var(--ui-text);
+}
+.html-dom-editor-note p {
+  margin: 0;
+  line-height: 1.5;
+}
+.html-block-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid var(--dark-neutral-border);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-subtle);
+}
+.html-block-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.html-block-textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+.html-source {
+  height: 100%;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--dark-neutral-border);
+  resize: none;
+}
+.html-source-full,
+.html-source-readonly {
+  width: 100%;
+  flex: 1;
+  padding: 18px;
+  background: var(--ui-surface-solid);
+  color: var(--ui-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.html-source-readonly {
+  margin: 0;
+  user-select: text;
+}
+.html-browser-preview {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  border: 0;
+  background: #fff;
+}
+.html-preview {
+  overflow: auto;
+  padding: 24px;
+  background: #fff;
+  color: #111;
+}
+.settings-panel {
+  max-width: 640px;
+}
+.settings-panel h2 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--dark-text-primary);
+}
+.settings-panel label {
+  display: grid;
+  gap: 6px;
+  color: var(--ui-text-secondary);
+  font-size: 13px;
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .dashboard-pull-status {
+    display: inline-flex;
+    transition: color var(--transition-fast);
+  }
+  .dashboard-pull-status.ready { color: var(--ui-accent-strong); }
+  .dashboard-pull-status.refreshing { color: var(--ui-accent-strong); }
+  .dashboard-pull-icon { font-size: 16px; line-height: 1; }
+  .dashboard-pull-status.refreshing .dashboard-pull-icon { animation: dashboard-refresh-spin .7s linear infinite; }
+
+  .auth-page {
+    align-items: stretch;
+    padding: 16px;
+  }
+
+  .auth-card {
+    width: 100%;
+    max-width: 420px;
+    margin: auto;
+    padding: 28px 20px;
+  }
+
+  .auth-card input,
+  .auth-card button[type="submit"] {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .app-layout {
+    grid-template-rows: auto 1fr;
+  }
+
+}
+
+@media (max-width: 768px) {
+
+  .dashboard-auth-header {
+    display: block;
+    padding: 8px 12px calc(8px + env(safe-area-inset-top));
+  }
+  .dashboard-auth-header .app-header-inner {
+    justify-content: flex-start;
+    align-items: center;
+    gap: 10px;
+  }
+  .dash-search-header-mobile {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    width: auto;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+  .dash-search-toolbar-desktop {
+    display: none;
+  }
+  /* Anonymous/public header keeps its desktop row (brand + auth buttons) and
+     wraps the mobile search onto its own full-width row below, since it has
+     no hamburger to share a row with. */
+  .app-header-public .app-header-inner {
+    flex-wrap: wrap;
+  }
+  .app-header-public .dash-search-header-mobile {
+    order: 3;
+    flex-basis: 100%;
+  }
+
+  .dashboard-app-shell,
+  .dashboard-app-shell.sidebar-collapsed {
+    --dashboard-sidebar-width: 0px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-sidebar,
+  .dashboard-sidebar.collapsed {
+    position: fixed;
+    z-index: 280;
+    inset: 0 auto 0 0;
+    width: min(88vw, 320px);
+    max-width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    visibility: hidden;
+    box-shadow: var(--ui-shadow);
+    transform: translateX(-102%);
+    transition: transform var(--transition-std), visibility 0s linear .3s;
+  }
+
+  .dashboard-sidebar.mobile-open,
+  .dashboard-sidebar.collapsed.mobile-open {
+    visibility: visible;
+    transform: translateX(0);
+    transition-delay: 0s;
+  }
+
+  .dashboard-sidebar-backdrop {
+    position: fixed;
+    z-index: 270;
+    inset: 0;
+    display: block;
+    background: var(--ui-overlay);
+  }
+
+  .dashboard-central-shell .dashboard-mobile-sidebar-open,
+  .dashboard-sidebar .dashboard-sidebar-close {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+  }
+
+  .dashboard-sidebar-close {
+    margin-left: 0;
+    font-size: 22px;
+  }
+
+  .dashboard-sidebar-width-toggle {
+    display: none;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-header {
+    flex-direction: row;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-header .language-toggle {
+    width: auto;
+    min-width: 40px;
+    margin-left: auto;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: hidden;
+    opacity: 1;
+    clip-path: none;
+    transform: none;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-item,
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder {
+    grid-template-columns: 30px minmax(0, 1fr);
+    justify-items: stretch;
+    padding-inline: 8px;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-home {
+    padding-right: 40px;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-section-heading {
+    justify-content: space-between;
+    padding-inline: 6px;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-row {
+    display: grid;
+    padding-inline-start: var(--sidebar-folder-offset);
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle {
+    display: inline-grid;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-folder-toggle-spacer {
+    display: block;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer {
+    justify-items: stretch;
+  }
+
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu,
+  .dashboard-sidebar.collapsed .dashboard-sidebar-footer .account-menu-trigger {
+    width: 100%;
+  }
+
+  /* The sidebar account menu opens upward so it stays inside a short phone
+     viewport even though the trigger lives in the drawer footer. */
+  .dashboard-sidebar.dashboard-sidebar .dashboard-sidebar-footer .account-menu--sidebar .account-menu-popover {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 8px);
+    left: 0;
+  }
+
+  .dashboard-sidebar .dashboard-sidebar-create-folder,
+  .dashboard-sidebar .dashboard-sidebar-folder-toggle,
+  .dashboard-sidebar .dashboard-sidebar-header .language-toggle {
+    width: 40px;
+    min-width: 40px;
+    flex: 0 0 40px;
+  }
+
+  /* The touch-target rule above grows the subfolder chevron to 40px, but the
+     folder row's first grid track is 30px - so the chevron overflowed its cell
+     and collided with the folder button on every row that had subfolders.
+     Match the track (and the childless-row spacer) to the 40px touch target. */
+  .dashboard-sidebar .dashboard-sidebar-folder-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .dashboard-sidebar .dashboard-sidebar-folder-toggle-spacer {
+    width: 40px;
+  }
+
+}
+
+@media (max-width: 720px) {
+
+  .app-header {
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+  }
+
+  .app-header-inner {
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .app-header h1 {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .header-user-slot {
+    margin-left: auto;
+    min-width: 0;
+  }
+
+  .app-main.dashboard {
+    padding: 16px 12px calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .dash-actions {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .resource-control-actions,
+  .dash-actions-secondary {
+    align-items: center;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .resource-control-actions > *,
+  .dash-actions-secondary > * {
+    width: auto;
+    flex: 1 1 auto;
+  }
+
+  .resource-control-panel {
+    display: none;
+  }
+
+  .resource-control-actions .btn-primary,
+  .resource-control-actions .btn-ghost,
+  .dash-actions-secondary .btn-ghost {
+    min-height: 32px;
+    padding: 5px 8px;
+    font-size: 12px;
+    gap: 5px;
+  }
+
+  .current-user-badge {
+    max-width: min(54vw, 260px);
+    width: auto;
+    padding: 7px 8px;
+  }
+
+  .dash-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .dash-header h1 {
+    font-size: 22px;
+  }
+
+  .dash-actions,
+  .dash-section-actions {
+    flex-wrap: wrap;
+  }
+
+  .dash-actions > *,
+  .dash-section-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .dash-actions {
+    align-items: center;
+  }
+
+  .dash-actions-secondary {
+    display: none;
+  }
+
+  .mobile-action-menu {
+    display: block;
+    flex: 0 0 auto;
+  }
+
+  .dash-actions > .mobile-action-menu {
+    flex: 0 0 auto;
+  }
+
+  .dash-more-btn {
+    min-width: 76px;
+  }
+
+  .mobile-action-popover .card-menu-item {
+    text-decoration: none;
+  }
+
+  .dash-toolbar {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  /* The "+ New" control is replaced by .dashboard-fab on mobile - its menu
+     (openControlMenu === 'new') stays, now opened from the FAB instead. */
+  .dashboard-new-menu > .btn-primary {
+    display: none;
+  }
+
+  /* front task: real source of the mobile Dashboard header overflow. This
+     rule and .dash-search-header-mobile's own rule above (max-width:768px)
+     both target the SAME input - it always carries both classes together
+     (see the template) - with equal specificity, so whichever comes later
+     in the file wins regardless of intent. This one used to win with
+     `flex:0 0 auto; width:100%`, which is the input's own flex-basis
+     resolving to 100% of a row it must still share with the 40px hamburger
+     button, a deterministic ~50px overflow on every load, at every mobile
+     width. :not() excludes the header row's own input so its own
+     `flex:1 1 auto; width:auto` (shrink to share the row) is the one that
+     actually applies; the toolbar-desktop variant this rule is really for
+     is hidden at this width anyway (.dash-search-toolbar-desktop below), so
+     nothing here is actually IN that clause for. */
+  .dash-search:not(.dash-search-header-mobile) {
+    flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
+    min-height: 40px;
+    padding: 8px 12px;
+    font-size: 14px;
+  }
+
+  .dash-sort-select-desktop {
+    display: none;
+  }
+
+  .dash-sort-menu-mobile {
+    display: inline-block;
+    position: relative;
+    align-self: flex-start;
+  }
+
+  .dash-sort-button-mobile {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+
+  .content-type-tabs {
+    width: 100%;
+    padding: 2px;
+  }
+
+  .content-type-tabs button {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 6px;
+    font-size: 12px;
+  }
+
+  .tag-filter-list-desktop {
+    display: none;
+  }
+
+  /* front task: strictly one line, no horizontal scroll - only as many tag
+     chips as recomputeMobileTagFit (DashboardView.vue) measures actually
+     fit render at all, so overflow-x:hidden here is just a rounding-error
+     safety net, never the thing doing the real truncation. */
+  .tag-filter-list-mobile {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 6px;
+    overflow-x: hidden;
+    /* Without this, the row sizes to its OWN current content instead of
+     * its parent's available width - a circular dependency where showing
+     * fewer chips shrinks the row, which then measures less room and
+     * computes an even smaller fit, converging on "nothing but the +N
+     * badge visible" regardless of how much space is actually free
+     * (measured live: 84px reported instead of the 400px+ actually
+     * available). width:100% breaks the cycle by making the row's own
+     * width purely the parent's, independent of what's inside it.
+     * (.tag-filter-measure below overrides this back to max-content,
+     * which is what IT needs to measure each chip's natural width.) */
+    width: 100%;
+  }
+  .tag-filter-list-mobile .tag-filter {
+    flex: 0 0 auto;
+    padding: 5px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  /* The hidden measurement twin (see the template's own comment): laid out
+     for real widths, never visible or reachable. absolute+top:-9999px
+     takes it out of normal flow (can't push other content or grow page
+     height) while still giving it real layout to measure - display:none
+     would report zero width for everything instead. */
+  .tag-filter-measure {
+    position: absolute;
+    top: -9999px;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
+    width: max-content;
+  }
+  .tag-filter-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    margin-left: auto;
+    flex: 0 0 auto;
+  }
+
+  .home-tabs {
+    width: 100%;
+  }
+
+  .home-tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  .html-generate-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .html-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .html-history-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .html-visual-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .html-visual-editor {
+    grid-template-columns: 1fr;
+  }
+
+  .html-visual-editor .html-browser-preview {
+    min-height: 420px;
+  }
+
+  .html-editor-main {
+    min-height: 0;
+  }
+
+  .html-source {
+    min-height: 34vh;
+    border-right: none;
+    border-bottom: 1px solid var(--dark-neutral-border);
+  }
+
+  .html-preview {
+    min-height: 46vh;
+    padding: 16px;
+  }
+
+  .btn-primary,
+  .btn-ghost,
+  .folder-action,
+  .folder-manager-btn,
+  .card-menu-item {
+    min-height: 40px;
+  }
+
+  .dash-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .dashboard .dash-grid { grid-template-columns: 1fr; }
+
+  .dash-section,
+  .dash-grid,
+  .canvas-card {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+.canvas-card {
+    min-height: 112px;
+    padding: 18px 48px 18px 16px;
+  }
+
+  .dashboard .canvas-card {
+    min-height: 112px;
+    padding: 18px 48px 18px 16px;
+  }
+
+  .dashboard .card-title,
+  .dashboard .card-title-input { font-size: 16px; }
+  .dashboard .card-tags .card-tag:nth-child(n + 3) { display: inline-flex; }
+  .dashboard .canvas-card .card-manage,
+  .dashboard .canvas-card .card-pin { opacity: 1; }
+
+  .card-title,
+  .card-title-input {
+    overflow-wrap: anywhere;
+  }
+
+  .card-meta {
+    flex-wrap: wrap;
+  }
+
+  .card-manage,
+  .card-pin,
+  .card-delete {
+    width: 36px;
+    height: 36px;
+  }
+
+  .card-pin,
+  .card-delete {
+    display: none;
+  }
+
+  .card-manage {
+    right: 6px;
+  }
+
+  .card-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+    min-width: 0;
+    z-index: 320;
+  }
+
+  .admin-stats {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  .admin-table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .dashboard-modal-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .dashboard-modal {
+    width: 100%;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+    overflow-y: auto;
+    border-radius: var(--radius-md);
+    padding: 16px;
+  }
+
+  .dashboard-modal-actions {
+    flex-direction: column-reverse;
+  }
+
+  .dashboard-modal-actions .btn-primary,
+  .dashboard-modal-actions .btn-ghost {
+    width: 100%;
+  }
+  /* Two-button dialogs (move to / create a group): Cancel and the action
+     side by side, sharing the width, instead of stacked. */
+  .dashboard-modal-actions.dashboard-modal-actions-row {
+    flex-direction: row;
+  }
+  .dashboard-modal-actions.dashboard-modal-actions-row .btn-primary,
+  .dashboard-modal-actions.dashboard-modal-actions-row .btn-ghost {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  .tag-editor-row {
+    grid-template-columns: 1fr auto;
+  }
+
+  .tag-name-input {
+    grid-column: 1 / -1;
+  }
+
+  .dash-section-head,
+  .folder-manager-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  /* Recent's own header stays a single row (Recent | sort | grid/list),
+     overriding the generic column-stack above - it's exactly what section
+     16 of the mobile redesign calls for, not a stacked section head. */
+  .dashboard-recent-head,
+  .dashboard-public-head {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .dashboard-recent-head-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+  }
+
+  .folder-manager-top {
+    align-items: center;
+    gap: 8px;
+  }
+
+  .folder-manager-main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .folder-manager-actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-workspace {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 20px;
+  }
+
+  .dashboard-folder-nav {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .dashboard-folder-nav-head { margin-bottom: 8px; }
+
+  .dashboard-folder-nav .folder-manager-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    overflow: visible;
+  }
+
+  .folder-nav-item {
+    min-width: 0;
+    width: 100%;
+    min-height: 36px;
+  }
+
+  .folder-nav-name { max-width: none; }
+
+  .dashboard-recents { margin-top: 22px; }
+  /* A fixed 2 columns, not auto-fill: the collapsed grid must read as a
+     literal 2x2 for exactly 4 cards regardless of viewport width - auto-fill
+     would drop to a single column below ~330px (2 x 150px minmax doesn't
+     fit a 320px screen's content width once page padding is subtracted). */
+  .dashboard-recents-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .dashboard-recent-card {
+    min-height: 70px;
+    padding: 9px;
+    grid-template-columns: 17px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: 3px 6px;
+  }
+  .dashboard-recent-title { font-size: 12px; -webkit-line-clamp: 2; }
+  .dashboard-recent-meta { display: none; }
+  .dashboard-recent-meta-mobile {
+    display: block;
+    grid-column: 2;
+    color: var(--ui-text-secondary);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .dashboard-recents-list .dashboard-recent-card {
+    min-height: 48px;
+    grid-template-columns: 18px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+  }
+  .dashboard-recents-list .dashboard-recent-meta-mobile {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  .dashboard-recent-show-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    width: 100%;
+    min-height: 40px;
+    margin-top: 10px;
+    padding: 8px;
+    border: none;
+    background: transparent;
+    color: var(--color-brands-light);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .subfolder-card-zero-match {
+    opacity: 0.55;
+  }
+
+  .dashboard .dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .dashboard .canvas-card {
+    min-height: 128px;
+    padding: 12px 32px 12px 12px;
+    border-radius: 10px;
+  }
+  .dashboard .card-title,
+  .dashboard .card-title-input { font-size: 13px; }
+  .dashboard .card-meta { gap: 4px; }
+  .dashboard .badge,
+  .dashboard .card-date { font-size: 9px; }
+  .dashboard .card-tags { gap: 3px; margin-top: 7px; }
+  .dashboard .card-tag { padding: 2px 6px; font-size: 9px; }
+  .dashboard .card-folder,
+  .dashboard .card-owner { font-size: 10px; }
+  .dashboard .canvas-card .card-manage,
+  .dashboard .canvas-card .card-pin {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  /* Floating create button, replacing the toolbar's "+ New" button. */
+  .dashboard-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    right: 18px;
+    bottom: calc(18px + env(safe-area-inset-bottom));
+    width: 54px;
+    height: 54px;
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--color-brands);
+    color: var(--color-brand-on);
+    box-shadow: var(--ui-shadow);
+    z-index: 300;
+    cursor: pointer;
+  }
+  .dashboard-fab:active {
+    transform: scale(0.96);
+  }
+
+  /* The "+ New" menu, the folder-actions menu, and the two new mobile
+     pickers below all share .mobile-action-popover - below 720px every one
+     of them becomes a bottom sheet, matching .card-menu's existing
+     treatment just above. */
+  .mobile-action-popover {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+    z-index: 320;
+  }
+
+  .mobile-sort-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .mobile-sort-option.active {
+    color: var(--color-brands-light);
+  }
+  .mobile-sort-check-spacer {
+    display: inline-block;
+    width: 15px;
+  }
+
+  /* Folder page: a flat list instead of a grid of tiles. */
+  .dashboard-folder-content .folder-manager-row {
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  .dashboard-folder-content .folder-manager-top {
+    padding: 10px 4px;
+    min-height: 56px;
+  }
+
+  .dashboard-folder-content .folder-manager-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  .dashboard-folder-content .folder-manager-name {
+    font-size: 15px;
+  }
+
+  .dashboard-folder-content .folder-manager-count {
+    font-size: 12px;
+  }
+
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .dash-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  /* Subfolders keep their glass tiles; a little extra room below the grid
+     separates them from the documents that follow. */
+  .dashboard-folder-content .subfolder-grid {
+    padding-bottom: 4px;
+  }
+
+  /* List view on a phone. Documents inside a folder read as glass rounded
+     tiles too (front task) -
+     the same card language as the main dashboard - instead of a flat,
+     separator-ruled list. The compact row layout is kept for scanning; only
+     the surface becomes a spaced, rounded glass tile. */
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card {
+    display: grid;
+    grid-template-columns: 22px minmax(0, 1fr) 32px;
+    align-items: start;
+    column-gap: 10px;
+    min-height: 72px;
+    padding: 12px 14px;
+    border: 1px solid var(--ui-glass-border);
+    border-radius: var(--radius-md);
+    background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-with-icon {
+    grid-column: 1 / 3;
+    grid-row: 1;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-with-icon .resource-title-icon {
+    flex: 0 0 auto;
+    margin-top: 2px;
+  }
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title {
+    font-size: 14px;
+  }
+  /* Clamped on its own span, not the icon+title flex row itself - that row
+     must stay display:flex or the icon's flex:0 0 auto sizing collapses.
+     white-space:normal overrides the single-line nowrap the base
+     .dashboard .card-title-text rule sets (same specificity, this one wins
+     purely on being later - explicit here so it doesn't look accidental):
+     line-clamp needs the text free to actually wrap across its 2 lines. */
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-text {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-title-input {
+    font-size: 14px;
+  }
+
+  /* The meta row (its tags, then the date at the right) is the second line
+     of a phone list row too; the relative-date line is not needed. */
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-meta {
+    grid-column: 2;
+    display: flex;
+    margin-top: 4px;
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-meta-mobile {
+    display: none;
+    grid-column: 2;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    margin-top: 4px;
+    color: var(--ui-text-secondary);
+    font-size: 12px;
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-date-mobile {
+    grid-column: 2;
+    display: block;
+    margin-top: 2px;
+    color: var(--ui-text-muted);
+    font-size: 12px;
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .card-tags {
+    display: none;
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card .card-manage {
+    grid-column: 3;
+    grid-row: 1;
+    position: static;
+    width: 32px;
+    height: 32px;
+    transform: none;
+  }
+  /* The desktop "reveal the kebab on hover" pattern has nothing to reveal it
+     on a touch device - keep it visible here regardless of hover/focus. */
+  .dashboard .dashboard-list-view .dashboard-folder-content .canvas-card:not(:hover):not(:focus-within) .card-manage {
+    opacity: 1;
+  }
+
+  .dashboard .dashboard-list-view .dashboard-folder-content .html-doc-card .card-open-link {
+    grid-column: 1 / -1;
+    grid-row: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-sidebar,
+  .dashboard-sidebar.collapsed,
+  .dashboard-sidebar-label,
+  .dashboard-sidebar-folder-name,
+  .dashboard-sidebar-folder-toggle span {
+    transition: none;
+  }
+}
+.canvas-card.dragging {
+  opacity: 0.45;
+  border-color: color-mix(in srgb, var(--color-brands) 52%, transparent);
+  cursor: grabbing;
+}
+
