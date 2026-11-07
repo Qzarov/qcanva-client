@@ -13,7 +13,7 @@
     :data-folder-file="file.id"
     :data-select-key="selectable ? 'drive-file:' + file.id : undefined"
     :data-selected="selectedKeys?.includes('drive-file:' + file.id) || undefined"
-    :title="file.name"
+    v-file-info="infoOf(file)"
     :aria-label="`${t('folderFileDownload')}: ${file.name}`"
     @click="open(file)"
     @keydown.enter.prevent="open(file)"
@@ -41,8 +41,9 @@
     </div>
     <div class="card-meta folder-file-meta">
       <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
-      <span>{{ formatFileSize(file.sizeBytes) }}</span>
-      <span class="card-date">{{ formatDate(file.updatedAt) }}</span>
+      <!-- A photo or a video shows when, not how big: the size is in the hover panel. -->
+      <span v-if="!isMedia(file)">{{ formatFileSize(file.sizeBytes) }}</span>
+      <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.updatedAt, locale) : formatDate(file.updatedAt) }}</span>
     </div>
     <span v-if="previews[file.id]" class="folder-file-thumb" aria-hidden="true">
       <img
@@ -75,6 +76,8 @@ import {
   type DriveItem,
 } from '../../api/drive';
 import { alertDialog } from '../../composables/appDialog';
+import { vFileInfo } from '../../directives/fileInfo';
+import { fileInfo, formatFileDateTime } from '../../dashboard/file-info';
 import { useI18n } from '../../composables/useI18n';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
@@ -116,6 +119,15 @@ const failed = ref(false);
 
 const isImage = (file: DriveItem) => file.kind === 'photo' || Boolean(file.mime?.startsWith('image/'));
 const isVideo = (file: DriveItem) => file.kind === 'video' || Boolean(file.mime?.startsWith('video/'));
+const isMedia = (file: DriveItem) => isImage(file) || isVideo(file);
+const infoOf = (file: DriveItem) => fileInfo({
+  name: file.name,
+  size: file.sizeBytes,
+  mime: file.mime,
+  // A photo's or video's sortDate is when it was taken.
+  taken: isMedia(file) ? file.sortDate : null,
+  modified: file.updatedAt,
+}, t, locale.value);
 
 const shown = computed(() => {
   if (props.filteredOut) return [];

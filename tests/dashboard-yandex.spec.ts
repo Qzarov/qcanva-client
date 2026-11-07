@@ -120,6 +120,16 @@ test('the Disk reads like a folder: subfolders, files with previews, the tree in
   await expect(page.locator('[data-yandex-subfolder]')).toHaveCount(2);
   await expect(page.locator('[data-yandex-file]')).toHaveCount(2);
   await expect(page.locator('[data-yandex-file="/море.jpg"] [data-yandex-preview]')).toBeVisible();
+  // A photo shows when, not how big; the size and the rest come up on hover.
+  const sea = page.locator('[data-yandex-file="/море.jpg"]');
+  await expect(sea.locator('.folder-file-meta')).not.toContainText('MB');
+  await expect(sea.locator('[data-file-date]')).toHaveText(/\d{1,2}:\d{2}/);
+  await expect(page.locator('[data-yandex-file="/договор.pdf"] .folder-file-meta')).toContainText('KB');
+  await page.locator('[data-yandex-file="/договор.pdf"]').hover();
+  await expect(page.locator('[data-file-info]')).toHaveClass(/visible/);
+  await expect(page.locator('[data-file-info]')).toContainText('договор.pdf');
+  await expect(page.locator('[data-file-info]')).toContainText('341.8 KB');
+  await page.mouse.move(5, 800);
   // A folder tile, as on the dashboard: how many items, and the last change below.
   await expect(page.locator('[data-yandex-subfolder="/Фото"] [data-yandex-subfolder-count]')).toHaveText('1');
   await expect(page.locator('[data-yandex-subfolder="/Работа"] [data-yandex-subfolder-count]')).toHaveText('Empty');
@@ -170,6 +180,7 @@ test('a file is renamed from its menu; ticked files go to the trash together', a
   await page.locator('[data-yandex-file="/договор.pdf"]').click({ modifiers: ['ControlOrMeta'] });
   const bar = page.locator('[data-selection-bar]');
   await expect(bar.locator('[data-selection-count]')).toHaveText('(2)');
+  await expect(bar.locator('[data-selection-size]')).toHaveText('2.6 MB');
   await bar.locator('[data-selection-delete]').click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(bar).toHaveCount(0);

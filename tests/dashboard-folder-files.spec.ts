@@ -64,6 +64,29 @@ test.describe('a folder\'s files', () => {
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/folder-grid.png` });
   });
 
+  test('a photo or video card shows when, not how big; hovering a file tells its name, size, type and dates', async ({ page }) => {
+    await openFolder(page);
+    const sea = page.locator('[data-folder-file="f-sea"]');
+    // Media: the date with the time where the size was.
+    await expect(sea.locator('.folder-file-meta')).not.toContainText('MB');
+    await expect(sea.locator('[data-file-date]')).toHaveText(/\d{1,2}:\d{2}/);
+    await expect(page.locator('[data-folder-file="f-clip"] .folder-file-meta')).not.toContainText('MB');
+    // Anything else keeps its size.
+    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-meta')).toContainText('KB');
+
+    await page.locator('[data-folder-file="f-pdf"]').hover();
+    const info = page.locator('[data-file-info]');
+    await expect(info).toHaveClass(/visible/);
+    await expect(info).toContainText('Договор аренды.pdf');
+    await expect(info).toContainText('Size');
+    await expect(info).toContainText('341.8 KB');
+    await expect(info).toContainText('PDF · application/pdf');
+    await expect(info).toContainText('Modified');
+    if (SHOTS) await page.screenshot({ path: `${SHOTS}/file-info.png` });
+    await page.mouse.move(5, 500);
+    await expect(info).not.toHaveClass(/visible/);
+  });
+
   test('a click downloads the file', async ({ page }) => {
     const { downloads } = await openFolder(page);
     await page.locator('[data-folder-file="f-pdf"]').click();

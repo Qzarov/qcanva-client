@@ -143,7 +143,7 @@
               :data-yandex-file="file.path"
               :data-select-key="keyOf(file)"
               :data-selected="selectedKeys?.includes(keyOf(file)) || undefined"
-              :title="file.name"
+              v-file-info="infoOf(file)"
               :aria-label="`${t('folderFileDownload')}: ${file.name}`"
               @click="open(file)"
               @keydown.enter.prevent="open(file)"
@@ -168,8 +168,9 @@
               </div>
               <div class="card-meta folder-file-meta">
                 <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
-                <span v-if="file.size !== null">{{ formatFileSize(file.size) }}</span>
-                <span class="card-date">{{ formatDate(file.modifiedAt) }}</span>
+                <!-- A photo or a video shows when, not how big: the size is in the hover panel. -->
+                <span v-if="file.size !== null && !isMedia(file)">{{ formatFileSize(file.size) }}</span>
+                <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.modifiedAt, locale) : formatDate(file.modifiedAt) }}</span>
               </div>
               <span v-if="previewOf(file)" class="folder-file-thumb" aria-hidden="true">
                 <img :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
@@ -218,6 +219,8 @@ import { formatFileSize, getFileExtension } from '../../api/drive';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
+import { vFileInfo } from '../../directives/fileInfo';
+import { fileInfo, formatFileDateTime } from '../../dashboard/file-info';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 
 type SortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
@@ -261,6 +264,14 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const brokenPreviews = reactive(new Set<string>());
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
+const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+const infoOf = (item: YandexItem) => fileInfo({
+  name: item.name,
+  size: item.size,
+  mime: item.mime,
+  created: item.createdAt,
+  modified: item.modifiedAt,
+}, t, locale.value);
 const previewOf = (item: YandexItem) => (brokenPreviews.has(item.path) ? null : yandexPreviewUrl(item));
 
 const title = computed(() => (props.path === '/' ? t('yandexDisk') : props.path.slice(props.path.lastIndexOf('/') + 1)));

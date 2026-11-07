@@ -49,6 +49,8 @@
             <X :size="17" aria-hidden="true" />
           </button>
           <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
+          <!-- What the ticked files weigh together (documents have no size of their own). -->
+          <span v-if="selectedSize > 0" class="dashboard-selection-size" data-selection-size>{{ formatFileSize(selectedSize) }}</span>
           <span class="dashboard-selection-sep" aria-hidden="true"></span>
           <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
             <CheckCheck :size="17" aria-hidden="true" />
@@ -1247,7 +1249,7 @@ import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, w
 import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
-import { downloadDriveFile, driveApi, resolveDownloadUrl, type DriveItem } from '../api/drive';
+import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -3598,6 +3600,11 @@ export default defineComponent({
       .map((key) => yandexFilesByKey.value.get(key))
       .filter((file): file is YandexItem => Boolean(file)));
     const bulkDeleteCount = computed(() => bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length);
+    /** The ticked files' total size, QCanva folders and Yandex Disk alike. */
+    const selectedSize = computed(() => (
+      selectedDriveFiles.value.reduce((sum, file) => sum + (file.sizeBytes ?? 0), 0)
+      + selectedYandexFiles.value.reduce((sum, file) => sum + (file.size ?? 0), 0)
+    ));
     /** Cards on screen that can be ticked, in screen order. */
     const selectableOnScreen = () => Array.from(
       dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [],
@@ -5027,6 +5034,8 @@ export default defineComponent({
       mediaViewer,
       uploadToYandex,
       setFeedback,
+      selectedSize,
+      formatFileSize,
       admin,
       t,
       isLoggedIn,

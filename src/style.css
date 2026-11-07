@@ -12794,3 +12794,49 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-recent-card { min-height: 116px; }
   .subfolder-card-date { font-size: 10px; }
 }
+
+/* The ticked files' total size, next to the count in the selection bar. */
+.dashboard-selection-size {
+  padding: 0 4px 0 0;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* v-file-info (directives/fileInfo.ts): a file card's full name, size, type
+   and dates on hover. Fades and slides a little, like the other popups. */
+.ui-file-info {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(320px, calc(100vw - 16px));
+  padding: 8px 10px;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 10px;
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text);
+  box-shadow: var(--shadow-dropdown);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.14s ease, transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+}
+.ui-file-info[data-side="top"] { transform: translateY(3px); }
+.ui-file-info.visible { opacity: 1; transform: none; }
+.ui-file-info-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ui-file-info-rows {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px 10px;
+  margin: 6px 0 0;
+}
+.ui-file-info-rows dt { color: var(--ui-text-secondary); }
+.ui-file-info-rows dd { margin: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) {
+  .ui-file-info { transition: none; transform: none; }
+}

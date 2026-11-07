@@ -272,9 +272,13 @@ test('Drive files in a folder tick like the rest: box, frame, and move / delete 
   await expect(pdf).toHaveAttribute('data-selected', 'true');
   const count = page.locator('[data-selection-bar] [data-selection-count]');
   await expect(count).toHaveText('(1)');
+  // The bar tells what the ticked files weigh together.
+  const size = page.locator('[data-selection-bar] [data-selection-size]');
+  await expect(size).toHaveText('341.8 KB');
   // A file's click ticks too, while something is ticked: nothing downloads.
   await page.locator('[data-select-key="drive-file:f-cat"]').click();
   await expect(count).toHaveText('(2)');
+  await expect(size).toHaveText('1.2 MB');
   await page.keyboard.press('Escape');
 
   // The frame takes documents and files alike.
