@@ -59,6 +59,9 @@
 - Formatting UI вроде `TextDocumentBubbleMenu` владеет только presentation,
   input и typed events. TipTap commands, selection policy и link validation
   остаются в parent/composable, чтобы компонент не превращался в editor store.
+- Fullscreen editor shells владеют своим Teleport и DOM ref, а canvas editor
+  composable получает этот ref через явный `ready` event. Родитель передаёт
+  состояние и команды, не ищет textarea через глобальные селекторы.
 - Для иконок используйте Lucide или существующую иконку проекта. Эмодзи и
   inline-иконки с разными стилями для одинаковых действий не добавляйте.
 

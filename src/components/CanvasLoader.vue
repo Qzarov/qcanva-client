@@ -84,46 +84,20 @@
         :editor-refs="editorRefs"
       />
 
-      <!-- Phone layout: a text card is edited full screen, opened from the bottom toolbar -->
-      <Teleport to="body">
-        <div
-          v-if="fullscreenEditingNode && onScreen"
-          class="node-fullscreen-editor"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="t('editText')"
-        >
-          <header class="node-fullscreen-editor-header">
-            <button
-              class="node-fullscreen-editor-back"
-              type="button"
-              :aria-label="t('backToCanvas')"
-              :title="t('backToCanvas')"
-              @click="closeTextEditor"
-            >
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <line x1="19" y1="12" x2="5" y2="12"/>
-                <polyline points="12 19 5 12 12 5"/>
-              </svg>
-            </button>
-            <span class="node-fullscreen-editor-title">{{ t('editText') }}</span>
-            <span class="node-text-save-status" role="status" aria-live="polite">{{ textSaveStatus.label }}</span>
-            <button class="node-text-history" type="button" :aria-label="t('textUndo')" :title="t('textUndo')" :disabled="!canUndoText" @pointerdown.prevent @click="undoText">↶</button>
-            <button class="node-text-history" type="button" :aria-label="t('textRedo')" :title="t('textRedo')" :disabled="!canRedoText" @pointerdown.prevent @click="redoText">↷</button>
-          </header>
-          <div class="node-fullscreen-editor-card">
-            <textarea
-              ref="fullscreenEditorRef"
-              class="node-editor node-fullscreen-editor-input"
-              :style="{ color: resolveNodeFontColor(fullscreenEditingNode.fontColor) || undefined }"
-              :value="fullscreenEditingNode.text"
-              @input="onEditInput($event, fullscreenEditingNode)"
-              @keydown.stop="onTextEditorKeydown"
-              @keyup.stop
-            ></textarea>
-          </div>
-        </div>
-      </Teleport>
+      <CanvasFullscreenTextEditor
+        v-if="fullscreenEditingNode && onScreen"
+        :node="fullscreenEditingNode"
+        :save-status-label="textSaveStatus.label"
+        :can-undo="canUndoText"
+        :can-redo="canRedoText"
+        :resolve-font-color="resolveNodeFontColor"
+        @close="closeTextEditor"
+        @undo="undoText"
+        @redo="redoText"
+        @input="onEditInput($event, fullscreenEditingNode)"
+        @keydown="onTextEditorKeydown"
+        @ready="fullscreenEditorRef = $event"
+      />
 
       <!-- Link nodes -->
       <CanvasNodeLink
@@ -309,6 +283,7 @@ import CanvasNodeTemplate from './canvas/CanvasNodeTemplate.vue';
 import CanvasMinimap from './canvas/CanvasMinimap.vue';
 import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
 import CanvasControls from './canvas/CanvasControls.vue';
+import CanvasFullscreenTextEditor from './CanvasFullscreenTextEditor.vue';
 import CanvasEdgeLayer from './canvas/CanvasEdgeLayer.vue';
 import CanvasDrawingLayer from './canvas/CanvasDrawingLayer.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
@@ -407,7 +382,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasEdgeLayer, CanvasDrawingLayer },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasEdgeLayer, CanvasDrawingLayer },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
