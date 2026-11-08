@@ -249,7 +249,6 @@ import { useViewActivity } from '../composables/useViewActivity';
 import { defineComponent, ref, shallowRef, computed, onMounted, onUnmounted, reactive, nextTick, watch, type PropType } from "vue";
 import { alertFailure } from "../composables/appDialog";
 import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
-import { marked } from "marked";
 import { useI18n } from "../composables/useI18n";
 import { LAYOUT, useMediaQuery } from "../composables/layoutMedia";
 import { isCoarsePointer } from "../composables/pointer";
@@ -295,6 +294,7 @@ import { useCanvasEmbeds } from '../canvas/useCanvasEmbeds';
 import { useCanvasDndTemplate } from '../canvas/useCanvasDndTemplate';
 import { useCanvasTemplateNodes } from '../canvas/useCanvasTemplateNodes';
 import { useCanvasAddMenu } from '../canvas/useCanvasAddMenu';
+import { getNodeFirstLine, getNodeFirstLineAlignValue, getNodeRestText, groupColorClass, nodeColorClass, nodePosition, nodePresentationClass, renderCanvasMarkdown } from '../canvas/nodePresentation';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -474,12 +474,6 @@ export default defineComponent({
     const touchState = useCanvasTouchState();
     const { lastTouchDist, lastTouchCenter, TAP_MOVE_THRESHOLD, DOUBLE_TAP_MS, getTouchDist, getTouchCenter } = touchState;
 
-    // Configure marked
-    marked.setOptions({
-      breaks: true,
-      gfm: true,
-    });
-
     const loadCanvas = () => {
       if (props.initialData) {
         nodes.value = props.initialData.nodes || [];
@@ -611,60 +605,6 @@ export default defineComponent({
       canViewerSee,
     );
 
-    // Style helpers
-    const nodePosition = (node: CanvasNode) => {
-      const style: Record<string, string | undefined> = {
-        left: `${node.x}px`,
-        top: `${node.y}px`,
-        width: `${node.width}px`,
-        height: `${node.height}px`,
-        borderColor: node.borderColor || undefined,
-        zIndex: `${node.zIndex ?? 10}`,
-      };
-      if (node.shape === "round") {
-        style.borderRadius = "9999px";
-      }
-      if (node.transparent) {
-        style.background = "transparent";
-        style.boxShadow = "none";
-      }
-      const bs = node.borderStyle || "solid";
-      const bw = node.borderWidth || undefined;
-      if (bs === "wavy" || bs === "sawtooth") {
-        // Use CSS border-image for custom patterns
-        style.borderStyle = "solid";
-        style.borderWidth = bw ? `${bw}px` : undefined;
-        const color = node.borderColor || (node.color ? undefined : "rgba(255,255,255,0.1)");
-        const strokeColor = color || "currentColor";
-        if (bs === "wavy") {
-          // Each of the four 8px slices contains a complete wave. A 20×4
-          // strip sliced at 2 cuts the wave in half and leaves no side edges.
-          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><path d='M8 4 Q12 0 16 4 Q20 8 24 4 Q28 4 28 8 Q32 12 28 16 Q24 20 28 24 Q28 28 24 28 Q20 32 16 28 Q12 24 8 28 Q4 28 4 24 Q0 20 4 16 Q8 12 4 8 Q4 4 8 4 Z' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 8 round`;
-        } else {
-          style.borderImage = `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='12' height='4'><path d='M0 4 L6 0 L12 4' fill='none' stroke='${strokeColor}' stroke-width='1.5'/></svg>`)}") 2 round`;
-        }
-      } else {
-        style.borderStyle = bs;
-        style.borderWidth = bw ? `${bw}px` : undefined;
-      }
-      return style;
-    };
-
-    const nodePresentationClass = (node: CanvasNode) => ({
-      "node-transparent": node.transparent === true,
-      "node-round": node.shape === "round",
-    });
-
-    const nodeColorClass = (node: CanvasNode) => {
-      if (!node.color) return "";
-      const fill = node.fillStyle || "gradient";
-      return fill === "solid" ? `node-color-${node.color}-solid` : `node-color-${node.color}`;
-    };
-
-    const groupColorClass = (node: CanvasNode) => {
-      return node.color ? `group-color-${node.color}` : "";
-    };
-
     const isNodePositionLocked = (nodeId: string | null | undefined): boolean => {
       if (!nodeId) return false;
       return nodes.value.find((n) => n.id === nodeId)?.positionLocked === true;
@@ -698,58 +638,7 @@ export default defineComponent({
       return ids;
     };
 
-    // Callout types and their colors/icons
-    const CALLOUT_STYLES: Record<string, { icon: string; color: string }> = {
-      note: { icon: "📝", color: "#7c8aff" },
-      tip: { icon: "💡", color: "#44cf6e" },
-      warning: { icon: "⚠️", color: "#e9973f" },
-      danger: { icon: "🔴", color: "#fb464c" },
-      error: { icon: "🔴", color: "#fb464c" },
-      info: { icon: "ℹ️", color: "#53dfdd" },
-      success: { icon: "✅", color: "#44cf6e" },
-      question: { icon: "❓", color: "#e0de71" },
-      bug: { icon: "🐛", color: "#fb464c" },
-      example: { icon: "📋", color: "#a882ff" },
-      quote: { icon: "💬", color: "#999" },
-      abstract: { icon: "📄", color: "#53dfdd" },
-      todo: { icon: "☑️", color: "#7c8aff" },
-      failure: { icon: "❌", color: "#fb464c" },
-      important: { icon: "🔥", color: "#e9973f" },
-    };
-
-    const processCallouts = (html: string): string => {
-      // Match blockquotes that start with [!type]
-      return html.replace(
-        /<blockquote>\s*<p>\s*\[!\s*([\w-]+)\]\s*(.*?)<\/p>([\s\S]*?)<\/blockquote>/gi,
-        (_match, type: string, title: string, body: string) => {
-          const key = type.toLowerCase();
-          const style = (CALLOUT_STYLES[key] || CALLOUT_STYLES.note)!;
-          const displayTitle = title.trim() || key.charAt(0).toUpperCase() + key.slice(1);
-          return `<div class="callout callout-${key}" style="border-left-color: ${style.color}">
-            <div class="callout-title" style="color: ${style.color}">${style.icon} ${displayTitle}</div>
-            <div class="callout-body">${body}</div>
-          </div>`;
-        }
-      );
-    };
-
-    const renderMarkdown = (text: string) => {
-      const html = marked.parse(text) as string;
-      return processCallouts(html);
-    };
-
-    const getNodeFirstLine = (text: string) => {
-      return text.split(/\r?\n/, 1)[0] || "";
-    };
-
-    const getNodeRestText = (text: string) => {
-      const lines = text.split(/\r?\n/);
-      return lines.length > 1 ? lines.slice(1).join("\n") : "";
-    };
-
-    const getNodeFirstLineAlignValue = (node: CanvasNode) => {
-      return node.firstLineTextAlign || node.textAlign || undefined;
-    };
+    const renderMarkdown = renderCanvasMarkdown;
 
     // Editing state
     const editorRefs = ref<HTMLTextAreaElement[]>([]);
