@@ -24,6 +24,7 @@
         :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
         @open-yandex-file="openYandexSidebarFile"
+        @create-space="createSpace"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
@@ -178,7 +179,7 @@
     >
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
+        <button class="btn-primary" data-add-button @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
           <Plus class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('add') }}</span>
         </button>
@@ -629,6 +630,26 @@
         />
       </section>
 
+      <section
+        v-if="isLoggedIn && spaceId !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="space"
+      >
+        <DashboardSpace
+          ref="spaceView"
+          :space-id="spaceId"
+          :view-mode="recentViewMode"
+          :query="searchQuery"
+          :me-id="currentUser?.id || ''"
+          :folder-options="folderOptions"
+          @update:view-mode="setRecentViewMode"
+          @open="openSpaceResource"
+          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @gone="leaveSpaceSection"
+          @feedback="setFeedback"
+        />
+      </section>
+
       <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-shared' : undefined"
@@ -908,7 +929,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
@@ -1247,7 +1268,7 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
+import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
@@ -1281,6 +1302,9 @@ import DashboardUploadPanel, { type DashboardUpload } from '../components/dashbo
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import { spacesApi } from '../api/spaces';
+import { useSpaces } from '../composables/useSpaces';
 import {
   downloadYandexLink,
   fetchYandexContent,
@@ -1430,6 +1454,7 @@ export default defineComponent({
     DashboardYandexDisk,
     YandexFolderPicker,
     DashboardMediaViewer,
+    DashboardSpace,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -3955,6 +3980,39 @@ export default defineComponent({
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
       if (open && followed) openYandexPath(joinYandexPath(target, followed.slice(followed.lastIndexOf('/') + 1)) + open.slice(followed.length));
     };
+    // ----- shared spaces: a section of their own
+    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const { load: loadSpaces } = useSpaces();
+    const createSpace = async () => {
+      const name = (await promptDialog({
+        title: t('spaceNew'),
+        placeholder: t('spaceNamePlaceholder'),
+        confirmLabel: t('create'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!name) return;
+      try {
+        const space = await spacesApi.create(name);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
+    /** A QCanva document of a space opens as any does. */
+    const openSpaceResource = (kind: string, id: string) => {
+      if (kind === 'canvas') openCanvas(id);
+      else if (kind === 'text-document') openTextDocument(id);
+      else if (kind === 'html-document') openHtmlDocument(id);
+      else openInteractiveTemplate(id);
+    };
+    /** The space is gone for this user (deleted, or they left): back home. */
+    const leaveSpaceSection = () => {
+      void loadSpaces(true);
+      selectDashboardSection({ kind: 'recent' });
+    };
+
     // ----- pictures full screen: the folder's pictures, from the one clicked
     const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
     const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
@@ -5087,6 +5145,12 @@ export default defineComponent({
       openDriveImage,
       mediaViewer,
       folderDrivePreviews,
+      spaceView,
+      spaceId,
+      createSpace,
+      openSpaceResource,
+      leaveSpaceSection,
+      currentUser,
       uploadToYandex,
       setFeedback,
       selectedSize,

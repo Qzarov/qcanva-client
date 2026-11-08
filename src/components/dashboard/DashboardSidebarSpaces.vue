@@ -145,6 +145,38 @@
               </button>
             </template>
           </div>
+
+          <!-- Shared spaces: people's folders from QCanva and Yandex Disk as one feed. -->
+          <div v-for="space in spaces" :key="'space:' + space.id" class="dashboard-sidebar-folder-row" :style="indent(0)">
+            <span class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="btn-ghost dashboard-sidebar-folder"
+              :class="{ active: isActiveSpace(space.id) }"
+              :aria-current="isActiveSpace(space.id) ? 'page' : undefined"
+              :aria-label="space.name"
+              :title="compact ? space.name : undefined"
+              :data-shared-space="space.id"
+              @click="emit('select', { kind: 'space', spaceId: space.id })"
+            >
+              <span class="dashboard-sidebar-icon" aria-hidden="true"><UsersRound :size="18" /></span>
+              <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ space.name }}</span>
+            </button>
+          </div>
+          <div key="space:new" class="dashboard-sidebar-folder-row" :style="indent(0)">
+            <span class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
+            <button
+              type="button"
+              class="btn-ghost dashboard-sidebar-folder dashboard-sidebar-new-space"
+              :aria-label="t('spaceNew')"
+              :title="compact ? t('spaceNew') : undefined"
+              data-new-space
+              @click="emit('create-space')"
+            >
+              <span class="dashboard-sidebar-icon" aria-hidden="true"><Plus :size="18" /></span>
+              <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ t('spaceNew') }}</span>
+            </button>
+          </div>
         </TransitionGroup>
       </section>
     </div>
@@ -153,7 +185,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch, type CSSProperties } from 'vue';
-import { ChevronDown, Cloud, File as FileIcon, Folder, HardDrive, Image as ImageIcon, Layers, Video } from '@lucide/vue';
+import { ChevronDown, Cloud, File as FileIcon, Folder, HardDrive, Image as ImageIcon, Layers, Plus, UsersRound, Video } from '@lucide/vue';
+import { useSpaces } from '../../composables/useSpaces';
 import { yandexDisk, type YandexItem } from '../../api/yandexDisk';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import { SIDEBAR_FOLDER_CHILD_LIMIT, type DashboardSection } from '../../dashboard/navigation';
@@ -169,6 +202,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [section: DashboardSection];
   'open-yandex-file': [item: YandexItem];
+  /** "New space": the dashboard asks for a name. */
+  'create-space': [];
 }>();
 
 const { t } = useI18n();
@@ -193,6 +228,8 @@ const toggleExpanded = () => {
 
 const indent = (depth: number): CSSProperties => ({ '--folder-depth': Math.max(0, depth) } as CSSProperties);
 const isActiveYandex = (path: string) => props.activeSection.kind === 'yandex' && props.activeSection.path === path;
+const isActiveSpace = (spaceId: string) => props.activeSection.kind === 'space' && props.activeSection.spaceId === spaceId;
+const { spaces, load: loadSpaces } = useSpaces();
 
 // ----- the Yandex tree: opened folders and what they hold, read on opening
 type Node = { items: YandexItem[] | null; total: number; loading: boolean };
@@ -258,7 +295,7 @@ watch(() => props.yandexRefreshKey, () => {
   for (const path of open.value) void read(path);
 });
 watch(() => props.activeSection.kind, (kind) => {
-  if (kind === 'yandex' && !expanded.value) expanded.value = true;
+  if ((kind === 'yandex' || kind === 'space') && !expanded.value) expanded.value = true;
 });
 // Disconnected: forget what was read with the old account.
 watch(() => status.value?.connected, (connected) => {
@@ -267,5 +304,5 @@ watch(() => status.value?.connected, (connected) => {
   for (const key of Object.keys(nodes)) delete nodes[key];
 });
 
-onMounted(() => { void loadStatus(); });
+onMounted(() => { void loadStatus(); void loadSpaces(); });
 </script>
