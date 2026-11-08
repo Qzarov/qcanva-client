@@ -2544,6 +2544,49 @@ export default defineComponent({
       }
       if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
     });
+
+    /**
+     * The header never scrolls away. Only `.app-main` scrolls; the frame
+     * around it (the page, .app-layout, the shells) is overflow: hidden, but
+     * a browser still scrolls such a box itself: a phone does when the
+     * keyboard opens for an input (iOS Safari leaves the page scrolled after
+     * it closes), and focus() / scrollIntoView() scroll every ancestor. The
+     * header then sat above the screen with nothing to drag it back by.
+     * Whatever scrolls the frame, it goes back to the top.
+     */
+    let frameBoxes: HTMLElement[] = [];
+    const pinFrame = () => {
+      for (const box of frameBoxes) {
+        if (box.scrollTop || box.scrollLeft) {
+          box.scrollTop = 0;
+          box.scrollLeft = 0;
+        }
+      }
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    };
+    // Not while the keyboard is up: the browser moves the page to keep the
+    // typed-in field in view, and fighting it would hide the field.
+    const pinFrameUnlessTyping = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      pinFrame();
+    };
+    const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
+    onMounted(() => {
+      frameBoxes = ['.app-layout.dashboard-view', '.dashboard-app-shell', '.dashboard-central-shell']
+        .map((selector) => document.querySelector(selector) as HTMLElement | null)
+        .filter((box): box is HTMLElement => Boolean(box));
+      for (const box of frameBoxes) box.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      window.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      document.addEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.addEventListener('resize', pinFrameUnlessTyping);
+    });
+    onBeforeUnmount(() => {
+      for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
+      window.removeEventListener('scroll', pinFrameUnlessTyping);
+      document.removeEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.removeEventListener('resize', pinFrameUnlessTyping);
+    });
     const toggleRecentExpanded = () => {
       const collapsing = recentExpanded.value;
       animateFeedGrid('[data-recent-layout]', collapsing, feedLimit('recent'), () => {

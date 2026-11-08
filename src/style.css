@@ -585,6 +585,11 @@ body {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
 }
+/* The header has its row: nothing placed before it in the shell can push it
+   into an implicit third row below the screen. */
+.dashboard-central-shell > .app-header {
+  grid-row: 1;
+}
 .dashboard-central-shell .app-main {
   /* Always the 1fr row, even when the header above is hidden (desktop):
      otherwise main took the auto row, was only as tall as its content, and
