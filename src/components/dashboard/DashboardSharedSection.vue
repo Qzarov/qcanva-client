@@ -83,10 +83,10 @@
       <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
     </button>
   </div>
-  <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
+  <UiEmptyState v-if="!sharedFiltered.length && hasActiveFilter" empty-class="dash-empty" data-feed-empty="shared">
     {{ t('noFilterMatches') }}
     <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-  </div>
+  </UiEmptyState>
   <button
     v-if="isHomeFeed && sharedFiltered.length > feedLimit('shared')"
     type="button"
@@ -104,6 +104,7 @@
 </template>
 
 <script setup lang="ts">
+import UiEmptyState from '../ui/UiEmptyState.vue';
 import { computed } from 'vue';
 import { Check, Folder, Plus } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';

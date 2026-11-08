@@ -11,8 +11,8 @@
         <span class="dashboard-recent-info"><span v-if="recentFolderPath(item)" class="dashboard-recent-path" :title="recentFolderPath(item)" data-recent-folder-path><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span><span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span><span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span></span>
       </button>
     </div>
-    <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>{{ t('recentLoadFailed') }} <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button></div>
-    <div v-else-if="recentResourcesLength" class="dash-empty dashboard-recents-empty">{{ t('noRecentMatches') }} <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button></div>
+    <UiEmptyState v-else-if="recentRefreshFailed" empty-class="dash-empty dashboard-recents-error" role="alert" data-recent-error>{{ t('recentLoadFailed') }} <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button></UiEmptyState>
+    <UiEmptyState v-else-if="recentResourcesLength" empty-class="dash-empty dashboard-recents-empty">{{ t('noRecentMatches') }} <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button></UiEmptyState>
     <div v-else class="dash-grid" data-feed-grid="recent"><button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')"><span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span></button></div>
     <button v-if="recentShowAllAvailable" type="button" class="dashboard-recent-show-all" @click="toggleRecentExpanded"><span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span><ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" /><ChevronUp v-else :size="15" aria-hidden="true" /></button>
     <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders"><h2>{{ t('folders') }}</h2></div>
@@ -22,6 +22,7 @@
 </template>
 
 <script setup lang="ts">
+import UiEmptyState from '../ui/UiEmptyState.vue';
 import { Check, ChevronDown, ChevronUp, Folder, Plus } from '@lucide/vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 import ResourceThumb from './ResourceThumb.vue';

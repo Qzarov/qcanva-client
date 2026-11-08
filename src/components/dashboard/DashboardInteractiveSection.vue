@@ -23,10 +23,10 @@
       <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
     </button>
   </div>
-  <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
+  <UiEmptyState v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" empty-class="dash-empty" data-feed-empty="interactive">
     {{ t('noFilterMatches') }}
     <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-  </div>
+  </UiEmptyState>
   <button
     v-if="isHomeFeed && visibleInteractiveTemplateItems.length > feedLimit('interactive')"
     type="button"
@@ -44,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import UiEmptyState from '../ui/UiEmptyState.vue';
 import { computed } from 'vue';
 import { Check, ChevronDown, ChevronUp, Folder, Plus } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
