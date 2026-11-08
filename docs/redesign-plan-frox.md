@@ -25,7 +25,8 @@ roadmap для структурного рефакторинга клиентс�
   `CanvasFullscreenTextEditor`, remote cursor presentation — в
   `CanvasRemoteCursors`, draw overlay — в `CanvasDrawCapture`, file-picker
   bridge — в `CanvasFileInputs`, D&D interaction controller — в
-  `useCanvasDndTemplate`.
+  `useCanvasDndTemplate`, template-node creation/import — в
+  `useCanvasTemplateNodes`.
 - Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
   sections, modal layer, shared spaces и Trash вынесены из `DashboardView.vue`;
   старые Drive query-ссылки теперь приводят в dashboard sections.
@@ -57,10 +58,10 @@ roadmap для структурного рефакторинга клиентс�
 | UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
 | TextDocumentView | **93%** | оставшиеся topbar actions и финальная CSS-полировка |
-| CanvasLoader | **91%** | template creation/import orchestration и финальная cleanup |
+| CanvasLoader | **94%** | финальная orchestration cleanup |
 | DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **85%** | оставшиеся границы из строк выше |
+| **Весь план** | **86%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 

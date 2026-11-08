@@ -261,7 +261,6 @@ import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, type ActiveDrawingTool, strokeToPath, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
-import { createDndCharacterSheet } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
 import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
 import CanvasNodeLink from './canvas/CanvasNodeLink.vue';
@@ -294,6 +293,7 @@ import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
 import { useCanvasMinimap } from '../canvas/useCanvasMinimap';
 import { useCanvasEmbeds } from '../canvas/useCanvasEmbeds';
 import { useCanvasDndTemplate } from '../canvas/useCanvasDndTemplate';
+import { useCanvasTemplateNodes } from '../canvas/useCanvasTemplateNodes';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1271,74 +1271,6 @@ export default defineComponent({
       selectedNodeIds.value = [newGroup.id];
     };
 
-    const addDndCharacterTemplate = (data: Record<string, unknown> = {}) => {
-      if (props.readonly) return;
-      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
-      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const { activeTab: _activeTab, ...templateData } = { ...createDndCharacterSheet(), ...data };
-      const newNode: CanvasNode = {
-        id: genId(), type: "template", templateId: "dnd-character", templateData,
-        x: snap(centerX - 550), y: snap(centerY - 380), width: 1100, height: 760,
-      };
-      pushUndo();
-      nodes.value.push(newNode);
-      emitOp({ type: "node-add", node: { ...newNode } });
-      selectedNodeIds.value = [newNode.id];
-    };
-
-    const addBoardPreview = ({ boardId, title }: { boardId: string; title?: string }) => {
-      if (props.readonly || !boardId) return;
-      const centerX = viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0;
-      const centerY = viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0;
-      const templateData = title ? { boardId, title } : { boardId };
-      const newNode: CanvasNode = {
-        id: genId(), type: 'template', templateId: 'trello-board-preview', templateData,
-        x: snap(centerX - 360), y: snap(centerY - 190), width: 720, height: 380,
-      };
-      pushUndo();
-      nodes.value.push(newNode);
-      emitOp({ type: 'node-add', node: { ...newNode } });
-      selectedNodeIds.value = [newNode.id];
-    };
-
-    const boardPreviewId = (node: CanvasNode): string => {
-      const boardId = node.templateData?.boardId;
-      return typeof boardId === 'string' ? boardId : '';
-    };
-
-    let suppressedBoardPreviewClickId: string | null = null;
-    let clearSuppressedBoardPreviewClickTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const emitOpenBoardPreview = (boardId: string) => {
-      if (boardId) emit('open-board', boardId);
-    };
-
-    const suppressBoardPreviewClick = (boardId: string) => {
-      if (!boardId) return;
-      suppressedBoardPreviewClickId = boardId;
-      if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
-      clearSuppressedBoardPreviewClickTimer = setTimeout(() => {
-        suppressedBoardPreviewClickId = null;
-        clearSuppressedBoardPreviewClickTimer = null;
-      }, 0);
-    };
-
-    const openBoardPreview = (boardId: string) => {
-      if (suppressedBoardPreviewClickId === boardId) {
-        suppressedBoardPreviewClickId = null;
-        return;
-      }
-      emitOpenBoardPreview(boardId);
-    };
-
-    const importDndCharacter = (data: unknown) => {
-      if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("Файл карточки имеет неверный формат");
-      const source = (data as Record<string, unknown>).templateData && typeof (data as Record<string, unknown>).templateData === "object"
-        ? (data as Record<string, Record<string, unknown>>).templateData
-        : data as Record<string, unknown>;
-      addDndCharacterTemplate(source);
-    };
-
     // Context menu state
     const contextMenu = reactive({ visible: false, x: 0, y: 0, nodeId: "", kind: "", id: "" });
     const contextColorPopup = ref<'fill' | 'text' | 'drawing' | null>(null);
@@ -1790,6 +1722,31 @@ export default defineComponent({
       pushUndo,
       emitOp: (operation) => emitOp(operation),
       emitRoll: (roll) => emit('template-roll', roll),
+    });
+
+    const {
+      addDndCharacterTemplate,
+      addBoardPreview,
+      importDndCharacter,
+      boardPreviewId,
+      suppressBoardPreviewClick,
+      emitOpenBoardPreview,
+      openBoardPreview,
+    } = useCanvasTemplateNodes({
+      readonly: () => props.readonly,
+      center: () => ({
+        x: viewport.value ? (-camera.x / camera.scale) + viewport.value.clientWidth / (2 * camera.scale) : 0,
+        y: viewport.value ? (-camera.y / camera.scale) + viewport.value.clientHeight / (2 * camera.scale) : 0,
+      }),
+      snap,
+      genId,
+      pushUndo,
+      addNode: (node) => {
+        nodes.value.push(node);
+        emitOp({ type: 'node-add', node: { ...node } });
+      },
+      selectNode: (id) => { selectedNodeIds.value = [id]; },
+      emitBoardOpen: (boardId) => emit('open-board', boardId),
     });
 
     const {
@@ -3116,7 +3073,6 @@ export default defineComponent({
     onUnmounted(() => {
       viewportObserver?.disconnect();
       textEditor.dispose();
-      if (clearSuppressedBoardPreviewClickTimer) clearTimeout(clearSuppressedBoardPreviewClickTimer);
     });
 
     return {
