@@ -329,71 +329,23 @@
 
       <!-- The selection bubble. Chrome in the app's themed --ui-* palette,
            like the toolbar; nothing here reaches the Yjs document. -->
-      <BubbleMenu
+      <TextDocumentBubbleMenu
         v-if="editor && canEditContent"
-        class="text-doc-bubble-menu"
         :editor="editor"
         :should-show="bubbleShouldShow"
         :tippy-options="bubbleTippyOptions"
-        :update-delay="0"
-      >
-        <template v-if="!linkEditorOpen">
-          <button
-            v-for="button in bubbleMarkButtons"
-            :key="button.mark"
-            class="text-doc-bubble-btn"
-            :class="{ active: editor.isActive(button.mark) }"
-            :data-bubble-mark="button.mark"
-            :title="button.label"
-            :aria-label="button.label"
-            type="button"
-            @pointerdown.prevent
-            @click="applyBubbleMark(button.mark)"
-          >
-            <span class="text-doc-bubble-icon" v-html="button.icon"></span>
-          </button>
-          <button
-            class="text-doc-bubble-btn"
-            :class="{ active: editor.isActive('link') }"
-            data-bubble-action="link"
-            :title="t('linkAdd')"
-            :aria-label="t('linkAdd')"
-            type="button"
-            @pointerdown.prevent
-            @click="openLinkEditor"
-          >
-            <span class="text-doc-bubble-icon" v-html="linkIcon"></span>
-          </button>
-          <button
-            v-if="editor.isActive('link')"
-            class="text-doc-bubble-btn"
-            data-bubble-action="unlink"
-            :title="t('linkRemove')"
-            :aria-label="t('linkRemove')"
-            type="button"
-            @pointerdown.prevent
-            @click="removeLink"
-          >
-            <span class="text-doc-bubble-icon" v-html="unlinkIcon"></span>
-          </button>
-        </template>
-        <form v-else class="text-doc-bubble-link-form text-doc-bubble-link-form-desktop" @submit.prevent="applyLink">
-          <UiInput
-            v-model="linkInput"
-            input-class="text-doc-bubble-link-input"
-            data-bubble-link-input
-            :placeholder="t('linkUrl')"
-            :aria-label="t('linkUrl')"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            @keydown.esc.prevent="closeLinkEditor"
-          />
-          <button class="text-doc-bubble-btn text-doc-bubble-btn-text" data-bubble-action="apply-link" type="submit">
-            {{ t('linkApply') }}
-          </button>
-        </form>
-      </BubbleMenu>
+        :link-editor-open="linkEditorOpen"
+        :link-input="linkInput"
+        :mark-buttons="bubbleMarkButtons"
+        :link-icon="linkIcon"
+        :unlink-icon="unlinkIcon"
+        @apply-mark="applyBubbleMark"
+        @open-link-editor="openLinkEditor"
+        @remove-link="removeLink"
+        @apply-link="applyLink"
+        @close-link-editor="closeLinkEditor"
+        @update:link-input="linkInput = $event"
+      />
 
       <!--
         TABLE CONTROLS (front task 15). A second BubbleMenu instance, tiptap's
@@ -593,13 +545,14 @@ import TextDocumentMobileMenu from '../components/TextDocumentMobileMenu.vue';
 import TextDocumentBacklinks from '../components/TextDocumentBacklinks.vue';
 import TextDocumentSlashMenu from '../components/TextDocumentSlashMenu.vue';
 import TextDocumentMentionMenu from '../components/TextDocumentMentionMenu.vue';
+import TextDocumentBubbleMenu from '../components/TextDocumentBubbleMenu.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 import UiInput from '../components/ui/UiInput.vue';
 import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, TextDocumentSlashMenu, TextDocumentMentionMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, TextDocumentSlashMenu, TextDocumentMentionMenu, TextDocumentBubbleMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink },
   setup() {
     const route = useRoute();
     const router = useRouter();
