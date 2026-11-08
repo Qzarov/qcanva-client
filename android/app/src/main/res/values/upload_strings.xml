@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="upload_channel_name">Uploads</string>
+    <string name="upload_notification_title">Uploading files</string>
+    <plurals name="upload_notification_files">
+        <item quantity="one">%d file left</item>
+        <item quantity="other">%d files left</item>
+    </plurals>
+</resources>

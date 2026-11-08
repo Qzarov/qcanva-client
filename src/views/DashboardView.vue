@@ -1345,6 +1345,7 @@ import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashbo
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
+import { nativeUploadAvailable } from '../api/native-upload';
 import { adminApi, type PublicResourceType } from '../api/admin';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
@@ -4238,7 +4239,11 @@ export default defineComponent({
     const uploadWakeLock = createUploadWakeLock(() => uploads.value.some((item) => item.status === 'uploading'));
     watch(() => uploads.value.some((item) => item.status === 'uploading'), () => { void uploadWakeLock.sync(); });
     onBeforeUnmount(() => uploadWakeLock.dispose());
+    // In the Android app every file goes to the app's own queue at once (it runs
+    // three at a time, in the background too); a page frozen in the background
+    // could not hand over the rest later.
     const runDashboardUploads = (jobs: UploadJob[]) => runUploadQueue(jobs, {
+      concurrency: nativeUploadAvailable() ? jobs.length : 3,
       isCancelled: (id) => uploadRowOf(id)?.status === 'cancelled',
       onAttempt: (id, attempt) => {
         const row = uploadRowOf(id);
