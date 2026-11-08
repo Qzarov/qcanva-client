@@ -22,7 +22,7 @@
         @click.stop="emit('toggle')"
       >
         <SlidersHorizontal :size="17" aria-hidden="true" />
-        <span v-if="activeCount" class="dashboard-filter-badge" data-filter-count>{{ activeCount }}</span>
+        <UiBadge v-if="activeCount" variant="accent" class="dashboard-filter-badge" data-filter-count aria-hidden="true">{{ activeCount }}</UiBadge>
       </button>
     </template>
       <div class="dashboard-filter-head">
@@ -61,6 +61,7 @@
 import { computed } from 'vue';
 import { SlidersHorizontal } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
+import UiBadge from '../ui/UiBadge.vue';
 import UiMenu from '../ui/UiMenu.vue';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardContentType } from '../../dashboard/content-filter';

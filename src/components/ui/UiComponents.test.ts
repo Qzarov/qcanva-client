@@ -2,10 +2,24 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import UiButton from './UiButton.vue';
+import UiBadge from './UiBadge.vue';
 import UiIconButton from './UiIconButton.vue';
 import UiModal from './UiModal.vue';
 
 describe('UI primitives', () => {
+  it('keeps badge variants and semantic status in one API', () => {
+    const wrapper = mount(UiBadge, {
+      props: { variant: 'accent', role: 'status' },
+      attrs: { class: 'dashboard-filter-badge', 'data-filter-count': '' },
+      slots: { default: '3' },
+    });
+
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['ui-badge', 'ui-badge--accent', 'dashboard-filter-badge']));
+    expect(wrapper.attributes('role')).toBe('status');
+    expect(wrapper.attributes('data-filter-count')).toBe('');
+    expect(wrapper.text()).toBe('3');
+  });
+
   it('keeps button state and accessibility attributes in one API', () => {
     const wrapper = mount(UiButton, {
       props: { variant: 'primary', size: 'sm', loading: true },
