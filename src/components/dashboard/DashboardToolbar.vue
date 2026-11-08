@@ -1,9 +1,9 @@
 <template>
   <div class="dash-toolbar">
     <div class="control-menu dashboard-new-menu">
-      <button class="btn-primary" data-add-button @click.stop="yandexPath !== null ? pickYandexFiles() : openAddDialog()">
+      <UiButton class="btn-primary" variant="primary" data-add-button @click.stop="yandexPath !== null ? pickYandexFiles() : openAddDialog()">
         <Plus class="menu-icon" :size="17" aria-hidden="true" /><span>{{ t('add') }}</span>
-      </button>
+      </UiButton>
     </div>
     <DashboardFilterMenu
       class="dashboard-toolbar-desktop"
@@ -24,7 +24,7 @@
       @toggle="toggleToolbarMenu('sort:desktop')"
       @select="selectSortMode"
     />
-    <input :value="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" @input="updateSearchQuery(($event.target as HTMLInputElement).value)" />
+    <UiInput :model-value="searchQuery" input-class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" @update:model-value="updateSearchQuery" />
   </div>
 </template>
 
@@ -32,6 +32,8 @@
 import { Plus } from '@lucide/vue';
 import DashboardFilterMenu from './DashboardFilterMenu.vue';
 import DashboardSortMenu from './DashboardSortMenu.vue';
+import UiButton from '../ui/UiButton.vue';
+import UiInput from '../ui/UiInput.vue';
 defineProps<{
   openControlMenu: string;
   contentTypes: any;
