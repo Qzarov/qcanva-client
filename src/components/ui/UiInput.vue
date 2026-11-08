@@ -1,5 +1,6 @@
 <template>
   <input
+    ref="field"
     v-bind="$attrs"
     class="ui-input"
     :class="inputClass"
@@ -10,6 +11,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+
 defineOptions({ inheritAttrs: false });
 
 withDefaults(defineProps<{
@@ -23,4 +26,6 @@ withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
+const field = ref<HTMLInputElement | null>(null);
+defineExpose({ field });
 </script>

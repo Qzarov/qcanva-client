@@ -1,5 +1,6 @@
 <template>
   <textarea
+    ref="field"
     v-bind="$attrs"
     class="ui-textarea"
     :class="textareaClass"
@@ -10,6 +11,8 @@
 </template>
 
 <script setup lang="ts">
+import { ref } from 'vue';
+
 defineOptions({ inheritAttrs: false });
 
 withDefaults(defineProps<{
@@ -23,4 +26,6 @@ withDefaults(defineProps<{
 });
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
+const field = ref<HTMLTextAreaElement | null>(null);
+defineExpose({ field });
 </script>
