@@ -300,40 +300,15 @@
             lag applies to an addition on a document that already has other
             backlinks too), rather than repeated per item or left unsaid.
         -->
-        <section v-if="backlinksLoaded" class="text-doc-backlinks">
-          <button
-            type="button"
-            class="text-doc-backlinks-head"
-            :aria-expanded="backlinksExpanded"
-            aria-controls="text-doc-backlinks-panel"
-            @click="toggleBacklinksExpanded"
-          >
-            <span class="text-doc-backlinks-icon" v-html="backlinksIcon" aria-hidden="true"></span>
-            <span class="text-doc-backlinks-title">{{ t('backlinksTitle') }}</span>
-            <span class="text-doc-backlinks-count" data-backlinks-count>{{ backlinks.length }}</span>
-            <ChevronDown v-if="backlinksExpanded" class="text-doc-backlinks-chevron" :size="16" aria-hidden="true" />
-            <ChevronRight v-else class="text-doc-backlinks-chevron" :size="16" aria-hidden="true" />
-          </button>
-          <div v-if="backlinksExpanded" id="text-doc-backlinks-panel" class="text-doc-backlinks-panel">
-            <p class="text-doc-backlinks-hint">{{ t('backlinksDelayHint') }}</p>
-            <ul v-if="backlinks.length" class="text-doc-backlinks-list">
-              <li v-for="item in backlinks" :key="item.id">
-                <button
-                  type="button"
-                  class="text-doc-backlink-item"
-                  :class="{ 'text-doc-backlink-item-inaccessible': !item.accessible }"
-                  :data-backlink-id="item.id"
-                  :data-backlink-state="item.accessible ? 'accessible' : 'inaccessible'"
-                  @click="onBacklinkClick(item)"
-                >
-                  <span class="text-doc-backlink-item-icon" v-html="mentionDocumentIcon" aria-hidden="true"></span>
-                  <span class="text-doc-backlink-item-label">{{ item.title }}</span>
-                </button>
-              </li>
-            </ul>
-            <p v-else class="text-doc-backlinks-empty">{{ t('backlinksEmpty') }}</p>
-          </div>
-        </section>
+        <TextDocumentBacklinks
+          :loaded="backlinksLoaded"
+          :expanded="backlinksExpanded"
+          :items="backlinks"
+          :backlinks-icon="backlinksIcon"
+          :mention-document-icon="mentionDocumentIcon"
+          @toggle="toggleBacklinksExpanded"
+          @open="onBacklinkClick"
+        />
       </main>
       </div>
 
@@ -686,13 +661,14 @@ import AccessGate from '../components/AccessGate.vue';
 import TextDocumentOutline from '../components/TextDocumentOutline.vue';
 import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
 import TextDocumentMobileMenu from '../components/TextDocumentMobileMenu.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
+import TextDocumentBacklinks from '../components/TextDocumentBacklinks.vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 import UiInput from '../components/ui/UiInput.vue';
 import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
