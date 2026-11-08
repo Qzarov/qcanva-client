@@ -28,6 +28,7 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
+    driveRestored: 'Файл восстановлен',
     spaceNew: 'Новое пространство', spaceNamePlaceholder: 'Название пространства', spaceMembers: 'Участники', spaceRole: 'Роль', spaceRoleOwner: 'Владелец', spaceRoleEditor: 'Участник', spaceRoleViewer: 'Зритель', spaceInviteEmail: 'Почта', spaceInvite: 'Пригласить', spaceLeave: 'Покинуть пространство', spaceLeaveTitle: 'Покинуть «{name}»?', spaceRemoveMemberTitle: 'Убрать {name} из пространства?', spaceUserNotFound: 'Нет пользователя QCanva с такой почтой', spaceActionFailed: 'Не получилось', spaceLoadFailed: 'Не удалось загрузить пространство', spaceAddFolder: 'Добавить папку', spaceNoOwnFolders: 'Своих папок пока нет', spaceAdd: 'Добавить', spaceFolderQspace: 'Папка Q Space', spaceFolderYandex: 'Папка Яндекс Диска', spaceFolders: 'Папки пространства', spaceAll: 'Всё', spaceRemoveFolder: 'Убрать папку', spaceRemoveFolderTitle: 'Убрать «{name}» из пространства?', spaceCount: 'участников: {people} · папок: {folders}', spaceAddedBy: 'Добавил', spaceFrom: 'Откуда', spaceYandexReading: 'Папка добавлена, файлы с Яндекс Диска подтягиваются', spaceDeleteTitle: 'Удалить пространство «{name}»?',
     fileInfoSize: 'Размер', fileInfoType: 'Тип', fileInfoTaken: 'Снято', fileInfoCreated: 'Создан', fileInfoModified: 'Изменён',
     mediaViewerUnavailable: 'Не удалось показать файл',
@@ -740,6 +741,7 @@ export const messages = {
     adminStorageCapacitySaveFailed: 'Не удалось сохранить ёмкость',
   },
   en: {
+    driveRestored: 'File restored',
     spaceNew: 'New space', spaceNamePlaceholder: 'Space name', spaceMembers: 'People', spaceRole: 'Role', spaceRoleOwner: 'Owner', spaceRoleEditor: 'Member', spaceRoleViewer: 'Viewer', spaceInviteEmail: 'E-mail', spaceInvite: 'Invite', spaceLeave: 'Leave the space', spaceLeaveTitle: 'Leave “{name}”?', spaceRemoveMemberTitle: 'Remove {name} from the space?', spaceUserNotFound: 'No QCanva user with that e-mail', spaceActionFailed: 'That did not work', spaceLoadFailed: 'Could not load the space', spaceAddFolder: 'Add a folder', spaceNoOwnFolders: 'No folders of your own yet', spaceAdd: 'Add', spaceFolderQspace: 'Q Space folder', spaceFolderYandex: 'Yandex Disk folder', spaceFolders: 'The space’s folders', spaceAll: 'All', spaceRemoveFolder: 'Take the folder out', spaceRemoveFolderTitle: 'Take “{name}” out of the space?', spaceCount: 'people: {people} · folders: {folders}', spaceAddedBy: 'Added by', spaceFrom: 'From', spaceYandexReading: 'Folder added; its Yandex Disk files are on their way', spaceDeleteTitle: 'Delete the space “{name}”?',
     fileInfoSize: 'Size', fileInfoType: 'Type', fileInfoTaken: 'Taken', fileInfoCreated: 'Created', fileInfoModified: 'Modified',
     mediaViewerUnavailable: 'Could not show the file',

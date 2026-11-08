@@ -33,15 +33,17 @@ const router = createRouter({
       meta: { requiresAuth: true },
     },
     {
+      // The trash is in the dashboard now.
       path: '/drive/trash',
       name: 'drive-trash',
-      component: () => import('../views/DriveTrashView.vue'),
+      redirect: { name: 'dashboard', query: { section: 'trash' } },
       meta: { requiresAuth: true },
     },
     {
+      // Q Control is a section of Settings now.
       path: '/drive/devices',
       name: 'drive-devices',
-      component: () => import('../views/DriveDevicesView.vue'),
+      redirect: { name: 'settings', query: { section: 'devices' } },
       meta: { requiresAuth: true },
     },
     {

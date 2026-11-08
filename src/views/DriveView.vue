@@ -79,9 +79,8 @@
 
       <!-- Trash Link -->
       <router-link
-        to="/drive/trash"
+        to="/dashboard?section=trash"
         class="drive-sidebar-root-item drive-sidebar-trash-item"
-        :class="{ active: route.path === '/drive/trash' }"
         data-sidebar-trash
         :aria-label="t('driveTrash')"
       >
@@ -91,7 +90,7 @@
 
       <!-- Q CUP: devices, keepers, storage rules -->
       <router-link
-        to="/drive/devices"
+        to="/settings?section=devices"
         class="drive-sidebar-root-item"
         data-sidebar-devices
       >
@@ -205,7 +204,7 @@
             <Upload :size="18" aria-hidden="true" />
           </button>
           <router-link
-            to="/drive/devices"
+            to="/settings?section=devices"
             class="drive-mobile-header-btn"
             :aria-label="t('cupTitle')"
             :title="t('cupTitle')"

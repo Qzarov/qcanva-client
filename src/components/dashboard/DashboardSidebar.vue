@@ -249,7 +249,7 @@
 import ResourceIcon from '../ResourceIcon.vue';
 import DashboardSidebarSpaces from './DashboardSidebarSpaces.vue';
 import type { YandexItem } from '../../api/yandexDisk';
-import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Users, X } from '@lucide/vue';
+import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Trash2, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
 import { heightTransitionHooks } from '../../dashboard/motion';
 import AccountMenu from '../AccountMenu.vue';
@@ -334,6 +334,7 @@ const topLevelItems = computed<Array<{
   { kind: 'shared', label: t('sharedWithMe'), icon: Users },
   { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
   { kind: 'public', label: t('public'), icon: Globe2 },
+  { kind: 'trash', label: t('driveTrash'), icon: Trash2 },
 ]);
 
 const widthToggleLabel = computed(() => (

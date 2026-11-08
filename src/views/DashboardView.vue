@@ -650,6 +650,14 @@
         />
       </section>
 
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'trash'"
+        class="dashboard-folder-content"
+        data-dashboard-view="trash"
+      >
+        <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
+      </section>
+
       <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :id="isHomeFeed ? 'feed-shared' : undefined"
@@ -1303,6 +1311,7 @@ import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
 import {
@@ -1455,6 +1464,7 @@ export default defineComponent({
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardSpace,
+    DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -4007,6 +4017,30 @@ export default defineComponent({
       else if (kind === 'html-document') openHtmlDocument(id);
       else openInteractiveTemplate(id);
     };
+    /**
+     * A link into the dashboard: `?section=trash` opens the trash and
+     * `?folder=<id>` a folder - the old Q Space pages (/drive/trash,
+     * /drive/<folder>) land here. Read once, then dropped from the address.
+     */
+    const takeAddressSection = () => {
+      if (!isLoggedIn) return;
+      const query = router.currentRoute?.value?.query ?? {};
+      const section = typeof query.section === 'string' ? query.section : '';
+      const folder = typeof query.folder === 'string' ? query.folder : '';
+      if (!section && !folder) return;
+      if (section === 'trash') selectDashboardSection({ kind: 'trash' });
+      else if (folder) selectFolder(folder);
+      const { section: _section, folder: _folder, ...rest } = query;
+      void router.replace({ query: rest });
+    };
+
+    /** A file back from the trash: its folder shows it again. */
+    const onTrashRestored = () => {
+      setFeedback('success', t('driveRestored'));
+      void load({ showLoading: false });
+      refreshFolderFileCounts();
+    };
+
     /** The space is gone for this user (deleted, or they left): back home. */
     const leaveSpaceSection = () => {
       void loadSpaces(true);
@@ -5111,6 +5145,7 @@ export default defineComponent({
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
       takeYandexReturn();
+      takeAddressSection();
       sidebarDesktopMedia = getSidebarDesktopMedia();
       if (sidebarDesktopMedia) {
         addSidebarDesktopListener(sidebarDesktopMedia);
@@ -5150,6 +5185,7 @@ export default defineComponent({
       createSpace,
       openSpaceResource,
       leaveSpaceSection,
+      onTrashRestored,
       currentUser,
       uploadToYandex,
       setFeedback,

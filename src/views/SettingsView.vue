@@ -83,6 +83,14 @@
           <ContactsSettingsPanel />
         </template>
 
+        <template v-else-if="section === 'devices'">
+          <section class="settings-intro">
+            <h2>{{ t('cupTitle') }}</h2>
+            <p>{{ t('cupSubtitle') }}</p>
+          </section>
+          <DriveDevicesView embedded />
+        </template>
+
         <template v-else-if="section === 'mcp'">
           <section class="settings-intro">
             <h2>{{ t('mcpTokensTitle') }}</h2>
@@ -125,7 +133,8 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, Contact, FileCode2, KeyRound, SlidersHorizontal, Tags } from '@lucide/vue';
+import { ArrowLeft, Contact, FileCode2, KeyRound, MonitorSmartphone, SlidersHorizontal, Tags } from '@lucide/vue';
+import DriveDevicesView from './DriveDevicesView.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import ThemeSelector from '../components/ThemeSelector.vue';
 import HubOverrideField from '../components/HubOverrideField.vue';
@@ -136,7 +145,7 @@ import { getCurrentUser, htmlDocuments } from '../api/client';
 import { isHubOverrideAllowed } from '../api/hubOverride';
 import { useI18n, type UiLocale } from '../composables/useI18n';
 
-type SectionKey = 'general' | 'tags' | 'contacts' | 'mcp' | 'html';
+type SectionKey = 'general' | 'tags' | 'contacts' | 'devices' | 'mcp' | 'html';
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 
 /** `short`: the label on a phone, where the three share one pill. */
@@ -144,6 +153,7 @@ const SECTIONS: { key: SectionKey; label: MessageKey; short?: string; icon: Comp
   { key: 'general', label: 'settingsGeneral', icon: SlidersHorizontal },
   { key: 'tags', label: 'settingsTags', icon: Tags },
   { key: 'contacts', label: 'settingsContacts', icon: Contact },
+  { key: 'devices', label: 'cupTitle', short: 'Q Control', icon: MonitorSmartphone },
   { key: 'mcp', label: 'mcpTokensTitle', short: 'MCP', icon: KeyRound },
   { key: 'html', label: 'settingsHtmlGeneration', short: 'HTML', icon: FileCode2 },
 ];
@@ -159,7 +169,7 @@ const router = useRouter();
 /** The open section lives in ?section=, so /mcp and /html-settings can link straight to theirs. */
 const section = computed<SectionKey>(() => {
   const value = route.query.section;
-  return value === 'tags' || value === 'contacts' || value === 'mcp' || value === 'html' ? value : 'general';
+  return value === 'tags' || value === 'contacts' || value === 'devices' || value === 'mcp' || value === 'html' ? value : 'general';
 });
 const select = (key: SectionKey) => {
   void router.replace({ query: { ...route.query, section: key === 'general' ? undefined : key } });
@@ -343,7 +353,7 @@ watch(section, (value) => {
   }
   .settings-nav-item { flex: 1 1 0; justify-content: center; gap: 6px; min-height: 38px; padding: 0 8px; border-radius: 999px; font-size: 13px; }
   .settings-nav-label { display: none; }
-  .settings-nav-short { display: inline; }
+  .settings-nav-short { display: inline; white-space: nowrap; }
   .settings-card { padding: 16px; }
   .settings-intro h2 { font-size: 20px; }
 }
