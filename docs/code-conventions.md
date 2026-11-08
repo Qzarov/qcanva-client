@@ -46,6 +46,10 @@
   mobile-backdrop, Escape и focus trap. AppSidebar и DashboardSidebar передают
   header/content/footer слотами и сохраняют свои доменные классы, дерево и
   навигационные события внутри.
+- Action-компоненты документов (`TextDocumentMobileMenu` и следующие UI-срезы)
+  владеют своим Teleport, backdrop и стабильными DOM hooks. `TextDocumentView`
+  хранит состояние и бизнес-обработчики, связывая их с компонентом через
+  typed events.
 - Для иконок используйте Lucide или существующую иконку проекта. Эмодзи и
   inline-иконки с разными стилями для одинаковых действий не добавляйте.
 

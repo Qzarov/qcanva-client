@@ -77,29 +77,16 @@
           >{{ syncStatus.label }}</button>
           <AccountMenu v-if="currentUser" :show-plugins="false" />
           <router-link v-else :to="{ path: '/login', query: { redirect: route.fullPath } }" class="btn-ghost btn-sm">{{ t('login') }}</router-link>
-          <div class="control-menu text-doc-menu-mobile">
-            <button
-              type="button"
-              class="btn-ghost btn-sm text-doc-menu-trigger"
-              :aria-label="t('documentActionsAria')"
-              :title="t('documentActionsAria')"
-              @click.stop="toggleDocMenu"
-            ><MoreVertical :size="18" aria-hidden="true" /></button>
-            <!-- The topbar's own backdrop-filter makes it a containing block
-                 for position:fixed descendants AND its own stacking context,
-                 so both the backdrop and the popover are teleported to
-                 <body> together with a viewport-relative position computed
-                 from the trigger - otherwise the popover's z-index is only
-                 compared against the topbar's siblings, not the backdrop. -->
-            <Teleport to="body">
-              <div v-if="docMenuOpen" class="text-doc-menu-backdrop" @click="closeDocMenu"></div>
-              <div v-if="docMenuOpen" class="text-doc-menu-popover" :style="docMenuStyle" @click.stop>
-                <button v-if="role === 'owner'" type="button" class="text-doc-menu-item" @click="openAccessFromDocMenu">{{ t('share') }}</button>
-                <button type="button" class="text-doc-menu-item" @click="openHistoryFromDocMenu">{{ t('history') }}</button>
-                <button type="button" class="text-doc-menu-item" @click="copyDocumentLinkFromDocMenu">{{ t('copyLink') }}</button>
-              </div>
-            </Teleport>
-          </div>
+          <TextDocumentMobileMenu
+            :open="docMenuOpen"
+            :style="docMenuStyle"
+            :is-owner="role === 'owner'"
+            @toggle="toggleDocMenu"
+            @close="closeDocMenu"
+            @share="openAccessFromDocMenu"
+            @history="openHistoryFromDocMenu"
+            @copy-link="copyDocumentLinkFromDocMenu"
+          />
         </div>
       </header>
       <div v-if="cacheStatus" class="resource-cache-status" :class="`resource-cache-status-${cacheStatus.kind}`">{{ cacheStatus.text }}</div>
@@ -698,13 +685,14 @@ import AccessRequestDialog from '../components/AccessRequestDialog.vue';
 import AccessGate from '../components/AccessGate.vue';
 import TextDocumentOutline from '../components/TextDocumentOutline.vue';
 import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
+import TextDocumentMobileMenu from '../components/TextDocumentMobileMenu.vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 import UiInput from '../components/ui/UiInput.vue';
 import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
