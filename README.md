@@ -94,6 +94,12 @@ npx playwright test  # браузерные тесты из tests/ (подним
 `npm run test:visual` прогоняет только визуальные тесты тем,
 `npm run test:visual:update` обновляет их снимки.
 
+Правила границ компонентов, CSS-модулей, accessibility и обязательных проверок
+собраны в [`docs/code-conventions.md`](docs/code-conventions.md). Для UI
+примитивов и порядка глобальных стилей также есть локальные README:
+[`src/components/ui/README.md`](src/components/ui/README.md) и
+[`src/styles/README.md`](src/styles/README.md).
+
 ## Маршруты
 
 | URL | Назначение |

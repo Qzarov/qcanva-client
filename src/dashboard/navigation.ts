@@ -5,7 +5,9 @@ export type DashboardSection =
   | { kind: 'recent' }
   | { kind: 'folder'; folderId: string }
   /** A folder of the user's Yandex Disk (Spaces), `/` for its root. */
-  | { kind: 'yandex'; path: string };
+  | { kind: 'yandex'; path: string }
+  /** A shared space: its folders' contents as one feed. */
+  | { kind: 'space'; spaceId: string };
 
 export type SidebarWidthState = 'expanded' | 'collapsed';
 
@@ -166,6 +168,9 @@ export function isDashboardSectionActive(
   }
   if (left.kind === 'yandex' && right.kind === 'yandex') {
     return left.path === right.path;
+  }
+  if (left.kind === 'space' && right.kind === 'space') {
+    return left.spaceId === right.spaceId;
   }
 
   return left.kind === right.kind;

@@ -24,6 +24,7 @@
         :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
         @open-yandex-file="openYandexSidebarFile"
+        @create-space="createSpace"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
@@ -174,7 +175,7 @@
       :yandex-path="yandexPath"
       :t="t"
       :pick-yandex-files="() => yandexView?.pickFiles()"
-      :open-add-dialog="openAddDialog"
+      :open-add-dialog="spaceId !== null ? () => spaceView?.startAdd() : openAddDialog"
       :toggle-toolbar-menu="toggleToolbarMenu"
       :update-content-types="(value) => contentTypes = value"
       :toggle-selected-tag="toggleSelectedTag"
@@ -281,6 +282,26 @@
         />
       </section>
 
+      <section
+        v-if="isLoggedIn && spaceId !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="space"
+      >
+        <DashboardSpace
+          ref="spaceView"
+          :space-id="spaceId"
+          :view-mode="recentViewMode"
+          :query="searchQuery"
+          :me-id="currentUser?.id || ''"
+          :folder-options="folderOptions"
+          @update:view-mode="setRecentViewMode"
+          @open="openSpaceResource"
+          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @gone="leaveSpaceSection"
+          @feedback="setFeedback"
+        />
+      </section>
+
       <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :context="sharedSectionProps"
@@ -303,7 +324,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
@@ -355,7 +376,7 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
+import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
@@ -389,6 +410,9 @@ import DashboardUploadPanel, { type DashboardUpload } from '../components/dashbo
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import { spacesApi } from '../api/spaces';
+import { useSpaces } from '../composables/useSpaces';
 import {
   downloadYandexLink,
   fetchYandexContent,
@@ -556,6 +580,7 @@ export default defineComponent({
     DashboardModalLayer,
     YandexFolderPicker,
     DashboardMediaViewer,
+    DashboardSpace,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -3043,6 +3068,9 @@ export default defineComponent({
     const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
+    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const { load: loadSpaces } = useSpaces();
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
     const { load: loadYandexStatus } = useYandexDisk();
     const openYandexPath = (path: string) => {
@@ -3920,6 +3948,36 @@ export default defineComponent({
       mobileSidebarOpen.value = false;
     };
 
+    // ----- shared spaces: a section of its own
+    const createSpace = async () => {
+      const name = (await promptDialog({
+        title: t('spaceNew'),
+        placeholder: t('spaceNamePlaceholder'),
+        confirmLabel: t('create'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!name) return;
+      try {
+        const space = await spacesApi.create(name);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
+
+    const openSpaceResource = (kind: string, id: string) => {
+      if (kind === 'canvas') openCanvas(id);
+      else if (kind === 'text-document') openTextDocument(id);
+      else if (kind === 'html-document') openHtmlDocument(id);
+      else openInteractiveTemplate(id);
+    };
+
+    const leaveSpaceSection = () => {
+      void loadSpaces(true);
+      selectDashboardSection({ kind: 'recent' });
+    };
+
     /**
      * The sidebar's Home / Shared / Templates / Public scroll the home feed
      * to that section rather than swapping the dashboard for a page of its
@@ -4419,6 +4477,11 @@ export default defineComponent({
       yandexPicker,
       yandexRefreshKey,
       yandexPath,
+      spaceView,
+      spaceId,
+      createSpace,
+      openSpaceResource,
+      leaveSpaceSection,
       yandexMove,
       yandexFiles,
       openYandexPath,
@@ -4437,6 +4500,7 @@ export default defineComponent({
       admin,
       t,
       isLoggedIn,
+      currentUser,
       loading,
       isRefreshing,
       recentResources,

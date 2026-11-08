@@ -4,7 +4,7 @@
     <div v-if="visible" class="dashboard-modal-backdrop" data-yandex-picker @click.self="close">
       <div class="dashboard-modal yandex-picker">
         <div class="dashboard-modal-head">
-          <h3>{{ t('moveSelectedTitle').replace('{n}', String(sources.length)) }}</h3>
+          <h3>{{ title || t('moveSelectedTitle').replace('{n}', String(sources.length)) }}</h3>
           <button class="dashboard-modal-close" :aria-label="t('cancel')" @click="close">x</button>
         </div>
         <nav class="yandex-picker-crumbs" :aria-label="t('yandexDisk')">
@@ -31,7 +31,7 @@
         </div>
         <div class="dashboard-modal-actions dashboard-modal-actions-row">
           <button class="btn-ghost" :disabled="busy" @click="close">{{ t('cancel') }}</button>
-          <button class="btn-primary" :disabled="busy || !canMoveHere" data-picker-confirm @click="emit('confirm', path)">{{ t('yandexMoveHere') }}</button>
+          <button class="btn-primary" :disabled="busy || !canMoveHere" data-picker-confirm @click="emit('confirm', path)">{{ confirmLabel || t('yandexMoveHere') }}</button>
         </div>
       </div>
     </div>
@@ -43,7 +43,11 @@ import { computed, onMounted, ref } from 'vue';
 import { yandexCrumbs, yandexDisk, yandexParentPath, type YandexItem } from '../../api/yandexDisk';
 import { useI18n } from '../../composables/useI18n';
 
-const props = defineProps<{ sources: readonly string[]; start: string; busy?: boolean }>();
+/**
+ * `sources`: what is being moved (not into itself, not where it already is);
+ * empty to just pick a folder, with the dialog's own `title` and `confirmLabel`.
+ */
+const props = defineProps<{ sources: readonly string[]; start: string; busy?: boolean; title?: string; confirmLabel?: string }>();
 const emit = defineEmits<{ confirm: [target: string]; close: [] }>();
 const { t } = useI18n();
 
@@ -56,7 +60,8 @@ const crumbs = computed(() => yandexCrumbs(path.value));
 const isSourceOrInside = (target: string) => props.sources.some((source) => target === source || target.startsWith(`${source}/`));
 /** Not into a moved folder itself, and not where everything already is. */
 const canMoveHere = computed(() => (
-  !isSourceOrInside(path.value) && props.sources.some((source) => yandexParentPath(source) !== path.value)
+  !props.sources.length
+  || (!isSourceOrInside(path.value) && props.sources.some((source) => yandexParentPath(source) !== path.value))
 ));
 
 async function go(target: string) {
