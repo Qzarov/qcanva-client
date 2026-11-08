@@ -230,15 +230,14 @@
     <div v-if="imageUploadStatus" class="image-upload-status" role="status" aria-live="polite">
       <span class="image-upload-spinner" aria-hidden="true"></span>{{ imageUploadStatus }}
     </div>
-    <div
-      v-if="drawTool !== 'select'"
-      class="draw-capture"
+    <CanvasDrawCapture
+      :active="drawTool !== 'select'"
       @pointerdown="onDrawPointerDown"
       @pointermove="onDrawPointerMove"
       @pointerup="onDrawPointerUp"
       @pointerleave="onDrawPointerUp"
       @pointercancel="onDrawPointerCancel"
-    ></div>
+    />
   </div>
 </template>
 
@@ -274,6 +273,7 @@ import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
 import CanvasControls from './canvas/CanvasControls.vue';
 import CanvasFullscreenTextEditor from './CanvasFullscreenTextEditor.vue';
 import CanvasRemoteCursors from './CanvasRemoteCursors.vue';
+import CanvasDrawCapture from './CanvasDrawCapture.vue';
 import CanvasEdgeLayer from './canvas/CanvasEdgeLayer.vue';
 import CanvasDrawingLayer from './canvas/CanvasDrawingLayer.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
@@ -372,7 +372,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasRemoteCursors, CanvasEdgeLayer, CanvasDrawingLayer },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasRemoteCursors, CanvasDrawCapture, CanvasEdgeLayer, CanvasDrawingLayer },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
