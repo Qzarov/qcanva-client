@@ -246,3 +246,26 @@ test('phone: the round "+" and the empty space\'s "+ Add" open the same bottom s
     await page.screenshot({ path: `${SHOTS}/space-add-phone.png` });
   }
 });
+
+test('the home feed has Spaces right after Folders: a tile each, opening the space', async ({ page }) => {
+  await openDashboard(page);
+  const heads = await page.locator('[data-feed-anchor]').evaluateAll((els) => els.map((el) => el.getAttribute('data-feed-anchor')));
+  expect(heads.indexOf('spaces')).toBe(heads.indexOf('folders') + 1);
+  const tile = page.locator('[data-recent-space-tile="space-1"]');
+  await expect(tile).toContainText('Семья');
+  // The number of folders in it, beside its last change.
+  await expect(tile.locator('.subfolder-card-count')).toHaveText('2');
+  await expect(tile.locator('[data-folder-tile-date]')).toBeVisible();
+  await tile.click();
+  await expect(page.locator('[data-space-title]')).toHaveText('Семья');
+});
+
+test('with no spaces the home feed offers "+ Add" under Spaces, which makes one', async ({ page }) => {
+  const calls = await openDashboard(page, { spaces: false });
+  await expect(page.locator('[data-recent-spaces]')).toHaveCount(0);
+  await page.locator('[data-feed-add="spaces"]').click();
+  await page.getByRole('dialog').locator('input').fill('Дача');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+  await expect.poll(() => calls.find((call) => call.method === 'POST' && call.path === '/spaces')?.body).toEqual({ name: 'Дача' });
+  await expect(page.locator('[data-space-title]')).toHaveText('Дача');
+});

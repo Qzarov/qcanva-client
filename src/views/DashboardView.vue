@@ -302,6 +302,32 @@
           <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
         </button>
       </div>
+
+      <!-- Shared spaces, after the folders and like them: a tile each, the
+           number of folders in it beside its last change. -->
+      <div id="feed-spaces" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="spaces">
+        <h2>{{ t('spaces') }}</h2>
+      </div>
+      <div v-if="spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+        <button
+          v-for="space in spaceTiles"
+          :key="'recent-space-' + space.id"
+          type="button"
+          class="subfolder-card"
+          :data-recent-space-tile="space.id"
+          @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
+          <span class="subfolder-card-name">{{ space.name }}</span>
+          <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
+          <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-spaces-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="spaces" @click.stop="createSpace">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+        </button>
+      </div>
     </section>
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
@@ -1274,7 +1300,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, UsersRound, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1481,6 +1507,7 @@ export default defineComponent({
     Trash2,
     Menu,
     Plus,
+    UsersRound,
   },
   setup() {
     const router = useRouter();
@@ -2482,6 +2509,7 @@ export default defineComponent({
     const FEED_SECTION_LABELS = {
       recent: 'recents',
       folders: 'folders',
+      spaces: 'spaces',
       shared: 'sharedWithMe',
       interactive: 'interactiveTemplate',
       public: 'public',
@@ -2507,10 +2535,17 @@ export default defineComponent({
     const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
       isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
     );
+    /** The home feed's Spaces tiles: the user's spaces, narrowed by the search like the folders. */
+    const { spaces: allSpaces } = useSpaces();
+    const spaceTiles = computed(() => {
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      return needle ? allSpaces.value.filter((space) => space.name.toLocaleLowerCase().includes(needle)) : allSpaces.value;
+    });
     const feedNavSections = computed<FeedSection[]>(() => {
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
+      if (spaceTiles.value.length) sections.push('spaces');
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
@@ -3994,6 +4029,7 @@ export default defineComponent({
     const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
     const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
     const { load: loadSpaces } = useSpaces();
+    onMounted(() => { if (isLoggedIn) void loadSpaces(); });
     const createSpace = async () => {
       const name = (await promptDialog({
         title: t('spaceNew'),
@@ -5364,6 +5400,7 @@ export default defineComponent({
       resetFilters,
       hasActiveFilter,
       feedNavSections,
+      spaceTiles,
       activeFeedSection,
       scrollToFeedSection,
       newItemFolderId,
