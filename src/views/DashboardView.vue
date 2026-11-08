@@ -175,7 +175,7 @@
       :yandex-path="yandexPath"
       :t="t"
       :pick-yandex-files="() => yandexView?.pickFiles()"
-      :open-add-dialog="spaceId !== null ? () => spaceView?.startAdd() : openAddDialog"
+      :open-add-dialog="spaceId !== null ? (event?: Event) => spaceView?.startAdd(event) : openAddDialog"
       :toggle-toolbar-menu="toggleToolbarMenu"
       :update-content-types="(value) => contentTypes = value"
       :toggle-selected-tag="toggleSelectedTag"
@@ -332,7 +332,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
