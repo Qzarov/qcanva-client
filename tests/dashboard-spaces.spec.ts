@@ -353,28 +353,31 @@ test('the feed takes several folders, kinds of file and adders at once; nothing 
   await page.locator('[data-space-folders-all]').click();
   await expect(feed).toHaveCount(3);
 
-  // Kinds of file: tiles of their own, any number picked, each with its count.
-  const kind = (type: string) => page.locator(`[data-space-type="${type}"] [data-space-type-toggle]`);
-  await expect(page.locator('[data-space-type="image"] [data-space-type-count]')).toHaveText('1');
+  // "Filters" opens a window in the Add window's look: the kinds as square tiles, any number picked.
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  await expect(menu).toHaveClass(/dashboard-add-dialog/);
+  const kind = (type: string) => menu.locator(`[data-space-filter-type="${type}"]`);
+  await expect(menu.locator('[data-space-filter-type]')).toHaveCount(7);
+  await expect(kind('image').locator('[data-space-filter-type-count]')).toHaveText('1');
   await kind('document').click();
   await kind('image').click();
   await expect(feed).toHaveCount(2);
   expect(calls.at(-1)?.query.types?.split(',').sort()).toEqual(['document', 'image']);
-  await expect(page.locator('[data-space-types] .subfolder-card.is-selected')).toHaveCount(2);
-  // Who added, from the filter icon; its badge counts what is set there.
-  await page.locator('[data-space-filter-trigger]').click();
-  const menu = page.locator('[data-space-filter-menu]');
-  await expect(menu.locator('[data-space-filter-type]')).toHaveCount(0);
-  await menu.locator('[data-space-filter-person="user-1"] input').check();
+  await expect(menu.locator('[data-space-filter-type].active')).toHaveCount(2);
+  await expect(kind('document')).toHaveAttribute('aria-pressed', 'true');
+  // Who added: in the same window, any number.
+  await menu.locator('[data-space-filter-person="user-1"]').click();
   await expect(feed).toHaveCount(1);
   await expect(page.locator('[data-space-item="q:file:f-pdf"]')).toBeVisible();
-  await expect(page.locator('[data-space-filter-count]')).toHaveText('1');
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('3');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters.png` });
 
   // Nothing matches: it says so, and "Reset filters" brings everything back.
-  await page.mouse.click(5, 5);
   await kind('document').click();
   await expect(page.locator('[data-space-filtered-empty]')).toBeVisible();
+  // Esc closes the window, as the Add window's.
+  await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
   await page.locator('[data-space-filtered-empty] button').click();
   await expect(feed).toHaveCount(3);
@@ -406,19 +409,19 @@ test('the folders are tiles above the feed, several picked at once; filters show
 
   await page.locator('[data-space-filter-trigger]').click();
   const menu = page.locator('[data-space-filter-menu]');
-  // The kind tiles say what each takes; only kinds there is something of (no books here).
-  await expect(page.locator('[data-space-type="document"] [data-space-type-exts]')).toHaveText('pdf, docx, txt');
-  await expect(page.locator('[data-space-type="canva"] [data-space-type-exts]')).toHaveCount(0);
-  await expect(page.locator('[data-space-type="book"]')).toHaveCount(0);
+  // A kind tile tells what it takes on hover; a kind with nothing in it says 0.
+  await menu.locator('[data-space-filter-type="document"]').hover();
+  await expect(page.locator('.ui-hint')).toContainText('pdf, docx, txt');
+  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-type-count]')).toHaveText('0');
 
   // Whose: several people.
-  await menu.locator('[data-space-filter-owner="user-2"] input').check();
+  await menu.locator('[data-space-filter-owner="user-2"]').click();
   await expect(feed).toHaveCount(1);
-  await menu.locator('[data-space-filter-owner="user-1"] input').check();
+  await menu.locator('[data-space-filter-owner="user-1"]').click();
   await expect(feed).toHaveCount(3);
   expect(calls.at(-1)?.query.owners?.split(',').sort()).toEqual(['user-1', 'user-2']);
-  await menu.locator('[data-space-filter-owner="user-1"] input').uncheck();
-  await menu.locator('[data-space-filter-owner="user-2"] input').uncheck();
+  await menu.locator('[data-space-filter-owner="user-1"]').click();
+  await menu.locator('[data-space-filter-owner="user-2"]').click();
 
   // More: any extension, a dot and the case aside; Backspace takes the last one off.
   await menu.locator('[data-space-filter-advanced]').click();

@@ -13240,3 +13240,7 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
 @media (max-width: 720px) {
   .space-type-exts { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* Dashboard windows (Add, filters, pickers) above the phone's round "+" (300): it
+   sat on top of a sheet's lower part. Still under menus and popovers (310+). */
+.dashboard-modal-backdrop { z-index: 305; }
