@@ -27,7 +27,7 @@ roadmap для структурного рефакторинга клиентс�
 - Text documents: outline, history, link/mention/slash actions и editor
   extensions вынесены из `TextDocumentView.vue`; title и link inputs используют
   общие `UiTextarea`/`UiInput`, mobile action menu вынесено в
-  `TextDocumentMobileMenu`.
+  `TextDocumentMobileMenu`, backlinks-секция — в `TextDocumentBacklinks`.
 - UI library: `UiButton`, `UiIconButton`, `UiModal`, `UiInput`, `UiTextarea`,
   `UiEmptyState`, `UiMenu` и `UiSegmentedControl` созданы и используются в
   Dashboard и Text Documents. Сортировка, фильтры и переключатель вида больше
@@ -49,11 +49,11 @@ roadmap для структурного рефакторинга клиентс�
 |---|---:|---|
 | UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
-| TextDocumentView | **75%** | backlinks, selection bubble, slash/mention UI и оставшиеся topbar actions |
+| TextDocumentView | **80%** | selection bubble, slash/mention UI и оставшиеся topbar actions |
 | CanvasLoader | **75%** | mobile editor shell, remote cursors, file/draw capture, template orchestration |
 | DashboardView | **72%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **73%** | оставшиеся границы из строк выше |
+| **Весь план** | **74%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
