@@ -23,13 +23,33 @@ roadmap для структурного рефакторинга клиентс�
   edge/drawing layers, minimap, context menu и controls вынесены из
   `CanvasLoader.vue`.
 - Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
-  sections и modal layer вынесены из `DashboardView.vue`.
+  sections, modal layer и shared spaces вынесены из `DashboardView.vue`.
 - Text documents: outline, history, link/mention/slash actions и editor
-  extensions вынесены из `TextDocumentView.vue`.
-- `src/style.css` разложен на 14 упорядоченных модулей в `src/styles/`; файл
+  extensions вынесены из `TextDocumentView.vue`; title и link inputs используют
+  общие `UiTextarea`/`UiInput`.
+- UI library: `UiButton`, `UiIconButton`, `UiModal`, `UiInput`, `UiTextarea`,
+  `UiEmptyState`, `UiMenu` и `UiSegmentedControl` созданы и используются в
+  Dashboard и Text Documents. Сортировка, фильтры и переключатель вида больше
+  не дублируют собственную menu/pressed-семантику.
+- `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
 - После каждого крупного среза проходят build и полный unit suite.
+
+### Процент выполнения текущего roadmap
+
+Проценты отражают готовность направления целиком, включая миграцию потребителей
+и проверки, а не только число созданных файлов.
+
+| Направление | Готово | Что осталось |
+|---|---:|---|
+| UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
+| Shared sidebar shell | **40%** | общий header/footer/backdrop/focus-trap для AppSidebar и DashboardSidebar |
+| TextDocumentView | **70%** | topbar/menu, backlinks, selection bubble, slash/mention UI |
+| CanvasLoader | **75%** | mobile editor shell, remote cursors, file/draw capture, template orchestration |
+| DashboardView | **72%** | shell/header, Yandex section, drag/drop и bulk orchestration |
+| Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
+| **Весь план** | **70%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
