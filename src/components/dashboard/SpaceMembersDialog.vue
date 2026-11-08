@@ -45,12 +45,13 @@
           </li>
         </ul>
         <form v-if="isOwner" class="space-invite" data-space-invite @submit.prevent="invite">
-          <input
+          <!-- The contacts and potential contacts, as the share menus offer them. -->
+          <ContactEmailInput
             v-model.trim="email"
             class="dashboard-modal-input"
-            type="email"
             :placeholder="t('spaceInviteEmail')"
             :aria-label="t('spaceInviteEmail')"
+            :exclude="inSpaceEmails"
             data-space-invite-email
           />
           <select v-model="role" class="dashboard-modal-input space-member-select" :aria-label="t('spaceRole')" data-space-invite-role>
@@ -71,6 +72,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import ContactEmailInput from '../ContactEmailInput.vue';
 import { spacesApi, type SpaceDetails, type SpaceMember } from '../../api/spaces';
 import { confirmDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
@@ -89,6 +91,8 @@ const error = ref('');
 const email = ref('');
 const role = ref<'editor' | 'viewer'>('editor');
 const isOwner = computed(() => props.space.role === 'owner');
+/** Already in the space: not offered again. */
+const inSpaceEmails = computed(() => [props.space.owner.email, ...props.space.members.map((member) => member.email)].filter((email): email is string => Boolean(email)));
 
 const errorText = (err: unknown) => {
   const code = (err as { body?: { code?: string } } | null)?.body?.code;

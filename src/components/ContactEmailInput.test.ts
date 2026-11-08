@@ -6,7 +6,7 @@ import ContactEmailInput from './ContactEmailInput.vue';
 import { contacts } from '../api/client';
 import { filterContacts, resetContactsCache } from '../composables/useContacts';
 
-vi.mock('../api/client', () => ({ contacts: { list: vi.fn() } }));
+vi.mock('../api/client', () => ({ contacts: { list: vi.fn(), suggestions: vi.fn() } }));
 
 const contact = (email: string, extra: { name?: string | null; userName?: string | null } = {}) => ({
   id: `id-${email}`,
@@ -44,9 +44,36 @@ describe('ContactEmailInput', () => {
   beforeEach(() => {
     resetContactsCache();
     vi.mocked(contacts.list).mockResolvedValue({ contacts: BOOK });
+    vi.mocked(contacts.suggestions).mockResolvedValue({ suggestions: [] });
   });
   afterEach(() => {
     mounted.splice(0).forEach((wrapper) => wrapper.unmount());
+  });
+
+  it('offers the potential contacts after the contacts, once each, as the share menus do', async () => {
+    vi.mocked(contacts.suggestions).mockResolvedValue({
+      suggestions: [
+        { email: 'olga@example.test', userName: 'Ольга', reasons: ['shared-by-me'] },
+        // Already a contact: offered once, as the contact.
+        { email: 'ann@example.test', userName: 'Ann', reasons: ['shared-with-me'] },
+      ],
+    });
+    const { wrapper } = mountField(['plain@mail.test']);
+    await wrapper.get('input').trigger('focus');
+    await flushPromises();
+    expect(options()).toEqual(['ann@example.test', 'bob@example.test', 'olga@example.test']);
+    // Found by the registered name too.
+    await wrapper.get('input').setValue('ольг');
+    await flushPromises();
+    expect(options()).toEqual(['olga@example.test']);
+  });
+
+  it('still offers the contacts when the hub has no potential ones', async () => {
+    vi.mocked(contacts.suggestions).mockRejectedValue(new Error('404'));
+    const { wrapper } = mountField();
+    await wrapper.get('input').trigger('focus');
+    await flushPromises();
+    expect(options()).toEqual(['ann@example.test', 'bob@example.test', 'plain@mail.test']);
   });
 
   it('opens the contacts when the field gets the cursor', async () => {
