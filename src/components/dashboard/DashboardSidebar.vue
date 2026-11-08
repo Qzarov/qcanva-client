@@ -184,6 +184,7 @@
           :yandex-refresh-key="yandexRefreshKey"
           @select="emit('select', $event)"
           @open-yandex-file="emit('open-yandex-file', $event)"
+          @create-space="emit('create-space')"
         />
 
         <button
@@ -290,6 +291,7 @@ const emit = defineEmits<{
   'close-mobile': [];
   'open-file': [file: DashboardFileNavItem];
   'open-yandex-file': [item: YandexItem];
+  'create-space': [];
   'toggle-folder': [folderId: string];
   'folder-drag-start': [event: DragEvent, folderId: string];
   'folder-drag-end': [event: DragEvent, folderId: string];
