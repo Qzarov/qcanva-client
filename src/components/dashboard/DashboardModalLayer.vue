@@ -3,17 +3,17 @@
      appears-at-the-bottom with a proper sheet - visible backdrop, stays
      open across multiple taps, and only ever commits to selectedTags on
      Apply (see openTagSheet/applyTagSheet). -->
-<div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
-  <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
+<UiModal v-if="tagSheetOpen" class="dashboard-modal dashboard-tag-sheet" backdrop-class="dashboard-tag-sheet-backdrop" :label="t('filterByTags')" @close="closeTagSheet">
+
     <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
     <div class="dashboard-modal-head">
       <div>
         <h3>{{ t('filterByTags') }}</h3>
         <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
       </div>
-      <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeTagSheet">
         <X :size="16" aria-hidden="true" />
-      </button>
+      </UiIconButton>
     </div>
     <div class="dashboard-tag-sheet-list">
       <button
@@ -29,17 +29,16 @@
       </button>
     </div>
     <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
-      <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
-      <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
+      <UiButton type="button" class="btn-ghost" variant="ghost" @click="resetTagSheetDraft">{{ t('reset') }}</UiButton>
+      <UiButton type="button" class="btn-primary" variant="primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
-  <div class="dashboard-modal">
+<UiModal v-if="folderModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('moveToGroupTitle')" @close="closeFolderModal">
+
     <div class="dashboard-modal-head">
       <h3>{{ folderModal.bulk?.length ? t('moveSelectedTitle').replace('{n}', String(folderModal.bulk.length)) : folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
-      <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeFolderModal">x</UiIconButton>
     </div>
     <input
       v-if="!folderModalMoves"
@@ -67,19 +66,18 @@
       </button>
     </div>
     <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
-      <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-      <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
+      <UiButton class="btn-ghost" variant="ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</UiButton>
+      <UiButton class="btn-primary" variant="primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
         {{ actionLabel(folderModalMoves ? 'move-folder' : 'create-folder', folderModalMoves ? t('move') : t('create')) }}
-      </button>
+      </UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
-  <div class="dashboard-modal">
+<UiModal v-if="subfolderModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('addFolderTitle')" @close="closeSubfolderModal">
+
     <div class="dashboard-modal-head">
       <h3>{{ t('addFolderTitle') }}: {{ subfolderModal.parentName }}</h3>
-      <button class="dashboard-modal-close" @click="closeSubfolderModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeSubfolderModal">x</UiIconButton>
     </div>
     <input
       v-model.trim="subfolderModal.value"
@@ -88,21 +86,20 @@
       @keydown.enter.prevent="saveSubfolderModal"
     />
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
+      <UiButton class="btn-ghost" variant="ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</UiButton>
       <button
         class="btn-primary"
         @click="saveSubfolderModal"
         :disabled="isBusy || !subfolderModal.value.trim()"
       >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
-  <div class="dashboard-modal">
+<UiModal v-if="folderParentModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('moveFolderIntoTitle')" @close="closeFolderParentModal">
+
     <div class="dashboard-modal-head">
       <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
-      <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeFolderParentModal">x</UiIconButton>
     </div>
     <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
     <div v-if="folderParentOptions.length" class="folder-parent-list">
@@ -124,7 +121,7 @@
     </div>
     <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
     <div class="dashboard-modal-actions dashboard-modal-actions-row">
-      <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
+      <UiButton class="btn-ghost" variant="ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</UiButton>
       <button
         class="btn-primary"
         data-folder-parent-save
@@ -132,14 +129,13 @@
         :disabled="isBusy || !folderParentModal.targetId"
       >{{ actionLabel('move-folder-parent', t('move')) }}</button>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
-  <div class="dashboard-modal">
+<UiModal v-if="descriptionModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('description')" @close="closeDescriptionModal">
+
     <div class="dashboard-modal-head">
       <h3>{{ descriptionModal.title || t('description') }}</h3>
-      <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeDescriptionModal">x</UiIconButton>
     </div>
     <textarea
       v-if="descriptionModal.canEdit"
@@ -154,9 +150,9 @@
       {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
     </p>
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
+      <UiButton class="btn-ghost" variant="ghost" @click="closeDescriptionModal" :disabled="isBusy">
         {{ descriptionModal.canEdit ? t('cancel') : t('close') }}
-      </button>
+      </UiButton>
       <button
         v-if="descriptionModal.canEdit"
         class="btn-primary"
@@ -164,14 +160,13 @@
         :disabled="isBusy"
       >{{ actionLabel('save-description', t('save')) }}</button>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
-  <div class="dashboard-modal">
+<UiModal v-if="renameFolderModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('editGroup')" @close="closeRenameFolderModal">
+
     <div class="dashboard-modal-head">
       <h3>{{ t('editGroup') }}</h3>
-      <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeRenameFolderModal">x</UiIconButton>
     </div>
     <input
       v-model.trim="renameFolderModal.value"
@@ -181,19 +176,18 @@
     />
     <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
-      <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
+      <UiButton class="btn-ghost" variant="ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</UiButton>
+      <UiButton class="btn-primary" variant="primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
         {{ actionLabel('rename-folder', t('save')) }}
-      </button>
+      </UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="folderShareModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderShareModal">
-  <div class="dashboard-modal">
+<UiModal v-if="folderShareModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('share')" @close="closeFolderShareModal">
+
     <div class="dashboard-modal-head">
       <h3>Share group</h3>
-      <button class="dashboard-modal-close" @click="closeFolderShareModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeFolderShareModal">x</UiIconButton>
     </div>
     <p class="dashboard-modal-note">Sharing "{{ folderShareModal.name }}" grants access to all resources in this Group.</p>
     <div class="share-section">
@@ -219,16 +213,15 @@
       </div>
     </div>
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</button>
+      <UiButton class="btn-ghost" variant="ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
-  <div class="dashboard-modal">
+<UiModal v-if="tagsModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('editTags')" @close="closeTagsModal">
+
     <div class="dashboard-modal-head">
       <h3>Edit tags</h3>
-      <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeTagsModal">x</UiIconButton>
     </div>
     <div v-if="tagSuggestions.length" class="tag-filter-list">
       <button
@@ -258,19 +251,18 @@
     </div>
     <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="isBusy">+ Add tag</button>
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</button>
-      <button class="btn-primary" @click="saveTagsModal" :disabled="isBusy">
+      <UiButton class="btn-ghost" variant="ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</UiButton>
+      <UiButton class="btn-primary" variant="primary" @click="saveTagsModal" :disabled="isBusy">
         {{ actionLabel('save-tags', 'Save tags') }}
-      </button>
+      </UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
 
-<div v-if="transferModal.open" class="dashboard-modal-backdrop" @click.self="closeTransferModal">
-  <div class="dashboard-modal">
+<UiModal v-if="transferModal.open" class="dashboard-modal" backdrop-class="dashboard-modal-backdrop" :label="t('transferOwnership')" @close="closeTransferModal">
+
     <div class="dashboard-modal-head">
       <h3>Transfer ownership</h3>
-      <button class="dashboard-modal-close" @click="closeTransferModal">x</button>
+      <UiIconButton class="dashboard-modal-close" :label="t('close')" variant="clear" @click="closeTransferModal">x</UiIconButton>
     </div>
     <input
       v-model.trim="transferModal.email"
@@ -281,19 +273,22 @@
     />
     <p class="dashboard-modal-note">The current owner will become an editor.</p>
     <div class="dashboard-modal-actions">
-      <button class="btn-ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</button>
-      <button class="btn-primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
+      <UiButton class="btn-ghost" variant="ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</UiButton>
+      <UiButton class="btn-primary" variant="primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
         {{ actionLabel('transfer-ownership', 'Transfer') }}
-      </button>
+      </UiButton>
     </div>
-  </div>
-</div>
+</UiModal>
+
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { Check, X } from '@lucide/vue';
 import ContactEmailInput from '../ContactEmailInput.vue';
+import UiButton from '../ui/UiButton.vue';
+import UiIconButton from '../ui/UiIconButton.vue';
+import UiModal from '../ui/UiModal.vue';
 
 const props = defineProps({ context: { type: Object, required: true } });
 const context = computed(() => (props.context || {}) as Record<string, any>);
