@@ -2153,8 +2153,12 @@ export default defineComponent({
       const folders = allFolderSummaries.value
       .filter((folder) => {
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
-        return folder.items.length
-          || (folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
+        if (folder.items.length) return true;
+        if (folder.role === 'owner') return isDefaultFolder || !isTechnicalFolder(folder as FolderSummary);
+        // A folder shared with the user is always theirs to see - also when it
+        // holds only files (photos, videos), only subfolders, or nothing yet.
+        // `items` counts QCanva documents alone, so the old rule hid it.
+        return !isTechnicalFolder(folder as FolderSummary);
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -4478,8 +4482,11 @@ export default defineComponent({
      * filter leaves them out; a type filter keeps them only with "Files".
      */
     const filesCounted = computed(() => !searchQuery.value.trim() && !selectedTags.value.length && typePasses(contentTypes.value, 'file'));
+    // A top folder for this user: no parent, or one they cannot see - a folder
+    // shared from inside someone else's has a parentId the user has no folder for.
+    const visibleFolderIds = computed(() => new Set(allResourceFolders.value.map((folder) => folder.id)));
     const recentFolderTiles = computed(() => allFolderSummaries.value
-      .filter((folder) => !(folder.parentId ?? null))
+      .filter((folder) => !folder.parentId || !visibleFolderIds.value.has(folder.parentId))
       .map((folder) => {
         const totalCount = folder.items.length;
         const matchingCount = folder.items.filter((item) => {
