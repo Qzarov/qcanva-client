@@ -1,26 +1,15 @@
 <template>
-  <!-- Fades with the drawer sliding in and out (it used to pop). -->
-  <Transition name="dashboard-sidebar-backdrop">
-    <div
-      v-if="mobileOpen"
-      class="dashboard-sidebar-backdrop"
-      data-sidebar-backdrop
-      aria-hidden="true"
-      @click="emit('close-mobile')"
-    ></div>
-  </Transition>
-
-  <aside
-    ref="sidebarRef"
+  <SharedSidebarShell
     class="dashboard-sidebar"
     :class="{ collapsed: widthState === 'collapsed', 'mobile-open': mobileOpen }"
     :aria-label="t('dashboard')"
-    :role="mobileOpen ? 'dialog' : undefined"
-    :aria-modal="mobileOpen ? 'true' : undefined"
-    @keydown.esc.stop="emit('close-mobile')"
-    @keydown.tab="trapMobileFocus"
+    :mobile-open="mobileOpen"
+    backdrop-class="dashboard-sidebar-backdrop"
+    backdrop-transition="dashboard-sidebar-backdrop"
+    @close-mobile="emit('close-mobile')"
   >
-    <header class="dashboard-sidebar-header">
+    <template #header>
+      <header class="dashboard-sidebar-header">
       <span class="dashboard-sidebar-brand">
         <img src="/qcanva-logo.png" alt="QCanva" />
       </span>
@@ -36,7 +25,8 @@
       >
         <X :size="18" aria-hidden="true" />
       </button>
-    </header>
+      </header>
+    </template>
 
     <div class="dashboard-sidebar-scroll">
       <nav class="dashboard-sidebar-navigation" :aria-label="t('dashboard')">
@@ -218,7 +208,8 @@
 
     </div>
 
-    <footer class="dashboard-sidebar-footer">
+    <template #footer>
+      <footer class="dashboard-sidebar-footer">
       <div v-if="!compactPresentation" class="dashboard-sidebar-version">
         QCanva v{{ appVersion }} ·
         <a
@@ -241,13 +232,15 @@
         <PanelLeftOpen v-if="widthState === 'collapsed'" :size="18" aria-hidden="true" />
         <PanelLeftClose v-else :size="18" aria-hidden="true" />
       </button>
-    </footer>
-  </aside>
+      </footer>
+    </template>
+  </SharedSidebarShell>
 </template>
 
 <script setup lang="ts">
 import ResourceIcon from '../ResourceIcon.vue';
 import DashboardSidebarSpaces from './DashboardSidebarSpaces.vue';
+import SharedSidebarShell from '../SharedSidebarShell.vue';
 import type { YandexItem } from '../../api/yandexDisk';
 import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
@@ -303,28 +296,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const homeChildrenId = 'dashboard-sidebar-home-children';
-const sidebarRef = ref<HTMLElement | null>(null);
 const homeExpanded = ref(props.activeSection.kind === 'folder');
-const focusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-const isVisibleFocusable = (element: HTMLElement, boundary: HTMLElement) => {
-  if (element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
-  let current: HTMLElement | null = element;
-  while (current && current !== boundary) {
-    if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
-    const style = window.getComputedStyle(current);
-    if (style.display === 'none' || style.visibility === 'hidden') return false;
-    current = current.parentElement;
-  }
-  return true;
-};
 
 const topLevelItems = computed<Array<{
   kind: DashboardTopLevelSection;
@@ -371,25 +343,4 @@ const folderIndent = (depth: number): CSSProperties => ({
   '--folder-depth': Math.max(0, depth),
 } as CSSProperties);
 
-const trapMobileFocus = (event: KeyboardEvent) => {
-  if (!props.mobileOpen) return;
-  const sidebar = sidebarRef.value;
-  if (!sidebar) return;
-  const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector))
-    .filter((element) => isVisibleFocusable(element, sidebar));
-  if (!focusable.length) {
-    event.preventDefault();
-    return;
-  }
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !sidebar.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (active === last || !sidebar.contains(active))) {
-    event.preventDefault();
-    first.focus();
-  }
-};
 </script>

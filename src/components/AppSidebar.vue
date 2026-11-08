@@ -1,5 +1,5 @@
 <template>
-  <aside class="app-sidebar">
+  <SharedSidebarShell class="app-sidebar" aria-label="Primary navigation">
     <div class="sidebar-logo">Canvas<span>.</span></div>
     <nav class="sidebar-nav" aria-label="Primary navigation">
       <router-link to="/" class="sidebar-item" :class="{ active: active === 'canvases' }">
@@ -43,20 +43,24 @@
         </router-link>
       </template>
     </nav>
-    <div v-if="canManage" class="sidebar-footer">
-      <button class="sidebar-item" type="button" @click.stop="emit('logout')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-          <polyline points="16,17 21,12 16,7" />
-          <line x1="21" y1="12" x2="9" y2="12" />
-        </svg>
-        Sign out
-      </button>
-    </div>
-  </aside>
+    <template #footer>
+      <div v-if="canManage" class="sidebar-footer">
+        <button class="sidebar-item" type="button" @click.stop="emit('logout')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16,17 21,12 16,7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
+          Sign out
+        </button>
+      </div>
+    </template>
+  </SharedSidebarShell>
 </template>
 
 <script setup lang="ts">
+import SharedSidebarShell from './SharedSidebarShell.vue';
+
 withDefaults(defineProps<{
   active?: 'canvases' | 'html' | 'settings' | 'admin';
   canManage?: boolean;
