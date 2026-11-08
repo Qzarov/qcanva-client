@@ -78,6 +78,14 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
 async function openDashboard(page: Page, opts: Parameters<typeof serveSpaces>[1] = {}) {
   await page.setViewportSize({ width: 1280, height: 860 });
   await serveDashboard(page);
+  // The share menus' contacts: one saved, one potential, one already in the space.
+  await page.route('http://localhost:3001/api/contacts', (route) => route.fulfill({ json: { contacts: [
+    { id: 'c-1', email: 'boris@example.com', name: 'Борис', userName: 'Boris', createdAt: '2026-11-01T10:00:00Z' },
+    { id: 'c-2', email: 'anya@example.com', name: null, userName: 'Аня', createdAt: '2026-11-01T10:00:00Z' },
+  ] } }));
+  await page.route('http://localhost:3001/api/contacts/suggestions', (route) => route.fulfill({ json: { suggestions: [
+    { email: 'olga@example.com', userName: 'Ольга', reasons: ['shared-by-me'] },
+  ] } }));
   const calls = await serveSpaces(page, opts);
   await page.goto('/dashboard');
   await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
@@ -90,7 +98,7 @@ test('a new space is made from the sidebar and opens at once', async ({ page }) 
   const prompt = page.getByRole('dialog');
   await prompt.locator('input').fill('Работа');
   await prompt.getByRole('button', { name: 'Create' }).click();
-  expect(calls.find((call) => call.method === 'POST' && call.path === '/spaces')?.body).toEqual({ name: 'Работа' });
+  await expect.poll(() => calls.find((call) => call.method === 'POST' && call.path === '/spaces')?.body).toEqual({ name: 'Работа' });
   await expect(page.locator('[data-space-title]')).toHaveText('Работа');
   await expect(page.locator('[data-shared-space="space-2"]')).toHaveAttribute('aria-current', 'page');
   // An empty space: "+ Add" adds a folder.
@@ -149,7 +157,13 @@ test('an own QCanva folder is added; people are invited with a role', async ({ p
   await page.locator('[data-space-menu]').click();
   await page.locator('[data-space-members-open]').click();
   const members = page.locator('[data-space-members]');
-  await members.locator('[data-space-invite-email]').fill('olga@example.com');
+  // Contacts and potential contacts are offered; someone already in the space is not.
+  await members.locator('[data-space-invite-email]').click();
+  const offered = page.locator('[data-contact-email-option]');
+  await expect(offered).toHaveCount(2);
+  expect(await offered.evaluateAll((els) => els.map((el) => el.getAttribute('data-contact-email-option')))).toEqual(['boris@example.com', 'olga@example.com']);
+  await page.locator('[data-contact-email-option="olga@example.com"]').click();
+  await expect(members.locator('[data-space-invite-email]')).toHaveValue('olga@example.com');
   await members.locator('[data-space-invite-role]').selectOption('viewer');
   await members.locator('[data-space-invite-send]').click();
   await expect(members.locator('[data-space-member="olga@example.com"]')).toBeVisible();

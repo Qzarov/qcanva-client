@@ -55,21 +55,22 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import type { ContactView } from '../api/client';
-import { filterContacts, useContacts } from '../composables/useContacts';
+import { contactOffers, filterContacts, useContacts } from '../composables/useContacts';
 
 defineOptions({ inheritAttrs: false });
 
 const props = withDefaults(defineProps<{ modelValue: string; exclude?: string[] }>(), { exclude: () => [] });
 const emit = defineEmits<{ 'update:modelValue': [value: string]; pick: [email: string] }>();
 
-const { contacts, ensureLoaded } = useContacts();
+const { contacts, suggestions, ensureLoaded } = useContacts();
 const inputEl = ref<HTMLInputElement | null>(null);
 const open = ref(false);
 const active = ref(-1);
 const rect = ref<DOMRect | null>(null);
 const listId = `contact-email-list-${Math.random().toString(36).slice(2, 9)}`;
 
-const matches = computed(() => filterContacts(contacts.value, props.modelValue ?? '', props.exclude));
+// The contacts first, then the potential ones (people one shares with).
+const matches = computed(() => filterContacts(contactOffers(contacts.value, suggestions.value), props.modelValue ?? '', props.exclude));
 // Nothing to offer, or the field already holds exactly the one match: no list.
 const showList = computed(
   () =>

@@ -302,6 +302,14 @@
         />
       </section>
 
+      <section
+        v-if="isLoggedIn && activeSection.kind === 'trash'"
+        class="dashboard-folder-content"
+        data-dashboard-view="trash"
+      >
+        <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
+      </section>
+
       <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :context="sharedSectionProps"
@@ -411,6 +419,7 @@ import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
 import {
@@ -581,6 +590,7 @@ export default defineComponent({
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardSpace,
+    DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -3978,6 +3988,24 @@ export default defineComponent({
       selectDashboardSection({ kind: 'recent' });
     };
 
+    const takeAddressSection = () => {
+      if (!isLoggedIn) return;
+      const query = router.currentRoute?.value?.query ?? {};
+      const section = typeof query.section === 'string' ? query.section : '';
+      const folder = typeof query.folder === 'string' ? query.folder : '';
+      if (!section && !folder) return;
+      if (section === 'trash') selectDashboardSection({ kind: 'trash' });
+      else if (folder) selectFolder(folder);
+      const { section: _section, folder: _folder, ...rest } = query;
+      void router.replace({ query: rest });
+    };
+
+    const onTrashRestored = () => {
+      setFeedback('success', t('driveRestored'));
+      void load({ showLoading: false });
+      refreshFolderFileCounts();
+    };
+
     /**
      * The sidebar's Home / Shared / Templates / Public scroll the home feed
      * to that section rather than swapping the dashboard for a page of its
@@ -4237,6 +4265,7 @@ export default defineComponent({
       // document between a dashboard visit and a return can never hide it.
       void load({ showLoading: !cached.found });
       takeYandexReturn();
+      takeAddressSection();
       sidebarDesktopMedia = getSidebarDesktopMedia();
       if (sidebarDesktopMedia) {
         addSidebarDesktopListener(sidebarDesktopMedia);
@@ -4482,6 +4511,7 @@ export default defineComponent({
       createSpace,
       openSpaceResource,
       leaveSpaceSection,
+      onTrashRestored,
       yandexMove,
       yandexFiles,
       openYandexPath,
