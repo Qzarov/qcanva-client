@@ -295,6 +295,7 @@ import { useCanvasDndTemplate } from '../canvas/useCanvasDndTemplate';
 import { useCanvasTemplateNodes } from '../canvas/useCanvasTemplateNodes';
 import { useCanvasAddMenu } from '../canvas/useCanvasAddMenu';
 import { getNodeFirstLine, getNodeFirstLineAlignValue, getNodeRestText, groupColorClass, nodeColorClass, nodePosition, nodePresentationClass, renderCanvasMarkdown } from '../canvas/nodePresentation';
+import { useCanvasNodeStyleControls } from '../canvas/useCanvasNodeStyleControls';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1235,202 +1236,6 @@ export default defineComponent({
       contextMenu.visible = true;
     };
 
-    const setNodeColor = (nodeId: NodeTarget, color: string | undefined) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.color = color;
-        // JSON drops `undefined`, so clearing a fill must be encoded explicitly.
-        emitOp({ type: 'node-update', id: node.id, changes: { color: color ?? null } });
-      }
-    };
-
-    const getNodeColor = (nodeId: NodeTarget): string | undefined => {
-      return nodes.value.find((n) => n.id === nodeId)?.color;
-    };
-
-    const getNodeAlign = (nodeId: NodeTarget) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.textAlign || "left";
-    };
-
-    const getNodeFirstLineAlign = (nodeId: NodeTarget) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.firstLineTextAlign || node?.textAlign || "left";
-    };
-
-    const setNodeFirstLineAlign = (nodeId: NodeTarget, align: "left" | "center" | "right" | "justify") => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.firstLineTextAlign = align;
-        emitOp({ type: 'node-update', id: node.id, changes: { firstLineTextAlign: align } });
-      }
-    };
-
-    const setNodeAlign = (nodeId: NodeTarget, align: "left" | "center" | "right" | "justify") => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.textAlign = align;
-        emitOp({ type: 'node-update', id: node.id, changes: { textAlign: align } });
-      }
-    };
-
-    // Border styles config
-    const borderStyles: { value: string; label: string; svg: string }[] = [
-      { value: "solid", label: "Solid", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2"/>` },
-      { value: "dashed", label: "Dashed", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="6 3"/>` },
-      { value: "dotted", label: "Dotted", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="2 2"/>` },
-      { value: "double", label: "Double", svg: `<line x1="0" y1="3" x2="24" y2="3" stroke="currentColor" stroke-width="1"/><line x1="0" y1="7" x2="24" y2="7" stroke="currentColor" stroke-width="1"/>` },
-      { value: "ridge", label: "Dash-dot", svg: `<line x1="0" y1="5" x2="24" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="8 2 2 2"/>` },
-      { value: "wavy", label: "Wavy", svg: `<path d="M0 5 Q3 2 6 5 Q9 8 12 5 Q15 2 18 5 Q21 8 24 5" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
-      { value: "sawtooth", label: "Sawtooth", svg: `<path d="M0 7 L4 3 L8 7 L12 3 L16 7 L20 3 L24 7" fill="none" stroke="currentColor" stroke-width="1.5"/>` },
-    ];
-
-    const fontColors = ['1', '2', '3', '4', '5', '6'];
-
-    const HEX_TO_FONT_COLOR_KEY: Record<string, string> = {
-      '#fb464c': '1',
-      '#e9973f': '2',
-      '#e0de71': '3',
-      '#44cf6e': '4',
-      '#53dfdd': '5',
-      '#a882ff': '6',
-    };
-
-    const normalizeFontColorKey = (color: string | undefined): string | undefined => {
-      if (!color) return undefined;
-      if (['1', '2', '3', '4', '5', '6'].includes(color)) return color;
-      return HEX_TO_FONT_COLOR_KEY[color.toLowerCase()];
-    };
-
-    const resolveNodeFontColor = (color: string | undefined): string | undefined => {
-      if (!color) return undefined;
-      const key = normalizeFontColorKey(color);
-      if (key) {
-        return `var(--content-canvas-node-text-${key})`;
-      }
-      const lower = color.toLowerCase();
-      // Legacy dark-palette neutrals rewrite to default themed text
-      if (lower === '#ffffff' || lower === '#000000' || lower === '#d7dce8') {
-        return undefined;
-      }
-      return color;
-    };
-
-    const getNodeFontColorSwatch = (colorKey: string | undefined): string => {
-      if (!colorKey) return '';
-      const key = normalizeFontColorKey(colorKey);
-      if (key) return `var(--content-canvas-node-text-${key})`;
-      return colorKey;
-    };
-
-    const isNodeFontColorActive = (nodeColor: string | undefined, paletteKey: string): boolean => {
-      if (!nodeColor) return false;
-      return normalizeFontColorKey(nodeColor) === paletteKey;
-    };
-
-    const getNodeFillStyle = (nodeId: NodeTarget): "gradient" | "solid" => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.fillStyle || "gradient";
-    };
-
-    const toggleNodeFillStyle = (nodeId: NodeTarget) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.fillStyle = (node.fillStyle || "gradient") === "gradient" ? "solid" : "gradient";
-        emitOp({ type: 'node-update', id: node.id, changes: { fillStyle: node.fillStyle } });
-      }
-    };
-
-    const getNodeBorderColor = (nodeId: NodeTarget): string | undefined => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.borderColor;
-    };
-
-    const setNodeBorderColor = (nodeId: NodeTarget, color: string | undefined) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.borderColor = color;
-        // JSON drops `undefined`, so clearing a border must be encoded explicitly.
-        emitOp({ type: 'node-update', id: node.id, changes: { borderColor: color ?? null } });
-      }
-    };
-
-    const getNodeBorderStyle = (nodeId: NodeTarget): string => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.borderStyle || "solid";
-    };
-
-    const setNodeBorderStyle = (nodeId: NodeTarget, style: string) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.borderStyle = style;
-        emitOp({ type: 'node-update', id: node.id, changes: { borderStyle: style } });
-      }
-    };
-
-    const getNodeBorderWidth = (nodeId: NodeTarget): number => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      return node?.borderWidth || 2;
-    };
-
-    const setNodeBorderWidth = (nodeId: NodeTarget, width: number) => {
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (node) {
-        pushUndo();
-        node.borderWidth = width;
-        emitOp({ type: 'node-update', id: node.id, changes: { borderWidth: width } });
-      }
-    };
-
-    const getNodeFontColor = (nodeId: string | null | undefined): string | undefined => {
-      if (!nodeId) return undefined;
-      return nodes.value.find((n) => n.id === nodeId)?.fontColor;
-    };
-
-    const setNodeFontColor = (nodeId: string | null | undefined, fontColor: string | undefined) => {
-      if (!nodeId) return;
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (!node) return;
-      pushUndo();
-      node.fontColor = fontColor;
-      // Explicitly send null on reset so JSON doesn't drop undefined
-      emitOp({ type: 'node-update', id: nodeId, changes: { fontColor: fontColor ?? null } });
-    };
-
-    const isNodeTransparent = (nodeId: string | null | undefined): boolean => {
-      if (!nodeId) return false;
-      return nodes.value.find((n) => n.id === nodeId)?.transparent === true;
-    };
-
-    const toggleNodeTransparent = (nodeId: string | null | undefined) => {
-      if (!nodeId) return;
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (!node) return;
-      pushUndo();
-      const transparent = !node.transparent;
-      updateNode(node, { transparent });
-    };
-
-    const getNodeShape = (nodeId: string | null | undefined): "rect" | "round" => {
-      if (!nodeId) return "rect";
-      return nodes.value.find((n) => n.id === nodeId)?.shape || "rect";
-    };
-
-    const toggleNodeShape = (nodeId: string | null | undefined) => {
-      if (!nodeId) return;
-      const node = nodes.value.find((n) => n.id === nodeId);
-      if (!node) return;
-      pushUndo();
-      const shape = node.shape === "round" ? "rect" : "round";
-      updateNode(node, { shape });
-    };
-
     const toggleNodePositionLock = (nodeId: string | null | undefined) => {
       if (!nodeId) return;
       const node = nodes.value.find((n) => n.id === nodeId);
@@ -1638,6 +1443,49 @@ export default defineComponent({
       selectNode: (id) => { selectedNodeIds.value = [id]; },
       emitBoardOpen: (boardId) => emit('open-board', boardId),
     });
+
+    const commitNodeStyle = (node: CanvasNode, changes: Record<string, unknown>) => {
+      const normalized = { ...changes };
+      for (const key of ['color', 'borderColor', 'fontColor']) {
+        if (normalized[key] === null) normalized[key] = undefined;
+      }
+      Object.assign(node, normalized);
+      emitOp({ type: 'node-update', id: node.id, changes: changes as NodeUpdateChanges });
+    };
+
+    const {
+      borderStyles,
+      fontColors,
+      getNodeColor,
+      setNodeColor,
+      getNodeAlign,
+      getNodeFirstLineAlign,
+      setNodeFirstLineAlign,
+      setNodeAlign,
+      resolveNodeFontColor,
+      getNodeFontColorSwatch,
+      isNodeFontColorActive,
+      getNodeFillStyle,
+      toggleNodeFillStyle,
+      getNodeBorderColor,
+      setNodeBorderColor,
+      getNodeBorderStyle,
+      setNodeBorderStyle,
+      getNodeBorderWidth,
+      setNodeBorderWidth,
+      getNodeFontColor,
+      setNodeFontColor,
+      isNodeTransparent,
+      toggleNodeTransparent,
+      getNodeShape,
+      toggleNodeShape,
+    } = useCanvasNodeStyleControls({
+      findNode: (id) => nodes.value.find((node) => node.id === id),
+      pushUndo,
+      commit: (node, changes) => commitNodeStyle(node as CanvasNode, changes),
+    });
+
+
 
     const {
       setDrawTool,
