@@ -7,6 +7,7 @@ These components own repeated application chrome, not resource-specific
 content. Use the smallest primitive that fits the interaction:
 
 - `UiButton` for labelled actions;
+- `UiBadge` for compact status, role and count labels;
 - `UiIconButton` for icon-only actions with a required accessible label;
 - `UiModal` for backdrop, focusable dialog surface and Escape/backdrop close.
 - `UiInput` and `UiTextarea` for controlled text fields with forwarded field
