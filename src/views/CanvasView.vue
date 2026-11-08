@@ -931,7 +931,7 @@ export default defineComponent({
     const isPublic = ref(false);
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
-    const listedInPublic = ref(true);
+    const listedInPublic = ref(false);
     const revision = ref(0);
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
@@ -1258,7 +1258,7 @@ export default defineComponent({
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
-        listedInPublic.value = res.canvas.listedInPublic !== false;
+        listedInPublic.value = res.canvas.listedInPublic === true;
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         if (res.role === 'owner') loadPermissions();
@@ -1541,8 +1541,11 @@ export default defineComponent({
       const prevAllowPublicEdit = allowPublicEdit.value;
       visibility.value = value;
       isPublic.value = value === 'public';
+      const prevListed = listedInPublic.value;
       if (value === 'public') {
         allowPublicEdit.value = false;
+        // Made public: not in the Public directory until the owner ticks it (the hub does the same).
+        if (prev !== 'public') listedInPublic.value = false;
       }
       try {
         await canvasApi.update(resolvedId.value, {
@@ -1555,6 +1558,7 @@ export default defineComponent({
         visibility.value = prev;
         isPublic.value = prev === 'public';
         allowPublicEdit.value = prevAllowPublicEdit;
+        listedInPublic.value = prevListed;
         showToast(err.message || 'Failed to update visibility', 'error');
       }
     };
@@ -1990,7 +1994,7 @@ export default defineComponent({
         isPublic.value = res.canvas.isPublic;
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
-        listedInPublic.value = res.canvas.listedInPublic !== false;
+        listedInPublic.value = res.canvas.listedInPublic === true;
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         loading.value = false;

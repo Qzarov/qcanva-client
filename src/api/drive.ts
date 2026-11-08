@@ -1,4 +1,5 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
+import { createUploadXhr } from './upload-xhr';
 import { useI18n } from '../composables/useI18n';
 
 export type DriveSlice = 'all' | 'media' | 'files' | 'docs';
@@ -418,8 +419,8 @@ export function uploadFile(
   files: File | File[],
   optionsOrProgress?: ((percent: number) => void) | UploadOptions
 ): UploadHandle {
-  const XHR = (typeof window !== 'undefined' && window.XMLHttpRequest) || (globalThis as any).XMLHttpRequest || XMLHttpRequest;
-  const xhr = new XHR();
+  // Not CapacitorHttp's: it would read the whole file into memory (upload-xhr.ts).
+  const xhr = createUploadXhr();
   const onProgress = typeof optionsOrProgress === 'function' ? optionsOrProgress : optionsOrProgress?.onProgress;
   const signal = typeof optionsOrProgress === 'object' ? optionsOrProgress?.signal : undefined;
 

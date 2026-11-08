@@ -358,7 +358,9 @@ export default defineComponent({
     const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
-    const listedInPublic = ref(true);
+    const listedInPublic = ref(false);
+    /** The visibility the hub has, to tell "made public now" from a later change. */
+    let savedVisibility: string | null = null;
     const loading = ref(true);
     const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
     const hydratedFromCache = ref(false);
@@ -490,7 +492,8 @@ export default defineComponent({
         setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
-        listedInPublic.value = res.document.listedInPublic !== false;
+        listedInPublic.value = res.document.listedInPublic === true;
+        savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
@@ -773,11 +776,14 @@ export default defineComponent({
     }
 
     async function saveAccessSettings() {
+      // Made public: not in the Public directory until the owner ticks it.
+      if (visibility.value === 'public' && savedVisibility !== 'public') listedInPublic.value = false;
       await htmlDocuments.update(resolvedId.value, {
         visibility: visibility.value,
         allowPublicEdit: allowPublicEdit.value,
         listedInPublic: listedInPublic.value,
       });
+      savedVisibility = visibility.value;
       await load();
     }
 
@@ -961,7 +967,8 @@ export default defineComponent({
         setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
-        listedInPublic.value = res.document.listedInPublic !== false;
+        listedInPublic.value = res.document.listedInPublic === true;
+        savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;

@@ -24,6 +24,7 @@
         :yandex-refresh-key="yandexRefreshKey"
         @select="onSidebarSelect"
         @open-yandex-file="openYandexSidebarFile"
+        @create-space="createSpace"
         @toggle-width="toggleSidebarWidth"
         @close-mobile="closeMobileSidebar"
         @open-file="openSidebarFile"
@@ -174,7 +175,7 @@
       :yandex-path="yandexPath"
       :t="t"
       :pick-yandex-files="() => yandexView?.pickFiles()"
-      :open-add-dialog="openAddDialog"
+      :open-add-dialog="spaceId !== null ? () => spaceView?.startAdd() : openAddDialog"
       :toggle-toolbar-menu="toggleToolbarMenu"
       :update-content-types="(value) => contentTypes = value"
       :toggle-selected-tag="toggleSelectedTag"
@@ -281,6 +282,26 @@
         />
       </section>
 
+      <section
+        v-if="isLoggedIn && spaceId !== null"
+        class="dashboard-folder-content"
+        data-dashboard-view="space"
+      >
+        <DashboardSpace
+          ref="spaceView"
+          :space-id="spaceId"
+          :view-mode="recentViewMode"
+          :query="searchQuery"
+          :me-id="currentUser?.id || ''"
+          :folder-options="folderOptions"
+          @update:view-mode="setRecentViewMode"
+          @open="openSpaceResource"
+          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @gone="leaveSpaceSection"
+          @feedback="setFeedback"
+        />
+      </section>
+
       <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
         :context="sharedSectionProps"
@@ -303,7 +324,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>
@@ -355,7 +376,7 @@
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
-import { alertDialog, confirmDelete, confirmDialog } from '../composables/appDialog';
+import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
 import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
@@ -389,6 +410,9 @@ import DashboardUploadPanel, { type DashboardUpload } from '../components/dashbo
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import { spacesApi } from '../api/spaces';
+import { useSpaces } from '../composables/useSpaces';
 import {
   downloadYandexLink,
   fetchYandexContent,
@@ -556,6 +580,7 @@ export default defineComponent({
     DashboardModalLayer,
     YandexFolderPicker,
     DashboardMediaViewer,
+    DashboardSpace,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     LanguageToggle,
@@ -1279,8 +1304,12 @@ export default defineComponent({
       const folders = allFolderSummaries.value
       .filter((folder) => {
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
-        return folder.items.length
-          || (folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
+        if (folder.items.length) return true;
+        if (folder.role === 'owner') return isDefaultFolder || !isTechnicalFolder(folder as FolderSummary);
+        // A folder shared with the user is always theirs to see - also when it
+        // holds only files (photos, videos), only subfolders, or nothing yet.
+        // `items` counts QCanva documents alone, so the old rule hid it.
+        return !isTechnicalFolder(folder as FolderSummary);
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -1665,6 +1694,49 @@ export default defineComponent({
         feedScroller?.removeEventListener(type, onFeedManualScroll);
       }
       if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
+    });
+
+    /**
+     * The header never scrolls away. Only `.app-main` scrolls; the frame
+     * around it (the page, .app-layout, the shells) is overflow: hidden, but
+     * a browser still scrolls such a box itself: a phone does when the
+     * keyboard opens for an input (iOS Safari leaves the page scrolled after
+     * it closes), and focus() / scrollIntoView() scroll every ancestor. The
+     * header then sat above the screen with nothing to drag it back by.
+     * Whatever scrolls the frame, it goes back to the top.
+     */
+    let frameBoxes: HTMLElement[] = [];
+    const pinFrame = () => {
+      for (const box of frameBoxes) {
+        if (box.scrollTop || box.scrollLeft) {
+          box.scrollTop = 0;
+          box.scrollLeft = 0;
+        }
+      }
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    };
+    // Not while the keyboard is up: the browser moves the page to keep the
+    // typed-in field in view, and fighting it would hide the field.
+    const pinFrameUnlessTyping = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      pinFrame();
+    };
+    const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
+    onMounted(() => {
+      frameBoxes = ['.app-layout.dashboard-view', '.dashboard-app-shell', '.dashboard-central-shell']
+        .map((selector) => document.querySelector(selector) as HTMLElement | null)
+        .filter((box): box is HTMLElement => Boolean(box));
+      for (const box of frameBoxes) box.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      window.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      document.addEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.addEventListener('resize', pinFrameUnlessTyping);
+    });
+    onBeforeUnmount(() => {
+      for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
+      window.removeEventListener('scroll', pinFrameUnlessTyping);
+      document.removeEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.removeEventListener('resize', pinFrameUnlessTyping);
     });
     const toggleRecentExpanded = () => {
       const collapsing = recentExpanded.value;
@@ -2996,6 +3068,9 @@ export default defineComponent({
     const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
+    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const { load: loadSpaces } = useSpaces();
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
     const { load: loadYandexStatus } = useYandexDisk();
     const openYandexPath = (path: string) => {
@@ -3604,8 +3679,11 @@ export default defineComponent({
      * filter leaves them out; a type filter keeps them only with "Files".
      */
     const filesCounted = computed(() => !searchQuery.value.trim() && !selectedTags.value.length && typePasses(contentTypes.value, 'file'));
+    // A top folder for this user: no parent, or one they cannot see - a folder
+    // shared from inside someone else's has a parentId the user has no folder for.
+    const visibleFolderIds = computed(() => new Set(allResourceFolders.value.map((folder) => folder.id)));
     const recentFolderTiles = computed(() => allFolderSummaries.value
-      .filter((folder) => !(folder.parentId ?? null))
+      .filter((folder) => !folder.parentId || !visibleFolderIds.value.has(folder.parentId))
       .map((folder) => {
         const totalCount = folder.items.length;
         const matchingCount = folder.items.filter((item) => {
@@ -3868,6 +3946,36 @@ export default defineComponent({
       if (section.kind === 'folder') selectFolder(section.folderId);
       else closeCardMenu();
       mobileSidebarOpen.value = false;
+    };
+
+    // ----- shared spaces: a section of its own
+    const createSpace = async () => {
+      const name = (await promptDialog({
+        title: t('spaceNew'),
+        placeholder: t('spaceNamePlaceholder'),
+        confirmLabel: t('create'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!name) return;
+      try {
+        const space = await spacesApi.create(name);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
+
+    const openSpaceResource = (kind: string, id: string) => {
+      if (kind === 'canvas') openCanvas(id);
+      else if (kind === 'text-document') openTextDocument(id);
+      else if (kind === 'html-document') openHtmlDocument(id);
+      else openInteractiveTemplate(id);
+    };
+
+    const leaveSpaceSection = () => {
+      void loadSpaces(true);
+      selectDashboardSection({ kind: 'recent' });
     };
 
     /**
@@ -4369,6 +4477,11 @@ export default defineComponent({
       yandexPicker,
       yandexRefreshKey,
       yandexPath,
+      spaceView,
+      spaceId,
+      createSpace,
+      openSpaceResource,
+      leaveSpaceSection,
       yandexMove,
       yandexFiles,
       openYandexPath,
@@ -4387,6 +4500,7 @@ export default defineComponent({
       admin,
       t,
       isLoggedIn,
+      currentUser,
       loading,
       isRefreshing,
       recentResources,

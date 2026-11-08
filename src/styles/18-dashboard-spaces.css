@@ -1,0 +1,88 @@
+/* Shared spaces: source folders and member management. */
+.space-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.space-source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 30px;
+  padding: 0 4px 0 0;
+  border: 1px solid var(--ui-glass-border, var(--ui-border));
+  border-radius: 999px;
+  background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 12px;
+}
+button.space-source-chip { padding: 0 12px; cursor: pointer; }
+.space-source-chip.active {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  background: var(--ui-glass-accent-bg, color-mix(in srgb, var(--color-brands) 16%, transparent));
+  color: var(--ui-glass-accent-text, var(--ui-text));
+}
+.space-source-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 4px 0 12px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.space-source-who { color: var(--ui-text-secondary); }
+.space-source-remove {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+}
+.space-source-remove:hover { background: var(--ui-surface-subtle); color: var(--ui-text); }
+.space-added-by { color: var(--ui-text-secondary); }
+
+.space-members { width: min(480px, calc(100vw - 32px)); }
+.space-members-list {
+  display: grid;
+  gap: 6px;
+  max-height: min(50vh, 360px);
+  margin: 0 0 12px;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+.space-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.space-member-who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.space-member-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-member-email { font-size: 12px; color: var(--ui-text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.space-member-role { font-size: 12px; color: var(--ui-text-secondary); }
+.space-member-select { width: auto; min-width: 120px; }
+.space-invite {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.space-invite input { flex: 1 1 180px; }
+.space-members-error { color: var(--ui-danger, #d14343); }
