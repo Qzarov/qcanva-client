@@ -66,11 +66,14 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
       const [sources, types, adders, exts, owners] = [list('sourceIds'), list('types'), list('addedBy'), list('exts'), list('owners')];
       const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : item.name.endsWith('.pdf') ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
       const extOf = (item: (typeof FEED)[number]) => (item.kind === 'file' ? item.name.split('.').pop()!.toLowerCase() : '');
-      const items = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
-        && ((!types.length && !exts.length) || types.includes(typeOf(item)) || exts.includes(extOf(item)))
+      const others = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
         && (!owners.length || owners.includes(item.addedBy.id))
         && (!adders.length || adders.includes(item.addedBy.id)));
-      return json({ items, offset: 0, limit: 60, nextOffset: null });
+      const items = others.filter((item) => (!types.length && !exts.length) || types.includes(typeOf(item)) || exts.includes(extOf(item)));
+      // As the hub: each kind's count under the other filters, the kinds aside.
+      const typeCounts: Record<string, number> = {};
+      for (const item of others) typeCounts[typeOf(item)] = (typeCounts[typeOf(item)] ?? 0) + 1;
+      return json({ items, offset: 0, limit: 60, nextOffset: null, typeCounts });
     }
     if (path === '/spaces/space-1/sources' && request.method() === 'POST') return json(spaceDetails(role));
     if (path === '/spaces/space-1/members' && request.method() === 'POST') {
@@ -350,23 +353,28 @@ test('the feed takes several folders, kinds of file and adders at once; nothing 
   await page.locator('[data-space-folders-all]').click();
   await expect(feed).toHaveCount(3);
 
-  // Kinds of file and who added, from the filter icon; its badge counts them.
-  await page.locator('[data-space-filter-trigger]').click();
-  const menu = page.locator('[data-space-filter-menu]');
-  await menu.locator('[data-space-filter-type="document"] input').check();
-  await menu.locator('[data-space-filter-type="image"] input').check();
+  // Kinds of file: tiles of their own, any number picked, each with its count.
+  const kind = (type: string) => page.locator(`[data-space-type="${type}"] [data-space-type-toggle]`);
+  await expect(page.locator('[data-space-type="image"] [data-space-type-count]')).toHaveText('1');
+  await kind('document').click();
+  await kind('image').click();
   await expect(feed).toHaveCount(2);
   expect(calls.at(-1)?.query.types?.split(',').sort()).toEqual(['document', 'image']);
+  await expect(page.locator('[data-space-types] .subfolder-card.is-selected')).toHaveCount(2);
+  // Who added, from the filter icon; its badge counts what is set there.
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  await expect(menu.locator('[data-space-filter-type]')).toHaveCount(0);
   await menu.locator('[data-space-filter-person="user-1"] input').check();
   await expect(feed).toHaveCount(1);
   await expect(page.locator('[data-space-item="q:file:f-pdf"]')).toBeVisible();
-  await expect(page.locator('[data-space-filter-count]')).toHaveText('3');
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('1');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters.png` });
 
   // Nothing matches: it says so, and "Reset filters" brings everything back.
-  await menu.locator('[data-space-filter-type="document"] input').uncheck();
-  await expect(page.locator('[data-space-filtered-empty]')).toBeVisible();
   await page.mouse.click(5, 5);
+  await kind('document').click();
+  await expect(page.locator('[data-space-filtered-empty]')).toBeVisible();
   await expect(menu).toHaveCount(0);
   await page.locator('[data-space-filtered-empty] button').click();
   await expect(feed).toHaveCount(3);
@@ -398,10 +406,10 @@ test('the folders are tiles above the feed, several picked at once; filters show
 
   await page.locator('[data-space-filter-trigger]').click();
   const menu = page.locator('[data-space-filter-menu]');
-  // Documents and books apart, each saying what it takes.
-  await expect(menu.locator('[data-space-filter-type="document"] [data-space-filter-exts]')).toHaveText('pdf, docx, txt');
-  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-exts]')).toHaveText('epub, djvu');
-  await expect(menu.locator('[data-space-filter-type="canva"] [data-space-filter-exts]')).toHaveCount(0);
+  // The kind tiles say what each takes; only kinds there is something of (no books here).
+  await expect(page.locator('[data-space-type="document"] [data-space-type-exts]')).toHaveText('pdf, docx, txt');
+  await expect(page.locator('[data-space-type="canva"] [data-space-type-exts]')).toHaveCount(0);
+  await expect(page.locator('[data-space-type="book"]')).toHaveCount(0);
 
   // Whose: several people.
   await menu.locator('[data-space-filter-owner="user-2"] input').check();

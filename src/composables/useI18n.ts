@@ -28,6 +28,7 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
+    spaceAllTypes: 'Все типы', spaceTypes: 'Типы',
     spaceTypeBook: 'Книги', spaceFilterOwner: 'Владелец', spaceFilterAdvanced: 'Дополнительно', spaceFilterExtensions: 'Расширения файлов', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'Все папки', spaceFeed: 'Лента',
     spaceFilterAddedBy: 'Добавил папку', spaceTypeCanva: 'Документы QCanva', spaceTypeDocument: 'Документы', spaceTypeImage: 'Фото', spaceTypeVideo: 'Видео', spaceTypeAudio: 'Аудио', spaceTypeOther: 'Другое',
     adminHiddenPublicTitle: 'Скрытые из публичных', adminHiddenPublicEmpty: 'Ничего не скрыто', adminColType: 'Тип', adminColHidden: 'Скрыто', adminShowInPublic: 'Вернуть', adminShownInPublic: 'Снова в публичных', adminShowInPublicFailed: 'Не удалось вернуть', adminHiddenPublicLoadFailed: 'Не удалось загрузить скрытые', hiddenByAdmin: 'Скрыто администратором',
@@ -746,6 +747,7 @@ export const messages = {
     adminStorageCapacitySaveFailed: 'Не удалось сохранить ёмкость',
   },
   en: {
+    spaceAllTypes: 'All kinds', spaceTypes: 'Kinds',
     spaceTypeBook: 'Books', spaceFilterOwner: 'Owner', spaceFilterAdvanced: 'More', spaceFilterExtensions: 'File extensions', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'All folders', spaceFeed: 'Feed',
     spaceFilterAddedBy: 'Added the folder', spaceTypeCanva: 'QCanva documents', spaceTypeDocument: 'Documents', spaceTypeImage: 'Photos', spaceTypeVideo: 'Videos', spaceTypeAudio: 'Audio', spaceTypeOther: 'Other',
     adminHiddenPublicTitle: 'Hidden from Public', adminHiddenPublicEmpty: 'Nothing is hidden', adminColType: 'Type', adminColHidden: 'Hidden', adminShowInPublic: 'Put back', adminShownInPublic: 'Back in Public', adminShowInPublicFailed: 'Could not put it back', adminHiddenPublicLoadFailed: 'Could not load what is hidden', hiddenByAdmin: 'Hidden by an administrator',

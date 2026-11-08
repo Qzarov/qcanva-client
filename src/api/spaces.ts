@@ -67,7 +67,14 @@ export type SpaceFeedItem = {
   previewUrl: string | null;
 };
 
-export type SpaceFeed = { items: SpaceFeedItem[]; offset: number; limit: number; nextOffset: number | null };
+export type SpaceFeed = {
+  items: SpaceFeedItem[];
+  offset: number;
+  limit: number;
+  nextOffset: number | null;
+  /** The first page: how many of each kind the other filters leave (the kind tiles). */
+  typeCounts?: Partial<Record<SpaceFeedType, number>>;
+};
 
 const json = (method: string, body?: unknown): RequestInit => ({ method, body: body === undefined ? undefined : JSON.stringify(body) });
 

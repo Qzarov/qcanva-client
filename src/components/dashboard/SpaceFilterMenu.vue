@@ -33,7 +33,7 @@
             <button v-if="activeCount" type="button" class="dashboard-filter-reset" data-space-filter-reset @click="emit('reset')">{{ t('resetFilters') }}</button>
           </div>
 
-          <div class="dashboard-filter-group" role="group" :aria-label="t('filterTypes')">
+          <div v-if="withTypes" class="dashboard-filter-group" role="group" :aria-label="t('filterTypes')">
             <span class="dashboard-filter-label">{{ t('filterTypes') }}</span>
             <label v-for="option in TYPE_OPTIONS" :key="option.value" class="dashboard-filter-option space-filter-type" :data-space-filter-type="option.value">
               <input type="checkbox" :checked="types.includes(option.value)" @change="emit('toggle-type', option.value)" />
@@ -111,16 +111,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, type Component } from 'vue';
-import { BookOpen, ChevronDown, File as FileIcon, FileText, Image as ImageIcon, LayoutTemplate, Music, SlidersHorizontal, Video, X } from '@lucide/vue';
+import { computed, ref, type Component } from 'vue';
+import { ChevronDown, SlidersHorizontal, X } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 import { heightTransitionHooks } from '../../dashboard/motion';
-import { spacesApi, type SpaceFeedType } from '../../api/spaces';
+import type { SpaceFeedType } from '../../api/spaces';
+import { SPACE_FEED_TYPES, useSpaceFeedTypes } from '../../dashboard/space-feed-types';
 
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 type Person = { id: string; name: string | null };
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   open: boolean;
   /** Selected kinds; none selected means every kind. */
   types: readonly SpaceFeedType[];
@@ -134,7 +135,9 @@ const props = defineProps<{
   exts: readonly string[];
   /** Open as a sheet over the page (a phone), not under the icon. */
   sheet?: boolean;
-}>();
+  /** The kinds as a group here; off where they are tiles of their own (the space). */
+  withTypes?: boolean;
+}>(), { sheet: false, withTypes: true });
 const emit = defineEmits<{
   toggle: [];
   reset: [];
@@ -146,25 +149,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const TYPE_OPTIONS: { value: SpaceFeedType; label: MessageKey; icon: Component }[] = [
-  { value: 'canva', label: 'spaceTypeCanva', icon: LayoutTemplate },
-  { value: 'document', label: 'spaceTypeDocument', icon: FileText },
-  { value: 'book', label: 'spaceTypeBook', icon: BookOpen },
-  { value: 'image', label: 'spaceTypeImage', icon: ImageIcon },
-  { value: 'video', label: 'spaceTypeVideo', icon: Video },
-  { value: 'audio', label: 'spaceTypeAudio', icon: Music },
-  { value: 'other', label: 'spaceTypeOther', icon: FileIcon },
-];
-
-/** Each kind's extensions, from the hub (one list for the filter and the feed). */
-const typeExtensions = ref<Partial<Record<SpaceFeedType, string[]>>>({});
-let asked: Promise<void> | null = null;
-onMounted(() => {
-  asked ??= spacesApi.feedTypes()
-    .then(({ types }) => { typeExtensions.value = Object.fromEntries(types.map((entry) => [entry.type, entry.extensions])); })
-    .catch(() => { asked = null; /* an older hub: the kinds without their lists */ });
-});
-const extensionsOf = (type: SpaceFeedType) => typeExtensions.value[type] ?? [];
+const TYPE_OPTIONS = SPACE_FEED_TYPES as ReadonlyArray<{ value: SpaceFeedType; label: MessageKey; icon: Component }>;
+const { extensionsOf } = useSpaceFeedTypes();
 
 const advancedOpen = ref(props.exts.length > 0);
 const extDraft = ref('');
@@ -185,7 +171,7 @@ function onBackspace() {
 }
 
 const initial = (name: string | null) => (name || '?').trim().charAt(0).toUpperCase();
-const activeCount = computed(() => props.types.length + props.addedBy.length + props.owners.length + props.exts.length);
+const activeCount = computed(() => (props.withTypes ? props.types.length : 0) + props.addedBy.length + props.owners.length + props.exts.length);
 </script>
 
 <style scoped>

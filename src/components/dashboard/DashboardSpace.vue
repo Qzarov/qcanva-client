@@ -20,6 +20,7 @@
           :owner-people="space?.owners ?? []"
           :exts="filterExts"
           :sheet="phoneLayout"
+          :with-types="false"
           @toggle="filterMenuOpen = !filterMenuOpen"
           @reset="resetFilters"
           @toggle-type="toggleType"
@@ -98,6 +99,39 @@
               ><X :size="12" aria-hidden="true" /></button>
             </div>
           </div>
+          <!-- The kinds of file as tiles too: any number picked; each says how
+               many the other filters leave and which extensions it takes. -->
+          <template v-if="typeTiles.length">
+            <div class="dash-section-head space-section-head">
+              <h2>{{ t('spaceTypes') }}</h2>
+              <button v-if="filterTypes.length" type="button" class="space-folders-all" data-space-types-all @click="clearTypes">{{ t('spaceAllTypes') }}</button>
+            </div>
+            <div class="dash-grid subfolder-grid space-folder-grid" role="group" :aria-label="t('filterTypes')" data-space-types>
+              <div v-for="option in typeTiles" :key="option.value" class="space-folder-tile" :data-space-type="option.value">
+                <button
+                  type="button"
+                  class="subfolder-card"
+                  :class="{ 'is-selected': filterTypes.includes(option.value) }"
+                  :aria-pressed="filterTypes.includes(option.value)"
+                  data-space-type-toggle
+                  @click="toggleType(option.value)"
+                >
+                  <span class="subfolder-card-icon" aria-hidden="true">
+                    <Check v-if="filterTypes.includes(option.value)" :size="13" />
+                    <component :is="option.icon" v-else :size="13" />
+                  </span>
+                  <span class="subfolder-card-name">{{ t(option.label as MessageKey) }}</span>
+                  <span class="subfolder-card-count" data-space-type-count>{{ typeCounts[option.value] ?? 0 }}</span>
+                  <span
+                    v-if="extensionsOf(option.value).length"
+                    class="subfolder-card-date space-type-exts"
+                    data-space-type-exts
+                    v-hint="extensionsOf(option.value).join(', ')"
+                  >{{ extensionsOf(option.value).join(', ') }}</span>
+                </button>
+              </div>
+            </div>
+          </template>
           <div class="dash-section-head space-section-head">
             <h2>{{ t('spaceFeed') }}</h2>
           </div>
@@ -221,6 +255,9 @@ import { Check, Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIco
 import { vHint } from '../../directives/hint';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterMenu from './SpaceFilterMenu.vue';
+import { SPACE_FEED_TYPES, useSpaceFeedTypes } from '../../dashboard/space-feed-types';
+
+type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 import { LAYOUT, matchesMedia, useMediaQuery } from '../../composables/layoutMedia';
 import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
@@ -281,6 +318,11 @@ const filterPeople = ref<string[]>([]);
 const filterOwners = ref<string[]>([]);
 const filterExts = ref<string[]>([]);
 const filterMenuOpen = ref(false);
+/** How many of each kind the other filters leave (the hub's first page). */
+const typeCounts = ref<Partial<Record<SpaceFeedType, number>>>({});
+const { extensionsOf } = useSpaceFeedTypes();
+/** The kinds there is something of, and those picked (so none vanishes while on). */
+const typeTiles = computed(() => SPACE_FEED_TYPES.filter((option) => (typeCounts.value[option.value] ?? 0) > 0 || filterTypes.value.includes(option.value)));
 const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, exts: filterExts.value, owners: filterOwners.value, addedBy: filterPeople.value });
 const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length));
 /** Who added the space's folders, once each. */
@@ -360,6 +402,7 @@ async function load(quiet = false) {
     space.value = details;
     items.value = feed.items;
     nextOffset.value = feed.nextOffset;
+    if (feed.typeCounts) typeCounts.value = feed.typeCounts;
     loaded.value = true;
     void loadPreviews(feed.items);
     watchReading();
@@ -444,6 +487,7 @@ watch(() => props.spaceId, () => {
   filterPeople.value = [];
   filterOwners.value = [];
   filterExts.value = [];
+  typeCounts.value = {};
   filterMenuOpen.value = false;
   space.value = null;
   items.value = [];
@@ -457,6 +501,10 @@ const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filte
 /** A folder chip: on or off; "All" clears them. */
 function toggleSource(sourceId: string | null) {
   filterSources.value = sourceId === null ? [] : toggleIn(filterSources.value, sourceId);
+  void load();
+}
+function clearTypes() {
+  filterTypes.value = [];
   void load();
 }
 function toggleType(type: SpaceFeedType) {

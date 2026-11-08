@@ -13231,3 +13231,12 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
   cursor: pointer;
 }
 .space-folders-all:hover { text-decoration: underline; }
+
+/* A kind tile's extensions: on the count's line, as many as fit; all of them in its hint. */
+.space-type-exts {
+  color: var(--ui-text-muted);
+  font-size: 10px;
+}
+@media (max-width: 720px) {
+  .space-type-exts { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
