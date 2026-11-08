@@ -881,6 +881,8 @@
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
               <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
             </div>
           </div>
           <article
@@ -905,6 +907,8 @@
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
               <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
             </div>
           </article>
           <article
@@ -929,6 +933,8 @@
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
             <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
               <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
             </div>
           </article>
           </template>
@@ -1338,6 +1344,7 @@ import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
+import { adminApi, type PublicResourceType } from '../api/admin';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
 import {
@@ -1930,6 +1937,8 @@ export default defineComponent({
     const isOwnPublic = (item: any, legacyPublic: boolean) => {
       if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
       if (item.listedInPublic === false) return false;
+      // An admin took it out of Public: out for its owner too.
+      if (item.publicHidden) return false;
       if (item.visibility === 'public') return true;
       if (item.visibility === 'authenticated') return false;
       return legacyPublic;
@@ -4070,6 +4079,36 @@ export default defineComponent({
       void router.replace({ query: rest });
     };
 
+    /**
+     * An admin takes a resource out of the Public directory: it leaves the
+     * section at once, for its owner's lists too. The link still opens it.
+     */
+    const hideFromPublic = async (item: { type: string; id: string; title?: string | null }) => {
+      closeCardMenu();
+      const type = item.type as PublicResourceType;
+      if (type !== 'canvas' && type !== 'text-document' && type !== 'html-document') return;
+      const confirmed = await confirmDialog({
+        title: t('hideFromPublicTitle').replace('{name}', item.title || t('untitled')),
+        confirmLabel: t('hideFromPublicConfirm'),
+        cancelLabel: t('cancel'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await adminApi.hideFromPublic(type, item.id);
+        const drop = <T extends { id: string }>(list: { value: T[] }) => { list.value = list.value.filter((other) => other.id !== item.id); };
+        const mark = <T extends { id: string }>(list: { value: T[] }) => {
+          list.value = list.value.map((other) => (other.id === item.id ? { ...other, publicHidden: true } : other));
+        };
+        if (type === 'canvas') { drop(publicCanvases); mark(own); }
+        else if (type === 'html-document') { drop(publicHtmlDocuments); mark(allHtmlDocumentsRaw); }
+        else { drop(publicTextDocuments); mark(allTextDocumentsRaw); }
+        setFeedback('success', t('hiddenFromPublic'));
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('hideFromPublicFailed'));
+      }
+    };
+
     /** A file back from the trash: its folder shows it again. */
     const onTrashRestored = () => {
       setFeedback('success', t('driveRestored'));
@@ -5222,6 +5261,7 @@ export default defineComponent({
       openSpaceResource,
       leaveSpaceSection,
       onTrashRestored,
+      hideFromPublic,
       currentUser,
       uploadToYandex,
       setFeedback,
