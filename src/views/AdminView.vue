@@ -173,7 +173,7 @@
                 <option value="admin">{{ t('adminRoleAdmin') }}</option>
                 <option value="superadmin">{{ t('adminRoleSuperadmin') }}</option>
               </select>
-              <span v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</span>
+              <UiBadge v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</UiBadge>
             </td>
             <td>{{ u.canvasCount }}</td>
             <td>{{ formatDate(u.createdAt) }}</td>
@@ -201,7 +201,7 @@
           <tr v-for="c in canvases" :key="c.id">
             <td>{{ c.title }}</td>
             <td>{{ c.ownerName || c.ownerEmail }}</td>
-            <td><span class="badge" :class="visBadge(c.visibility)">{{ c.visibility }}</span></td>
+            <td><UiBadge class="badge" :class="visBadge(c.visibility)">{{ c.visibility }}</UiBadge></td>
             <td>
               <select
                 class="role-select"
@@ -229,6 +229,7 @@ import { defineComponent, ref, computed, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
+import UiBadge from '../components/ui/UiBadge.vue';
 import { ArrowLeft } from '@lucide/vue';
 import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
@@ -236,7 +237,7 @@ import { useI18n } from '../composables/useI18n';
 function getToken() { return localStorage.getItem('token'); }
 
 export default defineComponent({
-  components: { AccountMenu, ArrowLeft },
+  components: { AccountMenu, ArrowLeft, UiBadge },
   setup() {
     const { show: showToast } = useToast();
     const { t } = useI18n();

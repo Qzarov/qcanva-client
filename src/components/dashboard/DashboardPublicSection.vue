@@ -33,7 +33,7 @@
       @click="openCanvas(item.slug || item.id)"
     >
       <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-      <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</span></div>
+      <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><UiBadge v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</UiBadge></div>
       <div class="card-meta">
         <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
         <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
@@ -125,6 +125,7 @@
 
 <script setup lang="ts">
 import UiEmptyState from '../ui/UiEmptyState.vue';
+import UiBadge from '../ui/UiBadge.vue';
 import { computed } from 'vue';
 import { Check, ChevronDown, ChevronUp, Folder, Plus } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
