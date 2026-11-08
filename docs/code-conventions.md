@@ -62,6 +62,9 @@
 - Fullscreen editor shells владеют своим Teleport и DOM ref, а canvas editor
   composable получает этот ref через явный `ready` event. Родитель передаёт
   состояние и команды, не ищет textarea через глобальные селекторы.
+- Canvas sync data (remote cursors, revisions and presence) остаётся в
+  composable/CanvasLoader; отдельные presentation-компоненты получают typed
+  readonly state и не знают о socket lifecycle.
 - Для иконок используйте Lucide или существующую иконку проекта. Эмодзи и
   inline-иконки с разными стилями для одинаковых действий не добавляйте.
 
