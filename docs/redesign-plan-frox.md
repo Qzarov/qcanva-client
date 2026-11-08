@@ -31,6 +31,9 @@ roadmap для структурного рефакторинга клиентс�
   `UiEmptyState`, `UiMenu` и `UiSegmentedControl` созданы и используются в
   Dashboard и Text Documents. Сортировка, фильтры и переключатель вида больше
   не дублируют собственную menu/pressed-семантику.
+- Shared sidebar shell: `SharedSidebarShell` теперь владеет внешним `aside`,
+  mobile-backdrop, Escape и focus trap для `AppSidebar` и `DashboardSidebar`;
+  дерево Dashboard и статическая навигация остаются в своих компонентах.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -44,12 +47,12 @@ roadmap для структурного рефакторинга клиентс�
 | Направление | Готово | Что осталось |
 |---|---:|---|
 | UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
-| Shared sidebar shell | **40%** | общий header/footer/backdrop/focus-trap для AppSidebar и DashboardSidebar |
+| Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
 | TextDocumentView | **70%** | topbar/menu, backlinks, selection bubble, slash/mention UI |
 | CanvasLoader | **75%** | mobile editor shell, remote cursors, file/draw capture, template orchestration |
 | DashboardView | **72%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **70%** | оставшиеся границы из строк выше |
+| **Весь план** | **72%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
