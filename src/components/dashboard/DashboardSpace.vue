@@ -60,7 +60,10 @@
             :data-space-source="source.id"
           >
             <button type="button" class="space-source-pick" :aria-pressed="sourceFilter === source.id" @click="setFilter(source.id)">
-              <Cloud v-if="source.kind === 'yandex'" :size="13" aria-hidden="true" />
+              <!-- A Yandex folder still being read turns; one that could not be read says why. -->
+              <LoaderCircle v-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" aria-hidden="true" data-space-source-reading />
+              <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" class="space-source-failed" :size="13" :aria-label="source.syncError" data-space-source-failed v-hint="source.syncError" />
+              <Cloud v-else-if="source.kind === 'yandex'" :size="13" aria-hidden="true" />
               <FolderIcon v-else :size="13" aria-hidden="true" />
               <span>{{ source.title }}</span>
               <span class="space-source-who">{{ source.addedBy.name || '' }}</span>
@@ -187,7 +190,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, Play, Plus, Video, X } from '@lucide/vue';
+import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
+import { vHint } from '../../directives/hint';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceSource } from '../../api/spaces';
 import { downloadDriveFile, driveApi, formatFileSize, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
@@ -290,10 +294,11 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error && e
 
 // ----- loading
 let loadId = 0;
-async function load() {
+/** `quiet`: a look again while a Yandex folder is read - no "Loading", no lost place. */
+async function load(quiet = false) {
   const current = ++loadId;
   error.value = '';
-  loaded.value = false;
+  if (!quiet) loaded.value = false;
   try {
     const [details, feed] = await Promise.all([
       spacesApi.get(props.spaceId),
@@ -305,8 +310,10 @@ async function load() {
     nextOffset.value = feed.nextOffset;
     loaded.value = true;
     void loadPreviews(feed.items);
+    watchReading();
   } catch (err) {
     if (current !== loadId) return;
+    if (quiet) return;
     if ((err as { status?: number })?.status === 404) {
       emit('gone');
       return;
@@ -315,6 +322,30 @@ async function load() {
   }
 }
 const reload = () => { void load(); };
+
+/**
+ * A Yandex folder just added (or not read yet) is read by the hub in the
+ * background - a big one takes a while: the feed is looked at again every
+ * few seconds until every Yandex folder is read, for three minutes at most.
+ */
+const READ_POLL_MS = 3000;
+const READ_POLL_FOR_MS = 3 * 60 * 1000;
+let readPoll: ReturnType<typeof setTimeout> | null = null;
+let readPollSince = 0;
+function watchReading() {
+  const reading = (space.value?.sources ?? []).some((source) => source.kind === 'yandex' && !source.syncedAt);
+  if (!reading) {
+    readPollSince = 0;
+    return;
+  }
+  if (readPoll) return;
+  if (!readPollSince) readPollSince = Date.now();
+  if (Date.now() - readPollSince > READ_POLL_FOR_MS) return;
+  readPoll = setTimeout(() => {
+    readPoll = null;
+    void load(true);
+  }, READ_POLL_MS);
+}
 
 async function loadMore() {
   if (nextOffset.value === null) return;
@@ -352,6 +383,9 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
 }
 
 watch(() => props.spaceId, () => {
+  if (readPoll) clearTimeout(readPoll);
+  readPoll = null;
+  readPollSince = 0;
   sourceFilter.value = null;
   space.value = null;
   items.value = [];
@@ -486,10 +520,9 @@ async function addYandex(path: string) {
     space.value = await spacesApi.addYandexFolder(props.spaceId, path);
     yandexPicker.value?.close();
     emit('feedback', 'success', t('spaceYandexReading'));
+    readPollSince = 0;
     await load();
     void loadSpaces(true);
-    // The hub reads the Yandex folder in the background: look again shortly.
-    setTimeout(() => void load(), 4000);
   } catch (err) {
     emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
   } finally {
@@ -587,6 +620,7 @@ onBeforeUnmount(() => {
   loadId += 1;
   document.removeEventListener('click', closeMenu);
   if (previewTimer) clearTimeout(previewTimer);
+  if (readPoll) clearTimeout(readPoll);
 });
 
 defineExpose({ reload, startAdd });

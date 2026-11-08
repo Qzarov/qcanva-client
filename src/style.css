@@ -13133,3 +13133,9 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
   color: var(--ui-text-secondary);
   font-size: 12px;
 }
+
+/* A space's Yandex folder chip: turning while it is read, a warning when it could not be. */
+.space-source-reading { animation: space-source-spin 1s linear infinite; }
+.space-source-failed { color: var(--ui-warning, #c98a00); }
+@keyframes space-source-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .space-source-reading { animation: none; } }

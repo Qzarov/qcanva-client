@@ -1,16 +1,18 @@
 <template>
   <!-- Spaces: where files live. Q Space is ours; Yandex Disk is the user's
-       own, connected through Yandex ID. More will come. Folds like Home. -->
+       own, connected through Yandex ID. More will come. Like Home: the row
+       opens the feed's Spaces section, only the chevron folds the list. -->
   <div class="dashboard-sidebar-home-row dashboard-sidebar-spaces-row">
     <button
       type="button"
       class="btn-ghost dashboard-sidebar-item dashboard-sidebar-home"
-      :aria-expanded="expanded"
-      :aria-controls="childrenId"
+      :class="{ active: active }"
+      :aria-current="active ? 'page' : undefined"
       :aria-label="t('spaces')"
       :title="compact ? t('spaces') : undefined"
       data-sidebar-spaces
-      @click="toggleExpanded"
+      data-dashboard-section="spaces"
+      @click="emit('select', { kind: 'spaces' })"
     >
       <span class="dashboard-sidebar-icon" aria-hidden="true"><Layers :size="18" /></span>
       <span class="dashboard-sidebar-label">{{ t('spaces') }}</span>
@@ -198,6 +200,8 @@ const props = defineProps<{
   compact?: boolean;
   /** Bumped by the dashboard after it changed the Yandex Disk: opened folders read again. */
   yandexRefreshKey?: number;
+  /** The feed is scrolled to its Spaces section: this row is the current one. */
+  active?: boolean;
 }>();
 const emit = defineEmits<{
   select: [section: DashboardSection];

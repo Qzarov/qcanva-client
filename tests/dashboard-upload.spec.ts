@@ -301,3 +301,39 @@ test('uploads as the Drive shows them: a file a row, its own cancel, why one fai
   await expect(panel.locator('[data-upload-item="slow.bin"]')).toHaveClass(/is-cancelled/);
   await expect(panel.locator('[data-upload-hide]')).toBeVisible();
 });
+
+test('a file whose connection dropped goes up again by itself; at most three at a time', async ({ page }) => {
+  await openDashboard(page);
+  let dropped = 0;
+  let inFlight = 0;
+  let mostAtOnce = 0;
+  const answered: string[] = [];
+  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
+    const body = route.request().postDataBuffer()?.toString('latin1') || '';
+    const name = /filename="([^"]+)"/.exec(body)?.[1] ?? '?';
+    // The first try of the video loses its connection, as a phone's dark screen does.
+    if (name === 'video.mp4' && dropped === 0) {
+      dropped += 1;
+      return route.abort('connectionreset');
+    }
+    inFlight += 1;
+    mostAtOnce = Math.max(mostAtOnce, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    inFlight -= 1;
+    answered.push(name);
+    return route.fulfill({ status: 201, json: { items: [] } });
+  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="file"]').click();
+  const files = ['a.bin', 'b.bin', 'c.bin', 'd.bin', 'e.bin'].map((name) => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from(name) }));
+  await pick(page, [{ name: 'video.mp4', mimeType: 'video/mp4', buffer: Buffer.from('v') }, ...files]);
+  await dialog(page).locator('[data-add-submit]').click();
+  const panel = page.locator('[data-upload-panel]');
+  await expect(panel.locator('[data-upload-item="video.mp4"]')).toHaveClass(/is-done/, { timeout: 10000 });
+  for (const file of files) await expect(panel.locator(`[data-upload-item="${file.name}"]`)).toHaveClass(/is-done/);
+  expect(dropped).toBe(1);
+  expect(answered.filter((name) => name === 'video.mp4')).toHaveLength(1);
+  expect(mostAtOnce).toBeLessThanOrEqual(3);
+});

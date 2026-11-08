@@ -1344,6 +1344,7 @@ import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
+import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
 import { adminApi, type PublicResourceType } from '../api/admin';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
@@ -4185,28 +4186,10 @@ export default defineComponent({
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
       uploadPanelOpen.value = true;
-      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
-      await Promise.all(batch.map(async ({ id, file }) => {
-        try {
-          const handle = uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => {
-            const row = rowOf(id);
-            if (row && row.status === 'uploading') row.progress = percent;
-          });
-          const row = rowOf(id);
-          if (row) row.abort = () => handle.abort();
-          await handle.promise;
-          const done = rowOf(id);
-          if (done && done.status === 'uploading') {
-            done.progress = 100;
-            done.status = 'done';
-          }
-        } catch (error) {
-          const failed = rowOf(id);
-          if (!failed || failed.status === 'cancelled') return;
-          failed.status = 'error';
-          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
-        }
-      }));
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => setUploadProgress(id, percent)),
+      })));
       yandexRefreshKey.value += 1;
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
@@ -4242,6 +4225,41 @@ export default defineComponent({
       upload.status = 'cancelled';
       upload.abort?.();
     };
+    /**
+     * Every upload of the panel (QCanva's and Yandex Disk's): three at a time,
+     * a dropped one started again once the page is back (upload-queue.ts),
+     * and the screen kept on while any runs - a dark phone freezes them.
+     */
+    const uploadRowOf = (id: string) => uploads.value.find((item) => item.id === id);
+    const setUploadProgress = (id: string, percent: number) => {
+      const row = uploadRowOf(id);
+      if (row && row.status === 'uploading') row.progress = Math.round(percent);
+    };
+    const uploadWakeLock = createUploadWakeLock(() => uploads.value.some((item) => item.status === 'uploading'));
+    watch(() => uploads.value.some((item) => item.status === 'uploading'), () => { void uploadWakeLock.sync(); });
+    onBeforeUnmount(() => uploadWakeLock.dispose());
+    const runDashboardUploads = (jobs: UploadJob[]) => runUploadQueue(jobs, {
+      isCancelled: (id) => uploadRowOf(id)?.status === 'cancelled',
+      onAttempt: (id, attempt) => {
+        const row = uploadRowOf(id);
+        if (!row) return;
+        row.abort = () => attempt.abort();
+        row.progress = 0;
+      },
+      onDone: (id) => {
+        const row = uploadRowOf(id);
+        if (row && row.status === 'uploading') {
+          row.progress = 100;
+          row.status = 'done';
+        }
+      },
+      onError: (id, error) => {
+        const row = uploadRowOf(id);
+        if (!row || row.status === 'cancelled') return;
+        row.status = 'error';
+        row.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+      },
+    });
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
@@ -4255,28 +4273,10 @@ export default defineComponent({
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
       uploadPanelOpen.value = true;
-      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
-      await Promise.all(batch.map(async ({ id, file }) => {
-        try {
-          const handle = driveApi.uploadFile(folderId, file, (percent) => {
-            const row = rowOf(id);
-            if (row && row.status === 'uploading') row.progress = Math.round(percent);
-          });
-          const row = rowOf(id);
-          if (row) row.abort = () => handle.abort();
-          await handle.promise;
-          const done = rowOf(id);
-          if (done && done.status === 'uploading') {
-            done.progress = 100;
-            done.status = 'done';
-          }
-        } catch (error) {
-          const failed = rowOf(id);
-          if (!failed || failed.status === 'cancelled') return;
-          failed.status = 'error';
-          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
-        }
-      }));
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => driveApi.uploadFile(folderId, file, (percent) => setUploadProgress(id, percent)),
+      })));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
     };
@@ -4967,7 +4967,7 @@ export default defineComponent({
      * own - the feed always shows them all, one under the other, empty or
      * not. A guest has no feed: their dashboard is Public itself.
      */
-    const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'shared', 'interactive', 'public'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
       if (section.kind === 'drive') {
         router.push('/drive');

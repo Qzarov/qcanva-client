@@ -182,6 +182,7 @@
           :active-section="activeSection"
           :compact="compactPresentation"
           :yandex-refresh-key="yandexRefreshKey"
+          :active="isActive({ kind: 'spaces' })"
           @select="emit('select', $event)"
           @open-yandex-file="emit('open-yandex-file', $event)"
           @create-space="emit('create-space')"

@@ -269,3 +269,53 @@ test('with no spaces the home feed offers "+ Add" under Spaces, which makes one'
   await expect.poll(() => calls.find((call) => call.method === 'POST' && call.path === '/spaces')?.body).toEqual({ name: 'Дача' });
   await expect(page.locator('[data-space-title]')).toHaveText('Дача');
 });
+
+test('a Yandex folder still being read turns on its chip; its files come in by themselves once read', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await serveDashboard(page);
+  let asked = 0;
+  const yandexSource = (read: boolean) => ({ id: 'src-y', kind: 'yandex', title: 'Фото', folderId: null, yandexPath: '/Фото', addedBy: { id: 'user-1', name: 'Me' }, syncedAt: read ? '2026-11-08T10:00:00Z' : null, syncError: null, itemCount: read ? 1 : 0 });
+  await page.route(/\/api\/spaces(\/|\?|$)/, async (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
+    if (path === '/spaces') return route.fulfill({ json: { spaces: [{ id: 'space-1', name: 'Семья', role: 'owner', ownerId: 'user-1', memberCount: 0, sourceCount: 1, updatedAt: '2026-11-07T10:00:00Z' }] } });
+    const read = asked >= 2;
+    if (path === '/spaces/space-1') {
+      asked += 1;
+      return route.fulfill({ json: { ...spaceDetails('owner', [yandexSource(read)] as any), members: [] } });
+    }
+    if (path === '/spaces/space-1/feed') return route.fulfill({ json: { items: read ? [FEED[0]] : [], offset: 0, limit: 60, nextOffset: null } });
+    return route.fulfill({ json: {} });
+  });
+  await page.route('http://localhost:3001/api/yandex-disk/preview**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  await page.goto('/dashboard');
+  await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
+  await page.locator('[data-shared-space="space-1"]').click();
+  await expect(page.locator('[data-space-source="src-y"] [data-space-source-reading]')).toBeVisible();
+  // Looked at again on its own, without the page reloading.
+  await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(1, { timeout: 10000 });
+  await expect(page.locator('[data-space-source="src-y"] [data-space-source-reading]')).toHaveCount(0);
+});
+
+test('the sidebar\'s "Spaces" goes to the feed\'s Spaces, like Shared and Public; its chevron folds the list', async ({ page }) => {
+  await openDashboard(page);
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.locator('[data-recent-space-tile="space-1"]').waitFor();
+  const row = page.locator('[data-sidebar-spaces]');
+  await row.click();
+  // The feed scrolled to its Spaces section, and the row is the current one.
+  await expect.poll(() => page.locator('.dashboard-central-shell .app-main').evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect(page.locator('#feed-spaces')).toBeInViewport();
+  await expect(row).toHaveAttribute('aria-current', 'page');
+  // The list stays as it was; only the chevron folds it.
+  await expect(page.locator('[data-sidebar-spaces-children]')).toBeVisible();
+  await page.locator('[data-sidebar-spaces-disclosure]').click();
+  await expect(page.locator('[data-sidebar-spaces-children]')).toHaveCount(0);
+});
+
+test('phone: "Spaces" in the sidebar closes it and goes to the feed\'s Spaces', async ({ page }) => {
+  await openDashboard(page, { phone: true });
+  await page.locator('[data-mobile-sidebar-open]').click();
+  await page.locator('[data-sidebar-spaces]').click();
+  await expect(page.locator('.dashboard-sidebar.mobile-open, .dashboard-sidebar[data-mobile-open="true"]')).toHaveCount(0);
+  await expect(page.locator('#feed-spaces')).toBeInViewport();
+});
