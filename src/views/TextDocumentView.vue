@@ -469,63 +469,15 @@
       <!-- The slash menu. Chrome, not document content: it lives in the app's
            themed --ui-* palette (like the toolbar), never in the fixed paper
            palette, and nothing here reaches the Yjs document. -->
-      <div
-        v-if="slashOpen"
-        class="text-doc-slash-menu"
+      <TextDocumentSlashMenu
+        :open="slashOpen"
+        :items="slashItems"
+        :active-index="slashIndex"
         :style="slashMenuStyle"
-        role="listbox"
-        :aria-label="t('slashMenu')"
-      >
-        <button
-          v-for="(item, index) in slashItems"
-          :key="item.id"
-          class="text-doc-slash-item"
-          :class="{ active: index === slashIndex }"
-          :data-slash-item="item.id"
-          role="option"
-          :aria-selected="index === slashIndex"
-          type="button"
-          @mousedown.prevent="selectSlashItem(index)"
-          @mouseenter="slashIndex = index"
-        >
-          <span class="text-doc-slash-icon" v-html="item.icon"></span>
-          <span class="text-doc-slash-label">{{ t(item.labelKey) }}</span>
-        </button>
-        <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
-      </div>
-
-      <!-- Mobile slash menu: a bottom sheet, since the desktop popup's rect-
-           based position (right under the caret) is meaningless once the
-           keyboard closing has moved everything around. Shares slashItems/
-           slashIndex/selectSlashItem with the desktop popup above. -->
-      <Teleport to="body">
-        <div v-if="slashOpen" class="text-doc-slash-sheet-backdrop" @click="cancelSlashMenu"></div>
-        <div v-if="slashOpen" class="text-doc-slash-sheet" role="listbox" :aria-label="t('slashMenu')">
-          <div class="text-doc-slash-sheet-title">
-            {{ t('slashMenu') }}
-            <button type="button" class="text-doc-slash-sheet-close" :aria-label="t('close')" @click="cancelSlashMenu">
-              <X :size="16" aria-hidden="true" />
-            </button>
-          </div>
-          <div class="text-doc-slash-sheet-list">
-            <button
-              v-for="(item, index) in slashItems"
-              :key="item.id"
-              class="text-doc-slash-item text-doc-slash-sheet-item"
-              :class="{ active: index === slashIndex }"
-              :data-slash-item="item.id"
-              role="option"
-              :aria-selected="index === slashIndex"
-              type="button"
-              @click="selectSlashItem(index)"
-            >
-              <span class="text-doc-slash-icon" v-html="item.icon"></span>
-              <span class="text-doc-slash-label">{{ t(item.labelKey) }}</span>
-            </button>
-            <div v-if="!slashItems.length" class="text-doc-slash-empty">{{ t('slashNoResults') }}</div>
-          </div>
-        </div>
-      </Teleport>
+        @select="selectSlashItem"
+        @cancel="cancelSlashMenu"
+        @hover="(index) => { slashIndex = index; }"
+      />
 
       <!-- The @-mention picker. Same chrome rule as the slash menu above:
            lives in the app's themed --ui-* palette, nothing here reaches the
@@ -662,13 +614,14 @@ import TextDocumentOutline from '../components/TextDocumentOutline.vue';
 import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
 import TextDocumentMobileMenu from '../components/TextDocumentMobileMenu.vue';
 import TextDocumentBacklinks from '../components/TextDocumentBacklinks.vue';
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
+import TextDocumentSlashMenu from '../components/TextDocumentSlashMenu.vue';
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 import UiInput from '../components/ui/UiInput.vue';
 import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, TextDocumentSlashMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink },
   setup() {
     const route = useRoute();
     const router = useRouter();
