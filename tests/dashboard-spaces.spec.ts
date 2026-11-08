@@ -56,13 +56,19 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
     if (path === '/spaces/space-2/feed') return json({ items: [], offset: 0, limit: 60, nextOffset: null });
     // A viewer adds no folders: every one in the space is someone else's.
     const sources = role === 'viewer' ? defaultSources().map((source) => ({ ...source, addedBy: { id: 'user-2', name: 'Аня' } })) : defaultSources();
-    if (path === '/spaces/space-1' && request.method() === 'GET') return json(spaceDetails(role, sources));
+    if (path === '/spaces/feed-types') return json({ types: [
+      { type: 'canva', extensions: [] }, { type: 'document', extensions: ['pdf', 'docx', 'txt'] }, { type: 'book', extensions: ['epub', 'djvu'] },
+      { type: 'image', extensions: ['jpg', 'png'] }, { type: 'video', extensions: ['mp4'] }, { type: 'audio', extensions: ['mp3'] }, { type: 'other', extensions: [] },
+    ] });
+    if (path === '/spaces/space-1' && request.method() === 'GET') return json({ ...spaceDetails(role, sources), owners: [{ id: 'user-1', name: 'Me' }, { id: 'user-2', name: 'Аня' }] });
     if (path === '/spaces/space-1/feed') {
       const list = (name: string) => (url.searchParams.get(name) || '').split(',').filter(Boolean);
-      const [sources, types, adders] = [list('sourceIds'), list('types'), list('addedBy')];
+      const [sources, types, adders, exts, owners] = [list('sourceIds'), list('types'), list('addedBy'), list('exts'), list('owners')];
       const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : item.name.endsWith('.pdf') ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
+      const extOf = (item: (typeof FEED)[number]) => (item.kind === 'file' ? item.name.split('.').pop()!.toLowerCase() : '');
       const items = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
-        && (!types.length || types.includes(typeOf(item)))
+        && ((!types.length && !exts.length) || types.includes(typeOf(item)) || exts.includes(extOf(item)))
+        && (!owners.length || owners.includes(item.addedBy.id))
         && (!adders.length || adders.includes(item.addedBy.id)));
       return json({ items, offset: 0, limit: 60, nextOffset: null });
     }
@@ -127,10 +133,10 @@ test('a space is one feed of its folders, filtered by folder; pictures open full
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-feed.png` });
 
   // A folder at a time.
-  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
   await expect(feed).toHaveCount(1);
   expect(calls.some((call) => call.path === '/spaces/space-1/feed' && call.query.sourceIds === 'src-y')).toBe(true);
-  await page.locator('[data-space-source="all"]').click();
+  await page.locator('[data-space-folders-all]').click();
   await expect(feed).toHaveCount(3);
 
   // Hover tells who added it and from where.
@@ -332,16 +338,16 @@ test('the feed takes several folders, kinds of file and adders at once; nothing 
   await expect(feed).toHaveCount(3);
 
   // Two folders: both chips on, "All" off.
-  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
   await expect(feed).toHaveCount(1);
-  await page.locator('[data-space-source="src-q"] .space-source-pick').click();
+  await page.locator('[data-space-source="src-q"] [data-space-folder-toggle]').click();
   await expect(feed).toHaveCount(3);
   expect(calls.at(-1)?.query.sourceIds?.split(',').sort()).toEqual(['src-q', 'src-y']);
-  await expect(page.locator('[data-space-source="all"]')).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('[data-space-source="src-y"] [data-space-folder-toggle]')).toHaveAttribute('aria-pressed', 'true');
   // One off again: the other stays.
-  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
   await expect(feed).toHaveCount(2);
-  await page.locator('[data-space-source="all"]').click();
+  await page.locator('[data-space-folders-all]').click();
   await expect(feed).toHaveCount(3);
 
   // Kinds of file and who added, from the filter icon; its badge counts them.
@@ -368,4 +374,57 @@ test('the feed takes several folders, kinds of file and adders at once; nothing 
 
   // The dashboard's own filter and order do not act on a space: not shown here.
   await expect(page.locator('[data-filter-menu-trigger]:visible')).toHaveCount(0);
+});
+
+test('the folders are tiles above the feed, several picked at once; filters show their extensions, by owner, and any extension under More', async ({ page }) => {
+  const calls = await openDashboard(page);
+  await page.locator('[data-shared-space="space-1"]').click();
+  const feed = page.locator('[data-space-feed] [data-space-item]');
+  await expect(feed).toHaveCount(3);
+
+  // Tiles like a folder's subfolders, the feed under them.
+  const tiles = page.locator('[data-space-sources] [data-space-source]');
+  await expect(tiles).toHaveCount(2);
+  await expect(page.locator('[data-space-source="src-y"] .subfolder-card-count')).toHaveText('1');
+  const tilesBox = (await page.locator('[data-space-sources]').boundingBox())!;
+  const feedBox = (await page.locator('[data-space-feed]').boundingBox())!;
+  expect(feedBox.y).toBeGreaterThan(tilesBox.y + tilesBox.height - 1);
+  await page.locator('[data-space-source="src-q"] [data-space-folder-toggle]').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
+  await expect(page.locator('[data-space-sources] .subfolder-card.is-selected')).toHaveCount(2);
+  await page.locator('[data-space-folders-all]').click();
+  await expect(page.locator('[data-space-sources] .subfolder-card.is-selected')).toHaveCount(0);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-tiles.png` });
+
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  // Documents and books apart, each saying what it takes.
+  await expect(menu.locator('[data-space-filter-type="document"] [data-space-filter-exts]')).toHaveText('pdf, docx, txt');
+  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-exts]')).toHaveText('epub, djvu');
+  await expect(menu.locator('[data-space-filter-type="canva"] [data-space-filter-exts]')).toHaveCount(0);
+
+  // Whose: several people.
+  await menu.locator('[data-space-filter-owner="user-2"] input').check();
+  await expect(feed).toHaveCount(1);
+  await menu.locator('[data-space-filter-owner="user-1"] input').check();
+  await expect(feed).toHaveCount(3);
+  expect(calls.at(-1)?.query.owners?.split(',').sort()).toEqual(['user-1', 'user-2']);
+  await menu.locator('[data-space-filter-owner="user-1"] input').uncheck();
+  await menu.locator('[data-space-filter-owner="user-2"] input').uncheck();
+
+  // More: any extension, a dot and the case aside; Backspace takes the last one off.
+  await menu.locator('[data-space-filter-advanced]').click();
+  const input = menu.locator('[data-space-filter-ext-input]');
+  await input.fill('.PDF, jpg');
+  await input.press('Enter');
+  await expect(menu.locator('[data-space-filter-ext]')).toHaveCount(2);
+  await expect(feed).toHaveCount(2);
+  expect(calls.at(-1)?.query.exts).toBe('pdf,jpg');
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('2');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters-advanced.png` });
+  await input.press('Backspace');
+  await expect(menu.locator('[data-space-filter-ext]')).toHaveCount(1);
+  await expect(feed).toHaveCount(1);
+  await menu.locator('[data-space-filter-reset]').click();
+  await expect(feed).toHaveCount(3);
 });

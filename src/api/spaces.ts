@@ -33,6 +33,8 @@ export type SpaceSource = {
 export type SpaceMember = { id: string; name: string | null; email: string; role: 'editor' | 'viewer' };
 
 export type SpaceDetails = {
+  /** Whose things are in the space (QCanva resources' owners, whose Yandex Disks); an older hub leaves it out. */
+  owners?: Array<{ id: string; name: string | null }>;
   id: string;
   name: string;
   role: SpaceRole;
@@ -44,9 +46,11 @@ export type SpaceDetails = {
 };
 
 /** The kinds of file a space's feed is narrowed by (the hub's FEED_TYPES). */
-export type SpaceFeedType = 'canva' | 'document' | 'image' | 'video' | 'audio' | 'other';
+export type SpaceFeedType = 'canva' | 'document' | 'book' | 'image' | 'video' | 'audio' | 'other';
 
 export type SpaceFeedItem = {
+  /** Whose it is; an older hub leaves it out. */
+  owner?: { id: string; name: string | null };
   key: string;
   sourceId: string;
   origin: 'qspace' | 'yandex';
@@ -91,14 +95,21 @@ export const spacesApi = {
     request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}/sources`, json('POST', { kind: 'yandex', path })),
   removeSource: (id: string, sourceId: string) =>
     noContent(request(`/spaces/${encodeURIComponent(id)}/sources/${encodeURIComponent(sourceId)}`, { method: 'DELETE' })),
-  /** Any of `sourceIds`, `types` and `addedBy` narrows the feed; several of each at once. */
-  feed: (id: string, opts: { offset?: number; limit?: number; sourceIds?: readonly string[]; types?: readonly SpaceFeedType[]; addedBy?: readonly string[] } = {}) => {
+  /** Each kind of file the feed's filters offer, with the extensions it takes. */
+  feedTypes: () => request<{ types: Array<{ type: SpaceFeedType; extensions: string[] }> }>('/spaces/feed-types'),
+  /**
+   * Any of these narrows the feed, several of each at once; kinds and
+   * extensions widen each other (photos or PDFs).
+   */
+  feed: (id: string, opts: { offset?: number; limit?: number; sourceIds?: readonly string[]; types?: readonly SpaceFeedType[]; exts?: readonly string[]; owners?: readonly string[]; addedBy?: readonly string[] } = {}) => {
     const params = new URLSearchParams();
     if (opts.offset) params.set('offset', String(opts.offset));
     if (opts.limit) params.set('limit', String(opts.limit));
     if (opts.sourceIds?.length) params.set('sourceIds', opts.sourceIds.join(','));
     if (opts.types?.length) params.set('types', opts.types.join(','));
     if (opts.addedBy?.length) params.set('addedBy', opts.addedBy.join(','));
+    if (opts.exts?.length) params.set('exts', opts.exts.join(','));
+    if (opts.owners?.length) params.set('owners', opts.owners.join(','));
     const query = params.toString();
     return request<SpaceFeed>(`/spaces/${encodeURIComponent(id)}/feed${query ? `?${query}` : ''}`);
   },

@@ -16,11 +16,16 @@
           :types="filterTypes"
           :added-by="filterPeople"
           :people="adders"
+          :owners="filterOwners"
+          :owner-people="space?.owners ?? []"
+          :exts="filterExts"
           :sheet="phoneLayout"
           @toggle="filterMenuOpen = !filterMenuOpen"
           @reset="resetFilters"
           @toggle-type="toggleType"
           @toggle-person="togglePerson"
+          @toggle-owner="toggleOwner"
+          @update:exts="setExts"
         />
         <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
         <div class="folder-manager-menu">
@@ -53,43 +58,50 @@
       </div>
       <div v-else-if="!space" class="dash-empty">{{ t('driveLoading') }}</div>
       <template v-else>
-        <!-- The folders in the space: pick one to see only it; take out one's own. -->
-        <div v-if="space.sources.length" class="space-sources" role="group" :aria-label="t('spaceFolders')" data-space-sources>
-          <button
-            type="button"
-            class="space-source-chip"
-            :class="{ active: !filterSources.length }"
-            :aria-pressed="!filterSources.length"
-            data-space-source="all"
-            @click="toggleSource(null)"
-          >{{ t('spaceAll') }}</button>
-          <span
-            v-for="source in space.sources"
-            :key="source.id"
-            class="space-source-chip"
-            :class="{ active: filterSources.includes(source.id) }"
-            :data-space-source="source.id"
-          >
-            <button type="button" class="space-source-pick" :aria-pressed="filterSources.includes(source.id)" @click="toggleSource(source.id)">
-              <!-- A Yandex folder still being read turns; one that could not be read says why. -->
-              <LoaderCircle v-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" aria-hidden="true" data-space-source-reading />
-              <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" class="space-source-failed" :size="13" :aria-label="source.syncError" data-space-source-failed v-hint="source.syncError" />
-              <Cloud v-else-if="source.kind === 'yandex'" :size="13" aria-hidden="true" />
-              <FolderIcon v-else :size="13" aria-hidden="true" />
-              <span>{{ source.title }}</span>
-              <span class="space-source-who">{{ source.addedBy.name || '' }}</span>
-            </button>
-            <button
-              v-if="canRemoveSource(source)"
-              type="button"
-              class="space-source-remove"
-              :aria-label="t('spaceRemoveFolder')"
-              :title="t('spaceRemoveFolder')"
-              data-space-source-remove
-              @click="removeSource(source)"
-            ><X :size="12" aria-hidden="true" /></button>
-          </span>
-        </div>
+        <!-- The space's folders as tiles, like a folder's subfolders: pick any
+             number to see only them (picked again, off); take out one's own. -->
+        <template v-if="space.sources.length">
+          <div class="dash-section-head space-section-head">
+            <h2>{{ t('folders') }}</h2>
+            <button v-if="filterSources.length" type="button" class="space-folders-all" data-space-folders-all @click="toggleSource(null)">{{ t('spaceAllFolders') }}</button>
+          </div>
+          <div class="dash-grid subfolder-grid space-folder-grid" role="group" :aria-label="t('spaceFolders')" data-space-sources>
+            <div v-for="source in space.sources" :key="source.id" class="space-folder-tile" :data-space-source="source.id">
+              <button
+                type="button"
+                class="subfolder-card"
+                :class="{ 'is-selected': filterSources.includes(source.id) }"
+                :aria-pressed="filterSources.includes(source.id)"
+                data-space-folder-toggle
+                @click="toggleSource(source.id)"
+              >
+                <span class="subfolder-card-icon" aria-hidden="true">
+                  <Check v-if="filterSources.includes(source.id)" :size="13" />
+                  <!-- A Yandex folder still being read turns; one that could not be read says why. -->
+                  <LoaderCircle v-else-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" data-space-source-reading />
+                  <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" v-hint="source.syncError ?? ''" class="space-source-failed" :size="13" data-space-source-failed />
+                  <Cloud v-else-if="source.kind === 'yandex'" :size="13" />
+                  <FolderIcon v-else :size="13" />
+                </span>
+                <span class="subfolder-card-name">{{ source.title }}</span>
+                <span v-if="source.itemCount !== null" class="subfolder-card-count">{{ source.itemCount || t('emptyFolder') }}</span>
+                <span class="subfolder-card-date space-folder-who">{{ source.addedBy.name || '' }}</span>
+              </button>
+              <button
+                v-if="canRemoveSource(source)"
+                type="button"
+                class="space-folder-remove"
+                :aria-label="t('spaceRemoveFolder')"
+                v-hint="t('spaceRemoveFolder')"
+                data-space-source-remove
+                @click="removeSource(source)"
+              ><X :size="12" aria-hidden="true" /></button>
+            </div>
+          </div>
+          <div class="dash-section-head space-section-head">
+            <h2>{{ t('spaceFeed') }}</h2>
+          </div>
+        </template>
 
         <div v-if="!items.length && loaded && filtered" class="dash-empty" data-space-filtered-empty>
           {{ t('noFilterMatches') }}
@@ -205,7 +217,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
+import { Check, Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
 import { vHint } from '../../directives/hint';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
 import SpaceFilterMenu from './SpaceFilterMenu.vue';
@@ -266,9 +278,11 @@ const menu = ref('');
 const filterSources = ref<string[]>([]);
 const filterTypes = ref<SpaceFeedType[]>([]);
 const filterPeople = ref<string[]>([]);
+const filterOwners = ref<string[]>([]);
+const filterExts = ref<string[]>([]);
 const filterMenuOpen = ref(false);
-const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, addedBy: filterPeople.value });
-const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterPeople.value.length));
+const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, exts: filterExts.value, owners: filterOwners.value, addedBy: filterPeople.value });
+const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length));
 /** Who added the space's folders, once each. */
 const adders = computed(() => {
   const seen = new Map<string, { id: string; name: string | null }>();
@@ -428,6 +442,8 @@ watch(() => props.spaceId, () => {
   filterSources.value = [];
   filterTypes.value = [];
   filterPeople.value = [];
+  filterOwners.value = [];
+  filterExts.value = [];
   filterMenuOpen.value = false;
   space.value = null;
   items.value = [];
@@ -451,10 +467,20 @@ function togglePerson(id: string) {
   filterPeople.value = toggleIn(filterPeople.value, id);
   void load();
 }
+function toggleOwner(id: string) {
+  filterOwners.value = toggleIn(filterOwners.value, id);
+  void load();
+}
+function setExts(exts: string[]) {
+  filterExts.value = exts;
+  void load();
+}
 function resetFilters() {
   filterSources.value = [];
   filterTypes.value = [];
   filterPeople.value = [];
+  filterOwners.value = [];
+  filterExts.value = [];
   void load();
 }
 

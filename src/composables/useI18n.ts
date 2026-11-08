@@ -28,7 +28,8 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
-    spaceFilterAddedBy: 'Добавил', spaceTypeCanva: 'Документы QCanva', spaceTypeDocument: 'Документы и книги', spaceTypeImage: 'Фото', spaceTypeVideo: 'Видео', spaceTypeAudio: 'Аудио', spaceTypeOther: 'Другое',
+    spaceTypeBook: 'Книги', spaceFilterOwner: 'Владелец', spaceFilterAdvanced: 'Дополнительно', spaceFilterExtensions: 'Расширения файлов', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'Все папки', spaceFeed: 'Лента',
+    spaceFilterAddedBy: 'Добавил папку', spaceTypeCanva: 'Документы QCanva', spaceTypeDocument: 'Документы', spaceTypeImage: 'Фото', spaceTypeVideo: 'Видео', spaceTypeAudio: 'Аудио', spaceTypeOther: 'Другое',
     adminHiddenPublicTitle: 'Скрытые из публичных', adminHiddenPublicEmpty: 'Ничего не скрыто', adminColType: 'Тип', adminColHidden: 'Скрыто', adminShowInPublic: 'Вернуть', adminShownInPublic: 'Снова в публичных', adminShowInPublicFailed: 'Не удалось вернуть', adminHiddenPublicLoadFailed: 'Не удалось загрузить скрытые', hiddenByAdmin: 'Скрыто администратором',
     hideFromPublic: 'Скрыть из публичных', hideFromPublicTitle: 'Скрыть «{name}» из публичных?', hideFromPublicConfirm: 'Скрыть', hiddenFromPublic: 'Скрыто из публичных', hideFromPublicFailed: 'Не удалось скрыть',
     spaceAddQspaceFolder: 'Добавить папку Q Space', spaceAddYandexFolder: 'Добавить папку Яндекс Диска',
@@ -745,7 +746,8 @@ export const messages = {
     adminStorageCapacitySaveFailed: 'Не удалось сохранить ёмкость',
   },
   en: {
-    spaceFilterAddedBy: 'Added by', spaceTypeCanva: 'QCanva documents', spaceTypeDocument: 'Documents and books', spaceTypeImage: 'Photos', spaceTypeVideo: 'Videos', spaceTypeAudio: 'Audio', spaceTypeOther: 'Other',
+    spaceTypeBook: 'Books', spaceFilterOwner: 'Owner', spaceFilterAdvanced: 'More', spaceFilterExtensions: 'File extensions', spaceFilterExtensionsPlaceholder: 'pdf, mp4, h3m', spaceAllFolders: 'All folders', spaceFeed: 'Feed',
+    spaceFilterAddedBy: 'Added the folder', spaceTypeCanva: 'QCanva documents', spaceTypeDocument: 'Documents', spaceTypeImage: 'Photos', spaceTypeVideo: 'Videos', spaceTypeAudio: 'Audio', spaceTypeOther: 'Other',
     adminHiddenPublicTitle: 'Hidden from Public', adminHiddenPublicEmpty: 'Nothing is hidden', adminColType: 'Type', adminColHidden: 'Hidden', adminShowInPublic: 'Put back', adminShownInPublic: 'Back in Public', adminShowInPublicFailed: 'Could not put it back', adminHiddenPublicLoadFailed: 'Could not load what is hidden', hiddenByAdmin: 'Hidden by an administrator',
     hideFromPublic: 'Hide from Public', hideFromPublicTitle: 'Hide “{name}” from Public?', hideFromPublicConfirm: 'Hide', hiddenFromPublic: 'Hidden from Public', hideFromPublicFailed: 'Could not hide it',
     spaceAddQspaceFolder: 'Add a Q Space folder', spaceAddYandexFolder: 'Add a Yandex Disk folder',

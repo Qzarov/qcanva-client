@@ -13105,10 +13105,11 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
   align-self: center;
 }
 .subfolder-card-date {
-  /* Zero basis: stays on the count's line even on a phone's narrow tile. */
+  /* Zero basis: stays on the count's line even on a phone's narrow tile;
+     the minimum keeps it off the name's line when there is no count yet. */
   flex: 1 1 0;
+  min-width: 44px;
   align-self: center;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -13166,3 +13167,67 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
   min-height: 0;
   height: 32px;
 }
+
+/* A space's folders as tiles (DashboardSpace.vue): picked ones in the accent,
+   a check for their icon; "take out" in the corner. */
+.space-folder-tile {
+  position: relative;
+  min-width: 0;
+}
+.space-folder-tile > .subfolder-card {
+  width: 100%;
+  height: 100%;
+}
+.subfolder-card.is-selected {
+  border-color: var(--ui-glass-accent-border, var(--color-brands));
+  background: var(--ui-glass-accent-bg, color-mix(in srgb, var(--color-brands) 16%, transparent));
+}
+.subfolder-card.is-selected .subfolder-card-icon {
+  opacity: 1;
+  color: var(--color-brands);
+}
+.space-folder-who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.space-folder-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.space-folder-tile:hover .space-folder-remove,
+.space-folder-remove:focus-visible { opacity: 1; }
+.space-folder-remove:hover { background: var(--ui-surface-subtle); color: var(--ui-text); }
+@media (pointer: coarse) { .space-folder-remove { opacity: 1; } }
+.space-section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+.space-section-head h2 { margin: 0; }
+.space-folder-grid { margin-bottom: 18px; }
+
+/* "All folders" beside the heading: a quiet link, not a button block. */
+.space-folders-all {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--color-brands);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.space-folders-all:hover { text-decoration: underline; }
