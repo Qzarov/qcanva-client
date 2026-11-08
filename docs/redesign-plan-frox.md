@@ -23,7 +23,8 @@ roadmap для структурного рефакторинга клиентс�
   edge/drawing layers, minimap, context menu и controls вынесены из
   `CanvasLoader.vue`; mobile fullscreen text editor вынесен в
   `CanvasFullscreenTextEditor`, remote cursor presentation — в
-  `CanvasRemoteCursors`, draw overlay — в `CanvasDrawCapture`.
+  `CanvasRemoteCursors`, draw overlay — в `CanvasDrawCapture`, file-picker
+  bridge — в `CanvasFileInputs`.
 - Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
   sections, modal layer, shared spaces и Trash вынесены из `DashboardView.vue`;
   старые Drive query-ссылки теперь приводят в dashboard sections.
@@ -55,10 +56,10 @@ roadmap для структурного рефакторинга клиентс�
 | UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
 | TextDocumentView | **93%** | оставшиеся topbar actions и финальная CSS-полировка |
-| CanvasLoader | **84%** | file input bridge, template orchestration и финальная orchestration cleanup |
+| CanvasLoader | **88%** | template orchestration и финальная orchestration cleanup |
 | DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **82%** | оставшиеся границы из строк выше |
+| **Весь план** | **84%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
@@ -73,8 +74,8 @@ roadmap для структурного рефакторинга клиентс�
    Spaces и section-specific navigation.
 3. **TextDocumentView.** Вынести оставшиеся topbar/menu, backlinks, selection
    bubble, link action, slash и mention UI-блоки.
-4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, file
-   input/draw capture и оставшуюся template orchestration.
+4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, draw
+   capture и оставшуюся template orchestration.
 5. **DashboardView.** Вынести shell/header, Yandex section, drag/drop
    orchestration и оставшиеся bulk/feed callbacks.
 6. **Final cleanup.** Перенести component-only CSS из global modules в scoped
