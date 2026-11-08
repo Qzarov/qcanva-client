@@ -242,18 +242,18 @@
             reaching the paper's own focusEditor($event) handler, which would
             otherwise immediately steal focus back into the editor.
           -->
-          <textarea
+          <UiTextarea
             v-if="canEditContent"
             ref="titleTextareaRef"
             v-model="title"
-            rows="1"
-            class="text-doc-title-page-input"
+            textarea-class="text-doc-title-page-input"
+            :rows="1"
             :placeholder="t('untitled')"
             :aria-label="t('documentTitle')"
             @blur="saveTitle"
             @keydown.enter.prevent="focusEditorStart"
             @click.stop
-          ></textarea>
+          />
           <h1 v-else class="text-doc-title-page-readonly" @click.stop>{{ title || t('untitledDocument') }}</h1>
           <EditorContent v-if="editor" :editor="editor" />
           <!-- LIST NESTING on a phone (list-indent.ts): no Tab on an on-screen
@@ -416,9 +416,9 @@
           </button>
         </template>
         <form v-else class="text-doc-bubble-link-form text-doc-bubble-link-form-desktop" @submit.prevent="applyLink">
-          <input
+          <UiInput
             v-model="linkInput"
-            class="text-doc-bubble-link-input"
+            input-class="text-doc-bubble-link-input"
             data-bubble-link-input
             :placeholder="t('linkUrl')"
             :aria-label="t('linkUrl')"
@@ -480,9 +480,9 @@
         >
           <div class="text-doc-link-sheet-title">{{ t('linkAdd') }}</div>
           <form class="text-doc-link-sheet-form" @submit.prevent="applyLink">
-            <input
+            <UiInput
               v-model="linkInput"
-              class="text-doc-link-sheet-input"
+              input-class="text-doc-link-sheet-input"
               :placeholder="t('linkUrl')"
               :aria-label="t('linkUrl')"
               spellcheck="false"
@@ -700,9 +700,11 @@ import TextDocumentOutline from '../components/TextDocumentOutline.vue';
 import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../components/TextDocumentHistoryPanel.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
+import UiInput from '../components/ui/UiInput.vue';
+import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, EditorContent, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, MoreVertical, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink, X },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -2162,7 +2164,8 @@ export default defineComponent({
      */
     const titleTextareaRef = ref<HTMLTextAreaElement | null>(null);
     function autosizeTitleTextarea(): void {
-      const el = titleTextareaRef.value;
+      const el = (titleTextareaRef.value as unknown as { field?: HTMLTextAreaElement | null } | null)?.field
+        ?? titleTextareaRef.value;
       if (!el) return;
       el.style.height = 'auto';
       el.style.height = `${el.scrollHeight}px`;
@@ -2204,7 +2207,8 @@ export default defineComponent({
     watch(titleTextareaRef, (el) => {
       titleResizeObserver?.disconnect();
       titleResizeObserver = null;
-      if (!el) return;
+      const field = (el as unknown as { field?: HTMLTextAreaElement | null } | null)?.field ?? el;
+      if (!field) return;
       if (typeof ResizeObserver === 'undefined') {
         requestAnimationFrame(autosizeTitleTextarea); // best effort without it
         return;
@@ -2216,7 +2220,7 @@ export default defineComponent({
         lastObservedTitleWidth = width;
         autosizeTitleTextarea();
       });
-      titleResizeObserver.observe(el);
+      titleResizeObserver.observe(field);
     });
     onBeforeUnmount(() => titleResizeObserver?.disconnect());
 
