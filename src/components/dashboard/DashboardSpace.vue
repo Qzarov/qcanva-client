@@ -22,10 +22,7 @@
           >⋯</button>
           <Transition name="card-menu-pop">
             <div v-if="menu === 'space'" class="mobile-action-popover" data-space-actions @click.stop>
-              <template v-if="canAdd">
-              <button class="card-menu-item" data-space-add-qspace @click="openQspaceDialog">{{ t('spaceAddQspaceFolder') }}</button>
-              <button v-if="yandexConnected" class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceAddYandexFolder') }}</button>
-              </template>
+              <button v-if="canAdd" class="card-menu-item" data-space-add-folder @click="startAdd()">{{ t('spaceAddFolder') }}</button>
               <button class="card-menu-item" data-space-members-open @click="openMembers">{{ t('spaceMembers') }}</button>
               <template v-if="space.role === 'owner'">
                 <button class="card-menu-item" data-space-rename @click="rename">{{ t('rename') }}</button>
@@ -163,6 +160,7 @@
       </Transition>
     </Teleport>
 
+    <SpaceAddDialog v-if="addDialogOpen" @pick="pickSource" @close="addDialogOpen = false" />
     <SpaceMembersDialog v-if="membersOpen && space" :space="space" :me-id="meId" @changed="onMembersChanged" @close="membersOpen = false" />
     <SpaceFolderDialog
       v-if="qspaceOpen"
@@ -204,6 +202,7 @@ import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
 import FilePlaceholder from './FilePlaceholder.vue';
+import SpaceAddDialog from './SpaceAddDialog.vue';
 import SpaceFolderDialog from './SpaceFolderDialog.vue';
 import SpaceMembersDialog from './SpaceMembersDialog.vue';
 import YandexFolderPicker from './YandexFolderPicker.vue';
@@ -415,15 +414,23 @@ const closeMenu = (event: MouseEvent) => {
 const addMenuStyle = ref<Record<string, string>>({});
 const teleportReady = ref(false);
 const PHONE = '(max-width: 720px)';
+const addDialogOpen = ref(false);
 /**
- * Adding a folder - the empty space's tile, the toolbar's Add, the phone's
- * "+": both kinds of folder to choose from; with no Yandex Disk connected
- * there is one, so its picker opens straight away (no menu of one item).
+ * Adding a folder - "⋯", the empty space's tile, the toolbar's Add, the
+ * phone's "+": where it comes from is chosen first - in the Add window's look
+ * on a computer, in a bottom sheet on a phone. With no Yandex Disk connected
+ * there is one place, so its picker opens straight away (nothing of one item).
  */
 function startAdd(event?: Event) {
   if (!canAdd.value) return;
   if (!yandexConnected.value) {
     openQspaceDialog();
+    return;
+  }
+  const phone = typeof window !== 'undefined' && Boolean(window.matchMedia?.(PHONE).matches);
+  if (!phone) {
+    menu.value = '';
+    addDialogOpen.value = true;
     return;
   }
   if (menu.value === 'add') {
@@ -432,7 +439,6 @@ function startAdd(event?: Event) {
   }
   const anchor = (event?.currentTarget ?? event?.target) as HTMLElement | null | undefined;
   const rect = anchor?.getBoundingClientRect();
-  const phone = typeof window !== 'undefined' && window.matchMedia?.(PHONE).matches;
   addMenuStyle.value = rect && !phone
     ? {
       position: 'fixed',
@@ -442,6 +448,11 @@ function startAdd(event?: Event) {
     }
     : {};
   menu.value = 'add';
+}
+function pickSource(source: 'qspace' | 'yandex') {
+  addDialogOpen.value = false;
+  if (source === 'yandex') openYandexPicker();
+  else openQspaceDialog();
 }
 function openQspaceDialog() {
   menu.value = '';
