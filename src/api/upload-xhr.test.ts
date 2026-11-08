@@ -22,14 +22,14 @@ afterEach(() => {
  * methods on the shared prototype with its bridge.
  */
 function patchLikeCapacitor() {
-  const own = Object.fromEntries(METHODS.map((name) => [name, vi.fn()]));
+  const own = Object.fromEntries(METHODS.map((name) => [name, vi.fn()])) as Record<(typeof METHODS)[number], ReturnType<typeof vi.fn>>;
   win.CapacitorWebXMLHttpRequest = {
     ...own,
     constructor: XMLHttpRequest.prototype.constructor,
     fullObject: window.XMLHttpRequest,
     prototype: XMLHttpRequest.prototype,
   };
-  const bridge = Object.fromEntries(METHODS.map((name) => [name, vi.fn()]));
+  const bridge = Object.fromEntries(METHODS.map((name) => [name, vi.fn()])) as Record<(typeof METHODS)[number], ReturnType<typeof vi.fn>>;
   for (const name of METHODS) proto[name] = bridge[name];
   win.XMLHttpRequest = function PatchedXhr() { return new OriginalXhr(); } as unknown as typeof XMLHttpRequest;
   return { own, bridge };
