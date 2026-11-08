@@ -532,6 +532,7 @@ import { useI18n } from '../composables/useI18n';
 import { useTextDocumentOutline } from '../composables/useTextDocumentOutline';
 import { useTextDocumentSlashMenu } from '../composables/useTextDocumentSlashMenu';
 import { useTextDocumentMentionMenu } from '../composables/useTextDocumentMentionMenu';
+import { useTextDocumentTopbarMenu } from '../composables/useTextDocumentTopbarMenu';
 import { useTextDocumentLinkActions } from '../composables/useTextDocumentLinkActions';
 import { useTextDocumentLinkEditor } from '../composables/useTextDocumentLinkEditor';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
@@ -621,41 +622,6 @@ export default defineComponent({
       if (tab.active.value) router.replace(to).catch(() => {});
     };
     const closeShare = () => { showShare.value = false; };
-    // Mobile-only "⋮" popover that houses Access/History (both stay driven
-    // by the same showShare/toggleHistory state the desktop buttons use).
-    const docMenuOpen = ref(false);
-    const docMenuStyle = ref<Record<string, string> | null>(null);
-    const toggleDocMenu = (event?: Event) => {
-      if (docMenuOpen.value) {
-        docMenuOpen.value = false;
-        docMenuStyle.value = null;
-        return;
-      }
-      // Teleported to <body> below (the topbar's own backdrop-filter makes
-      // it a containing block for position:fixed, and a separate stacking
-      // context that would otherwise sit the popover's z-index UNDER the
-      // teleported backdrop's) - so both need a viewport-relative position
-      // computed from the trigger, same approach as the dashboard's
-      // computeCardMenuStyle.
-      const trigger = event?.currentTarget as HTMLElement | undefined;
-      const rect = trigger?.getBoundingClientRect();
-      docMenuStyle.value = rect
-        ? { position: 'fixed', top: `${Math.round(rect.bottom + 6)}px`, right: `${Math.round(window.innerWidth - rect.right)}px` }
-        : null;
-      docMenuOpen.value = true;
-    };
-    const closeDocMenu = () => { docMenuOpen.value = false; docMenuStyle.value = null; };
-    const onDocMenuEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeDocMenu();
-    };
-    watch(docMenuOpen, (open) => {
-      if (open) window.addEventListener('keydown', onDocMenuEscape);
-      else window.removeEventListener('keydown', onDocMenuEscape);
-    });
-    onBeforeUnmount(() => window.removeEventListener('keydown', onDocMenuEscape));
-    const openAccessFromDocMenu = () => { closeDocMenu(); showShare.value = !showShare.value; };
-    const openHistoryFromDocMenu = () => { closeDocMenu(); void toggleHistory(); };
-
     /**
      * COPY LINK (front task 8/11). The custom slug if one is set, the
      * canonical id otherwise - the same precedence `load()` already uses to
@@ -682,8 +648,6 @@ export default defineComponent({
         showToast(t('copyLinkFailed'), 'error');
       }
     }
-    const copyDocumentLinkFromDocMenu = () => { closeDocMenu(); void copyDocumentLink(); };
-    const toggleOutlinePanelFromDocMenu = () => { closeDocMenu(); toggleOutlinePanel(); };
 
     const slug = ref<string | null>(null);
     const slugInput = ref('');
@@ -980,6 +944,23 @@ export default defineComponent({
       onOutlineLinkHover,
       syncActiveOutlineHeading,
     } = outline;
+
+    const {
+      docMenuOpen,
+      docMenuStyle,
+      toggleDocMenu,
+      closeDocMenu,
+      openAccessFromDocMenu,
+      openHistoryFromDocMenu,
+      copyDocumentLinkFromDocMenu,
+      toggleOutlinePanelFromDocMenu,
+    } = useTextDocumentTopbarMenu({
+      toggleShare: () => { showShare.value = !showShare.value; },
+      toggleHistory,
+      copyLink: copyDocumentLink,
+      toggleOutline: toggleOutlinePanel,
+    });
+
 
     /** Scrolls to and selects the heading `headingId` names, in THIS document only (see heading-id.ts). */
     function navigateToHeadingLink(headingId: string): void {

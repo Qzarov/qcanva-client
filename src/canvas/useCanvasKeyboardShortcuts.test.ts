@@ -6,10 +6,14 @@ const key = (value: string, extra: Partial<KeyboardEventInit> = {}) => new Keybo
 
 describe('useCanvasKeyboardShortcuts', () => {
   it('routes editing shortcuts and keeps text fields native', () => {
-    const calls = Object.fromEntries(['undo', 'redo', 'copy', 'paste', 'duplicate', 'selectAll', 'clear', 'delete'].map((name) => [name, vi.fn()]));
+    const calls = {
+      undo: vi.fn(), redo: vi.fn(), copy: vi.fn(), paste: vi.fn(), duplicate: vi.fn(),
+      selectAll: vi.fn(), clear: vi.fn(), delete: vi.fn(),
+    };
+    const inputTarget = {} as EventTarget;
     const controller = useCanvasKeyboardShortcuts({
       rulerActive: () => false,
-      isEditableTarget: (target) => target === 'input',
+      isEditableTarget: (target) => target === inputTarget,
       isAddMenuOpen: () => false,
       closeAddMenu: vi.fn(),
       isDrawingActive: () => false,
@@ -45,7 +49,7 @@ describe('useCanvasKeyboardShortcuts', () => {
     expect(calls.delete).toHaveBeenCalledOnce();
 
     const inputEvent = key('c', { ctrlKey: true });
-    Object.defineProperty(inputEvent, 'target', { value: 'input' });
+    Object.defineProperty(inputEvent, 'target', { value: inputTarget });
     controller.onKeyDown(inputEvent);
     expect(calls.copy).toHaveBeenCalledOnce();
   });
