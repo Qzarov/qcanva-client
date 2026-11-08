@@ -23,7 +23,8 @@ roadmap для структурного рефакторинга клиентс�
   edge/drawing layers, minimap, context menu и controls вынесены из
   `CanvasLoader.vue`.
 - Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
-  sections, modal layer и shared spaces вынесены из `DashboardView.vue`.
+  sections, modal layer, shared spaces и Trash вынесены из `DashboardView.vue`;
+  старые Drive query-ссылки теперь приводят в dashboard sections.
 - Text documents: outline, history, link/mention/slash actions и editor
   extensions вынесены из `TextDocumentView.vue`; title и link inputs используют
   общие `UiTextarea`/`UiInput`, mobile action menu вынесено в
@@ -51,9 +52,9 @@ roadmap для структурного рефакторинга клиентс�
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
 | TextDocumentView | **80%** | selection bubble, slash/mention UI и оставшиеся topbar actions |
 | CanvasLoader | **75%** | mobile editor shell, remote cursors, file/draw capture, template orchestration |
-| DashboardView | **72%** | shell/header, Yandex section, drag/drop и bulk orchestration |
+| DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **74%** | оставшиеся границы из строк выше |
+| **Весь план** | **75%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
