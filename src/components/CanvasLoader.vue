@@ -261,7 +261,7 @@ import { computeResizedRect } from "../canvas/resizeMath";
 import { uploadImage } from "../api/client";
 import { type Drawing, type ActiveDrawingTool, strokeToPath, hitTestDrawing, drawingBounds, translateDrawing } from "../canvas/drawing";
 import { groupBorderRect, hitTestGroupBorder } from '../canvas/groupBorder';
-import { DND_ABILITIES, abilityModifier, createDndCharacterSheet, formatModifier, normalizeDndCharacterSheet, savingThrowBonus, type DndAbilityKey, type DndCharacterSheetData, type DndListItem, type DndTab } from "../dnd/characterSheet";
+import { createDndCharacterSheet } from "../dnd/characterSheet";
 import BoardPreview from './board/BoardPreview.vue';
 import CanvasRulerOverlay from '../canvas/CanvasRulerOverlay.vue';
 import CanvasNodeLink from './canvas/CanvasNodeLink.vue';
@@ -293,6 +293,7 @@ import { useCanvasHistory } from '../canvas/useCanvasHistory';
 import { useCanvasRemoteSync } from '../canvas/useCanvasRemoteSync';
 import { useCanvasMinimap } from '../canvas/useCanvasMinimap';
 import { useCanvasEmbeds } from '../canvas/useCanvasEmbeds';
+import { useCanvasDndTemplate } from '../canvas/useCanvasDndTemplate';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -571,71 +572,6 @@ export default defineComponent({
     const canvasNodes = computed(() => viewerNodes.value.filter((n) => n.type === "canvas"));
     const documentNodes = computed(() => viewerNodes.value.filter((n) => n.type === "document"));
     const fitToContent = () => fitCameraToContent(viewerNodes.value);
-
-    const dndAbilities = DND_ABILITIES;
-    const dndTabs = [
-      { key: 'attacks', label: 'Атаки' }, { key: 'features', label: 'Способности' }, { key: 'equipment', label: 'Снаряжение' },
-      { key: 'personality', label: 'Личность' }, { key: 'goals', label: 'Цели' }, { key: 'notes', label: 'Заметки' }, { key: 'spells', label: 'Заклинания' },
-    ] as const;
-    const dndPersonalityFields = [
-      { key: 'traits', label: 'Черты' }, { key: 'ideals', label: 'Идеалы' }, { key: 'bonds', label: 'Привязанности' }, { key: 'flaws', label: 'Слабости' },
-    ] as const;
-    // The selected tab is presentation state only: it must not create canvas
-    // operations, history entries, or affect other collaborators.
-    const dndActiveTabs = reactive<Record<string, DndCharacterSheetData['activeTab']>>({});
-    const dndInteractionNodeId = ref<string | null>(null);
-    const isDndInteracting = (node: CanvasNode) => !props.readonly && dndInteractionNodeId.value === node.id;
-    const enterDndInteraction = (node: CanvasNode) => {
-      if (node.templateId === 'dnd-character' && !props.readonly) dndInteractionNodeId.value = node.id;
-    };
-    const exitDndInteraction = (node: CanvasNode) => {
-      if (dndInteractionNodeId.value === node.id) dndInteractionNodeId.value = null;
-    };
-    const toggleDndInteraction = (node: CanvasNode) => isDndInteracting(node) ? exitDndInteraction(node) : enterDndInteraction(node);
-    const onDndSheetMouseDown = (event: MouseEvent, node: CanvasNode) => {
-      if (isDndInteracting(node)) event.stopPropagation();
-    };
-    const dndSheet = (node: CanvasNode) => {
-      const data = normalizeDndCharacterSheet(node.templateData);
-      data.activeTab = dndActiveTabs[node.id] || data.activeTab;
-      return data;
-    };
-    const updateDndSheet = (node: CanvasNode, mutate: (data: DndCharacterSheetData) => void) => {
-      if (props.readonly || !isDndInteracting(node)) return;
-      const data = normalizeDndCharacterSheet(node.templateData);
-      mutate(data);
-      const templateData = JSON.parse(JSON.stringify(data)) as Record<string, unknown>;
-      delete templateData.activeTab;
-      pushUndo();
-      node.templateData = templateData;
-      emitOp({ type: 'node-update', id: node.id, changes: { templateData } });
-    };
-    const setDndIdentity = (node: CanvasNode, key: 'name' | 'race' | 'className' | 'portraitUrl', value: string) => updateDndSheet(node, (data) => { data.identity[key] = value; });
-    const setDndNumber = (node: CanvasNode, _key: 'level', value: string) => updateDndSheet(node, (data) => { data.identity.level = Math.max(1, Number(value) || 1); });
-    const setDndCombat = (node: CanvasNode, key: 'armorClass' | 'speed' | 'currentHp' | 'maxHp' | 'temporaryHp', value: string) => updateDndSheet(node, (data) => { const min = key === 'maxHp' ? 1 : 0; data.combat[key] = Math.max(min, Number(value) || 0); });
-    const changeDndHp = (node: CanvasNode, delta: number) => updateDndSheet(node, (data) => { data.combat.currentHp = Math.max(0, data.combat.currentHp + delta); });
-    const setDndAbilityScore = (node: CanvasNode, key: DndAbilityKey, value: string) => updateDndSheet(node, (data) => { data.abilities[key].score = Math.max(1, Math.min(30, Number(value) || 1)); });
-    const toggleDndSave = (node: CanvasNode, key: DndAbilityKey) => updateDndSheet(node, (data) => { data.abilities[key].savingThrowProficient = !data.abilities[key].savingThrowProficient; });
-    const toggleDndMode = (node: CanvasNode) => updateDndSheet(node, (data) => { data.displayMode = data.displayMode === 'compact' ? 'full' : 'compact'; });
-    const setDndTab = (node: CanvasNode, tab: DndCharacterSheetData['activeTab']) => { if (isDndInteracting(node)) dndActiveTabs[node.id] = tab; };
-    const setDndNotes = (node: CanvasNode, value: string) => updateDndSheet(node, (data) => { data.notes = value; });
-    const setDndPersonality = (node: CanvasNode, key: keyof DndCharacterSheetData['personality'], value: string) => updateDndSheet(node, (data) => { data.personality[key] = value; });
-    const dndTabItems = (node: CanvasNode): DndListItem[] => {
-      const data = dndSheet(node);
-      const tab = data.activeTab;
-      return ['attacks', 'features', 'equipment', 'spells', 'goals'].includes(tab) ? data[tab as 'attacks' | 'features' | 'equipment' | 'spells' | 'goals'] : [];
-    };
-    const updateDndList = (node: CanvasNode, tab: DndTab, mutate: (items: DndListItem[]) => void) => updateDndSheet(node, (data) => {
-      if (!['attacks', 'features', 'equipment', 'spells', 'goals'].includes(tab)) return;
-      const key = tab as 'attacks' | 'features' | 'equipment' | 'spells' | 'goals';
-      mutate(data[key]);
-    });
-    const addDndListItem = (node: CanvasNode) => updateDndList(node, dndSheet(node).activeTab, (items) => { items.push({ id: genId(), name: '' }); });
-    const updateDndListItem = (node: CanvasNode, id: string, key: keyof DndListItem, value: string | number | boolean) => updateDndList(node, dndSheet(node).activeTab, (items) => { const item = items.find((entry) => entry.id === id); if (item) item[key] = value as never; });
-    const removeDndListItem = (node: CanvasNode, id: string) => updateDndList(node, dndSheet(node).activeTab, (items) => { const index = items.findIndex((entry) => entry.id === id); if (index >= 0) items.splice(index, 1); });
-    const formatDndModifier = (score: number) => formatModifier(abilityModifier(score));
-    const dndSavingThrow = (node: CanvasNode, key: DndAbilityKey) => { const data = dndSheet(node); return savingThrowBonus(data.abilities[key], data.proficiencyBonus); };
-    const rollTemplateAbility = (node: CanvasNode, ability: DndAbilityKey) => { if (!isDndInteracting(node)) return; const data = dndSheet(node); emit('template-roll', { nodeId: node.id, label: `${data.identity.name}: ${ability.toUpperCase()}`, modifier: abilityModifier(data.abilities[ability].score) }); };
 
     // Bounding box for SVG edges — explicit position & size
     const contentBounds = computed(() => {
@@ -1819,6 +1755,41 @@ export default defineComponent({
       drawings,
       scheduleChange,
       clearSelection: clearSelectionState,
+    });
+
+    const {
+      dndAbilities,
+      dndTabs,
+      dndPersonalityFields,
+      dndSheet,
+      isDndInteracting,
+      enterDndInteraction,
+      exitDndInteraction,
+      toggleDndInteraction,
+      onDndSheetMouseDown,
+      setDndIdentity,
+      setDndNumber,
+      setDndCombat,
+      changeDndHp,
+      setDndAbilityScore,
+      toggleDndSave,
+      toggleDndMode,
+      setDndTab,
+      setDndNotes,
+      setDndPersonality,
+      dndTabItems,
+      addDndListItem,
+      updateDndListItem,
+      removeDndListItem,
+      formatDndModifier,
+      dndSavingThrow,
+      rollTemplateAbility,
+    } = useCanvasDndTemplate({
+      readonly: () => props.readonly,
+      genId,
+      pushUndo,
+      emitOp: (operation) => emitOp(operation),
+      emitRoll: (roll) => emit('template-roll', roll),
     });
 
     const {
