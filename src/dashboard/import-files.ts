@@ -28,8 +28,19 @@ export function isCanvasData(data: unknown): boolean {
 
 const HTML_TAG = /<\s*(!doctype|html|head|body|main|header|footer|section|article|div|p|h[1-6]|span|table|ul|ol|img|a|style|script)\b/i;
 
+/**
+ * A canvas, a page or a Markdown document is text of a few MB at most; a file
+ * far bigger (a video picked under the wrong kind) is not read at all - read
+ * as text it takes the whole file into memory, which crashes a phone's
+ * WebView. It is told apart like any file that is not the kind said.
+ */
+export const IMPORT_TEXT_MAX_BYTES = 25 * 1024 * 1024;
+
 export async function checkImportFile(kind: ImportKind, file: File): Promise<ImportCheck> {
   if (kind === 'file') return { ok: true };
+  if (file.size > IMPORT_TEXT_MAX_BYTES) {
+    return { ok: false, problem: kind === 'canvas' ? 'notCanvas' : kind === 'html' ? 'notHtml' : 'notText' };
+  }
   const text = await file.text();
   if (!text.trim()) return { ok: false, problem: 'empty' };
   if (kind === 'canvas') {

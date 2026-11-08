@@ -1279,8 +1279,12 @@ export default defineComponent({
       const folders = allFolderSummaries.value
       .filter((folder) => {
         const isDefaultFolder = folder.name.toLowerCase() === 'default';
-        return folder.items.length
-          || (folder.role === 'owner' && (isDefaultFolder || !isTechnicalFolder(folder as FolderSummary)));
+        if (folder.items.length) return true;
+        if (folder.role === 'owner') return isDefaultFolder || !isTechnicalFolder(folder as FolderSummary);
+        // A folder shared with the user is always theirs to see - also when it
+        // holds only files (photos, videos), only subfolders, or nothing yet.
+        // `items` counts QCanva documents alone, so the old rule hid it.
+        return !isTechnicalFolder(folder as FolderSummary);
       });
 
       // A parent that is empty itself must stay visible when a descendant survived
@@ -1665,6 +1669,49 @@ export default defineComponent({
         feedScroller?.removeEventListener(type, onFeedManualScroll);
       }
       if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
+    });
+
+    /**
+     * The header never scrolls away. Only `.app-main` scrolls; the frame
+     * around it (the page, .app-layout, the shells) is overflow: hidden, but
+     * a browser still scrolls such a box itself: a phone does when the
+     * keyboard opens for an input (iOS Safari leaves the page scrolled after
+     * it closes), and focus() / scrollIntoView() scroll every ancestor. The
+     * header then sat above the screen with nothing to drag it back by.
+     * Whatever scrolls the frame, it goes back to the top.
+     */
+    let frameBoxes: HTMLElement[] = [];
+    const pinFrame = () => {
+      for (const box of frameBoxes) {
+        if (box.scrollTop || box.scrollLeft) {
+          box.scrollTop = 0;
+          box.scrollLeft = 0;
+        }
+      }
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    };
+    // Not while the keyboard is up: the browser moves the page to keep the
+    // typed-in field in view, and fighting it would hide the field.
+    const pinFrameUnlessTyping = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      pinFrame();
+    };
+    const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
+    onMounted(() => {
+      frameBoxes = ['.app-layout.dashboard-view', '.dashboard-app-shell', '.dashboard-central-shell']
+        .map((selector) => document.querySelector(selector) as HTMLElement | null)
+        .filter((box): box is HTMLElement => Boolean(box));
+      for (const box of frameBoxes) box.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      window.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      document.addEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.addEventListener('resize', pinFrameUnlessTyping);
+    });
+    onBeforeUnmount(() => {
+      for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
+      window.removeEventListener('scroll', pinFrameUnlessTyping);
+      document.removeEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.removeEventListener('resize', pinFrameUnlessTyping);
     });
     const toggleRecentExpanded = () => {
       const collapsing = recentExpanded.value;
@@ -3604,8 +3651,11 @@ export default defineComponent({
      * filter leaves them out; a type filter keeps them only with "Files".
      */
     const filesCounted = computed(() => !searchQuery.value.trim() && !selectedTags.value.length && typePasses(contentTypes.value, 'file'));
+    // A top folder for this user: no parent, or one they cannot see - a folder
+    // shared from inside someone else's has a parentId the user has no folder for.
+    const visibleFolderIds = computed(() => new Set(allResourceFolders.value.map((folder) => folder.id)));
     const recentFolderTiles = computed(() => allFolderSummaries.value
-      .filter((folder) => !(folder.parentId ?? null))
+      .filter((folder) => !folder.parentId || !visibleFolderIds.value.has(folder.parentId))
       .map((folder) => {
         const totalCount = folder.items.length;
         const matchingCount = folder.items.filter((item) => {

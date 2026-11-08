@@ -1,4 +1,5 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
+import { createUploadXhr } from './upload-xhr';
 import { resolveDownloadUrl } from './drive';
 import { useI18n } from '../composables/useI18n';
 
@@ -150,8 +151,8 @@ export type YandexUploadHandle = { promise: Promise<YandexItem>; abort: () => vo
 
 /** Uploads one file to `path` (the full target path) with progress, streamed through the hub. */
 export function uploadYandexFile(path: string, file: File, onProgress?: (percent: number) => void): YandexUploadHandle {
-  const XHR = (typeof window !== 'undefined' && window.XMLHttpRequest) || (globalThis as any).XMLHttpRequest;
-  const xhr: XMLHttpRequest = new XHR();
+  // Not CapacitorHttp's: it would read the whole file into memory (upload-xhr.ts).
+  const xhr = createUploadXhr();
   const promise = new Promise<YandexItem>((resolve, reject) => {
     const { t } = useI18n();
     xhr.open('PUT', `${(API_BASE || '').replace(/\/+$/, '')}/yandex-disk/files${q({ path })}`, true);
