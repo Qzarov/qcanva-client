@@ -28,6 +28,7 @@ const locale = ref<UiLocale>(initialLocale());
  */
 export const messages = {
   ru: {
+    adminHiddenPublicTitle: 'Скрытые из публичных', adminHiddenPublicEmpty: 'Ничего не скрыто', adminColType: 'Тип', adminColHidden: 'Скрыто', adminShowInPublic: 'Вернуть', adminShownInPublic: 'Снова в публичных', adminShowInPublicFailed: 'Не удалось вернуть', adminHiddenPublicLoadFailed: 'Не удалось загрузить скрытые', hiddenByAdmin: 'Скрыто администратором',
     hideFromPublic: 'Скрыть из публичных', hideFromPublicTitle: 'Скрыть «{name}» из публичных?', hideFromPublicConfirm: 'Скрыть', hiddenFromPublic: 'Скрыто из публичных', hideFromPublicFailed: 'Не удалось скрыть',
     spaceAddQspaceFolder: 'Добавить папку Q Space', spaceAddYandexFolder: 'Добавить папку Яндекс Диска',
     driveRestored: 'Файл восстановлен',
@@ -743,6 +744,7 @@ export const messages = {
     adminStorageCapacitySaveFailed: 'Не удалось сохранить ёмкость',
   },
   en: {
+    adminHiddenPublicTitle: 'Hidden from Public', adminHiddenPublicEmpty: 'Nothing is hidden', adminColType: 'Type', adminColHidden: 'Hidden', adminShowInPublic: 'Put back', adminShownInPublic: 'Back in Public', adminShowInPublicFailed: 'Could not put it back', adminHiddenPublicLoadFailed: 'Could not load what is hidden', hiddenByAdmin: 'Hidden by an administrator',
     hideFromPublic: 'Hide from Public', hideFromPublicTitle: 'Hide “{name}” from Public?', hideFromPublicConfirm: 'Hide', hiddenFromPublic: 'Hidden from Public', hideFromPublicFailed: 'Could not hide it',
     spaceAddQspaceFolder: 'Add a Q Space folder', spaceAddYandexFolder: 'Add a Yandex Disk folder',
     driveRestored: 'File restored',

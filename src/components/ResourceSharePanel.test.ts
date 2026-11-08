@@ -40,6 +40,27 @@ afterEach(() => {
 });
 
 describe('ResourceSharePanel', () => {
+  it('locks "Show in Public" when an admin hid it, and says so when it is pressed', async () => {
+    const panel = mountPanel({ visibility: 'public', listedInPublic: true, publicHidden: true });
+    const box = $<HTMLInputElement>('[data-share-listed] input')!;
+    expect(box.disabled).toBe(true);
+    expect(box.checked).toBe(false);
+    expect($('[data-share-hidden-by-admin]')).toBeNull();
+    $<HTMLElement>('[data-share-listed]')!.click();
+    await flushPromises();
+    expect($('[data-share-hidden-by-admin]')?.textContent).toBeTruthy();
+    expect(panel.emitted('update:listedInPublic')).toBeUndefined();
+  });
+
+  it('leaves "Show in Public" to the owner otherwise', async () => {
+    mountPanel({ visibility: 'public', listedInPublic: false });
+    const box = $<HTMLInputElement>('[data-share-listed] input')!;
+    expect(box.disabled).toBe(false);
+    $<HTMLElement>('[data-share-listed]')!.click();
+    await flushPromises();
+    expect($('[data-share-hidden-by-admin]')).toBeNull();
+  });
+
   it('renders the document sheet layout: link first, then access, custom link, invites', () => {
     mountPanel();
     const titles = Array.from(document.querySelectorAll('.share-section-title')).map((el) => el.textContent?.trim().toLowerCase());

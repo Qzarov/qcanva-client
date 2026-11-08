@@ -504,6 +504,7 @@
         :visibility="visibility"
         :allow-public-edit="allowPublicEdit"
         :listed-in-public="listedInPublic"
+        :public-hidden="publicHidden"
         :permissions="permissions"
         glass
         v-model:slug="slugInput"
@@ -932,6 +933,7 @@ export default defineComponent({
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const listedInPublic = ref(false);
+    const publicHidden = ref(false);
     const revision = ref(0);
     const isResyncing = ref(false);
     const syncIssue = ref<'conflict' | ''>('');
@@ -1259,6 +1261,7 @@ export default defineComponent({
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
         listedInPublic.value = res.canvas.listedInPublic === true;
+        publicHidden.value = res.canvas.publicHidden === true;
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         if (res.role === 'owner') loadPermissions();
@@ -1995,6 +1998,7 @@ export default defineComponent({
         visibility.value = res.canvas.visibility || (res.canvas.isPublic ? 'public' : 'private');
         allowPublicEdit.value = !!res.canvas.allowPublicEdit;
         listedInPublic.value = res.canvas.listedInPublic === true;
+        publicHidden.value = res.canvas.publicHidden === true;
         passwordAccessEnabled.value = !!res.canvas.passwordAccessEnabled;
         passwordAccessRole.value = res.canvas.passwordAccessRole || 'read';
         loading.value = false;
@@ -2177,7 +2181,7 @@ export default defineComponent({
       publicUrl, copyPublicLink,
       onCanvasChange, onCanvasOp, onCursorMove, saveTitle, setVisibility, visibility, doShare, doRevoke,
       slug, slugInput, savingSlug, saveSlug,
-      allowPublicEdit, listedInPublic, canManageSettings, setAllowPublicEdit, setListedInPublic, slugError,
+      allowPublicEdit, listedInPublic, publicHidden, canManageSettings, setAllowPublicEdit, setListedInPublic, slugError,
       passwordAccessEnabled, passwordAccessPassword, passwordAccessRole, savePasswordAccess,
       searchQuery, searchMatches, searchIndex, runCanvasSearch, focusNextSearchResult,
       isAuthenticated, isAdmin, currentUser, canViewHistory,

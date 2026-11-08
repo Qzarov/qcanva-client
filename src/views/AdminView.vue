@@ -219,6 +219,42 @@
       </table>
         </div>
       </section>
+
+      <!-- What admins took out of Public (the dashboard's card "⋯"), to put back. -->
+      <section v-if="hiddenSupported" class="admin-card" data-admin-hidden-public>
+        <h2>{{ t('adminHiddenPublicTitle') }}</h2>
+        <p v-if="!hiddenPublic.length" class="admin-empty" data-admin-hidden-empty>{{ t('adminHiddenPublicEmpty') }}</p>
+        <div v-else class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>{{ t('adminColTitle') }}</th>
+                <th>{{ t('adminColType') }}</th>
+                <th>{{ t('adminColOwner') }}</th>
+                <th>{{ t('adminColHidden') }}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in hiddenPublic" :key="item.type + ':' + item.id" :data-admin-hidden-item="item.type + ':' + item.id">
+                <td><router-link :to="resourceLink(item)" class="admin-link">{{ item.title || t('untitled') }}</router-link></td>
+                <td>{{ typeLabel(item.type) }}</td>
+                <td>{{ item.ownerName || item.ownerEmail }}</td>
+                <td>{{ formatDate(item.hiddenAt) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn-ghost btn-sm"
+                    :disabled="restoring === item.type + ':' + item.id"
+                    :data-admin-show-public="item.type + ':' + item.id"
+                    @click="showInPublic(item)"
+                  >{{ t('adminShowInPublic') }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </template>
     </main>
   </div>
@@ -230,7 +266,7 @@ import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
 import { ArrowLeft } from '@lucide/vue';
-import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
+import { adminRequest, adminApi, type AdminSettings, type HiddenPublicResource } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
 
 function getToken() { return localStorage.getItem('token'); }
@@ -385,6 +421,14 @@ export default defineComponent({
       }
 
       try {
+        hiddenPublic.value = await adminApi.listHiddenFromPublic();
+      } catch (e: any) {
+        // An older hub without moderation: no section.
+        if (e.status === 404) hiddenSupported.value = false;
+        else showToast(e.message || t('adminHiddenPublicLoadFailed'), 'error');
+      }
+
+      try {
         const set = await adminApi.getSettings();
         if (set && typeof (set as any).driveMaxFileBytes === 'number') {
           settings.value = set;
@@ -520,8 +564,41 @@ export default defineComponent({
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
     }) : '—';
 
+    // ----- hidden from Public
+    const hiddenPublic = ref<HiddenPublicResource[]>([]);
+    const hiddenSupported = ref(true);
+    const restoring = ref('');
+    const resourceLink = (item: HiddenPublicResource) => {
+      const id = encodeURIComponent(item.slug || item.id);
+      if (item.type === 'canvas') return `/canvas/${id}`;
+      if (item.type === 'html-document') return `/edit/html/${id}`;
+      return `/docs/${id}`;
+    };
+    const typeLabel = (type: HiddenPublicResource['type']) => (
+      type === 'canvas' ? t('canvas') : type === 'html-document' ? t('htmlDocument') : t('document')
+    );
+    const showInPublic = async (item: HiddenPublicResource) => {
+      const key = `${item.type}:${item.id}`;
+      restoring.value = key;
+      try {
+        await adminApi.showInPublic(item.type, item.id);
+        hiddenPublic.value = hiddenPublic.value.filter((other) => `${other.type}:${other.id}` !== key);
+        showToast(t('adminShownInPublic'), 'success');
+      } catch (e: any) {
+        showToast(e.message || t('adminShowInPublicFailed'), 'error');
+      } finally {
+        restoring.value = '';
+      }
+    };
+
     onMounted(load);
     return {
+      hiddenPublic,
+      hiddenSupported,
+      restoring,
+      resourceLink,
+      typeLabel,
+      showInPublic,
       users,
       canvases,
       stats,
@@ -611,6 +688,9 @@ export default defineComponent({
 .stat-value { font-size: 28px; font-weight: 750; line-height: 1.1; }
 .stat-label { color: var(--ui-text-secondary); font-size: 13px; }
 .admin-table-wrap { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+.admin-empty { margin: 0; color: var(--ui-text-secondary); font-size: 14px; }
+.admin-link { color: inherit; font-weight: 600; text-decoration: none; }
+.admin-link:hover { text-decoration: underline; }
 /* A table again on a phone too (the old phone rule made it a scrolling
    block): the card's wrap scrolls it sideways. */
 .admin-table { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }

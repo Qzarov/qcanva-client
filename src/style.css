@@ -13123,3 +13123,13 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
     line-height: 1.25;
   }
 }
+
+/* "Show in Public" an admin locked (share panels): it still takes the press, to say why. */
+.share-checkbox-locked { cursor: not-allowed; }
+.share-checkbox-locked input { pointer-events: none; }
+/* Under the box's own words, so it reads as that box's. */
+.share-hidden-note {
+  display: block;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
