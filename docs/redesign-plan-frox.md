@@ -38,7 +38,8 @@ roadmap для структурного рефакторинга клиентс�
   общие `UiTextarea`/`UiInput`, mobile action menu вынесено в
   `TextDocumentMobileMenu`, backlinks-секция — в `TextDocumentBacklinks`,
   desktop/mobile slash UI — в `TextDocumentSlashMenu`, mention picker — в
-  `TextDocumentMentionMenu`, selection bubble — в `TextDocumentBubbleMenu`.
+  `TextDocumentMentionMenu`, selection bubble — в `TextDocumentBubbleMenu`,
+  topbar mobile-menu controller — в `useTextDocumentTopbarMenu`.
 - UI library: `UiButton`, `UiIconButton`, `UiModal`, `UiInput`, `UiTextarea`,
   `UiEmptyState`, `UiMenu` и `UiSegmentedControl` созданы и используются в
   Dashboard и Text Documents. Сортировка, фильтры и переключатель вида больше
@@ -60,11 +61,11 @@ roadmap для структурного рефакторинга клиентс�
 |---|---:|---|
 | UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
-| TextDocumentView | **93%** | оставшиеся topbar actions и финальная CSS-полировка |
+| TextDocumentView | **96%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **90%** | оставшиеся границы из строк выше |
+| **Весь план** | **91%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
