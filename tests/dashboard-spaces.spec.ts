@@ -58,7 +58,12 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
     const sources = role === 'viewer' ? defaultSources().map((source) => ({ ...source, addedBy: { id: 'user-2', name: 'Аня' } })) : defaultSources();
     if (path === '/spaces/space-1' && request.method() === 'GET') return json(spaceDetails(role, sources));
     if (path === '/spaces/space-1/feed') {
-      const items = url.searchParams.get('sourceId') ? FEED.filter((item) => item.sourceId === url.searchParams.get('sourceId')) : FEED;
+      const list = (name: string) => (url.searchParams.get(name) || '').split(',').filter(Boolean);
+      const [sources, types, adders] = [list('sourceIds'), list('types'), list('addedBy')];
+      const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : item.name.endsWith('.pdf') ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
+      const items = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
+        && (!types.length || types.includes(typeOf(item)))
+        && (!adders.length || adders.includes(item.addedBy.id)));
       return json({ items, offset: 0, limit: 60, nextOffset: null });
     }
     if (path === '/spaces/space-1/sources' && request.method() === 'POST') return json(spaceDetails(role));
@@ -124,7 +129,7 @@ test('a space is one feed of its folders, filtered by folder; pictures open full
   // A folder at a time.
   await page.locator('[data-space-source="src-y"] .space-source-pick').click();
   await expect(feed).toHaveCount(1);
-  expect(calls.some((call) => call.path === '/spaces/space-1/feed' && call.query.sourceId === 'src-y')).toBe(true);
+  expect(calls.some((call) => call.path === '/spaces/space-1/feed' && call.query.sourceIds === 'src-y')).toBe(true);
   await page.locator('[data-space-source="all"]').click();
   await expect(feed).toHaveCount(3);
 
@@ -318,4 +323,49 @@ test('phone: "Spaces" in the sidebar closes it and goes to the feed\'s Spaces', 
   await page.locator('[data-sidebar-spaces]').click();
   await expect(page.locator('.dashboard-sidebar.mobile-open, .dashboard-sidebar[data-mobile-open="true"]')).toHaveCount(0);
   await expect(page.locator('#feed-spaces')).toBeInViewport();
+});
+
+test('the feed takes several folders, kinds of file and adders at once; nothing left says so', async ({ page }) => {
+  const calls = await openDashboard(page);
+  await page.locator('[data-shared-space="space-1"]').click();
+  const feed = page.locator('[data-space-feed] [data-space-item]');
+  await expect(feed).toHaveCount(3);
+
+  // Two folders: both chips on, "All" off.
+  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await expect(feed).toHaveCount(1);
+  await page.locator('[data-space-source="src-q"] .space-source-pick').click();
+  await expect(feed).toHaveCount(3);
+  expect(calls.at(-1)?.query.sourceIds?.split(',').sort()).toEqual(['src-q', 'src-y']);
+  await expect(page.locator('[data-space-source="all"]')).toHaveAttribute('aria-pressed', 'false');
+  // One off again: the other stays.
+  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await expect(feed).toHaveCount(2);
+  await page.locator('[data-space-source="all"]').click();
+  await expect(feed).toHaveCount(3);
+
+  // Kinds of file and who added, from the filter icon; its badge counts them.
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  await menu.locator('[data-space-filter-type="document"] input').check();
+  await menu.locator('[data-space-filter-type="image"] input').check();
+  await expect(feed).toHaveCount(2);
+  expect(calls.at(-1)?.query.types?.split(',').sort()).toEqual(['document', 'image']);
+  await menu.locator('[data-space-filter-person="user-1"] input').check();
+  await expect(feed).toHaveCount(1);
+  await expect(page.locator('[data-space-item="q:file:f-pdf"]')).toBeVisible();
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('3');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters.png` });
+
+  // Nothing matches: it says so, and "Reset filters" brings everything back.
+  await menu.locator('[data-space-filter-type="document"] input').uncheck();
+  await expect(page.locator('[data-space-filtered-empty]')).toBeVisible();
+  await page.mouse.click(5, 5);
+  await expect(menu).toHaveCount(0);
+  await page.locator('[data-space-filtered-empty] button').click();
+  await expect(feed).toHaveCount(3);
+  await expect(page.locator('[data-space-filter-count]')).toHaveCount(0);
+
+  // The dashboard's own filter and order do not act on a space: not shown here.
+  await expect(page.locator('[data-filter-menu-trigger]:visible')).toHaveCount(0);
 });

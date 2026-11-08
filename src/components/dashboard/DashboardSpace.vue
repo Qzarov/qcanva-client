@@ -11,6 +11,17 @@
         </span>
       </div>
       <template v-if="space">
+        <SpaceFilterMenu
+          :open="filterMenuOpen"
+          :types="filterTypes"
+          :added-by="filterPeople"
+          :people="adders"
+          :sheet="phoneLayout"
+          @toggle="filterMenuOpen = !filterMenuOpen"
+          @reset="resetFilters"
+          @toggle-type="toggleType"
+          @toggle-person="togglePerson"
+        />
         <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
         <div class="folder-manager-menu">
           <button
@@ -47,19 +58,19 @@
           <button
             type="button"
             class="space-source-chip"
-            :class="{ active: !sourceFilter }"
-            :aria-pressed="!sourceFilter"
+            :class="{ active: !filterSources.length }"
+            :aria-pressed="!filterSources.length"
             data-space-source="all"
-            @click="setFilter(null)"
+            @click="toggleSource(null)"
           >{{ t('spaceAll') }}</button>
           <span
             v-for="source in space.sources"
             :key="source.id"
             class="space-source-chip"
-            :class="{ active: sourceFilter === source.id }"
+            :class="{ active: filterSources.includes(source.id) }"
             :data-space-source="source.id"
           >
-            <button type="button" class="space-source-pick" :aria-pressed="sourceFilter === source.id" @click="setFilter(source.id)">
+            <button type="button" class="space-source-pick" :aria-pressed="filterSources.includes(source.id)" @click="toggleSource(source.id)">
               <!-- A Yandex folder still being read turns; one that could not be read says why. -->
               <LoaderCircle v-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" aria-hidden="true" data-space-source-reading />
               <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" class="space-source-failed" :size="13" :aria-label="source.syncError" data-space-source-failed v-hint="source.syncError" />
@@ -80,7 +91,11 @@
           </span>
         </div>
 
-        <div v-if="!items.length && loaded" class="dash-grid">
+        <div v-if="!items.length && loaded && filtered" class="dash-empty" data-space-filtered-empty>
+          {{ t('noFilterMatches') }}
+          <button type="button" class="dash-empty-reset" @click="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
+        <div v-else-if="!items.length && loaded" class="dash-grid">
           <button v-if="canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="startAdd($event)">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
           </button>
@@ -192,7 +207,9 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
 import { vHint } from '../../directives/hint';
-import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceSource } from '../../api/spaces';
+import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
+import SpaceFilterMenu from './SpaceFilterMenu.vue';
+import { LAYOUT, matchesMedia, useMediaQuery } from '../../composables/layoutMedia';
 import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
@@ -245,7 +262,21 @@ const loadingMore = ref(false);
 const error = ref('');
 const busy = ref(false);
 const menu = ref('');
-const sourceFilter = ref<string | null>(null);
+// The feed's filters: any number of folders, kinds of file and adders; none of a kind means all.
+const filterSources = ref<string[]>([]);
+const filterTypes = ref<SpaceFeedType[]>([]);
+const filterPeople = ref<string[]>([]);
+const filterMenuOpen = ref(false);
+const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, addedBy: filterPeople.value });
+const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterPeople.value.length));
+/** Who added the space's folders, once each. */
+const adders = computed(() => {
+  const seen = new Map<string, { id: string; name: string | null }>();
+  for (const source of space.value?.sources ?? []) if (!seen.has(source.addedBy.id)) seen.set(source.addedBy.id, source.addedBy);
+  return [...seen.values()];
+});
+/** The dashboard's phone layout: the filter opens as a sheet. */
+const phoneLayout = useMediaQuery(LAYOUT.dashboardPhone);
 const membersOpen = ref(false);
 const qspaceOpen = ref(false);
 const yandexOpen = ref(false);
@@ -309,7 +340,7 @@ async function load(quiet = false) {
   try {
     const [details, feed] = await Promise.all([
       spacesApi.get(props.spaceId),
-      spacesApi.feed(props.spaceId, { sourceId: sourceFilter.value }),
+      spacesApi.feed(props.spaceId, feedFilters()),
     ]);
     if (current !== loadId) return;
     space.value = details;
@@ -358,7 +389,7 @@ async function loadMore() {
   if (nextOffset.value === null) return;
   loadingMore.value = true;
   try {
-    const feed = await spacesApi.feed(props.spaceId, { offset: nextOffset.value, sourceId: sourceFilter.value });
+    const feed = await spacesApi.feed(props.spaceId, { offset: nextOffset.value, ...feedFilters() });
     items.value = [...items.value, ...feed.items];
     nextOffset.value = feed.nextOffset;
     void loadPreviews(feed.items);
@@ -394,7 +425,10 @@ watch(() => props.spaceId, () => {
   if (readPoll) clearTimeout(readPoll);
   readPoll = null;
   readPollSince = 0;
-  sourceFilter.value = null;
+  filterSources.value = [];
+  filterTypes.value = [];
+  filterPeople.value = [];
+  filterMenuOpen.value = false;
   space.value = null;
   items.value = [];
   for (const key of Object.keys(previews)) delete previews[key];
@@ -403,8 +437,24 @@ watch(() => props.spaceId, () => {
   void load();
 });
 
-function setFilter(sourceId: string | null) {
-  sourceFilter.value = sourceId;
+const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+/** A folder chip: on or off; "All" clears them. */
+function toggleSource(sourceId: string | null) {
+  filterSources.value = sourceId === null ? [] : toggleIn(filterSources.value, sourceId);
+  void load();
+}
+function toggleType(type: SpaceFeedType) {
+  filterTypes.value = toggleIn(filterTypes.value, type);
+  void load();
+}
+function togglePerson(id: string) {
+  filterPeople.value = toggleIn(filterPeople.value, id);
+  void load();
+}
+function resetFilters() {
+  filterSources.value = [];
+  filterTypes.value = [];
+  filterPeople.value = [];
   void load();
 }
 
@@ -451,12 +501,13 @@ function toggleMenu(name: string) {
   menu.value = menu.value === name ? '' : name;
 }
 const closeMenu = (event: MouseEvent) => {
-  if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
+  if (!target?.closest('.space-filter-menu, [data-space-filter-menu]')) filterMenuOpen.value = false;
 };
 /** Where the add choice opens: under what was pressed (a phone makes it a bottom sheet). */
 const addMenuStyle = ref<Record<string, string>>({});
 const teleportReady = ref(false);
-const PHONE = '(max-width: 720px)';
 const addDialogOpen = ref(false);
 /**
  * Adding a folder - "⋯", the empty space's tile, the toolbar's Add, the
@@ -470,7 +521,7 @@ function startAdd(event?: Event) {
     openQspaceDialog();
     return;
   }
-  const phone = typeof window !== 'undefined' && Boolean(window.matchMedia?.(PHONE).matches);
+  const phone = matchesMedia(LAYOUT.dashboardPhone);
   if (!phone) {
     menu.value = '';
     addDialogOpen.value = true;
@@ -550,7 +601,7 @@ async function removeSource(source: SpaceSource) {
   if (!confirmed) return;
   try {
     await spacesApi.removeSource(props.spaceId, source.id);
-    if (sourceFilter.value === source.id) sourceFilter.value = null;
+    filterSources.value = filterSources.value.filter((id) => id !== source.id);
     await load();
     void loadSpaces(true);
   } catch (err) {

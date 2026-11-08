@@ -43,6 +43,9 @@ export type SpaceDetails = {
   updatedAt: string;
 };
 
+/** The kinds of file a space's feed is narrowed by (the hub's FEED_TYPES). */
+export type SpaceFeedType = 'canva' | 'document' | 'image' | 'video' | 'audio' | 'other';
+
 export type SpaceFeedItem = {
   key: string;
   sourceId: string;
@@ -88,11 +91,14 @@ export const spacesApi = {
     request<SpaceDetails>(`/spaces/${encodeURIComponent(id)}/sources`, json('POST', { kind: 'yandex', path })),
   removeSource: (id: string, sourceId: string) =>
     noContent(request(`/spaces/${encodeURIComponent(id)}/sources/${encodeURIComponent(sourceId)}`, { method: 'DELETE' })),
-  feed: (id: string, opts: { offset?: number; limit?: number; sourceId?: string | null } = {}) => {
+  /** Any of `sourceIds`, `types` and `addedBy` narrows the feed; several of each at once. */
+  feed: (id: string, opts: { offset?: number; limit?: number; sourceIds?: readonly string[]; types?: readonly SpaceFeedType[]; addedBy?: readonly string[] } = {}) => {
     const params = new URLSearchParams();
     if (opts.offset) params.set('offset', String(opts.offset));
     if (opts.limit) params.set('limit', String(opts.limit));
-    if (opts.sourceId) params.set('sourceId', opts.sourceId);
+    if (opts.sourceIds?.length) params.set('sourceIds', opts.sourceIds.join(','));
+    if (opts.types?.length) params.set('types', opts.types.join(','));
+    if (opts.addedBy?.length) params.set('addedBy', opts.addedBy.join(','));
     const query = params.toString();
     return request<SpaceFeed>(`/spaces/${encodeURIComponent(id)}/feed${query ? `?${query}` : ''}`);
   },

@@ -129,7 +129,9 @@
           class="dash-search dash-search-header-mobile"
           :placeholder="folderSearchPlaceholder"
         />
+        <!-- A space has its own filters (in its header) and is newest first: not these. -->
         <DashboardFilterMenu
+          v-if="spaceId === null"
           class="dashboard-toolbar-mobile"
           sheet
           :open="openControlMenu === 'filter:mobile'"
@@ -143,6 +145,7 @@
           @reset="clearTypeAndTagFilters"
         />
         <DashboardSortMenu
+          v-if="spaceId === null"
           class="dashboard-toolbar-mobile"
           sheet
           :open="openControlMenu === 'sort:mobile'"
@@ -186,6 +189,7 @@
       </div>
       <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
       <DashboardFilterMenu
+        v-if="spaceId === null"
         class="dashboard-toolbar-desktop"
         :open="openControlMenu === 'filter:desktop'"
         :types="contentTypes"
@@ -198,6 +202,7 @@
         @reset="clearTypeAndTagFilters"
       />
       <DashboardSortMenu
+        v-if="spaceId === null"
         class="dashboard-toolbar-desktop"
         :open="openControlMenu === 'sort:desktop'"
         :mode="sortMode"
