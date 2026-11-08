@@ -22,3 +22,7 @@ after every consumer has moved to the primitive styles.
 Every new primitive needs a small typed API, keyboard and focus behavior, and a
 component test for its emitted events and ARIA state. Do not put resource cards,
 canvas tools or page-specific data loading here.
+
+`UiMenu` owns the panel and sheet behavior; consumers provide the trigger and
+content. `UiSegmentedControl` owns active/pressed semantics while option attrs
+keep established domain selectors during migration.

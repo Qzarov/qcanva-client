@@ -1,30 +1,30 @@
 <template>
   <!-- Types and tags behind one icon: any number of types, any number of tags. -->
-  <div class="control-menu dashboard-filter-menu">
-    <button
-      type="button"
-      class="btn-ghost dashboard-icon-button dashboard-filter-trigger"
-      :class="{ active: activeCount > 0 }"
-      :aria-label="activeCount ? `${t('filters')}: ${activeCount}` : t('filters')"
-      :title="t('filters')"
-      aria-haspopup="dialog"
-      :aria-expanded="open"
-      data-filter-menu-trigger
-      @click.stop="emit('toggle')"
-    >
-      <SlidersHorizontal :size="17" aria-hidden="true" />
-      <span v-if="activeCount" class="dashboard-filter-badge" data-filter-count>{{ activeCount }}</span>
-    </button>
-    <Teleport to="body" :disabled="!sheet">
-    <div
-      v-if="open"
-      class="mobile-action-popover dashboard-filter-popover"
-      :class="{ 'dashboard-menu-sheet': sheet }"
-      role="dialog"
-      :aria-label="t('filters')"
-      data-filter-menu
-      @click.stop
-    >
+  <UiMenu
+    class="control-menu dashboard-filter-menu"
+    :open="open"
+    :sheet="sheet"
+    :panel-class="sheet ? 'mobile-action-popover dashboard-filter-popover dashboard-menu-sheet' : 'mobile-action-popover dashboard-filter-popover'"
+    :panel-attrs="{ 'data-filter-menu': '', 'aria-label': t('filters') }"
+    role="dialog"
+    @toggle="emit('toggle')"
+  >
+    <template #trigger>
+      <button
+        type="button"
+        class="btn-ghost dashboard-icon-button dashboard-filter-trigger"
+        :class="{ active: activeCount > 0 }"
+        :aria-label="activeCount ? `${t('filters')}: ${activeCount}` : t('filters')"
+        :title="t('filters')"
+        aria-haspopup="dialog"
+        :aria-expanded="open"
+        data-filter-menu-trigger
+        @click.stop="emit('toggle')"
+      >
+        <SlidersHorizontal :size="17" aria-hidden="true" />
+        <span v-if="activeCount" class="dashboard-filter-badge" data-filter-count>{{ activeCount }}</span>
+      </button>
+    </template>
       <div class="dashboard-filter-head">
         <strong>{{ t('filters') }}</strong>
         <button v-if="activeCount" type="button" class="dashboard-filter-reset" data-filter-reset @click="emit('reset')">{{ t('resetFilters') }}</button>
@@ -54,15 +54,14 @@
           >#{{ tag }}</button>
         </div>
       </div>
-    </div>
-    </Teleport>
-  </div>
+  </UiMenu>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { SlidersHorizontal } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';
+import UiMenu from '../ui/UiMenu.vue';
 import { useI18n } from '../../composables/useI18n';
 import type { DashboardContentType } from '../../dashboard/content-filter';
 

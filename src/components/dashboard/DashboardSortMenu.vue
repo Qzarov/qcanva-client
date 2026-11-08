@@ -1,18 +1,26 @@
 <template>
   <!-- The sort order behind one icon, the same on a computer and a phone. -->
-  <div class="control-menu dashboard-sort-menu">
-    <button
-      type="button"
-      class="btn-ghost dashboard-icon-button dashboard-sort-trigger"
-      :aria-label="`${t('sortBy')}: ${labels[mode]}`"
-      :title="`${t('sortBy')}: ${labels[mode]}`"
-      aria-haspopup="menu"
-      :aria-expanded="open"
-      data-sort-menu-trigger
-      @click.stop="emit('toggle')"
-    ><ArrowUpDown :size="17" aria-hidden="true" /></button>
-    <Teleport to="body" :disabled="!sheet">
-    <div v-if="open" class="mobile-action-popover mobile-sort-popover dashboard-sort-popover" :class="{ 'dashboard-menu-sheet': sheet }" role="menu" data-sort-menu @click.stop>
+  <UiMenu
+    class="control-menu dashboard-sort-menu"
+    :open="open"
+    :sheet="sheet"
+    :panel-class="sheet ? 'mobile-action-popover mobile-sort-popover dashboard-sort-popover dashboard-menu-sheet' : 'mobile-action-popover mobile-sort-popover dashboard-sort-popover'"
+    :panel-attrs="{ 'data-sort-menu': '' }"
+    role="menu"
+    @toggle="emit('toggle')"
+  >
+    <template #trigger>
+      <button
+        type="button"
+        class="btn-ghost dashboard-icon-button dashboard-sort-trigger"
+        :aria-label="`${t('sortBy')}: ${labels[mode]}`"
+        :title="`${t('sortBy')}: ${labels[mode]}`"
+        aria-haspopup="menu"
+        :aria-expanded="open"
+        data-sort-menu-trigger
+        @click.stop="emit('toggle')"
+      ><ArrowUpDown :size="17" aria-hidden="true" /></button>
+    </template>
       <button
         v-for="option in order"
         :key="option"
@@ -27,15 +35,14 @@
         <Check v-if="mode === option" :size="15" class="mobile-sort-check" aria-hidden="true" /><span v-else class="mobile-sort-check-spacer"></span>
         <span>{{ labels[option] }}</span>
       </button>
-    </div>
-    </Teleport>
-  </div>
+  </UiMenu>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ArrowUpDown, Check } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
+import UiMenu from '../ui/UiMenu.vue';
 
 export type DashboardSortMode = 'updated-desc' | 'updated-asc' | 'title-asc' | 'title-desc';
 
