@@ -104,10 +104,10 @@
       <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
     </button>
   </div>
-  <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
+  <UiEmptyState v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" empty-class="dash-empty" data-public-empty data-feed-empty="public">
     {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
     <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-  </div>
+  </UiEmptyState>
   <button
     v-if="isHomeFeed && publicFiltered.length > feedLimit('public')"
     type="button"
@@ -124,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import UiEmptyState from '../ui/UiEmptyState.vue';
 import { computed } from 'vue';
 import { Check, ChevronDown, ChevronUp, Folder, Plus } from '@lucide/vue';
 import ResourceIcon from '../ResourceIcon.vue';

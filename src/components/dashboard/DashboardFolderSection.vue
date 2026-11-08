@@ -88,10 +88,10 @@
               <span v-if="child.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(child.latest) }}</span>
             </button>
           </div>
-          <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
+          <UiEmptyState v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" empty-class="dash-empty" data-folder-empty>
             {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
             <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-          </div>
+          </UiEmptyState>
           <div class="dash-grid">
             <button
               v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
@@ -258,6 +258,7 @@
 </template>
 
 <script setup lang="ts">
+import UiEmptyState from '../ui/UiEmptyState.vue';
 import { computed } from 'vue';
 import { ArrowLeft, Check, Plus } from '@lucide/vue';
 import DashboardFolderFiles from './DashboardFolderFiles.vue';
