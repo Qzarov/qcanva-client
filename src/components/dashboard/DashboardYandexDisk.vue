@@ -137,7 +137,7 @@
               v-for="file in shownFiles"
               :key="file.path"
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': isMedia(file) || Boolean(previewOf(file)) }"
+              :class="{ 'has-preview': withPicture(file) || Boolean(previewOf(file)) }"
               role="button"
               tabindex="0"
               :data-yandex-file="file.path"
@@ -168,16 +168,16 @@
                 <span class="card-title-text folder-file-name">{{ nameParts(file.name).base }}<wbr />{{ nameParts(file.name).ext }}</span>
               </div>
               <div class="card-meta folder-file-meta">
+                <!-- The type and when, on one line; the size is in the hover panel. -->
                 <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
-                <!-- A photo or a video shows when, not how big: the size is in the hover panel. -->
-                <span v-if="file.size !== null && !isMedia(file)">{{ formatFileSize(file.size) }}</span>
                 <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.modifiedAt, locale) : formatDate(file.modifiedAt) }}</span>
               </div>
               <!-- The square at the top right for every picture and video, as on QCanva's own files;
                    the kind's icon until (or unless) Yandex has a preview. -->
-              <span v-if="isMedia(file) || previewOf(file)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(file) }" aria-hidden="true">
+              <!-- Yandex's list says whether it has a preview: without one the drawn picture is short. -->
+              <span v-if="withPicture(file) || previewOf(file)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(file), 'is-pictureless': !previewOf(file) }" aria-hidden="true">
                 <img v-if="previewOf(file)" :src="previewOf(file)!" alt="" loading="lazy" decoding="async" data-yandex-preview @error="brokenPreviews.add(file.path)" />
-                <FilePlaceholder v-else :name="file.name" :kind="file.mediaType === 'video' ? 'video' : 'picture'" />
+                <FilePlaceholder v-else :name="file.name" :kind="file.mediaType === 'video' ? 'video' : file.mediaType === 'image' ? 'picture' : 'file'" />
                 <span v-if="file.mediaType === 'video' && previewOf(file)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
               <button class="card-manage" :title="t('groupActions')" :data-yandex-file-menu="file.path" @click.stop="toggleMenu('file:' + file.path)">⋯</button>
@@ -220,7 +220,8 @@ import {
   type YandexItem,
   type YandexSort,
 } from '../../api/yandexDisk';
-import { formatFileSize, getFileExtension } from '../../api/drive';
+import { getFileExtension } from '../../api/drive';
+import { isDocumentWithPicture } from '../../dashboard/thumb-kinds';
 import { alertDialog, confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
 import { useYandexDisk } from '../../composables/useYandexDisk';
@@ -271,6 +272,8 @@ const brokenPreviews = reactive(new Set<string>());
 
 const keyOf = (item: YandexItem) => `yandex:${item.path}`;
 const isMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+/** A picture square: pictures, videos, PDFs, EPUBs and text files (Yandex's preview, or the drawn one). */
+const withPicture = (item: YandexItem) => isMedia(item) || isDocumentWithPicture({ name: item.name, mime: item.mime });
 const infoOf = (item: YandexItem) => fileInfo({
   name: item.name,
   size: item.size,

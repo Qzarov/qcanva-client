@@ -7,7 +7,7 @@
     :key="file.id"
     :ref="(el) => watchVisible(el as Element | null, file)"
     class="canvas-card folder-file-card"
-    :class="{ 'has-preview': isMedia(file) }"
+    :class="{ 'has-preview': withPicture(file) }"
     role="button"
     tabindex="0"
     :data-folder-file="file.id"
@@ -41,14 +41,13 @@
       <span class="card-title-text folder-file-name">{{ nameParts(file.name).base }}<wbr />{{ nameParts(file.name).ext }}</span>
     </div>
     <div class="card-meta folder-file-meta">
+      <!-- The type and when, on one line; the size is in the hover panel. -->
       <span class="folder-file-ext">{{ getFileExtension(file.name) }}</span>
-      <!-- A photo or a video shows when, not how big: the size is in the hover panel. -->
-      <span v-if="!isMedia(file)">{{ formatFileSize(file.sizeBytes) }}</span>
       <span class="card-date" data-file-date>{{ isMedia(file) ? formatFileDateTime(file.updatedAt, locale) : formatDate(file.updatedAt) }}</span>
     </div>
     <!-- A picture's or a video's place is kept from the start, so the card does
          not grow when its picture arrives; until then the kind's icon. -->
-    <span v-if="isMedia(file)" class="folder-file-thumb" :class="{ 'is-empty': !previews[file.id] }" aria-hidden="true">
+    <span v-if="withPicture(file)" class="folder-file-thumb" :class="{ 'is-empty': !previews[file.id], 'is-pictureless': !previews[file.id] && pictureless.has(file.id) }" aria-hidden="true">
       <img
         v-if="previews[file.id]"
         :src="previews[file.id]"
@@ -57,7 +56,7 @@
         data-folder-file-preview
         @error="dropPreview(file.id)"
       />
-      <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : 'picture'" />
+      <FilePlaceholder v-else :name="file.name" :kind="isVideo(file) ? 'video' : isImage(file) ? 'picture' : 'file'" />
       <span v-if="isVideo(file) && previews[file.id]" class="folder-file-play" data-folder-file-play><Play :size="14" aria-hidden="true" /></span>
     </span>
   </article>
@@ -76,13 +75,12 @@ import { Check, File as FileIcon, Image as ImageIcon, Play, Video } from '@lucid
 import {
   driveApi,
   downloadDriveFile,
-  formatFileSize,
   getFileExtension,
   resolveDownloadUrl,
   type DriveItem,
   type DriveThumbLink,
 } from '../../api/drive';
-import { isBrowserImage, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
+import { isBrowserImage, isPictureFile, isVideoFile, hasCardPicture } from '../../dashboard/thumb-kinds';
 import { alertDialog } from '../../composables/appDialog';
 import { vFileInfo } from '../../directives/fileInfo';
 import FilePlaceholder from './FilePlaceholder.vue';
@@ -132,6 +130,8 @@ const failed = ref(false);
 const isImage = (file: DriveItem) => isPictureFile(file);
 const isVideo = (file: DriveItem) => isVideoFile(file);
 const isMedia = (file: DriveItem) => isImage(file) || isVideo(file);
+/** A picture square: pictures, videos, PDFs, EPUBs and text files (the hub draws those too). */
+const withPicture = (file: DriveItem) => hasCardPicture(file);
 const infoOf = (file: DriveItem) => fileInfo({
   name: file.name,
   size: file.sizeBytes,
@@ -212,8 +212,8 @@ function resetPreviews() {
   observed.clear();
 }
 
-/** Every picture and video: the hub makes card pictures for them (HEIC, RAW and video frames too). */
-const wantsPreview = (file: DriveItem) => isMedia(file);
+/** Every picture, video, PDF, EPUB and text file: the hub makes card pictures for them. */
+const wantsPreview = (file: DriveItem) => withPicture(file);
 /** No card picture from the hub: a picture the browser shows as it is, if not too big. */
 const canShowOriginal = (file: DriveItem) => isBrowserImage(file) && (file.sizeBytes ?? 0) <= PREVIEW_MAX_BYTES;
 
@@ -225,12 +225,17 @@ function pump() {
     running += 1;
     driveApi.getDownloadLink(file.id)
       .then(({ url }) => { if (forLoad === loadId) previews[file.id] = resolveDownloadUrl(url); })
-      .catch(() => { /* no copy on the hub, or no access: the icon stays */ })
+      .catch(() => { if (forLoad === loadId) pictureless.add(file.id); /* no copy on the hub, or no access: the drawn one stays */ })
       .finally(() => { running -= 1; pump(); });
   }
 }
+/** Files known to have no picture (not just one on its way): their drawn one is short. */
+const pictureless = reactive(new Set<string>());
 function showOriginal(file: DriveItem) {
-  if (!canShowOriginal(file)) return;
+  if (!canShowOriginal(file)) {
+    pictureless.add(file.id);
+    return;
+  }
   queue.push(file);
   pump();
 }
@@ -277,8 +282,8 @@ async function flushThumbs() {
     else if (link?.status === 'pending' && (retries.get(file.id) ?? 0) < THUMB_RETRIES) {
       retries.set(file.id, (retries.get(file.id) ?? 0) + 1);
       again.push(file);
-      // Meanwhile the original, where the browser shows it.
-      if (!previews[file.id]) showOriginal(file);
+      // Meanwhile the original, where the browser shows it (a PDF has none: its square waits).
+      if (!previews[file.id] && canShowOriginal(file)) showOriginal(file);
     } else if (!previews[file.id]) showOriginal(file);
   }
   if (again.length) {
@@ -319,6 +324,7 @@ function watchVisible(el: Element | null, file: DriveItem) {
 
 function dropPreview(id: string) {
   delete previews[id];
+  pictureless.add(id);
 }
 
 watch(previews, (value) => emit('previews', { ...value }), { deep: true });

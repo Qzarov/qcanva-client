@@ -29,6 +29,21 @@ export function isPictureFile(file: FileLike): boolean {
   return file.kind === 'photo' || (Boolean(file.mime?.startsWith('image/')) && file.mime !== 'image/svg+xml');
 }
 
+/**
+ * Documents the hub draws a card picture of too (thumb-formats.ts): a PDF's
+ * first page, an EPUB's cover, the start of a text file.
+ */
+const DOC_PICTURE_EXT = new Set(['pdf', 'epub', 'txt', 'md', 'markdown', 'log']);
+export function isDocumentWithPicture(file: FileLike): boolean {
+  if (DOC_PICTURE_EXT.has(extension(file.name))) return true;
+  return file.mime === 'application/pdf' || file.mime === 'application/epub+zip';
+}
+
+/** A card with a picture square: pictures, videos, and the documents above. */
+export function hasCardPicture(file: FileLike): boolean {
+  return isPictureFile(file) || isVideoFile(file) || isDocumentWithPicture(file);
+}
+
 /** A picture the browser can show as it is (the fallback when the hub has no card picture). */
 export function isBrowserImage(file: FileLike): boolean {
   const ext = extension(file.name);

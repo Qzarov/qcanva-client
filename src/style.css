@@ -13139,3 +13139,30 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
 .space-source-failed { color: var(--ui-warning, #c98a00); }
 @keyframes space-source-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .space-source-reading { animation: none; } }
+
+/* File cards: the type on the left, when on the right, one line (the size is in the hover panel). */
+.folder-file-card .folder-file-meta {
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+}
+.folder-file-card .folder-file-meta .card-date {
+  margin-left: auto;
+  white-space: nowrap;
+}
+/* The drawn picture of a file that has no real one (known, not just not here
+   yet - a picture on its way keeps its square, so nothing jumps when it
+   comes): only the height the card has to spare, so it never makes its row
+   taller than the cards beside it. */
+.dashboard .dash-grid .folder-file-card.has-preview .folder-file-thumb.is-pictureless {
+  flex: 1 1 auto;
+  aspect-ratio: auto;
+  min-height: 72px;
+  height: auto;
+}
+/* The list keeps its 32px square for a drawn picture too. */
+.dashboard .dashboard-list-view .dash-grid .folder-file-card.has-preview .folder-file-thumb.is-pictureless {
+  flex: 0 0 auto;
+  min-height: 0;
+  height: 32px;
+}

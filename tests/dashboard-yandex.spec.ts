@@ -124,7 +124,9 @@ test('the Disk reads like a folder: subfolders, files with previews, the tree in
   const sea = page.locator('[data-yandex-file="/море.jpg"]');
   await expect(sea.locator('.folder-file-meta')).not.toContainText('MB');
   await expect(sea.locator('[data-file-date]')).toHaveText(/\d{1,2}:\d{2}/);
-  await expect(page.locator('[data-yandex-file="/договор.pdf"] .folder-file-meta')).toContainText('KB');
+  // A PDF: a picture square too (Yandex's preview, else the drawn one); no size on any card.
+  await expect(page.locator('[data-yandex-file="/договор.pdf"] .folder-file-thumb')).toBeVisible();
+  await expect(page.locator('[data-yandex-file="/договор.pdf"] .folder-file-meta')).not.toContainText('KB');
   await page.locator('[data-yandex-file="/договор.pdf"]').hover();
   await expect(page.locator('[data-file-info]')).toHaveClass(/visible/);
   await expect(page.locator('[data-file-info]')).toContainText('договор.pdf');

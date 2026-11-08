@@ -113,7 +113,7 @@
             <article
               v-else
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': isMedia(item) }"
+              :class="{ 'has-preview': withPicture(item) }"
               role="button"
               tabindex="0"
               :data-space-item="item.key"
@@ -130,13 +130,13 @@
                 <span class="card-title-text folder-file-name">{{ nameParts(item.name).base }}<wbr />{{ nameParts(item.name).ext }}</span>
               </div>
               <div class="card-meta folder-file-meta">
+                <!-- The type and when, on one line; the size is in the hover panel. -->
                 <span class="folder-file-ext">{{ getFileExtension(item.name) }}</span>
-                <span v-if="item.size !== null">{{ formatFileSize(item.size) }}</span>
                 <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               </div>
-              <span v-if="isMedia(item)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(item) }" aria-hidden="true">
+              <span v-if="withPicture(item)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(item), 'is-pictureless': !previewOf(item) && pictureless(item) }" aria-hidden="true">
                 <img v-if="previewOf(item)" :src="previewOf(item)!" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-space-preview @error="broken.add(item.key)" />
-                <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : 'picture'" />
+                <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : isPicture(item) ? 'picture' : 'file'" />
                 <span v-if="isVideo(item) && previewOf(item)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
             </article>
@@ -193,7 +193,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
 import { vHint } from '../../directives/hint';
 import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceSource } from '../../api/spaces';
-import { downloadDriveFile, driveApi, formatFileSize, getFileExtension, resolveDownloadUrl } from '../../api/drive';
+import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
@@ -201,7 +201,7 @@ import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, nameParts } from '../../dashboard/file-info';
-import { isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
+import { hasCardPicture, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
@@ -271,9 +271,16 @@ const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kin
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
 const isVideo = (item: SpaceFeedItem) => isVideoFile(fileLike(item));
 const isPicture = (item: SpaceFeedItem) => isPictureFile(fileLike(item));
-const isMedia = (item: SpaceFeedItem) => item.kind === 'file' && (isVideo(item) || isPicture(item));
+/** A picture square: pictures, videos, PDFs, EPUBs and text files - and any file Yandex made a preview of. */
+const withPicture = (item: SpaceFeedItem) => item.kind === 'file' && (hasCardPicture(fileLike(item)) || Boolean(item.origin === 'yandex' && item.previewUrl));
 const thumbKind = (item: SpaceFeedItem) => (item.kind === 'board' || item.kind === 'sheet' ? 'interactive-template' : item.kind);
 const templateType = (item: SpaceFeedItem) => (item.kind === 'board' ? 'trello-board' : item.kind === 'sheet' ? 'dnd-character' : null);
+/**
+ * Known to have no picture (not one on its way): a Yandex file without a
+ * preview, a QCanva one the hub has none for, a picture that failed to load.
+ */
+const noPicture = reactive(new Set<string>());
+const pictureless = (item: SpaceFeedItem) => (item.origin === 'yandex' ? !item.previewUrl : false) || broken.has(item.key) || noPicture.has(item.key);
 const previewOf = (item: SpaceFeedItem) => {
   if (broken.has(item.key)) return null;
   if (item.origin === 'yandex') return item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null;
@@ -365,7 +372,7 @@ async function loadMore() {
 /** QCanva pictures and videos: the hub's card pictures, asked for once, then again for those still being made. */
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 async function loadPreviews(list: SpaceFeedItem[], retry = true) {
-  const wanted = list.filter((item) => item.origin === 'qspace' && isMedia(item) && item.id && !previews[item.key]);
+  const wanted = list.filter((item) => item.origin === 'qspace' && withPicture(item) && item.id && !previews[item.key]);
   if (!wanted.length) return;
   try {
     const response = await driveApi.getThumbLinks(wanted.map((item) => item.id!));
@@ -374,7 +381,8 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
     for (const item of wanted) {
       const link = links[item.id!];
       if (link?.status === 'ready') previews[item.key] = resolveDownloadUrl(link.url);
-      else if (link?.status === 'pending') pending.push(item);
+      else if (link?.status === 'pending' && retry) pending.push(item);
+      else noPicture.add(item.key);
     }
     if (pending.length && retry) previewTimer = setTimeout(() => void loadPreviews(pending, false), 5000);
   } catch {
@@ -391,6 +399,7 @@ watch(() => props.spaceId, () => {
   items.value = [];
   for (const key of Object.keys(previews)) delete previews[key];
   broken.clear();
+  noPicture.clear();
   void load();
 });
 
