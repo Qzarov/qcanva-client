@@ -224,9 +224,12 @@
 
     <!-- Controls -->
     <CanvasControls :context="controlsProps" />
-    <input type="file" ref="fileInput" accept=".canvas,.json" style="display:none" @change="onFileSelected" />
-    <input type="file" ref="imageInput" accept="image/*" style="display:none" @change="onImageSelected" />
-    <input type="file" ref="dndPortraitInput" accept="image/*" style="display:none" @change="onDndPortraitSelected" />
+    <CanvasFileInputs
+      ref="fileInputs"
+      @canvas-selected="onFileSelected"
+      @image-selected="onImageSelected"
+      @portrait-selected="onDndPortraitSelected"
+    />
     <div v-if="imageUploadStatus" class="image-upload-status" role="status" aria-live="polite">
       <span class="image-upload-spinner" aria-hidden="true"></span>{{ imageUploadStatus }}
     </div>
@@ -274,6 +277,7 @@ import CanvasControls from './canvas/CanvasControls.vue';
 import CanvasFullscreenTextEditor from './CanvasFullscreenTextEditor.vue';
 import CanvasRemoteCursors from './CanvasRemoteCursors.vue';
 import CanvasDrawCapture from './CanvasDrawCapture.vue';
+import CanvasFileInputs from './CanvasFileInputs.vue';
 import CanvasEdgeLayer from './canvas/CanvasEdgeLayer.vue';
 import CanvasDrawingLayer from './canvas/CanvasDrawingLayer.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
@@ -372,7 +376,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasRemoteCursors, CanvasDrawCapture, CanvasEdgeLayer, CanvasDrawingLayer },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasRemoteCursors, CanvasDrawCapture, CanvasFileInputs, CanvasEdgeLayer, CanvasDrawingLayer },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
@@ -2788,9 +2792,11 @@ export default defineComponent({
     const resetView = () => resetCameraView(viewerNodes.value);
 
     // File operations
-    const fileInput = ref<HTMLInputElement | null>(null);
-    const imageInput = ref<HTMLInputElement | null>(null);
-    const dndPortraitInput = ref<HTMLInputElement | null>(null);
+    const fileInputs = ref<{
+      openCanvas: () => void;
+      openImage: () => void;
+      openPortrait: () => void;
+    } | null>(null);
     const imageUploadStatus = ref("");
     const dndPortraitNodeId = ref<string | null>(null);
 
@@ -2807,12 +2813,10 @@ export default defineComponent({
     };
 
     const onImportCanvas = () => {
-      fileInput.value?.click();
+      fileInputs.value?.openCanvas();
     };
 
-    const onFileSelected = (e: Event) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+    const onFileSelected = (file: File) => {
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -2829,8 +2833,6 @@ export default defineComponent({
         }
       };
       reader.readAsText(file);
-      // Reset so same file can be re-selected
-      (e.target as HTMLInputElement).value = "";
     };
 
     const onExportCanvas = () => {
@@ -2845,15 +2847,10 @@ export default defineComponent({
     };
 
     const openImagePicker = () => {
-      imageInput.value?.click();
+      fileInputs.value?.openImage();
     };
 
-    const onImageSelected = async (e: Event) => {
-      const input = e.target as HTMLInputElement;
-      const file = input.files?.[0];
-      // Reset so the same file can be re-selected even if the upload fails.
-      input.value = "";
-      if (!file) return;
+    const onImageSelected = async (file: File) => {
       try {
         imageUploadStatus.value = "Загружаем изображение…";
         const { url } = await uploadImage(file);
@@ -2884,13 +2881,10 @@ export default defineComponent({
 
     const openDndPortraitPicker = (node: CanvasNode) => {
       dndPortraitNodeId.value = node.id;
-      dndPortraitInput.value?.click();
+      fileInputs.value?.openPortrait();
     };
 
-    const onDndPortraitSelected = async (e: Event) => {
-      const input = e.target as HTMLInputElement;
-      const file = input.files?.[0];
-      input.value = '';
+    const onDndPortraitSelected = async (file: File) => {
       const node = nodes.value.find((item) => item.id === dndPortraitNodeId.value);
       dndPortraitNodeId.value = null;
       if (!file || !node || node.templateId !== 'dnd-character') return;
@@ -3349,7 +3343,7 @@ export default defineComponent({
       zoomIn,
       zoomOut,
       resetView,
-      fileInput,
+      fileInputs,
       onNewCanvas,
       onImportCanvas,
       onFileSelected,
@@ -3357,7 +3351,6 @@ export default defineComponent({
       openImagePicker,
       onImageSelected,
       imageUploadStatus,
-      dndPortraitInput,
       openDndPortraitPicker,
       onDndPortraitSelected,
       undo,
@@ -3377,7 +3370,6 @@ export default defineComponent({
       getNodeTitle,
       setNodeTitle,
       flashNodeId,
-      imageInput,
       selectedDrawingIds,
       selectedDrawingObj,
       clearSelection,
