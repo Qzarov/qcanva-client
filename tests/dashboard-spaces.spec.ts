@@ -152,8 +152,9 @@ test('an own QCanva folder is added; people are invited with a role', async ({ p
   // so only the QCanva folder is offered there.
   await expect(page.locator('[data-space-add]')).toHaveCount(0);
   await page.locator('[data-space-menu]').click();
-  await expect(page.locator('[data-space-actions] [data-space-add-yandex]')).toHaveCount(0);
-  await page.locator('[data-space-actions] [data-space-add-qspace]').click();
+  await page.locator('[data-space-actions] [data-space-add-folder]').click();
+  // Only QCanva's to choose from: no window of one tile.
+  await expect(page.locator('[data-space-add-dialog]')).toHaveCount(0);
   const dialog = page.locator('[data-space-folder-dialog]');
   await expect(dialog).toBeVisible();
   // Already in the space: not offered again.
@@ -186,7 +187,7 @@ test('a viewer sees the feed, adds nothing, and may leave', async ({ page }) => 
   await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(3);
   // Nothing of others' to take out, and nothing to add.
   await page.locator('[data-space-menu]').click();
-  await expect(page.locator('[data-space-actions] [data-space-add-qspace]')).toHaveCount(0);
+  await expect(page.locator('[data-space-actions] [data-space-add-folder]')).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.mouse.click(5, 5);
   await expect(page.locator('[data-space-source-remove]')).toHaveCount(0);
@@ -195,41 +196,53 @@ test('a viewer sees the feed, adds nothing, and may leave', async ({ page }) => 
   await expect(page.locator('[data-space-delete]')).toHaveCount(0);
 });
 
-test('the empty space\'s "+ Add" opens the same choice of folders as "⋯", next to it', async ({ page }) => {
+test('computer: the empty space\'s "+ Add" and "⋯" open the Add-style window of where the folder comes from', async ({ page }) => {
   await openDashboard(page, { spaces: false, yandex: true });
   await page.locator('[data-new-space]').click();
   await page.getByRole('dialog').locator('input').fill('Работа');
   await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
-  const tile = page.locator('[data-space-empty]');
-  await tile.click();
-  const choice = page.locator('[data-space-add-menu]');
-  await expect(choice.locator('[data-space-add-qspace]')).toBeVisible();
-  await expect(choice.locator('[data-space-add-yandex]')).toBeVisible();
-  // Opened under the tile, not somewhere else on the page.
-  const [tileBox, choiceBox] = [await tile.boundingBox(), await choice.boundingBox()];
-  expect(Math.abs(choiceBox!.y - (tileBox!.y + tileBox!.height)) < 20).toBe(true);
-  await choice.locator('[data-space-add-qspace]').click();
+  await page.locator('[data-space-empty]').click();
+  const window = page.locator('[data-space-add-dialog]');
+  await expect(window.locator('[data-space-add-qspace]')).toBeVisible();
+  await expect(window.locator('[data-space-add-yandex]')).toBeVisible();
+  await expect(page.locator('[data-space-add-menu]')).toHaveCount(0);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-add-window.png` });
+  await page.keyboard.press('Escape');
+  await expect(window).toHaveCount(0);
+
+  // "⋯" → "Add a folder": the same window.
+  await page.locator('[data-space-menu]').click();
+  await page.locator('[data-space-actions] [data-space-add-folder]').click();
+  await window.locator('[data-space-add-qspace]').click();
+  await expect(window).toHaveCount(0);
   await expect(page.locator('[data-space-folder-dialog]')).toBeVisible();
 });
 
-test('phone: the round "+" opens the choice of folders as a bottom sheet', async ({ page }) => {
-  await openDashboard(page, { yandex: true, phone: true });
+test('phone: the round "+" and the empty space\'s "+ Add" open the same bottom sheet', async ({ page }) => {
+  await openDashboard(page, { yandex: true, phone: true, spaces: false });
   await page.locator('[data-mobile-sidebar-open]').click();
-  await page.locator('[data-shared-space="space-1"]').click();
-  await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(3);
-  await page.locator('.dashboard-fab').click();
-  const choice = page.locator('[data-space-add-menu]');
-  await expect(choice.locator('[data-space-add-yandex]')).toBeVisible();
-  const box = await choice.boundingBox();
-  expect(box!.y + box!.height).toBeGreaterThan(844 - 80);
-  // Above the round "+": the sheet is on top where they overlap.
-  const fab = await page.locator('.dashboard-fab').boundingBox();
-  const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-space-add-menu], .dashboard-fab')?.className ?? '', [fab!.x + fab!.width / 2, fab!.y + fab!.height / 2]);
-  expect(String(onTop)).not.toContain('dashboard-fab');
+  await page.locator('[data-new-space]').click();
+  await page.getByRole('dialog').locator('input').fill('Работа');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+  const sheet = page.locator('[data-space-add-menu]');
+
+  for (const open of [() => page.locator('[data-space-empty]').click(), () => page.locator('.dashboard-fab').click()]) {
+    await open();
+    await expect(sheet.locator('[data-space-add-qspace]')).toBeVisible();
+    await expect(sheet.locator('[data-space-add-yandex]')).toBeVisible();
+    await expect(page.locator('[data-space-add-dialog]')).toHaveCount(0);
+    const box = await sheet.boundingBox();
+    expect(box!.y + box!.height).toBeGreaterThan(844 - 80);
+    // Above the round "+": the sheet is on top where they overlap.
+    const fab = await page.locator('.dashboard-fab').boundingBox();
+    const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-space-add-menu], .dashboard-fab')?.className ?? '', [fab!.x + fab!.width / 2, fab!.y + fab!.height / 2]);
+    expect(String(onTop)).not.toContain('dashboard-fab');
+    await page.mouse.click(195, 200);
+    await expect(sheet).toHaveCount(0);
+  }
   if (SHOTS) {
+    await page.locator('.dashboard-fab').click();
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${SHOTS}/space-add-phone.png` });
   }
-  await choice.locator('[data-space-add-yandex]').click();
-  await expect(page.locator('[data-space-add-menu]')).toHaveCount(0);
 });

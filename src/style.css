@@ -13094,3 +13094,32 @@ button.space-source-chip { padding: 0 12px; cursor: pointer; }
 }
 .space-invite input { flex: 1 1 180px; }
 .space-members-error { color: var(--ui-danger, #d14343); }
+
+/* Folder tiles (QCanva's and Yandex Disk's): the name has the first line to
+   itself; the item count and the last change share the bottom line - the
+   count on the left, the date on the right. */
+.subfolder-card-name {
+  flex: 1 1 calc(100% - 30px);
+}
+.subfolder-card-count {
+  align-self: center;
+}
+.subfolder-card-date {
+  /* Zero basis: stays on the count's line even on a phone's narrow tile. */
+  flex: 1 1 0;
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+/* A phone's narrow tile: the date wraps in its own place, never cut short. */
+@media (max-width: 720px) {
+  .subfolder-card-date {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    line-height: 1.25;
+  }
+}
