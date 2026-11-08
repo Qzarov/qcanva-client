@@ -179,7 +179,7 @@
     >
     <div class="dash-toolbar">
       <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
+        <button class="btn-primary" data-add-button @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
           <Plus class="menu-icon" :size="17" aria-hidden="true" />
           <span>{{ t('add') }}</span>
         </button>
@@ -937,7 +937,7 @@
         class="dashboard-fab"
         :aria-label="t('add')"
         :title="t('add')"
-        @click.stop="spaceId !== null ? spaceView?.startAdd() : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+        @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
       ><Plus :size="24" aria-hidden="true" /></button>
       </div>
     </div>

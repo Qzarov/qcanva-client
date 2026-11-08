@@ -75,9 +75,14 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
   return calls;
 }
 
-async function openDashboard(page: Page, opts: Parameters<typeof serveSpaces>[1] = {}) {
-  await page.setViewportSize({ width: 1280, height: 860 });
+async function openDashboard(page: Page, opts: Parameters<typeof serveSpaces>[1] & { yandex?: boolean; phone?: boolean } = {}) {
+  await page.setViewportSize(opts.phone ? { width: 390, height: 844 } : { width: 1280, height: 860 });
   await serveDashboard(page);
+  if (opts.yandex) {
+    await page.route('http://localhost:3001/api/integrations/yandex', (route) => route.fulfill({ json: {
+      enabled: true, connected: true, reconnectRequired: false, login: 'me', displayName: 'Me', email: 'me@yandex.ru', avatarUrl: null,
+    } }));
+  }
   // The share menus' contacts: one saved, one potential, one already in the space.
   await page.route('http://localhost:3001/api/contacts', (route) => route.fulfill({ json: { contacts: [
     { id: 'c-1', email: 'boris@example.com', name: 'Борис', userName: 'Boris', createdAt: '2026-11-01T10:00:00Z' },
@@ -143,8 +148,12 @@ test('an own QCanva folder is added; people are invited with a role', async ({ p
   await page.locator('[data-shared-space="space-1"]').click();
   await expect(page.locator('[data-space-title]')).toHaveText('Семья');
 
-  // No Yandex Disk connected: "+" goes straight to the QCanva folders.
-  await page.locator('[data-space-add]').click();
+  // No "+" of its own: adding a folder is in "⋯". No Yandex Disk connected,
+  // so only the QCanva folder is offered there.
+  await expect(page.locator('[data-space-add]')).toHaveCount(0);
+  await page.locator('[data-space-menu]').click();
+  await expect(page.locator('[data-space-actions] [data-space-add-yandex]')).toHaveCount(0);
+  await page.locator('[data-space-actions] [data-space-add-qspace]').click();
   const dialog = page.locator('[data-space-folder-dialog]');
   await expect(dialog).toBeVisible();
   // Already in the space: not offered again.
@@ -175,10 +184,52 @@ test('a viewer sees the feed, adds nothing, and may leave', async ({ page }) => 
   await openDashboard(page, { role: 'viewer' });
   await page.locator('[data-shared-space="space-1"]').click();
   await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(3);
-  await expect(page.locator('[data-space-add]')).toHaveCount(0);
-  // Nothing of others' to take out.
+  // Nothing of others' to take out, and nothing to add.
+  await page.locator('[data-space-menu]').click();
+  await expect(page.locator('[data-space-actions] [data-space-add-qspace]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.mouse.click(5, 5);
   await expect(page.locator('[data-space-source-remove]')).toHaveCount(0);
   await page.locator('[data-space-menu]').click();
   await expect(page.locator('[data-space-leave-menu]')).toBeVisible();
   await expect(page.locator('[data-space-delete]')).toHaveCount(0);
+});
+
+test('the empty space\'s "+ Add" opens the same choice of folders as "⋯", next to it', async ({ page }) => {
+  await openDashboard(page, { spaces: false, yandex: true });
+  await page.locator('[data-new-space]').click();
+  await page.getByRole('dialog').locator('input').fill('Работа');
+  await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
+  const tile = page.locator('[data-space-empty]');
+  await tile.click();
+  const choice = page.locator('[data-space-add-menu]');
+  await expect(choice.locator('[data-space-add-qspace]')).toBeVisible();
+  await expect(choice.locator('[data-space-add-yandex]')).toBeVisible();
+  // Opened under the tile, not somewhere else on the page.
+  const [tileBox, choiceBox] = [await tile.boundingBox(), await choice.boundingBox()];
+  expect(Math.abs(choiceBox!.y - (tileBox!.y + tileBox!.height)) < 20).toBe(true);
+  await choice.locator('[data-space-add-qspace]').click();
+  await expect(page.locator('[data-space-folder-dialog]')).toBeVisible();
+});
+
+test('phone: the round "+" opens the choice of folders as a bottom sheet', async ({ page }) => {
+  await openDashboard(page, { yandex: true, phone: true });
+  await page.locator('[data-mobile-sidebar-open]').click();
+  await page.locator('[data-shared-space="space-1"]').click();
+  await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(3);
+  await page.locator('.dashboard-fab').click();
+  const choice = page.locator('[data-space-add-menu]');
+  await expect(choice.locator('[data-space-add-yandex]')).toBeVisible();
+  const box = await choice.boundingBox();
+  expect(box!.y + box!.height).toBeGreaterThan(844 - 80);
+  // Above the round "+": the sheet is on top where they overlap.
+  const fab = await page.locator('.dashboard-fab').boundingBox();
+  const onTop = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.closest('[data-space-add-menu], .dashboard-fab')?.className ?? '', [fab!.x + fab!.width / 2, fab!.y + fab!.height / 2]);
+  expect(String(onTop)).not.toContain('dashboard-fab');
+  if (SHOTS) {
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `${SHOTS}/space-add-phone.png` });
+  }
+  await choice.locator('[data-space-add-yandex]').click();
+  await expect(page.locator('[data-space-add-menu]')).toHaveCount(0);
 });

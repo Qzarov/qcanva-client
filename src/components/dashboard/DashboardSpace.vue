@@ -12,22 +12,6 @@
       </div>
       <template v-if="space">
         <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
-        <div v-if="canAdd" class="folder-manager-menu folder-create-menu">
-          <button
-            class="folder-manager-trigger folder-create-trigger"
-            data-space-add
-            :title="t('spaceAddFolder')"
-            :aria-label="t('spaceAddFolder')"
-            :aria-expanded="menu === 'add'"
-            @click.stop="onAdd"
-          ><Plus :size="17" aria-hidden="true" /></button>
-          <Transition name="card-menu-pop">
-            <div v-if="menu === 'add'" class="mobile-action-popover" data-space-add-menu @click.stop>
-              <button class="card-menu-item" data-space-add-qspace @click="openQspaceDialog">{{ t('spaceFolderQspace') }}</button>
-              <button class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceFolderYandex') }}</button>
-            </div>
-          </Transition>
-        </div>
         <div class="folder-manager-menu">
           <button
             class="folder-manager-trigger"
@@ -37,7 +21,11 @@
             @click.stop="toggleMenu('space')"
           >⋯</button>
           <Transition name="card-menu-pop">
-            <div v-if="menu === 'space'" class="mobile-action-popover" @click.stop>
+            <div v-if="menu === 'space'" class="mobile-action-popover" data-space-actions @click.stop>
+              <template v-if="canAdd">
+              <button class="card-menu-item" data-space-add-qspace @click="openQspaceDialog">{{ t('spaceAddQspaceFolder') }}</button>
+              <button v-if="yandexConnected" class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceAddYandexFolder') }}</button>
+              </template>
               <button class="card-menu-item" data-space-members-open @click="openMembers">{{ t('spaceMembers') }}</button>
               <template v-if="space.role === 'owner'">
                 <button class="card-menu-item" data-space-rename @click="rename">{{ t('rename') }}</button>
@@ -93,7 +81,7 @@
         </div>
 
         <div v-if="!items.length && loaded" class="dash-grid">
-          <button v-if="canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="onAdd">
+          <button v-if="canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="startAdd($event)">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
           </button>
           <p v-else class="dash-empty" data-space-empty>{{ t('noFolderItems') }}</p>
@@ -159,6 +147,21 @@
         </button>
       </template>
     </div>
+
+    <Teleport to=".app-layout.dashboard-view" :disabled="!teleportReady">
+      <Transition name="card-menu-pop">
+        <div
+          v-if="menu === 'add'"
+          class="mobile-action-popover space-add-menu"
+          :style="addMenuStyle"
+          data-space-add-menu
+          @click.stop
+        >
+          <button class="card-menu-item" data-space-add-qspace @click="openQspaceDialog">{{ t('spaceAddQspaceFolder') }}</button>
+              <button v-if="yandexConnected" class="card-menu-item" data-space-add-yandex @click="openYandexPicker">{{ t('spaceAddYandexFolder') }}</button>
+        </div>
+      </Transition>
+    </Teleport>
 
     <SpaceMembersDialog v-if="membersOpen && space" :space="space" :me-id="meId" @changed="onMembersChanged" @close="membersOpen = false" />
     <SpaceFolderDialog
@@ -406,12 +409,39 @@ function toggleMenu(name: string) {
   menu.value = menu.value === name ? '' : name;
 }
 const closeMenu = (event: MouseEvent) => {
-  if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu')) menu.value = '';
+  if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
 };
-/** "+": both kinds of folder in a menu; with no Yandex Disk connected, straight to QCanva's. */
-function onAdd() {
-  if (yandexConnected.value) toggleMenu('add');
-  else openQspaceDialog();
+/** Where the add choice opens: under what was pressed (a phone makes it a bottom sheet). */
+const addMenuStyle = ref<Record<string, string>>({});
+const teleportReady = ref(false);
+const PHONE = '(max-width: 720px)';
+/**
+ * Adding a folder - the empty space's tile, the toolbar's Add, the phone's
+ * "+": both kinds of folder to choose from; with no Yandex Disk connected
+ * there is one, so its picker opens straight away (no menu of one item).
+ */
+function startAdd(event?: Event) {
+  if (!canAdd.value) return;
+  if (!yandexConnected.value) {
+    openQspaceDialog();
+    return;
+  }
+  if (menu.value === 'add') {
+    menu.value = '';
+    return;
+  }
+  const anchor = (event?.currentTarget ?? event?.target) as HTMLElement | null | undefined;
+  const rect = anchor?.getBoundingClientRect();
+  const phone = typeof window !== 'undefined' && window.matchMedia?.(PHONE).matches;
+  addMenuStyle.value = rect && !phone
+    ? {
+      position: 'fixed',
+      top: `${Math.round(rect.bottom + 8)}px`,
+      left: `${Math.round(Math.max(12, Math.min(rect.left, window.innerWidth - 240)))}px`,
+      right: 'auto',
+    }
+    : {};
+  menu.value = 'add';
 }
 function openQspaceDialog() {
   menu.value = '';
@@ -537,6 +567,7 @@ async function onMembersChanged(next: SpaceDetails | null) {
 }
 
 onMounted(() => {
+  teleportReady.value = Boolean(document.querySelector('.app-layout.dashboard-view'));
   document.addEventListener('click', closeMenu);
   void loadYandexStatus();
   void load();
@@ -547,5 +578,5 @@ onBeforeUnmount(() => {
   if (previewTimer) clearTimeout(previewTimer);
 });
 
-defineExpose({ reload, startAdd: onAdd });
+defineExpose({ reload, startAdd });
 </script>
