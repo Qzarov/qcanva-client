@@ -296,6 +296,7 @@ import { useCanvasTemplateNodes } from '../canvas/useCanvasTemplateNodes';
 import { useCanvasAddMenu } from '../canvas/useCanvasAddMenu';
 import { getNodeFirstLine, getNodeFirstLineAlignValue, getNodeRestText, groupColorClass, nodeColorClass, nodePosition, nodePresentationClass, renderCanvasMarkdown } from '../canvas/nodePresentation';
 import { useCanvasNodeStyleControls } from '../canvas/useCanvasNodeStyleControls';
+import { useCanvasKeyboardShortcuts } from '../canvas/useCanvasKeyboardShortcuts';
 
 /** Minimal pointer shape shared by mouse and touch resize entry points. */
 type PointerLike = { clientX: number; clientY: number; button?: number };
@@ -1531,108 +1532,62 @@ export default defineComponent({
 
     const isEditableEventTarget = (target: EventTarget | null) => {
       if (!(target instanceof HTMLElement)) return false;
-      return Boolean(target.closest("textarea, input, select, [contenteditable='true']"));
+      return Boolean(target.closest('textarea, input, select, [contenteditable=\'true\']'));
     };
 
-    // Delete edge or node on keydown
-    const onKeyDown = (e: KeyboardEvent) => {
-      if(props.rulerActive)return;
-      if (isEditableEventTarget(e.target)) return;
-      if (e.key === "Escape" && addMenuOpen.value) {
-        closeAddMenu();
-        return;
-      }
-      if (e.key === "Escape" && drawTool.value !== "select") {
-        drawTool.value = "select";
-        onDrawPointerCancel();
-        return;
-      }
-      // Undo/redo
-      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        undo();
-        return;
-      }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "Z" || (e.key === "z" && e.shiftKey))) {
-        e.preventDefault();
-        redo();
-        return;
-      }
-      // Copy
-      if ((e.ctrlKey || e.metaKey) && e.key === "c" && selectedNodeIds.value.length > 0) {
-        e.preventDefault();
-        const ids = getSelectionWithGroupContents();
-        clipboard.value = {
-          nodes: nodes.value.filter((n) => ids.has(n.id)).map((n) => ({ ...n })),
-          edges: edges.value.filter((ed) => ids.has(ed.fromNode) && ids.has(ed.toNode)).map((ed) => ({ ...ed })),
-        };
-        return;
-      }
-      // Paste
-      if ((e.ctrlKey || e.metaKey) && e.key === "v" && clipboard.value.nodes.length > 0) {
-        e.preventDefault();
+    const copySelection = () => {
+      if (!selectedNodeIds.value.length) return;
+      const ids = getSelectionWithGroupContents();
+      clipboard.value = {
+        nodes: nodes.value.filter((node) => ids.has(node.id)).map((node) => ({ ...node })),
+        edges: edges.value.filter((edge) => ids.has(edge.fromNode) && ids.has(edge.toNode)).map((edge) => ({ ...edge })),
+      };
+    };
+
+    const pasteSelection = () => {
+      if (!clipboard.value.nodes.length) return;
+      pushUndo();
+      const idMap = new Map<string, string>();
+      const newNodes: CanvasNode[] = clipboard.value.nodes.map((node) => {
+        const newId = genId();
+        idMap.set(node.id, newId);
+        return { ...node, id: newId, x: node.x + 40, y: node.y + 40 };
+      });
+      const newEdges: CanvasEdge[] = clipboard.value.edges.map((edge) => ({
+        ...edge,
+        id: genId(),
+        fromNode: idMap.get(edge.fromNode) || edge.fromNode,
+        fromEdge: edge.fromEdge ? idMap.get(edge.fromEdge) || edge.fromEdge : edge.fromEdge,
+        toNode: idMap.get(edge.toNode) || edge.toNode,
+      }));
+      nodes.value.push(...newNodes);
+      edges.value.push(...newEdges);
+      for (const node of newNodes) emitOp({ type: 'node-add', node: { ...node } });
+      for (const edge of newEdges) emitOp({ type: 'edge-add', edge: { ...edge } });
+      selectedNodeIds.value = newNodes.map((node) => node.id);
+      clipboard.value.nodes = clipboard.value.nodes.map((node) => ({ ...node, x: node.x + 40, y: node.y + 40 }));
+    };
+
+    const deleteKeyboardSelection = () => {
+      if (selectedEdgeId.value) {
         pushUndo();
-        const idMap = new Map<string, string>();
-        const newNodes: CanvasNode[] = clipboard.value.nodes.map((n) => {
-          const newId = genId();
-          idMap.set(n.id, newId);
-          return { ...n, id: newId, x: n.x + 40, y: n.y + 40 };
-        });
-        const newEdges: CanvasEdge[] = clipboard.value.edges.map((ed) => ({
-          ...ed,
-          id: genId(),
-          fromNode: idMap.get(ed.fromNode) || ed.fromNode,
-          fromEdge: ed.fromEdge ? idMap.get(ed.fromEdge) || ed.fromEdge : ed.fromEdge,
-          toNode: idMap.get(ed.toNode) || ed.toNode,
-        }));
-        nodes.value.push(...newNodes);
-        edges.value.push(...newEdges);
-        for (const n of newNodes) emitOp({ type: 'node-add', node: { ...n } });
-        for (const ed of newEdges) emitOp({ type: 'edge-add', edge: { ...ed } });
-        selectedNodeIds.value = newNodes.map((n) => n.id);
-        // Update clipboard positions for next paste
-        clipboard.value.nodes = clipboard.value.nodes.map((n) => ({ ...n, x: n.x + 40, y: n.y + 40 }));
+        const deletedId = selectedEdgeId.value;
+        edges.value = edges.value.filter((edge) => edge.id !== deletedId);
+        emitOp({ type: 'edge-delete', id: deletedId });
+        selectedEdgeId.value = null;
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "d" && selectedNodeIds.value.length > 0) {
-        e.preventDefault();
-        duplicateSelection();
+      if (selectedNodeIds.value.length > 0) {
+        pushUndo();
+        const ids = [...selectedNodeIds.value];
+        const idSet = new Set(ids);
+        edges.value = edges.value.filter((edge) => !idSet.has(edge.fromNode) && !idSet.has(edge.toNode));
+        nodes.value = nodes.value.filter((node) => !idSet.has(node.id));
+        emitOp({ type: 'node-delete', ids });
+        selectedNodeIds.value = [];
         return;
       }
-      // Select all
-      if ((e.ctrlKey || e.metaKey) && e.key === "a") {
-        e.preventDefault();
-        selectedNodeIds.value = viewerNodes.value.map((n) => n.id);
-        return;
-      }
-      // Escape — deselect
-      if (e.key === "Escape") {
-        clearSelection();
-        return;
-      }
-      if (editingNodeId.value || editingEdgeId.value) return;
-      if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedEdgeId.value) {
-          pushUndo();
-          const deletedId = selectedEdgeId.value;
-          edges.value = edges.value.filter((ed) => ed.id !== deletedId);
-          emitOp({ type: 'edge-delete', id: deletedId });
-          selectedEdgeId.value = null;
-          e.preventDefault();
-        } else if (selectedNodeIds.value.length > 0) {
-          pushUndo();
-          const ids = [...selectedNodeIds.value];
-          const idSet = new Set(ids);
-          edges.value = edges.value.filter((ed) => !idSet.has(ed.fromNode) && !idSet.has(ed.toNode));
-          nodes.value = nodes.value.filter((n) => !idSet.has(n.id));
-          emitOp({ type: 'node-delete', ids });
-          selectedNodeIds.value = [];
-          e.preventDefault();
-        } else if (selectedDrawingIds.value.length > 0) {
-          e.preventDefault();
-          deleteSelectedDrawing();
-        }
-      }
+      deleteSelectedDrawing();
     };
 
     // Drawing selection computeds
@@ -2535,6 +2490,28 @@ export default defineComponent({
       openImage: openImagePicker,
       openCanvas: () => emit('open-embed'),
       openDocument: () => emit('open-doc-embed'),
+    });
+
+    const { onKeyDown } = useCanvasKeyboardShortcuts({
+      rulerActive: () => props.rulerActive,
+      isEditableTarget: isEditableEventTarget,
+      isAddMenuOpen: () => addMenuOpen.value,
+      closeAddMenu,
+      isDrawingActive: () => drawTool.value !== 'select',
+      cancelDrawing: () => { drawTool.value = 'select'; onDrawPointerCancel(); },
+      undo,
+      redo,
+      copySelection,
+      pasteSelection,
+      duplicateSelection,
+      canCopy: () => selectedNodeIds.value.length > 0,
+      canPaste: () => clipboard.value.nodes.length > 0,
+      canDuplicate: () => selectedNodeIds.value.length > 0,
+      selectAll: () => { selectedNodeIds.value = viewerNodes.value.map((node) => node.id); },
+      clearSelection,
+      isEditing: () => !!editingNodeId.value || !!editingEdgeId.value,
+      deleteSelection: deleteKeyboardSelection,
+      canDelete: () => Boolean(selectedEdgeId.value || selectedNodeIds.value.length || selectedDrawingIds.value.length),
     });
 
     const onCanvasEmbedDblClick = (canvasId: string) => {
