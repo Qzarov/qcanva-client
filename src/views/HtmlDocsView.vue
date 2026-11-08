@@ -92,7 +92,7 @@
                 </label>
                 <div class="card-title">{{ doc.title || 'Untitled HTML' }}</div>
                 <div class="card-meta">
-                  <span class="badge" :class="doc.shared ? 'badge-public' : 'badge-owner'">{{ doc.shared ? 'Shared' : 'Private' }}</span>
+                  <UiBadge class="badge" :class="doc.shared ? 'badge-public' : 'badge-owner'">{{ doc.shared ? 'Shared' : 'Private' }}</UiBadge>
                   <span>{{ formatDate(doc.updatedAt) }}</span>
                 </div>
                 <div v-if="doc.tags?.length" class="card-tags">
@@ -168,6 +168,7 @@ import { useRouter } from 'vue-router';
 import { clearToken, htmlDocuments, isAdmin, isPasswordAccess, resourceFolders, tags, type ResourceFolderSummary, type ResourceTag } from '../api/client';
 import { getPublicOrigin } from '../api/public-origin';
 import AppSidebar from '../components/AppSidebar.vue';
+import UiBadge from '../components/ui/UiBadge.vue';
 
 type HtmlTag = ResourceTag & { id: string };
 type HtmlDocumentRecord = {
@@ -185,7 +186,7 @@ const tagColors = ['#7c8aff', '#53dfdd', '#44cf6e', '#e0de71', '#e9973f', '#fb46
 const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
-  components: { AppSidebar },
+  components: { AppSidebar, UiBadge },
   setup() {
     const router = useRouter();
     const isAdminUser = isAdmin();
