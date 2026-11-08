@@ -482,40 +482,17 @@
       <!-- The @-mention picker. Same chrome rule as the slash menu above:
            lives in the app's themed --ui-* palette, nothing here reaches the
            Yjs document until an item is chosen. -->
-      <div
-        v-if="mentionOpen"
-        class="text-doc-mention-menu"
+      <TextDocumentMentionMenu
+        :open="mentionOpen"
+        :items="mentionItems"
+        :active-index="mentionIndex"
         :style="mentionMenuStyle"
-        role="listbox"
-        :aria-label="t('mentionMenu')"
-      >
-        <button
-          v-for="(item, index) in mentionItems"
-          :key="item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create'"
-          class="text-doc-mention-item"
-          :class="{ active: index === mentionIndex }"
-          :data-mention-item="item.kind === 'document' ? item.id : item.kind === 'heading' ? `h-${item.headingId}` : 'create'"
-          role="option"
-          :aria-selected="index === mentionIndex"
-          type="button"
-          @mousedown.prevent="selectMentionItem(index)"
-          @mouseenter="mentionIndex = index"
-        >
-          <template v-if="item.kind === 'document'">
-            <span class="text-doc-mention-item-icon" v-html="mentionDocumentIcon"></span>
-            <span class="text-doc-mention-item-label">{{ item.title }}</span>
-          </template>
-          <template v-else-if="item.kind === 'heading'">
-            <span class="text-doc-mention-item-icon" v-html="mentionHeadingIcon"></span>
-            <span class="text-doc-mention-item-label">{{ item.label || t('untitledHeading') }}</span>
-          </template>
-          <template v-else>
-            <span class="text-doc-mention-item-icon" v-html="mentionCreateIcon"></span>
-            <span class="text-doc-mention-item-label">{{ item.query.trim() ? `${t('mentionCreatePagePrefix')} "${item.query}"` : t('mentionCreateBlankPage') }}</span>
-          </template>
-        </button>
-        <div v-if="!mentionItems.length" class="text-doc-mention-empty">{{ t('mentionNoResults') }}</div>
-      </div>
+        :document-icon="mentionDocumentIcon"
+        :heading-icon="mentionHeadingIcon"
+        :create-icon="mentionCreateIcon"
+        @select="selectMentionItem"
+        @hover="(index) => { mentionIndex = index; }"
+      />
 
       <!--
         LINK TAP/CLICK ACTIONS (front task 4/5). One popover for both
@@ -615,13 +592,14 @@ import TextDocumentHistoryPanel, { type TextDocumentHistoryLabels } from '../com
 import TextDocumentMobileMenu from '../components/TextDocumentMobileMenu.vue';
 import TextDocumentBacklinks from '../components/TextDocumentBacklinks.vue';
 import TextDocumentSlashMenu from '../components/TextDocumentSlashMenu.vue';
+import TextDocumentMentionMenu from '../components/TextDocumentMentionMenu.vue';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink } from '@lucide/vue';
 import BackButton from '../components/BackButton.vue';
 import UiInput from '../components/ui/UiInput.vue';
 import UiTextarea from '../components/ui/UiTextarea.vue';
 
 export default defineComponent({
-  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, TextDocumentSlashMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink },
+  components: { AccountMenu, AccessRequestDialog, AccessGate, BackButton, BubbleMenu, ResourceSharePanel, TextDocumentOutline, TextDocumentHistoryPanel, TextDocumentMobileMenu, TextDocumentBacklinks, TextDocumentSlashMenu, TextDocumentMentionMenu, EditorContent, UiInput, UiTextarea, ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, ChevronLeft, ChevronsDownUp, ChevronsUpDown, Columns3, Copy, ExternalLink, Link2, ListTree, Maximize2, Minimize2, PanelLeftClose, PanelLeftOpen, Pencil, Redo2, Rows3, Trash2, Undo2, Unlink },
   setup() {
     const route = useRoute();
     const router = useRouter();
