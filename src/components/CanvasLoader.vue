@@ -213,18 +213,7 @@
       <!-- Drawings SVG layer (above nodes) -->
       <CanvasDrawingLayer :context="drawingLayerProps" />
 
-      <!-- Remote cursors -->
-      <div
-        v-for="cursor in remoteCursors"
-        :key="'cursor-' + cursor.socketId"
-        class="remote-cursor"
-        :style="{ transform: `translate(${cursor.x}px, ${cursor.y}px)` }"
-      >
-        <svg width="16" height="20" viewBox="0 0 16 20" :fill="cursor.color">
-          <path d="M0 0 L16 12 L8 12 L4 20 Z"/>
-        </svg>
-        <span class="remote-cursor-name" :style="{ background: cursor.color }">{{ cursor.userName }}</span>
-      </div>
+      <CanvasRemoteCursors :cursors="remoteCursors" />
     </div>
 
     <!-- Minimap (device-local visibility and size) -->
@@ -284,6 +273,7 @@ import CanvasMinimap from './canvas/CanvasMinimap.vue';
 import CanvasContextMenu from './canvas/CanvasContextMenu.vue';
 import CanvasControls from './canvas/CanvasControls.vue';
 import CanvasFullscreenTextEditor from './CanvasFullscreenTextEditor.vue';
+import CanvasRemoteCursors from './CanvasRemoteCursors.vue';
 import CanvasEdgeLayer from './canvas/CanvasEdgeLayer.vue';
 import CanvasDrawingLayer from './canvas/CanvasDrawingLayer.vue';
 import {useRulerGesture} from '../canvas/useRulerGesture';
@@ -382,7 +372,7 @@ export interface CanvasChangePayload {
 
 export default defineComponent({
   name: "CanvasLoader",
-  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasEdgeLayer, CanvasDrawingLayer },
+  components: { CanvasColorMenu, BoardPreview, CanvasRulerOverlay, CanvasNodeLink, CanvasNodeImage, CanvasNodeEmbed, CanvasNodeDocument, CanvasNodeText, CanvasNodeGroup, CanvasNodeTemplate, CanvasMinimap, CanvasContextMenu, CanvasControls, CanvasFullscreenTextEditor, CanvasRemoteCursors, CanvasEdgeLayer, CanvasDrawingLayer },
   props: {
     textSyncStatus: { type: Object as PropType<{ kind: 'synced' | 'saving' | 'offline' | 'failed'; label: string }>, default: () => ({ kind: 'offline', label: '' }) },
     rulerActive:{type:Boolean,default:false},
