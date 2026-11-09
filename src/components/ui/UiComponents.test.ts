@@ -75,6 +75,8 @@ describe('UI primitives', () => {
     const wrapper = mount(UiModal, { props: { label: 'Dialog' }, slots: { default: 'Body' } });
 
     expect(wrapper.get('[role="dialog"]').text()).toBe('Body');
+    expect(wrapper.get('[role="dialog"]').attributes('aria-modal')).toBe('true');
+    expect(wrapper.get('[role="dialog"]').attributes('aria-label')).toBe('Dialog');
     expect((wrapper.vm as { root: HTMLElement }).root).toBe(wrapper.get('.ui-modal-backdrop').element);
     await wrapper.get('.ui-modal-backdrop').trigger('click');
     expect(wrapper.emitted('close')).toHaveLength(1);
