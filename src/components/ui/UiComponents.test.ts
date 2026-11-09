@@ -35,13 +35,13 @@ describe('UI primitives', () => {
 
   it('preserves the requested semantic tag and domain classes for cards', () => {
     const wrapper = mount(UiCard, {
-      props: { as: 'section', variant: 'subtle' },
+      props: { as: 'section', variant: 'subtle', layout: 'inherit' },
       attrs: { class: 'settings-card', 'data-settings-card': '' },
       slots: { default: 'Content' },
     });
 
     expect(wrapper.element.tagName).toBe('SECTION');
-    expect(wrapper.classes()).toEqual(expect.arrayContaining(['ui-card', 'ui-card--subtle', 'settings-card']));
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['ui-card', 'ui-card--subtle', 'ui-card--layout-inherit', 'settings-card']));
     expect(wrapper.attributes('data-settings-card')).toBe('');
     expect(wrapper.text()).toBe('Content');
   });

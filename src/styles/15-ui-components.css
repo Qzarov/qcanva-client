@@ -72,6 +72,7 @@
 }
 :where(.ui-card--elevated) { box-shadow: var(--ui-shadow); }
 :where(.ui-card--subtle) { background: var(--ui-surface-subtle); box-shadow: none; }
+:where(.ui-card--layout-inherit) { display: block; gap: 0; }
 
 .ui-button {
   display: inline-flex;
