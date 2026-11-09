@@ -12,8 +12,10 @@
   -->
   <Teleport to="body" :disabled="teleportDisabled">
     <div v-if="open" class="text-doc-share-backdrop" :class="{ 'share-backdrop-glass': glass }" @click="emit('close')"></div>
-    <section
+    <UiCard
       v-if="open"
+      as="section"
+      layout="inherit"
       class="share-panel text-doc-share-panel"
       :class="{ 'share-panel-glass': glass }"
       role="dialog"
@@ -139,7 +141,7 @@
           </div>
         </div>
       </div>
-    </section>
+    </UiCard>
   </Teleport>
 </template>
 
@@ -148,6 +150,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { Check, Copy, Link2, X } from '@lucide/vue';
 import { useI18n } from '../composables/useI18n';
 import ContactEmailInput from './ContactEmailInput.vue';
+import UiCard from './ui/UiCard.vue';
 import { slugFormatIsValid } from '../sharing/slug';
 
 export type ShareVisibility = 'private' | 'authenticated' | 'public';
