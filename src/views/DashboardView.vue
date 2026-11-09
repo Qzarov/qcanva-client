@@ -340,6 +340,7 @@ import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { useDashboardMarquee } from '../composables/useDashboardMarquee';
 import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
+import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -3119,48 +3120,48 @@ export default defineComponent({
       return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
     });
 
-    const bulkDelete = async () => {
-      const items = bulkDeletable.value;
-      const driveFiles = bulkDeletableDriveFiles.value;
-      const yandex = selectedYandexFiles.value;
-      const skipped = selectedItems.value.length + selectedDriveFiles.value.length - items.length - driveFiles.length;
-      const confirmed = await confirmDialog({
-        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length + yandex.length)),
+    const { bulkDelete } = useDashboardBulkDelete({
+      getItems: () => bulkDeletable.value,
+      getDriveFiles: () => bulkDeletableDriveFiles.value,
+      getYandexFiles: () => selectedYandexFiles.value,
+      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
+      confirm: ({ items, driveFiles, yandex, skipped }) => confirmDialog({
+        title: t('bulkDeleteTitle').replace('{n}', String(items + driveFiles + yandex)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
         confirmLabel: t('delete'),
         danger: true,
-      });
-      if (!confirmed) return;
-      await runAction('bulk-delete', async () => {
-        for (const item of items) {
-          if (item.type === 'canvas') {
-            await canvas.delete(item.id);
-            forgetResourceTab('canvas', item.id);
-          } else if (item.type === 'html-document') {
-            await htmlDocuments.delete(item.id);
-            forgetResourceTab('html', item.id);
-          } else if (item.type === 'text-document') {
-            await textDocuments.delete(item.id);
-            forgetResourceTab('doc', item.id);
-          } else {
-            await interactiveTemplates.delete(item.id);
-            forgetResourceTab('template', item.id);
-          }
+      }),
+      runAction: (task) => runAction('bulk-delete', task, t('bulkDeleted').replace('{n}', String(bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length))),
+      deleteItem: async (item) => {
+        if (item.type === 'canvas') {
+          await canvas.delete(item.id);
+          forgetResourceTab('canvas', item.id);
+        } else if (item.type === 'html-document') {
+          await htmlDocuments.delete(item.id);
+          forgetResourceTab('html', item.id);
+        } else if (item.type === 'text-document') {
+          await textDocuments.delete(item.id);
+          forgetResourceTab('doc', item.id);
+        } else {
+          await interactiveTemplates.delete(item.id);
+          forgetResourceTab('template', item.id);
         }
-        for (const file of driveFiles) await driveApi.trashFile(file.id);
-        for (const file of yandex) await settleYandexOutcome(await yandexDisk.remove(file.path));
-      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length + yandex.length)));
-      if (yandex.length) yandexRefreshKey.value += 1;
-      if (driveFiles.length) {
-        folderFilesRefreshKey.value += 1;
-        refreshFolderFileCounts();
-      }
-      const deleted = new Set(items.map(selectionKey));
-      own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
-      interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
-      clearSelection();
-      await load();
-    };
+      },
+      trashDriveFile: (file) => driveApi.trashFile(file.id),
+      removeYandexFile: async (file) => { await settleYandexOutcome(await yandexDisk.remove(file.path)); },
+      afterSuccess: async ({ items, driveFiles, yandex }) => {
+        if (yandex.length) yandexRefreshKey.value += 1;
+        if (driveFiles.length) {
+          folderFilesRefreshKey.value += 1;
+          refreshFolderFileCounts();
+        }
+        const deleted = new Set(items.map(selectionKey));
+        own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
+        interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
+        clearSelection();
+        await load();
+      },
+    });
 
     const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
