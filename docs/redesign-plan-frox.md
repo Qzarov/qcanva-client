@@ -68,6 +68,8 @@ roadmap для структурного рефакторинга клиентс�
   `--ui-glass-accent-tint`, который используют glass/settings/dashboard-модули.
 - CSS cleanup: повторяющийся accent shadow стал токеном
   `--ui-glass-accent-shadow` с тем же набором потребителей.
+- CSS cleanup: shadow карточек glass стал токеном
+  `--ui-glass-card-shadow`, общий для glass/dashboard/UI-card поверхностей.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -85,7 +87,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **69%** | component-only CSS, удаление оставшихся дублей, desktop/mobile smoke |
+| Final CSS cleanup | **70%** | component-only CSS, удаление оставшихся дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
