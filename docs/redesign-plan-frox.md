@@ -86,6 +86,8 @@ roadmap для структурного рефакторинга клиентс�
   `--transition-mobile-surface` и `--transition-mobile-surface-transform`.
 - CSS cleanup: shared surface transition вынесена в `--transition-surface` для
   dashboard/canvas controls.
+- CSS cleanup: повторяющийся border transition вынесен в
+  `--transition-border` для auth/dashboard/canvas controls.
 - UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
   primitives теперь держат scoped styles рядом с компонентами; глобальные
   модули `15-ui-components.css`, `16-ui-form-empty.css` и
@@ -112,7 +114,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **98%** | удаление оставшихся semantic domain-дублей |
+| Final CSS cleanup | **99%** | финальный аудит semantic domain-дублей |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
