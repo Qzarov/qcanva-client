@@ -70,29 +70,11 @@
         @cancel-upload="cancelUpload"
         @hide-upload="uploadPanelOpen = false"
       />
-    <header v-if="!isLoggedIn" class="app-header app-header-public">
-      <div class="app-header-inner">
-        <div class="dashboard-brand">
-          <img src="/qcanva-logo.png" alt="QCanva" />
-          <div>
-            <h1>QCanva</h1>
-            <p v-if="!isLoggedIn" class="dash-subtitle">{{ t('publicResources') }}</p>
-          </div>
-        </div>
-        <div class="header-user-slot">
-          <template v-if="!isLoggedIn">
-            <LanguageToggle />
-            <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
-            <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
-          </template>
-        </div>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
-        />
-      </div>
-    </header>
+    <DashboardPublicHeader
+      v-if="!isLoggedIn"
+      v-model:search-query="searchQuery"
+      :folder-search-placeholder="folderSearchPlaceholder"
+    />
     <header v-else class="app-header dashboard-auth-header">
       <div class="app-header-inner">
         <DashboardMobileHeaderControls
@@ -377,6 +359,7 @@ import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/
 import type { DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobileHeaderControls.vue';
+import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -399,7 +382,6 @@ import { useYandexDisk } from '../composables/useYandexDisk';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
-import LanguageToggle from '../components/LanguageToggle.vue';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
   buildSidebarNavItems,
@@ -536,6 +518,7 @@ export default defineComponent({
     DashboardFolderFiles,
     DashboardStatusOverlays,
     DashboardMobileHeaderControls,
+    DashboardPublicHeader,
     DashboardYandexDisk,
     DashboardSelectionBar,
     DashboardToolbar,
@@ -552,7 +535,6 @@ export default defineComponent({
     DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
-    LanguageToggle,
     ArrowLeft,
     ArrowUpDown,
     Check,
