@@ -523,7 +523,7 @@
       />
 
       <!-- History panel -->
-      <div v-if="showHistory" class="history-panel">
+      <UiCard v-if="showHistory" as="div" layout="inherit" class="history-panel">
         <div class="history-panel-header">
           <h3>{{ t('history') }}</h3>
           <button class="btn-ghost btn-sm" @click="showHistory = false">×</button>
@@ -600,7 +600,7 @@
             </template>
           </div>
         </div>
-      </div>
+      </UiCard>
 
       <!-- Embed document picker -->
       <div v-if="showDocPicker" class="embed-picker-panel">
@@ -781,6 +781,7 @@ import CanvasColorMenu from '../canvas/CanvasColorMenu.vue';
 import CanvasDrawingPanel from '../canvas/CanvasDrawingPanel.vue';
 import BackButton from '../components/BackButton.vue';
 import ResourceSharePanel from '../components/ResourceSharePanel.vue';
+import UiCard from '../components/ui/UiCard.vue';
 import { slugFormatIsValid } from '../sharing/slug';
 import { getPublicOrigin } from '../api/public-origin';
 
@@ -792,7 +793,7 @@ interface CanvasChangePayload {
 }
 
 export default defineComponent({
-  components: { CanvasDrawingPanel, CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar, CanvasNodeToolbar },
+  components: { CanvasDrawingPanel, CanvasColorMenu, CanvasRulerSettings,AccountMenu, AccessGate, BackButton, ResourceSharePanel, UiCard, CanvasLoader, ChatPanel, MobileModebar, MobileNodeToolbar, CanvasNodeToolbar },
   setup() {
     const route = useRoute();
     const router = useRouter();
