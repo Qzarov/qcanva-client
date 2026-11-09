@@ -346,6 +346,7 @@ import { useDashboardResourceDrag } from '../composables/useDashboardResourceDra
 import { useDashboardFeedNavigation } from '../composables/useDashboardFeedNavigation';
 import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
 import { useDashboardSectionTransition } from '../composables/useDashboardSectionTransition';
+import { useDashboardMobileSidebar } from '../composables/useDashboardMobileSidebar';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -616,9 +617,6 @@ export default defineComponent({
     };
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
-    let previousBodyOverflow: string | null = null;
-    const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
-    let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -3638,114 +3636,13 @@ export default defineComponent({
       writeSidebarWidthState(storage(), sidebarWidthState.value);
     };
 
-    const openMobileSidebar = (event?: Event) => {
-      const eventTarget = event?.currentTarget;
-      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
-        ? eventTarget
-        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      mobileSidebarOpen.value = true;
-    };
-
-    const closeMobileSidebar = () => {
-      mobileSidebarOpen.value = false;
-    };
-
-    const focusWithoutScroll = (element: HTMLElement) => {
-      try {
-        element.focus({ preventScroll: true });
-      } catch {
-        element.focus();
-      }
-    };
-
-    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
-      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
-      let current: HTMLElement | null = element;
-      while (current) {
-        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
-        const style = window.getComputedStyle(current);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        current = current.parentElement;
-      }
-      return true;
-    };
-
-    const restoreSidebarCloseFocus = () => {
-      const opener = mobileSidebarOpener.value;
-      if (isVisibleFocusTarget(opener)) {
-        focusWithoutScroll(opener);
-        return;
-      }
-      const fallback = [
-        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
-        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
-      ].find(isVisibleFocusTarget) ?? null;
-      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
-    };
-
-    const restoreBodyOverflow = () => {
-      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
-      document.body.style.overflow = previousBodyOverflow;
-      previousBodyOverflow = null;
-    };
-
-    const getSidebarDesktopMedia = () => {
-      try {
-        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
-          : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const closeMobileSidebarOnDesktop = () => {
-      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
-    };
-
-    const addSidebarDesktopListener = (media: MediaQueryList) => {
-      if (typeof media.addEventListener === 'function') {
-        media.addEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof media.addListener === 'function') {
-        media.addListener(closeMobileSidebarOnDesktop);
-      }
-    };
-
-    const removeSidebarDesktopListener = () => {
-      if (!sidebarDesktopMedia) return;
-      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
-        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
-        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
-      }
-      sidebarDesktopMedia = null;
-    };
-
-    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
-      if (typeof document === 'undefined') return;
-      let cancelled = false;
-      onCleanup(() => {
-        cancelled = true;
-      });
-
-      if (open) {
-        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        await nextTick();
-        if (!cancelled && mobileSidebarOpen.value) {
-          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
-          if (closeButton) focusWithoutScroll(closeButton);
-        }
-        return;
-      }
-
-      restoreBodyOverflow();
-      await nextTick();
-      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
+    const {
+      open: openMobileSidebar,
+      close: closeMobileSidebar,
+    } = useDashboardMobileSidebar({
+      open: mobileSidebarOpen,
+      opener: mobileSidebarOpener,
+      desktopQuery: LAYOUT.dashboardSidebarDocked,
     });
 
     const onAppClickCapture = (event: MouseEvent) => {
@@ -3828,11 +3725,6 @@ export default defineComponent({
       void load({ showLoading: !cached.found });
       takeYandexReturn();
       takeAddressSection();
-      sidebarDesktopMedia = getSidebarDesktopMedia();
-      if (sidebarDesktopMedia) {
-        addSidebarDesktopListener(sidebarDesktopMedia);
-        closeMobileSidebarOnDesktop();
-      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -3841,9 +3733,7 @@ export default defineComponent({
       document.removeEventListener('visibilitychange', onDashboardVisible);
       void appStateListener?.remove();
       appStateListener = null;
-      removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
-      restoreBodyOverflow();
     });
 
     const interactiveSectionProps = computed(() => ({
