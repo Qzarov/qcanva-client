@@ -137,7 +137,7 @@
 }
 .dashboard-selection-bar-enter-active,
 .dashboard-selection-bar-leave-active {
-  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+  transition: var(--transition-popover);
 }
 .dashboard-selection-bar-enter-from,
 .dashboard-selection-bar-leave-to {
@@ -190,7 +190,7 @@
 }
 .dashboard-download-status-enter-active,
 .dashboard-download-status-leave-active {
-  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+  transition: var(--transition-popover);
 }
 .dashboard-download-status-enter-from,
 .dashboard-download-status-leave-to {

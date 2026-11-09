@@ -143,7 +143,7 @@
 }
 .dashboard-upload-panel-enter-active,
 .dashboard-upload-panel-leave-active {
-  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+  transition: var(--transition-popover);
 }
 .dashboard-upload-panel-enter-from,
 .dashboard-upload-panel-leave-to {
