@@ -9,6 +9,7 @@ content. Use the smallest primitive that fits the interaction:
 - `UiButton` for labelled actions;
 - `UiBadge` for compact status, role and count labels;
 - `UiToast` for transient success, error and info notifications;
+- `UiCard` for semantic glass/elevated content surfaces;
 - `UiIconButton` for icon-only actions with a required accessible label;
 - `UiModal` for backdrop, focusable dialog surface and Escape/backdrop close.
 - `UiInput` and `UiTextarea` for controlled text fields with forwarded field

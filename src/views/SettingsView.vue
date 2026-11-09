@@ -28,7 +28,7 @@
 
       <main class="settings-content">
         <template v-if="section === 'general'">
-          <section class="settings-card" data-settings-account>
+          <UiCard as="section" class="settings-card" data-settings-account>
             <h2>{{ t('settingsAccount') }}</h2>
             <div class="settings-account-row">
               <span class="settings-avatar" aria-hidden="true">{{ avatarLabel }}</span>
@@ -37,8 +37,8 @@
                 <span v-if="user?.email && user.email !== user?.name">{{ user.email }}</span>
               </div>
             </div>
-          </section>
-          <section class="settings-card">
+          </UiCard>
+          <UiCard as="section" class="settings-card">
             <h2>{{ t('settingsAppearance') }}</h2>
             <div class="settings-row">
               <span class="settings-row-label">{{ t('theme') }}</span>
@@ -59,15 +59,16 @@
                 >{{ option.label }}</button>
               </div>
             </div>
-          </section>
-          <section
+          </UiCard>
+          <UiCard
+            as="section"
             v-if="isHubOverrideAllowed()"
             class="settings-card"
             data-settings-hub
           >
             <h2>Хаб (отладка)</h2>
             <HubOverrideField />
-          </section>
+          </UiCard>
         </template>
 
         <template v-else-if="section === 'tags'">
@@ -104,7 +105,7 @@
             <h2>{{ t('settingsHtmlGeneration') }}</h2>
             <p>{{ t('settingsHtmlLead') }}</p>
           </section>
-          <form class="settings-card" data-settings-html @submit.prevent="saveHtml">
+          <UiCard as="form" class="settings-card" data-settings-html @submit.prevent="saveHtml">
             <label class="settings-field">
               <span class="settings-row-label">{{ t('settingsModel') }}</span>
               <input v-model.trim="model" class="dashboard-modal-input" placeholder="openai/gpt-4.1-mini" />
@@ -123,7 +124,7 @@
               <span v-if="saved" class="settings-saved" role="status">{{ t('settingsSaved') }}</span>
               <button type="submit" class="btn-primary" :disabled="saving">{{ t('settingsSave') }}</button>
             </div>
-          </form>
+          </UiCard>
         </template>
       </main>
     </div>
@@ -141,6 +142,7 @@ import HubOverrideField from '../components/HubOverrideField.vue';
 import McpTokensPanel from '../components/settings/McpTokensPanel.vue';
 import TagsSettingsPanel from '../components/settings/TagsSettingsPanel.vue';
 import ContactsSettingsPanel from '../components/settings/ContactsSettingsPanel.vue';
+import UiCard from '../components/ui/UiCard.vue';
 import { getCurrentUser, htmlDocuments } from '../api/client';
 import { isHubOverrideAllowed } from '../api/hubOverride';
 import { useI18n, type UiLocale } from '../composables/useI18n';
@@ -276,15 +278,6 @@ watch(section, (value) => {
 .settings-content { display: grid; gap: 16px; align-content: start; min-width: 0; }
 .settings-intro h2 { margin: 0 0 4px; font-size: 22px; }
 .settings-intro p { margin: 0; max-width: 640px; color: var(--ui-text-secondary); line-height: 1.5; }
-.settings-card {
-  display: grid;
-  gap: 14px;
-  padding: 18px 20px;
-  border: 1px solid var(--ui-glass-border);
-  border-radius: 20px;
-  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
-}
 .settings-card h2 { margin: 0; font-size: 16px; }
 .settings-account-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .settings-avatar {

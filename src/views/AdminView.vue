@@ -15,17 +15,17 @@
 
     <template v-else>
       <div class="admin-stats">
-        <div class="admin-card stat-card">
+        <UiCard as="div" class="admin-card stat-card">
           <div class="stat-value">{{ stats.userCount }}</div>
           <div class="stat-label">{{ t('adminStatUsers') }}</div>
-        </div>
-        <div class="admin-card stat-card">
+        </UiCard>
+        <UiCard as="div" class="admin-card stat-card">
           <div class="stat-value">{{ stats.canvasCount }}</div>
           <div class="stat-label">{{ t('adminStatCanvases') }}</div>
-        </div>
+        </UiCard>
       </div>
 
-      <section v-if="storageSupported" id="storage" class="admin-card admin-storage-section">
+      <UiCard as="section" v-if="storageSupported" id="storage" class="admin-card admin-storage-section">
         <h2>{{ t('adminStorageTitle') }}</h2>
         <div class="admin-storage-card">
           <div v-if="settings && settings.storage" class="admin-storage-usage" data-admin-storage-usage>
@@ -141,9 +141,9 @@
             <div class="admin-storage-muted" data-admin-capacity-hint>{{ t('adminStorageCapacityHint') }}</div>
           </div>
         </div>
-      </section>
+      </UiCard>
 
-      <section class="admin-card">
+      <UiCard as="section" class="admin-card">
         <h2>{{ t('adminUsersTitle') }}</h2>
         <!-- Wider than a phone: the table scrolls sideways inside its card. -->
         <div class="admin-table-wrap">
@@ -182,9 +182,9 @@
         </tbody>
       </table>
         </div>
-      </section>
+      </UiCard>
 
-      <section class="admin-card">
+      <UiCard as="section" class="admin-card">
         <h2>{{ t('adminHistoryTitle') }}</h2>
         <div class="admin-table-wrap">
       <table class="admin-table" data-admin-history>
@@ -218,7 +218,7 @@
         </tbody>
       </table>
         </div>
-      </section>
+      </UiCard>
     </template>
     </main>
   </div>
@@ -230,6 +230,7 @@ import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
 import UiBadge from '../components/ui/UiBadge.vue';
+import UiCard from '../components/ui/UiCard.vue';
 import { ArrowLeft } from '@lucide/vue';
 import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
@@ -237,7 +238,7 @@ import { useI18n } from '../composables/useI18n';
 function getToken() { return localStorage.getItem('token'); }
 
 export default defineComponent({
-  components: { AccountMenu, ArrowLeft, UiBadge },
+  components: { AccountMenu, ArrowLeft, UiBadge, UiCard },
   setup() {
     const { show: showToast } = useToast();
     const { t } = useI18n();
@@ -593,16 +594,6 @@ export default defineComponent({
   box-sizing: border-box;
 }
 .admin-note { margin: 0; color: var(--ui-text-secondary); }
-.admin-card {
-  display: grid;
-  gap: 14px;
-  min-width: 0;
-  padding: 18px 20px;
-  border: 1px solid var(--ui-glass-border);
-  border-radius: 20px;
-  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
-}
 .admin-card h2 { margin: 0; font-size: 16px; }
 .admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
 @media (max-width: 520px) {

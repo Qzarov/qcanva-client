@@ -1,7 +1,7 @@
 <template>
   <!-- Every tag of the user's resources: rename it, recolour it, delete it.
        Used to be the dashboard's "Manage tags" dialog. -->
-  <section class="settings-card tags-settings" data-settings-tags>
+  <UiCard as="section" class="settings-card tags-settings" data-settings-tags>
     <p v-if="loading" class="tags-settings-note">{{ t('loadingDots') }}</p>
     <p v-else-if="loadFailed" class="tags-settings-note tags-settings-note--error" role="alert">{{ t('tagsLoadFailed') }}</p>
     <p v-else-if="!items.length" class="tags-settings-note" data-tags-empty>{{ t('tagsEmpty') }}</p>
@@ -38,7 +38,7 @@
         </div>
       </li>
     </ul>
-  </section>
+  </UiCard>
 </template>
 
 <script setup lang="ts">
@@ -48,6 +48,7 @@ import { alertFailure, confirmDelete } from '../../composables/appDialog';
 import { useToast } from '../../composables/useToast';
 import { useI18n } from '../../composables/useI18n';
 import { TAG_COLORS } from '../../dashboard/tag-colors';
+import UiCard from '../ui/UiCard.vue';
 
 
 type EditedTag = ResourceTagSummary & { originalName: string; originalColor: string };

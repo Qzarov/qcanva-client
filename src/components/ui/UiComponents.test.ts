@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import UiButton from './UiButton.vue';
 import UiBadge from './UiBadge.vue';
+import UiCard from './UiCard.vue';
 import UiIconButton from './UiIconButton.vue';
 import UiModal from './UiModal.vue';
 import UiToast from './UiToast.vue';
@@ -30,6 +31,19 @@ describe('UI primitives', () => {
     expect(wrapper.get('.ui-toast__message').text()).toBe('Saved');
     await wrapper.get('.ui-toast__close').trigger('click');
     expect(wrapper.emitted('close')).toHaveLength(1);
+  });
+
+  it('preserves the requested semantic tag and domain classes for cards', () => {
+    const wrapper = mount(UiCard, {
+      props: { as: 'section', variant: 'subtle' },
+      attrs: { class: 'settings-card', 'data-settings-card': '' },
+      slots: { default: 'Content' },
+    });
+
+    expect(wrapper.element.tagName).toBe('SECTION');
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['ui-card', 'ui-card--subtle', 'settings-card']));
+    expect(wrapper.attributes('data-settings-card')).toBe('');
+    expect(wrapper.text()).toBe('Content');
   });
 
   it('keeps button state and accessibility attributes in one API', () => {
