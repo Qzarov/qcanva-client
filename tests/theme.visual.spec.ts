@@ -45,10 +45,10 @@ test('light mobile dashboard keeps controls readable without clipping', async ({
   });
 
   await page.goto('/dashboard');
-  const sortSelect = page.locator('.dash-sort-select');
-  await expect(sortSelect).toBeVisible();
-  const sortBox = await sortSelect.boundingBox();
-  expect(sortBox?.width).toBeGreaterThan(300);
+  const searchInput = page.locator('.dash-search-header-mobile');
+  await expect(searchInput).toBeVisible();
+  const searchBox = await searchInput.boundingBox();
+  expect(searchBox?.width).toBeGreaterThan(200);
   await expect(page).toHaveScreenshot('light-dashboard-mobile.png', { fullPage: true });
 });
 
