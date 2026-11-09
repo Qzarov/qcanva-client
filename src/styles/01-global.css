@@ -437,7 +437,7 @@ body::-webkit-scrollbar-track {
 html::-webkit-scrollbar-thumb,
 body::-webkit-scrollbar-thumb {
   background: var(--ui-text-muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 2px solid transparent;
   background-clip: padding-box;
 }

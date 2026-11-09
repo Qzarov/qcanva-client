@@ -43,7 +43,7 @@
   display: grid;
   place-items: center;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-focus);
   color: var(--ui-on-accent, #fff);
   font-size: 11px;
@@ -315,7 +315,7 @@
   min-height: 34px;
   padding: 6px 12px;
   border: 1px solid var(--ui-glass-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-glass-btn-bg);
   color: var(--ui-text);
   font: inherit;

@@ -200,7 +200,7 @@
   height: 36px;
   min-width: 36px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   /* No display here: whether each one shows (⋮ and undo/redo only on a
      phone) stays with their own rules. */
   align-items: center;
@@ -210,14 +210,14 @@
   height: 36px;
   max-width: min(42vw, 380px);
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: 34px;
 }
 .canvas-view .canvas-topbar :is(.topbar-sync, .account-menu-trigger, .topbar-login) {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 .canvas-view .canvas-topbar :is(.back-btn, .topbar-sync, .account-menu-trigger, .canvas-topbar-undo, .canvas-topbar-redo, .canvas-topbar-dice, .topbar-menu-btn, .topbar-login):hover:not(:disabled) {
   background: var(--ui-glass-tint), var(--ui-glass-btn-hover), var(--ui-glass-bg);
@@ -235,7 +235,7 @@
   }
   .canvas-view .canvas-topbar .topbar-actions > :is(.btn-ghost, .canvas-search-input, .topbar-role) {
     height: 34px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--ui-glass-tint), var(--ui-glass-bg);
     border: 1px solid var(--ui-glass-border);
     box-shadow: var(--ui-glass-surface-shadow);
@@ -605,7 +605,7 @@
 }
 /* The back arrow and the outline's own toggles stay bare icons. */
 :is(.text-doc-page, .html-editor-page) :is(.back-btn, .text-doc-outline-collapse-toggle, .text-doc-outline-chevron) {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 /* Bare rows and icon buttons: no fill until hovered or highlighted. */
@@ -655,11 +655,11 @@
   filter: brightness(1.12);
 }
 .html-editor-page .html-mode-tabs {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 2px;
 }
 .html-editor-page .html-mode-tabs button {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 /* Phone: the document's sync state is a bare dot, not a pane. */
 @media (max-width: 640px), (max-height: 500px) and (orientation: landscape) {
@@ -726,7 +726,7 @@
   width: 44px;
   height: 44px;
   min-width: 44px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 .html-editor-page .html-editor-bar .html-icon-btn {
   display: inline-flex;
@@ -743,7 +743,7 @@
   flex-wrap: nowrap;
   gap: 2px;
   padding: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border: 1px solid var(--ui-glass-border);
   box-shadow: var(--ui-glass-surface-shadow);
@@ -754,7 +754,7 @@
   width: 38px;
   height: 38px;
   min-width: 38px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 .html-editor-page .html-editor-bar .html-mode-tabs .html-icon-btn:not(.active) {
   background: transparent;
@@ -865,7 +865,7 @@
     height: 44px;
     min-width: 44px;
     padding: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
   }
   .html-editor-page .html-editor-bar .html-save-icon {
     display: block;
@@ -947,7 +947,7 @@
   width: auto;
   max-width: min(460px, calc(100vw - 24px));
   padding: 4px 4px 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   border: 1px solid var(--ui-glass-border);
 }
 .text-doc-link-action-icon {
@@ -977,7 +977,7 @@
   height: 32px;
   min-height: 32px;
   padding: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   color: var(--ui-text);
 }
 .text-doc-link-action-menu .text-doc-link-action-btn[data-link-action="remove"] {
@@ -992,14 +992,14 @@
 .text-doc-bubble-link-form .text-doc-bubble-btn-text[data-bubble-action="apply-link"] {
   margin-left: 4px;
   padding: 0 14px;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 .text-doc-bubble-link-form .text-doc-bubble-link-input {
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 /* Dialog action buttons stretch to the full row on a phone; their labels

@@ -159,7 +159,7 @@
    dot without ellipsis; anything longer truncates rather than growing. */
 .text-doc-sync {
   border: 1px solid var(--ui-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   padding: 6px 10px;
   background: var(--ui-surface-subtle);
   color: var(--ui-text-secondary);
@@ -379,7 +379,7 @@
   flex: none;
   padding: 2px 8px;
   border: 1px solid currentColor;
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -687,7 +687,7 @@ body.text-doc-outline-resizing {
 
 .text-doc-outline-panel-inner::-webkit-scrollbar-thumb {
   background: var(--ui-text-muted);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
 }
 
 .text-doc-outline-panel-inner::-webkit-scrollbar-thumb:hover {
@@ -2535,7 +2535,7 @@ button.text-doc-callout-icon:focus-visible {
     width: 40px;
     height: 4px;
     margin: 0 auto 10px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--ui-border);
   }
 
@@ -2746,7 +2746,7 @@ button.text-doc-callout-icon:focus-visible {
     width: 32px;
     height: 32px;
     border: none;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: transparent;
     color: var(--ui-text-secondary);
   }
