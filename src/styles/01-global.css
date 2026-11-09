@@ -25,6 +25,7 @@
   --ui-text-muted: #a8c6a8;
   --ui-border: #313442;
   --ui-overlay: rgba(0, 0, 0, 0.64);
+  --ui-overlay-soft: rgba(0, 0, 0, 0.35);
   --ui-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
   /* QCanva Liquid Glass: a translucent, blurred surface with a faint tint,
      a light top edge and a soft drop shadow (canvas chrome, the mobile

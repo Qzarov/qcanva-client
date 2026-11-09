@@ -215,7 +215,7 @@
   position: fixed;
   inset: 0;
   z-index: 310;
-  background: rgba(0,0,0,.35);
+  background: var(--ui-overlay-soft);
 }
 
 /* Overflow bottom sheet */
@@ -322,7 +322,7 @@
   position: fixed;
   inset: 0;
   z-index: 99;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--ui-overlay-soft);
 }
 .mobile-add-sheet {
   position: fixed;

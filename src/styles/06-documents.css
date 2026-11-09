@@ -702,7 +702,7 @@ body.text-doc-outline-resizing {
   position: fixed;
   inset: 0;
   z-index: 70;
-  background: rgba(0, 0, 0, 0.35);
+  background: var(--ui-overlay-soft);
 }
 
 .text-doc-outline-drawer {
@@ -2516,7 +2516,7 @@ button.text-doc-callout-icon:focus-visible {
     rules that CanvasView/HtmlDocumentView's own Access panels also use.
   */
   .text-doc-share-backdrop {
-    background: rgba(0, 0, 0, 0.35);
+  background: var(--ui-overlay-soft);
   }
 
   .text-doc-share-panel {
@@ -2644,7 +2644,7 @@ button.text-doc-callout-icon:focus-visible {
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(0, 0, 0, 0.35);
+  background: var(--ui-overlay-soft);
   }
 
   .text-doc-link-sheet {
@@ -2709,7 +2709,7 @@ button.text-doc-callout-icon:focus-visible {
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--ui-overlay-soft);
   }
 
   .text-doc-slash-sheet {
