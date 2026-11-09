@@ -60,7 +60,7 @@
 }
 .ui-toast__close:hover { color: var(--ui-text); background: var(--ui-surface-subtle); }
 
-.ui-card {
+:where(.ui-card) {
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -70,8 +70,8 @@
   background: var(--ui-glass-tint), var(--ui-glass-card-bg);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
-.ui-card--elevated { box-shadow: var(--ui-shadow); }
-.ui-card--subtle { background: var(--ui-surface-subtle); box-shadow: none; }
+:where(.ui-card--elevated) { box-shadow: var(--ui-shadow); }
+:where(.ui-card--subtle) { background: var(--ui-surface-subtle); box-shadow: none; }
 
 .ui-button {
   display: inline-flex;

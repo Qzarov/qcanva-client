@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div v-if="open" class="text-doc-share-backdrop" @click="emit('close')"></div>
-    <section v-if="open" class="html-history-panel text-doc-history-panel" role="dialog" aria-modal="true" :aria-label="labels.title" @click.stop>
+    <UiCard v-if="open" as="section" class="html-history-panel text-doc-history-panel" role="dialog" aria-modal="true" :aria-label="labels.title" @click.stop>
       <div class="html-history-list">
         <div class="html-history-head">
           <strong>{{ labels.title }}</strong>
@@ -29,12 +29,13 @@
           <div class="text-doc-history-preview" v-html="selected.html"></div>
         </template>
       </div>
-    </section>
+    </UiCard>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import type { PropType } from 'vue';
+import UiCard from './ui/UiCard.vue';
 
 export type TextDocumentHistoryEntry = {
   id: string;
