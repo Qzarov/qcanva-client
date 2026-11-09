@@ -233,13 +233,11 @@
         @feedback="setFeedback"
       />
 
-      <section
+      <DashboardTrashSection
         v-if="isLoggedIn && activeSection.kind === 'trash'"
-        class="dashboard-folder-content"
-        data-dashboard-view="trash"
-      >
-        <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
-      </section>
+        @restored="onTrashRestored"
+        @feedback="setFeedback"
+      />
 
       <DashboardSharedSection
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
@@ -350,9 +348,9 @@ import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader
 import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
 import DashboardYandexSection from '../components/dashboard/DashboardYandexSection.vue';
 import DashboardSpaceSection from '../components/dashboard/DashboardSpaceSection.vue';
+import DashboardTrashSection from '../components/dashboard/DashboardTrashSection.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
-import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
 import {
@@ -521,7 +519,7 @@ export default defineComponent({
     YandexFolderPicker,
     DashboardMediaViewer,
     DashboardSpaceSection,
-    DashboardTrash,
+    DashboardTrashSection,
     DashboardAddDialog,
     InteractiveTemplatePicker,
     ArrowLeft,
