@@ -33,7 +33,7 @@
   text-align: left;
   padding: 7px 12px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--ui-surface-subtle);
   color: var(--ui-text-secondary);
   font-size: 13px;
@@ -89,7 +89,7 @@
   height: 26px;
   margin-right: 8px;
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--ui-surface-subtle);
   color: var(--ui-text-secondary);
   cursor: pointer;

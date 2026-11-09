@@ -379,6 +379,7 @@
 
   /* Radii */
   --radius-sm: 8px;
+  --radius-xs: 6px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 20px;

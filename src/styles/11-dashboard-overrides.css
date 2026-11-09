@@ -146,7 +146,7 @@
 .folder-file-ext {
   padding: 1px 6px;
   border: 1px solid var(--ui-glass-border, var(--ui-border));
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: var(--ui-text-secondary);
   font-size: 10px;
   font-weight: 700;
@@ -265,7 +265,7 @@
   height: 22px;
   min-height: 22px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   box-shadow: none;
   color: var(--ui-text-secondary);
