@@ -56,6 +56,8 @@ roadmap для структурного рефакторинга клиентс�
 - Dashboard drag-and-drop: folder reorder/resource-drop orchestration вынесены в
   `useDashboardFolderDrag` и `useDashboardResourceDrag`; DashboardView сохраняет
   только правила доступа, локальное перемещение и API-команды.
+- Dashboard feed navigation: section scroll-spy, smooth jumps и cleanup scroll
+  listeners вынесены в `useDashboardFeedNavigation`.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -72,7 +74,7 @@ roadmap для структурного рефакторинга клиентс�
 | Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
-| DashboardView | **94%** | оставшиеся feed callbacks и финальная CSS-полировка |
+| DashboardView | **96%** | оставшиеся feed callbacks и финальная CSS-полировка |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
@@ -90,7 +92,7 @@ roadmap для структурного рефакторинга клиентс�
 4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, draw
    capture и оставшуюся template orchestration.
 5. **DashboardView.** Закрыть оставшиеся feed callbacks и провести
-   финальную проверку после извлечения bulk/drag orchestration.
+   финальную проверку после извлечения bulk/drag/navigation orchestration.
 6. **Final cleanup.** Перенести component-only CSS из global modules в scoped
    styles, удалить дубли и провести desktop/mobile visual smoke.
 
