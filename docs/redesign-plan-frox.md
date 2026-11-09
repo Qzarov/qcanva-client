@@ -72,6 +72,8 @@ roadmap для структурного рефакторинга клиентс�
   `--ui-glass-card-shadow`, общий для glass/dashboard/UI-card поверхностей.
 - CSS cleanup: pill-радиусы `999px` и крупные `20px` радиусы переведены на
   `--radius-full` и `--radius-xl` по всем domain-модулям.
+- CSS cleanup: standalone `12px` радиусы переведены на `--radius-md` там, где
+  они обозначают общий medium-radius.
 - UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
   primitives теперь держат scoped styles рядом с компонентами; глобальные
   модули `15-ui-components.css`, `16-ui-form-empty.css` и
@@ -96,7 +98,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **90%** | удаление оставшихся domain-дублей, desktop/mobile smoke |
+| Final CSS cleanup | **92%** | удаление оставшихся semantic domain-дублей |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
