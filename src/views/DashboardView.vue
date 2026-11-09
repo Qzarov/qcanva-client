@@ -312,7 +312,7 @@
 
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Plus, Trash2, Download, X } from '@lucide/vue';
-import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
+import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
@@ -341,6 +341,7 @@ import { useDashboardMarquee } from '../composables/useDashboardMarquee';
 import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
+import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -628,8 +629,6 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
-    const folderDragId = ref('');
-    const folderDragOverId = ref('');
     const resourceDrag = ref<{
       active: boolean;
       startX: number;
@@ -2229,91 +2228,39 @@ export default defineComponent({
       return folderSummaries.value.find((folder) => folder.id === folderId && canDropToFolder(folder));
     };
 
-    const onFolderDragOver = (folder: FolderSummary) => {
-      if (!canDropToFolder(folder)) return;
-      dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had folded its subtree.
-      if (folder.hasChildren) expandTree(folder.id);
-    };
+    const isTechnicalFolder = (folder: { id: string; name: string }) =>
+      folder.id === 'legacy-resource-inbox'
+      || folder.name === 'Unsorted'
+      || folder.name.toLowerCase() === 'default';
 
-    const onFolderDragLeave = (folder: FolderSummary) => {
-      if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
-      if (folderDragOverId.value === folder.id) folderDragOverId.value = '';
-    };
-
-    const canReorderFolder = (folder: FolderSummary) =>
-      !isBusy.value
-      && folder.role === 'owner'
-      && !isTechnicalFolder(folder)
-      && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id);
-
-    const onFolderDragStart = (event: DragEvent, folder: FolderSummary) => {
-      if (!canReorderFolder(folder)) {
-        event.preventDefault();
-        return;
-      }
-      folderDragId.value = folder.id;
-      event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    };
-
-    const onFolderDragEnd = () => {
-      folderDragId.value = '';
-      folderDragOverId.value = '';
-    };
-
-    const isFolderReorderDrag = (event: DragEvent) =>
-      Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'));
-
-    const onFolderDragEnter = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const onFolderDragOverEvent = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const reorderFolders = async (sourceId: string, targetId: string) => {
-      if (!sourceId || sourceId === targetId) return;
-      const previousFolders = ownResourceFolders.value.map((folder) => ({ ...folder }));
-      const ids = ownResourceFolders.value
-        .slice()
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-        .map((folder) => folder.id);
-      const sourceIndex = ids.indexOf(sourceId);
-      const targetIndex = ids.indexOf(targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return;
-      ids.splice(sourceIndex, 1);
-      ids.splice(ids.indexOf(targetId), 0, sourceId);
-      ownResourceFolders.value = ownResourceFolders.value.map((folder) => ({
-        ...folder,
-        sortOrder: ids.indexOf(folder.id),
-      }));
-      try {
+    const {
+      folderDragOverId,
+      canReorderFolder,
+      onFolderDragStart,
+      onFolderDragEnd,
+      onFolderDragEnter,
+      onFolderDragOverEvent,
+      onFolderDragLeave,
+      onFolderDrop,
+    } = useDashboardFolderDrag<FolderSummary>({
+      ownFolders: ownResourceFolders as unknown as Ref<FolderSummary[]>,
+      isBusy,
+      isTechnicalFolder,
+      canDropResource: canDropToFolder,
+      expandTree,
+      onResourceDragOver: (folder) => {
+        dragTargetFolder.value = folder.id;
+        if (folder.hasChildren) expandTree(folder.id);
+      },
+      onResourceDragLeave: (folder) => {
+        if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
+      },
+      dropResourceToFolder: (folder) => dropResourceToFolder(folder),
+      reorderFoldersApi: async (ids) => {
         await resourceFolders.reorder(ids);
-      } catch (error) {
-        ownResourceFolders.value = previousFolders;
-        setFeedback('error', error instanceof Error ? error.message : 'Could not save folder order');
-      }
-    };
-
-    const onFolderDrop = async (event: DragEvent, folder: FolderSummary) => {
-      const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
-      if (sourceId) {
-        onFolderDragEnd();
-        if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
-        return;
-      }
-      await dropResourceToFolder(folder);
-    };
+      },
+      setFeedback,
+    });
 
     const resolveSidebarFolder = (folderId: string) =>
       folderSummaries.value.find((folder) => folder.id === folderId) || null;
@@ -3775,11 +3722,6 @@ export default defineComponent({
       closeCardMenu();
     };
 
-    const isTechnicalFolder = (folder: { id: string; name: string }) =>
-      folder.id === 'legacy-resource-inbox'
-      || folder.name === 'Unsorted'
-      || folder.name.toLowerCase() === 'default';
-
     const selectDashboardSection = (section: DashboardSection) => {
       activeSection.value = section;
       if (section.kind === 'folder') selectFolder(section.folderId);
@@ -4570,7 +4512,6 @@ export default defineComponent({
       startResourceMouseDrag,
       startResourceTouchDrag,
       endResourceDrag,
-      onFolderDragOver,
       onFolderDragLeave,
       onFolderDragStart,
       onFolderDragEnd,
