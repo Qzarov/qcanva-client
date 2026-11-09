@@ -1,6 +1,8 @@
 import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { createUploadXhr } from './upload-xhr';
+import { uploadNativelyOr } from './native-upload';
 import { useI18n } from '../composables/useI18n';
+import { planErrorText } from './plan-errors';
 
 export type DriveSlice = 'all' | 'media' | 'files' | 'docs';
 export type DriveSort = 'name' | 'date' | 'size';
@@ -414,7 +416,50 @@ export function getFileExtension(name: string): string {
   return ext;
 }
 
+/**
+ * A file into a folder's Drive. In the Android app a single picked file goes
+ * through the app's background queue (native-upload.ts): it keeps going with
+ * the app left or the screen off. Otherwise the page's own request.
+ */
 export function uploadFile(
+  folderId: string,
+  files: File | File[],
+  optionsOrProgress?: ((percent: number) => void) | UploadOptions
+): UploadHandle {
+  const single = Array.isArray(files) ? (files.length === 1 ? files[0]! : null) : files;
+  const onProgress = typeof optionsOrProgress === 'function' ? optionsOrProgress : optionsOrProgress?.onProgress;
+  const signal = typeof optionsOrProgress === 'object' ? optionsOrProgress?.signal : undefined;
+  if (!single || signal) return xhrUploadFile(folderId, files, optionsOrProgress);
+  const token = getAccessToken();
+  return uploadNativelyOr(
+    single,
+    {
+      url: `${(API_BASE || '').replace(/\/+$/, '')}/drive/folders/${encodeURIComponent(folderId)}/files`,
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      mode: 'multipart',
+      field: 'file',
+      contentType: single.type || 'application/octet-stream',
+    },
+    (status, text) => parseUploadAnswer(status, text),
+    () => xhrUploadFile(folderId, files, optionsOrProgress),
+    onProgress,
+    () => new ApiError(0, useI18n().t('driveUploadCancelled')),
+  );
+}
+
+/** The hub's answer to an upload, as the page's own request reads it. */
+function parseUploadAnswer(status: number, text: string): { items: DriveItem[] } {
+  let body: any = {};
+  try { body = JSON.parse(text || '{}'); } catch { /* empty */ }
+  if (status >= 200 && status < 300) return body && typeof body === 'object' ? body : { items: [] };
+  if (status === 0) throw new ApiError(0, useI18n().t('driveUploadNetworkError'));
+  let message = planErrorText(body) || body?.message || `HTTP ${status}`;
+  if (status === 413) message = useI18n().t('driveUploadTooLarge');
+  throw new ApiError(status, message, body);
+}
+
+function xhrUploadFile(
   folderId: string,
   files: File | File[],
   optionsOrProgress?: ((percent: number) => void) | UploadOptions
@@ -457,7 +502,7 @@ export function uploadFile(
         try {
           body = JSON.parse(xhr.responseText || '{}');
         } catch {}
-        let message = body?.message || `HTTP ${xhr.status}`;
+        let message = planErrorText(body) || body?.message || `HTTP ${xhr.status}`;
         if (xhr.status === 413) {
           message = useI18n().t('driveUploadTooLarge');
         }

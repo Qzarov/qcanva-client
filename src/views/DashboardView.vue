@@ -37,22 +37,36 @@
         @folder-drop="onSidebarFolderDrop"
       />
       <div class="dashboard-central-shell">
-      <DashboardSelectionBar
-        :visible="isLoggedIn"
-        :selected-count="selectedKeys.length"
-        :selected-size="selectedSize"
-        :format-file-size="formatFileSize"
-        :all-on-screen-selected="allOnScreenSelected"
-        :is-busy="isBusy"
-        :download-phase="downloadStatus.phase"
-        :bulk-delete-count="bulkDeleteCount"
-        :t="t"
-        :clear-selection="clearSelection"
-        :select-all-on-screen="selectAllOnScreen"
-        :open-bulk-move-modal="openBulkMoveModal"
-        :bulk-download="bulkDownload"
-        :bulk-delete="bulkDelete"
-      />
+      <Transition name="dashboard-selection-bar">
+        <div
+          v-if="isLoggedIn && selectedKeys.length"
+          class="dashboard-selection-bar"
+          role="region"
+          :aria-label="t('selectionActions')"
+          data-selection-bar
+        >
+          <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
+          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" v-hint="t('clearSelection')" @click="clearSelection">
+            <X :size="17" aria-hidden="true" />
+          </button>
+          <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
+          <!-- What the ticked files weigh together (documents have no size of their own). -->
+          <span v-if="selectedSize > 0" class="dashboard-selection-size" data-selection-size>{{ formatFileSize(selectedSize) }}</span>
+          <span class="dashboard-selection-sep" aria-hidden="true"></span>
+          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
+            <CheckCheck :size="17" aria-hidden="true" />
+          </button>
+          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
+            <FolderInput :size="17" aria-hidden="true" />
+          </button>
+          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
+            <Download :size="17" aria-hidden="true" />
+          </button>
+          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" v-hint="t('delete')" :disabled="isBusy" @click="bulkDelete">
+            <Trash2 :size="17" aria-hidden="true" />
+          </button>
+        </div>
+      </Transition>
       <div
         v-if="marquee"
         class="dashboard-marquee"
@@ -60,38 +74,99 @@
         aria-hidden="true"
         data-marquee
       ></div>
-      <DashboardStatusOverlays
-        :upload-panel-open="uploadPanelOpen"
-        :uploads="uploads"
-        :download-status="downloadStatus"
-        :transfer-status-text="transferStatusText"
-        :transfer-status-percent="transferStatusPercent"
-        :feedback="feedback"
-        @cancel-upload="cancelUpload"
-        @hide-upload="uploadPanelOpen = false"
-      />
-    <DashboardPublicHeader
-      v-if="!isLoggedIn"
-      v-model:search-query="searchQuery"
-      :folder-search-placeholder="folderSearchPlaceholder"
-    />
-    <DashboardAuthHeader
-      v-else
-      v-model:search-query="searchQuery"
-      :open-control-menu="openControlMenu"
-      :content-types="contentTypes"
-      :all-tag-names="allTagNames"
-      :selected-tags="selectedTags"
-      :with-files="activeSection.kind === 'folder'"
-      :sort-mode="sortMode"
-      :folder-search-placeholder="folderSearchPlaceholder"
-      @open-sidebar="openMobileSidebar"
-      @toggle-menu="toggleToolbarMenu"
-      @update-types="contentTypes = $event"
-      @toggle-tag="toggleSelectedTag"
-      @reset-filters="clearTypeAndTagFilters"
-      @select-sort="selectSortMode"
-    />
+      <Transition name="dashboard-upload-panel">
+        <DashboardUploadPanel
+          v-if="uploadPanelOpen && uploads.length"
+          :uploads="uploads"
+          :summary="uploadSummary"
+          @cancel="cancelUpload"
+          @collapse="uploadPanelOpen = false"
+          @hide="clearFinishedUploads"
+        />
+      </Transition>
+      <Transition name="dashboard-upload-badge">
+        <DashboardUploadBadge v-if="!uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
+      </Transition>
+      <Transition name="dashboard-download-status">
+        <div
+          v-if="downloadStatus.phase !== 'idle'"
+          class="dashboard-download-status"
+          :class="'is-' + downloadStatus.phase"
+          role="status"
+          aria-live="polite"
+          data-download-status
+        >
+          <span class="dashboard-download-status-text">{{ transferStatusText }}</span>
+          <span class="dashboard-download-status-track" aria-hidden="true">
+            <span class="dashboard-download-status-bar" :style="{ width: transferStatusPercent + '%' }"></span>
+          </span>
+        </div>
+      </Transition>
+    <header v-if="!isLoggedIn" class="app-header app-header-public">
+      <div class="app-header-inner">
+        <div class="dashboard-brand">
+          <img src="/qcanva-logo.png" alt="QCanva" />
+          <div>
+            <h1>QCanva</h1>
+            <p v-if="!isLoggedIn" class="dash-subtitle">{{ t('publicResources') }}</p>
+          </div>
+        </div>
+        <div class="header-user-slot">
+          <template v-if="!isLoggedIn">
+            <LanguageToggle />
+            <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
+            <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
+          </template>
+        </div>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
+      </div>
+    </header>
+    <header v-else class="app-header dashboard-auth-header">
+      <div class="app-header-inner">
+        <button
+          type="button"
+          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
+          :aria-label="t('openNavigation')"
+          data-mobile-sidebar-open
+          @click.stop="openMobileSidebar"
+        ><Menu :size="20" aria-hidden="true" /></button>
+        <input
+          v-model.trim="searchQuery"
+          class="dash-search dash-search-header-mobile"
+          :placeholder="folderSearchPlaceholder"
+        />
+        <!-- A space has its own filters (in its header) and is newest first: not these. -->
+        <DashboardFilterMenu
+          v-if="spaceId === null"
+          class="dashboard-toolbar-mobile"
+          sheet
+          :open="openControlMenu === 'filter:mobile'"
+          :types="contentTypes"
+          :tags="allTagNames"
+          :selected-tags="selectedTags"
+          :with-files="activeSection.kind === 'folder'"
+          @toggle="toggleToolbarMenu('filter:mobile')"
+          @update:types="contentTypes = $event"
+          @toggle-tag="toggleSelectedTag"
+          @reset="clearTypeAndTagFilters"
+        />
+        <DashboardSortMenu
+          v-if="spaceId === null"
+          class="dashboard-toolbar-mobile"
+          sheet
+          :open="openControlMenu === 'sort:mobile'"
+          :mode="sortMode"
+          @toggle="toggleToolbarMenu('sort:mobile')"
+          @select="selectSortMode"
+        />
+        <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
+        <TabsButton class="dashboard-tabs-button" />
+      </div>
+    </header>
 
     <main
       ref="dashboardMain"
@@ -115,26 +190,37 @@
       @pointercancel.capture="cancelLongPress"
       @contextmenu.capture="onSelectionContextMenu"
     >
-    <DashboardToolbar
-      :open-control-menu="openControlMenu"
-      :content-types="contentTypes"
-      :all-tag-names="allTagNames"
-      :selected-tags="selectedTags"
-      :with-files="activeSection.kind === 'folder'"
-      :sort-mode="sortMode"
-      :search-query="searchQuery"
-      :folder-search-placeholder="folderSearchPlaceholder"
-      :yandex-path="yandexPath"
-      :t="t"
-      :pick-yandex-files="() => yandexView?.pickFiles()"
-      :open-add-dialog="spaceId !== null ? (event?: Event) => spaceView?.startAdd(event) : openAddDialog"
-      :toggle-toolbar-menu="toggleToolbarMenu"
-      :update-content-types="(value) => contentTypes = value"
-      :toggle-selected-tag="toggleSelectedTag"
-      :clear-type-and-tag-filters="clearTypeAndTagFilters"
-      :select-sort-mode="selectSortMode"
-      :update-search-query="(value) => searchQuery = value"
-    />
+    <div class="dash-toolbar">
+      <div class="control-menu dashboard-new-menu">
+        <button class="btn-primary" data-add-button @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
+          <Plus class="menu-icon" :size="17" aria-hidden="true" />
+          <span>{{ t('add') }}</span>
+        </button>
+      </div>
+      <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
+      <DashboardFilterMenu
+        v-if="spaceId === null"
+        class="dashboard-toolbar-desktop"
+        :open="openControlMenu === 'filter:desktop'"
+        :types="contentTypes"
+        :tags="allTagNames"
+        :selected-tags="selectedTags"
+        :with-files="activeSection.kind === 'folder'"
+        @toggle="toggleToolbarMenu('filter:desktop')"
+        @update:types="contentTypes = $event"
+        @toggle-tag="toggleSelectedTag"
+        @reset="clearTypeAndTagFilters"
+      />
+      <DashboardSortMenu
+        v-if="spaceId === null"
+        class="dashboard-toolbar-desktop"
+        :open="openControlMenu === 'sort:desktop'"
+        :mode="sortMode"
+        @toggle="toggleToolbarMenu('sort:desktop')"
+        @select="selectSortMode"
+      />
+      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
+    </div>
 
     <!-- Floating (style.css), never in the page flow: the list must not
          shift down and back up around a refresh or an action's result. -->
@@ -142,34 +228,122 @@
       <span class="dashboard-refresh-spinner" aria-hidden="true"></span>
       <span>{{ t('updatingList') }}</span>
     </div>
-    <DashboardRecentSection
-      :is-logged-in="isLoggedIn"
-      :active-section-kind="activeSection.kind"
-      :visible-recent="visibleRecent"
-      :recent-view-mode="recentViewMode"
-      :recent-refresh-failed="recentRefreshFailed"
-      :recent-resources-length="recentResources.length"
-      :has-active-filter="hasActiveFilter"
-      :recent-show-all-available="recentShowAllAvailable"
-      :recent-expanded="recentExpanded"
-      :recent-total="recentTotal"
-      :recent-folder-tiles="recentFolderTiles"
-      :t="t"
-      :selection-key="selectionKey"
-      :is-selected="isSelected"
-      :toggle-selected="toggleSelected"
-      :open-recent-resource="openRecentResource"
-      :recent-folder-path="recentFolderPath"
-      :format-recent-opened-at="formatRecentOpenedAt"
-      :format-card-date-mobile="formatCardDateMobile"
-      :retry-recent="retryRecent"
-      :reset-filters="resetFilters"
-      :open-add-from-tile="openAddFromTile"
-      :set-recent-view-mode="setRecentViewMode"
-      :toggle-recent-expanded="toggleRecentExpanded"
-      :select-folder="selectFolder"
-      :format-date="formatDate"
-    />
+    <section
+      v-if="isLoggedIn && activeSection.kind === 'recent'"
+      id="feed-recent"
+      class="dash-section dashboard-recents dashboard-feed-section"
+      data-dashboard-view="recent"
+      data-feed-section="recent"
+    >
+      <div class="dash-section-head dashboard-recent-head">
+        <h2>{{ t('recents') }}</h2>
+        <div class="dashboard-recent-head-controls">
+          <DashboardViewToggle :mode="recentViewMode" @update:mode="setRecentViewMode" />
+        </div>
+      </div>
+      <p v-if="recentRefreshFailed && visibleRecent.length" class="dashboard-recents-stale" role="status" data-recent-stale>
+        {{ t('recentStale') }}
+        <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
+      </p>
+      <div
+        v-if="visibleRecent.length"
+        class="dashboard-recents-layout"
+        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
+        :aria-label="t('recentResources')"
+        data-recent-layout
+      >
+        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
+          <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt" />
+          <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
+          <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
+          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
+          <span class="dashboard-recent-info">
+            <span
+              v-if="recentFolderPath(item)"
+              class="dashboard-recent-path"
+              :title="recentFolderPath(item)"
+              data-recent-folder-path
+            ><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span>
+            <span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span>
+            <span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
+          </span>
+        </button>
+      </div>
+      <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
+        {{ t('recentLoadFailed') }}
+        <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
+      </div>
+      <div v-else-if="recentResources.length" class="dash-empty dashboard-recents-empty">
+        {{ t('noRecentMatches') }}
+        <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+      </div>
+      <div v-else class="dash-grid" data-feed-grid="recent">
+          <button type="button" class="dashboard-add-tile dashboard-recents-empty" data-feed-add="recent" @click.stop="openAddFromTile('recent')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
+      </div>
+      <button
+        v-if="recentShowAllAvailable"
+        type="button"
+        class="dashboard-recent-show-all"
+        @click="toggleRecentExpanded"
+      >
+        <span>{{ recentExpanded ? t('showLess') : `${t('showAll')} ${recentTotal}` }}</span>
+        <ChevronDown v-if="!recentExpanded" :size="15" aria-hidden="true" />
+        <ChevronUp v-else :size="15" aria-hidden="true" />
+      </button>
+
+      <div id="feed-folders" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="folders">
+        <h2>{{ t('folders') }}</h2>
+      </div>
+      <div v-if="recentFolderTiles.length" class="dash-grid subfolder-grid" data-recent-folders>
+        <button
+          v-for="folder in recentFolderTiles"
+          :key="'recent-folder-' + folder.id"
+          type="button"
+          class="subfolder-card"
+          :class="{ 'subfolder-card-zero-match': folder.zeroMatch }"
+          :data-recent-folder-tile="folder.id"
+          @click="selectFolder(folder.id)"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true">▤</span>
+          <span class="subfolder-card-name">{{ folder.name }}</span>
+          <span class="subfolder-card-count">{{ folder.displayCount }}</span>
+          <span v-if="folder.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(folder.latest) }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-folders-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="folders" @click.stop="openAddFromTile('folders')">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+        </button>
+      </div>
+
+      <!-- Shared spaces, after the folders and like them: a tile each, the
+           number of folders in it beside its last change. -->
+      <div id="feed-spaces" class="dash-section-head dashboard-recent-folders-head dashboard-feed-anchor" data-feed-anchor="spaces">
+        <h2>{{ t('spaces') }}</h2>
+      </div>
+      <div v-if="spaceTiles.length" class="dash-grid subfolder-grid" data-recent-spaces>
+        <button
+          v-for="space in spaceTiles"
+          :key="'recent-space-' + space.id"
+          type="button"
+          class="subfolder-card"
+          :data-recent-space-tile="space.id"
+          @click="selectDashboardSection({ kind: 'space', spaceId: space.id })"
+        >
+          <span class="subfolder-card-icon" aria-hidden="true"><UsersRound :size="13" /></span>
+          <span class="subfolder-card-name">{{ space.name }}</span>
+          <span class="subfolder-card-count">{{ space.sourceCount || t('emptyFolder') }}</span>
+          <span v-if="space.updatedAt" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(space.updatedAt) }}</span>
+        </button>
+      </div>
+      <div v-else class="dash-grid subfolder-grid" data-recent-spaces-empty>
+        <button type="button" class="dashboard-add-tile dashboard-add-tile-folder" data-feed-add="spaces" @click.stop="createSpace">
+          <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+        </button>
+      </div>
+    </section>
     <div
       v-if="isNativeDashboard && (dashboardPullDistance > 0 || isRefreshing)"
       class="dashboard-pull-status"
@@ -181,76 +355,625 @@
       <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? t('releaseToRefresh') : t('pullToRefresh') }}</span>
     </div>
 
+    <div
+      v-if="feedback.message"
+      class="dashboard-toast"
+      :class="`dashboard-toast-${feedback.type}`"
+      :role="feedback.type === 'error' ? 'alert' : 'status'"
+      aria-live="polite"
+      data-dashboard-toast
+    >
+      {{ feedback.message }}
+    </div>
+
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <DashboardAccessRequests
-        :visible="isLoggedIn && activeSection.kind === 'recent'"
-        :requests="incomingRequests"
-        :is-busy="isBusy"
-        :t="t"
-        :refresh="load"
-        :resolve-request="resolveAccessRequest"
-      />
+      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
+        <div class="dash-section-head">
+          <h2>{{ t('accessRequests') }}</h2>
+          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
+        </div>
+        <div class="access-request-list">
+          <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
+            <div>
+              <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
+              <div class="access-request-meta">
+                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : request.resourceType === 'text-document' ? 'document' : 'HTML' }}
+              </div>
+            </div>
+            <div class="access-request-actions">
+              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">{{ t('decline') }}</button>
+              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">{{ t('approve') }}</button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <DashboardFolderSection
+      <section
         v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
-        :context="folderSectionProps"
-      />
+        class="dashboard-folder-content"
+        data-dashboard-view="folder"
+      >
+          <div
+            :key="activeFolder.id"
+            class="folder-manager-row"
+          >
+              <div class="folder-manager-top">
+              <div class="folder-manager-main">
+                <button
+                  type="button"
+                  class="folder-back-button"
+                  :title="t('back')"
+                  :aria-label="t('back')"
+                  data-folder-back-button
+                  @click.stop="goToParentFolder"
+                ><ArrowLeft :size="16" aria-hidden="true" /></button>
+                <span class="folder-manager-title">
+                  <span class="folder-manager-name">{{ activeFolder.name }}</span>
+                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}<template v-if="activeFolderFileCount"> / {{ activeFolderFileCount }} {{ t('folderFilesTitle').toLowerCase() }}</template></span>
+                </span>
+              </div>
+              <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
+              <!-- Веб: «+» слева от «⋯» — окно «Добавить» с этой папкой. На мобильном скрыт:
+                   там добавляет плавающая «+», она сама подставляет открытую папку. -->
+              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
+                <button
+                  class="folder-manager-trigger folder-create-trigger"
+                  data-folder-create-menu
+                  @click.stop="openAddDialog({ folderId: activeFolder.id })"
+                  :title="t('add')"
+                  :aria-label="t('add')"
+                  :disabled="isBusy"
+                ><Plus :size="17" aria-hidden="true" /></button>
+              </div>
+              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
+                <button
+                  class="folder-manager-trigger"
+                  @click.stop="toggleFolderMenu(activeFolder.id)"
+                  :title="t('groupActions')"
+                  :disabled="isBusy"
+                >⋯</button>
+                <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
+                  <button class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
+                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    @click="openRenameFolderModal(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('rename') }}</button>
+                  <button
+                    class="card-menu-item"
+                    @click="openSubfolderModal(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('addFolder') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item"
+                    data-action="move-folder-parent"
+                    @click="openFolderParentModal(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('moveFolderInto') }}</button>
+                  <button
+                    v-if="activeFolder.name !== 'Unsorted'"
+                    class="card-menu-item danger"
+                    @click="deleteFolder(activeFolder)"
+                    :disabled="isBusy"
+                  >{{ t('delete') }}</button>
+                </div>
+              </div>
+              </div>
+              <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
+                <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
+                  <button
+                    v-for="child in activeSubfolders"
+                    :key="'subfolder-' + child.id"
+                    type="button"
+                    class="subfolder-card"
+                    @click="selectFolder(child.id)"
+                  >
+                    <span class="subfolder-card-icon" aria-hidden="true">▤</span>
+                    <span class="subfolder-card-name">{{ child.name }}</span>
+                    <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
+                    <span v-if="child.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(child.latest) }}</span>
+                  </button>
+                </div>
+                <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
+                  {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
+                  <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+                </div>
+                <div class="dash-grid">
+                  <button
+                    v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
+                    type="button"
+                    class="dashboard-add-tile"
+                    data-feed-add="folder" data-folder-empty
+                    @click.stop="openAddFromTile('folder')"
+                  >
+                    <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+                  </button>
+                  <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
+                  <div
+                    v-if="item.type === 'canvas'"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
+                    :class="{ dragging: draggingResourceId === item.id }"
+                    draggable="false"
+                    @click="openCanvasFromCard(item.slug || item.id)"
+                  >
+                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+                    <input
+                      v-if="renamingId === item.id"
+                      class="card-title-input"
+                      :value="item.title"
+                      @blur="finishRename($event, item)"
+                      @keydown.enter="($event.target as HTMLInputElement).blur()"
+                      @keydown.escape="renamingId = ''"
+                      @click.stop
+                      ref="renameInput"
+                    />
+                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
+                    <div class="card-meta">
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div class="card-meta-mobile">
+                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
+                    </div>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
+                    </div>
+                  </div>
+                  <article
+                    v-else-if="item.type === 'html-document'"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+                    :class="{ dragging: draggingResourceId === item.id }"
+                    draggable="false"
+                    @click="openHtmlDocumentFromCard(item.slug || item.id)"
+                  >
+                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+                    <a
+                      class="card-open-link"
+                      :href="`/edit/html/${item.slug || item.id}`"
+                      :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
+                      @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
+                    ></a>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
+                    <div class="card-meta">
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div class="card-meta-mobile">
+                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
+                    </div>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
+                    </div>
+                  </article>
+                  <article
+                    v-else-if="item.type === 'interactive-template'"
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card"
+                    :data-folder-resource="`interactive-template:${item.id}`"
+                    @click="openInteractiveTemplate(item.id)"
+                  >
+                    <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span><span v-if="item.role && item.role !== 'owner'" class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
+                    <div class="card-meta">
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div class="card-meta-mobile">
+                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
+                    </div>
+                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
+                    </div>
+                  </article>
+                  <article
+                    v-else
+                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+                    :class="{ dragging: draggingResourceId === item.id }"
+                    draggable="false"
+                    @click="openTextDocumentFromCard(item.slug || item.id)"
+                  >
+                    <ResourceThumb :kind="item.type || 'text-document'" :id="item.id" :version="item.updatedAt" />
+                    <a
+                      class="card-open-link"
+                      :href="`/docs/${item.slug || item.id}`"
+                      :aria-label="`Open document ${item.title || 'Untitled document'}`"
+                      @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
+                    ></a>
+                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
+                    <div class="card-meta">
+                      <div v-if="item.tags?.length" class="card-tags">
+                        <span
+                          v-for="tag in item.tags"
+                          :key="tag.name"
+                          class="card-tag color-tag"
+                          :style="{ '--tag-color': tag.color }"
+                        >#{{ tag.name }}</span>
+                      </div>
+                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+                    </div>
+                    <div class="card-meta-mobile">
+                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
+                    </div>
+                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
+                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
+                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
+                    </div>
+                  </article>
+                  </template>
+                  <DashboardFolderFiles
+                    :folder-id="activeFolder.id"
+                    :query="searchQuery"
+                    :filtered-out="!typePasses(contentTypes, 'file') || selectedTags.length > 0"
+                    :sort-mode="sortMode"
+                    :refresh-key="folderFilesRefreshKey"
+                    :selectable="isLoggedIn"
+                    :selected-keys="selectedKeys"
+                    @count="activeFolderFileCount = $event"
+                    @files="folderDriveFiles = $event"
+                    @toggle-select="toggleSelected"
+                    @open-image="openDriveImage"
+                    @previews="folderDrivePreviews = $event"
+                  />
+                </div>
+              </div>
+          </div>
+        </section>
 
-      <DashboardYandexSection
+      <section
         v-if="isLoggedIn && yandexPath !== null"
-        ref="yandexView"
-        :path="yandexPath"
-        :query="searchQuery"
-        :sort-mode="sortMode"
-        :view-mode="recentViewMode"
-        :refresh-key="yandexRefreshKey"
-        :selected-keys="selectedKeys"
-        @navigate="openYandexPath"
-        @update:view-mode="setRecentViewMode"
-        @toggle-select="toggleSelected"
-        @items="yandexFiles = $event"
-        @upload="uploadToYandex"
-        @move="openYandexMove"
-        @changed="yandexRefreshKey += 1"
-        @feedback="setFeedback"
-        @open-image="openYandexImage"
-      />
+        class="dashboard-folder-content"
+        data-dashboard-view="yandex"
+      >
+        <DashboardYandexDisk
+          ref="yandexView"
+          :path="yandexPath"
+          :query="searchQuery"
+          :sort-mode="sortMode"
+          :view-mode="recentViewMode"
+          :refresh-key="yandexRefreshKey"
+          :selected-keys="selectedKeys"
+          @navigate="openYandexPath"
+          @update:view-mode="setRecentViewMode"
+          @toggle-select="toggleSelected"
+          @items="yandexFiles = $event"
+          @upload="uploadToYandex"
+          @move="openYandexMove"
+          @changed="yandexRefreshKey += 1"
+          @feedback="setFeedback"
+          @open-image="openYandexImage"
+        />
+      </section>
 
-      <DashboardSpaceSection
+      <section
         v-if="isLoggedIn && spaceId !== null"
-        ref="spaceView"
-        :space-id="spaceId"
-        :view-mode="recentViewMode"
-        :query="searchQuery"
-        :me-id="currentUser?.id || ''"
-        :folder-options="folderOptions"
-        @update:view-mode="setRecentViewMode"
-        @open="openSpaceResource"
-        @open-media="(items, start) => (mediaViewer = { items, start })"
-        @gone="leaveSpaceSection"
-        @feedback="setFeedback"
-      />
+        class="dashboard-folder-content"
+        data-dashboard-view="space"
+      >
+        <DashboardSpace
+          ref="spaceView"
+          :space-id="spaceId"
+          :view-mode="recentViewMode"
+          :query="searchQuery"
+          :me-id="currentUser?.id || ''"
+          :folder-options="folderOptions"
+          @update:view-mode="setRecentViewMode"
+          @open="openSpaceResource"
+          @open-media="(items, start) => (mediaViewer = { items, start })"
+          @gone="leaveSpaceSection"
+          @feedback="setFeedback"
+        />
+      </section>
 
-      <DashboardTrashSection
+      <section
         v-if="isLoggedIn && activeSection.kind === 'trash'"
-        @restored="onTrashRestored"
-        @feedback="setFeedback"
-      />
+        class="dashboard-folder-content"
+        data-dashboard-view="trash"
+      >
+        <DashboardTrash @restored="onTrashRestored" @feedback="setFeedback" />
+      </section>
 
-      <DashboardSharedSection
+      <div
         v-if="isLoggedIn && (activeSection.kind === 'shared' || isHomeFeed)"
-        :context="sharedSectionProps"
-      />
-      <DashboardInteractiveSection
+        :id="isHomeFeed ? 'feed-shared' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'shared'"
+        :data-feed-section="isHomeFeed ? 'shared' : undefined"
+        data-section="shared"
+      >
+        <div class="dash-section-head"><h2>{{ t('sharedWithMe') }}</h2></div>
+        <div class="dash-grid" data-feed-grid="shared">
+          <template v-for="item in feedItems(sharedFiltered, 'shared')" :key="'shared-' + item.type + '-' + item.id">
+          <div
+            v-if="item.type === 'canvas'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
+            @click="openCanvas(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+            <button
+              class="card-manage"
+              :data-menu-trigger="`shared:${item.type}:${item.id}`"
+              @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)"
+              title="Canvas actions"
+              :disabled="isBusy"
+            >⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
+          </div>
+          <article
+            v-else-if="item.type === 'html-document'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+            @click="openHtmlDocument(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
+          </article>
+          <article
+            v-else-if="item.type === 'text-document'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+            @click="openTextDocument(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span class="badge badge-shared card-title-badge">{{ item.role || t('sharedWithMe') }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+            </div>
+          </article>
+          </template>
+          <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
+        </div>
+        <div v-if="!sharedFiltered.length && hasActiveFilter" class="dash-empty" data-feed-empty="shared">
+          {{ t('noFilterMatches') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
+        <button
+          v-if="isHomeFeed && sharedFiltered.length > feedLimit('shared')"
+          type="button"
+          class="dashboard-recent-show-all"
+          :data-feed-show-all="'shared'"
+          :aria-expanded="isFeedSectionExpanded('shared')"
+          @click="toggleFeedSectionExpanded('shared')"
+        >
+          <span>{{ isFeedSectionExpanded('shared') ? t('showLess') : `${t('showAll')} ${sharedFiltered.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('shared')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
+      </div>
+
+      <section
         v-if="isLoggedIn && (activeSection.kind === 'interactive' || isHomeFeed)"
-        :context="interactiveSectionProps"
-      />
-      <DashboardPublicSection
+        :id="isHomeFeed ? 'feed-interactive' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'interactive'"
+        :data-feed-section="isHomeFeed ? 'interactive' : undefined"
+        data-section="interactive-templates"
+      >
+        <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
+        <div class="dash-grid" data-feed-grid="interactive">
+          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
+            <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
+            <div class="card-meta"><span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
+            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
+            </div>
+          </article>
+          <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
+        </div>
+        <div v-if="!visibleInteractiveTemplateItems.length && hasActiveFilter" class="dash-empty" data-feed-empty="interactive">
+          {{ t('noFilterMatches') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
+        <button
+          v-if="isHomeFeed && visibleInteractiveTemplateItems.length > feedLimit('interactive')"
+          type="button"
+          class="dashboard-recent-show-all"
+          :data-feed-show-all="'interactive'"
+          :aria-expanded="isFeedSectionExpanded('interactive')"
+          @click="toggleFeedSectionExpanded('interactive')"
+        >
+          <span>{{ isFeedSectionExpanded('interactive') ? t('showLess') : `${t('showAll')} ${visibleInteractiveTemplateItems.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('interactive')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
+      </section>
+
+      <div
         v-if="activeSection.kind === 'public' || isHomeFeed"
-        :context="publicSectionProps"
-      />
+        :id="isHomeFeed ? 'feed-public' : undefined"
+        class="dash-section"
+        :class="{ 'dashboard-feed-section': isHomeFeed }"
+        :data-dashboard-view="isHomeFeed ? undefined : 'public'"
+        :data-feed-section="isHomeFeed ? 'public' : undefined"
+        data-section="public"
+      >
+        <!-- Heading row like Recents': title, Mine/Others, and the phone sort
+             control (it used to sit in the toolbar, a row above the title). -->
+        <div class="dash-section-head dashboard-public-head">
+          <h2>{{ t('public') }}</h2>
+          <div class="dashboard-public-head-controls">
+            <div v-if="isLoggedIn" ref="publicOwnerFilterEl" class="dashboard-public-owner-filter dashboard-segmented" role="group" :aria-label="t('publicOwnerFilter')">
+              <button
+                v-for="option in PUBLIC_OWNER_FILTERS"
+                :key="option"
+                type="button"
+                :class="{ active: publicOwnerFilter === option }"
+                :aria-pressed="publicOwnerFilter === option"
+                :data-public-owner-filter="option"
+                @click.stop="publicOwnerFilter = option"
+              >{{ t(PUBLIC_OWNER_FILTER_LABELS[option]) }}</button>
+            </div>
+          </div>
+        </div>
+        <div class="dash-grid" data-feed-grid="public">
+          <template v-for="item in feedItems(publicFiltered, 'public')" :key="'public-' + item.type + '-' + item.id">
+          <div
+            v-if="item.type === 'canvas'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
+            @click="openCanvas(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" aria-label="Canvas" /><span class="card-title-text">{{ item.title || 'Untitled' }}</span><span v-if="item.allowPublicEdit" class="badge badge-public card-title-badge">{{ t('publicEditShort') }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
+            </div>
+          </div>
+          <article
+            v-else-if="item.type === 'html-document'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+            @click="openHtmlDocument(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
+            </div>
+          </article>
+          <article
+            v-else-if="item.type === 'text-document'"
+            :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
+            @click="openTextDocument(item.slug || item.id)"
+          >
+            <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
+            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span></div>
+            <div class="card-meta">
+              <span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span>
+              <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
+            </div>
+            <div v-if="item.tags?.length" class="card-tags">
+              <span
+                v-for="tag in item.tags"
+                :key="tag.name"
+                class="card-tag color-tag"
+                :style="{ '--tag-color': tag.color }"
+              >#{{ tag.name }}</span>
+            </div>
+            <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
+            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
+              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
+              <!-- An admin takes anyone's resource out of Public. -->
+              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
+            </div>
+          </article>
+          </template>
+          <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
+            <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
+          </button>
+        </div>
+        <div v-if="!publicFiltered.length && (hasActiveFilter || !isLoggedIn)" class="dash-empty" data-public-empty data-feed-empty="public">
+          {{ hasActiveFilter ? t('noFilterMatches') : publicAnyOwner.length ? t('noPublicMatches') : t('noPublicResources') }}
+          <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
+        <button
+          v-if="isHomeFeed && publicFiltered.length > feedLimit('public')"
+          type="button"
+          class="dashboard-recent-show-all"
+          :data-feed-show-all="'public'"
+          :aria-expanded="isFeedSectionExpanded('public')"
+          @click="toggleFeedSectionExpanded('public')"
+        >
+          <span>{{ isFeedSectionExpanded('public') ? t('showLess') : `${t('showAll')} ${publicFiltered.length}` }}</span>
+          <ChevronDown v-if="!isFeedSectionExpanded('public')" :size="15" aria-hidden="true" />
+          <ChevronUp v-else :size="15" aria-hidden="true" />
+        </button>
+      </div>
 
     </template>
     </div>
@@ -266,7 +989,41 @@
       </div>
     </div>
 
-    <DashboardModalLayer :context="modalProps" />
+    <!-- Mobile tag multi-select: replaces the old popover-that-quietly-
+         appears-at-the-bottom with a proper sheet - visible backdrop, stays
+         open across multiple taps, and only ever commits to selectedTags on
+         Apply (see openTagSheet/applyTagSheet). -->
+    <div v-if="tagSheetOpen" class="dashboard-modal-backdrop dashboard-tag-sheet-backdrop" @click.self="closeTagSheet">
+      <div class="dashboard-modal dashboard-tag-sheet" role="dialog" aria-modal="true" :aria-label="t('filterByTags')">
+        <div class="dashboard-tag-sheet-grabber" aria-hidden="true"></div>
+        <div class="dashboard-modal-head">
+          <div>
+            <h3>{{ t('filterByTags') }}</h3>
+            <p class="dashboard-tag-sheet-subtitle">{{ t('selectMultipleTags') }}</p>
+          </div>
+          <button class="dashboard-modal-close" :aria-label="t('close')" @click="closeTagSheet">
+            <X :size="16" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-tag-sheet-list">
+          <button
+            v-for="tag in allTagNames"
+            :key="tag"
+            type="button"
+            class="dashboard-tag-sheet-item"
+            :class="{ active: tagSheetDraft.includes(tag) }"
+            @click="toggleDraftTag(tag)"
+          >
+            <span>#{{ tag }}</span>
+            <Check v-if="tagSheetDraft.includes(tag)" :size="14" aria-hidden="true" />
+          </button>
+        </div>
+        <div class="dashboard-modal-actions dashboard-tag-sheet-actions">
+          <button type="button" class="btn-ghost" @click="resetTagSheetDraft">{{ t('reset') }}</button>
+          <button type="button" class="btn-primary" @click="applyTagSheet">{{ t('apply') }} ({{ tagSheetDraft.length }})</button>
+        </div>
+      </div>
+    </div>
 
     <DashboardAddDialog
       v-if="addDialog.open"
@@ -281,6 +1038,46 @@
       @create-folder="onAddCreateFolder"
       @import="onAddImport"
     />
+
+    <div v-if="folderModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ folderModal.bulk?.length ? t('moveSelectedTitle').replace('{n}', String(folderModal.bulk.length)) : folderModal.resourceId ? t('moveToGroupTitle') : t('createGroup') }}</h3>
+          <button class="dashboard-modal-close" @click="closeFolderModal">x</button>
+        </div>
+        <input
+          v-if="!folderModalMoves"
+          v-model.trim="folderModal.value"
+          class="dashboard-modal-input"
+          :placeholder="t('groupNameTitle')"
+          @input="folderModal.folderId = ''"
+          @keydown.enter.prevent="saveFolderModal"
+        />
+        <div v-if="folderModalMoves" class="dashboard-modal-note">{{ t('chooseFolder') }}</div>
+        <div v-if="folderModalMoves && folderOptions.length" class="folder-parent-list">
+          <button
+            v-for="folder in folderOptions"
+            :key="folder.id"
+            class="folder-parent-option folder-destination"
+            :class="{ active: folderModal.folderId === folder.id }"
+            :style="{ paddingLeft: 12 + folder.depth * 16 + 'px' }"
+            @click="folderModal.folderId = folder.id; folderModal.value = folder.name"
+          >
+            <span class="folder-destination-name">
+              <span v-if="folder.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ folder.name }}
+            </span>
+            <span class="folder-destination-path">{{ folder.path || t('inRoot') }}</span>
+          </button>
+        </div>
+        <div class="dashboard-modal-actions dashboard-modal-actions-row" data-folder-modal-actions>
+          <button class="btn-ghost" @click="closeFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button class="btn-primary" @click="saveFolderModal" :disabled="isBusy || !canSaveFolderModal">
+            {{ actionLabel(folderModalMoves ? 'move-folder' : 'create-folder', folderModalMoves ? t('move') : t('create')) }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <DashboardMediaViewer
       v-if="mediaViewer"
@@ -307,12 +1104,225 @@
       @import="importCharacter"
     />
 
+    <div v-if="subfolderModal.open" class="dashboard-modal-backdrop" @click.self="closeSubfolderModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ t('addFolderTitle') }}: {{ subfolderModal.parentName }}</h3>
+          <button class="dashboard-modal-close" @click="closeSubfolderModal">x</button>
+        </div>
+        <input
+          v-model.trim="subfolderModal.value"
+          class="dashboard-modal-input"
+          :placeholder="t('folderName')"
+          @keydown.enter.prevent="saveSubfolderModal"
+        />
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeSubfolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button
+            class="btn-primary"
+            @click="saveSubfolderModal"
+            :disabled="isBusy || !subfolderModal.value.trim()"
+          >{{ actionLabel('create-subfolder', t('createFolder')) }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="folderParentModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderParentModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ t('moveFolderIntoTitle') }}: {{ folderParentModal.name }}</h3>
+          <button class="dashboard-modal-close" @click="closeFolderParentModal">x</button>
+        </div>
+        <div class="dashboard-modal-note">{{ t('moveFolderIntoNote') }}</div>
+        <div v-if="folderParentOptions.length" class="folder-parent-list">
+          <button
+            v-for="option in folderParentOptions"
+            :key="option.id"
+            class="folder-parent-option folder-destination"
+            :class="{ active: folderParentModal.targetId === option.id }"
+            :style="{ paddingLeft: 12 + option.depth * 16 + 'px' }"
+            :data-folder-parent-option="option.id"
+            @click="folderParentModal.targetId = option.id"
+          >
+            <span class="folder-destination-name">
+              <span v-if="option.depth" class="folder-destination-branch" aria-hidden="true">└</span>
+              {{ option.id === 'root' ? t('moveFolderToRoot') : option.name }}
+            </span>
+            <span v-if="option.id !== 'root'" class="folder-destination-path">{{ option.path || t('inRoot') }}</span>
+          </button>
+        </div>
+        <div v-else class="dashboard-modal-note">{{ t('moveFolderNoTargets') }}</div>
+        <div class="dashboard-modal-actions dashboard-modal-actions-row">
+          <button class="btn-ghost" @click="closeFolderParentModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button
+            class="btn-primary"
+            data-folder-parent-save
+            @click="saveFolderParentModal"
+            :disabled="isBusy || !folderParentModal.targetId"
+          >{{ actionLabel('move-folder-parent', t('move')) }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="descriptionModal.open" class="dashboard-modal-backdrop" @click.self="closeDescriptionModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ descriptionModal.title || t('description') }}</h3>
+          <button class="dashboard-modal-close" @click="closeDescriptionModal">x</button>
+        </div>
+        <textarea
+          v-if="descriptionModal.canEdit"
+          v-model="descriptionModal.value"
+          class="dashboard-modal-textarea"
+          :maxlength="MAX_DESCRIPTION_LENGTH"
+          :placeholder="t('descriptionPlaceholder')"
+        ></textarea>
+        <p v-else-if="descriptionModal.value" class="description-readonly">{{ descriptionModal.value }}</p>
+        <p v-else class="dashboard-modal-note">{{ t('descriptionEmpty') }}</p>
+        <p v-if="descriptionModal.canEdit" class="dashboard-modal-note">
+          {{ descriptionModal.value.length }} / {{ MAX_DESCRIPTION_LENGTH }}
+        </p>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeDescriptionModal" :disabled="isBusy">
+            {{ descriptionModal.canEdit ? t('cancel') : t('close') }}
+          </button>
+          <button
+            v-if="descriptionModal.canEdit"
+            class="btn-primary"
+            @click="saveDescriptionModal"
+            :disabled="isBusy"
+          >{{ actionLabel('save-description', t('save')) }}</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="renameFolderModal.open" class="dashboard-modal-backdrop" @click.self="closeRenameFolderModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>{{ t('editGroup') }}</h3>
+          <button class="dashboard-modal-close" @click="closeRenameFolderModal">x</button>
+        </div>
+        <input
+          v-model.trim="renameFolderModal.value"
+          class="dashboard-modal-input"
+          :placeholder="t('groupNameTitle')"
+          @keydown.enter.prevent="saveRenameFolderModal"
+        />
+        <p class="dashboard-modal-note">{{ t('renameGroupNote') }}</p>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeRenameFolderModal" :disabled="isBusy">{{ t('cancel') }}</button>
+          <button class="btn-primary" @click="saveRenameFolderModal" :disabled="isBusy || !renameFolderModal.value.trim()">
+            {{ actionLabel('rename-folder', t('save')) }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="folderShareModal.open" class="dashboard-modal-backdrop" @click.self="closeFolderShareModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Share group</h3>
+          <button class="dashboard-modal-close" @click="closeFolderShareModal">x</button>
+        </div>
+        <p class="dashboard-modal-note">Sharing "{{ folderShareModal.name }}" grants access to all resources in this Group.</p>
+        <div class="share-section">
+          <div class="share-section-title">Invite people</div>
+          <div class="share-form">
+            <ContactEmailInput v-model.trim="folderShareModal.email" placeholder="Email" :exclude="folderShareModal.permissions.map((p: any) => p.user?.email ?? '')" />
+            <select v-model="folderShareModal.role">
+              <option value="read">Can view</option>
+              <option value="edit">Can edit</option>
+            </select>
+            <button @click="shareFolder" :disabled="isBusy || !folderShareModal.email.trim()">
+              {{ actionLabel('share-folder', 'Invite') }}
+            </button>
+          </div>
+          <div v-if="folderShareModal.loading" class="dashboard-modal-note">Loading access...</div>
+          <div v-else-if="!folderShareModal.permissions.length" class="dashboard-modal-note">No invited people yet.</div>
+          <div v-else class="share-list">
+            <div v-for="permission in folderShareModal.permissions" :key="permission.id || permission.userId" class="share-item">
+              <span>{{ permission.user?.email || permission.userId }}</span>
+              <span class="share-item-role">{{ permission.role === 'edit' ? 'Can edit' : 'Can view' }}</span>
+              <button @click="revokeFolderAccess(permission.userId)" :disabled="isBusy">x</button>
+            </div>
+          </div>
+        </div>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeFolderShareModal" :disabled="isBusy">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="tagsModal.open" class="dashboard-modal-backdrop" @click.self="closeTagsModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Edit tags</h3>
+          <button class="dashboard-modal-close" @click="closeTagsModal">x</button>
+        </div>
+        <div v-if="tagSuggestions.length" class="tag-filter-list">
+          <button
+            v-for="tag in tagSuggestions"
+            :key="tag.name"
+            class="tag-filter color-tag"
+            :style="{ '--tag-color': tag.color }"
+            @click="addSuggestedTag(tag)"
+          >#{{ tag.name }}</button>
+        </div>
+        <div class="tag-editor-list">
+          <div v-for="(tag, index) in tagsModal.tags" :key="tag.id" class="tag-editor-row">
+            <input v-model.trim="tag.name" class="dashboard-modal-input tag-name-input" placeholder="Tag" />
+            <div class="tag-color-palette">
+              <button
+                v-for="color in tagColors"
+                :key="color"
+                class="tag-color-option"
+                :class="{ active: tag.color === color }"
+                :style="{ background: color }"
+                @click="tag.color = color"
+                :disabled="isBusy"
+              ></button>
+            </div>
+            <button class="tag-remove-btn" @click="removeTag(index)" :disabled="isBusy">x</button>
+          </div>
+        </div>
+        <button class="btn-ghost tag-add-btn" @click="addTag" :disabled="isBusy">+ Add tag</button>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeTagsModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveTagsModal" :disabled="isBusy">
+            {{ actionLabel('save-tags', 'Save tags') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="transferModal.open" class="dashboard-modal-backdrop" @click.self="closeTransferModal">
+      <div class="dashboard-modal">
+        <div class="dashboard-modal-head">
+          <h3>Transfer ownership</h3>
+          <button class="dashboard-modal-close" @click="closeTransferModal">x</button>
+        </div>
+        <input
+          v-model.trim="transferModal.email"
+          class="dashboard-modal-input"
+          placeholder="User email"
+          type="email"
+          @keydown.enter.prevent="saveTransferModal"
+        />
+        <p class="dashboard-modal-note">The current owner will become an editor.</p>
+        <div class="dashboard-modal-actions">
+          <button class="btn-ghost" @click="closeTransferModal" :disabled="isBusy">Cancel</button>
+          <button class="btn-primary" @click="saveTransferModal" :disabled="isBusy || !transferModal.email.trim()">
+            {{ actionLabel('transfer-ownership', 'Transfer') }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Plus, Trash2, Download, X } from '@lucide/vue';
-import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
+import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, UsersRound, X } from '@lucide/vue';
+import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
@@ -335,32 +1345,26 @@ import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
 import { vHint } from '../directives/hint';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
+import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
+import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
-import { useDashboardMarquee } from '../composables/useDashboardMarquee';
-import { useDashboardLongPress } from '../composables/useDashboardLongPress';
-import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
-import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
-import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
-import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
-import { useDashboardFeedNavigation } from '../composables/useDashboardFeedNavigation';
-import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
-import { useDashboardSectionTransition } from '../composables/useDashboardSectionTransition';
-import { useDashboardMobileSidebar } from '../composables/useDashboardMobileSidebar';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
-import type { DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
-import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
-import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobileHeaderControls.vue';
-import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
-import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
-import DashboardYandexSection from '../components/dashboard/DashboardYandexSection.vue';
-import DashboardSpaceSection from '../components/dashboard/DashboardSpaceSection.vue';
-import DashboardTrashSection from '../components/dashboard/DashboardTrashSection.vue';
+import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.vue';
+import { useUploadSummary } from '../dashboard/upload-summary';
+import { plansApi } from '../api/plans';
+import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
+import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
+import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
+import { createUploadWakeLock, runUploadQueue, type UploadJob } from '../dashboard/upload-queue';
+import { nativeUploadAvailable } from '../api/native-upload';
+import { adminApi, type PublicResourceType } from '../api/admin';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
 import {
@@ -378,6 +1382,8 @@ import { useYandexDisk } from '../composables/useYandexDisk';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
+import TabsButton from '../components/tabs/TabsButton.vue';
+import LanguageToggle from '../components/LanguageToggle.vue';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
   buildSidebarNavItems,
@@ -398,15 +1404,6 @@ import { isPictureFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
-import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
-import DashboardToolbar from '../components/dashboard/DashboardToolbar.vue';
-import DashboardRecentSection from '../components/dashboard/DashboardRecentSection.vue';
-import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
-import DashboardFolderSection from '../components/dashboard/DashboardFolderSection.vue';
-import DashboardSharedSection from '../components/dashboard/DashboardSharedSection.vue';
-import DashboardInteractiveSection from '../components/dashboard/DashboardInteractiveSection.vue';
-import DashboardPublicSection from '../components/dashboard/DashboardPublicSection.vue';
-import DashboardModalLayer from '../components/dashboard/DashboardModalLayer.vue';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -507,31 +1504,24 @@ export default defineComponent({
   directives: { hint: vHint },
   components: {
     ContactEmailInput,
+    TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
-    DashboardStatusOverlays,
-    DashboardMobileHeaderControls,
-    DashboardPublicHeader,
-    DashboardAuthHeader,
-    DashboardYandexSection,
-    DashboardSelectionBar,
-    DashboardToolbar,
-    DashboardRecentSection,
-    DashboardAccessRequests,
-    DashboardFolderSection,
-    DashboardSharedSection,
-    DashboardInteractiveSection,
-    DashboardPublicSection,
-    DashboardModalLayer,
+    DashboardFilterMenu,
+    DashboardSortMenu,
+    DashboardUploadPanel,
+    DashboardUploadBadge,
+    DashboardYandexDisk,
     YandexFolderPicker,
     DashboardMediaViewer,
-    DashboardSpaceSection,
-    DashboardTrashSection,
+    DashboardSpace,
+    DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
+    LanguageToggle,
     ArrowLeft,
     ArrowUpDown,
     Check,
@@ -543,7 +1533,9 @@ export default defineComponent({
     FolderInput,
     Download,
     Trash2,
+    Menu,
     Plus,
+    UsersRound,
   },
   setup() {
     const router = useRouter();
@@ -617,6 +1609,9 @@ export default defineComponent({
     };
     const mobileSidebarOpen = ref(false);
     const mobileSidebarOpener = ref<HTMLElement | null>(null);
+    let previousBodyOverflow: string | null = null;
+    const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
+    let sidebarDesktopMedia: MediaQueryList | null = null;
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -631,6 +1626,15 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
+    const folderDragId = ref('');
+    const folderDragOverId = ref('');
+    const resourceDrag = ref<{
+      active: boolean;
+      startX: number;
+      startY: number;
+      item: FolderItem;
+      targetFolderId: string;
+    } | null>(null);
     const suppressNextCardClick = ref(false);
     const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
@@ -954,6 +1958,8 @@ export default defineComponent({
     const isOwnPublic = (item: any, legacyPublic: boolean) => {
       if (!currentUser.value?.id || item.ownerId !== currentUser.value.id) return false;
       if (item.listedInPublic === false) return false;
+      // An admin took it out of Public: out for its owner too.
+      if (item.publicHidden) return false;
       if (item.visibility === 'public') return true;
       if (item.visibility === 'authenticated') return false;
       return legacyPublic;
@@ -1533,6 +2539,7 @@ export default defineComponent({
     const FEED_SECTION_LABELS = {
       recent: 'recents',
       folders: 'folders',
+      spaces: 'spaces',
       shared: 'sharedWithMe',
       interactive: 'interactiveTemplate',
       public: 'public',
@@ -1558,24 +2565,128 @@ export default defineComponent({
     const feedItems = <T,>(items: T[], section: ExpandableFeedSection): T[] => (
       isHomeFeed.value && !isFeedSectionExpanded(section) ? items.slice(0, feedLimit(section)) : items
     );
+    /** The home feed's Spaces tiles: the user's spaces, narrowed by the search like the folders. */
+    const { spaces: allSpaces } = useSpaces();
+    const spaceTiles = computed(() => {
+      const needle = searchQuery.value.trim().toLocaleLowerCase();
+      return needle ? allSpaces.value.filter((space) => space.name.toLocaleLowerCase().includes(needle)) : allSpaces.value;
+    });
     const feedNavSections = computed<FeedSection[]>(() => {
       if (!isHomeFeed.value) return [];
       const sections: FeedSection[] = ['recent'];
       if (recentFolderTiles.value.length) sections.push('folders');
+      if (spaceTiles.value.length) sections.push('spaces');
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
-    const {
-      activeFeedSection,
-      scrollToFeedSection,
-    } = useDashboardFeedNavigation<FeedSection>({
-      dashboardShell,
-      feedNavSections,
-      initialSection: 'recent',
+    const activeFeedSection = ref<FeedSection>('recent');
+    // The section last jumped to from the bar. It stays current while it's
+    // in view, until the user scrolls by hand: near the end of a short feed
+    // the section jumped to may never reach the bar.
+    let feedJumpTarget: FeedSection | null = null;
+    const scrollToFeedSection = (section: FeedSection) => {
+      activeFeedSection.value = section;
+      feedJumpTarget = section;
+      document.getElementById(`feed-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
+    /**
+     * Scroll-spy: the current section is the last one whose top has passed
+     * under the sticky bar - except at the very end of the feed, where the
+     * last sections can never reach the bar, so the last one in view wins
+     * (otherwise jumping to Public highlighted whatever sat above it).
+     */
+    let feedScroller: HTMLElement | null = null;
+    let feedSpyFrame = 0;
+    const updateActiveFeedSection = () => {
+      feedSpyFrame = 0;
+      const sections = feedNavSections.value;
+      if (!feedScroller || !sections.length) return;
+      const box = feedScroller.getBoundingClientRect();
+      // Горизонтальной полосы разделов больше нет — отсчёт от верха ленты.
+      const barBottom = box.top;
+      const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
+      if (feedJumpTarget) {
+        const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
+        if (rect && rect.bottom > barBottom && rect.top < box.bottom) {
+          activeFeedSection.value = feedJumpTarget;
+          return;
+        }
+        feedJumpTarget = null;
+      }
+      let current: FeedSection = sections[0]!;
+      for (const section of sections) {
+        const top = document.getElementById(`feed-${section}`)?.getBoundingClientRect().top;
+        if (top === undefined) continue;
+        if (top <= barBottom + 24 || (atEnd && top < box.bottom)) current = section;
+      }
+      activeFeedSection.value = current;
+    };
+    const onFeedManualScroll = () => { feedJumpTarget = null; };
+    const onFeedScroll = () => {
+      if (!feedSpyFrame) feedSpyFrame = requestAnimationFrame(updateActiveFeedSection);
+    };
+    // Set up once mounted: the scroll container exists then, and a watch
+    // reads its source right away while the sections it lists
+    // (recentFolderTiles...) are declared further down in this setup.
+    onMounted(() => {
+      feedScroller = (document.querySelector('.dashboard-central-shell .app-main') as HTMLElement | null)
+        ?? (document.querySelector('.app-main') as HTMLElement | null);
+      feedScroller?.addEventListener('scroll', onFeedScroll, { passive: true });
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.addEventListener(type, onFeedManualScroll, { passive: true });
+      }
+      watch(feedNavSections, () => { void nextTick(updateActiveFeedSection); }, { flush: 'post' });
+    });
+    onBeforeUnmount(() => {
+      feedScroller?.removeEventListener('scroll', onFeedScroll);
+      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
+        feedScroller?.removeEventListener(type, onFeedManualScroll);
+      }
+      if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
     });
 
-    /** Keep the dashboard frame pinned while the app-main feed owns scrolling. */
-    useDashboardFramePinning();
+    /**
+     * The header never scrolls away. Only `.app-main` scrolls; the frame
+     * around it (the page, .app-layout, the shells) is overflow: hidden, but
+     * a browser still scrolls such a box itself: a phone does when the
+     * keyboard opens for an input (iOS Safari leaves the page scrolled after
+     * it closes), and focus() / scrollIntoView() scroll every ancestor. The
+     * header then sat above the screen with nothing to drag it back by.
+     * Whatever scrolls the frame, it goes back to the top.
+     */
+    let frameBoxes: HTMLElement[] = [];
+    const pinFrame = () => {
+      for (const box of frameBoxes) {
+        if (box.scrollTop || box.scrollLeft) {
+          box.scrollTop = 0;
+          box.scrollLeft = 0;
+        }
+      }
+      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
+    };
+    // Not while the keyboard is up: the browser moves the page to keep the
+    // typed-in field in view, and fighting it would hide the field.
+    const pinFrameUnlessTyping = () => {
+      const active = document.activeElement as HTMLElement | null;
+      if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
+      pinFrame();
+    };
+    const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
+    onMounted(() => {
+      frameBoxes = ['.app-layout.dashboard-view', '.dashboard-app-shell', '.dashboard-central-shell']
+        .map((selector) => document.querySelector(selector) as HTMLElement | null)
+        .filter((box): box is HTMLElement => Boolean(box));
+      for (const box of frameBoxes) box.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      window.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
+      document.addEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.addEventListener('resize', pinFrameUnlessTyping);
+    });
+    onBeforeUnmount(() => {
+      for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
+      window.removeEventListener('scroll', pinFrameUnlessTyping);
+      document.removeEventListener('focusout', pinFrameAfterTyping);
+      window.visualViewport?.removeEventListener('resize', pinFrameUnlessTyping);
+    });
     const toggleRecentExpanded = () => {
       const collapsing = recentExpanded.value;
       animateFeedGrid('[data-recent-layout]', collapsing, feedLimit('recent'), () => {
@@ -2126,39 +3237,91 @@ export default defineComponent({
       return folderSummaries.value.find((folder) => folder.id === folderId && canDropToFolder(folder));
     };
 
-    const isTechnicalFolder = (folder: { id: string; name: string }) =>
-      folder.id === 'legacy-resource-inbox'
-      || folder.name === 'Unsorted'
-      || folder.name.toLowerCase() === 'default';
+    const onFolderDragOver = (folder: FolderSummary) => {
+      if (!canDropToFolder(folder)) return;
+      dragTargetFolder.value = folder.id;
+      // Expand the drop target if the user had folded its subtree.
+      if (folder.hasChildren) expandTree(folder.id);
+    };
 
-    const {
-      folderDragOverId,
-      canReorderFolder,
-      onFolderDragStart,
-      onFolderDragEnd,
-      onFolderDragEnter,
-      onFolderDragOverEvent,
-      onFolderDragLeave,
-      onFolderDrop,
-    } = useDashboardFolderDrag<FolderSummary>({
-      ownFolders: ownResourceFolders as unknown as Ref<FolderSummary[]>,
-      isBusy,
-      isTechnicalFolder,
-      canDropResource: canDropToFolder,
-      expandTree,
-      onResourceDragOver: (folder) => {
-        dragTargetFolder.value = folder.id;
-        if (folder.hasChildren) expandTree(folder.id);
-      },
-      onResourceDragLeave: (folder) => {
-        if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
-      },
-      dropResourceToFolder: (folder) => dropResourceToFolder(folder),
-      reorderFoldersApi: async (ids) => {
+    const onFolderDragLeave = (folder: FolderSummary) => {
+      if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
+      if (folderDragOverId.value === folder.id) folderDragOverId.value = '';
+    };
+
+    const canReorderFolder = (folder: FolderSummary) =>
+      !isBusy.value
+      && folder.role === 'owner'
+      && !isTechnicalFolder(folder)
+      && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id);
+
+    const onFolderDragStart = (event: DragEvent, folder: FolderSummary) => {
+      if (!canReorderFolder(folder)) {
+        event.preventDefault();
+        return;
+      }
+      folderDragId.value = folder.id;
+      event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    };
+
+    const onFolderDragEnd = () => {
+      folderDragId.value = '';
+      folderDragOverId.value = '';
+    };
+
+    const isFolderReorderDrag = (event: DragEvent) =>
+      Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'));
+
+    const onFolderDragEnter = (event: DragEvent, folder: FolderSummary) => {
+      if (isFolderReorderDrag(event)) {
+        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+        return;
+      }
+      onFolderDragOver(folder);
+    };
+
+    const onFolderDragOverEvent = (event: DragEvent, folder: FolderSummary) => {
+      if (isFolderReorderDrag(event)) {
+        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
+        return;
+      }
+      onFolderDragOver(folder);
+    };
+
+    const reorderFolders = async (sourceId: string, targetId: string) => {
+      if (!sourceId || sourceId === targetId) return;
+      const previousFolders = ownResourceFolders.value.map((folder) => ({ ...folder }));
+      const ids = ownResourceFolders.value
+        .slice()
+        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+        .map((folder) => folder.id);
+      const sourceIndex = ids.indexOf(sourceId);
+      const targetIndex = ids.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      ids.splice(sourceIndex, 1);
+      ids.splice(ids.indexOf(targetId), 0, sourceId);
+      ownResourceFolders.value = ownResourceFolders.value.map((folder) => ({
+        ...folder,
+        sortOrder: ids.indexOf(folder.id),
+      }));
+      try {
         await resourceFolders.reorder(ids);
-      },
-      setFeedback,
-    });
+      } catch (error) {
+        ownResourceFolders.value = previousFolders;
+        setFeedback('error', error instanceof Error ? error.message : 'Could not save folder order');
+      }
+    };
+
+    const onFolderDrop = async (event: DragEvent, folder: FolderSummary) => {
+      const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
+      if (sourceId) {
+        onFolderDragEnd();
+        if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
+        return;
+      }
+      await dropResourceToFolder(folder);
+    };
 
     const resolveSidebarFolder = (folderId: string) =>
       folderSummaries.value.find((folder) => folder.id === folderId) || null;
@@ -2229,28 +3392,114 @@ export default defineComponent({
       }
     };
 
-    const {
-      resourceDrag,
-      startResourceMouseDrag,
-      startResourceTouchDrag,
-    } = useDashboardResourceDrag<FolderItem, FolderSummary>({
-      draggingResourceId,
-      draggingResourceType,
-      draggingResourceFolderId,
-      dragTargetFolder,
-      suppressNextCardClick,
-      closeCardMenu: () => closeCardMenu(),
-      endResourceDrag,
-      findDropFolder,
-      dropResourceToFolder,
-      expandTree,
-      canStart: (_item, sourceFolder, target) => (
-        !isBusy.value
-        && sourceFolder.role === 'owner'
-        && ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)
-        && !target?.closest('button,input,a,textarea,select,[contenteditable="true"]')
-      ),
-    });
+    const removeResourceDragListeners = () => {
+      window.removeEventListener('mousemove', onResourceMouseMove);
+      window.removeEventListener('mouseup', onResourceMouseUp);
+      window.removeEventListener('touchmove', onResourceTouchMove);
+      window.removeEventListener('touchend', onResourceTouchEnd);
+      window.removeEventListener('touchcancel', onResourceTouchCancel);
+    };
+
+    const finishResourceDrag = async () => {
+      const state = resourceDrag.value;
+      resourceDrag.value = null;
+      removeResourceDragListeners();
+      if (!state?.active) {
+        endResourceDrag();
+        return;
+      }
+      suppressNextCardClick.value = true;
+      window.setTimeout(() => {
+        suppressNextCardClick.value = false;
+      }, 0);
+      const targetFolder = findDropFolder(state.targetFolderId);
+      if (targetFolder) {
+        await dropResourceToFolder(targetFolder);
+      } else {
+        endResourceDrag();
+      }
+    };
+
+    const updateResourceDrag = (clientX: number, clientY: number, event?: Event) => {
+      const state = resourceDrag.value;
+      if (!state) return;
+      const distance = Math.hypot(clientX - state.startX, clientY - state.startY);
+      if (!state.active && distance < 8) return;
+      if (!state.active) {
+        state.active = true;
+        closeCardMenu();
+        draggingResourceId.value = state.item.id;
+        draggingResourceType.value = state.item.type;
+        draggingResourceFolderId.value = state.item.folderId || null;
+      }
+      event?.preventDefault();
+      const target = document.elementsFromPoint(clientX, clientY)
+        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
+        .find((element): element is HTMLElement => Boolean(element));
+      const folderId = target?.dataset.dashboardFolder || '';
+      const folder = findDropFolder(folderId);
+      state.targetFolderId = folder?.id || '';
+      dragTargetFolder.value = folder?.id || '';
+      // Expand the drop target if the user had folded its subtree.
+      if (folder?.hasChildren) expandTree(folder.id);
+    };
+
+    function onResourceMouseMove(event: MouseEvent) {
+      updateResourceDrag(event.clientX, event.clientY, event);
+    }
+
+    function onResourceMouseUp() {
+      void finishResourceDrag();
+    }
+
+    function onResourceTouchMove(event: TouchEvent) {
+      const point = event.touches[0];
+      if (!point) return;
+      updateResourceDrag(point.clientX, point.clientY, event);
+    }
+
+    function onResourceTouchEnd(event: TouchEvent) {
+      const point = event.changedTouches[0];
+      if (point) updateResourceDrag(point.clientX, point.clientY, event);
+      void finishResourceDrag();
+    }
+
+    function onResourceTouchCancel() {
+      resourceDrag.value = null;
+      removeResourceDragListeners();
+      endResourceDrag();
+    }
+
+    const startResourceDrag = (clientX: number, clientY: number, item: FolderItem, sourceFolder: FolderSummary, target: HTMLElement | null) => {
+      if (isBusy.value) return;
+      if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
+      if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
+      resourceDrag.value = {
+        active: false,
+        startX: clientX,
+        startY: clientY,
+        item,
+        targetFolderId: '',
+      };
+    };
+
+    const startResourceMouseDrag = (event: MouseEvent, item: FolderItem, sourceFolder: FolderSummary) => {
+      if (event.button !== 0) return;
+      startResourceDrag(event.clientX, event.clientY, item, sourceFolder, event.target as HTMLElement | null);
+      if (!resourceDrag.value) return;
+      window.addEventListener('mousemove', onResourceMouseMove);
+      window.addEventListener('mouseup', onResourceMouseUp);
+    };
+
+    const startResourceTouchDrag = (event: TouchEvent, item: FolderItem, sourceFolder: FolderSummary) => {
+      const point = event.touches[0];
+      if (!point) return;
+      startResourceDrag(point.clientX, point.clientY, item, sourceFolder, event.target as HTMLElement | null);
+      if (!resourceDrag.value) return;
+      window.addEventListener('touchmove', onResourceTouchMove, { passive: false });
+      window.addEventListener('touchend', onResourceTouchEnd);
+      window.addEventListener('touchcancel', onResourceTouchCancel);
+    };
 
     const openRenameFolderModal = (folder: FolderSummary) => {
       closeCardMenu();
@@ -2537,26 +3786,97 @@ export default defineComponent({
       }
     });
 
+    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+    let longPressStart: { x: number; y: number } | null = null;
+    let swallowNextClick = false;
+    const cancelLongPress = () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      longPressTimer = null;
+      longPressStart = null;
+    };
     /**
      * Drawing a frame with the mouse from an empty spot of the dashboard
      * ticks every card it touches (with Shift or Ctrl/Cmd, on top of what is
      * ticked already). Only from an empty spot: a press on a card, a button
      * or a menu keeps its own meaning (opening, dragging into a folder).
      */
+    const MARQUEE_IGNORE = [
+      '[data-select-key]', 'button', 'a', 'input', 'select', 'textarea', 'label',
+      '[draggable="true"]', '.card-menu', '.mobile-action-popover', '.subfolder-card',
+      '.dashboard-modal-backdrop', '[contenteditable="true"]',
+    ].join(',');
+    const marquee = ref<{ left: number; top: number; width: number; height: number } | null>(null);
+    let marqueeStart: { x: number; y: number; base: string[] } | null = null;
+    const onMarqueeMove = (event: PointerEvent) => {
+      if (!marqueeStart) return;
+      const dx = event.clientX - marqueeStart.x;
+      const dy = event.clientY - marqueeStart.y;
+      // A click with a tremble is still a click, not a frame.
+      if (!marquee.value && Math.hypot(dx, dy) < 5) return;
+      event.preventDefault();
+      window.getSelection?.()?.removeAllRanges();
+      const left = Math.min(event.clientX, marqueeStart.x);
+      const top = Math.min(event.clientY, marqueeStart.y);
+      const right = Math.max(event.clientX, marqueeStart.x);
+      const bottom = Math.max(event.clientY, marqueeStart.y);
+      marquee.value = { left, top, width: right - left, height: bottom - top };
+      const touched = Array.from(dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [])
+        .filter((card) => {
+          const box = card.getBoundingClientRect();
+          return box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
+        })
+        .map((card) => card.dataset.selectKey!);
+      selectedKeys.value = selectAll(marqueeStart.base, touched);
+    };
+    const endMarquee = () => {
+      window.removeEventListener('pointermove', onMarqueeMove);
+      window.removeEventListener('pointerup', endMarquee);
+      window.removeEventListener('pointercancel', endMarquee);
+      marqueeStart = null;
+      marquee.value = null;
+    };
     /** From anywhere in the scrolling area, the empty space under the last cards too. */
-    const { marquee, startMarquee } = useDashboardMarquee({
-      enabled: isLoggedIn,
-      dashboardShell,
-      selectedKeys,
-    });
+    const startMarquee = (event: PointerEvent) => {
+      if (!isLoggedIn || event.pointerType !== 'mouse' || event.button !== 0) return;
+      const target = event.target as HTMLElement | null;
+      if (!target || target.closest(MARQUEE_IGNORE)) return;
+      endMarquee();
+      const adding = event.shiftKey || event.metaKey || event.ctrlKey;
+      marqueeStart = { x: event.clientX, y: event.clientY, base: adding ? [...selectedKeys.value] : [] };
+      window.addEventListener('pointermove', onMarqueeMove);
+      window.addEventListener('pointerup', endMarquee);
+      window.addEventListener('pointercancel', endMarquee);
+    };
+    onBeforeUnmount(endMarquee);
 
-    const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
-      enabled: isLoggedIn,
-      toggleSelected,
-    });
+    const onSelectionPointerDown = (event: PointerEvent) => {
+      // A long press is not always followed by a click: the flag must not
+      // outlive it and eat the next real tap.
+      swallowNextClick = false;
+      if (!isLoggedIn || event.pointerType === 'mouse') return;
+      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-select-key]');
+      if (!card) return;
+      cancelLongPress();
+      longPressStart = { x: event.clientX, y: event.clientY };
+      longPressTimer = setTimeout(() => {
+        longPressTimer = null;
+        swallowNextClick = true;
+        toggleSelected(card.dataset.selectKey!);
+        navigator.vibrate?.(10);
+      }, 450);
+    };
+    const onSelectionPointerMove = (event: PointerEvent) => {
+      if (longPressStart && Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelLongPress();
+    };
+    /** The system's long-press menu (or text selection) must not follow the tick. */
+    const onSelectionContextMenu = (event: MouseEvent) => {
+      if (!(event.target as HTMLElement | null)?.closest('[data-select-key]')) return;
+      if (swallowNextClick || longPressTimer) event.preventDefault();
+    };
     const onSelectionClickCapture = (event: MouseEvent) => {
-      if (consumeSwallowNextClick()) {
+      if (swallowNextClick) {
         // The click that ends a long press must not open the card it ticked.
+        swallowNextClick = false;
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -2618,6 +3938,10 @@ export default defineComponent({
      * status bar counts them), then packed; one that fails is left out and
      * counted, the rest still download.
      */
+    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
+      phase: 'idle', done: 0, total: 0, failed: 0,
+    });
+    let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
       const title = item.title || t('untitled');
       const base = safeFileName(title, t('untitled'));
@@ -2647,28 +3971,52 @@ export default defineComponent({
       const [base, extension] = splitFileName(file.name);
       return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
     };
-    const { downloadStatus, bulkDownload } = useDashboardBulkDownload({
-      selectedItems,
-      selectedDriveFiles,
-      selectedYandexFiles,
-      archiveItem: archiveFileOf,
-      archiveDriveFile: archiveFileOfDrive,
-      archiveYandexFile: async (file, taken) => {
-        const [base, extension] = splitFileName(file.name);
-        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
-      },
-      buildZip,
-      saveBlob,
-      clearSelection,
-    });
+    const bulkDownload = async () => {
+      const items = selectedItems.value;
+      const driveFiles = selectedDriveFiles.value;
+      const yandex = selectedYandexFiles.value;
+      if (!items.length && !driveFiles.length && !yandex.length) return;
+      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
+      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length, failed: 0 };
+      const taken = new Set<string>();
+      const files: ArchiveFile[] = [];
+      const add = async (make: () => Promise<ArchiveFile>) => {
+        try {
+          files.push(await make());
+        } catch {
+          downloadStatus.value.failed += 1;
+        }
+        downloadStatus.value.done += 1;
+      };
+      for (const item of items) await add(() => archiveFileOf(item, taken));
+      for (const file of driveFiles) await add(() => archiveFileOfDrive(file, taken));
+      for (const file of yandex) {
+        await add(async () => {
+          const [base, extension] = splitFileName(file.name);
+          return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+        });
+      }
+      if (!files.length) {
+        downloadStatus.value.phase = 'error';
+      } else {
+        downloadStatus.value.phase = 'pack';
+        try {
+          const blob = await buildZip(files);
+          saveBlob(blob, `qcanva-${new Date().toISOString().slice(0, 10)}.zip`);
+          downloadStatus.value.phase = 'done';
+          clearSelection();
+        } catch {
+          downloadStatus.value.phase = 'error';
+        }
+      }
+      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
+    };
+    onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
 
     // ----- Spaces: the user's Yandex Disk as a dashboard section
-    const yandexView = ref<InstanceType<typeof DashboardYandexSection> | null>(null);
+    const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
-    const spaceView = ref<InstanceType<typeof DashboardSpaceSection> | null>(null);
-    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
-    const { load: loadSpaces } = useSpaces();
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
     const { load: loadYandexStatus } = useYandexDisk();
     const openYandexPath = (path: string) => {
@@ -2707,6 +4055,100 @@ export default defineComponent({
       const followed = open && move.sources.find((source) => open === source || open.startsWith(`${source}/`));
       if (open && followed) openYandexPath(joinYandexPath(target, followed.slice(followed.lastIndexOf('/') + 1)) + open.slice(followed.length));
     };
+    // ----- shared spaces: a section of their own
+    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
+    const { load: loadSpaces } = useSpaces();
+    onMounted(() => { if (isLoggedIn) void loadSpaces(); });
+    const createSpace = async () => {
+      // Asked first: no typing a name for a plan that will refuse it.
+      const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
+      if (!allowed) {
+        setFeedback('error', t('planErrorSpaces'));
+        return;
+      }
+      const name = (await promptDialog({
+        title: t('spaceNew'),
+        placeholder: t('spaceNamePlaceholder'),
+        confirmLabel: t('create'),
+        cancelLabel: t('cancel'),
+      }))?.trim();
+      if (!name) return;
+      try {
+        const space = await spacesApi.create(name);
+        await loadSpaces(true);
+        selectDashboardSection({ kind: 'space', spaceId: space.id });
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
+      }
+    };
+    /** A QCanva document of a space opens as any does. */
+    const openSpaceResource = (kind: string, id: string) => {
+      if (kind === 'canvas') openCanvas(id);
+      else if (kind === 'text-document') openTextDocument(id);
+      else if (kind === 'html-document') openHtmlDocument(id);
+      else openInteractiveTemplate(id);
+    };
+    /**
+     * A link into the dashboard: `?section=trash` opens the trash and
+     * `?folder=<id>` a folder - the old Q Space pages (/drive/trash,
+     * /drive/<folder>) land here. Read once, then dropped from the address.
+     */
+    const takeAddressSection = () => {
+      if (!isLoggedIn) return;
+      const query = router.currentRoute?.value?.query ?? {};
+      const section = typeof query.section === 'string' ? query.section : '';
+      const folder = typeof query.folder === 'string' ? query.folder : '';
+      if (!section && !folder) return;
+      if (section === 'trash') selectDashboardSection({ kind: 'trash' });
+      else if (folder) selectFolder(folder);
+      const { section: _section, folder: _folder, ...rest } = query;
+      void router.replace({ query: rest });
+    };
+
+    /**
+     * An admin takes a resource out of the Public directory: it leaves the
+     * section at once, for its owner's lists too. The link still opens it.
+     */
+    const hideFromPublic = async (item: { type: string; id: string; title?: string | null }) => {
+      closeCardMenu();
+      const type = item.type as PublicResourceType;
+      if (type !== 'canvas' && type !== 'text-document' && type !== 'html-document') return;
+      const confirmed = await confirmDialog({
+        title: t('hideFromPublicTitle').replace('{name}', item.title || t('untitled')),
+        confirmLabel: t('hideFromPublicConfirm'),
+        cancelLabel: t('cancel'),
+        danger: true,
+      });
+      if (!confirmed) return;
+      try {
+        await adminApi.hideFromPublic(type, item.id);
+        const drop = <T extends { id: string }>(list: { value: T[] }) => { list.value = list.value.filter((other) => other.id !== item.id); };
+        const mark = <T extends { id: string }>(list: { value: T[] }) => {
+          list.value = list.value.map((other) => (other.id === item.id ? { ...other, publicHidden: true } : other));
+        };
+        if (type === 'canvas') { drop(publicCanvases); mark(own); }
+        else if (type === 'html-document') { drop(publicHtmlDocuments); mark(allHtmlDocumentsRaw); }
+        else { drop(publicTextDocuments); mark(allTextDocumentsRaw); }
+        setFeedback('success', t('hiddenFromPublic'));
+      } catch (error) {
+        setFeedback('error', error instanceof Error && error.message ? error.message : t('hideFromPublicFailed'));
+      }
+    };
+
+    /** A file back from the trash: its folder shows it again. */
+    const onTrashRestored = () => {
+      setFeedback('success', t('driveRestored'));
+      void load({ showLoading: false });
+      refreshFolderFileCounts();
+    };
+
+    /** The space is gone for this user (deleted, or they left): back home. */
+    const leaveSpaceSection = () => {
+      void loadSpaces(true);
+      selectDashboardSection({ kind: 'recent' });
+    };
+
     // ----- pictures full screen: the folder's pictures, from the one clicked
     const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
     const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
@@ -2770,28 +4212,10 @@ export default defineComponent({
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
       uploadPanelOpen.value = true;
-      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
-      await Promise.all(batch.map(async ({ id, file }) => {
-        try {
-          const handle = uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => {
-            const row = rowOf(id);
-            if (row && row.status === 'uploading') row.progress = percent;
-          });
-          const row = rowOf(id);
-          if (row) row.abort = () => handle.abort();
-          await handle.promise;
-          const done = rowOf(id);
-          if (done && done.status === 'uploading') {
-            done.progress = 100;
-            done.status = 'done';
-          }
-        } catch (error) {
-          const failed = rowOf(id);
-          if (!failed || failed.status === 'cancelled') return;
-          failed.status = 'error';
-          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
-        }
-      }));
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => uploadYandexFile(joinYandexPath(path, file.name), file, (percent) => setUploadProgress(id, percent)),
+      })));
       yandexRefreshKey.value += 1;
     };
     /** Back from Yandex's consent page: `?space=yandex&yandex=connected|error`. */
@@ -2821,12 +4245,58 @@ export default defineComponent({
     /** Uploads, newest first: each file its own progress, cancel and outcome (DashboardUploadPanel). */
     const uploads = ref<Array<DashboardUpload & { abort?: () => void }>>([]);
     const uploadPanelOpen = ref(false);
-    const cancelUpload = (id: string) => {
+    /** "n/m" and the ring of the panel and its badge, taken every half second while files run. */
+    const uploadSummary = useUploadSummary(uploads);
+    /** Nothing runs any more: the finished files go, and the badge with them. */
+    const clearFinishedUploads = () => {
+      uploads.value = uploads.value.filter((item) => item.status === 'uploading');
+      uploadPanelOpen.value = false;
+    };
+    const cancelUpload =(id: string) => {
       const upload = uploads.value.find((item) => item.id === id);
       if (!upload || upload.status !== 'uploading') return;
       upload.status = 'cancelled';
       upload.abort?.();
     };
+    /**
+     * Every upload of the panel (QCanva's and Yandex Disk's): three at a time,
+     * a dropped one started again once the page is back (upload-queue.ts),
+     * and the screen kept on while any runs - a dark phone freezes them.
+     */
+    const uploadRowOf = (id: string) => uploads.value.find((item) => item.id === id);
+    const setUploadProgress = (id: string, percent: number) => {
+      const row = uploadRowOf(id);
+      if (row && row.status === 'uploading') row.progress = Math.round(percent);
+    };
+    const uploadWakeLock = createUploadWakeLock(() => uploads.value.some((item) => item.status === 'uploading'));
+    watch(() => uploads.value.some((item) => item.status === 'uploading'), () => { void uploadWakeLock.sync(); });
+    onBeforeUnmount(() => uploadWakeLock.dispose());
+    // In the Android app every file goes to the app's own queue at once (it runs
+    // three at a time, in the background too); a page frozen in the background
+    // could not hand over the rest later.
+    const runDashboardUploads = (jobs: UploadJob[]) => runUploadQueue(jobs, {
+      concurrency: nativeUploadAvailable() ? jobs.length : 3,
+      isCancelled: (id) => uploadRowOf(id)?.status === 'cancelled',
+      onAttempt: (id, attempt) => {
+        const row = uploadRowOf(id);
+        if (!row) return;
+        row.abort = () => attempt.abort();
+        row.progress = 0;
+      },
+      onDone: (id) => {
+        const row = uploadRowOf(id);
+        if (row && row.status === 'uploading') {
+          row.progress = 100;
+          row.status = 'done';
+        }
+      },
+      onError: (id, error) => {
+        const row = uploadRowOf(id);
+        if (!row || row.status === 'cancelled') return;
+        row.status = 'error';
+        row.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
+      },
+    });
     const uploadFiles = async (files: File[], explicitFolderId?: string) => {
       const folderId = await resolveCreateFolderId(explicitFolderId);
       if (!folderId) return;
@@ -2840,28 +4310,10 @@ export default defineComponent({
       }));
       uploads.value = [...batch.map(({ file: _file, ...row }) => row), ...uploads.value];
       uploadPanelOpen.value = true;
-      const rowOf = (id: string) => uploads.value.find((item) => item.id === id);
-      await Promise.all(batch.map(async ({ id, file }) => {
-        try {
-          const handle = driveApi.uploadFile(folderId, file, (percent) => {
-            const row = rowOf(id);
-            if (row && row.status === 'uploading') row.progress = Math.round(percent);
-          });
-          const row = rowOf(id);
-          if (row) row.abort = () => handle.abort();
-          await handle.promise;
-          const done = rowOf(id);
-          if (done && done.status === 'uploading') {
-            done.progress = 100;
-            done.status = 'done';
-          }
-        } catch (error) {
-          const failed = rowOf(id);
-          if (!failed || failed.status === 'cancelled') return;
-          failed.status = 'error';
-          failed.errorMessage = error instanceof Error && error.message ? error.message : t('driveUploadFailed');
-        }
-      }));
+      await runDashboardUploads(batch.map(({ id, file }) => ({
+        id,
+        start: () => driveApi.uploadFile(folderId, file, (percent) => setUploadProgress(id, percent)),
+      })));
       folderFilesRefreshKey.value += 1;
       refreshFolderFileCounts();
     };
@@ -2879,48 +4331,48 @@ export default defineComponent({
       return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
     });
 
-    const { bulkDelete } = useDashboardBulkDelete({
-      getItems: () => bulkDeletable.value,
-      getDriveFiles: () => bulkDeletableDriveFiles.value,
-      getYandexFiles: () => selectedYandexFiles.value,
-      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
-      confirm: ({ items, driveFiles, yandex, skipped }) => confirmDialog({
-        title: t('bulkDeleteTitle').replace('{n}', String(items + driveFiles + yandex)),
+    const bulkDelete = async () => {
+      const items = bulkDeletable.value;
+      const driveFiles = bulkDeletableDriveFiles.value;
+      const yandex = selectedYandexFiles.value;
+      const skipped = selectedItems.value.length + selectedDriveFiles.value.length - items.length - driveFiles.length;
+      const confirmed = await confirmDialog({
+        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length + yandex.length)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
         confirmLabel: t('delete'),
         danger: true,
-      }),
-      runAction: (task) => runAction('bulk-delete', task, t('bulkDeleted').replace('{n}', String(bulkDeletable.value.length + bulkDeletableDriveFiles.value.length + selectedYandexFiles.value.length))),
-      deleteItem: async (item) => {
-        if (item.type === 'canvas') {
-          await canvas.delete(item.id);
-          forgetResourceTab('canvas', item.id);
-        } else if (item.type === 'html-document') {
-          await htmlDocuments.delete(item.id);
-          forgetResourceTab('html', item.id);
-        } else if (item.type === 'text-document') {
-          await textDocuments.delete(item.id);
-          forgetResourceTab('doc', item.id);
-        } else {
-          await interactiveTemplates.delete(item.id);
-          forgetResourceTab('template', item.id);
+      });
+      if (!confirmed) return;
+      await runAction('bulk-delete', async () => {
+        for (const item of items) {
+          if (item.type === 'canvas') {
+            await canvas.delete(item.id);
+            forgetResourceTab('canvas', item.id);
+          } else if (item.type === 'html-document') {
+            await htmlDocuments.delete(item.id);
+            forgetResourceTab('html', item.id);
+          } else if (item.type === 'text-document') {
+            await textDocuments.delete(item.id);
+            forgetResourceTab('doc', item.id);
+          } else {
+            await interactiveTemplates.delete(item.id);
+            forgetResourceTab('template', item.id);
+          }
         }
-      },
-      trashDriveFile: (file) => driveApi.trashFile(file.id),
-      removeYandexFile: async (file) => { await settleYandexOutcome(await yandexDisk.remove(file.path)); },
-      afterSuccess: async ({ items, driveFiles, yandex }) => {
-        if (yandex.length) yandexRefreshKey.value += 1;
-        if (driveFiles.length) {
-          folderFilesRefreshKey.value += 1;
-          refreshFolderFileCounts();
-        }
-        const deleted = new Set(items.map(selectionKey));
-        own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
-        interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
-        clearSelection();
-        await load();
-      },
-    });
+        for (const file of driveFiles) await driveApi.trashFile(file.id);
+        for (const file of yandex) await settleYandexOutcome(await yandexDisk.remove(file.path));
+      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length + yandex.length)));
+      if (yandex.length) yandexRefreshKey.value += 1;
+      if (driveFiles.length) {
+        folderFilesRefreshKey.value += 1;
+        refreshFolderFileCounts();
+      }
+      const deleted = new Set(items.map(selectionKey));
+      own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
+      interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
+      clearSelection();
+      await load();
+    };
 
     const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
@@ -3534,59 +4986,16 @@ export default defineComponent({
       closeCardMenu();
     };
 
+    const isTechnicalFolder = (folder: { id: string; name: string }) =>
+      folder.id === 'legacy-resource-inbox'
+      || folder.name === 'Unsorted'
+      || folder.name.toLowerCase() === 'default';
+
     const selectDashboardSection = (section: DashboardSection) => {
       activeSection.value = section;
       if (section.kind === 'folder') selectFolder(section.folderId);
       else closeCardMenu();
       mobileSidebarOpen.value = false;
-    };
-
-    // ----- shared spaces: a section of its own
-    const createSpace = async () => {
-      const name = (await promptDialog({
-        title: t('spaceNew'),
-        placeholder: t('spaceNamePlaceholder'),
-        confirmLabel: t('create'),
-        cancelLabel: t('cancel'),
-      }))?.trim();
-      if (!name) return;
-      try {
-        const space = await spacesApi.create(name);
-        await loadSpaces(true);
-        selectDashboardSection({ kind: 'space', spaceId: space.id });
-      } catch (error) {
-        setFeedback('error', error instanceof Error && error.message ? error.message : t('spaceActionFailed'));
-      }
-    };
-
-    const openSpaceResource = (kind: string, id: string) => {
-      if (kind === 'canvas') openCanvas(id);
-      else if (kind === 'text-document') openTextDocument(id);
-      else if (kind === 'html-document') openHtmlDocument(id);
-      else openInteractiveTemplate(id);
-    };
-
-    const leaveSpaceSection = () => {
-      void loadSpaces(true);
-      selectDashboardSection({ kind: 'recent' });
-    };
-
-    const takeAddressSection = () => {
-      if (!isLoggedIn) return;
-      const query = router.currentRoute?.value?.query ?? {};
-      const section = typeof query.section === 'string' ? query.section : '';
-      const folder = typeof query.folder === 'string' ? query.folder : '';
-      if (!section && !folder) return;
-      if (section === 'trash') selectDashboardSection({ kind: 'trash' });
-      else if (folder) selectFolder(folder);
-      const { section: _section, folder: _folder, ...rest } = query;
-      void router.replace({ query: rest });
-    };
-
-    const onTrashRestored = () => {
-      setFeedback('success', t('driveRestored'));
-      void load({ showLoading: false });
-      refreshFolderFileCounts();
     };
 
     /**
@@ -3595,7 +5004,7 @@ export default defineComponent({
      * own - the feed always shows them all, one under the other, empty or
      * not. A guest has no feed: their dashboard is Public itself.
      */
-    const FEED_SIDEBAR_SECTIONS = ['recent', 'shared', 'interactive', 'public'] as const;
+    const FEED_SIDEBAR_SECTIONS = ['recent', 'spaces', 'shared', 'interactive', 'public'] as const;
     const onSidebarSelect = async (section: DashboardSection) => {
       if (section.kind === 'drive') {
         router.push('/drive');
@@ -3625,24 +5034,148 @@ export default defineComponent({
     // own back arrow, rather than main.ts offering to exit the app.
     useBackHandler(goToParentFolder);
 
-    /** Animate folder depth changes without coupling the view to timer cleanup. */
-    const { navDirection } = useDashboardSectionTransition<DashboardSection>({
-      activeSection,
-      folders: allResourceFolders,
+    /**
+     * Into a folder the new view slides in from the right, out of one (to
+     * its parent or the feed) from the left. The class lives only as long
+     * as the animation, so a later re-render (a reload) doesn't replay it.
+     */
+    const navDirection = ref<'none' | 'forward' | 'back'>('none');
+    let navDirectionTimer: ReturnType<typeof setTimeout> | null = null;
+    const sectionDepth = (section: DashboardSection) => {
+      if (section.kind !== 'folder') return -1;
+      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
+      let depth = 0;
+      let parentId = byId.get(section.folderId)?.parentId ?? null;
+      const seen = new Set<string>();
+      while (parentId && !seen.has(parentId)) {
+        seen.add(parentId);
+        depth += 1;
+        parentId = byId.get(parentId)?.parentId ?? null;
+      }
+      return depth;
+    };
+    watch(activeSection, (next, previous) => {
+      if (!previous || (next.kind !== 'folder' && previous.kind !== 'folder')) return;
+      if (next.kind === 'folder' && previous.kind === 'folder' && next.folderId === previous.folderId) return;
+      navDirection.value = next.kind === 'folder' && sectionDepth(next) >= sectionDepth(previous) ? 'forward' : 'back';
+      if (navDirectionTimer) clearTimeout(navDirectionTimer);
+      navDirectionTimer = setTimeout(() => { navDirection.value = 'none'; }, 450);
     });
+    onBeforeUnmount(() => { if (navDirectionTimer) clearTimeout(navDirectionTimer); });
 
     const toggleSidebarWidth = () => {
       sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
       writeSidebarWidthState(storage(), sidebarWidthState.value);
     };
 
-    const {
-      open: openMobileSidebar,
-      close: closeMobileSidebar,
-    } = useDashboardMobileSidebar({
-      open: mobileSidebarOpen,
-      opener: mobileSidebarOpener,
-      desktopQuery: LAYOUT.dashboardSidebarDocked,
+    const openMobileSidebar = (event?: Event) => {
+      const eventTarget = event?.currentTarget;
+      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
+        ? eventTarget
+        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
+      mobileSidebarOpen.value = true;
+    };
+
+    const closeMobileSidebar = () => {
+      mobileSidebarOpen.value = false;
+    };
+
+    const focusWithoutScroll = (element: HTMLElement) => {
+      try {
+        element.focus({ preventScroll: true });
+      } catch {
+        element.focus();
+      }
+    };
+
+    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
+      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
+      let current: HTMLElement | null = element;
+      while (current) {
+        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
+        const style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        current = current.parentElement;
+      }
+      return true;
+    };
+
+    const restoreSidebarCloseFocus = () => {
+      const opener = mobileSidebarOpener.value;
+      if (isVisibleFocusTarget(opener)) {
+        focusWithoutScroll(opener);
+        return;
+      }
+      const fallback = [
+        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
+        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
+        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
+      ].find(isVisibleFocusTarget) ?? null;
+      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
+    };
+
+    const restoreBodyOverflow = () => {
+      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
+      document.body.style.overflow = previousBodyOverflow;
+      previousBodyOverflow = null;
+    };
+
+    const getSidebarDesktopMedia = () => {
+      try {
+        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const closeMobileSidebarOnDesktop = () => {
+      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
+    };
+
+    const addSidebarDesktopListener = (media: MediaQueryList) => {
+      if (typeof media.addEventListener === 'function') {
+        media.addEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof media.addListener === 'function') {
+        media.addListener(closeMobileSidebarOnDesktop);
+      }
+    };
+
+    const removeSidebarDesktopListener = () => {
+      if (!sidebarDesktopMedia) return;
+      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
+        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
+      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
+        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
+      }
+      sidebarDesktopMedia = null;
+    };
+
+    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
+      if (typeof document === 'undefined') return;
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+
+      if (open) {
+        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        await nextTick();
+        if (!cancelled && mobileSidebarOpen.value) {
+          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
+          if (closeButton) focusWithoutScroll(closeButton);
+        }
+        return;
+      }
+
+      restoreBodyOverflow();
+      await nextTick();
+      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
     });
 
     const onAppClickCapture = (event: MouseEvent) => {
@@ -3725,6 +5258,11 @@ export default defineComponent({
       void load({ showLoading: !cached.found });
       takeYandexReturn();
       takeAddressSection();
+      sidebarDesktopMedia = getSidebarDesktopMedia();
+      if (sidebarDesktopMedia) {
+        addSidebarDesktopListener(sidebarDesktopMedia);
+        closeMobileSidebarOnDesktop();
+      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -3733,237 +5271,16 @@ export default defineComponent({
       document.removeEventListener('visibilitychange', onDashboardVisible);
       void appStateListener?.remove();
       appStateListener = null;
+      removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
+      restoreBodyOverflow();
     });
 
-    const interactiveSectionProps = computed(() => ({
-      isLoggedIn,
-      isHomeFeed: isHomeFeed.value,
-      visibleInteractiveTemplateItems: visibleInteractiveTemplateItems.value,
-      hasActiveFilter: hasActiveFilter.value,
-      t,
-      feedItems,
-      selectionKey,
-      isSelected,
-      toggleSelected,
-      openInteractiveTemplate,
-      interactiveTemplateTypeLabel,
-      cardFolderPath,
-      formatDate,
-      toggleCardMenu,
-      openMenuCanvasId: openMenuCanvasId.value,
-      cardMenuStyle: cardMenuStyle.value,
-      isBusy: isBusy.value,
-      openMoveInteractiveTemplateFolderModal,
-      deleteInteractiveTemplate,
-      openAddFromTile,
-      resetFilters,
-      feedLimit,
-      isFeedSectionExpanded,
-      toggleFeedSectionExpanded,
-    }));
-
-    const publicSectionProps = computed(() => ({
-      isLoggedIn,
-      isHomeFeed: isHomeFeed.value,
-      publicFiltered: publicFiltered.value,
-      publicAnyOwner: publicAnyOwner.value,
-      publicOwnerFilter: publicOwnerFilter.value,
-      PUBLIC_OWNER_FILTERS,
-      PUBLIC_OWNER_FILTER_LABELS,
-      t,
-      feedItems,
-      selectionKey,
-      isSelected,
-      toggleSelected,
-      openCanvas,
-      openHtmlDocument,
-      openTextDocument,
-      cardFolderPath,
-      formatDate,
-      toggleCardMenu,
-      openMenuCanvasId: openMenuCanvasId.value,
-      cardMenuStyle: cardMenuStyle.value,
-      isBusy: isBusy.value,
-      openMoveFolderModal,
-      openMoveHtmlFolderModal,
-      openMoveTextDocumentFolderModal,
-      openAddFromTile,
-      hasActiveFilter: hasActiveFilter.value,
-      resetFilters,
-      feedLimit,
-      isFeedSectionExpanded,
-      toggleFeedSectionExpanded,
-      setPublicOwnerFilter: (value: (typeof PUBLIC_OWNER_FILTERS)[number]) => { publicOwnerFilter.value = value; },
-      setPublicOwnerFilterEl: (element: HTMLElement | null) => { publicOwnerFilterEl.value = element; },
-    }));
-
-    const sharedSectionProps = computed(() => ({
-      isLoggedIn,
-      isHomeFeed: isHomeFeed.value,
-      sharedFiltered: sharedFiltered.value,
-      isBusy: isBusy.value,
-      hasActiveFilter: hasActiveFilter.value,
-      openMenuCanvasId: openMenuCanvasId.value,
-      cardMenuStyle: cardMenuStyle.value,
-      t,
-      feedItems,
-      selectionKey,
-      isSelected,
-      toggleSelected,
-      openCanvas,
-      openHtmlDocument,
-      openTextDocument,
-      cardFolderPath,
-      formatDate,
-      toggleCardMenu,
-      openMoveFolderModal,
-      openMoveHtmlFolderModal,
-      openMoveTextDocumentFolderModal,
-      openAddFromTile,
-      resetFilters,
-      feedLimit,
-      isFeedSectionExpanded,
-      toggleFeedSectionExpanded,
-    }));
-
-    const folderSectionProps = computed(() => ({
-      t,
-      activeFolder: activeFolder.value,
-      goToParentFolder,
-      activeSubfolders: activeSubfolders.value,
-      isLoggedIn,
-      searchQuery: searchQuery.value,
-      selectedTags: selectedTags.value,
-      contentTypes: contentTypes.value,
-      sortMode: sortMode.value,
-      recentViewMode: recentViewMode.value,
-      setRecentViewMode,
-      activeFolderEmpty: activeFolderEmpty.value,
-      hasActiveFilter: hasActiveFilter.value,
-      resetFilters,
-      openAddFromTile,
-      openControlMenu: openControlMenu.value,
-      openAddDialog,
-      activeFolderFileCount: activeFolderFileCount.value,
-      folderFilesRefreshKey: folderFilesRefreshKey.value,
-      selectedKeys: selectedKeys.value,
-      openFolderShareModal,
-      openFolderParentModal,
-      openRenameFolderModal,
-      openSubfolderModal,
-      toggleFolderMenu,
-      openMoveFolderModal,
-      openCanvasFromCard,
-      openHtmlDocumentFromCard,
-      openTextDocumentFromCard,
-      openInteractiveTemplate,
-      toggleCardMenu,
-      openMenuCanvasId: openMenuCanvasId.value,
-      cardMenuStyle: cardMenuStyle.value,
-      isBusy: isBusy.value,
-      selectionKey,
-      isSelected,
-      formatDate,
-      formatCardDateMobile,
-      interactiveTemplateTypeLabel,
-      isOwnedResource,
-      rememberRecentResource,
-      togglePinned,
-      openDescriptionModal,
-      openTagsModal,
-      openTransferModal,
-      deleteCanvas,
-      deleteHtmlDocument,
-      deleteTextDocument,
-      deleteInteractiveTemplate,
-      duplicateCanvas,
-      duplicateHtmlDocument,
-      duplicateTextDocument,
-      openMoveHtmlFolderModal,
-      openMoveTextDocumentFolderModal,
-      openMoveInteractiveTemplateFolderModal,
-      deleteFolder,
-      startRename,
-      finishRename,
-      renamingId: renamingId.value,
-      renameInput: renameInput.value,
-      typePasses,
-      setActiveFolderBody: (element: HTMLElement | null) => { activeFolderBody.value = element; },
-      onFolderBodyScroll,
-      selectFolder,
-      setActiveFolderFileCount: (value: number) => { activeFolderFileCount.value = value; },
-      setFolderDriveFiles: (value: DriveItem[]) => { folderDriveFiles.value = value; },
-      setFolderDrivePreviews: (value: Readonly<Record<string, string>>) => { folderDrivePreviews.value = value; },
-      openDriveImage,
-      toggleSelected,
-      draggingResourceId: draggingResourceId.value,
-    }));
-
-    const modalProps = computed(() => ({
-      t,
-      isBusy: isBusy.value,
-      actionLabel,
-      MAX_DESCRIPTION_LENGTH,
-      tagSheetOpen: tagSheetOpen.value,
-      closeTagSheet,
-      allTagNames: allTagNames.value,
-      tagSheetDraft: tagSheetDraft.value,
-      toggleDraftTag,
-      resetTagSheetDraft,
-      applyTagSheet,
-      folderModal: folderModal.value,
-      closeFolderModal,
-      folderModalMoves: folderModalMoves.value,
-      folderOptions: folderOptions.value,
-      canSaveFolderModal: canSaveFolderModal.value,
-      saveFolderModal,
-      subfolderModal: subfolderModal.value,
-      closeSubfolderModal,
-      saveSubfolderModal,
-      folderParentModal: folderParentModal.value,
-      folderParentOptions: folderParentOptions.value,
-      closeFolderParentModal,
-      saveFolderParentModal,
-      descriptionModal: descriptionModal.value,
-      closeDescriptionModal,
-      saveDescriptionModal,
-      renameFolderModal: renameFolderModal.value,
-      closeRenameFolderModal,
-      saveRenameFolderModal,
-      folderShareModal: folderShareModal.value,
-      closeFolderShareModal,
-      shareFolder,
-      revokeFolderAccess,
-      tagsModal: tagsModal.value,
-      tagSuggestions: tagSuggestions.value,
-      addSuggestedTag,
-      tagColors,
-      removeTag,
-      addTag,
-      closeTagsModal,
-      saveTagsModal,
-      transferModal: transferModal.value,
-      closeTransferModal,
-      saveTransferModal,
-    }));
-
     return {
-      folderSectionProps,
-      sharedSectionProps,
-      interactiveSectionProps,
-      publicSectionProps,
-      modalProps,
       yandexView,
       yandexPicker,
       yandexRefreshKey,
       yandexPath,
-      spaceView,
-      spaceId,
-      createSpace,
-      openSpaceResource,
-      leaveSpaceSection,
-      onTrashRestored,
       yandexMove,
       yandexFiles,
       openYandexPath,
@@ -3975,6 +5292,14 @@ export default defineComponent({
       openDriveImage,
       mediaViewer,
       folderDrivePreviews,
+      spaceView,
+      spaceId,
+      createSpace,
+      openSpaceResource,
+      leaveSpaceSection,
+      onTrashRestored,
+      hideFromPublic,
+      currentUser,
       uploadToYandex,
       setFeedback,
       selectedSize,
@@ -3982,7 +5307,6 @@ export default defineComponent({
       admin,
       t,
       isLoggedIn,
-      currentUser,
       loading,
       isRefreshing,
       recentResources,
@@ -4108,6 +5432,8 @@ export default defineComponent({
       navDirection,
       uploads,
       uploadPanelOpen,
+      uploadSummary,
+      clearFinishedUploads,
       cancelUpload,
       folderDriveFiles,
       bulkDeleteCount,
@@ -4153,6 +5479,7 @@ export default defineComponent({
       resetFilters,
       hasActiveFilter,
       feedNavSections,
+      spaceTiles,
       activeFeedSection,
       scrollToFeedSection,
       newItemFolderId,
@@ -4193,6 +5520,7 @@ export default defineComponent({
       startResourceMouseDrag,
       startResourceTouchDrag,
       endResourceDrag,
+      onFolderDragOver,
       onFolderDragLeave,
       onFolderDragStart,
       onFolderDragEnd,

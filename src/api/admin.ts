@@ -19,7 +19,23 @@ export async function adminRequest<T>(path: string, options: RequestInit = {}): 
     err.body = body;
     throw err;
   }
+  // 204: nothing to read.
+  if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+/** What can be taken out of the Public directory. */
+export type PublicResourceType = 'canvas' | 'text-document' | 'html-document';
+
+/** A resource an admin took out of Public. */
+export interface HiddenPublicResource {
+  type: PublicResourceType;
+  id: string;
+  slug: string | null;
+  title: string;
+  ownerName: string | null;
+  ownerEmail: string;
+  hiddenAt: string;
 }
 
 export type AdminSettingsSource = 'db' | 'env' | 'default';
@@ -43,6 +59,19 @@ export interface AdminSettings {
 }
 
 export const adminApi = {
+  /** Out of the Public directory for everyone; the owner cannot list it again. The link still opens it. */
+  hideFromPublic(type: PublicResourceType, id: string): Promise<void> {
+    return adminRequest<void>(`/admin/public/${type}/${encodeURIComponent(id)}/hidden`, { method: 'POST' });
+  },
+
+  listHiddenFromPublic(): Promise<HiddenPublicResource[]> {
+    return adminRequest<HiddenPublicResource[]>('/admin/public/hidden');
+  },
+
+  showInPublic(type: PublicResourceType, id: string): Promise<void> {
+    return adminRequest<void>(`/admin/public/${type}/${encodeURIComponent(id)}/hidden`, { method: 'DELETE' });
+  },
+
   getSettings(): Promise<AdminSettings> {
     return adminRequest<AdminSettings>('/admin/settings');
   },

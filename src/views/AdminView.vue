@@ -14,18 +14,36 @@
     <p v-if="loading" class="admin-note">{{ t('loadingDots') }}</p>
 
     <template v-else>
-      <div class="admin-stats">
-        <UiCard as="div" class="admin-card stat-card">
-          <div class="stat-value">{{ stats.userCount }}</div>
-          <div class="stat-label">{{ t('adminStatUsers') }}</div>
-        </UiCard>
-        <UiCard as="div" class="admin-card stat-card">
-          <div class="stat-value">{{ stats.canvasCount }}</div>
-          <div class="stat-label">{{ t('adminStatCanvases') }}</div>
-        </UiCard>
+      <div class="admin-tabs" role="tablist">
+        <button
+          v-for="item in TABS"
+          :key="item.key"
+          type="button"
+          role="tab"
+          class="admin-tab"
+          :class="{ active: tab === item.key }"
+          :aria-selected="tab === item.key"
+          :data-admin-tab="item.key"
+          @click="tab = item.key"
+        >{{ t(item.label) }}</button>
       </div>
 
-      <UiCard as="section" v-if="storageSupported" id="storage" class="admin-card admin-storage-section">
+      <AdminPlansPanel v-if="tab === 'plans'" @changed="loadAssignments" />
+      <AdminAnalyticsPanel v-else-if="tab === 'analytics'" />
+
+      <template v-else>
+      <div class="admin-stats">
+        <div class="admin-card stat-card">
+          <div class="stat-value">{{ stats.userCount }}</div>
+          <div class="stat-label">{{ t('adminStatUsers') }}</div>
+        </div>
+        <div class="admin-card stat-card">
+          <div class="stat-value">{{ stats.canvasCount }}</div>
+          <div class="stat-label">{{ t('adminStatCanvases') }}</div>
+        </div>
+      </div>
+
+      <section v-if="storageSupported" id="storage" class="admin-card admin-storage-section">
         <h2>{{ t('adminStorageTitle') }}</h2>
         <div class="admin-storage-card">
           <div v-if="settings && settings.storage" class="admin-storage-usage" data-admin-storage-usage>
@@ -141,9 +159,9 @@
             <div class="admin-storage-muted" data-admin-capacity-hint>{{ t('adminStorageCapacityHint') }}</div>
           </div>
         </div>
-      </UiCard>
+      </section>
 
-      <UiCard as="section" class="admin-card">
+      <section class="admin-card">
         <h2>{{ t('adminUsersTitle') }}</h2>
         <!-- Wider than a phone: the table scrolls sideways inside its card. -->
         <div class="admin-table-wrap">
@@ -153,6 +171,7 @@
             <th>{{ t('adminColName') }}</th>
             <th>{{ t('adminColEmail') }}</th>
             <th>{{ t('adminColRole') }}</th>
+            <th>{{ t('planName') }}</th>
             <th>{{ t('adminColCanvases') }}</th>
             <th>{{ t('adminColRegistered') }}</th>
             <th>{{ t('adminColLastActive') }}</th>
@@ -173,7 +192,10 @@
                 <option value="admin">{{ t('adminRoleAdmin') }}</option>
                 <option value="superadmin">{{ t('adminRoleSuperadmin') }}</option>
               </select>
-              <UiBadge v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</UiBadge>
+              <span v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</span>
+            </td>
+            <td>
+              <button type="button" class="btn-ghost btn-sm admin-plan-open" :data-admin-user-plan="u.email" @click="planUser = u">{{ assignmentOf(u.id) || '—' }}</button>
             </td>
             <td>{{ u.canvasCount }}</td>
             <td>{{ formatDate(u.createdAt) }}</td>
@@ -182,9 +204,9 @@
         </tbody>
       </table>
         </div>
-      </UiCard>
+      </section>
 
-      <UiCard as="section" class="admin-card">
+      <section class="admin-card">
         <h2>{{ t('adminHistoryTitle') }}</h2>
         <div class="admin-table-wrap">
       <table class="admin-table" data-admin-history>
@@ -201,7 +223,7 @@
           <tr v-for="c in canvases" :key="c.id">
             <td>{{ c.title }}</td>
             <td>{{ c.ownerName || c.ownerEmail }}</td>
-            <td><UiBadge class="badge" :class="visBadge(c.visibility)">{{ c.visibility }}</UiBadge></td>
+            <td><span class="badge" :class="visBadge(c.visibility)">{{ c.visibility }}</span></td>
             <td>
               <select
                 class="role-select"
@@ -218,9 +240,47 @@
         </tbody>
       </table>
         </div>
-      </UiCard>
+      </section>
+
+      <!-- What admins took out of Public (the dashboard's card "⋯"), to put back. -->
+      <section v-if="hiddenSupported" class="admin-card" data-admin-hidden-public>
+        <h2>{{ t('adminHiddenPublicTitle') }}</h2>
+        <p v-if="!hiddenPublic.length" class="admin-empty" data-admin-hidden-empty>{{ t('adminHiddenPublicEmpty') }}</p>
+        <div v-else class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>{{ t('adminColTitle') }}</th>
+                <th>{{ t('adminColType') }}</th>
+                <th>{{ t('adminColOwner') }}</th>
+                <th>{{ t('adminColHidden') }}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in hiddenPublic" :key="item.type + ':' + item.id" :data-admin-hidden-item="item.type + ':' + item.id">
+                <td><router-link :to="resourceLink(item)" class="admin-link">{{ item.title || t('untitled') }}</router-link></td>
+                <td>{{ typeLabel(item.type) }}</td>
+                <td>{{ item.ownerName || item.ownerEmail }}</td>
+                <td>{{ formatDate(item.hiddenAt) }}</td>
+                <td>
+                  <button
+                    type="button"
+                    class="btn-ghost btn-sm"
+                    :disabled="restoring === item.type + ':' + item.id"
+                    :data-admin-show-public="item.type + ':' + item.id"
+                    @click="showInPublic(item)"
+                  >{{ t('adminShowInPublic') }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+      </template>
     </template>
     </main>
+    <AdminUserPlanDialog v-if="planUser" :user="planUser" @changed="loadAssignments" @close="planUser = null" />
   </div>
 </template>
 
@@ -229,17 +289,32 @@ import { defineComponent, ref, computed, onMounted } from 'vue';
 import { isSuperAdmin } from '../api/client';
 import { useToast } from '../composables/useToast';
 import AccountMenu from '../components/AccountMenu.vue';
-import UiBadge from '../components/ui/UiBadge.vue';
-import UiCard from '../components/ui/UiCard.vue';
 import { ArrowLeft } from '@lucide/vue';
-import { adminRequest, adminApi, type AdminSettings } from '../api/admin';
+import { adminRequest, adminApi, type AdminSettings, type HiddenPublicResource } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
+import { plansApi, type PlanAssignment } from '../api/plans';
+import AdminPlansPanel from '../components/admin/AdminPlansPanel.vue';
+import AdminAnalyticsPanel from '../components/admin/AdminAnalyticsPanel.vue';
+import AdminUserPlanDialog from '../components/admin/AdminUserPlanDialog.vue';
 
 function getToken() { return localStorage.getItem('token'); }
 
 export default defineComponent({
-  components: { AccountMenu, ArrowLeft, UiBadge, UiCard },
+  components: { AccountMenu, ArrowLeft, AdminPlansPanel, AdminAnalyticsPanel, AdminUserPlanDialog },
   setup() {
+    const TABS = [
+      { key: 'overview', label: 'adminTabOverview' },
+      { key: 'plans', label: 'plansTitle' },
+      { key: 'analytics', label: 'analyticsTitle' },
+    ] as const;
+    const tab = ref<(typeof TABS)[number]['key']>('overview');
+    const planUser = ref<{ id: string; name: string; email: string } | null>(null);
+    const assignments = ref<PlanAssignment[]>([]);
+    const assignmentOf = (userId: string) => assignments.value.find((row) => row.userId === userId)?.planName;
+    const loadAssignments = () => plansApi.assignments().then((rows) => {
+      assignments.value = Array.isArray(rows) ? rows : [];
+    }).catch(() => undefined);
+    onMounted(loadAssignments);
     const { show: showToast } = useToast();
     const { t } = useI18n();
     const users = ref<any[]>([]);
@@ -387,6 +462,14 @@ export default defineComponent({
       }
 
       try {
+        hiddenPublic.value = await adminApi.listHiddenFromPublic();
+      } catch (e: any) {
+        // An older hub without moderation: no section.
+        if (e.status === 404) hiddenSupported.value = false;
+        else showToast(e.message || t('adminHiddenPublicLoadFailed'), 'error');
+      }
+
+      try {
         const set = await adminApi.getSettings();
         if (set && typeof (set as any).driveMaxFileBytes === 'number') {
           settings.value = set;
@@ -522,8 +605,46 @@ export default defineComponent({
       day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
     }) : '—';
 
+    // ----- hidden from Public
+    const hiddenPublic = ref<HiddenPublicResource[]>([]);
+    const hiddenSupported = ref(true);
+    const restoring = ref('');
+    const resourceLink = (item: HiddenPublicResource) => {
+      const id = encodeURIComponent(item.slug || item.id);
+      if (item.type === 'canvas') return `/canvas/${id}`;
+      if (item.type === 'html-document') return `/edit/html/${id}`;
+      return `/docs/${id}`;
+    };
+    const typeLabel = (type: HiddenPublicResource['type']) => (
+      type === 'canvas' ? t('canvas') : type === 'html-document' ? t('htmlDocument') : t('document')
+    );
+    const showInPublic = async (item: HiddenPublicResource) => {
+      const key = `${item.type}:${item.id}`;
+      restoring.value = key;
+      try {
+        await adminApi.showInPublic(item.type, item.id);
+        hiddenPublic.value = hiddenPublic.value.filter((other) => `${other.type}:${other.id}` !== key);
+        showToast(t('adminShownInPublic'), 'success');
+      } catch (e: any) {
+        showToast(e.message || t('adminShowInPublicFailed'), 'error');
+      } finally {
+        restoring.value = '';
+      }
+    };
+
     onMounted(load);
     return {
+      hiddenPublic,
+      hiddenSupported,
+      restoring,
+      resourceLink,
+      TABS,
+      tab,
+      planUser,
+      assignmentOf,
+      loadAssignments,
+      typeLabel,
+      showInPublic,
       users,
       canvases,
       stats,
@@ -593,20 +714,33 @@ export default defineComponent({
   padding: 24px 16px calc(48px + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
-.admin-note { margin: 0; color: var(--ui-text-secondary); }
-.admin-card h2 { margin: 0; font-size: 16px; }
-.admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
-@media (max-width: 520px) {
-  .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+:deep(.admin-note) { margin: 0; color: var(--ui-text-secondary); }
+:deep(.admin-card) {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
-.stat-card { gap: 2px; }
-.stat-value { font-size: 28px; font-weight: 750; line-height: 1.1; }
-.stat-label { color: var(--ui-text-secondary); font-size: 13px; }
-.admin-table-wrap { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+:deep(.admin-card h2) { margin: 0; font-size: 16px; }
+:deep(.admin-stats) { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
+@media (max-width: 520px) {
+  :deep(.admin-stats) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+}
+:deep(.stat-card) { gap: 2px; }
+:deep(.stat-value) { font-size: 28px; font-weight: 750; line-height: 1.1; }
+:deep(.stat-label) { color: var(--ui-text-secondary); font-size: 13px; }
+:deep(.admin-table-wrap) { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+:deep(.admin-empty) { margin: 0; color: var(--ui-text-secondary); font-size: 14px; }
+.admin-link { color: inherit; font-weight: 600; text-decoration: none; }
+.admin-link:hover { text-decoration: underline; }
 /* A table again on a phone too (the old phone rule made it a scrolling
    block): the card's wrap scrolls it sideways. */
-.admin-table { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }
-.admin-table th {
+:deep(.admin-table) { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }
+:deep(.admin-table th) {
   padding: 8px 10px;
   border-bottom: 1px solid var(--ui-border);
   color: var(--ui-text-secondary);
@@ -617,14 +751,14 @@ export default defineComponent({
   text-transform: uppercase;
   white-space: nowrap;
 }
-.admin-table td {
+:deep(.admin-table td) {
   padding: 10px;
   border-bottom: 1px solid var(--ui-border);
   vertical-align: middle;
   white-space: nowrap;
 }
-.admin-table tbody tr:last-child td { border-bottom: 0; }
-.admin-table tbody tr:hover td { background: var(--ui-glass-btn-hover); }
+:deep(.admin-table tbody tr:last-child td) { border-bottom: 0; }
+:deep(.admin-table tbody tr:hover td) { background: var(--ui-glass-btn-hover); }
 .role-select {
   min-height: 34px;
   padding: 4px 10px;
@@ -724,4 +858,8 @@ export default defineComponent({
 .admin-storage-capacity .admin-storage-effective {
   margin-top: 0;
 }
+.admin-tabs { display: inline-flex; justify-self: start; gap: 4px; padding: 3px; border: 1px solid var(--ui-glass-border); border-radius: 999px; background: var(--ui-glass-btn-bg); }
+.admin-tab { padding: 6px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ui-text-secondary); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.admin-tab.active { background: var(--ui-glass-accent-bg, var(--ui-surface-subtle)); color: var(--ui-text); font-weight: 600; }
+.admin-plan-open { width: auto; }
 </style>

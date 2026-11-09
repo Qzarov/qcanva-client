@@ -54,6 +54,8 @@
 .dashboard-modal-backdrop {
   position: fixed;
   inset: 0;
+  --ui-modal-align-items: center;
+  --ui-modal-padding: 24px;
   background: var(--ui-overlay);
   display: flex;
   align-items: center;
@@ -1398,8 +1400,8 @@
   }
 
   .dashboard-modal-backdrop {
-    align-items: flex-end;
-    padding: 10px;
+    --ui-modal-align-items: flex-end;
+    --ui-modal-padding: 10px;
   }
 
   .dashboard-modal {

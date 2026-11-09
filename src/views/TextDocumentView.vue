@@ -105,6 +105,7 @@
         :visibility="visibility"
         :allow-public-edit="allowPublicEdit"
         :listed-in-public="listedInPublic"
+        :public-hidden="publicHidden"
         :permissions="permissions"
         glass
         v-model:slug="slugInput"
@@ -663,6 +664,7 @@ export default defineComponent({
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const listedInPublic = ref(false);
+    const publicHidden = ref(false);
     /** The visibility the hub has, to tell "made public now" from a later change. */
     let savedVisibility: string | null = null;
     const shareEmail = ref('');
@@ -1864,6 +1866,7 @@ export default defineComponent({
         visibility.value = res.document.visibility || 'private';
         allowPublicEdit.value = !!res.document.allowPublicEdit;
         listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
         savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
@@ -2402,6 +2405,7 @@ export default defineComponent({
         visibility.value = res.document.visibility || 'private';
         allowPublicEdit.value = !!res.document.allowPublicEdit;
         listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
         savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
@@ -2608,6 +2612,7 @@ export default defineComponent({
       visibility,
       allowPublicEdit,
       listedInPublic,
+      publicHidden,
       shareEmail,
       shareRole,
       permissions,

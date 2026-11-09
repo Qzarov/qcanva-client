@@ -39,9 +39,9 @@ defineExpose({ root });
   inset: 0;
   z-index: 300;
   display: flex;
-  align-items: center;
+  align-items: var(--ui-modal-align-items, center);
   justify-content: center;
-  padding: 24px;
+  padding: var(--ui-modal-padding, 24px);
   background: var(--ui-overlay);
 }
 .ui-modal {

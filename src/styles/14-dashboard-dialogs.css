@@ -839,3 +839,264 @@
   left: 50%;
   translate: -50% -50%;
 }
+
+
+
+/* The panel folded: a glass pill in its corner - a ring by bytes round the
+   upload icon, then "n/m". */
+.dashboard-upload-badge {
+  position: absolute;
+  z-index: 330;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 5px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.dashboard-upload-badge:hover {
+  background: var(--ui-glass-btn-hover), var(--ui-glass-bg);
+}
+.dashboard-upload-badge:active {
+  transform: scale(0.97);
+}
+.dashboard-upload-badge-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--color-brands);
+}
+.dashboard-upload-badge-progress {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.dashboard-upload-badge-track,
+.dashboard-upload-badge-fill {
+  fill: none;
+  stroke-width: 3;
+}
+.dashboard-upload-badge-track {
+  stroke: var(--ui-surface-subtle);
+}
+.dashboard-upload-badge-fill {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.45s linear;
+}
+.dashboard-upload-badge.is-failed .dashboard-upload-badge-ring {
+  color: var(--ui-danger);
+}
+.dashboard-upload-badge-count {
+  font-variant-numeric: tabular-nums;
+}
+/* While files run the arrow hops over its tray to a beat: sixteen steps of
+   160 ms, a hop on steps 0, 2, 6, 10 and 12 - one - one - - - one - - - one -
+   one - and three steps of rest before it starts over. A hop is up in 0.6 of
+   a step and down by 1.4, done before the next one comes. */
+.upload-arrow-icon {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.upload-arrow-icon.is-hopping .upload-arrow-icon-arrow {
+  animation: dashboard-upload-badge-hop 2.56s infinite;
+}
+@keyframes dashboard-upload-badge-hop {
+  0%, 12.5%, 37.5%, 62.5%, 75% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  3.75%, 16.25%, 41.25%, 66.25%, 78.75% {
+    transform: translateY(-4px);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3);
+  }
+  8.75%, 21.25%, 46.25%, 71.25%, 83.75%, 100% {
+    transform: translateY(0);
+  }
+}
+.dashboard-upload-badge-enter-active,
+.dashboard-upload-badge-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-upload-badge-enter-from,
+.dashboard-upload-badge-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.92);
+}
+.dashboard-upload-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px;
+  overflow-y: auto;
+  list-style: none;
+}
+.dashboard-upload-item {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 12px;
+  background: var(--ui-glass-btn-bg);
+}
+.dashboard-upload-item.is-error {
+  border-color: color-mix(in srgb, var(--ui-danger) 45%, var(--ui-glass-border));
+}
+.dashboard-upload-item-top,
+.dashboard-upload-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.dashboard-upload-item-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.dashboard-upload-item-size,
+.dashboard-upload-percent {
+  flex: 0 0 auto;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-upload-track {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--ui-surface-subtle);
+}
+/* Under the bar, a faint sweep in the brand's colour: a file still at 0 %
+   (waiting its turn, a slow start) shows it is going too. */
+.dashboard-upload-item.is-uploading .dashboard-upload-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-brands) 30%, transparent) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: dashboard-upload-glint 1.4s ease-in-out infinite;
+}
+.dashboard-upload-fill {
+  position: relative;
+  z-index: 1;
+  display: block;
+  height: 100%;
+  overflow: hidden;
+  border-radius: inherit;
+  background: var(--color-brands);
+  transition: width 0.2s ease;
+}
+/* A file going up: a glint runs along what is already up. */
+.dashboard-upload-item.is-uploading .dashboard-upload-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.55) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: dashboard-upload-glint 1.4s ease-in-out infinite;
+}
+@keyframes dashboard-upload-glint {
+  to { transform: translateX(100%); }
+}
+/* The head once nothing runs: a tick, or the warning in red. */
+.dashboard-upload-panel-title.is-done > svg {
+  color: var(--color-brands);
+}
+.dashboard-upload-panel-title.is-failed > svg {
+  color: var(--ui-danger);
+}
+.dashboard-upload-panel-title.is-running > svg {
+  color: var(--color-brands);
+}
+.dashboard-upload-cancel {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-upload-cancel:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+.dashboard-upload-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ui-text-secondary);
+  font-size: 12px;
+}
+.dashboard-upload-status.is-done {
+  color: var(--color-brands);
+}
+.dashboard-upload-status.is-error {
+  color: var(--ui-danger);
+}
+.dashboard-upload-panel-enter-active,
+.dashboard-upload-panel-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-upload-panel-enter-from,
+.dashboard-upload-panel-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+@media (max-width: 768px) {
+  .dashboard-upload-panel {
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+  /* Above the floating "+". */
+  .dashboard-upload-badge {
+    right: 12px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-upload-panel-enter-active,
+  .dashboard-upload-panel-leave-active,
+  .dashboard-upload-badge-enter-active,
+  .dashboard-upload-badge-leave-active,
+  .dashboard-upload-badge-fill,
+  .dashboard-upload-fill {
+    transition: none;
+  }
+  .upload-arrow-icon.is-hopping .upload-arrow-icon-arrow,
+  .dashboard-upload-item.is-uploading .dashboard-upload-fill::after,
+  .dashboard-upload-item.is-uploading .dashboard-upload-track::before {
+    animation: none;
+  }
+}

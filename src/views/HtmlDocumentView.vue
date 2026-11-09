@@ -160,14 +160,18 @@
           <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
           <span>{{ t('allowPublicEditing') }}</span>
         </label>
-        <label class="share-checkbox">
+        <!-- An admin took it out of Public: locked; pressing it says why. -->
+        <label class="share-checkbox" :class="{ 'share-checkbox-locked': publicHidden }" data-share-listed @click="publicHidden && (hiddenNote = true)">
           <input
             type="checkbox"
-            v-model="listedInPublic"
-            :disabled="visibility !== 'public'"
-            @change="saveAccessSettings"
+            :checked="listedInPublic && !publicHidden"
+            :disabled="visibility !== 'public' || publicHidden"
+            @change="listedInPublic = ($event.target as HTMLInputElement).checked; saveAccessSettings()"
           />
-          <span>{{ t('showInPublic') }}</span>
+          <span class="share-checkbox-text">
+            {{ t('showInPublic') }}
+            <small v-if="publicHidden && hiddenNote" class="share-hidden-note" role="status" data-share-hidden-by-admin>{{ t('hiddenByAdmin') }}</small>
+          </span>
         </label>
       </div>
 
@@ -359,6 +363,8 @@ export default defineComponent({
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
     const listedInPublic = ref(false);
+    const publicHidden = ref(false);
+    const hiddenNote = ref(false);
     /** The visibility the hub has, to tell "made public now" from a later change. */
     let savedVisibility: string | null = null;
     const loading = ref(true);
@@ -493,6 +499,7 @@ export default defineComponent({
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
         listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
         savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
@@ -968,6 +975,7 @@ export default defineComponent({
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
         listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
         savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
@@ -991,7 +999,7 @@ export default defineComponent({
       toggleBarMenu, closeBarMenus, tabMode: tabsEnabled(),
       t,
       backTarget,
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, publicHidden, hiddenNote, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus, htmlSyncTitle,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestingAccess, accessRequestSent, showShare, shareEmail,

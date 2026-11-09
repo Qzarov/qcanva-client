@@ -71,14 +71,18 @@
             />
             <span>{{ t('allowPublicEditing') }}</span>
           </label>
-          <label class="share-checkbox">
+          <!-- An admin took it out of Public: locked; pressing it says why. -->
+          <label class="share-checkbox" :class="{ 'share-checkbox-locked': publicHidden }" data-share-listed @click="publicHidden && (hiddenNote = true)">
             <input
               type="checkbox"
-              :checked="listedInPublic"
-              :disabled="visibility !== 'public'"
+              :checked="listedInPublic && !publicHidden"
+              :disabled="visibility !== 'public' || publicHidden"
               @change="emit('update:listedInPublic', ($event.target as HTMLInputElement).checked)"
             />
-            <span>{{ t('showInPublic') }}</span>
+            <span class="share-checkbox-text">
+              {{ t('showInPublic') }}
+              <small v-if="publicHidden && hiddenNote" class="share-hidden-note" role="status" data-share-hidden-by-admin>{{ t('hiddenByAdmin') }}</small>
+            </span>
           </label>
           <label class="share-checkbox">
             <input v-model="passwordAccessEnabled" type="checkbox" />
@@ -173,6 +177,8 @@ const props = withDefaults(defineProps<{
   visibility: ShareVisibility;
   allowPublicEdit: boolean;
   listedInPublic: boolean;
+  /** An admin took it out of Public: the owner cannot list it. */
+  publicHidden?: boolean;
   permissions: SharePermission[];
   /** Liquid Glass surface (the canvas); the document keeps its plain sheet. */
   glass?: boolean;
@@ -180,11 +186,15 @@ const props = withDefaults(defineProps<{
   teleportDisabled?: boolean;
 }>(), {
   slugPlaceholder: '',
+  publicHidden: false,
   slugError: '',
   savingSlug: false,
   glass: false,
   teleportDisabled: false,
 });
+
+/** "Hidden by an administrator", once the locked box is pressed. */
+const hiddenNote = ref(false);
 
 const emit = defineEmits<{
   close: [];

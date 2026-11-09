@@ -84,15 +84,96 @@ test('files go up into the folder chosen in "Where"', async ({ page }) => {
   await expect(dialog(page)).toHaveCount(0);
   // The uploads panel, as the Drive's: a row a file, each done.
   const panel = page.locator('[data-upload-panel]');
-  await expect(panel).toContainText('(2)');
   await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
+  await expect(panel.locator('[data-upload-panel-count]')).toHaveText('2/2');
   if (SHOTS) {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/upload-panel.png` });
   }
   await panel.locator('[data-upload-hide]').click();
   await expect(panel).toHaveCount(0);
+  // Hide clears the finished files: no badge left behind.
+  await expect(page.locator('[data-upload-badge]')).toHaveCount(0);
   expect(uploads).toEqual(['/api/drive/folders/folder-b/files', '/api/drive/folders/folder-b/files']);
+});
+
+test('the panel folds into a badge, "n/m" files up, and opens again from it', async ({ page }) => {
+  await openDashboard(page);
+  // Held until the test lets them through: the badge is seen mid-way.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await held;
+    return route.fulfill({ status: 201, json: { items: [] } });
+  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="file"]').click();
+  await pick(page, [photo, notes]);
+  await dialog(page).locator('[data-add-submit]').click();
+
+  const panel = page.locator('[data-upload-panel]');
+  const badge = page.locator('[data-upload-badge]');
+  await expect(panel.locator('[data-upload-panel-count]')).toHaveText('0/2');
+  // The open panel's head hops its arrow too while files run.
+  await expect.poll(() => panel.locator('[data-upload-arrow]').evaluate((el) => getComputedStyle(el).animationName))
+    .toBe('dashboard-upload-badge-hop');
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/upload-panel-running.png` });
+  }
+  // Folded while the files still go up.
+  await panel.locator('[data-upload-collapse]').click();
+  await expect(panel).toHaveCount(0);
+  await expect(badge).toBeVisible();
+  await expect(badge.locator('[data-upload-badge-count]')).toHaveText('0/2');
+  await expect(badge).toHaveAttribute('aria-label', 'Uploads: 0 of 2');
+  // Files running: the arrow hops to its beat.
+  await expect.poll(() => badge.locator('[data-upload-arrow]').evaluate((el) => getComputedStyle(el).animationName))
+    .toBe('dashboard-upload-badge-hop');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/upload-badge.png` });
+
+  release();
+  await expect(badge.locator('[data-upload-badge-count]')).toHaveText('2/2');
+  await expect(badge).toHaveClass(/is-done/);
+  // Done: a tick, no arrow left to hop.
+  await expect(badge.locator('[data-upload-arrow]')).toHaveCount(0);
+  await badge.click();
+  await expect(panel).toBeVisible();
+  await expect(badge).toHaveCount(0);
+  await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
+  // All up: the head says so, a tick where the arrow was.
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Files uploaded');
+  await expect(panel.locator('[data-upload-panel-state]')).toHaveAttribute('data-upload-panel-state', 'done');
+  await expect(panel.locator('[data-upload-arrow]')).toHaveCount(0);
+  if (SHOTS) {
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/upload-panel-done.png` });
+  }
+});
+
+test("on a phone the Add window's icons are a fifth smaller", async ({ page }) => {
+  await openDashboard(page);
+  const iconBox = async () => dialog(page).locator('.dashboard-add-option-icon').first().evaluate((el) => {
+    const glyph = el.querySelector(':scope > svg')!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return [Math.round(box.width), Math.round(glyph.width)];
+  });
+  await page.locator('[data-add-button]').click();
+  expect(await iconBox()).toEqual([42, 22]);
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  // A phone adds from the floating "+".
+  await page.locator('.dashboard-fab').click();
+  expect(await iconBox()).toEqual([34, 18]);
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await expect(dialog(page).locator('[data-add-import]')).toHaveCount(5);
+  expect(await iconBox()).toEqual([34, 18]);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog-phone.png` });
 });
 
 test('a canvas import catches a file that is not one: pick another kind, or send it as a file', async ({ page }) => {
@@ -297,7 +378,56 @@ test('uploads as the Drive shows them: a file a row, its own cancel, why one fai
   await expect(panel.locator('[data-upload-item="huge.bin"] [data-upload-error]')).not.toBeEmpty();
   // Still going: no Hide yet; the slow one is cancelled on its own.
   await expect(panel.locator('[data-upload-hide]')).toHaveCount(0);
+  // A file going up says how much of it is up, out of its size; a glint runs along its bar.
+  const slow = panel.locator('[data-upload-item="slow.bin"]');
+  await expect(slow.locator('[data-upload-item-size]')).toHaveText('0 B / 1 B');
+  expect(await slow.locator('.dashboard-upload-fill').evaluate((el) => getComputedStyle(el, '::after').animationName))
+    .toBe('dashboard-upload-glint');
+  // At 0 % the bar is empty: the sweep under it shows the file is going.
+  expect(await slow.locator('.dashboard-upload-track').evaluate((el) => getComputedStyle(el, '::before').animationName))
+    .toBe('dashboard-upload-glint');
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Uploading files');
   await panel.locator('[data-upload-cancel="slow.bin"]').click();
-  await expect(panel.locator('[data-upload-item="slow.bin"]')).toHaveClass(/is-cancelled/);
+  await expect(slow).toHaveClass(/is-cancelled/);
+  await expect(slow.locator('[data-upload-item-size]')).toHaveText('1 B');
   await expect(panel.locator('[data-upload-hide]')).toBeVisible();
+  // Nothing runs: the head says one did not get there.
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Some files failed');
+  await expect(panel.locator('[data-upload-panel-state]')).toHaveAttribute('data-upload-panel-state', 'failed');
+});
+
+test('a file whose connection dropped goes up again by itself; at most three at a time', async ({ page }) => {
+  await openDashboard(page);
+  let dropped = 0;
+  let inFlight = 0;
+  let mostAtOnce = 0;
+  const answered: string[] = [];
+  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
+    const body = route.request().postDataBuffer()?.toString('latin1') || '';
+    const name = /filename="([^"]+)"/.exec(body)?.[1] ?? '?';
+    // The first try of the video loses its connection, as a phone's dark screen does.
+    if (name === 'video.mp4' && dropped === 0) {
+      dropped += 1;
+      return route.abort('connectionreset');
+    }
+    inFlight += 1;
+    mostAtOnce = Math.max(mostAtOnce, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    inFlight -= 1;
+    answered.push(name);
+    return route.fulfill({ status: 201, json: { items: [] } });
+  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="file"]').click();
+  const files = ['a.bin', 'b.bin', 'c.bin', 'd.bin', 'e.bin'].map((name) => ({ name, mimeType: 'application/octet-stream', buffer: Buffer.from(name) }));
+  await pick(page, [{ name: 'video.mp4', mimeType: 'video/mp4', buffer: Buffer.from('v') }, ...files]);
+  await dialog(page).locator('[data-add-submit]').click();
+  const panel = page.locator('[data-upload-panel]');
+  await expect(panel.locator('[data-upload-item="video.mp4"]')).toHaveClass(/is-done/, { timeout: 10000 });
+  for (const file of files) await expect(panel.locator(`[data-upload-item="${file.name}"]`)).toHaveClass(/is-done/);
+  expect(dropped).toBe(1);
+  expect(answered.filter((name) => name === 'video.mp4')).toHaveLength(1);
+  expect(mostAtOnce).toBeLessThanOrEqual(3);
 });

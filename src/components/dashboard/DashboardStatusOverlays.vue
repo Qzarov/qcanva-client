@@ -3,7 +3,9 @@
     <DashboardUploadPanel
       v-if="uploadPanelOpen && uploads.length"
       :uploads="uploads"
+      :summary="summary"
       @cancel="emit('cancel-upload', $event)"
+      @collapse="emit('collapse-upload')"
       @hide="emit('hide-upload')"
     />
   </Transition>
@@ -38,6 +40,7 @@
 
 <script setup lang="ts">
 import DashboardUploadPanel, { type DashboardUpload } from './DashboardUploadPanel.vue';
+import type { UploadSummary } from '../../dashboard/upload-summary';
 
 type DownloadStatus = {
   phase: 'idle' | 'collect' | 'pack' | 'done' | 'error';
@@ -50,6 +53,7 @@ type FeedbackState = { type: 'success' | 'error'; message: string };
 defineProps<{
   uploadPanelOpen: boolean;
   uploads: readonly DashboardUpload[];
+  summary: UploadSummary;
   downloadStatus: DownloadStatus;
   transferStatusText: string;
   transferStatusPercent: number;
@@ -58,6 +62,7 @@ defineProps<{
 
 const emit = defineEmits<{
   'cancel-upload': [id: string];
+  'collapse-upload': [];
   'hide-upload': [];
 }>();
 </script>

@@ -56,10 +56,24 @@ async function serveSpaces(page: Page, opts: { role?: 'owner' | 'editor' | 'view
     if (path === '/spaces/space-2/feed') return json({ items: [], offset: 0, limit: 60, nextOffset: null });
     // A viewer adds no folders: every one in the space is someone else's.
     const sources = role === 'viewer' ? defaultSources().map((source) => ({ ...source, addedBy: { id: 'user-2', name: 'Аня' } })) : defaultSources();
-    if (path === '/spaces/space-1' && request.method() === 'GET') return json(spaceDetails(role, sources));
+    if (path === '/spaces/feed-types') return json({ types: [
+      { type: 'canva', extensions: [] }, { type: 'document', extensions: ['pdf', 'docx', 'txt'] }, { type: 'book', extensions: ['epub', 'djvu'] },
+      { type: 'image', extensions: ['jpg', 'png'] }, { type: 'video', extensions: ['mp4'] }, { type: 'audio', extensions: ['mp3'] }, { type: 'other', extensions: [] },
+    ] });
+    if (path === '/spaces/space-1' && request.method() === 'GET') return json({ ...spaceDetails(role, sources), owners: [{ id: 'user-1', name: 'Me' }, { id: 'user-2', name: 'Аня' }] });
     if (path === '/spaces/space-1/feed') {
-      const items = url.searchParams.get('sourceId') ? FEED.filter((item) => item.sourceId === url.searchParams.get('sourceId')) : FEED;
-      return json({ items, offset: 0, limit: 60, nextOffset: null });
+      const list = (name: string) => (url.searchParams.get(name) || '').split(',').filter(Boolean);
+      const [sources, types, adders, exts, owners] = [list('sourceIds'), list('types'), list('addedBy'), list('exts'), list('owners')];
+      const typeOf = (item: (typeof FEED)[number]) => (item.kind !== 'file' ? 'canva' : item.name.endsWith('.pdf') ? 'document' : item.mime.startsWith('image/') ? 'image' : 'other');
+      const extOf = (item: (typeof FEED)[number]) => (item.kind === 'file' ? item.name.split('.').pop()!.toLowerCase() : '');
+      const others = FEED.filter((item) => (!sources.length || sources.includes(item.sourceId))
+        && (!owners.length || owners.includes(item.addedBy.id))
+        && (!adders.length || adders.includes(item.addedBy.id)));
+      const items = others.filter((item) => (!types.length && !exts.length) || types.includes(typeOf(item)) || exts.includes(extOf(item)));
+      // As the hub: each kind's count under the other filters, the kinds aside.
+      const typeCounts: Record<string, number> = {};
+      for (const item of others) typeCounts[typeOf(item)] = (typeCounts[typeOf(item)] ?? 0) + 1;
+      return json({ items, offset: 0, limit: 60, nextOffset: null, typeCounts });
     }
     if (path === '/spaces/space-1/sources' && request.method() === 'POST') return json(spaceDetails(role));
     if (path === '/spaces/space-1/members' && request.method() === 'POST') {
@@ -122,10 +136,10 @@ test('a space is one feed of its folders, filtered by folder; pictures open full
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-feed.png` });
 
   // A folder at a time.
-  await page.locator('[data-space-source="src-y"] .space-source-pick').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
   await expect(feed).toHaveCount(1);
-  expect(calls.some((call) => call.path === '/spaces/space-1/feed' && call.query.sourceId === 'src-y')).toBe(true);
-  await page.locator('[data-space-source="all"]').click();
+  expect(calls.some((call) => call.path === '/spaces/space-1/feed' && call.query.sourceIds === 'src-y')).toBe(true);
+  await page.locator('[data-space-folders-all]').click();
   await expect(feed).toHaveCount(3);
 
   // Hover tells who added it and from where.
@@ -268,4 +282,160 @@ test('with no spaces the home feed offers "+ Add" under Spaces, which makes one'
   await page.getByRole('dialog').getByRole('button', { name: 'Create' }).click();
   await expect.poll(() => calls.find((call) => call.method === 'POST' && call.path === '/spaces')?.body).toEqual({ name: 'Дача' });
   await expect(page.locator('[data-space-title]')).toHaveText('Дача');
+});
+
+test('a Yandex folder still being read turns on its chip; its files come in by themselves once read', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 860 });
+  await serveDashboard(page);
+  let asked = 0;
+  const yandexSource = (read: boolean) => ({ id: 'src-y', kind: 'yandex', title: 'Фото', folderId: null, yandexPath: '/Фото', addedBy: { id: 'user-1', name: 'Me' }, syncedAt: read ? '2026-11-08T10:00:00Z' : null, syncError: null, itemCount: read ? 1 : 0 });
+  await page.route(/\/api\/spaces(\/|\?|$)/, async (route) => {
+    const path = new URL(route.request().url()).pathname.replace(/^\/api/, '');
+    if (path === '/spaces') return route.fulfill({ json: { spaces: [{ id: 'space-1', name: 'Семья', role: 'owner', ownerId: 'user-1', memberCount: 0, sourceCount: 1, updatedAt: '2026-11-07T10:00:00Z' }] } });
+    const read = asked >= 2;
+    if (path === '/spaces/space-1') {
+      asked += 1;
+      return route.fulfill({ json: { ...spaceDetails('owner', [yandexSource(read)] as any), members: [] } });
+    }
+    if (path === '/spaces/space-1/feed') return route.fulfill({ json: { items: read ? [FEED[0]] : [], offset: 0, limit: 60, nextOffset: null } });
+    return route.fulfill({ json: {} });
+  });
+  await page.route('http://localhost:3001/api/yandex-disk/preview**', (route) => route.fulfill({ status: 200, contentType: 'image/png', body: PNG }));
+  await page.goto('/dashboard');
+  await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
+  await page.locator('[data-shared-space="space-1"]').click();
+  await expect(page.locator('[data-space-source="src-y"] [data-space-source-reading]')).toBeVisible();
+  // Looked at again on its own, without the page reloading.
+  await expect(page.locator('[data-space-feed] [data-space-item]')).toHaveCount(1, { timeout: 10000 });
+  await expect(page.locator('[data-space-source="src-y"] [data-space-source-reading]')).toHaveCount(0);
+});
+
+test('the sidebar\'s "Spaces" goes to the feed\'s Spaces, like Shared and Public; its chevron folds the list', async ({ page }) => {
+  await openDashboard(page);
+  await page.setViewportSize({ width: 1280, height: 600 });
+  await page.locator('[data-recent-space-tile="space-1"]').waitFor();
+  const row = page.locator('[data-sidebar-spaces]');
+  await row.click();
+  // The feed scrolled to its Spaces section, and the row is the current one.
+  await expect.poll(() => page.locator('.dashboard-central-shell .app-main').evaluate((el) => el.scrollTop)).toBeGreaterThan(0);
+  await expect(page.locator('#feed-spaces')).toBeInViewport();
+  await expect(row).toHaveAttribute('aria-current', 'page');
+  // The list stays as it was; only the chevron folds it.
+  await expect(page.locator('[data-sidebar-spaces-children]')).toBeVisible();
+  await page.locator('[data-sidebar-spaces-disclosure]').click();
+  await expect(page.locator('[data-sidebar-spaces-children]')).toHaveCount(0);
+});
+
+test('phone: "Spaces" in the sidebar closes it and goes to the feed\'s Spaces', async ({ page }) => {
+  await openDashboard(page, { phone: true });
+  await page.locator('[data-mobile-sidebar-open]').click();
+  await page.locator('[data-sidebar-spaces]').click();
+  await expect(page.locator('.dashboard-sidebar.mobile-open, .dashboard-sidebar[data-mobile-open="true"]')).toHaveCount(0);
+  await expect(page.locator('#feed-spaces')).toBeInViewport();
+});
+
+test('the feed takes several folders, kinds of file and adders at once; nothing left says so', async ({ page }) => {
+  const calls = await openDashboard(page);
+  await page.locator('[data-shared-space="space-1"]').click();
+  const feed = page.locator('[data-space-feed] [data-space-item]');
+  await expect(feed).toHaveCount(3);
+
+  // Two folders: both chips on, "All" off.
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
+  await expect(feed).toHaveCount(1);
+  await page.locator('[data-space-source="src-q"] [data-space-folder-toggle]').click();
+  await expect(feed).toHaveCount(3);
+  expect(calls.at(-1)?.query.sourceIds?.split(',').sort()).toEqual(['src-q', 'src-y']);
+  await expect(page.locator('[data-space-source="src-y"] [data-space-folder-toggle]')).toHaveAttribute('aria-pressed', 'true');
+  // One off again: the other stays.
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
+  await expect(feed).toHaveCount(2);
+  await page.locator('[data-space-folders-all]').click();
+  await expect(feed).toHaveCount(3);
+
+  // "Filters" opens a window in the Add window's look: the kinds as square tiles, any number picked.
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  await expect(menu).toHaveClass(/dashboard-add-dialog/);
+  const kind = (type: string) => menu.locator(`[data-space-filter-type="${type}"]`);
+  await expect(menu.locator('[data-space-filter-type]')).toHaveCount(7);
+  await expect(kind('image').locator('[data-space-filter-type-count]')).toHaveText('1');
+  await kind('document').click();
+  await kind('image').click();
+  await expect(feed).toHaveCount(2);
+  expect(calls.at(-1)?.query.types?.split(',').sort()).toEqual(['document', 'image']);
+  await expect(menu.locator('[data-space-filter-type].active')).toHaveCount(2);
+  await expect(kind('document')).toHaveAttribute('aria-pressed', 'true');
+  // Who added: in the same window, any number.
+  await menu.locator('[data-space-filter-person="user-1"]').click();
+  await expect(feed).toHaveCount(1);
+  await expect(page.locator('[data-space-item="q:file:f-pdf"]')).toBeVisible();
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('3');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters.png` });
+
+  // Nothing matches: it says so, and "Reset filters" brings everything back.
+  await kind('document').click();
+  await expect(page.locator('[data-space-filtered-empty]')).toBeVisible();
+  // Esc closes the window, as the Add window's.
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await page.locator('[data-space-filtered-empty] button').click();
+  await expect(feed).toHaveCount(3);
+  await expect(page.locator('[data-space-filter-count]')).toHaveCount(0);
+
+  // The dashboard's own filter and order do not act on a space: not shown here.
+  await expect(page.locator('[data-filter-menu-trigger]:visible')).toHaveCount(0);
+});
+
+test('the folders are tiles above the feed, several picked at once; filters show their extensions, by owner, and any extension under More', async ({ page }) => {
+  const calls = await openDashboard(page);
+  await page.locator('[data-shared-space="space-1"]').click();
+  const feed = page.locator('[data-space-feed] [data-space-item]');
+  await expect(feed).toHaveCount(3);
+
+  // Tiles like a folder's subfolders, the feed under them.
+  const tiles = page.locator('[data-space-sources] [data-space-source]');
+  await expect(tiles).toHaveCount(2);
+  await expect(page.locator('[data-space-source="src-y"] .subfolder-card-count')).toHaveText('1');
+  const tilesBox = (await page.locator('[data-space-sources]').boundingBox())!;
+  const feedBox = (await page.locator('[data-space-feed]').boundingBox())!;
+  expect(feedBox.y).toBeGreaterThan(tilesBox.y + tilesBox.height - 1);
+  await page.locator('[data-space-source="src-q"] [data-space-folder-toggle]').click();
+  await page.locator('[data-space-source="src-y"] [data-space-folder-toggle]').click();
+  await expect(page.locator('[data-space-sources] .subfolder-card.is-selected')).toHaveCount(2);
+  await page.locator('[data-space-folders-all]').click();
+  await expect(page.locator('[data-space-sources] .subfolder-card.is-selected')).toHaveCount(0);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-tiles.png` });
+
+  await page.locator('[data-space-filter-trigger]').click();
+  const menu = page.locator('[data-space-filter-menu]');
+  // A kind tile tells what it takes on hover; a kind with nothing in it says 0.
+  await menu.locator('[data-space-filter-type="document"]').hover();
+  await expect(page.locator('.ui-hint')).toContainText('pdf, docx, txt');
+  await expect(menu.locator('[data-space-filter-type="book"] [data-space-filter-type-count]')).toHaveText('0');
+
+  // Whose: several people.
+  await menu.locator('[data-space-filter-owner="user-2"]').click();
+  await expect(feed).toHaveCount(1);
+  await menu.locator('[data-space-filter-owner="user-1"]').click();
+  await expect(feed).toHaveCount(3);
+  expect(calls.at(-1)?.query.owners?.split(',').sort()).toEqual(['user-1', 'user-2']);
+  await menu.locator('[data-space-filter-owner="user-1"]').click();
+  await menu.locator('[data-space-filter-owner="user-2"]').click();
+
+  // More: any extension, a dot and the case aside; Backspace takes the last one off.
+  await menu.locator('[data-space-filter-advanced]').click();
+  const input = menu.locator('[data-space-filter-ext-input]');
+  await input.fill('.PDF, jpg');
+  await input.press('Enter');
+  await expect(menu.locator('[data-space-filter-ext]')).toHaveCount(2);
+  await expect(feed).toHaveCount(2);
+  expect(calls.at(-1)?.query.exts).toBe('pdf,jpg');
+  await expect(page.locator('[data-space-filter-count]')).toHaveText('2');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/space-filters-advanced.png` });
+  await input.press('Backspace');
+  await expect(menu.locator('[data-space-filter-ext]')).toHaveCount(1);
+  await expect(feed).toHaveCount(1);
+  await menu.locator('[data-space-filter-reset]').click();
+  await expect(feed).toHaveCount(3);
 });

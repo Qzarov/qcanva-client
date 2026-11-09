@@ -368,6 +368,17 @@
   background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
   color: var(--ui-glass-accent-text, var(--ui-text));
 }
+@media (max-width: 768px) {
+  .dashboard-add-option-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: var(--radius-xs);
+  }
+  .dashboard-add-option-icon > svg {
+    width: 18px;
+    height: 18px;
+  }
+}
 .dashboard-add-option strong {
   font-size: 13px;
   font-weight: 600;
@@ -381,8 +392,8 @@
 /* Held by its top edge: whatever unfolds or folds in it, the dialog grows
    and shrinks downwards only - centred, every change of height moved it. */
 .dashboard-add-backdrop {
-  align-items: flex-start;
-  padding-top: min(12vh, 120px);
+  --ui-modal-align-items: flex-start;
+  --ui-modal-padding: min(12vh, 120px) 24px 24px;
 }
 /* A tab change swaps the tiles in place: a quick fade, no movement. */
 .dashboard-add-tab-enter-active,
@@ -488,8 +499,8 @@
 }
 @media (max-width: 720px) {
   .dashboard-add-backdrop {
-    align-items: flex-end;
-    padding: 0;
+    --ui-modal-align-items: flex-end;
+    --ui-modal-padding: 0;
   }
   .dashboard-add-dialog {
     width: 100%;

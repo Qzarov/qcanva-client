@@ -11,6 +11,22 @@
         </span>
       </div>
       <template v-if="space">
+        <SpaceFilterDialog
+          :open="filterMenuOpen"
+          :types="filterTypes"
+          :type-counts="typeCounts"
+          :added-by="filterPeople"
+          :people="adders"
+          :owners="filterOwners"
+          :owner-people="space?.owners ?? []"
+          :exts="filterExts"
+          @toggle="filterMenuOpen = !filterMenuOpen"
+          @reset="resetFilters"
+          @toggle-type="toggleType"
+          @toggle-person="togglePerson"
+          @toggle-owner="toggleOwner"
+          @update:exts="setExts"
+        />
         <DashboardViewToggle class="folder-view-toggle" :mode="viewMode" @update:mode="emit('update:viewMode', $event)" />
         <div class="folder-manager-menu">
           <button
@@ -42,42 +58,56 @@
       </div>
       <div v-else-if="!space" class="dash-empty">{{ t('driveLoading') }}</div>
       <template v-else>
-        <!-- The folders in the space: pick one to see only it; take out one's own. -->
-        <div v-if="space.sources.length" class="space-sources" role="group" :aria-label="t('spaceFolders')" data-space-sources>
-          <button
-            type="button"
-            class="space-source-chip"
-            :class="{ active: !sourceFilter }"
-            :aria-pressed="!sourceFilter"
-            data-space-source="all"
-            @click="setFilter(null)"
-          >{{ t('spaceAll') }}</button>
-          <span
-            v-for="source in space.sources"
-            :key="source.id"
-            class="space-source-chip"
-            :class="{ active: sourceFilter === source.id }"
-            :data-space-source="source.id"
-          >
-            <button type="button" class="space-source-pick" :aria-pressed="sourceFilter === source.id" @click="setFilter(source.id)">
-              <Cloud v-if="source.kind === 'yandex'" :size="13" aria-hidden="true" />
-              <FolderIcon v-else :size="13" aria-hidden="true" />
-              <span>{{ source.title }}</span>
-              <span class="space-source-who">{{ source.addedBy.name || '' }}</span>
-            </button>
-            <button
-              v-if="canRemoveSource(source)"
-              type="button"
-              class="space-source-remove"
-              :aria-label="t('spaceRemoveFolder')"
-              :title="t('spaceRemoveFolder')"
-              data-space-source-remove
-              @click="removeSource(source)"
-            ><X :size="12" aria-hidden="true" /></button>
-          </span>
-        </div>
+        <!-- The space's folders as tiles, like a folder's subfolders: pick any
+             number to see only them (picked again, off); take out one's own. -->
+        <template v-if="space.sources.length">
+          <div class="dash-section-head space-section-head">
+            <h2>{{ t('folders') }}</h2>
+            <button v-if="filterSources.length" type="button" class="space-folders-all" data-space-folders-all @click="toggleSource(null)">{{ t('spaceAllFolders') }}</button>
+          </div>
+          <div class="dash-grid subfolder-grid space-folder-grid" role="group" :aria-label="t('spaceFolders')" data-space-sources>
+            <div v-for="source in space.sources" :key="source.id" class="space-folder-tile" :data-space-source="source.id">
+              <button
+                type="button"
+                class="subfolder-card"
+                :class="{ 'is-selected': filterSources.includes(source.id) }"
+                :aria-pressed="filterSources.includes(source.id)"
+                data-space-folder-toggle
+                @click="toggleSource(source.id)"
+              >
+                <span class="subfolder-card-icon" aria-hidden="true">
+                  <Check v-if="filterSources.includes(source.id)" :size="13" />
+                  <!-- A Yandex folder still being read turns; one that could not be read says why. -->
+                  <LoaderCircle v-else-if="source.kind === 'yandex' && !source.syncedAt" class="space-source-reading" :size="13" data-space-source-reading />
+                  <TriangleAlert v-else-if="source.kind === 'yandex' && source.syncError" v-hint="source.syncError ?? ''" class="space-source-failed" :size="13" data-space-source-failed />
+                  <Cloud v-else-if="source.kind === 'yandex'" :size="13" />
+                  <FolderIcon v-else :size="13" />
+                </span>
+                <span class="subfolder-card-name">{{ source.title }}</span>
+                <span v-if="source.itemCount !== null" class="subfolder-card-count">{{ source.itemCount || t('emptyFolder') }}</span>
+                <span class="subfolder-card-date space-folder-who">{{ source.addedBy.name || '' }}</span>
+              </button>
+              <button
+                v-if="canRemoveSource(source)"
+                type="button"
+                class="space-folder-remove"
+                :aria-label="t('spaceRemoveFolder')"
+                v-hint="t('spaceRemoveFolder')"
+                data-space-source-remove
+                @click="removeSource(source)"
+              ><X :size="12" aria-hidden="true" /></button>
+            </div>
+          </div>
+          <div class="dash-section-head space-section-head">
+            <h2>{{ t('spaceFeed') }}</h2>
+          </div>
+        </template>
 
-        <div v-if="!items.length && loaded" class="dash-grid">
+        <div v-if="!items.length && loaded && filtered" class="dash-empty" data-space-filtered-empty>
+          {{ t('noFilterMatches') }}
+          <button type="button" class="dash-empty-reset" @click="resetFilters">{{ t('resetFilters') }}</button>
+        </div>
+        <div v-else-if="!items.length && loaded" class="dash-grid">
           <button v-if="canAdd && !space.sources.length" type="button" class="dashboard-add-tile" data-space-empty @click.stop="startAdd($event)">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
           </button>
@@ -110,7 +140,7 @@
             <article
               v-else
               class="canvas-card folder-file-card"
-              :class="{ 'has-preview': isMedia(item) }"
+              :class="{ 'has-preview': withPicture(item) }"
               role="button"
               tabindex="0"
               :data-space-item="item.key"
@@ -127,13 +157,13 @@
                 <span class="card-title-text folder-file-name">{{ nameParts(item.name).base }}<wbr />{{ nameParts(item.name).ext }}</span>
               </div>
               <div class="card-meta folder-file-meta">
+                <!-- The type and when, on one line; the size is in the hover panel. -->
                 <span class="folder-file-ext">{{ getFileExtension(item.name) }}</span>
-                <span v-if="item.size !== null">{{ formatFileSize(item.size) }}</span>
                 <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
               </div>
-              <span v-if="isMedia(item)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(item) }" aria-hidden="true">
+              <span v-if="withPicture(item)" class="folder-file-thumb" :class="{ 'is-empty': !previewOf(item), 'is-pictureless': !previewOf(item) && pictureless(item) }" aria-hidden="true">
                 <img v-if="previewOf(item)" :src="previewOf(item)!" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-space-preview @error="broken.add(item.key)" />
-                <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : 'picture'" />
+                <FilePlaceholder v-else :name="item.name" :kind="isVideo(item) ? 'video' : isPicture(item) ? 'picture' : 'file'" />
                 <span v-if="isVideo(item) && previewOf(item)" class="folder-file-play"><Play :size="14" aria-hidden="true" /></span>
               </span>
             </article>
@@ -187,9 +217,13 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, Play, Plus, Video, X } from '@lucide/vue';
-import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceSource } from '../../api/spaces';
-import { downloadDriveFile, driveApi, formatFileSize, getFileExtension, resolveDownloadUrl } from '../../api/drive';
+import { Check, Cloud, File as FileIcon, Folder as FolderIcon, Image as ImageIcon, LoaderCircle, Play, Plus, TriangleAlert, Video, X } from '@lucide/vue';
+import { vHint } from '../../directives/hint';
+import { spacesApi, type SpaceDetails, type SpaceFeedItem, type SpaceFeedType, type SpaceSource } from '../../api/spaces';
+import SpaceFilterDialog from './SpaceFilterDialog.vue';
+
+import { LAYOUT, matchesMedia } from '../../composables/layoutMedia';
+import { downloadDriveFile, driveApi, getFileExtension, resolveDownloadUrl } from '../../api/drive';
 import { downloadYandexLink } from '../../api/yandexDisk';
 import { confirmDialog, promptDialog } from '../../composables/appDialog';
 import { useI18n } from '../../composables/useI18n';
@@ -197,7 +231,7 @@ import { useSpaces } from '../../composables/useSpaces';
 import { useYandexDisk } from '../../composables/useYandexDisk';
 import { vFileInfo } from '../../directives/fileInfo';
 import { fileInfo, nameParts } from '../../dashboard/file-info';
-import { isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
+import { hasCardPicture, isPictureFile, isVideoFile } from '../../dashboard/thumb-kinds';
 import ResourceIcon from '../ResourceIcon.vue';
 import ResourceThumb from './ResourceThumb.vue';
 import DashboardViewToggle from './DashboardViewToggle.vue';
@@ -241,7 +275,24 @@ const loadingMore = ref(false);
 const error = ref('');
 const busy = ref(false);
 const menu = ref('');
-const sourceFilter = ref<string | null>(null);
+// The feed's filters: any number of folders, kinds of file and adders; none of a kind means all.
+const filterSources = ref<string[]>([]);
+const filterTypes = ref<SpaceFeedType[]>([]);
+const filterPeople = ref<string[]>([]);
+const filterOwners = ref<string[]>([]);
+const filterExts = ref<string[]>([]);
+const filterMenuOpen = ref(false);
+/** How many of each kind the other filters leave (the hub's first page). */
+const typeCounts = ref<Partial<Record<SpaceFeedType, number>>>({});
+
+const feedFilters = () => ({ sourceIds: filterSources.value, types: filterTypes.value, exts: filterExts.value, owners: filterOwners.value, addedBy: filterPeople.value });
+const filtered = computed(() => Boolean(filterSources.value.length || filterTypes.value.length || filterExts.value.length || filterOwners.value.length || filterPeople.value.length));
+/** Who added the space's folders, once each. */
+const adders = computed(() => {
+  const seen = new Map<string, { id: string; name: string | null }>();
+  for (const source of space.value?.sources ?? []) if (!seen.has(source.addedBy.id)) seen.set(source.addedBy.id, source.addedBy);
+  return [...seen.values()];
+});
 const membersOpen = ref(false);
 const qspaceOpen = ref(false);
 const yandexOpen = ref(false);
@@ -267,9 +318,16 @@ const isDocument = (item: SpaceFeedItem) => item.origin === 'qspace' && item.kin
 const fileLike = (item: SpaceFeedItem) => ({ name: item.name, mime: item.mime, kind: item.mediaType === 'video' ? 'video' : item.mediaType === 'image' ? 'photo' : undefined });
 const isVideo = (item: SpaceFeedItem) => isVideoFile(fileLike(item));
 const isPicture = (item: SpaceFeedItem) => isPictureFile(fileLike(item));
-const isMedia = (item: SpaceFeedItem) => item.kind === 'file' && (isVideo(item) || isPicture(item));
+/** A picture square: pictures, videos, PDFs, EPUBs and text files - and any file Yandex made a preview of. */
+const withPicture = (item: SpaceFeedItem) => item.kind === 'file' && (hasCardPicture(fileLike(item)) || Boolean(item.origin === 'yandex' && item.previewUrl));
 const thumbKind = (item: SpaceFeedItem) => (item.kind === 'board' || item.kind === 'sheet' ? 'interactive-template' : item.kind);
 const templateType = (item: SpaceFeedItem) => (item.kind === 'board' ? 'trello-board' : item.kind === 'sheet' ? 'dnd-character' : null);
+/**
+ * Known to have no picture (not one on its way): a Yandex file without a
+ * preview, a QCanva one the hub has none for, a picture that failed to load.
+ */
+const noPicture = reactive(new Set<string>());
+const pictureless = (item: SpaceFeedItem) => (item.origin === 'yandex' ? !item.previewUrl : false) || broken.has(item.key) || noPicture.has(item.key);
 const previewOf = (item: SpaceFeedItem) => {
   if (broken.has(item.key)) return null;
   if (item.origin === 'yandex') return item.previewUrl ? resolveDownloadUrl(item.previewUrl) : null;
@@ -290,23 +348,27 @@ const errorText = (err: unknown, fallback: string) => (err instanceof Error && e
 
 // ----- loading
 let loadId = 0;
-async function load() {
+/** `quiet`: a look again while a Yandex folder is read - no "Loading", no lost place. */
+async function load(quiet = false) {
   const current = ++loadId;
   error.value = '';
-  loaded.value = false;
+  if (!quiet) loaded.value = false;
   try {
     const [details, feed] = await Promise.all([
       spacesApi.get(props.spaceId),
-      spacesApi.feed(props.spaceId, { sourceId: sourceFilter.value }),
+      spacesApi.feed(props.spaceId, feedFilters()),
     ]);
     if (current !== loadId) return;
     space.value = details;
     items.value = feed.items;
     nextOffset.value = feed.nextOffset;
+    if (feed.typeCounts) typeCounts.value = feed.typeCounts;
     loaded.value = true;
     void loadPreviews(feed.items);
+    watchReading();
   } catch (err) {
     if (current !== loadId) return;
+    if (quiet) return;
     if ((err as { status?: number })?.status === 404) {
       emit('gone');
       return;
@@ -316,11 +378,35 @@ async function load() {
 }
 const reload = () => { void load(); };
 
+/**
+ * A Yandex folder just added (or not read yet) is read by the hub in the
+ * background - a big one takes a while: the feed is looked at again every
+ * few seconds until every Yandex folder is read, for three minutes at most.
+ */
+const READ_POLL_MS = 3000;
+const READ_POLL_FOR_MS = 3 * 60 * 1000;
+let readPoll: ReturnType<typeof setTimeout> | null = null;
+let readPollSince = 0;
+function watchReading() {
+  const reading = (space.value?.sources ?? []).some((source) => source.kind === 'yandex' && !source.syncedAt);
+  if (!reading) {
+    readPollSince = 0;
+    return;
+  }
+  if (readPoll) return;
+  if (!readPollSince) readPollSince = Date.now();
+  if (Date.now() - readPollSince > READ_POLL_FOR_MS) return;
+  readPoll = setTimeout(() => {
+    readPoll = null;
+    void load(true);
+  }, READ_POLL_MS);
+}
+
 async function loadMore() {
   if (nextOffset.value === null) return;
   loadingMore.value = true;
   try {
-    const feed = await spacesApi.feed(props.spaceId, { offset: nextOffset.value, sourceId: sourceFilter.value });
+    const feed = await spacesApi.feed(props.spaceId, { offset: nextOffset.value, ...feedFilters() });
     items.value = [...items.value, ...feed.items];
     nextOffset.value = feed.nextOffset;
     void loadPreviews(feed.items);
@@ -334,7 +420,7 @@ async function loadMore() {
 /** QCanva pictures and videos: the hub's card pictures, asked for once, then again for those still being made. */
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 async function loadPreviews(list: SpaceFeedItem[], retry = true) {
-  const wanted = list.filter((item) => item.origin === 'qspace' && isMedia(item) && item.id && !previews[item.key]);
+  const wanted = list.filter((item) => item.origin === 'qspace' && withPicture(item) && item.id && !previews[item.key]);
   if (!wanted.length) return;
   try {
     const response = await driveApi.getThumbLinks(wanted.map((item) => item.id!));
@@ -343,7 +429,8 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
     for (const item of wanted) {
       const link = links[item.id!];
       if (link?.status === 'ready') previews[item.key] = resolveDownloadUrl(link.url);
-      else if (link?.status === 'pending') pending.push(item);
+      else if (link?.status === 'pending' && retry) pending.push(item);
+      else noPicture.add(item.key);
     }
     if (pending.length && retry) previewTimer = setTimeout(() => void loadPreviews(pending, false), 5000);
   } catch {
@@ -352,16 +439,52 @@ async function loadPreviews(list: SpaceFeedItem[], retry = true) {
 }
 
 watch(() => props.spaceId, () => {
-  sourceFilter.value = null;
+  if (readPoll) clearTimeout(readPoll);
+  readPoll = null;
+  readPollSince = 0;
+  filterSources.value = [];
+  filterTypes.value = [];
+  filterPeople.value = [];
+  filterOwners.value = [];
+  filterExts.value = [];
+  typeCounts.value = {};
+  filterMenuOpen.value = false;
   space.value = null;
   items.value = [];
   for (const key of Object.keys(previews)) delete previews[key];
   broken.clear();
+  noPicture.clear();
   void load();
 });
 
-function setFilter(sourceId: string | null) {
-  sourceFilter.value = sourceId;
+const toggleIn = <T,>(list: T[], value: T) => (list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
+/** A folder chip: on or off; "All" clears them. */
+function toggleSource(sourceId: string | null) {
+  filterSources.value = sourceId === null ? [] : toggleIn(filterSources.value, sourceId);
+  void load();
+}
+function toggleType(type: SpaceFeedType) {
+  filterTypes.value = toggleIn(filterTypes.value, type);
+  void load();
+}
+function togglePerson(id: string) {
+  filterPeople.value = toggleIn(filterPeople.value, id);
+  void load();
+}
+function toggleOwner(id: string) {
+  filterOwners.value = toggleIn(filterOwners.value, id);
+  void load();
+}
+function setExts(exts: string[]) {
+  filterExts.value = exts;
+  void load();
+}
+function resetFilters() {
+  filterSources.value = [];
+  filterTypes.value = [];
+  filterPeople.value = [];
+  filterOwners.value = [];
+  filterExts.value = [];
   void load();
 }
 
@@ -408,12 +531,12 @@ function toggleMenu(name: string) {
   menu.value = menu.value === name ? '' : name;
 }
 const closeMenu = (event: MouseEvent) => {
-  if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest('.folder-manager-menu, [data-space-add-menu]')) menu.value = '';
 };
 /** Where the add choice opens: under what was pressed (a phone makes it a bottom sheet). */
 const addMenuStyle = ref<Record<string, string>>({});
 const teleportReady = ref(false);
-const PHONE = '(max-width: 720px)';
 const addDialogOpen = ref(false);
 /**
  * Adding a folder - "⋯", the empty space's tile, the toolbar's Add, the
@@ -427,7 +550,7 @@ function startAdd(event?: Event) {
     openQspaceDialog();
     return;
   }
-  const phone = typeof window !== 'undefined' && Boolean(window.matchMedia?.(PHONE).matches);
+  const phone = matchesMedia(LAYOUT.dashboardPhone);
   if (!phone) {
     menu.value = '';
     addDialogOpen.value = true;
@@ -486,10 +609,9 @@ async function addYandex(path: string) {
     space.value = await spacesApi.addYandexFolder(props.spaceId, path);
     yandexPicker.value?.close();
     emit('feedback', 'success', t('spaceYandexReading'));
+    readPollSince = 0;
     await load();
     void loadSpaces(true);
-    // The hub reads the Yandex folder in the background: look again shortly.
-    setTimeout(() => void load(), 4000);
   } catch (err) {
     emit('feedback', 'error', errorText(err, t('spaceActionFailed')));
   } finally {
@@ -508,7 +630,7 @@ async function removeSource(source: SpaceSource) {
   if (!confirmed) return;
   try {
     await spacesApi.removeSource(props.spaceId, source.id);
-    if (sourceFilter.value === source.id) sourceFilter.value = null;
+    filterSources.value = filterSources.value.filter((id) => id !== source.id);
     await load();
     void loadSpaces(true);
   } catch (err) {
@@ -587,6 +709,7 @@ onBeforeUnmount(() => {
   loadId += 1;
   document.removeEventListener('click', closeMenu);
   if (previewTimer) clearTimeout(previewTimer);
+  if (readPoll) clearTimeout(readPoll);
 });
 
 defineExpose({ reload, startAdd });

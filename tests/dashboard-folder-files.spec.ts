@@ -60,13 +60,19 @@ test.describe('a folder\'s files', () => {
       await expect(placeholder.locator('[data-file-placeholder-text]')).toHaveText(ext);
       await expect(placeholder.locator('[data-file-placeholder-figure]')).toBeVisible();
     }
-    for (const id of ['f-pdf', 'f-zip']) {
-      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-thumb`)).toHaveCount(0);
-      await expect(page.locator(`[data-folder-file="${id}"] .folder-file-kind svg`)).toBeVisible();
-    }
+    // A PDF gets a picture too (its first page, from the hub); until then the drawn one.
+    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-thumb [data-file-placeholder-text]')).toHaveText('pdf');
+    // Anything else: no square, the kind's icon, the type and when on one line - no size.
+    await expect(page.locator('[data-folder-file="f-zip"] .folder-file-thumb')).toHaveCount(0);
+    await expect(page.locator('[data-folder-file="f-zip"] .folder-file-kind svg')).toBeVisible();
     expect(new Set(linkRequests)).toEqual(new Set(['f-sea', 'f-cat']));
-    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-ext')).toHaveText('PDF');
-    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-meta')).toContainText('341.8 KB');
+    const zipMeta = page.locator('[data-folder-file="f-zip"] .folder-file-meta');
+    await expect(zipMeta.locator('.folder-file-ext')).toHaveText('ZIP');
+    await expect(zipMeta).not.toContainText('KB');
+    await expect(zipMeta).not.toContainText('MB');
+    const [ext, date] = [await zipMeta.locator('.folder-file-ext').boundingBox(), await zipMeta.locator('[data-file-date]').boundingBox()];
+    expect(Math.abs(ext!.y + ext!.height / 2 - (date!.y + date!.height / 2))).toBeLessThan(4);
+    expect(date!.x).toBeGreaterThan(ext!.x + ext!.width);
     await expect(page.locator('.folder-manager-count')).toContainText('/ 6 files');
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/folder-grid.png` });
   });
@@ -78,8 +84,8 @@ test.describe('a folder\'s files', () => {
     await expect(sea.locator('.folder-file-meta')).not.toContainText('MB');
     await expect(sea.locator('[data-file-date]')).toHaveText(/\d{1,2}:\d{2}/);
     await expect(page.locator('[data-folder-file="f-clip"] .folder-file-meta')).not.toContainText('MB');
-    // Anything else keeps its size.
-    await expect(page.locator('[data-folder-file="f-pdf"] .folder-file-meta')).toContainText('KB');
+    // Nor anything else: the size is in the hover panel.
+    await expect(page.locator('[data-folder-file="f-zip"] .folder-file-meta')).not.toContainText('KB');
 
     await page.locator('[data-folder-file="f-pdf"]').hover();
     const info = page.locator('[data-file-info]');
@@ -120,8 +126,9 @@ test.describe('a folder\'s files', () => {
     await expect(page.locator('[data-folder-file="f-huge"] [data-folder-file-preview]')).toHaveAttribute('src', /test-thumb\/f-huge/);
     // Still being made: the original meanwhile, then the card picture.
     await expect(page.locator('[data-folder-file="f-cat"] [data-folder-file-preview]')).toHaveAttribute('src', /test-thumb\/f-cat/, { timeout: 10000 });
-    // Asked in batches, and only for pictures and videos.
-    expect(asked.flat()).not.toContain('f-pdf');
+    // Asked in batches, for pictures, videos and documents the hub draws - not for a zip.
+    expect(asked.flat()).toContain('f-pdf');
+    expect(asked.flat()).not.toContain('f-zip');
     expect(asked[0]!.length).toBeGreaterThan(1);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/drive-thumbs.png` });
   });
