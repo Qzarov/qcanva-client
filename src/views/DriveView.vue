@@ -628,97 +628,20 @@
                   <span v-else class="drive-ext-badge drive-ext-badge-sm">{{ getFileExtension(item.name) }}</span>
                   <span class="drive-card-name" :title="item.name">{{ item.name }}</span>
 
-                  <!-- File Context Menu Button -->
-                  <div v-if="isFileKind(item)" class="drive-item-menu-container">
-                    <button
-                      type="button"
-                      class="drive-item-menu-btn"
-                      :data-file-menu-btn="item.id"
-                      aria-haspopup="menu"
-                      :aria-expanded="activeFileMenuId === item.id"
-                      :aria-label="t('driveFileActionsAria')"
-                      :title="t('driveActions')"
-                      @click.stop="toggleFileMenu(item.id)"
-                    >
-                      <MoreVertical :size="16" aria-hidden="true" />
-                    </button>
-
-                    <div
-                      v-if="activeFileMenuId === item.id"
-                      class="drive-item-dropdown-menu"
-                      role="menu"
-                      :aria-label="t('driveFileMenuAria')"
-                      data-file-menu
-                      @click.stop
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action"
-                        data-action="download"
-                        :aria-label="t('driveDownloadFileAria')"
-                        @click="onDownloadFile(item)"
-                      >
-                        <Download :size="15" aria-hidden="true" />
-                        <span>{{ t('driveDownload') }}</span>
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action"
-                        data-action="rename"
-                        :aria-label="t('driveRenameFileAria')"
-                        @click="onRenameFile(item)"
-                      >
-                        <Edit2 :size="15" aria-hidden="true" />
-                        <span>{{ t('driveRename') }}</span>
-                      </button>
-                      <template v-if="phoneActive && itemDrivePath(item)">
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="drive-item-menu-action"
-                          data-action="phone-fetch"
-                          @click="onPhoneFetch(item)"
-                        >
-                          <Smartphone :size="15" aria-hidden="true" />
-                          <span>{{ t('phoneFetch') }}</span>
-                        </button>
-                        <button
-                          type="button"
-                          role="menuitem"
-                          class="drive-item-menu-action"
-                          data-action="phone-evict"
-                          @click="onPhoneEvict(item)"
-                        >
-                          <Eraser :size="15" aria-hidden="true" />
-                          <span>{{ t('phoneEvict') }}</span>
-                        </button>
-                      </template>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action"
-                        data-action="properties"
-                        :aria-label="t('fileProperties')"
-                        @click="onShowProperties(item)"
-                      >
-                        <Info :size="15" aria-hidden="true" />
-                        <span>{{ t('fileProperties') }}</span>
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action drive-menu-danger"
-                        data-action="trash"
-                        :aria-label="t('driveMoveToTrashAria')"
-                        @click="onTrashFile(item)"
-                      >
-                        <Trash2 :size="15" aria-hidden="true" />
-                        <span>{{ t('driveMoveToTrash') }}</span>
-                      </button>
-                    </div>
-                  </div>
+                  <DriveItemActionsMenu
+                    v-if="isFileKind(item)"
+                    :item="item"
+                    :active="activeFileMenuId === item.id"
+                    :phone-active="phoneActive"
+                    :phone-path-available="Boolean(itemDrivePath(item))"
+                    @toggle="toggleFileMenu(item.id)"
+                    @download="onDownloadFile(item)"
+                    @rename="onRenameFile(item)"
+                    @phone-fetch="onPhoneFetch(item)"
+                    @phone-evict="onPhoneEvict(item)"
+                    @properties="onShowProperties(item)"
+                    @trash="onTrashFile(item)"
+                  />
                 </div>
 
                 <div class="drive-card-meta">
@@ -775,96 +698,19 @@
                 <span class="drive-date">{{ formatDate(item.updatedAt || item.sortDate) }}</span>
               </div>
               <div v-if="isFileKind(item)" class="drive-row-menu-col" @click.stop>
-                <div class="drive-item-menu-container">
-                  <button
-                    type="button"
-                    class="drive-item-menu-btn"
-                    :data-file-menu-btn="item.id"
-                    aria-haspopup="menu"
-                    :aria-expanded="activeFileMenuId === item.id"
-                    :aria-label="t('driveFileActionsAria')"
-                    :title="t('driveActions')"
-                    @click.stop="toggleFileMenu(item.id)"
-                  >
-                    <MoreVertical :size="16" aria-hidden="true" />
-                  </button>
-
-                  <div
-                    v-if="activeFileMenuId === item.id"
-                    class="drive-item-dropdown-menu"
-                    role="menu"
-                    :aria-label="t('driveFileMenuAria')"
-                    data-file-menu
-                    @click.stop
-                  >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="drive-item-menu-action"
-                      data-action="download"
-                      :aria-label="t('driveDownloadFileAria')"
-                      @click="onDownloadFile(item)"
-                    >
-                      <Download :size="15" aria-hidden="true" />
-                      <span>{{ t('driveDownload') }}</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="drive-item-menu-action"
-                      data-action="rename"
-                      :aria-label="t('driveRenameFileAria')"
-                      @click="onRenameFile(item)"
-                    >
-                      <Edit2 :size="15" aria-hidden="true" />
-                      <span>{{ t('driveRename') }}</span>
-                    </button>
-                    <template v-if="phoneActive && itemDrivePath(item)">
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action"
-                        data-action="phone-fetch"
-                        @click="onPhoneFetch(item)"
-                      >
-                        <Smartphone :size="15" aria-hidden="true" />
-                        <span>{{ t('phoneFetch') }}</span>
-                      </button>
-                      <button
-                        type="button"
-                        role="menuitem"
-                        class="drive-item-menu-action"
-                        data-action="phone-evict"
-                        @click="onPhoneEvict(item)"
-                      >
-                        <Eraser :size="15" aria-hidden="true" />
-                        <span>{{ t('phoneEvict') }}</span>
-                      </button>
-                    </template>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="drive-item-menu-action"
-                      data-action="properties"
-                      :aria-label="t('fileProperties')"
-                      @click="onShowProperties(item)"
-                    >
-                      <Info :size="15" aria-hidden="true" />
-                      <span>{{ t('fileProperties') }}</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      class="drive-item-menu-action drive-menu-danger"
-                      data-action="trash"
-                      :aria-label="t('driveMoveToTrashAria')"
-                      @click="onTrashFile(item)"
-                    >
-                      <Trash2 :size="15" aria-hidden="true" />
-                      <span>{{ t('driveMoveToTrash') }}</span>
-                    </button>
-                  </div>
-                </div>
+                <DriveItemActionsMenu
+                  :item="item"
+                  :active="activeFileMenuId === item.id"
+                  :phone-active="phoneActive"
+                  :phone-path-available="Boolean(itemDrivePath(item))"
+                  @toggle="toggleFileMenu(item.id)"
+                  @download="onDownloadFile(item)"
+                  @rename="onRenameFile(item)"
+                  @phone-fetch="onPhoneFetch(item)"
+                  @phone-evict="onPhoneEvict(item)"
+                  @properties="onShowProperties(item)"
+                  @trash="onTrashFile(item)"
+                />
               </div>
             </div>
           </div>
@@ -912,9 +758,6 @@ import {
   ArrowUp,
   ChevronDown,
   Code,
-  Download,
-  Edit2,
-  Eraser,
   File,
   FileText,
   Folder,
@@ -922,13 +765,10 @@ import {
   Grid,
   HardDrive,
   Image,
-  Info,
   List,
   MonitorSmartphone,
-  MoreVertical,
   Plus,
   Search,
-  Smartphone,
   Trash2,
   Upload,
   Video,
@@ -954,6 +794,7 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
+import DriveItemActionsMenu from '../components/DriveItemActionsMenu.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
