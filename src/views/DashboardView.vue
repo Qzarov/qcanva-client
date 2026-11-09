@@ -95,41 +95,22 @@
     </header>
     <header v-else class="app-header dashboard-auth-header">
       <div class="app-header-inner">
-        <button
-          type="button"
-          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
-          :aria-label="t('openNavigation')"
-          data-mobile-sidebar-open
-          @click.stop="openMobileSidebar"
-        ><Menu :size="20" aria-hidden="true" /></button>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
-        />
-        <DashboardFilterMenu
-          class="dashboard-toolbar-mobile"
-          sheet
-          :open="openControlMenu === 'filter:mobile'"
-          :types="contentTypes"
-          :tags="allTagNames"
+        <DashboardMobileHeaderControls
+          v-model:search-query="searchQuery"
+          :open-control-menu="openControlMenu"
+          :content-types="contentTypes"
+          :all-tag-names="allTagNames"
           :selected-tags="selectedTags"
           :with-files="activeSection.kind === 'folder'"
-          @toggle="toggleToolbarMenu('filter:mobile')"
-          @update:types="contentTypes = $event"
+          :sort-mode="sortMode"
+          :folder-search-placeholder="folderSearchPlaceholder"
+          @open-sidebar="openMobileSidebar"
+          @toggle-menu="toggleToolbarMenu"
+          @update-types="contentTypes = $event"
           @toggle-tag="toggleSelectedTag"
-          @reset="clearTypeAndTagFilters"
+          @reset-filters="clearTypeAndTagFilters"
+          @select-sort="selectSortMode"
         />
-        <DashboardSortMenu
-          class="dashboard-toolbar-mobile"
-          sheet
-          :open="openControlMenu === 'sort:mobile'"
-          :mode="sortMode"
-          @toggle="toggleToolbarMenu('sort:mobile')"
-          @select="selectSortMode"
-        />
-        <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
-        <TabsButton class="dashboard-tabs-button" />
       </div>
     </header>
 
@@ -363,7 +344,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Plus, Trash2, Download, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -387,8 +368,6 @@ import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
 import { vHint } from '../directives/hint';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
-import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
-import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { TAG_COLORS } from '../dashboard/tag-colors';
@@ -397,6 +376,7 @@ import InteractiveTemplatePicker from '../components/dashboard/InteractiveTempla
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
 import type { DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
+import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobileHeaderControls.vue';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -419,7 +399,6 @@ import { useYandexDisk } from '../composables/useYandexDisk';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
-import TabsButton from '../components/tabs/TabsButton.vue';
 import LanguageToggle from '../components/LanguageToggle.vue';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
@@ -550,15 +529,13 @@ export default defineComponent({
   directives: { hint: vHint },
   components: {
     ContactEmailInput,
-    TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
-    DashboardFilterMenu,
-    DashboardSortMenu,
     DashboardStatusOverlays,
+    DashboardMobileHeaderControls,
     DashboardYandexDisk,
     DashboardSelectionBar,
     DashboardToolbar,
@@ -587,7 +564,6 @@ export default defineComponent({
     FolderInput,
     Download,
     Trash2,
-    Menu,
     Plus,
   },
   setup() {
