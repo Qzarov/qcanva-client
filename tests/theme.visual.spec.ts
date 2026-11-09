@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { setupTextDocMocks } from './text-doc-fixtures';
 
 const API = 'http://localhost:3001/api/**';
 
@@ -88,4 +89,13 @@ test('light canvas uses light default and interactive blocks', async ({ page }) 
   await expect(page.locator('[data-node-id="text"]')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page.locator('.dnd-sheet')).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page).toHaveScreenshot('light-canvas-content.png', { fullPage: true });
+});
+
+test('light text document keeps the editor shell visually stable', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await setupTextDocMocks(page, { title: 'Light document' });
+  await page.goto('/docs/reg-doc');
+  await expect(page.locator('.ProseMirror')).toBeVisible();
+  await expect(page.locator('.text-doc-title-page-input, .text-doc-title-page-readonly')).toBeVisible();
+  await expect(page).toHaveScreenshot('light-text-document.png', { fullPage: true });
 });
