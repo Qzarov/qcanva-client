@@ -243,7 +243,7 @@
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder:hover:not(.active) {
   border-color: transparent;
   background: var(--ui-glass-btn-hover);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 /* Selected: exactly as a selected sidebar item. */

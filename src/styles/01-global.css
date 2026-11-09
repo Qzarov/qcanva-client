@@ -35,6 +35,7 @@
   --ui-glass-accent-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02));
   --ui-glass-border: rgba(130, 210, 155, 0.28);
   --ui-glass-highlight: rgba(255, 255, 255, 0.10);
+  --ui-glass-inset-highlight: inset 0 1px 0 var(--ui-glass-highlight);
   --ui-glass-sheen: rgba(255, 255, 255, 0.08);
   --ui-glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.38);
   --ui-glass-blur: 18px;
