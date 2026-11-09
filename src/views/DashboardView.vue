@@ -338,6 +338,7 @@ import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.v
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { useDashboardMarquee } from '../composables/useDashboardMarquee';
+import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -2775,14 +2776,6 @@ export default defineComponent({
       }
     });
 
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    let longPressStart: { x: number; y: number } | null = null;
-    let swallowNextClick = false;
-    const cancelLongPress = () => {
-      if (longPressTimer) clearTimeout(longPressTimer);
-      longPressTimer = null;
-      longPressStart = null;
-    };
     /**
      * Drawing a frame with the mouse from an empty spot of the dashboard
      * ticks every card it touches (with Shift or Ctrl/Cmd, on top of what is
@@ -2796,34 +2789,13 @@ export default defineComponent({
       selectedKeys,
     });
 
-    const onSelectionPointerDown = (event: PointerEvent) => {
-      // A long press is not always followed by a click: the flag must not
-      // outlive it and eat the next real tap.
-      swallowNextClick = false;
-      if (!isLoggedIn || event.pointerType === 'mouse') return;
-      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-select-key]');
-      if (!card) return;
-      cancelLongPress();
-      longPressStart = { x: event.clientX, y: event.clientY };
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        swallowNextClick = true;
-        toggleSelected(card.dataset.selectKey!);
-        navigator.vibrate?.(10);
-      }, 450);
-    };
-    const onSelectionPointerMove = (event: PointerEvent) => {
-      if (longPressStart && Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelLongPress();
-    };
-    /** The system's long-press menu (or text selection) must not follow the tick. */
-    const onSelectionContextMenu = (event: MouseEvent) => {
-      if (!(event.target as HTMLElement | null)?.closest('[data-select-key]')) return;
-      if (swallowNextClick || longPressTimer) event.preventDefault();
-    };
+    const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
+      enabled: isLoggedIn,
+      toggleSelected,
+    });
     const onSelectionClickCapture = (event: MouseEvent) => {
-      if (swallowNextClick) {
+      if (consumeSwallowNextClick()) {
         // The click that ends a long press must not open the card it ticked.
-        swallowNextClick = false;
         event.preventDefault();
         event.stopPropagation();
         return;
