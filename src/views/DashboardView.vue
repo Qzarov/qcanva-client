@@ -75,7 +75,17 @@
         data-marquee
       ></div>
       <Transition name="dashboard-upload-panel">
-        <DashboardUploadPanel v-if="uploadPanelOpen && uploads.length" :uploads="uploads" @cancel="cancelUpload" @hide="uploadPanelOpen = false" />
+        <DashboardUploadPanel
+          v-if="uploadPanelOpen && uploads.length"
+          :uploads="uploads"
+          :summary="uploadSummary"
+          @cancel="cancelUpload"
+          @collapse="uploadPanelOpen = false"
+          @hide="clearFinishedUploads"
+        />
+      </Transition>
+      <Transition name="dashboard-upload-badge">
+        <DashboardUploadBadge v-if="!uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
       </Transition>
       <Transition name="dashboard-download-status">
         <div
@@ -1344,6 +1354,8 @@ import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLi
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
 import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.vue';
+import { useUploadSummary } from '../dashboard/upload-summary';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -1500,6 +1512,7 @@ export default defineComponent({
     DashboardFilterMenu,
     DashboardSortMenu,
     DashboardUploadPanel,
+    DashboardUploadBadge,
     DashboardYandexDisk,
     YandexFolderPicker,
     DashboardMediaViewer,
@@ -4225,7 +4238,14 @@ export default defineComponent({
     /** Uploads, newest first: each file its own progress, cancel and outcome (DashboardUploadPanel). */
     const uploads = ref<Array<DashboardUpload & { abort?: () => void }>>([]);
     const uploadPanelOpen = ref(false);
-    const cancelUpload = (id: string) => {
+    /** "n/m" and the ring of the panel and its badge, taken every half second while files run. */
+    const uploadSummary = useUploadSummary(uploads);
+    /** Nothing runs any more: the finished files go, and the badge with them. */
+    const clearFinishedUploads = () => {
+      uploads.value = uploads.value.filter((item) => item.status === 'uploading');
+      uploadPanelOpen.value = false;
+    };
+    const cancelUpload =(id: string) => {
       const upload = uploads.value.find((item) => item.id === id);
       if (!upload || upload.status !== 'uploading') return;
       upload.status = 'cancelled';
@@ -5405,6 +5425,8 @@ export default defineComponent({
       navDirection,
       uploads,
       uploadPanelOpen,
+      uploadSummary,
+      clearFinishedUploads,
       cancelUpload,
       folderDriveFiles,
       bulkDeleteCount,

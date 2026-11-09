@@ -84,15 +84,54 @@ test('files go up into the folder chosen in "Where"', async ({ page }) => {
   await expect(dialog(page)).toHaveCount(0);
   // The uploads panel, as the Drive's: a row a file, each done.
   const panel = page.locator('[data-upload-panel]');
-  await expect(panel).toContainText('(2)');
   await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
+  await expect(panel.locator('[data-upload-panel-count]')).toHaveText('2/2');
   if (SHOTS) {
     await page.waitForTimeout(400);
     await page.screenshot({ path: `${SHOTS}/upload-panel.png` });
   }
   await panel.locator('[data-upload-hide]').click();
   await expect(panel).toHaveCount(0);
+  // Hide clears the finished files: no badge left behind.
+  await expect(page.locator('[data-upload-badge]')).toHaveCount(0);
   expect(uploads).toEqual(['/api/drive/folders/folder-b/files', '/api/drive/folders/folder-b/files']);
+});
+
+test('the panel folds into a badge, "n/m" files up, and opens again from it', async ({ page }) => {
+  await openDashboard(page);
+  // Held until the test lets them through: the badge is seen mid-way.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route(/\/api\/drive\/folders\/[^/]+\/files$/, async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    await held;
+    return route.fulfill({ status: 201, json: { items: [] } });
+  });
+  await page.locator('[data-add-button]').click();
+  await dialog(page).locator('[data-add-folder]').selectOption('folder-a');
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await dialog(page).locator('[data-add-import="file"]').click();
+  await pick(page, [photo, notes]);
+  await dialog(page).locator('[data-add-submit]').click();
+
+  const panel = page.locator('[data-upload-panel]');
+  const badge = page.locator('[data-upload-badge]');
+  await expect(panel.locator('[data-upload-panel-count]')).toHaveText('0/2');
+  // Folded while the files still go up.
+  await panel.locator('[data-upload-collapse]').click();
+  await expect(panel).toHaveCount(0);
+  await expect(badge).toBeVisible();
+  await expect(badge.locator('[data-upload-badge-count]')).toHaveText('0/2');
+  await expect(badge).toHaveAttribute('aria-label', 'Uploads: 0 of 2');
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/upload-badge.png` });
+
+  release();
+  await expect(badge.locator('[data-upload-badge-count]')).toHaveText('2/2');
+  await expect(badge).toHaveClass(/is-done/);
+  await badge.click();
+  await expect(panel).toBeVisible();
+  await expect(badge).toHaveCount(0);
+  await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
 });
 
 test('a canvas import catches a file that is not one: pick another kind, or send it as a file', async ({ page }) => {

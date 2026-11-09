@@ -12218,6 +12218,104 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-upload-panel-hide:hover {
   background: var(--ui-glass-btn-hover);
 }
+.dashboard-upload-panel-count {
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-upload-panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-upload-panel-collapse {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ui-text-secondary);
+  cursor: pointer;
+}
+.dashboard-upload-panel-collapse:hover {
+  background: var(--ui-glass-btn-hover);
+  color: var(--ui-text);
+}
+
+/* The panel folded: a glass pill in its corner - a ring by bytes round the
+   upload icon, then "n/m". */
+.dashboard-upload-badge {
+  position: absolute;
+  z-index: 330;
+  right: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 14px 5px 5px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 999px;
+  background: var(--ui-glass-tint), var(--ui-glass-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.dashboard-upload-badge:hover {
+  background: var(--ui-glass-btn-hover), var(--ui-glass-bg);
+}
+.dashboard-upload-badge:active {
+  transform: scale(0.97);
+}
+.dashboard-upload-badge-ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--color-brands);
+}
+.dashboard-upload-badge-progress {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+.dashboard-upload-badge-track,
+.dashboard-upload-badge-fill {
+  fill: none;
+  stroke-width: 3;
+}
+.dashboard-upload-badge-track {
+  stroke: var(--ui-surface-subtle);
+}
+.dashboard-upload-badge-fill {
+  stroke: currentColor;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.45s linear;
+}
+.dashboard-upload-badge.is-failed .dashboard-upload-badge-ring {
+  color: var(--ui-danger);
+}
+.dashboard-upload-badge-count {
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-upload-badge-enter-active,
+.dashboard-upload-badge-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
+}
+.dashboard-upload-badge-enter-from,
+.dashboard-upload-badge-leave-to {
+  opacity: 0;
+  transform: translateY(12px) scale(0.92);
+}
 .dashboard-upload-list {
   display: grid;
   gap: 6px;
@@ -12322,10 +12420,18 @@ html { -webkit-tap-highlight-color: transparent; }
     width: auto;
     bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   }
+  /* Above the floating "+". */
+  .dashboard-upload-badge {
+    right: 12px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .dashboard-upload-panel-enter-active,
   .dashboard-upload-panel-leave-active,
+  .dashboard-upload-badge-enter-active,
+  .dashboard-upload-badge-leave-active,
+  .dashboard-upload-badge-fill,
   .dashboard-upload-fill {
     transition: none;
   }
