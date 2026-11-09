@@ -886,82 +886,12 @@
       </section>
 
       <!-- Upload Panel (Bottom-right desktop, bottom-sheet mobile) -->
-      <aside
+      <DriveUploadPanel
         v-if="uploadPanelVisible && uploads.length > 0"
-        class="drive-upload-panel"
-        data-upload-panel
-        :aria-label="t('driveUploadPanelAria')"
-      >
-        <div class="drive-upload-panel-header">
-          <div class="drive-upload-panel-title">
-            <Upload :size="16" aria-hidden="true" />
-            <span>{{ t('driveUploadingFiles') }}</span>
-            <span class="drive-upload-panel-count">({{ uploads.length }})</span>
-          </div>
-          <button
-            v-if="allUploadsFinished"
-            type="button"
-            class="drive-upload-hide-btn"
-            data-upload-hide
-            :aria-label="t('driveHideUploadPanelAria')"
-            @click="uploadPanelVisible = false"
-          >
-            {{ t('driveHide') }}
-          </button>
-        </div>
-
-        <div class="drive-upload-list" data-upload-list>
-          <div
-            v-for="u in uploads"
-            :key="u.id"
-            class="drive-upload-item"
-            :class="`status-${u.status}`"
-            :data-upload-item="u.id"
-          >
-            <div class="drive-upload-item-top">
-              <span class="drive-upload-item-name" :title="u.name">{{ u.name }}</span>
-              <span class="drive-upload-item-size">{{ formatFileSize(u.size) }}</span>
-            </div>
-
-            <!-- Progress / Status Row -->
-            <div class="drive-upload-item-bottom">
-              <template v-if="u.status === 'uploading'">
-                <div class="drive-upload-progressbar">
-                  <div class="drive-upload-progressfill" :style="{ width: `${u.progress}%` }"></div>
-                </div>
-                <span class="drive-upload-percent">{{ u.progress }}%</span>
-                <button
-                  type="button"
-                  class="drive-upload-cancel-btn"
-                  :data-upload-cancel="u.id"
-                  :aria-label="t('driveCancelUploadAria')"
-                  :title="t('driveCancel')"
-                  @click="cancelUpload(u)"
-                >
-                  <X :size="14" aria-hidden="true" />
-                </button>
-              </template>
-
-              <template v-else-if="u.status === 'done'">
-                <span class="drive-upload-status-done">
-                  <Check :size="14" aria-hidden="true" />
-                  {{ t('driveUploadDone') }}
-                </span>
-              </template>
-
-              <template v-else-if="u.status === 'error'">
-                <span class="drive-upload-status-error" :title="u.errorMessage">
-                  {{ u.errorMessage }}
-                </span>
-              </template>
-
-              <template v-else-if="u.status === 'cancelled'">
-                <span class="drive-upload-status-cancelled">{{ t('driveUploadStatusCancelled') }}</span>
-              </template>
-            </div>
-          </div>
-        </div>
-      </aside>
+        :uploads="uploads"
+        @cancel="cancelUpload"
+        @hide="uploadPanelVisible = false"
+      />
 
       <DriveFileProperties
         v-if="propertiesItem"
@@ -980,7 +910,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  Check,
   ChevronDown,
   Code,
   Download,
@@ -1024,6 +953,7 @@ import { alertDialog, confirmDialog, promptDialog } from '../composables/appDial
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
+import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
@@ -1040,17 +970,6 @@ interface TreeNode {
   expanded: boolean;
   loaded: boolean;
   children: TreeNode[] | null;
-}
-
-interface UploadItem {
-  id: string;
-  file: File;
-  name: string;
-  size: number;
-  progress: number;
-  status: 'uploading' | 'done' | 'error' | 'cancelled';
-  errorMessage?: string;
-  abort?: () => void;
 }
 
 const route = useRoute();
@@ -1123,7 +1042,7 @@ const propertiesItem = ref<DriveItem | null>(null);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const uploads = ref<UploadItem[]>([]);
+const uploads = ref<DriveUploadItem[]>([]);
 const uploadPanelVisible = ref(false);
 const isDraggingOver = ref(false);
 let dragCounter = 0;
@@ -1132,10 +1051,6 @@ let dragCounter = 0;
 const treeFolders = ref<TreeNode[]>([]);
 
 const isSearching = computed(() => debouncedQuery.value.length > 0);
-
-const allUploadsFinished = computed(() => (
-  uploads.value.length > 0 && uploads.value.every((u) => u.status !== 'uploading')
-));
 
 const activeNextCursor = computed(() => (
   isSearching.value ? searchNextCursor.value : nextCursor.value
@@ -1632,7 +1547,7 @@ async function handleFilesUpload(files: File[]) {
   uploadPanelVisible.value = true;
 
   const targetFolder = currentFolderId.value;
-  const newItems: UploadItem[] = files.map((file) => ({
+  const newItems: DriveUploadItem[] = files.map((file) => ({
     id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     file,
     name: file.name,
@@ -1675,7 +1590,7 @@ async function handleFilesUpload(files: File[]) {
   await loadCurrentFolder();
 }
 
-function cancelUpload(item: UploadItem) {
+function cancelUpload(item: DriveUploadItem) {
   if (item.status === 'uploading') {
     item.status = 'cancelled';
     item.errorMessage = t('driveUploadCancelled');
