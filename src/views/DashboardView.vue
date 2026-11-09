@@ -339,6 +339,7 @@ import { singleType, typePasses, type DashboardContentType } from '../dashboard/
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { useDashboardMarquee } from '../composables/useDashboardMarquee';
 import { useDashboardLongPress } from '../composables/useDashboardLongPress';
+import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -2857,10 +2858,6 @@ export default defineComponent({
      * status bar counts them), then packed; one that fails is left out and
      * counted, the rest still download.
      */
-    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
-      phase: 'idle', done: 0, total: 0, failed: 0,
-    });
-    let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
       const title = item.title || t('untitled');
       const base = safeFileName(title, t('untitled'));
@@ -2890,47 +2887,20 @@ export default defineComponent({
       const [base, extension] = splitFileName(file.name);
       return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
     };
-    const bulkDownload = async () => {
-      const items = selectedItems.value;
-      const driveFiles = selectedDriveFiles.value;
-      const yandex = selectedYandexFiles.value;
-      if (!items.length && !driveFiles.length && !yandex.length) return;
-      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length, failed: 0 };
-      const taken = new Set<string>();
-      const files: ArchiveFile[] = [];
-      const add = async (make: () => Promise<ArchiveFile>) => {
-        try {
-          files.push(await make());
-        } catch {
-          downloadStatus.value.failed += 1;
-        }
-        downloadStatus.value.done += 1;
-      };
-      for (const item of items) await add(() => archiveFileOf(item, taken));
-      for (const file of driveFiles) await add(() => archiveFileOfDrive(file, taken));
-      for (const file of yandex) {
-        await add(async () => {
-          const [base, extension] = splitFileName(file.name);
-          return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
-        });
-      }
-      if (!files.length) {
-        downloadStatus.value.phase = 'error';
-      } else {
-        downloadStatus.value.phase = 'pack';
-        try {
-          const blob = await buildZip(files);
-          saveBlob(blob, `qcanva-${new Date().toISOString().slice(0, 10)}.zip`);
-          downloadStatus.value.phase = 'done';
-          clearSelection();
-        } catch {
-          downloadStatus.value.phase = 'error';
-        }
-      }
-      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
-    };
-    onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
+    const { downloadStatus, bulkDownload } = useDashboardBulkDownload({
+      selectedItems,
+      selectedDriveFiles,
+      selectedYandexFiles,
+      archiveItem: archiveFileOf,
+      archiveDriveFile: archiveFileOfDrive,
+      archiveYandexFile: async (file, taken) => {
+        const [base, extension] = splitFileName(file.name);
+        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+      },
+      buildZip,
+      saveBlob,
+      clearSelection,
+    });
 
     // ----- Spaces: the user's Yandex Disk as a dashboard section
     const yandexView = ref<InstanceType<typeof DashboardYandexSection> | null>(null);
