@@ -201,7 +201,7 @@ textarea:focus-visible {
   min-height: 42px;
   padding: 3px 5px;
   border: 1px solid var(--ui-glass-border);
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);

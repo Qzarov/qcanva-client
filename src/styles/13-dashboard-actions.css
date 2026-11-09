@@ -251,7 +251,7 @@
   width: min(620px, 100%);
   max-height: min(88vh, 780px);
   overflow-y: auto;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
 }
 .dashboard-add-head {
   margin-bottom: 0;
@@ -494,7 +494,7 @@
   .dashboard-add-dialog {
     width: 100%;
     max-height: 92vh;
-    border-radius: 20px 20px 0 0;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
     padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
   }
   .dashboard-add-grid {
