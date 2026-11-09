@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { describe, expect, it } from 'vitest';
 import SharedSidebarShell from './SharedSidebarShell.vue';
 
@@ -33,5 +34,28 @@ describe('SharedSidebarShell', () => {
     await wrapper.get('[data-sidebar-backdrop]').trigger('click');
     await wrapper.get('aside').trigger('keydown.esc');
     expect(wrapper.emitted('close-mobile')).toHaveLength(2);
+  });
+
+  it('moves focus into the mobile shell and restores the trigger on close', async () => {
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    const wrapper = mount(SharedSidebarShell, {
+      attachTo: document.body,
+      props: { mobileOpen: false },
+      slots: { default: '<button type="button" data-sidebar-first>First</button>' },
+    });
+
+    await wrapper.setProps({ mobileOpen: true });
+    await nextTick();
+    expect(document.activeElement).toBe(wrapper.get('[data-sidebar-first]').element);
+
+    await wrapper.setProps({ mobileOpen: false });
+    expect(document.activeElement).toBe(trigger);
+
+    wrapper.unmount();
+    trigger.remove();
   });
 });

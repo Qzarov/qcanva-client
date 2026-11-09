@@ -25,11 +25,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 
 defineOptions({ inheritAttrs: false });
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   mobileOpen?: boolean;
   ariaLabel?: string;
   backdropClass?: string;
@@ -43,6 +43,7 @@ withDefaults(defineProps<{
 
 const emit = defineEmits<{ 'close-mobile': [] }>();
 const sidebarRef = ref<HTMLElement | null>(null);
+const previousFocus = ref<HTMLElement | null>(null);
 const focusableSelector = [
   'a[href]',
   'button:not([disabled])',
@@ -63,6 +64,34 @@ const isVisibleFocusable = (element: HTMLElement, boundary: HTMLElement) => {
   }
   return true;
 };
+
+const focusFirstMobileElement = async () => {
+  await nextTick();
+  const sidebar = sidebarRef.value;
+  if (!sidebar) return;
+  const closeButton = sidebar.querySelector<HTMLElement>('[data-sidebar-close]');
+  const first = closeButton && isVisibleFocusable(closeButton, sidebar)
+    ? closeButton
+    : Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector))
+      .find((element) => isVisibleFocusable(element, sidebar));
+  first?.focus();
+};
+
+const restorePreviousFocus = () => {
+  const element = previousFocus.value;
+  previousFocus.value = null;
+  if (element?.isConnected) element.focus();
+};
+
+watch(() => props.mobileOpen, (open) => {
+  if (open) {
+    const active = document.activeElement;
+    previousFocus.value = active instanceof HTMLElement && active !== document.body ? active : null;
+    void focusFirstMobileElement();
+  } else {
+    restorePreviousFocus();
+  }
+}, { flush: 'post', immediate: true });
 
 const trapMobileFocus = (event: KeyboardEvent) => {
   const props = (event.currentTarget as HTMLElement | null)?.getAttribute('aria-modal');
