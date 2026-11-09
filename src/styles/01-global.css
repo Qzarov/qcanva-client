@@ -392,6 +392,7 @@
   --transition-popover: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
   --transition-mobile-surface: background 0.15s, color 0.15s;
   --transition-mobile-surface-transform: background 0.15s, color 0.15s, transform 0.15s;
+  --transition-surface: background var(--transition-fast), color var(--transition-fast);
 
   /* Shadows */
   --shadow-dropdown: 0 40px 120px 0 rgba(0, 0, 0, 0.24);
