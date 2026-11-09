@@ -198,30 +198,25 @@
         :context="folderSectionProps"
       />
 
-      <section
+      <DashboardYandexSection
         v-if="isLoggedIn && yandexPath !== null"
-        class="dashboard-folder-content"
-        data-dashboard-view="yandex"
-      >
-        <DashboardYandexDisk
-          ref="yandexView"
-          :path="yandexPath"
-          :query="searchQuery"
-          :sort-mode="sortMode"
-          :view-mode="recentViewMode"
-          :refresh-key="yandexRefreshKey"
-          :selected-keys="selectedKeys"
-          @navigate="openYandexPath"
-          @update:view-mode="setRecentViewMode"
-          @toggle-select="toggleSelected"
-          @items="yandexFiles = $event"
-          @upload="uploadToYandex"
-          @move="openYandexMove"
-          @changed="yandexRefreshKey += 1"
-          @feedback="setFeedback"
-          @open-image="openYandexImage"
-        />
-      </section>
+        ref="yandexView"
+        :path="yandexPath"
+        :query="searchQuery"
+        :sort-mode="sortMode"
+        :view-mode="recentViewMode"
+        :refresh-key="yandexRefreshKey"
+        :selected-keys="selectedKeys"
+        @navigate="openYandexPath"
+        @update:view-mode="setRecentViewMode"
+        @toggle-select="toggleSelected"
+        @items="yandexFiles = $event"
+        @upload="uploadToYandex"
+        @move="openYandexMove"
+        @changed="yandexRefreshKey += 1"
+        @feedback="setFeedback"
+        @open-image="openYandexImage"
+      />
 
       <section
         v-if="isLoggedIn && spaceId !== null"
@@ -358,7 +353,7 @@ import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOver
 import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobileHeaderControls.vue';
 import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
 import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
-import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
+import DashboardYandexSection from '../components/dashboard/DashboardYandexSection.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
 import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
@@ -518,7 +513,7 @@ export default defineComponent({
     DashboardMobileHeaderControls,
     DashboardPublicHeader,
     DashboardAuthHeader,
-    DashboardYandexDisk,
+    DashboardYandexSection,
     DashboardSelectionBar,
     DashboardToolbar,
     DashboardRecentSection,
@@ -3014,7 +3009,7 @@ export default defineComponent({
     onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
 
     // ----- Spaces: the user's Yandex Disk as a dashboard section
-    const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
+    const yandexView = ref<InstanceType<typeof DashboardYandexSection> | null>(null);
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
     const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
