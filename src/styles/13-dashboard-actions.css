@@ -338,7 +338,7 @@
 .dashboard-view .dashboard-add-option {
   background: var(--ui-glass-tint), var(--ui-glass-card-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ui-glass-card-shadow);
   color: var(--ui-text);
 }
 .dashboard-view .dashboard-add-option:hover:not(:disabled, .active) {

@@ -68,7 +68,7 @@
   border: 1px solid var(--ui-glass-border);
   border-radius: 20px;
   background: var(--ui-glass-tint), var(--ui-glass-card-bg);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--ui-glass-card-shadow);
 }
 :where(.ui-card--elevated) { box-shadow: var(--ui-shadow); }
 :where(.ui-card--subtle) { background: var(--ui-surface-subtle); box-shadow: none; }
