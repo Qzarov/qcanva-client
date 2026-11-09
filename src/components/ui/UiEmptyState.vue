@@ -13,3 +13,6 @@ withDefaults(defineProps<{
   role: undefined,
 });
 </script>
+<style scoped>
+.ui-empty-state { color: var(--ui-text-secondary); }
+</style>
