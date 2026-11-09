@@ -60,6 +60,8 @@ roadmap для структурного рефакторинга клиентс�
   listeners вынесены в `useDashboardFeedNavigation`.
 - Dashboard viewport guard: защита frame scroll при focus/keyboard и lifecycle
   cleanup вынесены в `useDashboardFramePinning`.
+- Dashboard section transitions: расчёт глубины папок, направление анимации и
+  timeout cleanup вынесены в `useDashboardSectionTransition`.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -76,7 +78,7 @@ roadmap для структурного рефакторинга клиентс�
 | Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
-| DashboardView | **97%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
+| DashboardView | **98%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
