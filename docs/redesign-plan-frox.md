@@ -9,7 +9,7 @@
 **Tech Stack:** Vue 3, TypeScript, Vite, plain CSS with an ordered global
 entrypoint (`style.css`) and domain modules under `src/styles/`
 
-## Актуальный статус рефакторинга (2026-11-08)
+## Актуальный статус рефакторинга (2026-11-09)
 
 Этот документ начинался как план визуального редизайна, но теперь также служит
 roadmap для структурного рефакторинга клиентской части. Старые пошаговые
@@ -41,9 +41,11 @@ roadmap для структурного рефакторинга клиентс�
   `TextDocumentMentionMenu`, selection bubble — в `TextDocumentBubbleMenu`,
   topbar mobile-menu controller — в `useTextDocumentTopbarMenu`.
 - UI library: `UiButton`, `UiIconButton`, `UiModal`, `UiInput`, `UiTextarea`,
-  `UiEmptyState`, `UiMenu` и `UiSegmentedControl` созданы и используются в
-  Dashboard и Text Documents. Сортировка, фильтры и переключатель вида больше
-  не дублируют собственную menu/pressed-семантику.
+  `UiEmptyState`, `UiMenu`, `UiSegmentedControl`, `UiBadge`, `UiToast` и
+  `UiCard` созданы и покрыты component tests. Badge-сценарии Dashboard/Admin/
+  HTML мигрированы, shell-карточки Settings/Admin используют `UiCard`, а
+  shared surfaces Canvas/Text/HTML (`history`, share panel, `AccessGate`)
+  сохраняют domain hooks поверх общего primitive.
 - Shared sidebar shell: `SharedSidebarShell` теперь владеет внешним `aside`,
   mobile-backdrop, Escape и focus trap для `AppSidebar` и `DashboardSidebar`;
   дерево Dashboard и статическая навигация остаются в своих компонентах.
@@ -59,22 +61,20 @@ roadmap для структурного рефакторинга клиентс�
 
 | Направление | Готово | Что осталось |
 |---|---:|---|
-| UI component library | **73%** | `UiCard`, `UiBadge`, `UiToast`, затем точечная миграция Canvas и Text Documents |
+| UI component library | **90%** | финальная миграция редких surface-кейсов и component-only CSS |
 | Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
-| TextDocumentView | **96%** | финальная CSS-полировка |
+| TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **91%** | оставшиеся границы из строк выше |
+| **Весь план** | **94%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
-1. **UI component library.** Инвентаризировать повторяющийся application
-   chrome и создать минимальный набор в `src/components/ui/`: `UiButton`,
-   `UiIconButton`, `UiModal`, `UiMenu`, `UiInput`, `UiTextarea`, `UiCard`,
-   `UiBadge`, `UiEmptyState`, `UiSegmentedControl`, `UiToast`. Начинать с
-   Dashboard, затем переносить Text Documents и Canvas. Не обобщать resource-
-   specific cards и canvas toolbar до появления двух независимых потребителей.
+1. **UI component library.** Завершить редкие surface-миграции и перенести
+   component-only CSS из доменных модулей в primitives там, где это не меняет
+   resource-specific layout. Не обобщать resource-specific cards и canvas
+   toolbar без двух независимых потребителей.
 2. **Shared sidebar shell.** Вынести общий header/footer/backdrop/focus-trap
    из `AppSidebar` и `DashboardSidebar`; в dashboard оставить только дерево,
    Spaces и section-specific navigation.
