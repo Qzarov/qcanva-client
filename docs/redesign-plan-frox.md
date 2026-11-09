@@ -127,6 +127,26 @@ roadmap для структурного рефакторинга клиентс�
 | Final CSS cleanup | **100%** | semantic audit завершён |
 | **Весь план** | **100%** | рефакторинг завершён |
 
+### Сводка в цифрах
+
+Строки ниже сравнивают текущий `dev` с `origin/main` до структурного
+рефакторинга. Для `DashboardView` отдельно учитываются новые remote-фичи,
+влитые позже из `origin/dev`.
+
+| Поверхность | До | Сейчас | Дельта | Что изменилось |
+|---|---:|---:|---:|---|
+| `CanvasLoader.vue` | 5743 | 4151 | **−1592 (−27.7%)** | state/sync/camera/drawing/editor/D&D разнесены по 71 canvas-файлу и компонентурам |
+| `TextDocumentView.vue` | 3798 | 2653 | **−1145 (−30.1%)** | outline/history/link/mention/slash/topbar/socket вынесены в 7 composable/component-направлений |
+| `DashboardView.vue` | 4636 | 4258 до merge / 5586 после merge | **−378 до remote-фич** | bulk/drag/feed/sidebar orchestration вынесены; remote добавил plans, Spaces filters, upload queue и moderation |
+| `HtmlDocumentView.vue` | 1017 | 1017 | 0 | поведение уже было локализовано, визуальные primitives мигрированы без раздувания view |
+| `CanvasView.vue` | 2215 | 2216 | +1 | view оставлен тонким host-слоем, основная декомпозиция в CanvasLoader/canvas-компонентах |
+| `AdminView.vue` | 815 | 865 | +50 | remote plans/analytics/public moderation добавлены компонентами, а не возвращением логики в host |
+| `SettingsView.vue` | 360 | 359 | −1 | plan surface добавлен отдельным `PlanSettingsPanel` |
+| `src/style.css` | 13430 | 20 | **−13410** | монолит заменён 15 import-only global modules; UI-only CSS переехал в scoped primitives |
+
+Дополнительные артефакты: 10 Dashboard composables, 7 TextDocument composable-направлений,
+11 UI primitives, 15 CSS-модулей, 234 test files / 2248 unit tests после merge remote.
+
 ### Финальная проверка
 
 1. Unit suite: 234 файлов / 2248 тестов.
