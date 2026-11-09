@@ -21,3 +21,20 @@ type SegmentedOption = { value: T; label: string; ariaLabel?: string; title?: st
 defineProps<{ options: readonly SegmentedOption[]; modelValue: T; label: string }>();
 const emit = defineEmits<{ 'update:modelValue': [value: T] }>();
 </script>
+<style scoped>
+.ui-segmented-control {
+  display: inline-flex;
+  align-items: center;
+}
+.ui-segmented-control > button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ui-segmented-control > button:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+</style>
