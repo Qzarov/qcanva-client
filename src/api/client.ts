@@ -1,5 +1,6 @@
 import { clearTabs } from '../tabs/registry';
 import { resolveApiBase } from './hubOverride';
+import { planErrorText } from './plan-errors';
 export const API_BASE = resolveApiBase();
 
 export const MAX_IMAGE_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -181,7 +182,7 @@ export async function request<T>(path: string, options: ApiRequestInit = {}): Pr
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.message || `HTTP ${res.status}`, body);
+    throw new ApiError(res.status, planErrorText(body) || body.message || `HTTP ${res.status}`, body);
   }
 
   return res.json();

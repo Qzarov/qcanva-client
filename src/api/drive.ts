@@ -2,6 +2,7 @@ import { API_BASE, ApiError, getAccessToken, request } from './client';
 import { createUploadXhr } from './upload-xhr';
 import { uploadNativelyOr } from './native-upload';
 import { useI18n } from '../composables/useI18n';
+import { planErrorText } from './plan-errors';
 
 export type DriveSlice = 'all' | 'media' | 'files' | 'docs';
 export type DriveSort = 'name' | 'date' | 'size';
@@ -453,7 +454,7 @@ function parseUploadAnswer(status: number, text: string): { items: DriveItem[] }
   try { body = JSON.parse(text || '{}'); } catch { /* empty */ }
   if (status >= 200 && status < 300) return body && typeof body === 'object' ? body : { items: [] };
   if (status === 0) throw new ApiError(0, useI18n().t('driveUploadNetworkError'));
-  let message = body?.message || `HTTP ${status}`;
+  let message = planErrorText(body) || body?.message || `HTTP ${status}`;
   if (status === 413) message = useI18n().t('driveUploadTooLarge');
   throw new ApiError(status, message, body);
 }
@@ -501,7 +502,7 @@ function xhrUploadFile(
         try {
           body = JSON.parse(xhr.responseText || '{}');
         } catch {}
-        let message = body?.message || `HTTP ${xhr.status}`;
+        let message = planErrorText(body) || body?.message || `HTTP ${xhr.status}`;
         if (xhr.status === 413) {
           message = useI18n().t('driveUploadTooLarge');
         }

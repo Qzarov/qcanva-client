@@ -1356,6 +1356,7 @@ import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/
 import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
 import DashboardUploadBadge from '../components/dashboard/DashboardUploadBadge.vue';
 import { useUploadSummary } from '../dashboard/upload-summary';
+import { plansApi } from '../api/plans';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -4060,6 +4061,12 @@ export default defineComponent({
     const { load: loadSpaces } = useSpaces();
     onMounted(() => { if (isLoggedIn) void loadSpaces(); });
     const createSpace = async () => {
+      // Asked first: no typing a name for a plan that will refuse it.
+      const allowed = await plansApi.mine().then((info) => info.plan?.canCreateSpaces !== false).catch(() => true);
+      if (!allowed) {
+        setFeedback('error', t('planErrorSpaces'));
+        return;
+      }
       const name = (await promptDialog({
         title: t('spaceNew'),
         placeholder: t('spaceNamePlaceholder'),

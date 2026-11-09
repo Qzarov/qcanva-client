@@ -14,6 +14,24 @@
     <p v-if="loading" class="admin-note">{{ t('loadingDots') }}</p>
 
     <template v-else>
+      <div class="admin-tabs" role="tablist">
+        <button
+          v-for="item in TABS"
+          :key="item.key"
+          type="button"
+          role="tab"
+          class="admin-tab"
+          :class="{ active: tab === item.key }"
+          :aria-selected="tab === item.key"
+          :data-admin-tab="item.key"
+          @click="tab = item.key"
+        >{{ t(item.label) }}</button>
+      </div>
+
+      <AdminPlansPanel v-if="tab === 'plans'" @changed="loadAssignments" />
+      <AdminAnalyticsPanel v-else-if="tab === 'analytics'" />
+
+      <template v-else>
       <div class="admin-stats">
         <div class="admin-card stat-card">
           <div class="stat-value">{{ stats.userCount }}</div>
@@ -153,6 +171,7 @@
             <th>{{ t('adminColName') }}</th>
             <th>{{ t('adminColEmail') }}</th>
             <th>{{ t('adminColRole') }}</th>
+            <th>{{ t('planName') }}</th>
             <th>{{ t('adminColCanvases') }}</th>
             <th>{{ t('adminColRegistered') }}</th>
             <th>{{ t('adminColLastActive') }}</th>
@@ -174,6 +193,9 @@
                 <option value="superadmin">{{ t('adminRoleSuperadmin') }}</option>
               </select>
               <span v-else class="badge" :class="roleBadge(u.role)">{{ u.role }}</span>
+            </td>
+            <td>
+              <button type="button" class="btn-ghost btn-sm admin-plan-open" :data-admin-user-plan="u.email" @click="planUser = u">{{ assignmentOf(u.id) || '—' }}</button>
             </td>
             <td>{{ u.canvasCount }}</td>
             <td>{{ formatDate(u.createdAt) }}</td>
@@ -255,8 +277,10 @@
           </table>
         </div>
       </section>
+      </template>
     </template>
     </main>
+    <AdminUserPlanDialog v-if="planUser" :user="planUser" @changed="loadAssignments" @close="planUser = null" />
   </div>
 </template>
 
@@ -268,12 +292,29 @@ import AccountMenu from '../components/AccountMenu.vue';
 import { ArrowLeft } from '@lucide/vue';
 import { adminRequest, adminApi, type AdminSettings, type HiddenPublicResource } from '../api/admin';
 import { useI18n } from '../composables/useI18n';
+import { plansApi, type PlanAssignment } from '../api/plans';
+import AdminPlansPanel from '../components/admin/AdminPlansPanel.vue';
+import AdminAnalyticsPanel from '../components/admin/AdminAnalyticsPanel.vue';
+import AdminUserPlanDialog from '../components/admin/AdminUserPlanDialog.vue';
 
 function getToken() { return localStorage.getItem('token'); }
 
 export default defineComponent({
-  components: { AccountMenu, ArrowLeft },
+  components: { AccountMenu, ArrowLeft, AdminPlansPanel, AdminAnalyticsPanel, AdminUserPlanDialog },
   setup() {
+    const TABS = [
+      { key: 'overview', label: 'adminTabOverview' },
+      { key: 'plans', label: 'plansTitle' },
+      { key: 'analytics', label: 'analyticsTitle' },
+    ] as const;
+    const tab = ref<(typeof TABS)[number]['key']>('overview');
+    const planUser = ref<{ id: string; name: string; email: string } | null>(null);
+    const assignments = ref<PlanAssignment[]>([]);
+    const assignmentOf = (userId: string) => assignments.value.find((row) => row.userId === userId)?.planName;
+    const loadAssignments = () => plansApi.assignments().then((rows) => {
+      assignments.value = Array.isArray(rows) ? rows : [];
+    }).catch(() => undefined);
+    onMounted(loadAssignments);
     const { show: showToast } = useToast();
     const { t } = useI18n();
     const users = ref<any[]>([]);
@@ -597,6 +638,11 @@ export default defineComponent({
       hiddenSupported,
       restoring,
       resourceLink,
+      TABS,
+      tab,
+      planUser,
+      assignmentOf,
+      loadAssignments,
       typeLabel,
       showInPublic,
       users,
@@ -668,8 +714,8 @@ export default defineComponent({
   padding: 24px 16px calc(48px + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
-.admin-note { margin: 0; color: var(--ui-text-secondary); }
-.admin-card {
+:deep(.admin-note) { margin: 0; color: var(--ui-text-secondary); }
+:deep(.admin-card) {
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -679,22 +725,22 @@ export default defineComponent({
   background: var(--ui-glass-tint), var(--ui-glass-card-bg);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
 }
-.admin-card h2 { margin: 0; font-size: 16px; }
-.admin-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
+:deep(.admin-card h2) { margin: 0; font-size: 16px; }
+:deep(.admin-stats) { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin: 0; }
 @media (max-width: 520px) {
-  .admin-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  :deep(.admin-stats) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 }
-.stat-card { gap: 2px; }
-.stat-value { font-size: 28px; font-weight: 750; line-height: 1.1; }
-.stat-label { color: var(--ui-text-secondary); font-size: 13px; }
-.admin-table-wrap { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
-.admin-empty { margin: 0; color: var(--ui-text-secondary); font-size: 14px; }
+:deep(.stat-card) { gap: 2px; }
+:deep(.stat-value) { font-size: 28px; font-weight: 750; line-height: 1.1; }
+:deep(.stat-label) { color: var(--ui-text-secondary); font-size: 13px; }
+:deep(.admin-table-wrap) { min-width: 0; overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+:deep(.admin-empty) { margin: 0; color: var(--ui-text-secondary); font-size: 14px; }
 .admin-link { color: inherit; font-weight: 600; text-decoration: none; }
 .admin-link:hover { text-decoration: underline; }
 /* A table again on a phone too (the old phone rule made it a scrolling
    block): the card's wrap scrolls it sideways. */
-.admin-table { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }
-.admin-table th {
+:deep(.admin-table) { display: table; width: 100%; border-collapse: collapse; font-size: 14px; white-space: normal; }
+:deep(.admin-table th) {
   padding: 8px 10px;
   border-bottom: 1px solid var(--ui-border);
   color: var(--ui-text-secondary);
@@ -705,14 +751,14 @@ export default defineComponent({
   text-transform: uppercase;
   white-space: nowrap;
 }
-.admin-table td {
+:deep(.admin-table td) {
   padding: 10px;
   border-bottom: 1px solid var(--ui-border);
   vertical-align: middle;
   white-space: nowrap;
 }
-.admin-table tbody tr:last-child td { border-bottom: 0; }
-.admin-table tbody tr:hover td { background: var(--ui-glass-btn-hover); }
+:deep(.admin-table tbody tr:last-child td) { border-bottom: 0; }
+:deep(.admin-table tbody tr:hover td) { background: var(--ui-glass-btn-hover); }
 .role-select {
   min-height: 34px;
   padding: 4px 10px;
@@ -812,4 +858,8 @@ export default defineComponent({
 .admin-storage-capacity .admin-storage-effective {
   margin-top: 0;
 }
+.admin-tabs { display: inline-flex; justify-self: start; gap: 4px; padding: 3px; border: 1px solid var(--ui-glass-border); border-radius: 999px; background: var(--ui-glass-btn-bg); }
+.admin-tab { padding: 6px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--ui-text-secondary); font: inherit; font-size: 14px; cursor: pointer; transition: background-color 0.15s ease, color 0.15s ease; }
+.admin-tab.active { background: var(--ui-glass-accent-bg, var(--ui-surface-subtle)); color: var(--ui-text); font-weight: 600; }
+.admin-plan-open { width: auto; }
 </style>
