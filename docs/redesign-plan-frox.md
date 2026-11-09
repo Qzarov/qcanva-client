@@ -82,6 +82,8 @@ roadmap для структурного рефакторинга клиентс�
   `--transition-popover` для dashboard actions/dialogs.
 - CSS cleanup: повторяющийся glass inset highlight вынесен в
   `--ui-glass-inset-highlight`.
+- CSS cleanup: mobile surface transitions вынесены в
+  `--transition-mobile-surface` и `--transition-mobile-surface-transform`.
 - UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
   primitives теперь держат scoped styles рядом с компонентами; глобальные
   модули `15-ui-components.css`, `16-ui-form-empty.css` и
@@ -108,7 +110,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **96%** | удаление оставшихся semantic domain-дублей |
+| Final CSS cleanup | **97%** | удаление оставшихся semantic domain-дублей |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
