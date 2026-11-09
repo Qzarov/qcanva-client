@@ -5,6 +5,7 @@ import UiButton from './UiButton.vue';
 import UiBadge from './UiBadge.vue';
 import UiIconButton from './UiIconButton.vue';
 import UiModal from './UiModal.vue';
+import UiToast from './UiToast.vue';
 
 describe('UI primitives', () => {
   it('keeps badge variants and semantic status in one API', () => {
@@ -18,6 +19,17 @@ describe('UI primitives', () => {
     expect(wrapper.attributes('role')).toBe('status');
     expect(wrapper.attributes('data-filter-count')).toBe('');
     expect(wrapper.text()).toBe('3');
+  });
+
+  it('renders toast semantics and emits close from the shared action', async () => {
+    const wrapper = mount(UiToast, { props: { message: 'Saved', type: 'success' } });
+
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['ui-toast', 'toast-item', 'ui-toast--success', 'toast-success']));
+    expect(wrapper.attributes('role')).toBe('status');
+    expect(wrapper.attributes('aria-live')).toBe('polite');
+    expect(wrapper.get('.ui-toast__message').text()).toBe('Saved');
+    await wrapper.get('.ui-toast__close').trigger('click');
+    expect(wrapper.emitted('close')).toHaveLength(1);
   });
 
   it('keeps button state and accessibility attributes in one API', () => {
