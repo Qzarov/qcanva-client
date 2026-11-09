@@ -41,7 +41,7 @@
 .share-panel.share-panel-glass {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border-color: var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
@@ -127,7 +127,7 @@
     overflow-y: auto;
     border: 1px solid var(--ui-glass-border);
     border-radius: 20px;
-    box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+    box-shadow: var(--ui-glass-surface-shadow);
   }
   .mobile-add-sheet-handle { display: none; }
   .mobile-add-backdrop { background: transparent; }
@@ -190,7 +190,7 @@
 ) {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   color: var(--ui-text);
@@ -238,7 +238,7 @@
     border-radius: 999px;
     background: var(--ui-glass-tint), var(--ui-glass-bg);
     border: 1px solid var(--ui-glass-border);
-    box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+    box-shadow: var(--ui-glass-surface-shadow);
     backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
     -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
     color: var(--ui-text);
@@ -401,7 +401,7 @@
 ) {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border-color: var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
@@ -433,7 +433,7 @@
    hover and flickered as the pointer crossed the card's edge. */
 .dashboard-view :is(.dashboard-recent-card, .canvas-card, .subfolder-card):hover {
   background: var(--ui-glass-tint), var(--ui-glass-card-hover);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   /* Overrides the older .dashboard-recent-card:hover lift - same reason. */
   transform: none;
 }
@@ -558,7 +558,7 @@
 .html-editor-page :is(.mobile-action-popover, .html-share-panel) {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border-color: var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
@@ -700,7 +700,7 @@
 .html-editor-page .html-editor-bar :is(.back-btn, .btn-ghost, .account-menu-trigger) {
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   color: var(--ui-text);
@@ -746,7 +746,7 @@
   border-radius: 999px;
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-shadow);
+  box-shadow: var(--ui-glass-surface-shadow);
   backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
   -webkit-backdrop-filter: blur(var(--ui-glass-blur)) saturate(1.2);
 }
