@@ -466,7 +466,7 @@
   font-weight: 500;
   text-decoration: none;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: var(--transition-surface);
   border: none;
   background: transparent;
   width: 100%;
@@ -1086,7 +1086,7 @@
   color: var(--ui-text-secondary);
   font-size: 13px;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: var(--transition-surface);
 }
 .btn-ghost:hover {
   background: var(--ui-surface-subtle);

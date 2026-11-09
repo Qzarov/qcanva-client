@@ -437,7 +437,7 @@
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition: var(--transition-surface);
 }
 .canvas-topbar-undo,
 .canvas-topbar-redo {
