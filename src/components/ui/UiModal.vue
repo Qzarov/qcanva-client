@@ -33,3 +33,24 @@ const root = ref<HTMLElement | null>(null);
 
 defineExpose({ root });
 </script>
+<style scoped>
+.ui-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--ui-overlay);
+}
+.ui-modal {
+  width: min(560px, 100%);
+  padding: 18px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-lg);
+  background: var(--ui-surface-elevated);
+  box-shadow: var(--ui-shadow);
+  backdrop-filter: blur(10px);
+}
+</style>

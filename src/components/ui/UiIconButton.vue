@@ -26,3 +26,22 @@ withDefaults(defineProps<{
   disabled: false,
 });
 </script>
+<style scoped>
+.ui-icon-button {
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 50%;
+  background: var(--ui-glass-btn-bg);
+  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  color: var(--ui-text);
+  cursor: pointer;
+}
+.ui-icon-button--md { width: 34px; height: 34px; }
+.ui-icon-button--sm { width: 28px; height: 28px; }
+.ui-icon-button:hover:not(:disabled) { background: var(--ui-glass-btn-hover); }
+.ui-icon-button--danger { color: var(--ui-danger); }
+.ui-icon-button--clear { border-color: transparent; background: transparent; box-shadow: none; }
+.ui-icon-button:disabled { opacity: 0.55; cursor: default; pointer-events: none; }
+.ui-icon-button:focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }
+</style>
