@@ -47,6 +47,7 @@
   --ui-glass-accent-text: #8cff8c;
   --ui-glass-accent-glow: 0 0 18px rgba(0, 255, 0, 0.18);
   --ui-glass-accent-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  --ui-glass-card-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
   /* What glass pages sit on: soft brand-tinted light, so the glass has
      something to refract. Cards are glass without blur (cheap in numbers). */
   --ui-glass-ambient:
