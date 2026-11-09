@@ -508,6 +508,7 @@
                     :selectable="isLoggedIn"
                     :busy="isBusy"
                     :dragging="draggingResourceId === item.id"
+                    card-tag="div"
                     :renameable="true"
                     :show-pin="isOwnedResource(item)"
                     pin-title="Pin canvas"
