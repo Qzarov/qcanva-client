@@ -93,7 +93,7 @@ roadmap для структурного рефакторинга клиентс�
   модули `15-ui-components.css`, `16-ui-form-empty.css` и
   `17-ui-menu-segmented.css` удалены.
 - Visual smoke: актуализирован dashboard mobile selector и добавлены Darwin
-  baselines; login/dashboard/canvas проходят 3/3.
+  baselines; login/dashboard/canvas/text document проходят 4/4.
 - Shared sidebar edge-cases: добавлен regression-тест Tab/Shift+Tab focus wrap
   внутри mobile dialog; полный suite теперь 2231 тест.
 - `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
@@ -111,7 +111,7 @@ roadmap для структурного рефакторинга клиентс�
 |---|---:|---|
 | UI component library | **98%** | accessibility smoke и редкие surface-кейсы |
 | Shared sidebar shell | **90%** | финальная desktop/mobile smoke-проверка |
-| TextDocumentView | **97%** | финальная CSS-полировка |
+| TextDocumentView | **100%** | runtime visual smoke завершён |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
 | Final CSS cleanup | **99%** | финальный аудит semantic domain-дублей |
