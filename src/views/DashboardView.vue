@@ -342,6 +342,7 @@ import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
+import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -629,13 +630,6 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
-    const resourceDrag = ref<{
-      active: boolean;
-      startX: number;
-      startY: number;
-      item: FolderItem;
-      targetFolderId: string;
-    } | null>(null);
     const suppressNextCardClick = ref(false);
     const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
@@ -2331,114 +2325,28 @@ export default defineComponent({
       }
     };
 
-    const removeResourceDragListeners = () => {
-      window.removeEventListener('mousemove', onResourceMouseMove);
-      window.removeEventListener('mouseup', onResourceMouseUp);
-      window.removeEventListener('touchmove', onResourceTouchMove);
-      window.removeEventListener('touchend', onResourceTouchEnd);
-      window.removeEventListener('touchcancel', onResourceTouchCancel);
-    };
-
-    const finishResourceDrag = async () => {
-      const state = resourceDrag.value;
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      if (!state?.active) {
-        endResourceDrag();
-        return;
-      }
-      suppressNextCardClick.value = true;
-      window.setTimeout(() => {
-        suppressNextCardClick.value = false;
-      }, 0);
-      const targetFolder = findDropFolder(state.targetFolderId);
-      if (targetFolder) {
-        await dropResourceToFolder(targetFolder);
-      } else {
-        endResourceDrag();
-      }
-    };
-
-    const updateResourceDrag = (clientX: number, clientY: number, event?: Event) => {
-      const state = resourceDrag.value;
-      if (!state) return;
-      const distance = Math.hypot(clientX - state.startX, clientY - state.startY);
-      if (!state.active && distance < 8) return;
-      if (!state.active) {
-        state.active = true;
-        closeCardMenu();
-        draggingResourceId.value = state.item.id;
-        draggingResourceType.value = state.item.type;
-        draggingResourceFolderId.value = state.item.folderId || null;
-      }
-      event?.preventDefault();
-      const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
-        .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.dashboardFolder || '';
-      const folder = findDropFolder(folderId);
-      state.targetFolderId = folder?.id || '';
-      dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had folded its subtree.
-      if (folder?.hasChildren) expandTree(folder.id);
-    };
-
-    function onResourceMouseMove(event: MouseEvent) {
-      updateResourceDrag(event.clientX, event.clientY, event);
-    }
-
-    function onResourceMouseUp() {
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchMove(event: TouchEvent) {
-      const point = event.touches[0];
-      if (!point) return;
-      updateResourceDrag(point.clientX, point.clientY, event);
-    }
-
-    function onResourceTouchEnd(event: TouchEvent) {
-      const point = event.changedTouches[0];
-      if (point) updateResourceDrag(point.clientX, point.clientY, event);
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchCancel() {
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      endResourceDrag();
-    }
-
-    const startResourceDrag = (clientX: number, clientY: number, item: FolderItem, sourceFolder: FolderSummary, target: HTMLElement | null) => {
-      if (isBusy.value) return;
-      if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
-      if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
-      resourceDrag.value = {
-        active: false,
-        startX: clientX,
-        startY: clientY,
-        item,
-        targetFolderId: '',
-      };
-    };
-
-    const startResourceMouseDrag = (event: MouseEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      if (event.button !== 0) return;
-      startResourceDrag(event.clientX, event.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('mousemove', onResourceMouseMove);
-      window.addEventListener('mouseup', onResourceMouseUp);
-    };
-
-    const startResourceTouchDrag = (event: TouchEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      const point = event.touches[0];
-      if (!point) return;
-      startResourceDrag(point.clientX, point.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('touchmove', onResourceTouchMove, { passive: false });
-      window.addEventListener('touchend', onResourceTouchEnd);
-      window.addEventListener('touchcancel', onResourceTouchCancel);
-    };
+    const {
+      resourceDrag,
+      startResourceMouseDrag,
+      startResourceTouchDrag,
+    } = useDashboardResourceDrag<FolderItem, FolderSummary>({
+      draggingResourceId,
+      draggingResourceType,
+      draggingResourceFolderId,
+      dragTargetFolder,
+      suppressNextCardClick,
+      closeCardMenu: () => closeCardMenu(),
+      endResourceDrag,
+      findDropFolder,
+      dropResourceToFolder,
+      expandTree,
+      canStart: (_item, sourceFolder, target) => (
+        !isBusy.value
+        && sourceFolder.role === 'owner'
+        && ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)
+        && !target?.closest('button,input,a,textarea,select,[contenteditable="true"]')
+      ),
+    });
 
     const openRenameFolderModal = (folder: FolderSummary) => {
       closeCardMenu();
