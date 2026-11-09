@@ -28,7 +28,7 @@
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s, transform 0.15s;
+  transition: var(--transition-mobile-surface-transform);
   -webkit-tap-highlight-color: transparent;
 }
 .mobile-modebar-btn:active { background: var(--ui-surface-subtle); transform: scale(.94); }
@@ -134,7 +134,7 @@
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: var(--transition-mobile-surface);
   -webkit-tap-highlight-color: transparent;
   flex: 1 1 0;
   max-width: none;
@@ -364,7 +364,7 @@
   font-size: 10px;
   font-weight: 500;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s, transform 0.15s;
+  transition: var(--transition-mobile-surface-transform);
 }
 .mobile-add-sheet-item:active { background: color-mix(in srgb, var(--ui-accent-strong) 10%, var(--ui-surface-subtle)); transform: scale(.94); }
 .mobile-modebar.is-add-open { z-index: 202; }
@@ -403,7 +403,7 @@
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: var(--transition-mobile-surface);
   -webkit-tap-highlight-color: transparent;
   flex: 1 1 0;
 }
@@ -446,7 +446,7 @@
   cursor: pointer;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s;
+  transition: var(--transition-mobile-surface);
 }
 .mobile-draw-width-btn:active { background: var(--ui-surface-subtle); }
 .mobile-draw-width-btn.active {
