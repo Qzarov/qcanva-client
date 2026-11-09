@@ -248,7 +248,7 @@
 }
 /* Selected: exactly as a selected sidebar item. */
 .dashboard-view .dashboard-sidebar:not(.collapsed) .dashboard-sidebar-folder-list .dashboard-sidebar-folder.active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);
@@ -493,7 +493,7 @@
   transform: translateX(var(--thumb-x));
   border: 1px solid var(--ui-glass-accent-border);
   border-radius: 12px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   transition: transform 0.26s cubic-bezier(0.2, 0, 0, 1), width 0.26s cubic-bezier(0.2, 0, 0, 1);
 }

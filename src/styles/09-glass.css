@@ -329,7 +329,7 @@
 ).active,
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .block-menu-item.open,
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .mobile-toolbar-btn.mobile-toolbar-btn-active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);
@@ -509,7 +509,7 @@
   .dashboard-recent-view-toggle button,
   .dashboard-public-owner-filter button
 ).active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);
@@ -646,7 +646,7 @@
 .html-history-item.active,
 .text-doc-outline-item-active .text-doc-outline-link,
 .html-editor-page .html-mode-tabs button.active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);
@@ -993,7 +993,7 @@
   margin-left: 4px;
   padding: 0 14px;
   border-radius: 999px;
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);

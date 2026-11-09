@@ -308,7 +308,7 @@
 }
 /* Until the thumb is measured, the chosen tab carries the accent itself. */
 .dashboard-view .dashboard-add-tabs:not(.has-thumb) button.active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border-color: var(--ui-glass-accent-border);
 }
 .dashboard-view .dashboard-add-tabs.has-thumb::before {
@@ -345,7 +345,7 @@
   background: var(--ui-glass-tint), var(--ui-glass-card-hover);
 }
 .dashboard-view .dashboard-add-option.active {
-  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02)), var(--ui-glass-accent-bg);
+  background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border-color: var(--ui-glass-accent-border);
   box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
   color: var(--ui-glass-accent-text);
