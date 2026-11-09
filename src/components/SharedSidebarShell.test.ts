@@ -58,4 +58,29 @@ describe('SharedSidebarShell', () => {
     wrapper.unmount();
     trigger.remove();
   });
+
+  it('wraps Tab focus inside the open mobile shell', async () => {
+    const wrapper = mount(SharedSidebarShell, {
+      attachTo: document.body,
+      props: { mobileOpen: true },
+      slots: {
+        default: '<button data-sidebar-first>First</button><button data-sidebar-last>Last</button>',
+      },
+    });
+
+    await nextTick();
+    const aside = wrapper.get('aside');
+    const first = wrapper.get('[data-sidebar-first]').element as HTMLElement;
+    const last = wrapper.get('[data-sidebar-last]').element as HTMLElement;
+
+    last.focus();
+    await aside.trigger('keydown', { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+
+    first.focus();
+    await aside.trigger('keydown', { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+
+    wrapper.unmount();
+  });
 });
