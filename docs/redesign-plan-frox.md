@@ -70,10 +70,14 @@ roadmap для структурного рефакторинга клиентс�
   `--ui-glass-accent-shadow` с тем же набором потребителей.
 - CSS cleanup: shadow карточек glass стал токеном
   `--ui-glass-card-shadow`, общий для glass/dashboard/UI-card поверхностей.
+- CSS cleanup: pill-радиусы `999px` и крупные `20px` радиусы переведены на
+  `--radius-full` и `--radius-xl` по всем domain-модулям.
 - UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
   primitives теперь держат scoped styles рядом с компонентами; глобальные
   модули `15-ui-components.css`, `16-ui-form-empty.css` и
   `17-ui-menu-segmented.css` удалены.
+- Visual smoke: актуализирован dashboard mobile selector и добавлены Darwin
+  baselines; login/dashboard/canvas проходят 3/3.
 - `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён; UI-only
   модули удалены после переноса стилей в компоненты.
@@ -87,12 +91,12 @@ roadmap для структурного рефакторинга клиентс�
 
 | Направление | Готово | Что осталось |
 |---|---:|---|
-| UI component library | **95%** | финальная миграция редких surface-кейсов и accessibility smoke |
+| UI component library | **98%** | accessibility smoke и редкие surface-кейсы |
 | Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **82%** | удаление оставшихся domain-дублей, desktop/mobile smoke |
+| Final CSS cleanup | **90%** | удаление оставшихся domain-дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
