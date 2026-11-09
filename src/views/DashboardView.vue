@@ -343,6 +343,7 @@ import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownloa
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
 import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
+import { useDashboardFeedNavigation } from '../composables/useDashboardFeedNavigation';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -1564,70 +1565,13 @@ export default defineComponent({
       sections.push('shared', 'interactive', 'public');
       return sections;
     });
-    const activeFeedSection = ref<FeedSection>('recent');
-    // The section last jumped to from the bar. It stays current while it's
-    // in view, until the user scrolls by hand: near the end of a short feed
-    // the section jumped to may never reach the bar.
-    let feedJumpTarget: FeedSection | null = null;
-    const scrollToFeedSection = (section: FeedSection) => {
-      activeFeedSection.value = section;
-      feedJumpTarget = section;
-      document.getElementById(`feed-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    };
-    /**
-     * Scroll-spy: the current section is the last one whose top has passed
-     * under the sticky bar - except at the very end of the feed, where the
-     * last sections can never reach the bar, so the last one in view wins
-     * (otherwise jumping to Public highlighted whatever sat above it).
-     */
-    let feedScroller: HTMLElement | null = null;
-    let feedSpyFrame = 0;
-    const updateActiveFeedSection = () => {
-      feedSpyFrame = 0;
-      const sections = feedNavSections.value;
-      if (!feedScroller || !sections.length) return;
-      const box = feedScroller.getBoundingClientRect();
-      // Горизонтальной полосы разделов больше нет — отсчёт от верха ленты.
-      const barBottom = box.top;
-      const atEnd = feedScroller.scrollTop + feedScroller.clientHeight >= feedScroller.scrollHeight - 2;
-      if (feedJumpTarget) {
-        const rect = document.getElementById(`feed-${feedJumpTarget}`)?.getBoundingClientRect();
-        if (rect && rect.bottom > barBottom && rect.top < box.bottom) {
-          activeFeedSection.value = feedJumpTarget;
-          return;
-        }
-        feedJumpTarget = null;
-      }
-      let current: FeedSection = sections[0]!;
-      for (const section of sections) {
-        const top = document.getElementById(`feed-${section}`)?.getBoundingClientRect().top;
-        if (top === undefined) continue;
-        if (top <= barBottom + 24 || (atEnd && top < box.bottom)) current = section;
-      }
-      activeFeedSection.value = current;
-    };
-    const onFeedManualScroll = () => { feedJumpTarget = null; };
-    const onFeedScroll = () => {
-      if (!feedSpyFrame) feedSpyFrame = requestAnimationFrame(updateActiveFeedSection);
-    };
-    // Set up once mounted: the scroll container exists then, and a watch
-    // reads its source right away while the sections it lists
-    // (recentFolderTiles...) are declared further down in this setup.
-    onMounted(() => {
-      feedScroller = (document.querySelector('.dashboard-central-shell .app-main') as HTMLElement | null)
-        ?? (document.querySelector('.app-main') as HTMLElement | null);
-      feedScroller?.addEventListener('scroll', onFeedScroll, { passive: true });
-      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
-        feedScroller?.addEventListener(type, onFeedManualScroll, { passive: true });
-      }
-      watch(feedNavSections, () => { void nextTick(updateActiveFeedSection); }, { flush: 'post' });
-    });
-    onBeforeUnmount(() => {
-      feedScroller?.removeEventListener('scroll', onFeedScroll);
-      for (const type of ['wheel', 'touchstart', 'keydown'] as const) {
-        feedScroller?.removeEventListener(type, onFeedManualScroll);
-      }
-      if (feedSpyFrame) cancelAnimationFrame(feedSpyFrame);
+    const {
+      activeFeedSection,
+      scrollToFeedSection,
+    } = useDashboardFeedNavigation<FeedSection>({
+      dashboardShell,
+      feedNavSections,
+      initialSection: 'recent',
     });
 
     /**
