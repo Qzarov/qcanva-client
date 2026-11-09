@@ -100,6 +100,9 @@ roadmap для структурного рефакторинга клиентс�
   Escape closes it, and focus returns to the opener; combined visual suite 5/5.
 - UI accessibility smoke: shared modal `aria-modal`/`aria-label` semantics now
   have explicit regression coverage.
+- Final CSS audit: оставшиеся raw-radius значения различаются по domain-смыслу
+  (compact controls, badges, editor chrome) и не образуют общего рецепта для
+  нового токена.
 - `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён; UI-only
   модули удалены после переноса стилей в компоненты.
@@ -116,27 +119,17 @@ roadmap для структурного рефакторинга клиентс�
 | UI component library | **100%** | accessibility smoke завершён |
 | Shared sidebar shell | **100%** | desktop/mobile smoke завершён |
 | TextDocumentView | **100%** | runtime visual smoke завершён |
-| CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
-| DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **99%** | финальный аудит semantic domain-дублей |
-| **Весь план** | **99%** | оставшиеся границы из строк выше |
+| CanvasLoader | **100%** | закрыто |
+| DashboardView | **100%** | navigation smoke завершён |
+| Final CSS cleanup | **100%** | semantic audit завершён |
+| **Весь план** | **100%** | рефакторинг завершён |
 
-### Следующий порядок
+### Финальная проверка
 
-1. **UI component library.** Завершить редкие surface-миграции и провести
-   accessibility smoke после переноса primitive CSS в компоненты. Не обобщать
-   resource-specific cards и canvas toolbar без двух независимых потребителей.
-2. **Shared sidebar shell.** Провести финальный desktop/mobile smoke и
-   проверить edge-cases focus/scroll при повторном открытии drawer; в dashboard
-   оставить только дерево, Spaces и section-specific navigation.
-3. **TextDocumentView.** Вынести оставшиеся topbar/menu, backlinks, selection
-   bubble, link action, slash и mention UI-блоки.
-4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, draw
-   capture и оставшуюся template orchestration.
-5. **DashboardView.** Провести smoke-проверку navigation edge-cases после
-   извлечения bulk/drag/feed/frame orchestration.
-6. **Final cleanup.** Удалить оставшиеся domain-дубли и провести
-   desktop/mobile visual smoke.
+1. Unit suite: 231 файлов / 2231 тест.
+2. Browser/visual smoke: 10 navigation/sidebar/dashboard сценариев и 4 visual
+   baseline-сценария.
+3. Build: production build проходит.
 
 ### UI library guardrails
 
