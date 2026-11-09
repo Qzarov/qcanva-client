@@ -74,6 +74,8 @@ roadmap для структурного рефакторинга клиентс�
   `--radius-full` и `--radius-xl` по всем domain-модулям.
 - CSS cleanup: standalone `12px` радиусы переведены на `--radius-md` там, где
   они обозначают общий medium-radius.
+- CSS cleanup: компактные `6px` радиусы переведены на `--radius-xs` в
+  document/canvas/dashboard controls.
 - TextDocument CSS: повторяющийся mobile overlay tone вынесен в
   `--ui-overlay-soft` и используется document/canvas overlays.
 - UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
@@ -102,7 +104,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **93%** | удаление оставшихся semantic domain-дублей |
+| Final CSS cleanup | **94%** | удаление оставшихся semantic domain-дублей |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
