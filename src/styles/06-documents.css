@@ -105,7 +105,7 @@
   margin: 0 0 20px;
   padding: 4px 0;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ui-text);
   font-size: 34px;
@@ -224,7 +224,7 @@
   height: 28px;
   padding: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ui-text-secondary);
   cursor: pointer;
@@ -248,7 +248,7 @@
   width: 100%;
   padding: 7px 10px;
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--ui-surface-subtle);
   color: inherit;
   font: inherit;
@@ -541,7 +541,7 @@
   width: 100%;
   padding: 6px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ui-text);
   font-size: 13px;
@@ -648,7 +648,7 @@ body.text-doc-outline-resizing {
   height: 24px;
   margin: 6px 6px 8px auto;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ui-text-muted);
   cursor: pointer;
@@ -954,7 +954,7 @@ body.text-doc-outline-resizing {
   max-width: 100%;
   height: auto;
   margin: 1em 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 .text-doc-paper .ProseMirror img.ProseMirror-selectednode {
@@ -2120,7 +2120,7 @@ button.text-doc-callout-icon:focus-visible {
   height: 30px;
   padding: 0 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--ui-text);
   font: inherit;
@@ -2156,7 +2156,7 @@ button.text-doc-callout-icon:focus-visible {
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--ui-border);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--ui-surface-subtle);
   color: var(--ui-text);
   font: inherit;
@@ -2381,7 +2381,7 @@ button.text-doc-callout-icon:focus-visible {
     width: 100%;
     padding: 10px 12px;
     border: none;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
     background: transparent;
     color: var(--ui-text);
     text-align: left;
@@ -2878,7 +2878,7 @@ button.text-doc-callout-icon:focus-visible {
 /* current-colour button + palette popover (shared by both menus) */
 .draw-action-color { position: relative; display: inline-flex; }
 .draw-action-color-current {
-  width: 26px; height: 26px; border-radius: 6px;
+  width: 26px; height: 26px; border-radius: var(--radius-xs);
   border: 2px solid var(--ui-border);
 }
 .draw-action-color-pop {
@@ -2926,7 +2926,7 @@ button.text-doc-callout-icon:focus-visible {
 .dice-die.active { border-color: var(--color-brands); color: var(--ui-accent-strong); }
 .dice-controls { display: flex; align-items: center; gap: 6px; }
 .dice-controls label { font-size: 12px; opacity: 0.7; min-width: 44px; }
-.dice-step { width: 24px; height: 24px; border-radius: 6px; border: 1px solid var(--ui-border); background: transparent; color: inherit; cursor: pointer; }
+.dice-step { width: 24px; height: 24px; border-radius: var(--radius-xs); border: 1px solid var(--ui-border); background: transparent; color: inherit; cursor: pointer; }
 .dice-val { min-width: 28px; text-align: center; font-size: 13px; }
 .dice-roll-btn { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--ui-border); background: var(--color-brands); color: var(--color-brand-on); cursor: pointer; font-weight: 600; }
 

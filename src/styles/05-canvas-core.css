@@ -412,7 +412,7 @@
   flex-shrink: 0;
   color: var(--dark-text-secondary);
   text-decoration: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
 }
 .back-btn:hover { color: var(--ui-text); background: var(--ui-hover, rgba(0,0,0,.06)); }
 
@@ -1046,7 +1046,7 @@
   min-width: 0;
   padding: 6px 10px;
   border: 1px solid var(--dark-neutral-border);
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: var(--ui-surface-subtle);
   color: var(--ui-text);
   font-size: 13px;

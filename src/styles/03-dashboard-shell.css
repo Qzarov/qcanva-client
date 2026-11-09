@@ -1129,7 +1129,7 @@
   min-width: 64px;
   padding: 7px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--dark-text-secondary);
   font-size: 12px;
@@ -1158,7 +1158,7 @@
 .dashboard-public-owner-filter button {
   padding: 5px 10px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--dark-text-secondary);
   font: inherit;

@@ -349,7 +349,7 @@
     border-color: transparent;
     box-shadow: none;
     min-height: 44px;
-    border-radius: 6px;
+    border-radius: var(--radius-xs);
   }
   .canvas-view .canvas-topbar .topbar-actions .btn-ghost.btn-sm:is(:hover, :active) {
     background: var(--ui-glass-btn-hover);
