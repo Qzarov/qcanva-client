@@ -337,6 +337,7 @@ import { vHint } from '../directives/hint';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
+import { useDashboardMarquee } from '../composables/useDashboardMarquee';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -2788,54 +2789,12 @@ export default defineComponent({
      * ticked already). Only from an empty spot: a press on a card, a button
      * or a menu keeps its own meaning (opening, dragging into a folder).
      */
-    const MARQUEE_IGNORE = [
-      '[data-select-key]', 'button', 'a', 'input', 'select', 'textarea', 'label',
-      '[draggable="true"]', '.card-menu', '.mobile-action-popover', '.subfolder-card',
-      '.dashboard-modal-backdrop', '[contenteditable="true"]',
-    ].join(',');
-    const marquee = ref<{ left: number; top: number; width: number; height: number } | null>(null);
-    let marqueeStart: { x: number; y: number; base: string[] } | null = null;
-    const onMarqueeMove = (event: PointerEvent) => {
-      if (!marqueeStart) return;
-      const dx = event.clientX - marqueeStart.x;
-      const dy = event.clientY - marqueeStart.y;
-      // A click with a tremble is still a click, not a frame.
-      if (!marquee.value && Math.hypot(dx, dy) < 5) return;
-      event.preventDefault();
-      window.getSelection?.()?.removeAllRanges();
-      const left = Math.min(event.clientX, marqueeStart.x);
-      const top = Math.min(event.clientY, marqueeStart.y);
-      const right = Math.max(event.clientX, marqueeStart.x);
-      const bottom = Math.max(event.clientY, marqueeStart.y);
-      marquee.value = { left, top, width: right - left, height: bottom - top };
-      const touched = Array.from(dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [])
-        .filter((card) => {
-          const box = card.getBoundingClientRect();
-          return box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
-        })
-        .map((card) => card.dataset.selectKey!);
-      selectedKeys.value = selectAll(marqueeStart.base, touched);
-    };
-    const endMarquee = () => {
-      window.removeEventListener('pointermove', onMarqueeMove);
-      window.removeEventListener('pointerup', endMarquee);
-      window.removeEventListener('pointercancel', endMarquee);
-      marqueeStart = null;
-      marquee.value = null;
-    };
     /** From anywhere in the scrolling area, the empty space under the last cards too. */
-    const startMarquee = (event: PointerEvent) => {
-      if (!isLoggedIn || event.pointerType !== 'mouse' || event.button !== 0) return;
-      const target = event.target as HTMLElement | null;
-      if (!target || target.closest(MARQUEE_IGNORE)) return;
-      endMarquee();
-      const adding = event.shiftKey || event.metaKey || event.ctrlKey;
-      marqueeStart = { x: event.clientX, y: event.clientY, base: adding ? [...selectedKeys.value] : [] };
-      window.addEventListener('pointermove', onMarqueeMove);
-      window.addEventListener('pointerup', endMarquee);
-      window.addEventListener('pointercancel', endMarquee);
-    };
-    onBeforeUnmount(endMarquee);
+    const { marquee, startMarquee } = useDashboardMarquee({
+      enabled: isLoggedIn,
+      dashboardShell,
+      selectedKeys,
+    });
 
     const onSelectionPointerDown = (event: PointerEvent) => {
       // A long press is not always followed by a click: the flag must not
