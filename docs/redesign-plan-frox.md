@@ -48,7 +48,9 @@ roadmap для структурного рефакторинга клиентс�
   сохраняют domain hooks поверх общего primitive.
 - Shared sidebar shell: `SharedSidebarShell` теперь владеет внешним `aside`,
   mobile-backdrop, Escape и focus trap для `AppSidebar` и `DashboardSidebar`;
-  дерево Dashboard и статическая навигация остаются в своих компонентах.
+  запоминает opener, переводит focus на close control при открытии и возвращает
+  focus после закрытия; дерево Dashboard и статическая навигация остаются в
+  своих компонентах.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -62,12 +64,12 @@ roadmap для структурного рефакторинга клиентс�
 | Направление | Готово | Что осталось |
 |---|---:|---|
 | UI component library | **90%** | финальная миграция редких surface-кейсов и component-only CSS |
-| Shared sidebar shell | **70%** | общий focus restore и финальная проверка desktop/mobile оболочки |
+| Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **75%** | shell/header, Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **94%** | оставшиеся границы из строк выше |
+| **Весь план** | **95%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
@@ -75,9 +77,9 @@ roadmap для структурного рефакторинга клиентс�
    component-only CSS из доменных модулей в primitives там, где это не меняет
    resource-specific layout. Не обобщать resource-specific cards и canvas
    toolbar без двух независимых потребителей.
-2. **Shared sidebar shell.** Вынести общий header/footer/backdrop/focus-trap
-   из `AppSidebar` и `DashboardSidebar`; в dashboard оставить только дерево,
-   Spaces и section-specific navigation.
+2. **Shared sidebar shell.** Провести финальный desktop/mobile smoke и
+   проверить edge-cases focus/scroll при повторном открытии drawer; в dashboard
+   оставить только дерево, Spaces и section-specific navigation.
 3. **TextDocumentView.** Вынести оставшиеся topbar/menu, backlinks, selection
    bubble, link action, slash и mention UI-блоки.
 4. **CanvasLoader.** Вынести fullscreen mobile editor, remote cursors, draw
