@@ -265,7 +265,7 @@
 ):not(.canvas-topbar *) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
@@ -313,7 +313,7 @@
   /* Selected buttons keep their accent: on a touch screen :hover sticks
      after the tap that selected them. */
   background: var(--ui-glass-btn-hover);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 
 /* Accent glass: primary actions and whatever is currently selected. */
@@ -442,7 +442,7 @@
 .dashboard-view :is(.content-type-tabs, .dashboard-recent-view-toggle, .dashboard-public-owner-filter) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 
 /* Fields: inset glass panes. */
@@ -455,7 +455,7 @@
 ) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 
@@ -463,7 +463,7 @@
 .dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 .dashboard-view :is(.btn-ghost, .tag-filter, .menu-icon, .current-user-badge):not(.dashboard-sidebar-item):hover:not(:disabled, .active) {
@@ -497,7 +497,7 @@
   .dashboard-public-owner-filter button
 ):is(:hover, :active):not(:disabled, .active) {
   background: var(--ui-glass-btn-hover);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 
 /* Accent glass: primary actions and whatever is selected. */
@@ -580,13 +580,13 @@
 .html-editor-page :is(.html-structure-item, .html-block-btn) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 .html-editor-page .html-mode-tabs {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 
 /* Buttons that stand on their own: inset glass panes. */
@@ -594,7 +594,7 @@
   :is(.btn-ghost, .text-doc-sync, .html-save-state, .account-menu-trigger, .text-doc-capacity-btn) {
   background: var(--ui-glass-btn-bg);
   border: 1px solid var(--ui-glass-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
   color: var(--ui-text);
 }
 @media (hover: hover) {
@@ -634,7 +634,7 @@
 ):is(:hover, :active):not(:disabled, .active, .is-active),
 .html-editor-page :is(.card-menu-item, .html-mode-tabs button):is(:hover, :active):not(:disabled, .active) {
   background: var(--ui-glass-btn-hover);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight);
+  box-shadow: var(--ui-glass-inset-highlight);
 }
 
 /* Accent glass: primary actions and whatever is selected / highlighted. */
