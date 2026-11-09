@@ -12,7 +12,7 @@
   min-height: 30px;
   padding: 0 4px 0 0;
   border: 1px solid var(--ui-glass-border, var(--ui-border));
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-glass-btn-bg, var(--ui-surface-subtle));
   color: var(--ui-text);
   font: inherit;

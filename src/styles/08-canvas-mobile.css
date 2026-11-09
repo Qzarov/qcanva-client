@@ -62,7 +62,7 @@
   max-width: min(160px, calc(100vw - 20px));
   padding: 5px 9px;
   border: 1px solid var(--ui-glass-border);
-  border-radius: 999px;
+  border-radius: var(--radius-full);
   background: var(--ui-glass-tint), var(--ui-glass-bg);
   box-shadow: var(--ui-glass-shadow);
   color: var(--ui-text);
