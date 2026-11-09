@@ -75,26 +75,23 @@
       v-model:search-query="searchQuery"
       :folder-search-placeholder="folderSearchPlaceholder"
     />
-    <header v-else class="app-header dashboard-auth-header">
-      <div class="app-header-inner">
-        <DashboardMobileHeaderControls
-          v-model:search-query="searchQuery"
-          :open-control-menu="openControlMenu"
-          :content-types="contentTypes"
-          :all-tag-names="allTagNames"
-          :selected-tags="selectedTags"
-          :with-files="activeSection.kind === 'folder'"
-          :sort-mode="sortMode"
-          :folder-search-placeholder="folderSearchPlaceholder"
-          @open-sidebar="openMobileSidebar"
-          @toggle-menu="toggleToolbarMenu"
-          @update-types="contentTypes = $event"
-          @toggle-tag="toggleSelectedTag"
-          @reset-filters="clearTypeAndTagFilters"
-          @select-sort="selectSortMode"
-        />
-      </div>
-    </header>
+    <DashboardAuthHeader
+      v-else
+      v-model:search-query="searchQuery"
+      :open-control-menu="openControlMenu"
+      :content-types="contentTypes"
+      :all-tag-names="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :folder-search-placeholder="folderSearchPlaceholder"
+      @open-sidebar="openMobileSidebar"
+      @toggle-menu="toggleToolbarMenu"
+      @update-types="contentTypes = $event"
+      @toggle-tag="toggleSelectedTag"
+      @reset-filters="clearTypeAndTagFilters"
+      @select-sort="selectSortMode"
+    />
 
     <main
       ref="dashboardMain"
@@ -360,6 +357,7 @@ import type { DashboardUpload } from '../components/dashboard/DashboardUploadPan
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobileHeaderControls.vue';
 import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
+import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -519,6 +517,7 @@ export default defineComponent({
     DashboardStatusOverlays,
     DashboardMobileHeaderControls,
     DashboardPublicHeader,
+    DashboardAuthHeader,
     DashboardYandexDisk,
     DashboardSelectionBar,
     DashboardToolbar,
