@@ -975,7 +975,7 @@
   color: var(--ui-text);
   font-size: 13px;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: var(--transition-border);
 }
 .dash-search:focus,
 .canvas-search-input:focus {

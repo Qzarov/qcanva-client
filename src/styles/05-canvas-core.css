@@ -172,7 +172,7 @@
   color: var(--ui-text);
   font-size: 14px;
   outline: none;
-  transition: border-color var(--transition-fast);
+  transition: var(--transition-border);
 }
 .access-gate-input:focus { border-color: color-mix(in srgb, var(--color-brands) 50%, transparent); }
 .access-gate-input::placeholder { color: var(--ui-text-secondary); }
