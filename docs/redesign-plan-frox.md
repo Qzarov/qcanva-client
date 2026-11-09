@@ -64,6 +64,8 @@ roadmap для структурного рефакторинга клиентс�
   timeout cleanup вынесены в `useDashboardSectionTransition`.
 - Dashboard mobile sidebar: opener focus, body overflow, breakpoint cleanup и
   focus restoration вынесены в `useDashboardMobileSidebar`.
+- CSS cleanup: повторяющийся glass accent gradient стал единым токеном
+  `--ui-glass-accent-tint`, который используют glass/settings/dashboard-модули.
 - `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
@@ -81,7 +83,7 @@ roadmap для структурного рефакторинга клиентс�
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
+| Final CSS cleanup | **67%** | component-only CSS, удаление оставшихся дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
