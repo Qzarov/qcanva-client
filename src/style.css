@@ -12029,6 +12029,19 @@ html { -webkit-tap-highlight-color: transparent; }
   background: var(--ui-glass-accent-bg, var(--ui-surface-subtle));
   color: var(--ui-glass-accent-text, var(--ui-text));
 }
+@media (max-width: 768px) {
+  /* A phone: the tiles' icons a fifth smaller - the box and the glyph
+     (only the tile's own icon: a filter tile's tick stays as it is). */
+  .dashboard-add-option-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+  .dashboard-add-option-icon > svg {
+    width: 18px;
+    height: 18px;
+  }
+}
 .dashboard-add-option strong {
   font-size: 13px;
   font-weight: 600;
@@ -12311,7 +12324,11 @@ html { -webkit-tap-highlight-color: transparent; }
    160 ms, a hop on steps 0, 2, 6, 10 and 12 - one - one - - - one - - - one -
    one - and three steps of rest before it starts over. A hop is up in 0.6 of
    a step and down by 1.4, done before the next one comes. */
-.dashboard-upload-badge.is-running .dashboard-upload-badge-arrow {
+.upload-arrow-icon {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.upload-arrow-icon.is-hopping .upload-arrow-icon-arrow {
   animation: dashboard-upload-badge-hop 2.56s infinite;
 }
 @keyframes dashboard-upload-badge-hop {
@@ -12378,18 +12395,54 @@ html { -webkit-tap-highlight-color: transparent; }
   font-variant-numeric: tabular-nums;
 }
 .dashboard-upload-track {
+  position: relative;
   flex: 1;
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
   background: var(--ui-surface-subtle);
 }
+/* Under the bar, a faint sweep in the brand's colour: a file still at 0 %
+   (waiting its turn, a slow start) shows it is going too. */
+.dashboard-upload-item.is-uploading .dashboard-upload-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--color-brands) 30%, transparent) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: dashboard-upload-glint 1.4s ease-in-out infinite;
+}
 .dashboard-upload-fill {
+  position: relative;
+  z-index: 1;
   display: block;
   height: 100%;
+  overflow: hidden;
   border-radius: inherit;
   background: var(--color-brands);
   transition: width 0.2s ease;
+}
+/* A file going up: a glint runs along what is already up. */
+.dashboard-upload-item.is-uploading .dashboard-upload-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.55) 50%, transparent 100%);
+  transform: translateX(-100%);
+  animation: dashboard-upload-glint 1.4s ease-in-out infinite;
+}
+@keyframes dashboard-upload-glint {
+  to { transform: translateX(100%); }
+}
+/* The head once nothing runs: a tick, or the warning in red. */
+.dashboard-upload-panel-title.is-done > svg {
+  color: var(--color-brands);
+}
+.dashboard-upload-panel-title.is-failed > svg {
+  color: var(--ui-danger);
+}
+.dashboard-upload-panel-title.is-running > svg {
+  color: var(--color-brands);
 }
 .dashboard-upload-cancel {
   display: inline-grid;
@@ -12455,7 +12508,9 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-upload-fill {
     transition: none;
   }
-  .dashboard-upload-badge.is-running .dashboard-upload-badge-arrow {
+  .upload-arrow-icon.is-hopping .upload-arrow-icon-arrow,
+  .dashboard-upload-item.is-uploading .dashboard-upload-fill::after,
+  .dashboard-upload-item.is-uploading .dashboard-upload-track::before {
     animation: none;
   }
 }

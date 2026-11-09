@@ -117,6 +117,13 @@ test('the panel folds into a badge, "n/m" files up, and opens again from it', as
   const panel = page.locator('[data-upload-panel]');
   const badge = page.locator('[data-upload-badge]');
   await expect(panel.locator('[data-upload-panel-count]')).toHaveText('0/2');
+  // The open panel's head hops its arrow too while files run.
+  await expect.poll(() => panel.locator('[data-upload-arrow]').evaluate((el) => getComputedStyle(el).animationName))
+    .toBe('dashboard-upload-badge-hop');
+  if (SHOTS) {
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: `${SHOTS}/upload-panel-running.png` });
+  }
   // Folded while the files still go up.
   await panel.locator('[data-upload-collapse]').click();
   await expect(panel).toHaveCount(0);
@@ -124,7 +131,7 @@ test('the panel folds into a badge, "n/m" files up, and opens again from it', as
   await expect(badge.locator('[data-upload-badge-count]')).toHaveText('0/2');
   await expect(badge).toHaveAttribute('aria-label', 'Uploads: 0 of 2');
   // Files running: the arrow hops to its beat.
-  await expect.poll(() => badge.locator('[data-upload-badge-arrow]').evaluate((el) => getComputedStyle(el).animationName))
+  await expect.poll(() => badge.locator('[data-upload-arrow]').evaluate((el) => getComputedStyle(el).animationName))
     .toBe('dashboard-upload-badge-hop');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/upload-badge.png` });
 
@@ -132,11 +139,41 @@ test('the panel folds into a badge, "n/m" files up, and opens again from it', as
   await expect(badge.locator('[data-upload-badge-count]')).toHaveText('2/2');
   await expect(badge).toHaveClass(/is-done/);
   // Done: a tick, no arrow left to hop.
-  await expect(badge.locator('[data-upload-badge-arrow]')).toHaveCount(0);
+  await expect(badge.locator('[data-upload-arrow]')).toHaveCount(0);
   await badge.click();
   await expect(panel).toBeVisible();
   await expect(badge).toHaveCount(0);
   await expect(panel.locator('.dashboard-upload-item.is-done')).toHaveCount(2);
+  // All up: the head says so, a tick where the arrow was.
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Files uploaded');
+  await expect(panel.locator('[data-upload-panel-state]')).toHaveAttribute('data-upload-panel-state', 'done');
+  await expect(panel.locator('[data-upload-arrow]')).toHaveCount(0);
+  if (SHOTS) {
+    await page.waitForTimeout(300);
+    await page.screenshot({ path: `${SHOTS}/upload-panel-done.png` });
+  }
+});
+
+test("on a phone the Add window's icons are a fifth smaller", async ({ page }) => {
+  await openDashboard(page);
+  const iconBox = async () => dialog(page).locator('.dashboard-add-option-icon').first().evaluate((el) => {
+    const glyph = el.querySelector(':scope > svg')!.getBoundingClientRect();
+    const box = el.getBoundingClientRect();
+    return [Math.round(box.width), Math.round(glyph.width)];
+  });
+  await page.locator('[data-add-button]').click();
+  expect(await iconBox()).toEqual([42, 22]);
+  await page.keyboard.press('Escape');
+  await expect(dialog(page)).toHaveCount(0);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  // A phone adds from the floating "+".
+  await page.locator('.dashboard-fab').click();
+  expect(await iconBox()).toEqual([34, 18]);
+  await dialog(page).locator('[data-add-tab="upload"]').click();
+  await expect(dialog(page).locator('[data-add-import]')).toHaveCount(5);
+  expect(await iconBox()).toEqual([34, 18]);
+  if (SHOTS) await page.screenshot({ path: `${SHOTS}/add-dialog-phone.png` });
 });
 
 test('a canvas import catches a file that is not one: pick another kind, or send it as a file', async ({ page }) => {
@@ -341,9 +378,22 @@ test('uploads as the Drive shows them: a file a row, its own cancel, why one fai
   await expect(panel.locator('[data-upload-item="huge.bin"] [data-upload-error]')).not.toBeEmpty();
   // Still going: no Hide yet; the slow one is cancelled on its own.
   await expect(panel.locator('[data-upload-hide]')).toHaveCount(0);
+  // A file going up says how much of it is up, out of its size; a glint runs along its bar.
+  const slow = panel.locator('[data-upload-item="slow.bin"]');
+  await expect(slow.locator('[data-upload-item-size]')).toHaveText('0 B / 1 B');
+  expect(await slow.locator('.dashboard-upload-fill').evaluate((el) => getComputedStyle(el, '::after').animationName))
+    .toBe('dashboard-upload-glint');
+  // At 0 % the bar is empty: the sweep under it shows the file is going.
+  expect(await slow.locator('.dashboard-upload-track').evaluate((el) => getComputedStyle(el, '::before').animationName))
+    .toBe('dashboard-upload-glint');
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Uploading files');
   await panel.locator('[data-upload-cancel="slow.bin"]').click();
-  await expect(panel.locator('[data-upload-item="slow.bin"]')).toHaveClass(/is-cancelled/);
+  await expect(slow).toHaveClass(/is-cancelled/);
+  await expect(slow.locator('[data-upload-item-size]')).toHaveText('1 B');
   await expect(panel.locator('[data-upload-hide]')).toBeVisible();
+  // Nothing runs: the head says one did not get there.
+  await expect(panel.locator('[data-upload-panel-title]')).toHaveText('Some files failed');
+  await expect(panel.locator('[data-upload-panel-state]')).toHaveAttribute('data-upload-panel-state', 'failed');
 });
 
 test('a file whose connection dropped goes up again by itself; at most three at a time', async ({ page }) => {

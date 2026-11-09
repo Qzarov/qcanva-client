@@ -26,25 +26,7 @@
       </svg>
       <Check v-if="summary.uploading === 0 && summary.failed === 0" :size="16" />
       <CircleAlert v-else-if="summary.uploading === 0" :size="16" />
-      <!-- Lucide's "upload", drawn here so the arrow can hop over a still tray. -->
-      <svg
-        v-else
-        class="dashboard-upload-badge-icon"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <g class="dashboard-upload-badge-arrow" data-upload-badge-arrow>
-          <path d="M12 3v12" />
-          <path d="m17 8-5-5-5 5" />
-        </g>
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      </svg>
+      <UploadArrowIcon v-else hopping />
     </span>
     <span class="dashboard-upload-badge-count" data-upload-badge-count>{{ summary.done }}/{{ summary.total }}</span>
   </button>
@@ -54,6 +36,7 @@
 import { CircleAlert, Check } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 import type { UploadSummary } from '../../dashboard/upload-summary';
+import UploadArrowIcon from './UploadArrowIcon.vue';
 
 const CIRCUMFERENCE = 2 * Math.PI * 15.5;
 
