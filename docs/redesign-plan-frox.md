@@ -70,8 +70,13 @@ roadmap для структурного рефакторинга клиентс�
   `--ui-glass-accent-shadow` с тем же набором потребителей.
 - CSS cleanup: shadow карточек glass стал токеном
   `--ui-glass-card-shadow`, общий для glass/dashboard/UI-card поверхностей.
-- `src/style.css` разложен на 18 упорядоченных модулей в `src/styles/`; файл
-  остался единственным global entrypoint, порядок каскада сохранён.
+- UI component CSS: Badge/Toast/Card/Button/IconButton/Modal и form/menu
+  primitives теперь держат scoped styles рядом с компонентами; глобальные
+  модули `15-ui-components.css`, `16-ui-form-empty.css` и
+  `17-ui-menu-segmented.css` удалены.
+- `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
+  остался единственным global entrypoint, порядок каскада сохранён; UI-only
+  модули удалены после переноса стилей в компоненты.
 - Статический sidebar HTML Docs вынесен в `src/components/AppSidebar.vue`.
 - После каждого крупного среза проходят build и полный unit suite.
 
@@ -82,20 +87,19 @@ roadmap для структурного рефакторинга клиентс�
 
 | Направление | Готово | Что осталось |
 |---|---:|---|
-| UI component library | **90%** | финальная миграция редких surface-кейсов и component-only CSS |
+| UI component library | **95%** | финальная миграция редких surface-кейсов и accessibility smoke |
 | Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
-| Final CSS cleanup | **70%** | component-only CSS, удаление оставшихся дублей, desktop/mobile smoke |
+| Final CSS cleanup | **82%** | удаление оставшихся domain-дублей, desktop/mobile smoke |
 | **Весь план** | **99%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
-1. **UI component library.** Завершить редкие surface-миграции и перенести
-   component-only CSS из доменных модулей в primitives там, где это не меняет
-   resource-specific layout. Не обобщать resource-specific cards и canvas
-   toolbar без двух независимых потребителей.
+1. **UI component library.** Завершить редкие surface-миграции и провести
+   accessibility smoke после переноса primitive CSS в компоненты. Не обобщать
+   resource-specific cards и canvas toolbar без двух независимых потребителей.
 2. **Shared sidebar shell.** Провести финальный desktop/mobile smoke и
    проверить edge-cases focus/scroll при повторном открытии drawer; в dashboard
    оставить только дерево, Spaces и section-specific navigation.
@@ -105,8 +109,8 @@ roadmap для структурного рефакторинга клиентс�
    capture и оставшуюся template orchestration.
 5. **DashboardView.** Провести smoke-проверку navigation edge-cases после
    извлечения bulk/drag/feed/frame orchestration.
-6. **Final cleanup.** Перенести component-only CSS из global modules в scoped
-   styles, удалить дубли и провести desktop/mobile visual smoke.
+6. **Final cleanup.** Удалить оставшиеся domain-дубли и провести
+   desktop/mobile visual smoke.
 
 ### UI library guardrails
 
