@@ -345,6 +345,7 @@ import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
 import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
 import { useDashboardFeedNavigation } from '../composables/useDashboardFeedNavigation';
 import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
+import { useDashboardSectionTransition } from '../composables/useDashboardSectionTransition';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
@@ -3626,34 +3627,11 @@ export default defineComponent({
     // own back arrow, rather than main.ts offering to exit the app.
     useBackHandler(goToParentFolder);
 
-    /**
-     * Into a folder the new view slides in from the right, out of one (to
-     * its parent or the feed) from the left. The class lives only as long
-     * as the animation, so a later re-render (a reload) doesn't replay it.
-     */
-    const navDirection = ref<'none' | 'forward' | 'back'>('none');
-    let navDirectionTimer: ReturnType<typeof setTimeout> | null = null;
-    const sectionDepth = (section: DashboardSection) => {
-      if (section.kind !== 'folder') return -1;
-      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
-      let depth = 0;
-      let parentId = byId.get(section.folderId)?.parentId ?? null;
-      const seen = new Set<string>();
-      while (parentId && !seen.has(parentId)) {
-        seen.add(parentId);
-        depth += 1;
-        parentId = byId.get(parentId)?.parentId ?? null;
-      }
-      return depth;
-    };
-    watch(activeSection, (next, previous) => {
-      if (!previous || (next.kind !== 'folder' && previous.kind !== 'folder')) return;
-      if (next.kind === 'folder' && previous.kind === 'folder' && next.folderId === previous.folderId) return;
-      navDirection.value = next.kind === 'folder' && sectionDepth(next) >= sectionDepth(previous) ? 'forward' : 'back';
-      if (navDirectionTimer) clearTimeout(navDirectionTimer);
-      navDirectionTimer = setTimeout(() => { navDirection.value = 'none'; }, 450);
+    /** Animate folder depth changes without coupling the view to timer cleanup. */
+    const { navDirection } = useDashboardSectionTransition<DashboardSection>({
+      activeSection,
+      folders: allResourceFolders,
     });
-    onBeforeUnmount(() => { if (navDirectionTimer) clearTimeout(navDirectionTimer); });
 
     const toggleSidebarWidth = () => {
       sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
