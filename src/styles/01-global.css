@@ -31,6 +31,7 @@
      full-screen editor). One recipe so a palette can recolour it in one place. */
   --ui-glass-bg: rgba(13, 17, 14, 0.72);
   --ui-glass-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.006));
+  --ui-glass-accent-tint: linear-gradient(160deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02));
   --ui-glass-border: rgba(130, 210, 155, 0.28);
   --ui-glass-highlight: rgba(255, 255, 255, 0.10);
   --ui-glass-sheen: rgba(255, 255, 255, 0.08);
