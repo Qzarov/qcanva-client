@@ -33,8 +33,8 @@ roadmap для структурного рефакторинга клиентс�
 - Dashboard: selection/toolbar, recent/access/folder/shared/public/interactive
   sections, modal layer, shared spaces и Trash вынесены из `DashboardView.vue`;
   старые Drive query-ссылки теперь приводят в dashboard sections; upload/
-  download/feedback overlays, authenticated mobile header controls и public
-  header вынесены в отдельные компоненты.
+  download/feedback overlays, public/authenticated desktop headers и mobile
+  header controls вынесены в отдельные компоненты.
 - Text documents: outline, history, link/mention/slash actions и editor
   extensions вынесены из `TextDocumentView.vue`; title и link inputs используют
   общие `UiTextarea`/`UiInput`, mobile action menu вынесено в
@@ -69,9 +69,9 @@ roadmap для структурного рефакторинга клиентс�
 | Shared sidebar shell | **82%** | финальная проверка desktop/mobile оболочки и edge-cases |
 | TextDocumentView | **97%** | финальная CSS-полировка |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
-| DashboardView | **82%** | auth desktop header, Yandex section, drag/drop и bulk orchestration |
+| DashboardView | **85%** | Yandex section, drag/drop и bulk orchestration |
 | Final CSS cleanup | **65%** | component-only CSS, удаление дублей, desktop/mobile smoke |
-| **Весь план** | **97%** | оставшиеся границы из строк выше |
+| **Весь план** | **98%** | оставшиеся границы из строк выше |
 
 ### Следующий порядок
 
