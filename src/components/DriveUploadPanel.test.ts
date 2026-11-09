@@ -21,7 +21,7 @@ describe('DriveUploadPanel', () => {
   });
 
   it('offers hiding only after all uploads finish', async () => {
-    const wrapper = mount(DriveUploadPanel, { props: { uploads: [{ ...uploads[1] }] } });
+    const wrapper = mount(DriveUploadPanel, { props: { uploads: [{ ...uploads[1]! }] } });
     await wrapper.get('[data-upload-hide]').trigger('click');
     expect(wrapper.emitted('hide')).toHaveLength(1);
   });
