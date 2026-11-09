@@ -96,6 +96,8 @@ roadmap для структурного рефакторинга клиентс�
   baselines; login/dashboard/canvas/text document проходят 4/4.
 - Shared sidebar edge-cases: добавлен regression-тест Tab/Shift+Tab focus wrap
   внутри mobile dialog; полный suite теперь 2231 тест.
+- Shared sidebar browser smoke: mobile drawer opens with focus on close,
+  Escape closes it, and focus returns to the opener; combined visual suite 5/5.
 - `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён; UI-only
   модули удалены после переноса стилей в компоненты.
@@ -110,7 +112,7 @@ roadmap для структурного рефакторинга клиентс�
 | Направление | Готово | Что осталось |
 |---|---:|---|
 | UI component library | **98%** | accessibility smoke и редкие surface-кейсы |
-| Shared sidebar shell | **90%** | финальная desktop/mobile smoke-проверка |
+| Shared sidebar shell | **100%** | desktop/mobile smoke завершён |
 | TextDocumentView | **100%** | runtime visual smoke завершён |
 | CanvasLoader | **100%** | финальная интеграционная проверка и CSS cleanup |
 | DashboardView | **99%** | финальная CSS-полировка и smoke-проверка navigation edge-cases |
