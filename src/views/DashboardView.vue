@@ -494,138 +494,132 @@
                     <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
                   </button>
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
-                  <div
+                  <DashboardResourceCard
                     v-if="item.type === 'canvas'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openCanvasFromCard(item.slug || item.id)"
+                    :resource="item"
+                    kind="canvas"
+                    :title-fallback="t('untitled')"
+                    :icon-label="t('canvas')"
+                    :select-label="t('selectItem')"
+                    :date-label="formatDate(item.updatedAt)"
+                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
+                    :select-key="selectionKey(item)"
+                    :selected="isSelected(item)"
+                    :selectable="isLoggedIn"
+                    :busy="isBusy"
+                    :dragging="draggingResourceId === item.id"
+                    :renameable="true"
+                    :show-pin="isOwnedResource(item)"
+                    pin-title="Pin canvas"
+                    :menu-id="item.id"
+                    :menu-open="openMenuCanvasId === item.id"
+                    :menu-style="cardMenuStyle"
+                    :actions="resourceActions(item, 'owned')"
+                    @open="openCanvasFromCard(item.slug || item.id)"
+                    @rename="startRename(item.id)"
+                    @toggle-select="toggleSelected(selectionKey(item))"
+                    @toggle-pin="togglePinned(item)"
+                    @toggle-menu="toggleCardMenu(item.id, $event)"
+                    @select-action="handleResourceAction(item, $event)"
                   >
-                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-                    <input
-                      v-if="renamingId === item.id"
-                      class="card-title-input"
-                      :value="item.title"
-                      @blur="finishRename($event, item)"
-                      @keydown.enter="($event.target as HTMLInputElement).blur()"
-                      @keydown.escape="renamingId = ''"
-                      @click.stop
-                      ref="renameInput"
-                    />
-                    <div v-else class="card-title card-title-with-icon" @dblclick.stop="startRename(item.id)"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="canvas" data-resource-icon="canvas" :aria-label="t('canvas')" /><span class="card-title-text">{{ item.title || t('untitled') }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin canvas" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateCanvas(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteCanvas(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </div>
-                  <article
+                    <template #title>
+                      <input
+                        v-if="renamingId === item.id"
+                        class="card-title-input"
+                        :value="item.title"
+                        @blur="finishRename($event, item)"
+                        @keydown.enter="($event.target as HTMLInputElement).blur()"
+                        @keydown.escape="renamingId = ''"
+                        @click.stop
+                        ref="renameInput"
+                      />
+                      <span v-else class="card-title-text">{{ item.title || t('untitled') }}</span>
+                    </template>
+                  </DashboardResourceCard>
+                  <DashboardResourceCard
                     v-else-if="item.type === 'html-document'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openHtmlDocumentFromCard(item.slug || item.id)"
-                  >
-                    <ResourceThumb :kind="item.type" :id="item.id" :version="item.updatedAt" />
-                    <a
-                      class="card-open-link"
-                      :href="`/edit/html/${item.slug || item.id}`"
-                      :aria-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
-                      @click.stop="rememberRecentResource('html-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="html-document" data-resource-icon="html-document" aria-label="HTML document" /><span class="card-title-text">{{ item.title || 'Untitled HTML' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin HTML" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateHtmlDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteHtmlDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
-                  <article
+                    :resource="item"
+                    kind="html-document"
+                    title-fallback="Untitled HTML"
+                    icon-label="HTML document"
+                    :select-label="t('selectItem')"
+                    :date-label="formatDate(item.updatedAt)"
+                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
+                    :select-key="selectionKey(item)"
+                    :selected="isSelected(item)"
+                    :selectable="isLoggedIn"
+                    :busy="isBusy"
+                    :dragging="draggingResourceId === item.id"
+                    :show-pin="isOwnedResource(item)"
+                    pin-title="Pin HTML"
+                    :open-href="`/edit/html/${item.slug || item.id}`"
+                    :open-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
+                    :menu-id="item.id"
+                    :menu-open="openMenuCanvasId === item.id"
+                    :menu-style="cardMenuStyle"
+                    :actions="resourceActions(item, 'owned')"
+                    @open="openHtmlDocumentFromCard(item.slug || item.id)"
+                    @open-link="rememberRecentResource('html-document', item.slug || item.id)"
+                    @toggle-select="toggleSelected(selectionKey(item))"
+                    @toggle-pin="togglePinned(item)"
+                    @toggle-menu="toggleCardMenu(item.id, $event)"
+                    @select-action="handleResourceAction(item, $event)"
+                  />
+                  <DashboardResourceCard
                     v-else-if="item.type === 'interactive-template'"
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card"
-                    :data-folder-resource="`interactive-template:${item.id}`"
-                    @click="openInteractiveTemplate(item.id)"
-                  >
-                    <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span><span v-if="item.role && item.role !== 'owner'" class="badge badge-shared card-title-badge">{{ item.role }}</span></div>
-                    <div class="card-meta">
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button class="card-manage" @click.stop="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === `folder:interactive-template:${item.id}`" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <button v-if="item.role === 'owner'" class="card-menu-item danger" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-                    </div>
-                  </article>
-                  <article
+                    :resource="item"
+                    kind="interactive-template"
+                    :title-fallback="t('untitled')"
+                    :icon-label="interactiveTemplateTypeLabel(item.templateType)"
+                    :select-label="t('selectItem')"
+                    :date-label="formatDate(item.updatedAt)"
+                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
+                    :select-key="selectionKey(item)"
+                    :selected="isSelected(item)"
+                    :selectable="isLoggedIn"
+                    :busy="isBusy"
+                    :folder-resource="`interactive-template:${item.id}`"
+                    :badge-text="item.role && item.role !== 'owner' ? item.role : null"
+                    :show-tags="false"
+                    :menu-id="`folder:interactive-template:${item.id}`"
+                    :menu-open="openMenuCanvasId === `folder:interactive-template:${item.id}`"
+                    :menu-style="cardMenuStyle"
+                    :actions="resourceActions(item, 'interactive')"
+                    menu-title="Действия с шаблоном"
+                    @open="openInteractiveTemplate(item.id)"
+                    @toggle-select="toggleSelected(selectionKey(item))"
+                    @toggle-menu="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)"
+                    @select-action="handleResourceAction(item, $event)"
+                  />
+                  <DashboardResourceCard
                     v-else
-                    :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card"
-                    :class="{ dragging: draggingResourceId === item.id }"
-                    draggable="false"
-                    @click="openTextDocumentFromCard(item.slug || item.id)"
-                  >
-                    <ResourceThumb :kind="item.type || 'text-document'" :id="item.id" :version="item.updatedAt" />
-                    <a
-                      class="card-open-link"
-                      :href="`/docs/${item.slug || item.id}`"
-                      :aria-label="`Open document ${item.title || 'Untitled document'}`"
-                      @click.stop="rememberRecentResource('text-document', item.slug || item.id)"
-                    ></a>
-                    <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="text-document" data-resource-icon="text-document" aria-label="Document" /><span class="card-title-text">{{ item.title || 'Untitled document' }}</span><span v-if="!isOwnedResource(item)" class="badge badge-shared card-title-badge">{{ item.role || t('externalResource') }}</span></div>
-                    <div class="card-meta">
-                      <div v-if="item.tags?.length" class="card-tags">
-                        <span
-                          v-for="tag in item.tags"
-                          :key="tag.name"
-                          class="card-tag color-tag"
-                          :style="{ '--tag-color': tag.color }"
-                        >#{{ tag.name }}</span>
-                      </div>
-                      <span class="card-date">{{ formatDate(item.updatedAt) }}</span>
-                    </div>
-                    <div class="card-meta-mobile">
-                      <span class="card-date">{{ formatCardDateMobile(item.updatedAt) }}</span>
-                    </div>
-                    <button v-if="isOwnedResource(item)" class="card-pin" :class="{ active: item.pinned }" @click.stop="togglePinned(item)" title="Pin document" :disabled="isBusy">{{ item.pinned ? '★' : '☆' }}</button>
-                    <button class="card-manage" @click.stop="toggleCardMenu(item.id, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-                    <div v-if="openMenuCanvasId === item.id" class="card-menu" :style="cardMenuStyle" @click.stop>
-                      <button class="card-menu-item" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-                      <template v-if="isOwnedResource(item)"><button class="card-menu-item" @click="duplicateTextDocument(item)" :disabled="isBusy">{{ t('duplicate') }}</button><button class="card-menu-item" @click="openDescriptionModal(item)" :disabled="isBusy">{{ t('description') }}</button><button class="card-menu-item" @click="openTagsModal(item)" :disabled="isBusy">{{ t('editTags') }}</button><button class="card-menu-item" @click="togglePinned(item)" :disabled="isBusy">{{ item.pinned ? t('unpin') : t('pin') }}</button><button class="card-menu-item" @click="openTransferModal(item)" :disabled="isBusy">{{ t('transferOwnership') }}</button><button class="card-menu-item danger" @click="deleteTextDocument(item)" :disabled="isBusy">{{ t('delete') }}</button></template>
-                    </div>
-                  </article>
+                    :resource="item"
+                    kind="text-document"
+                    title-fallback="Untitled document"
+                    icon-label="Document"
+                    :select-label="t('selectItem')"
+                    :date-label="formatDate(item.updatedAt)"
+                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
+                    :select-key="selectionKey(item)"
+                    :selected="isSelected(item)"
+                    :selectable="isLoggedIn"
+                    :busy="isBusy"
+                    :dragging="draggingResourceId === item.id"
+                    :show-pin="isOwnedResource(item)"
+                    pin-title="Pin document"
+                    :open-href="`/docs/${item.slug || item.id}`"
+                    :open-label="`Open document ${item.title || 'Untitled document'}`"
+                    :menu-id="item.id"
+                    :menu-open="openMenuCanvasId === item.id"
+                    :menu-style="cardMenuStyle"
+                    :actions="resourceActions(item, 'owned')"
+                    @open="openTextDocumentFromCard(item.slug || item.id)"
+                    @open-link="rememberRecentResource('text-document', item.slug || item.id)"
+                    @toggle-select="toggleSelected(selectionKey(item))"
+                    @toggle-pin="togglePinned(item)"
+                    @toggle-menu="toggleCardMenu(item.id, $event)"
+                    @select-action="handleResourceAction(item, $event)"
+                  />
                   </template>
                   <DashboardFolderFiles
                     :folder-id="activeFolder.id"
@@ -737,9 +731,14 @@
               title="Canvas actions"
               :disabled="isBusy"
             >⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'shared')"
+              :disabled="isBusy"
+              :menu-id="`shared:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </div>
           <article
             v-else-if="item.type === 'html-document'"
@@ -756,9 +755,14 @@
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
             </div>
             <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'shared')"
+              :disabled="isBusy"
+              :menu-id="`shared:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </article>
           <article
             v-else-if="item.type === 'text-document'"
@@ -775,9 +779,14 @@
               <span v-for="tag in item.tags" :key="tag.name" class="card-tag color-tag" :style="{ '--tag-color': tag.color }">#{{ tag.name }}</span>
             </div>
             <button class="card-manage" :data-menu-trigger="`shared:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`shared:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`shared:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `shared:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'shared')"
+              :disabled="isBusy"
+              :menu-id="`shared:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </article>
           </template>
           <button v-if="!sharedFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="shared" data-feed-empty="shared" @click.stop="openAddFromTile('shared')">
@@ -818,10 +827,14 @@
             <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
             <div class="card-meta"><span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
             <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `interactive-template:${item.id}`" class="card-menu" :data-card-menu="`interactive-template:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveInteractiveTemplateFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <button v-if="item.role === 'owner'" class="card-menu-item danger" data-action="delete" @click="deleteInteractiveTemplate(item)" :disabled="isBusy">{{ t('delete') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `interactive-template:${item.id}`"
+              :actions="resourceActions(item, 'interactive')"
+              :disabled="isBusy"
+              :menu-id="`interactive-template:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </article>
           <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
@@ -894,11 +907,14 @@
               >#{{ tag.name }}</span>
             </div>
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Canvas actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <!-- An admin takes anyone's resource out of Public. -->
-              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `public:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'public')"
+              :disabled="isBusy"
+              :menu-id="`public:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </div>
           <article
             v-else-if="item.type === 'html-document'"
@@ -920,11 +936,14 @@
               >#{{ tag.name }}</span>
             </div>
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="HTML actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveHtmlFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <!-- An admin takes anyone's resource out of Public. -->
-              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `public:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'public')"
+              :disabled="isBusy"
+              :menu-id="`public:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </article>
           <article
             v-else-if="item.type === 'text-document'"
@@ -946,11 +965,14 @@
               >#{{ tag.name }}</span>
             </div>
             <button class="card-manage" :data-menu-trigger="`public:${item.type}:${item.id}`" @click.stop="toggleCardMenu(`public:${item.type}:${item.id}`, $event)" title="Document actions" :disabled="isBusy">⋯</button>
-            <div v-if="openMenuCanvasId === `public:${item.type}:${item.id}`" class="card-menu" :data-card-menu="`public:${item.type}:${item.id}`" :style="cardMenuStyle" @click.stop>
-              <button class="card-menu-item" data-action="move-to-folder" @click="openMoveTextDocumentFolderModal(item)" :disabled="isBusy">{{ t('moveToGroup') }}</button>
-              <!-- An admin takes anyone's resource out of Public. -->
-              <button v-if="admin" class="card-menu-item danger" data-action="hide-from-public" @click="hideFromPublic(item)" :disabled="isBusy">{{ t('hideFromPublic') }}</button>
-            </div>
+            <DashboardResourceMenu
+              v-if="openMenuCanvasId === `public:${item.type}:${item.id}`"
+              :actions="resourceActions(item, 'public')"
+              :disabled="isBusy"
+              :menu-id="`public:${item.type}:${item.id}`"
+              :menu-style="cardMenuStyle"
+              @select="handleResourceAction(item, $event)"
+            />
           </article>
           </template>
           <button v-if="isLoggedIn && !publicFiltered.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="public" data-public-empty data-feed-empty="public" @click.stop="openAddFromTile('public')">
@@ -1341,6 +1363,9 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
+import DashboardResourceMenu from '../components/dashboard/DashboardResourceMenu.vue';
+import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
+import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
 import { vHint } from '../directives/hint';
@@ -1507,6 +1532,8 @@ export default defineComponent({
     TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
+    DashboardResourceMenu,
+    DashboardResourceCard,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
@@ -4488,6 +4515,72 @@ export default defineComponent({
       cardMenuStyle.value = null;
     };
 
+    type ResourceMenuContext = 'owned' | 'shared' | 'public' | 'interactive';
+
+    const resourceActions = (item: FolderItem, context: ResourceMenuContext): DashboardResourceActionItem[] => {
+      if (context === 'shared') {
+        return [{ key: 'move-to-folder', label: t('moveToGroup') }];
+      }
+      if (context === 'public') {
+        return [
+          { key: 'move-to-folder', label: t('moveToGroup') },
+          { key: 'hide-from-public', label: t('hideFromPublic'), visible: admin.value, danger: true },
+        ];
+      }
+      if (context === 'interactive') {
+        return [
+          { key: 'move-to-folder', label: t('moveToGroup') },
+          { key: 'delete', label: t('delete'), visible: item.role === 'owner', danger: true },
+        ];
+      }
+      return [
+        { key: 'move-to-folder', label: t('moveToGroup') },
+        { key: 'duplicate', label: t('duplicate') },
+        { key: 'description', label: t('description') },
+        { key: 'tags', label: t('editTags') },
+        { key: 'pin', label: item.pinned ? t('unpin') : t('pin') },
+        { key: 'transfer', label: t('transferOwnership') },
+        { key: 'delete', label: t('delete'), danger: true },
+      ];
+    };
+
+    const handleResourceAction = async (item: FolderItem, action: DashboardResourceAction) => {
+      switch (action) {
+        case 'move-to-folder':
+          if (item.type === 'canvas') openMoveFolderModal(item);
+          else if (item.type === 'html-document') openMoveHtmlFolderModal(item);
+          else if (item.type === 'text-document') openMoveTextDocumentFolderModal(item);
+          else openMoveInteractiveTemplateFolderModal(item);
+          return;
+        case 'duplicate':
+          if (item.type === 'canvas') await duplicateCanvas(item);
+          else if (item.type === 'html-document') await duplicateHtmlDocument(item);
+          else if (item.type === 'text-document') await duplicateTextDocument(item);
+          return;
+        case 'description':
+          openDescriptionModal(item);
+          return;
+        case 'tags':
+          openTagsModal(item);
+          return;
+        case 'pin':
+          if (item.type !== 'interactive-template') await togglePinned(item);
+          return;
+        case 'transfer':
+          openTransferModal(item);
+          return;
+        case 'delete':
+          if (item.type === 'canvas') await deleteCanvas(item);
+          else if (item.type === 'html-document') await deleteHtmlDocument(item);
+          else if (item.type === 'text-document') await deleteTextDocument(item);
+          else await deleteInteractiveTemplate(item);
+          return;
+        case 'hide-from-public':
+          await hideFromPublic(item);
+          return;
+      }
+    };
+
     /**
      * "+ Add" is a dialog: make something new, or bring files in - having
      * said what they are, so a wrong file is caught (DashboardAddDialog).
@@ -5562,6 +5655,8 @@ export default defineComponent({
       selectFolder,
       isTechnicalFolder,
       toggleCardMenu,
+      resourceActions,
+      handleResourceAction,
       closeCardMenu,
       toggleFolderMenu,
       openCanvas,
