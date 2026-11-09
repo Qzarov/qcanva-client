@@ -347,7 +347,7 @@
 .dashboard-view .dashboard-add-option.active {
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border-color: var(--ui-glass-accent-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 .dashboard-add-option:focus-visible {

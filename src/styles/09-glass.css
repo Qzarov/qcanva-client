@@ -331,7 +331,7 @@
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) .mobile-toolbar-btn.mobile-toolbar-btn-active {
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(.btn-primary, .share-form button):hover:not(:disabled) {
@@ -511,7 +511,7 @@
 ).active {
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 .dashboard-view :is(.btn-primary, .dashboard-fab):hover:not(:disabled) {
@@ -648,7 +648,7 @@
 .html-editor-page .html-mode-tabs button.active {
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 :is(.text-doc-page, .html-editor-page, .html-history-panel, .text-doc-link-sheet, .text-doc-slash-sheet) .btn-primary:hover:not(:disabled) {
@@ -995,7 +995,7 @@
   border-radius: 999px;
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   border: 1px solid var(--ui-glass-accent-border);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), var(--ui-glass-accent-glow);
+  box-shadow: var(--ui-glass-accent-shadow);
   color: var(--ui-glass-accent-text);
 }
 .text-doc-bubble-link-form .text-doc-bubble-link-input {
