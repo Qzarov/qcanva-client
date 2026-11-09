@@ -60,24 +60,16 @@
         aria-hidden="true"
         data-marquee
       ></div>
-      <Transition name="dashboard-upload-panel">
-        <DashboardUploadPanel v-if="uploadPanelOpen && uploads.length" :uploads="uploads" @cancel="cancelUpload" @hide="uploadPanelOpen = false" />
-      </Transition>
-      <Transition name="dashboard-download-status">
-        <div
-          v-if="downloadStatus.phase !== 'idle'"
-          class="dashboard-download-status"
-          :class="'is-' + downloadStatus.phase"
-          role="status"
-          aria-live="polite"
-          data-download-status
-        >
-          <span class="dashboard-download-status-text">{{ transferStatusText }}</span>
-          <span class="dashboard-download-status-track" aria-hidden="true">
-            <span class="dashboard-download-status-bar" :style="{ width: transferStatusPercent + '%' }"></span>
-          </span>
-        </div>
-      </Transition>
+      <DashboardStatusOverlays
+        :upload-panel-open="uploadPanelOpen"
+        :uploads="uploads"
+        :download-status="downloadStatus"
+        :transfer-status-text="transferStatusText"
+        :transfer-status-percent="transferStatusPercent"
+        :feedback="feedback"
+        @cancel-upload="cancelUpload"
+        @hide-upload="uploadPanelOpen = false"
+      />
     <header v-if="!isLoggedIn" class="app-header app-header-public">
       <div class="app-header-inner">
         <div class="dashboard-brand">
@@ -227,17 +219,6 @@
     >
       <span class="dashboard-pull-icon" aria-hidden="true">{{ isRefreshing ? '↻' : '↓' }}</span>
       <span>{{ isRefreshing ? t('updatingList') : dashboardPullDistance >= DASHBOARD_PULL_THRESHOLD ? t('releaseToRefresh') : t('pullToRefresh') }}</span>
-    </div>
-
-    <div
-      v-if="feedback.message"
-      class="dashboard-toast"
-      :class="`dashboard-toast-${feedback.type}`"
-      :role="feedback.type === 'error' ? 'alert' : 'status'"
-      aria-live="polite"
-      data-dashboard-toast
-    >
-      {{ feedback.message }}
     </div>
 
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
@@ -414,7 +395,8 @@ import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
 import InteractiveTemplatePicker from '../components/dashboard/InteractiveTemplatePicker.vue';
 import DashboardAddDialog, { type AddCreateKind } from '../components/dashboard/DashboardAddDialog.vue';
-import DashboardUploadPanel, { type DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import type { DashboardUpload } from '../components/dashboard/DashboardUploadPanel.vue';
+import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardYandexDisk from '../components/dashboard/DashboardYandexDisk.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
@@ -576,7 +558,7 @@ export default defineComponent({
     DashboardFolderFiles,
     DashboardFilterMenu,
     DashboardSortMenu,
-    DashboardUploadPanel,
+    DashboardStatusOverlays,
     DashboardYandexDisk,
     DashboardSelectionBar,
     DashboardToolbar,
