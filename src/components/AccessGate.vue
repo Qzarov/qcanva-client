@@ -1,6 +1,6 @@
 <template>
   <div class="access-gate">
-    <div class="access-gate-card">
+    <UiCard as="div" layout="inherit" class="access-gate-card">
       <div class="access-gate-icon">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
           <rect x="3" y="11" width="18" height="11" rx="2" />
@@ -62,7 +62,7 @@
       </div>
 
       <router-link :to="{ name: 'dashboard' }" class="access-gate-back">{{ t('home') }}</router-link>
-    </div>
+    </UiCard>
   </div>
 </template>
 
@@ -71,11 +71,13 @@ import { computed, defineComponent, ref, type PropType } from 'vue';
 import { useRoute } from 'vue-router';
 import { getCurrentUser, isAuthenticated } from '../api/client';
 import { useI18n } from '../composables/useI18n';
+import UiCard from './ui/UiCard.vue';
 
 export type AccessGateResourceType = 'text-document' | 'html-document' | 'canvas';
 
 export default defineComponent({
   name: 'AccessGate',
+  components: { UiCard },
   props: {
     resourceType: { type: String as PropType<AccessGateResourceType>, required: true },
     /**
