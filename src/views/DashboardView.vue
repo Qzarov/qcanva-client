@@ -218,25 +218,20 @@
         @open-image="openYandexImage"
       />
 
-      <section
+      <DashboardSpaceSection
         v-if="isLoggedIn && spaceId !== null"
-        class="dashboard-folder-content"
-        data-dashboard-view="space"
-      >
-        <DashboardSpace
-          ref="spaceView"
-          :space-id="spaceId"
-          :view-mode="recentViewMode"
-          :query="searchQuery"
-          :me-id="currentUser?.id || ''"
-          :folder-options="folderOptions"
-          @update:view-mode="setRecentViewMode"
-          @open="openSpaceResource"
-          @open-media="(items, start) => (mediaViewer = { items, start })"
-          @gone="leaveSpaceSection"
-          @feedback="setFeedback"
-        />
-      </section>
+        ref="spaceView"
+        :space-id="spaceId"
+        :view-mode="recentViewMode"
+        :query="searchQuery"
+        :me-id="currentUser?.id || ''"
+        :folder-options="folderOptions"
+        @update:view-mode="setRecentViewMode"
+        @open="openSpaceResource"
+        @open-media="(items, start) => (mediaViewer = { items, start })"
+        @gone="leaveSpaceSection"
+        @feedback="setFeedback"
+      />
 
       <section
         v-if="isLoggedIn && activeSection.kind === 'trash'"
@@ -354,9 +349,9 @@ import DashboardMobileHeaderControls from '../components/dashboard/DashboardMobi
 import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
 import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
 import DashboardYandexSection from '../components/dashboard/DashboardYandexSection.vue';
+import DashboardSpaceSection from '../components/dashboard/DashboardSpaceSection.vue';
 import YandexFolderPicker from '../components/dashboard/YandexFolderPicker.vue';
 import DashboardMediaViewer, { type MediaViewerItem } from '../components/dashboard/DashboardMediaViewer.vue';
-import DashboardSpace from '../components/dashboard/DashboardSpace.vue';
 import DashboardTrash from '../components/dashboard/DashboardTrash.vue';
 import { spacesApi } from '../api/spaces';
 import { useSpaces } from '../composables/useSpaces';
@@ -525,7 +520,7 @@ export default defineComponent({
     DashboardModalLayer,
     YandexFolderPicker,
     DashboardMediaViewer,
-    DashboardSpace,
+    DashboardSpaceSection,
     DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
@@ -3012,7 +3007,7 @@ export default defineComponent({
     const yandexView = ref<InstanceType<typeof DashboardYandexSection> | null>(null);
     const yandexPicker = ref<InstanceType<typeof YandexFolderPicker> | null>(null);
     const yandexPath = computed(() => (activeSection.value.kind === 'yandex' ? activeSection.value.path : null));
-    const spaceView = ref<InstanceType<typeof DashboardSpace> | null>(null);
+    const spaceView = ref<InstanceType<typeof DashboardSpaceSection> | null>(null);
     const spaceId = computed(() => (activeSection.value.kind === 'space' ? activeSection.value.spaceId : null));
     const { load: loadSpaces } = useSpaces();
     const yandexMove = ref<{ sources: string[]; start: string } | null>(null);
