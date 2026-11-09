@@ -77,7 +77,7 @@
   }
   .canvas-view :is(.mobile-node-toolbar-row, .mobile-node-subpanel) {
     border: 1px solid var(--ui-glass-border);
-    border-radius: 20px;
+    border-radius: var(--radius-xl);
   }
   .canvas-view .mobile-node-toolbar-row {
     padding: 4px 6px;
@@ -88,7 +88,7 @@
     overflow-y: auto;
   }
   .canvas-view .mobile-node-subpanel.mobile-node-subpanel-palette { max-height: none; overflow: visible; }
-  .canvas-view .mobile-node-toolbar > .canvas-panel-page { width: min(100%, 390px); border: 1px solid var(--ui-glass-border); border-radius: 20px; background: var(--ui-glass-tint), var(--ui-glass-bg); backdrop-filter: blur(var(--ui-glass-blur)); }
+  .canvas-view .mobile-node-toolbar > .canvas-panel-page { width: min(100%, 390px); border: 1px solid var(--ui-glass-border); border-radius: var(--radius-xl); background: var(--ui-glass-tint), var(--ui-glass-bg); backdrop-filter: blur(var(--ui-glass-blur)); }
   .canvas-view .mobile-node-toolbar :is(.mobile-panel-header, .mobile-node-subpanel, .mobile-node-toolbar-row) { background: transparent; border: 0; border-radius: 0; }
 
   /* Drawing tools: the same floating glass bar as the node toolbar / mode bar,
@@ -99,7 +99,7 @@
     bottom: calc(var(--canvas-toolbar-height, 61px) + 8px);
     padding: 4px 6px;
     border: 1px solid var(--ui-glass-border);
-    border-radius: 20px;
+    border-radius: var(--radius-xl);
   }
   /* The floating bar is narrower than the old edge-to-edge strip, so let the
      tool buttons share the width evenly instead of each holding a 44px floor
@@ -126,7 +126,7 @@
     max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 24px);
     overflow-y: auto;
     border: 1px solid var(--ui-glass-border);
-    border-radius: 20px;
+    border-radius: var(--radius-xl);
     box-shadow: var(--ui-glass-surface-shadow);
   }
   .mobile-add-sheet-handle { display: none; }
@@ -370,7 +370,7 @@
     max-height: calc(100dvh - var(--canvas-topbar-height, 60px) - var(--canvas-toolbar-height, 61px) - 92px);
     padding-bottom: 6px;
     border: 1px solid var(--ui-glass-border);
-    border-radius: 20px;
+    border-radius: var(--radius-xl);
   }
 }
 
