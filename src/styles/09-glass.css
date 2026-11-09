@@ -294,7 +294,7 @@
   .chat-drawer-close,
   .text-doc-share-close
 ) {
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 :is(.canvas-view, .share-panel-glass, .mobile-overflow-sheet) :is(
   .toolbar-tab,
@@ -484,7 +484,7 @@
   background: transparent;
   border-color: transparent;
   box-shadow: none;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 .dashboard-view :is(
   .dashboard-sidebar-item,

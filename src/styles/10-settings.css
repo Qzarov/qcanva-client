@@ -24,7 +24,7 @@
   color: var(--ui-text);
 }
 .settings-page .dashboard-modal-input {
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 .settings-page .dashboard-modal-input:focus {
   outline: none;

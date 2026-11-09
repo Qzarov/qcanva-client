@@ -28,7 +28,7 @@
   display: inline-grid;
   place-items: center;
   padding: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 .dashboard-view .dashboard-filter-trigger.active {
   border-color: var(--ui-glass-accent-border);
@@ -160,7 +160,7 @@
   height: 64px;
   overflow: hidden;
   border: 1px solid var(--ui-glass-border, var(--ui-border));
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--ui-surface-subtle);
 }
 .folder-file-thumb img {
@@ -492,7 +492,7 @@
   width: var(--thumb-w);
   transform: translateX(var(--thumb-x));
   border: 1px solid var(--ui-glass-accent-border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--ui-glass-accent-tint), var(--ui-glass-accent-bg);
   box-shadow: var(--ui-glass-accent-shadow);
   transition: transform 0.26s cubic-bezier(0.2, 0, 0, 1), width 0.26s cubic-bezier(0.2, 0, 0, 1);
