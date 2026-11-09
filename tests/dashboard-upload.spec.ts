@@ -123,11 +123,16 @@ test('the panel folds into a badge, "n/m" files up, and opens again from it', as
   await expect(badge).toBeVisible();
   await expect(badge.locator('[data-upload-badge-count]')).toHaveText('0/2');
   await expect(badge).toHaveAttribute('aria-label', 'Uploads: 0 of 2');
+  // Files running: the arrow hops to its beat.
+  await expect.poll(() => badge.locator('[data-upload-badge-arrow]').evaluate((el) => getComputedStyle(el).animationName))
+    .toBe('dashboard-upload-badge-hop');
   if (SHOTS) await page.screenshot({ path: `${SHOTS}/upload-badge.png` });
 
   release();
   await expect(badge.locator('[data-upload-badge-count]')).toHaveText('2/2');
   await expect(badge).toHaveClass(/is-done/);
+  // Done: a tick, no arrow left to hop.
+  await expect(badge.locator('[data-upload-badge-arrow]')).toHaveCount(0);
   await badge.click();
   await expect(panel).toBeVisible();
   await expect(badge).toHaveCount(0);

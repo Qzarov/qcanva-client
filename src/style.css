@@ -12307,6 +12307,26 @@ html { -webkit-tap-highlight-color: transparent; }
 .dashboard-upload-badge-count {
   font-variant-numeric: tabular-nums;
 }
+/* While files run the arrow hops over its tray to a beat: sixteen steps of
+   160 ms, a hop on steps 0, 2, 6, 10 and 12 - one - one - - - one - - - one -
+   one - and three steps of rest before it starts over. A hop is up in 0.6 of
+   a step and down by 1.4, done before the next one comes. */
+.dashboard-upload-badge.is-running .dashboard-upload-badge-arrow {
+  animation: dashboard-upload-badge-hop 2.56s infinite;
+}
+@keyframes dashboard-upload-badge-hop {
+  0%, 12.5%, 37.5%, 62.5%, 75% {
+    transform: translateY(0);
+    animation-timing-function: cubic-bezier(0.2, 0.7, 0.4, 1);
+  }
+  3.75%, 16.25%, 41.25%, 66.25%, 78.75% {
+    transform: translateY(-4px);
+    animation-timing-function: cubic-bezier(0.6, 0, 0.8, 0.3);
+  }
+  8.75%, 21.25%, 46.25%, 71.25%, 83.75%, 100% {
+    transform: translateY(0);
+  }
+}
 .dashboard-upload-badge-enter-active,
 .dashboard-upload-badge-leave-active {
   transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0, 0, 1);
@@ -12434,6 +12454,9 @@ html { -webkit-tap-highlight-color: transparent; }
   .dashboard-upload-badge-fill,
   .dashboard-upload-fill {
     transition: none;
+  }
+  .dashboard-upload-badge.is-running .dashboard-upload-badge-arrow {
+    animation: none;
   }
 }
 
