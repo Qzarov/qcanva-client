@@ -103,6 +103,9 @@ roadmap для структурного рефакторинга клиентс�
 - Final CSS audit: оставшиеся raw-radius значения различаются по domain-смыслу
   (compact controls, badges, editor chrome) и не образуют общего рецепта для
   нового токена.
+- Remote `dev` sync: планы, upload queue/background upload, Spaces filters и
+  admin public moderation влиты в refactored hosts; upload CSS-рецепты перенесены
+  в модульные стили, `UiModal` backdrop alignment сохранён через CSS variables.
 - `src/style.css` разложен на 15 упорядоченных global-модулей в `src/styles/`; файл
   остался единственным global entrypoint, порядок каскада сохранён; UI-only
   модули удалены после переноса стилей в компоненты.
@@ -126,9 +129,9 @@ roadmap для структурного рефакторинга клиентс�
 
 ### Финальная проверка
 
-1. Unit suite: 231 файлов / 2231 тест.
-2. Browser/visual smoke: 10 navigation/sidebar/dashboard сценариев и 4 visual
-   baseline-сценария.
+1. Unit suite: 234 файлов / 2248 тестов.
+2. Browser/visual smoke: 36 remote feature scenarios, 10 navigation/sidebar/
+   dashboard scenarios и 4 visual baseline-сценария.
 3. Build: production build проходит.
 
 ### UI library guardrails
