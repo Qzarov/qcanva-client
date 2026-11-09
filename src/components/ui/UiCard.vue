@@ -15,3 +15,18 @@ withDefaults(defineProps<{
   layout: 'grid',
 });
 </script>
+<style scoped>
+.ui-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px;
+  border: 1px solid var(--ui-glass-border);
+  border-radius: 20px;
+  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
+  box-shadow: var(--ui-glass-card-shadow);
+}
+.ui-card--elevated { box-shadow: var(--ui-shadow); }
+.ui-card--subtle { background: var(--ui-surface-subtle); box-shadow: none; }
+.ui-card--layout-inherit { display: block; gap: 0; }
+</style>
