@@ -450,16 +450,14 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  driveApi,
   formatFileSize,
-  resolveDownloadUrl,
   type DriveItem,
   type DriveOrder,
   type DriveSlice,
   type DriveSort,
 } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { alertDialog, confirmDialog, promptDialog } from '../composables/appDialog';
+import { alertDialog, promptDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
@@ -476,6 +474,7 @@ import { useDriveFolderData } from '../composables/useDriveFolderData';
 import { useDriveNavigation } from '../composables/useDriveNavigation';
 import { useDriveUpload } from '../composables/useDriveUpload';
 import { useDriveSidebarTree } from '../composables/useDriveSidebarTree';
+import { useDriveFileActions } from '../composables/useDriveFileActions';
 import {
   phoneErrorText,
   phoneEvictText,
@@ -506,8 +505,6 @@ const mobileSearchOpen = ref(false);
 
 // Menus
 const createMenuOpen = ref(false);
-const activeFileMenuId = ref<string | null>(null);
-const propertiesItem = ref<DriveItem | null>(null);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -535,6 +532,10 @@ const { folderInfo, items, activeNextCursor, loadCurrentFolder, setSlice, setSor
   loading,
   loadingMore,
   error,
+});
+
+const { activeFileMenuId, propertiesItem, onDownloadFile, onRenameFile, onTrashFile, onShowProperties, toggleFileMenu } = useDriveFileActions({
+  loadCurrentFolder,
 });
 
 const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
@@ -631,71 +632,6 @@ async function onCreateDocument() {
   await loadCurrentFolder();
 }
 
-// File actions: Download, Rename, Trash
-async function onDownloadFile(item: DriveItem) {
-  activeFileMenuId.value = null;
-  try {
-    const res = await driveApi.getDownloadLink(item.id);
-    const absoluteUrl = resolveDownloadUrl(res.url);
-    const link = document.createElement('a');
-    link.href = absoluteUrl;
-    link.style.display = 'none';
-    if (item.name) {
-      link.download = item.name;
-    }
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch (err: any) {
-    await alertDialog({
-      title: t('driveDownloadFailedTitle'),
-      message: err.message || t('driveDownloadLinkFailed'),
-    });
-  }
-}
-
-async function onRenameFile(item: DriveItem) {
-  activeFileMenuId.value = null;
-  const newName = await promptDialog({
-    title: t('driveRenameFileTitle'),
-    placeholder: t('driveRenameFilePlaceholder'),
-    value: item.name,
-    confirmLabel: t('driveSave'),
-    cancelLabel: t('driveCancel'),
-  });
-  if (newName && newName.trim() && newName.trim() !== item.name) {
-    try {
-      await driveApi.renameFile(item.id, newName.trim());
-      await loadCurrentFolder();
-    } catch (err: any) {
-      await alertDialog({
-        title: t('driveRenameFailedTitle'),
-        message: err.message || t('driveRenameFailedMessage'),
-      });
-    }
-  }
-}
-
-async function onTrashFile(item: DriveItem) {
-  activeFileMenuId.value = null;
-  const confirmed = await confirmDialog({
-    title: t('driveMoveToTrashTitle').replace('{name}', item.name),
-    confirmLabel: t('driveMoveToTrash'),
-    cancelLabel: t('driveCancel'),
-    danger: true,
-  });
-  if (!confirmed) return;
-  try {
-    await driveApi.trashFile(item.id);
-    await loadCurrentFolder();
-  } catch (err: any) {
-    await alertDialog({
-      title: t('driveMoveToTrashFailedTitle'),
-      message: err.message || t('driveMoveToTrashFailedMessage'),
-    });
-  }
-}
-
 // ---------------------------------------------------------------------------
 // This phone as storage (Android app with the node switched on)
 // ---------------------------------------------------------------------------
@@ -741,15 +677,6 @@ async function onPhoneEvict(item: DriveItem) {
   } catch (err) {
     await alertDialog({ title: t('phoneActionFailed'), message: phoneErrorText(err, t) });
   }
-}
-
-function onShowProperties(item: DriveItem) {
-  activeFileMenuId.value = null;
-  propertiesItem.value = item;
-}
-
-function toggleFileMenu(id: string) {
-  activeFileMenuId.value = activeFileMenuId.value === id ? null : id;
 }
 
 // Upload Handling
