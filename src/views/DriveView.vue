@@ -97,53 +97,21 @@
           @retry="loadCurrentFolder"
           @load-more="onLoadMore"
         >
-          <!-- Grid View -->
-          <div
-            v-if="viewMode === 'grid'"
-            class="drive-grid"
-            data-view-grid
-          >
-            <DriveItemCard
-              v-for="item in displayedItems"
-              :key="`${item.kind}-${item.id}`"
-              :item="item"
-              :menu-active="activeFileMenuId === item.id"
-              :phone-active="phoneActive"
-              :phone-path-available="Boolean(itemDrivePath(item))"
-              @open="onItemClick(item)"
-              @toggle-menu="toggleFileMenu(item.id)"
-              @download="onDownloadFile(item)"
-              @rename="onRenameFile(item)"
-              @phone-fetch="onPhoneFetch(item)"
-              @phone-evict="onPhoneEvict(item)"
-              @properties="onShowProperties(item)"
-              @trash="onTrashFile(item)"
-            />
-          </div>
-
-          <!-- List View -->
-          <div
-            v-else
-            class="drive-list"
-            data-view-list
-          >
-            <DriveItemRow
-              v-for="item in displayedItems"
-              :key="`${item.kind}-${item.id}`"
-              :item="item"
-              :menu-active="activeFileMenuId === item.id"
-              :phone-active="phoneActive"
-              :phone-path-available="Boolean(itemDrivePath(item))"
-              @open="onItemClick(item)"
-              @toggle-menu="toggleFileMenu(item.id)"
-              @download="onDownloadFile(item)"
-              @rename="onRenameFile(item)"
-              @phone-fetch="onPhoneFetch(item)"
-              @phone-evict="onPhoneEvict(item)"
-              @properties="onShowProperties(item)"
-              @trash="onTrashFile(item)"
-            />
-          </div>
+          <DriveItemsView
+            :items="displayedItems"
+            :view-mode="viewMode"
+            :active-file-menu-id="activeFileMenuId"
+            :phone-active="phoneActive"
+            :item-drive-path="itemDrivePath"
+            @open="onItemClick"
+            @toggle-menu="(item) => toggleFileMenu(item.id)"
+            @download="onDownloadFile"
+            @rename="onRenameFile"
+            @phone-fetch="onPhoneFetch"
+            @phone-evict="onPhoneEvict"
+            @properties="onShowProperties"
+            @trash="onTrashFile"
+          />
 
         </DriveContentState>
       </section>
@@ -185,10 +153,9 @@ import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveHeader from '../components/DriveHeader.vue';
 import DriveContentHeader from '../components/DriveContentHeader.vue';
 import DriveContentState from '../components/DriveContentState.vue';
+import DriveItemsView from '../components/DriveItemsView.vue';
 import DriveSidebar from '../components/DriveSidebar.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
-import DriveItemCard from '../components/DriveItemCard.vue';
-import DriveItemRow from '../components/DriveItemRow.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { useDriveSearch } from '../composables/useDriveSearch';
 import { useDriveFolderData } from '../composables/useDriveFolderData';
@@ -411,31 +378,11 @@ useDriveLifecycle({
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* Items Grid */
-.drive-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.drive-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
 /* Responsive: Mobile View (≤ 640px) */
 @media (max-width: 640px) {
   .drive-main {
     padding: 16px 14px 28px;
     gap: 16px;
-  }
-
-  /* Mobile items list instead of cards */
-  .drive-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
   }
 
 }
