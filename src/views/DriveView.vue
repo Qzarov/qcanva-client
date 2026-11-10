@@ -140,12 +140,6 @@ import {
   Upload,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import { useRoute } from 'vue-router';
-import {
-  type DriveOrder,
-  type DriveSlice,
-  type DriveSort,
-} from '../api/drive';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
@@ -168,27 +162,14 @@ import { useDriveCreateActions } from '../composables/useDriveCreateActions';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
 import { useDrivePresentation } from '../composables/useDrivePresentation';
 import { useDriveLifecycle } from '../composables/useDriveLifecycle';
+import { useDrivePageState } from '../composables/useDrivePageState';
 
-const route = useRoute();
 const { t } = useI18n();
 
-const currentFolderId = computed<string>(() => {
-  const raw = route.params.folderId;
-  if (!raw || Array.isArray(raw)) return 'root';
-  return String(raw);
-});
+const { route, currentFolderId, activeSlice, activeSort, activeOrder, viewMode, loading, loadingMore, error, mobileSearchOpen } = useDrivePageState();
 
 // State
 const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t('drivePhotos')));
-const activeSlice = ref<DriveSlice>('all');
-const activeSort = ref<DriveSort>('name');
-const activeOrder = ref<DriveOrder>('asc');
-const viewMode = ref<'grid' | 'list'>('grid');
-const loading = ref(true);
-const loadingMore = ref(false);
-const error = ref<string | null>(null);
-
-const mobileSearchOpen = ref(false);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
