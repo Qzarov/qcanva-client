@@ -453,7 +453,6 @@ import {
   driveApi,
   formatFileSize,
   resolveDownloadUrl,
-  type DriveFolderResponse,
   type DriveItem,
   type DriveOrder,
   type DriveSlice,
@@ -473,6 +472,7 @@ import DriveItemCard from '../components/DriveItemCard.vue';
 import DriveItemRow from '../components/DriveItemRow.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { useDriveSearch } from '../composables/useDriveSearch';
+import { useDriveFolderData } from '../composables/useDriveFolderData';
 import { isPhotosEnabled } from '../api/photos';
 import {
   phoneErrorText,
@@ -531,10 +531,6 @@ const loading = ref(true);
 const loadingMore = ref(false);
 const error = ref<string | null>(null);
 
-const folderInfo = ref<DriveFolderResponse | null>(null);
-const items = ref<DriveItem[]>([]);
-const nextCursor = ref<string | null>(null);
-
 const mobileSearchOpen = ref(false);
 
 // Menus
@@ -559,9 +555,21 @@ const { searchQuery, debouncedQuery, searchAllDrive, searchResults, searchNextCu
   error,
 });
 
-const activeNextCursor = computed(() => (
-  isSearching.value ? searchNextCursor.value : nextCursor.value
-));
+const { folderInfo, items, activeNextCursor, loadCurrentFolder, setSlice, setSort, toggleOrder, onLoadMore } = useDriveFolderData({
+  folderId: currentFolderId,
+  slice: activeSlice,
+  sort: activeSort,
+  order: activeOrder,
+  isSearching,
+  debouncedQuery,
+  searchAllDrive,
+  searchResults,
+  searchNextCursor,
+  performSearch,
+  loading,
+  loadingMore,
+  error,
+});
 
 const folderTitle = computed(() => {
   if (currentFolderId.value === 'root') {
@@ -659,97 +667,6 @@ function goBack() {
     router.push('/drive');
   } else {
     router.push('/dashboard');
-  }
-}
-
-// Load folder data
-async function loadCurrentFolder() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const [infoRes, itemsRes] = await Promise.all([
-      driveApi.getFolder(currentFolderId.value),
-      driveApi.getFolderItems(currentFolderId.value, {
-        slice: activeSlice.value,
-        sort: activeSort.value,
-        order: activeOrder.value,
-      }),
-    ]);
-    folderInfo.value = infoRes;
-    items.value = itemsRes.items;
-    nextCursor.value = itemsRes.nextCursor;
-  } catch (e: any) {
-    error.value = e.message || t('driveFolderLoadFailed');
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function refetchItemsOnly() {
-  if (isSearching.value) {
-    await performSearch();
-    return;
-  }
-  try {
-    const res = await driveApi.getFolderItems(currentFolderId.value, {
-      slice: activeSlice.value,
-      sort: activeSort.value,
-      order: activeOrder.value,
-    });
-    items.value = res.items;
-    nextCursor.value = res.nextCursor;
-  } catch (e: any) {
-    error.value = e.message || t('driveRefreshFailed');
-  }
-}
-
-function setSlice(slice: DriveSlice) {
-  if (activeSlice.value === slice) return;
-  activeSlice.value = slice;
-  refetchItemsOnly();
-}
-
-function setSort(sort: DriveSort) {
-  if (activeSort.value === sort) return;
-  activeSort.value = sort;
-  refetchItemsOnly();
-}
-
-function toggleOrder() {
-  activeOrder.value = activeOrder.value === 'asc' ? 'desc' : 'asc';
-  refetchItemsOnly();
-}
-
-async function onLoadMore() {
-  if (loadingMore.value || !activeNextCursor.value) return;
-  loadingMore.value = true;
-  try {
-    if (isSearching.value) {
-      const scopeFolder = searchAllDrive.value || currentFolderId.value === 'root'
-        ? undefined
-        : currentFolderId.value;
-      const res = await driveApi.search({
-        q: debouncedQuery.value,
-        slice: activeSlice.value,
-        folderId: scopeFolder,
-        cursor: searchNextCursor.value,
-      });
-      searchResults.value = [...searchResults.value, ...res.items];
-      searchNextCursor.value = res.nextCursor;
-    } else {
-      const res = await driveApi.getFolderItems(currentFolderId.value, {
-        slice: activeSlice.value,
-        sort: activeSort.value,
-        order: activeOrder.value,
-        cursor: nextCursor.value,
-      });
-      items.value = [...items.value, ...res.items];
-      nextCursor.value = res.nextCursor;
-    }
-  } catch (e: any) {
-    error.value = e.message || t('driveLoadMoreItemsFailed');
-  } finally {
-    loadingMore.value = false;
   }
 }
 
