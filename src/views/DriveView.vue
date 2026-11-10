@@ -1028,70 +1028,10 @@ useDriveLifecycle({
   gap: 16px;
 }
 
-/* List View */
 .drive-list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.drive-list-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.drive-list-row:hover,
-.drive-list-row:focus-visible {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: var(--ui-border, #2a3a2e);
-  outline: none;
-}
-
-.drive-row-icon-col {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-}
-
-.drive-row-name-col {
-  flex: 1;
-  min-width: 0;
-}
-
-.drive-row-name {
-  font-weight: 500;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: block;
-}
-
-.drive-row-size-col {
-  flex-shrink: 0;
-  min-width: 70px;
-  text-align: right;
-  font-size: 12px;
-  color: var(--ui-text-muted, #a8c6a8);
-}
-
-.drive-row-date-col {
-  flex-shrink: 0;
-  font-size: 12px;
-  color: var(--ui-text-muted, #a8c6a8);
-}
-
-.drive-row-menu-col {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
 }
 
 /* Pagination */

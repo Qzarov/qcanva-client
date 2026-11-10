@@ -32,3 +32,33 @@ const isVideoItem = (item: DriveItem) => item.kind === 'video' || (item.kind ===
 const getKindLabel = (kind: DriveItem['kind']) => ({ folder: t('driveFolder'), canvas: t('driveCanvas'), 'text-document': t('driveDocument'), 'html-document': 'HTML', board: t('driveBoard'), sheet: t('driveSheet'), file: t('driveFile'), photo: t('drivePhoto'), video: t('driveVideo') }[kind] || t('driveFile'));
 const formatDate = (iso?: string | null) => { if (!iso) return ''; try { return new Date(iso).toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' }); } catch { return iso; } };
 </script>
+
+<style scoped>
+.drive-list-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.drive-list-row:hover,
+.drive-list-row:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--ui-border, #2a3a2e);
+  outline: none;
+}
+
+.drive-row-icon-col { flex-shrink: 0; display: flex; align-items: center; }
+.drive-row-name-col { flex: 1; min-width: 0; }
+.drive-row-name { font-weight: 500; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.drive-row-size-col { flex-shrink: 0; min-width: 70px; text-align: right; font-size: 12px; color: var(--ui-text-muted, #a8c6a8); }
+.drive-row-date-col { flex-shrink: 0; font-size: 12px; color: var(--ui-text-muted, #a8c6a8); }
+.drive-row-menu-col { flex-shrink: 0; display: flex; align-items: center; }
+.drive-kind-pill { padding: 1px 6px; border-radius: 5px; background: rgba(255, 255, 255, 0.06); font-size: 11px; color: var(--ui-text-secondary, #d6f2d6); }
+.drive-date { font-size: 11px; }
+</style>
