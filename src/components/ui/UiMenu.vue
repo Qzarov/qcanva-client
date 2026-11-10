@@ -28,7 +28,9 @@ const emit = defineEmits<{ toggle: []; close: [] }>();
 </script>
 <style scoped>
 .ui-menu { position: relative; }
-.ui-menu__panel { position: relative; }
+/* The panel's place is its own class's to set (a dropdown under its icon,
+   a sheet fixed at the bottom of the screen): none here, or this one, as
+   specific and loaded later, would beat it. */
 :deep(.ui-menu__panel :is(button, [href], input, select, textarea):focus-visible) {
   outline: 2px solid var(--ui-focus);
   outline-offset: 2px;
