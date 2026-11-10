@@ -109,114 +109,25 @@
 
     <!-- Main Content Area -->
     <main class="drive-main">
-      <!-- Mobile Header (≤ 640px) -->
-      <header class="drive-mobile-header">
-        <div class="drive-mobile-top-bar">
-          <button
-            type="button"
-            class="drive-mobile-back-btn"
-            :aria-label="t('driveBack')"
-            data-mobile-back
-            @click="goBack"
-          >
-            <ArrowLeft :size="20" aria-hidden="true" />
-          </button>
-          <h1 class="drive-mobile-title">{{ folderTitle }}</h1>
-          <button
-            v-if="activeTab !== 'photos'"
-            type="button"
-            class="drive-mobile-header-btn"
-            :aria-label="t('driveUploadFiles')"
-            data-mobile-upload-button
-            :title="t('driveUploadFiles')"
-            @click="triggerFileInput"
-          >
-            <Upload :size="18" aria-hidden="true" />
-          </button>
-          <router-link
-            to="/settings?section=devices"
-            class="drive-mobile-header-btn"
-            :aria-label="t('cupTitle')"
-            :title="t('cupTitle')"
-            data-mobile-devices-link
-          >
-            <MonitorSmartphone :size="18" aria-hidden="true" />
-          </router-link>
-          <button
-            type="button"
-            class="drive-mobile-search-toggle"
-            :aria-label="t('driveSearch')"
-            v-if="activeTab !== 'photos'"
-            data-mobile-search-toggle
-            @click="mobileSearchOpen = !mobileSearchOpen"
-          >
-            <Search :size="20" aria-hidden="true" />
-          </button>
-        </div>
-
-        <!-- Mobile Expandable Search -->
-        <DriveSearchControls
-          v-if="mobileSearchOpen && activeTab !== 'photos'"
-          v-model="searchQuery"
-          v-model:all-drive="searchAllDrive"
-          mobile
-          @clear="clearSearch"
-        />
-      </header>
-
-      <!-- Desktop Header -->
-      <header class="drive-desktop-header">
-        <!-- Breadcrumbs -->
-        <nav :aria-label="t('driveBreadcrumbsAria')" class="drive-breadcrumbs">
-          <router-link to="/drive" class="drive-breadcrumb-link" data-breadcrumb="root">{{ t('drive') }}</router-link>
-          <template v-for="(crumb, idx) in breadcrumbTrail" :key="crumb.id">
-            <span class="drive-breadcrumb-sep" aria-hidden="true">›</span>
-            <router-link
-              v-if="idx < breadcrumbTrail.length - 1"
-              :to="`/drive/${crumb.id}`"
-              class="drive-breadcrumb-link"
-              :data-breadcrumb="crumb.id"
-            >
-              {{ crumb.name }}
-            </router-link>
-            <span v-else class="drive-breadcrumb-current" :data-breadcrumb="crumb.id">
-              {{ crumb.name }}
-            </span>
-          </template>
-        </nav>
-
-        <div class="drive-header-actions">
-          <!-- Desktop Search -->
-          <DriveSearchControls
-            v-if="activeTab !== 'photos'"
-            v-model="searchQuery"
-            v-model:all-drive="searchAllDrive"
-            @clear="clearSearch"
-          />
-
-          <!-- Upload Button (Hidden on Photos tab) -->
-          <button
-            v-if="activeTab !== 'photos'"
-            type="button"
-            class="drive-btn drive-btn-primary"
-            data-upload-button
-            :aria-label="t('driveUploadFiles')"
-            @click="triggerFileInput"
-          >
-            <Upload :size="16" aria-hidden="true" />
-            <span>{{ t('driveUpload') }}</span>
-          </button>
-
-          <!-- Create Button + Menu -->
-          <DriveCreateMenu
-            :open="createMenuOpen"
-            @toggle="createMenuOpen = !createMenuOpen"
-            @create-folder="onCreateFolder"
-            @create-canvas="onCreateCanvas"
-            @create-document="onCreateDocument"
-          />
-        </div>
-      </header>
+      <DriveHeader
+        :active-tab="activeTab"
+        :mobile-search-open="mobileSearchOpen"
+        :folder-title="folderTitle"
+        :breadcrumb-trail="breadcrumbTrail"
+        :search-query="searchQuery"
+        :search-all-drive="searchAllDrive"
+        :create-menu-open="createMenuOpen"
+        @back="goBack"
+        @upload="triggerFileInput"
+        @toggle-mobile-search="mobileSearchOpen = !mobileSearchOpen"
+        @update:search-query="searchQuery = $event"
+        @update:search-all-drive="searchAllDrive = $event"
+        @clear-search="clearSearch"
+        @toggle-create="createMenuOpen = !createMenuOpen"
+        @create-folder="onCreateFolder"
+        @create-canvas="onCreateCanvas"
+        @create-document="onCreateDocument"
+      />
 
       <!-- Files / Photos switch: the photo slice of a folder is its album -->
       <div
@@ -436,7 +347,6 @@
 
 <script setup lang="ts">
 import {
-  ArrowLeft,
   File,
   FileText,
   Folder,
@@ -458,9 +368,8 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
-import DriveSearchControls from '../components/DriveSearchControls.vue';
+import DriveHeader from '../components/DriveHeader.vue';
 import DriveFolderTree from '../components/DriveFolderTree.vue';
-import DriveCreateMenu from '../components/DriveCreateMenu.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DriveItemCard from '../components/DriveItemCard.vue';
 import DriveItemRow from '../components/DriveItemRow.vue';
@@ -787,89 +696,6 @@ useDriveLifecycle({
   gap: 12px;
 }
 
-/* Mobile Header (Hidden on Desktop) */
-.drive-mobile-header {
-  display: none;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.drive-mobile-top-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.drive-mobile-back-btn,
-.drive-mobile-search-toggle,
-.drive-mobile-header-btn {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text, #f8fff8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.drive-mobile-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* Desktop Header */
-.drive-desktop-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.drive-breadcrumbs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  color: var(--ui-text-muted, #a8c6a8);
-  flex-wrap: wrap;
-}
-
-.drive-breadcrumb-link {
-  color: var(--ui-text-muted, #a8c6a8);
-  text-decoration: none;
-  transition: color 0.15s;
-}
-
-.drive-breadcrumb-link:hover {
-  color: var(--ui-accent-strong, #8cff8c);
-}
-
-.drive-breadcrumb-sep {
-  color: var(--ui-text-muted, #a8c6a8);
-  user-select: none;
-}
-
-.drive-breadcrumb-current {
-  color: var(--ui-text, #f8fff8);
-  font-weight: 600;
-}
-
-.drive-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
 /* Buttons */
 .drive-btn {
   height: 38px;
@@ -1059,14 +885,6 @@ useDriveLifecycle({
 
   .drive-photos-title-bar {
     display: none;
-  }
-
-  .drive-desktop-header {
-    display: none;
-  }
-
-  .drive-mobile-header {
-    display: flex;
   }
 
   .drive-main {
