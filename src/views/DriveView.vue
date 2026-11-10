@@ -448,7 +448,7 @@ import {
   Upload,
 } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import {
   driveApi,
   formatFileSize,
@@ -473,7 +473,7 @@ import DriveItemRow from '../components/DriveItemRow.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { useDriveSearch } from '../composables/useDriveSearch';
 import { useDriveFolderData } from '../composables/useDriveFolderData';
-import { isPhotosEnabled } from '../api/photos';
+import { useDriveNavigation } from '../composables/useDriveNavigation';
 import {
   phoneErrorText,
   phoneEvictText,
@@ -482,7 +482,6 @@ import {
 } from '../composables/usePhoneNode';
 
 const route = useRoute();
-const router = useRouter();
 const { t } = useI18n();
 
 const currentFolderId = computed<string>(() => {
@@ -492,37 +491,7 @@ const currentFolderId = computed<string>(() => {
 });
 
 // State
-type DriveTab = 'files' | 'photos';
-/** Photos is not part of v1: without the build flag it cannot be opened, not even by `?view=photos`. */
-const photosEnabled = isPhotosEnabled();
-const tabFromQuery = (): DriveTab => (photosEnabled && route.query?.view === 'photos' ? 'photos' : 'files');
-const activeTab = ref<DriveTab>(tabFromQuery());
-/** Folder whose photo slice (album) is shown; null at the root = the whole drive. */
-const photosFolderId = computed<string | null>(() => (currentFolderId.value === 'root' ? null : currentFolderId.value));
 const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t('drivePhotos')));
-
-/** Switches Files/Photos and mirrors it in `?view=photos`, so reload and back keep the mode. */
-function setTab(tab: DriveTab): void {
-  if (tab === 'photos' && !photosEnabled) return;
-  if (activeTab.value === tab) return;
-  activeTab.value = tab;
-  const query = { ...(route.query ?? {}) } as Record<string, unknown>;
-  if (tab === 'photos') query.view = 'photos';
-  else delete query.view;
-  void router.replace?.({ path: route.path, query: query as Record<string, string> })?.catch?.(() => undefined);
-}
-
-watch(
-  () => route.query?.view,
-  (view) => {
-    if (view === 'photos' && photosEnabled) activeTab.value = 'photos';
-  },
-);
-
-function openPhotoInFolder(folderId: string): void {
-  activeTab.value = 'files';
-  router.push(`/drive/${folderId}`);
-}
 const activeSlice = ref<DriveSlice>('all');
 const activeSort = ref<DriveSort>('name');
 const activeOrder = ref<DriveOrder>('asc');
@@ -569,6 +538,12 @@ const { folderInfo, items, activeNextCursor, loadCurrentFolder, setSlice, setSor
   loading,
   loadingMore,
   error,
+});
+
+const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
+  currentFolderId,
+  folderPath: computed(() => folderInfo.value?.path || []),
+  onDownloadFile,
 });
 
 const folderTitle = computed(() => {
@@ -620,55 +595,6 @@ const displayedItems = computed(() => {
     return 0;
   });
 });
-
-// Navigation or Download on click
-async function onItemClick(item: DriveItem) {
-  switch (item.kind) {
-    case 'folder':
-      router.push(`/drive/${item.id}`);
-      break;
-    case 'canvas':
-      router.push(`/canvas/${item.id}`);
-      break;
-    case 'text-document':
-      router.push(`/docs/${item.id}`);
-      break;
-    case 'html-document':
-      router.push(`/edit/html/${item.id}`);
-      break;
-    case 'board':
-    case 'sheet':
-      router.push(`/templates/${item.id}`);
-      break;
-    case 'file':
-    case 'photo':
-    case 'video':
-      await onDownloadFile(item);
-      break;
-    default:
-      break;
-  }
-}
-
-function navigateToFolder(id: string) {
-  router.push(`/drive/${id}`);
-}
-
-function goBack() {
-  const path = folderInfo.value?.path;
-  if (path && path.length > 1) {
-    const parent = path[path.length - 2];
-    if (parent) {
-      router.push(`/drive/${parent.id}`);
-    } else {
-      router.push('/drive');
-    }
-  } else if (path && path.length === 1) {
-    router.push('/drive');
-  } else {
-    router.push('/dashboard');
-  }
-}
 
 // Sidebar Lazy Folder Tree
 async function initSidebarTree() {
