@@ -472,6 +472,7 @@ import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DriveItemCard from '../components/DriveItemCard.vue';
 import DriveItemRow from '../components/DriveItemRow.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
+import { useDriveSearch } from '../composables/useDriveSearch';
 import { isPhotosEnabled } from '../api/photos';
 import {
   phoneErrorText,
@@ -534,14 +535,7 @@ const folderInfo = ref<DriveFolderResponse | null>(null);
 const items = ref<DriveItem[]>([]);
 const nextCursor = ref<string | null>(null);
 
-// Search
-const searchQuery = ref('');
-const debouncedQuery = ref('');
-const searchAllDrive = ref(false);
-const searchResults = ref<DriveItem[]>([]);
-const searchNextCursor = ref<string | null>(null);
 const mobileSearchOpen = ref(false);
-let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Menus
 const createMenuOpen = ref(false);
@@ -558,7 +552,12 @@ let dragCounter = 0;
 // Sidebar Tree
 const treeFolders = ref<DriveTreeNode[]>([]);
 
-const isSearching = computed(() => debouncedQuery.value.length > 0);
+const { searchQuery, debouncedQuery, searchAllDrive, searchResults, searchNextCursor, isSearching, performSearch, clearSearch } = useDriveSearch({
+  folderId: currentFolderId,
+  slice: activeSlice,
+  loading,
+  error,
+});
 
 const activeNextCursor = computed(() => (
   isSearching.value ? searchNextCursor.value : nextCursor.value
@@ -753,55 +752,6 @@ async function onLoadMore() {
     loadingMore.value = false;
   }
 }
-
-// Search
-async function performSearch() {
-  if (!debouncedQuery.value) {
-    searchResults.value = [];
-    searchNextCursor.value = null;
-    return;
-  }
-  loading.value = true;
-  try {
-    const scopeFolder = searchAllDrive.value || currentFolderId.value === 'root'
-      ? undefined
-      : currentFolderId.value;
-    const res = await driveApi.search({
-      q: debouncedQuery.value,
-      slice: activeSlice.value,
-      folderId: scopeFolder,
-    });
-    searchResults.value = res.items;
-    searchNextCursor.value = res.nextCursor;
-  } catch (e: any) {
-    error.value = e.message || t('driveSearchFailed');
-  } finally {
-    loading.value = false;
-  }
-}
-
-function clearSearch() {
-  searchQuery.value = '';
-  debouncedQuery.value = '';
-  searchResults.value = [];
-  searchNextCursor.value = null;
-}
-
-watch(searchQuery, (val) => {
-  if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
-  searchDebounceTimer = setTimeout(() => {
-    debouncedQuery.value = val.trim();
-  }, 300);
-});
-
-watch([debouncedQuery, searchAllDrive], () => {
-  if (debouncedQuery.value) {
-    performSearch();
-  } else {
-    searchResults.value = [];
-    searchNextCursor.value = null;
-  }
-});
 
 // Sidebar Lazy Folder Tree
 async function initSidebarTree() {
