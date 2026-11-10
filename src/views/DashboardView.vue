@@ -73,21 +73,11 @@
       <Transition name="dashboard-upload-badge">
         <DashboardUploadBadge v-if="!uploadPanelOpen && uploads.length" :summary="uploadSummary" @open="uploadPanelOpen = true" />
       </Transition>
-      <Transition name="dashboard-download-status">
-        <div
-          v-if="downloadStatus.phase !== 'idle'"
-          class="dashboard-download-status"
-          :class="'is-' + downloadStatus.phase"
-          role="status"
-          aria-live="polite"
-          data-download-status
-        >
-          <span class="dashboard-download-status-text">{{ transferStatusText }}</span>
-          <span class="dashboard-download-status-track" aria-hidden="true">
-            <span class="dashboard-download-status-bar" :style="{ width: transferStatusPercent + '%' }"></span>
-          </span>
-        </div>
-      </Transition>
+      <DashboardStatusOverlays
+        :download-phase="downloadStatus.phase"
+        :transfer-status-text="transferStatusText"
+        :transfer-status-percent="transferStatusPercent"
+      />
     <header v-if="!isLoggedIn" class="app-header app-header-public">
       <div class="app-header-inner">
         <div class="dashboard-brand">
@@ -1343,6 +1333,7 @@ import DashboardResourceMenu from '../components/dashboard/DashboardResourceMenu
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
 import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
 import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
+import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1514,6 +1505,7 @@ export default defineComponent({
     DashboardResourceCard,
     DashboardSelectionBar,
     DashboardToolbarControls,
+    DashboardStatusOverlays,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
