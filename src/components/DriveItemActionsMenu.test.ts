@@ -11,6 +11,8 @@ const item = {
   mime: 'text/plain',
   updatedAt: '2026-11-09T12:00:00.000Z',
   sortDate: '2026-11-09T12:00:00.000Z',
+  ownerId: 'user-1',
+  folderId: 'root',
 };
 
 describe('DriveItemActionsMenu', () => {
