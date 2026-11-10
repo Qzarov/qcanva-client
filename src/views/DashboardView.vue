@@ -532,20 +532,23 @@
       >
         <div class="dash-section-head"><h2>{{ t('interactiveTemplate') }}</h2></div>
         <div class="dash-grid" data-feed-grid="interactive">
-          <article v-for="item in feedItems(visibleInteractiveTemplateItems, 'interactive')" :key="item.id" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="canvas-card html-doc-card interactive-template-card" :data-template-resource="item.id" @click="openInteractiveTemplate(item.id)">
-            <ResourceThumb :kind="'interactive-template'" :id="item.id" :version="item.updatedAt" />
-            <div class="card-title card-title-with-icon"><span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span><ResourceIcon kind="interactive-template" :template-type="item.templateType" data-resource-icon="interactive-template" :data-template-type="item.templateType" role="img" :aria-label="interactiveTemplateTypeLabel(item.templateType)" /><span class="card-title-text">{{ item.title }}</span></div>
-            <div class="card-meta"><span v-if="cardFolderPath(item)" class="card-folder" data-card-folder :title="cardFolderPath(item)"><Folder :size="12" aria-hidden="true" /><span class="card-folder-name">{{ cardFolderPath(item) }}</span></span><span class="card-date">{{ formatDate(item.updatedAt) }}</span></div>
-            <button class="card-manage" :data-menu-trigger="`interactive-template:${item.id}`" @click.stop="toggleCardMenu(`interactive-template:${item.id}`, $event)" title="Действия с шаблоном" :disabled="isBusy">⋯</button>
-            <DashboardResourceMenu
-              v-if="openMenuCanvasId === `interactive-template:${item.id}`"
-              :actions="resourceActions(item, 'interactive')"
-              :disabled="isBusy"
-              :menu-id="`interactive-template:${item.id}`"
-              :menu-style="cardMenuStyle"
-              @select="handleResourceAction(item, $event)"
-            />
-          </article>
+          <DashboardInteractiveFeedGrid
+            :items="feedItems(visibleInteractiveTemplateItems, 'interactive')"
+            :is-logged-in="isLoggedIn"
+            :is-busy="isBusy"
+            :open-menu-canvas-id="openMenuCanvasId"
+            :card-menu-style="cardMenuStyle"
+            :selection-key="selectionKey"
+            :is-selected="isSelected"
+            :card-folder-path="cardFolderPath"
+            :format-date="formatDate"
+            :interactive-template-type-label="interactiveTemplateTypeLabel"
+            :resource-actions="resourceActions"
+            @open="openInteractiveTemplate"
+            @toggle-selected="toggleSelected"
+            @toggle-menu="toggleCardMenu"
+            @select-action="handleResourceAction"
+          />
           <button v-if="!visibleInteractiveTemplateItems.length && !hasActiveFilter" type="button" class="dashboard-add-tile" data-feed-add="interactive" data-feed-empty="interactive" @click.stop="openAddFromTile('interactive')">
             <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
           </button>
@@ -1013,6 +1016,7 @@ import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader
 import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
 import DashboardFolderResourceGrid from '../components/dashboard/DashboardFolderResourceGrid.vue';
 import DashboardFeedResourceGrid from '../components/dashboard/DashboardFeedResourceGrid.vue';
+import DashboardInteractiveFeedGrid from '../components/dashboard/DashboardInteractiveFeedGrid.vue';
 import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
@@ -1191,6 +1195,7 @@ export default defineComponent({
     DashboardActiveSubfolders,
     DashboardFolderResourceGrid,
     DashboardFeedResourceGrid,
+    DashboardInteractiveFeedGrid,
     DashboardAccessRequests,
     ResourceThumb,
     ResourceIcon,
