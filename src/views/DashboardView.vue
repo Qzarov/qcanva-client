@@ -1026,6 +1026,7 @@ import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.v
 import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
 import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
+import { matchesCanvas as matchesCanvasResource, matchesFolderItem as matchesFolderResource, matchesPublicItem as matchesPublicResource, sortResources } from '../dashboard/resource-filters';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
 import { TAG_COLORS } from '../dashboard/tag-colors';
 import { FEED_FALLBACK_COLUMNS, FEED_PHONE_QUERY, feedColumnCount, feedSectionLimit, type FeedRowSection } from '../dashboard/feed-rows';
@@ -1478,48 +1479,16 @@ export default defineComponent({
       email: '',
     });
 
-    /** OR semantics: an item matches if it carries any one of the selected tags. */
-    const matchesSelectedTags = (tags: CanvasTag[]) =>
-      selectedTags.value.length === 0 || selectedTags.value.some((selected) => tags.some((tag) => tag.name === selected));
-
-    const matchesCanvas = (c: CanvasRecord) => {
-      if (!typePasses(contentTypes.value, 'canvas')) return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${c.title || ''} ${c.folder || ''} ${c.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(c.tags);
-    };
-
-    /**
-     * Reused for both a folder's own contents and Recent (see
-     * filteredRecentResources/recentFolderTiles below) - the `type`/`title`/
-     * `tags` shape is all either needs, so the parameter is intentionally
-     * narrower than the full FolderItem union.
-     */
-    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) => {
-      if (!typePasses(contentTypes.value, item.type)) return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${item.title || ''} ${folderName} ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(item.tags);
-    };
-
-    const matchesPublicItem = (item: FolderItem) => {
-      if (!typePasses(contentTypes.value, item.type)) return false;
-      const q = searchQuery.value.trim().toLowerCase();
-      const matchesQuery = !q || `${item.title || ''} Public ${item.tags.map((tag) => tag.name).join(' ')}`.toLowerCase().includes(q);
-      return matchesQuery && matchesSelectedTags(item.tags);
-    };
-
-    const sortFolderItems = (items: FolderItem[]) => [...items].sort((a, b) => {
-      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
-        return a.pinned ? -1 : 1;
-      }
-      if (sortMode.value === 'title-asc' || sortMode.value === 'title-desc') {
-        const result = (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
-        return sortMode.value === 'title-asc' ? result : -result;
-      }
-      const result = new Date(a.updatedAt || 0).getTime() - new Date(b.updatedAt || 0).getTime();
-      return sortMode.value === 'updated-asc' ? result : -result;
+    const resourceFilterOptions = () => ({
+      contentTypes: contentTypes.value,
+      searchQuery: searchQuery.value,
+      selectedTags: selectedTags.value,
     });
+    const matchesCanvas = (item: CanvasRecord) => matchesCanvasResource(item, resourceFilterOptions());
+    const matchesFolderItem = (item: { type: FolderItem['type']; title: string; tags: CanvasTag[] }, folderName: string) =>
+      matchesFolderResource(item, folderName, resourceFilterOptions());
+    const matchesPublicItem = (item: FolderItem) => matchesPublicResource(item, resourceFilterOptions());
+    const sortFolderItems = (items: FolderItem[]) => sortResources(items, sortMode.value);
 
     const placedResourceKeys = computed(() => new Set(
       [...ownResourceFolders.value, ...sharedResourceFolders.value].flatMap((folder) => [
