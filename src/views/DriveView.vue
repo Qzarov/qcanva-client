@@ -99,82 +99,12 @@
       </router-link>
 
       <!-- Lazy Folder Tree -->
-      <div class="drive-tree" role="tree" :aria-label="t('driveFolders')">
-        <div
-          v-for="node in treeFolders"
-          :key="node.id"
-          class="drive-tree-node-group"
-        >
-          <div
-            class="drive-tree-item"
-            :class="{ active: currentFolderId === node.id }"
-            :style="{ paddingLeft: `${node.depth * 14 + 10}px` }"
-          >
-            <button
-              type="button"
-              class="drive-tree-expand-btn"
-              :aria-label="node.expanded ? t('driveCollapse') : t('driveExpand')"
-              :aria-expanded="node.expanded"
-              :data-folder-expand="node.id"
-              @click.stop="toggleTreeNode(node)"
-            >
-              <ChevronDown
-                :size="15"
-                class="drive-tree-chevron"
-                :class="{ collapsed: !node.expanded }"
-                aria-hidden="true"
-              />
-            </button>
-            <button
-              type="button"
-              class="drive-tree-label-btn"
-              :title="node.name"
-              :data-tree-folder="node.id"
-              @click="navigateToFolder(node.id)"
-            >
-              <Folder :size="16" class="drive-tree-folder-icon" aria-hidden="true" />
-              <span class="drive-tree-name">{{ node.name }}</span>
-            </button>
-          </div>
-
-          <!-- Children -->
-          <div v-if="node.expanded && node.children && node.children.length > 0" class="drive-tree-children">
-            <div
-              v-for="child in node.children"
-              :key="child.id"
-              class="drive-tree-item"
-              :class="{ active: currentFolderId === child.id }"
-              :style="{ paddingLeft: `${(node.depth + 1) * 14 + 10}px` }"
-            >
-              <button
-                type="button"
-                class="drive-tree-expand-btn"
-                :aria-label="child.expanded ? t('driveCollapse') : t('driveExpand')"
-                :aria-expanded="child.expanded"
-                :data-folder-expand="child.id"
-                @click.stop="toggleTreeNode(child)"
-              >
-                <ChevronDown
-                  :size="15"
-                  class="drive-tree-chevron"
-                  :class="{ collapsed: !child.expanded }"
-                  aria-hidden="true"
-                />
-              </button>
-              <button
-                type="button"
-                class="drive-tree-label-btn"
-                :title="child.name"
-                :data-tree-folder="child.id"
-                @click="navigateToFolder(child.id)"
-              >
-                <Folder :size="16" class="drive-tree-folder-icon" aria-hidden="true" />
-                <span class="drive-tree-name">{{ child.name }}</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DriveFolderTree
+        :nodes="treeFolders"
+        :current-folder-id="currentFolderId"
+        @toggle="toggleTreeNode"
+        @navigate="navigateToFolder"
+      />
     </aside>
 
     <!-- Main Content Area -->
@@ -711,7 +641,6 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  ChevronDown,
   Code,
   File,
   FileText,
@@ -750,6 +679,7 @@ import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import DriveItemActionsMenu from '../components/DriveItemActionsMenu.vue';
 import DriveSearchControls from '../components/DriveSearchControls.vue';
+import DriveFolderTree, { type DriveTreeNode } from '../components/DriveFolderTree.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
@@ -758,15 +688,6 @@ import {
   phoneFetchText,
   usePhoneNode,
 } from '../composables/usePhoneNode';
-
-interface TreeNode {
-  id: string;
-  name: string;
-  depth: number;
-  expanded: boolean;
-  loaded: boolean;
-  children: TreeNode[] | null;
-}
 
 const route = useRoute();
 const router = useRouter();
@@ -844,7 +765,7 @@ const isDraggingOver = ref(false);
 let dragCounter = 0;
 
 // Sidebar Tree
-const treeFolders = ref<TreeNode[]>([]);
+const treeFolders = ref<DriveTreeNode[]>([]);
 
 const isSearching = computed(() => debouncedQuery.value.length > 0);
 
@@ -1151,7 +1072,7 @@ async function initSidebarTree() {
   }
 }
 
-async function toggleTreeNode(node: TreeNode) {
+async function toggleTreeNode(node: DriveTreeNode) {
   node.expanded = !node.expanded;
   if (node.expanded && !node.loaded) {
     try {
