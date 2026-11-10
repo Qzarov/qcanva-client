@@ -465,7 +465,7 @@ import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveSearchControls from '../components/DriveSearchControls.vue';
-import DriveFolderTree, { type DriveTreeNode } from '../components/DriveFolderTree.vue';
+import DriveFolderTree from '../components/DriveFolderTree.vue';
 import DriveCreateMenu from '../components/DriveCreateMenu.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DriveItemCard from '../components/DriveItemCard.vue';
@@ -475,6 +475,7 @@ import { useDriveSearch } from '../composables/useDriveSearch';
 import { useDriveFolderData } from '../composables/useDriveFolderData';
 import { useDriveNavigation } from '../composables/useDriveNavigation';
 import { useDriveUpload } from '../composables/useDriveUpload';
+import { useDriveSidebarTree } from '../composables/useDriveSidebarTree';
 import {
   phoneErrorText,
   phoneEvictText,
@@ -513,9 +514,6 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const isDraggingOver = ref(false);
 let dragCounter = 0;
 
-// Sidebar Tree
-const treeFolders = ref<DriveTreeNode[]>([]);
-
 const { searchQuery, debouncedQuery, searchAllDrive, searchResults, searchNextCursor, isSearching, performSearch, clearSearch } = useDriveSearch({
   folderId: currentFolderId,
   slice: activeSlice,
@@ -549,6 +547,8 @@ const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelU
   folderId: currentFolderId,
   loadCurrentFolder,
 });
+
+const { treeFolders, initSidebarTree, toggleTreeNode } = useDriveSidebarTree();
 
 const folderTitle = computed(() => {
   if (currentFolderId.value === 'root') {
@@ -599,45 +599,6 @@ const displayedItems = computed(() => {
     return 0;
   });
 });
-
-// Sidebar Lazy Folder Tree
-async function initSidebarTree() {
-  try {
-    const res = await driveApi.getFolderItems('root', { slice: 'all' });
-    const rootFolders = res.items.filter((it) => it.kind === 'folder');
-    treeFolders.value = rootFolders.map((f) => ({
-      id: f.id,
-      name: f.name,
-      depth: 0,
-      expanded: false,
-      loaded: false,
-      children: null,
-    }));
-  } catch {
-    // Non-fatal if tree fails
-  }
-}
-
-async function toggleTreeNode(node: DriveTreeNode) {
-  node.expanded = !node.expanded;
-  if (node.expanded && !node.loaded) {
-    try {
-      const res = await driveApi.getFolderItems(node.id, { slice: 'all' });
-      const childFolders = res.items.filter((it) => it.kind === 'folder');
-      node.children = childFolders.map((cf) => ({
-        id: cf.id,
-        name: cf.name,
-        depth: node.depth + 1,
-        expanded: false,
-        loaded: false,
-        children: null,
-      }));
-      node.loaded = true;
-    } catch {
-      node.children = [];
-    }
-  }
-}
 
 // Create Actions
 async function onCreateFolder() {
