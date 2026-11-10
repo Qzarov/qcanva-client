@@ -210,30 +210,19 @@
         {{ t('recentStale') }}
         <button type="button" class="dash-empty-reset" @click.stop="retryRecent">{{ t('retry') }}</button>
       </p>
-      <div
+      <DashboardRecentResources
         v-if="visibleRecent.length"
-        class="dashboard-recents-layout"
-        :class="recentViewMode === 'grid' ? 'dashboard-recents-grid' : 'dashboard-recents-list'"
-        :aria-label="t('recentResources')"
-        data-recent-layout
-      >
-        <button v-for="item in visibleRecent" :key="`${item.type}-${item.id}`" :data-select-key="isLoggedIn ? selectionKey(item) : undefined" :data-selected="isSelected(item) || undefined" class="dashboard-recent-card" type="button" @click="openRecentResource(item)">
-          <ResourceThumb v-if="recentViewMode === 'grid'" :kind="item.type" :id="item.id" :version="item.updatedAt" />
-          <span v-if="isLoggedIn" class="card-select" data-select-box role="checkbox" tabindex="0" :aria-checked="isSelected(item)" :aria-label="t('selectItem')" @keydown.enter.prevent.stop="toggleSelected(selectionKey(item))" @keydown.space.prevent.stop="toggleSelected(selectionKey(item))"><Check :size="12" aria-hidden="true" /></span>
-          <ResourceIcon :kind="item.type" :template-type="item.templateType" :data-resource-icon="item.type" aria-hidden="true" />
-          <span class="dashboard-recent-title">{{ item.title || t('untitled') }}</span>
-          <span class="dashboard-recent-info">
-            <span
-              v-if="recentFolderPath(item)"
-              class="dashboard-recent-path"
-              :title="recentFolderPath(item)"
-              data-recent-folder-path
-            ><Folder :size="12" aria-hidden="true" /><span class="dashboard-recent-path-name">{{ recentFolderPath(item) }}</span></span>
-            <span class="dashboard-recent-meta">{{ formatRecentOpenedAt(item.openedAt) }}</span>
-            <span class="dashboard-recent-meta-mobile">{{ formatCardDateMobile(new Date(item.openedAt).toISOString()) }}</span>
-          </span>
-        </button>
-      </div>
+        :items="visibleRecent"
+        :recent-view-mode="recentViewMode"
+        :is-logged-in="isLoggedIn"
+        :selection-key="selectionKey"
+        :is-selected="isSelected"
+        :folder-path="recentFolderPath"
+        :format-opened-at="formatRecentOpenedAt"
+        :format-mobile-date="formatCardDateMobile"
+        @open="openRecentResource"
+        @toggle="(item) => toggleSelected(selectionKey(item))"
+      />
       <div v-else-if="recentRefreshFailed" class="dash-empty dashboard-recents-error" role="alert" data-recent-error>
         {{ t('recentLoadFailed') }}
         <button type="button" class="dash-empty-reset" data-recent-retry @click.stop="retryRecent">{{ t('retry') }}</button>
@@ -1334,6 +1323,7 @@ import DashboardResourceCard from '../components/dashboard/DashboardResourceCard
 import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
 import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
+import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1506,6 +1496,7 @@ export default defineComponent({
     DashboardSelectionBar,
     DashboardToolbarControls,
     DashboardStatusOverlays,
+    DashboardRecentResources,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
