@@ -1,27 +1,7 @@
-import { resolveApiBase } from './hubOverride';
-
-const API_BASE = resolveApiBase();
-function getToken() {
-  return localStorage.getItem('token');
-}
+import { request } from './client';
 
 export async function adminRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${getToken()}`,
-    ...(options.headers as Record<string, string> || {}),
-  };
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    const err = new Error(body.message || `HTTP ${res.status}`) as any;
-    err.status = res.status;
-    err.body = body;
-    throw err;
-  }
-  // 204: nothing to read.
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  return request<T>(path, options);
 }
 
 /** What can be taken out of the Public directory. */

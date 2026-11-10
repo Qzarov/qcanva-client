@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, refreshCurrentUserRole, resourceFolders, setToken, textDocuments } from './client';
+import { canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, refreshCurrentUserRole, request, resourceFolders, setToken, textDocuments } from './client';
 
 function jsonBody(call: [RequestInfo | URL, RequestInit?]) {
   return JSON.parse((call[1] as RequestInit).body as string);
@@ -49,6 +49,18 @@ describe('resourceFolders API client', () => {
         'Content-Type': 'application/json',
       },
     });
+  });
+});
+
+describe('request transport', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+  });
+
+  it('treats a 204 response as a successful empty result', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({ ok: true, status: 204 } as Response);
+    await expect(request<void>('/admin/example', { method: 'DELETE' })).resolves.toBeUndefined();
   });
 });
 

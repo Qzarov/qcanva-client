@@ -5,11 +5,15 @@ import AccountMenu from '../components/AccountMenu.vue';
 import AdminView from './AdminView.vue';
 import { useI18n } from '../composables/useI18n';
 
-vi.mock('../api/client', () => ({
-  clearToken: vi.fn(),
-  getCurrentUser: vi.fn(() => ({ id: 'u1', name: 'Ada', email: 'ada@example.com' })),
-  isSuperAdmin: vi.fn(() => false),
-}));
+vi.mock('../api/client', async () => {
+  const actual = await vi.importActual<typeof import('../api/client')>('../api/client');
+  return {
+    ...actual,
+    clearToken: vi.fn(),
+    getCurrentUser: vi.fn(() => ({ id: 'u1', name: 'Ada', email: 'ada@example.com' })),
+    isSuperAdmin: vi.fn(() => false),
+  };
+});
 
 describe('AdminView', () => {
   afterEach(() => vi.unstubAllGlobals());

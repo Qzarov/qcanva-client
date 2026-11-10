@@ -185,6 +185,7 @@ export async function request<T>(path: string, options: ApiRequestInit = {}): Pr
     throw new ApiError(res.status, planErrorText(body) || body.message || `HTTP ${res.status}`, body);
   }
 
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
