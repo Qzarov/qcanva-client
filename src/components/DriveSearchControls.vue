@@ -52,3 +52,62 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 </script>
+
+<style scoped>
+.drive-search-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drive-mobile-search-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 8px;
+}
+
+.drive-search-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 12px;
+  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--ui-border, #2a3a2e);
+  color: var(--ui-text-muted, #a8c6a8);
+  width: 260px;
+}
+
+.drive-search-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--ui-text, #f8fff8);
+  font: inherit;
+  font-size: 13px;
+}
+
+.drive-search-clear {
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+}
+
+.drive-scope-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ui-text-muted, #a8c6a8);
+  cursor: pointer;
+  user-select: none;
+}
+</style>
