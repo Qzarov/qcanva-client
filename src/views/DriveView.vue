@@ -474,6 +474,7 @@ import { useDriveFileActions } from '../composables/useDriveFileActions';
 import { useDrivePhoneActions } from '../composables/useDrivePhoneActions';
 import { useDriveCreateActions } from '../composables/useDriveCreateActions';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
+import { useDrivePresentation } from '../composables/useDrivePresentation';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -565,45 +566,11 @@ const folderTitle = computed(() => {
 
 useDocumentTitle(computed(() => `${folderTitle.value} — ${t('drive')}`));
 
-const folderRoleLabel = computed(() => {
-  const role = folderInfo.value?.folder.role;
-  if (!role || role === 'owner') return null;
-  if (role === 'editor') return t('driveRoleEditor');
-  if (role === 'viewer') return t('driveRoleViewer');
-  return null;
-});
-
-const breadcrumbTrail = computed(() => (
-  folderInfo.value?.path || []
-));
-
-const sliceDefs = computed<Array<{ id: DriveSlice; label: string }>>(() => [
-  { id: 'all', label: t('driveSliceAll') },
-  { id: 'media', label: t('driveSliceMedia') },
-  { id: 'files', label: t('driveFiles') },
-  { id: 'docs', label: t('driveSliceDocs') },
-]);
-
-function getSliceCount(sliceId: DriveSlice): number | undefined {
-  const counts = folderInfo.value?.counts;
-  if (!counts) return undefined;
-  if (sliceId === 'all') {
-    return (counts.folders || 0) + (counts.docs || 0) + (counts.files || 0) + (counts.media || 0);
-  }
-  if (sliceId === 'media') return counts.media || 0;
-  if (sliceId === 'files') return counts.files || 0;
-  if (sliceId === 'docs') return counts.docs || 0;
-  return undefined;
-}
-
-const displayedItems = computed(() => {
-  const source = isSearching.value ? searchResults.value : items.value;
-  return [...source].sort((a, b) => {
-    // Folders always first
-    if (a.kind === 'folder' && b.kind !== 'folder') return -1;
-    if (a.kind !== 'folder' && b.kind === 'folder') return 1;
-    return 0;
-  });
+const { folderRoleLabel, breadcrumbTrail, sliceDefs, getSliceCount, displayedItems } = useDrivePresentation({
+  folderInfo,
+  items,
+  searchResults,
+  isSearching,
 });
 
 // Upload Handling
