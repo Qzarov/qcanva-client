@@ -991,6 +991,7 @@ import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, w
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
+import { DEFAULT_TAG_COLOR, genTagId, normalizeCanvas, normalizeHtmlDocument, normalizeInteractiveTemplate, normalizeResourceFolder, normalizeTextDocument } from '../dashboard/resource-normalizers';
 import { downloadDriveFile, driveApi, formatFileSize, resolveDownloadUrl, type DriveItem } from '../api/drive';
 import { useSidebarDriveFiles } from '../composables/useSidebarDriveFiles';
 import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
@@ -998,7 +999,6 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { markResourceOpened } from '../composables/useRecentResource';
 import { useRouter } from 'vue-router';
 import { accessRequests, canvas, getCurrentUser, htmlDocuments, interactiveTemplates, isAdmin, isAuthenticated, MAX_DESCRIPTION_LENGTH, recentResources as recentResourcesApi, refreshCurrentUserRole, resourceFolders, tags, textDocuments, type InteractiveTemplate, type ResourceFolderSummary, type ResourceTag } from '../api/client';
-import { characterSheetTitle } from '../dnd/characterSheet';
 import { useI18n } from '../composables/useI18n';
 import { LAYOUT, matchesMedia } from '../composables/layoutMedia';
 import { useBackHandler } from '../composables/useBackHandler';
@@ -1172,11 +1172,9 @@ type RecentHistoryEntry = { id: string; routeId: string; type: RecentResourceTyp
 type RecentResource = RecentHistoryEntry & { tags: CanvasTag[]; folder: string; templateType?: InteractiveTemplate['templateType']; updatedAt?: string | null };
 type RecentResourceItem = FolderItem;
 
-const DEFAULT_TAG_COLOR = '#50d1b2';
 const DASHBOARD_CACHE_TTL_MS = 60_000;
 const DASHBOARD_PULL_THRESHOLD = 72;
 const RECENT_RESOURCES_LIMIT = 12;
-const genTagId = () => Math.random().toString(36).slice(2, 10);
 
 export default defineComponent({
   directives: { hint: vHint },
@@ -1479,77 +1477,6 @@ export default defineComponent({
       resourceType: 'canvas',
       email: '',
     });
-
-    const normalizeTags = (tags: unknown): CanvasTag[] => {
-      if (!Array.isArray(tags)) return [];
-      return tags
-        .map((tag) => {
-          if (typeof tag === 'string') return { id: genTagId(), name: tag, color: DEFAULT_TAG_COLOR };
-          if (tag && typeof tag === 'object' && typeof (tag as any).name === 'string') {
-            return {
-              id: genTagId(),
-              name: (tag as any).name,
-              color: typeof (tag as any).color === 'string' ? (tag as any).color : DEFAULT_TAG_COLOR,
-            };
-          }
-          return null;
-        })
-        .filter((tag): tag is CanvasTag => Boolean(tag));
-    };
-
-    const normalizeCanvas = (c: any, isOwn = false): CanvasRecord => ({
-      ...c,
-      type: 'canvas',
-      isOwn,
-      folder: c.folder || '',
-      folderId: c.folderId || null,
-      tags: normalizeTags(c.tags),
-    });
-
-    const normalizeHtmlDocument = (doc: any): HtmlDocumentRecord => ({
-      ...doc,
-      type: 'html-document',
-      folderId: doc.folderId || null,
-      pinned: Boolean(doc.pinned),
-      tags: normalizeTags(doc.tags),
-    });
-
-    const normalizeTextDocument = (doc: any): TextDocumentRecord => ({
-      ...doc,
-      type: 'text-document',
-      folderId: doc.folderId || null,
-      pinned: Boolean(doc.pinned),
-      tags: normalizeTags(doc.tags),
-    });
-
-    const normalizeInteractiveTemplate = (template: any): InteractiveTemplateRecord => ({
-      ...template,
-      title: template.templateType === 'dnd-character' ? characterSheetTitle(template.data, template.title || 'Новый персонаж') : template.title,
-      type: 'interactive-template',
-      folderId: template.folderId || null,
-      tags: normalizeTags(template.tags),
-      pinned: false,
-    });
-
-    const normalizeResourceFolder = (folder: ResourceFolderSummary): ResourceFolderSummary => {
-      const canvases = folder.items?.canvases || folder.canvases || [];
-      const htmlDocuments = folder.items?.htmlDocuments || folder.htmlDocuments || [];
-      const docs = folder.items?.textDocuments || folder.textDocuments || [];
-      const templates = folder.items?.interactiveTemplates || folder.interactiveTemplates || [];
-      return {
-        ...folder,
-        canvasCount: folder.canvasCount ?? canvases.length,
-        htmlDocumentCount: folder.htmlDocumentCount ?? htmlDocuments.length,
-        textDocumentCount: folder.textDocumentCount ?? docs.length,
-        interactiveTemplateCount: folder.interactiveTemplateCount ?? templates.length,
-        items: {
-          canvases,
-          htmlDocuments,
-          textDocuments: docs,
-          interactiveTemplates: templates,
-        },
-      };
-    };
 
     /** OR semantics: an item matches if it carries any one of the selected tags. */
     const matchesSelectedTags = (tags: CanvasTag[]) =>
