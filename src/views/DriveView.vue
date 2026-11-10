@@ -357,89 +357,22 @@
             class="drive-grid"
             data-view-grid
           >
-            <div
+            <DriveItemCard
               v-for="item in displayedItems"
               :key="`${item.kind}-${item.id}`"
-              class="drive-card"
-              :class="`drive-card-${item.kind}`"
-              :data-drive-item="item.id"
-              :data-item-kind="item.kind"
-              tabindex="0"
-              role="button"
-              @click="onItemClick(item)"
-              @keydown.enter="onItemClick(item)"
-            >
-              <!-- Card Preview Header -->
-              <div class="drive-card-preview" :class="`preview-${item.kind}`">
-                <Folder v-if="item.kind === 'folder'" :size="44" class="drive-folder-svg" aria-hidden="true" />
-                <div v-else-if="item.kind === 'canvas'" class="drive-card-canvas-mock" aria-hidden="true">
-                  <div class="canvas-node n1"></div>
-                  <div class="canvas-node n2"></div>
-                  <div class="canvas-line"></div>
-                </div>
-                <div v-else-if="item.kind === 'text-document'" class="drive-card-doc-mock" aria-hidden="true">
-                  <div class="doc-line l-head"></div>
-                  <div class="doc-line l1"></div>
-                  <div class="doc-line l2"></div>
-                  <div class="doc-line l3"></div>
-                </div>
-                <div v-else-if="item.kind === 'html-document'" class="drive-card-html-mock" aria-hidden="true">
-                  <Code :size="32" aria-hidden="true" />
-                </div>
-                <div v-else-if="item.kind === 'board' || item.kind === 'sheet'" class="drive-card-board-mock" aria-hidden="true">
-                  <div class="board-col"><div class="board-card"></div></div>
-                  <div class="board-col"><div class="board-card"></div><div class="board-card"></div></div>
-                </div>
-                <div v-else-if="isMediaItem(item)" class="drive-card-file-mock" aria-hidden="true">
-                  <Video v-if="isVideoItem(item)" :size="38" class="drive-media-icon" />
-                  <Image v-else :size="38" class="drive-media-icon" />
-                </div>
-                <div v-else class="drive-card-file-mock" aria-hidden="true">
-                  <File :size="36" aria-hidden="true" />
-                  <span class="drive-ext-badge drive-ext-badge-preview">{{ getFileExtension(item.name) }}</span>
-                </div>
-              </div>
-
-              <!-- Card Body -->
-              <div class="drive-card-body">
-                <div class="drive-card-title-row">
-                  <Folder v-if="item.kind === 'folder'" :size="16" class="drive-folder-inline-icon" aria-hidden="true" />
-                  <Video v-else-if="isVideoItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
-                  <Image v-else-if="isImageItem(item)" :size="16" class="drive-file-inline-icon" aria-hidden="true" />
-                  <ResourceIcon
-                    v-else-if="item.kind !== 'file'"
-                    :kind="item.kind"
-                    :size="16"
-                    aria-hidden="true"
-                  />
-                  <span v-else class="drive-ext-badge drive-ext-badge-sm">{{ getFileExtension(item.name) }}</span>
-                  <span class="drive-card-name" :title="item.name">{{ item.name }}</span>
-
-                  <DriveItemActionsMenu
-                    v-if="isFileKind(item)"
-                    :item="item"
-                    :active="activeFileMenuId === item.id"
-                    :phone-active="phoneActive"
-                    :phone-path-available="Boolean(itemDrivePath(item))"
-                    @toggle="toggleFileMenu(item.id)"
-                    @download="onDownloadFile(item)"
-                    @rename="onRenameFile(item)"
-                    @phone-fetch="onPhoneFetch(item)"
-                    @phone-evict="onPhoneEvict(item)"
-                    @properties="onShowProperties(item)"
-                    @trash="onTrashFile(item)"
-                  />
-                </div>
-
-                <div class="drive-card-meta">
-                  <span v-if="item.sizeBytes !== null && item.sizeBytes !== undefined" class="drive-size-meta">
-                    {{ formatFileSize(item.sizeBytes) }}
-                  </span>
-                  <span v-else class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
-                  <span class="drive-date">{{ formatDate(item.updatedAt || item.sortDate) }}</span>
-                </div>
-              </div>
-            </div>
+              :item="item"
+              :menu-active="activeFileMenuId === item.id"
+              :phone-active="phoneActive"
+              :phone-path-available="Boolean(itemDrivePath(item))"
+              @open="onItemClick(item)"
+              @toggle-menu="toggleFileMenu(item.id)"
+              @download="onDownloadFile(item)"
+              @rename="onRenameFile(item)"
+              @phone-fetch="onPhoneFetch(item)"
+              @phone-evict="onPhoneEvict(item)"
+              @properties="onShowProperties(item)"
+              @trash="onTrashFile(item)"
+            />
           </div>
 
           <!-- List View -->
@@ -448,58 +381,22 @@
             class="drive-list"
             data-view-list
           >
-            <div
+            <DriveItemRow
               v-for="item in displayedItems"
               :key="`${item.kind}-${item.id}`"
-              class="drive-list-row"
-              :class="`drive-row-${item.kind}`"
-              :data-drive-item="item.id"
-              :data-item-kind="item.kind"
-              tabindex="0"
-              role="button"
-              @click="onItemClick(item)"
-              @keydown.enter="onItemClick(item)"
-            >
-              <div class="drive-row-icon-col">
-                <Folder v-if="item.kind === 'folder'" :size="20" class="drive-folder-inline-icon" aria-hidden="true" />
-                <Video v-else-if="isVideoItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
-                <Image v-else-if="isImageItem(item)" :size="20" class="drive-file-inline-icon" aria-hidden="true" />
-                <ResourceIcon
-                  v-else-if="item.kind !== 'file'"
-                  :kind="item.kind"
-                  :size="20"
-                  aria-hidden="true"
-                />
-                <span v-else class="drive-ext-badge">{{ getFileExtension(item.name) }}</span>
-              </div>
-              <div class="drive-row-name-col">
-                <span class="drive-row-name">{{ item.name }}</span>
-              </div>
-              <div class="drive-row-size-col">
-                <span v-if="item.sizeBytes !== null && item.sizeBytes !== undefined" class="drive-size">
-                  {{ formatFileSize(item.sizeBytes) }}
-                </span>
-                <span v-else class="drive-kind-pill">{{ getKindLabel(item.kind) }}</span>
-              </div>
-              <div class="drive-row-date-col">
-                <span class="drive-date">{{ formatDate(item.updatedAt || item.sortDate) }}</span>
-              </div>
-              <div v-if="isFileKind(item)" class="drive-row-menu-col" @click.stop>
-                <DriveItemActionsMenu
-                  :item="item"
-                  :active="activeFileMenuId === item.id"
-                  :phone-active="phoneActive"
-                  :phone-path-available="Boolean(itemDrivePath(item))"
-                  @toggle="toggleFileMenu(item.id)"
-                  @download="onDownloadFile(item)"
-                  @rename="onRenameFile(item)"
-                  @phone-fetch="onPhoneFetch(item)"
-                  @phone-evict="onPhoneEvict(item)"
-                  @properties="onShowProperties(item)"
-                  @trash="onTrashFile(item)"
-                />
-              </div>
-            </div>
+              :item="item"
+              :menu-active="activeFileMenuId === item.id"
+              :phone-active="phoneActive"
+              :phone-path-available="Boolean(itemDrivePath(item))"
+              @open="onItemClick(item)"
+              @toggle-menu="toggleFileMenu(item.id)"
+              @download="onDownloadFile(item)"
+              @rename="onRenameFile(item)"
+              @phone-fetch="onPhoneFetch(item)"
+              @phone-evict="onPhoneEvict(item)"
+              @properties="onShowProperties(item)"
+              @trash="onTrashFile(item)"
+            />
           </div>
 
           <!-- Load More / Next Page -->
@@ -538,10 +435,8 @@
 </template>
 
 <script setup lang="ts">
-import ResourceIcon from '../components/ResourceIcon.vue';
 import {
   ArrowLeft,
-  Code,
   File,
   FileText,
   Folder,
@@ -551,18 +446,15 @@ import {
   Search,
   Trash2,
   Upload,
-  Video,
 } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   driveApi,
   formatFileSize,
-  getFileExtension,
   resolveDownloadUrl,
   type DriveFolderResponse,
   type DriveItem,
-  type DriveItemKind,
   type DriveOrder,
   type DriveSlice,
   type DriveSort,
@@ -573,11 +465,12 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
-import DriveItemActionsMenu from '../components/DriveItemActionsMenu.vue';
 import DriveSearchControls from '../components/DriveSearchControls.vue';
 import DriveFolderTree, { type DriveTreeNode } from '../components/DriveFolderTree.vue';
 import DriveCreateMenu from '../components/DriveCreateMenu.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
+import DriveItemCard from '../components/DriveItemCard.vue';
+import DriveItemRow from '../components/DriveItemRow.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
@@ -589,7 +482,7 @@ import {
 
 const route = useRoute();
 const router = useRouter();
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 const currentFolderId = computed<string>(() => {
   const raw = route.params.folderId;
@@ -720,48 +613,6 @@ const displayedItems = computed(() => {
     return 0;
   });
 });
-
-function getKindLabel(kind: DriveItemKind): string {
-  switch (kind) {
-    case 'folder': return t('driveFolder');
-    case 'canvas': return t('driveCanvas');
-    case 'text-document': return t('driveDocument');
-    case 'html-document': return 'HTML';
-    case 'board': return t('driveBoard');
-    case 'sheet': return t('driveSheet');
-    case 'file': return t('driveFile');
-    case 'photo': return t('drivePhoto');
-    case 'video': return t('driveVideo');
-    default: return t('driveFile');
-  }
-}
-
-
-function isFileKind(item: DriveItem): boolean {
-  return item.kind === 'file' || item.kind === 'photo' || item.kind === 'video';
-}
-
-function isImageItem(item: DriveItem): boolean {
-  return item.kind === 'photo' || (item.kind === 'file' && !!item.mime?.startsWith('image/'));
-}
-
-function isVideoItem(item: DriveItem): boolean {
-  return item.kind === 'video' || (item.kind === 'file' && !!item.mime?.startsWith('video/'));
-}
-
-function isMediaItem(item: DriveItem): boolean {
-  return isImageItem(item) || isVideoItem(item);
-}
-
-function formatDate(iso?: string | null): string {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(locale.value === 'ru' ? 'ru-RU' : 'en-US', { day: 'numeric', month: 'short' });
-  } catch {
-    return iso;
-  }
-}
 
 // Navigation or Download on click
 async function onItemClick(item: DriveItem) {
