@@ -447,7 +447,7 @@ import {
   Trash2,
   Upload,
 } from '@lucide/vue';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   type DriveOrder,
@@ -475,6 +475,7 @@ import { useDrivePhoneActions } from '../composables/useDrivePhoneActions';
 import { useDriveCreateActions } from '../composables/useDriveCreateActions';
 import { useDriveDropzone } from '../composables/useDriveDropzone';
 import { useDrivePresentation } from '../composables/useDrivePresentation';
+import { useDriveLifecycle } from '../composables/useDriveLifecycle';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -573,41 +574,20 @@ const { folderRoleLabel, breadcrumbTrail, sliceDefs, getSliceCount, displayedIte
   isSearching,
 });
 
-// Upload Handling
 function triggerFileInput() {
   fileInputRef.value?.click();
 }
 
-function onDocumentClick(e: MouseEvent) {
-  const target = e.target as HTMLElement | null;
-  if (!target?.closest('.drive-create-dropdown-container')) {
-    createMenuOpen.value = false;
-  }
-  if (!target?.closest('.drive-item-menu-container')) {
-    activeFileMenuId.value = null;
-  }
-}
-
-// Watch folderId parameter changes
-watch(
-  () => route.params.folderId,
-  () => {
-    searchQuery.value = '';
-    debouncedQuery.value = '';
-    searchResults.value = [];
-    loadCurrentFolder();
-  },
-);
-
-onMounted(() => {
-  loadCurrentFolder();
-  initSidebarTree();
-  document.addEventListener('click', onDocumentClick);
-  void ensurePhoneLoaded();
-});
-
-onUnmounted(() => {
-  document.removeEventListener('click', onDocumentClick);
+useDriveLifecycle({
+  folderId: currentFolderId,
+  searchQuery,
+  debouncedQuery,
+  searchResults,
+  loadCurrentFolder,
+  initSidebarTree,
+  ensurePhoneLoaded,
+  createMenuOpen,
+  activeFileMenuId,
 });
 </script>
 
