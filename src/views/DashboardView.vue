@@ -1400,7 +1400,7 @@ import { useSegmentThumb } from '../composables/useSegmentThumb';
 import { readRecentViewMode, writeRecentViewMode, type RecentViewMode } from '../dashboard/recent-view';
 import { descendantFolderIds, folderIdByResourceKey, folderPaths } from '../dashboard/folder-paths';
 import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats';
-import { isPictureFile } from '../dashboard/thumb-kinds';
+import { isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
@@ -2356,10 +2356,10 @@ export default defineComponent({
       );
     });
     const openSidebarFile = async (file: DashboardFileNavItem) => {
-      if (file.type === 'drive-file' && file.fileKind === 'image') {
-        // As its card in the folder does: a picture opens full screen.
+      if (file.type === 'drive-file' && (file.fileKind === 'image' || file.fileKind === 'video')) {
+        // As its card in the folder does: a picture or a video opens full screen.
         mobileSidebarOpen.value = false;
-        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled') })], start: 0 };
+        mediaViewer.value = { items: [driveViewerItem({ id: file.id, name: file.title || t('untitled'), kind: file.fileKind })], start: 0 };
         return;
       }
       if (file.type === 'drive-file') {
@@ -4149,11 +4149,12 @@ export default defineComponent({
       selectDashboardSection({ kind: 'recent' });
     };
 
-    // ----- pictures full screen: the folder's pictures, from the one clicked
+    // ----- pictures and videos full screen: the folder's, from the one clicked
     const mediaViewer = ref<{ items: MediaViewerItem[]; start: number } | null>(null);
     const yandexViewerItem = (file: YandexItem): MediaViewerItem => ({
       key: `yandex:${file.path}`,
       name: file.name,
+      kind: file.mediaType === 'video' ? 'video' : 'image',
       date: file.modifiedAt,
       preview: yandexPreviewUrl(file),
       loadFull: async () => (await yandexDisk.downloadLink(file.path)).href,
@@ -4161,9 +4162,10 @@ export default defineComponent({
     });
     /** Card pictures the folder's files found (hub-made for HEIC, RAW, videos): the viewer starts on them. */
     const folderDrivePreviews = ref<Readonly<Record<string, string>>>({});
-    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null }): MediaViewerItem => ({
+    const driveViewerItem = (file: { id: string; name: string; updatedAt?: string | null; kind?: 'image' | 'video' }): MediaViewerItem => ({
       key: `drive-file:${file.id}`,
       name: file.name,
+      kind: file.kind ?? 'image',
       date: file.updatedAt ?? null,
       preview: folderDrivePreviews.value[file.id] ?? null,
       loadFull: async () => resolveDownloadUrl((await driveApi.getDownloadLink(file.id)).url),
@@ -4175,21 +4177,27 @@ export default defineComponent({
         }
       },
     });
-    const isDriveImage = (file: DriveItem) => isPictureFile(file);
+    const isDriveMedia = (file: DriveItem) => isPictureFile(file) || isVideoFile(file);
+    const isYandexMedia = (item: YandexItem) => item.mediaType === 'image' || item.mediaType === 'video';
+    /** A picture or a video of a Yandex folder: the folder's pictures and videos, from it. */
     const openYandexImage = (file: YandexItem) => {
-      const images = yandexFiles.value.filter((item) => item.mediaType === 'image');
-      const list = images.some((item) => item.path === file.path) ? images : [file];
+      const media = yandexFiles.value.filter(isYandexMedia);
+      const list = media.some((item) => item.path === file.path) ? media : [file];
       mediaViewer.value = { items: list.map(yandexViewerItem), start: list.findIndex((item) => item.path === file.path) };
     };
+    /** A picture or a video of a QCanva folder: the folder's pictures and videos, from it. */
     const openDriveImage = (file: DriveItem) => {
-      const images = folderDriveFiles.value.filter(isDriveImage);
-      const list = images.some((item) => item.id === file.id) ? images : [file];
-      mediaViewer.value = { items: list.map(driveViewerItem), start: list.findIndex((item) => item.id === file.id) };
+      const media = folderDriveFiles.value.filter(isDriveMedia);
+      const list = media.some((item) => item.id === file.id) ? media : [file];
+      mediaViewer.value = {
+        items: list.map((item) => driveViewerItem({ ...item, kind: isVideoFile(item) ? 'video' : 'image' })),
+        start: list.findIndex((item) => item.id === file.id),
+      };
     };
-    /** A file of the sidebar's Yandex tree: a picture opens, anything else downloads. */
+    /** A file of the sidebar's Yandex tree: a picture or a video opens, anything else downloads. */
     const openYandexSidebarFile = (item: YandexItem) => {
       mobileSidebarOpen.value = false;
-      if (item.mediaType === 'image') mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
+      if (isYandexMedia(item)) mediaViewer.value = { items: [yandexViewerItem(item)], start: 0 };
       else void downloadYandexFile(item);
     };
     const downloadYandexFile = async (item: YandexItem) => {

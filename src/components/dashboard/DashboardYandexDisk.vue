@@ -248,7 +248,7 @@ const emit = defineEmits<{
   /** The files on screen, for the dashboard's actions on what is ticked. */
   items: [items: YandexItem[]];
   upload: [files: File[], path: string];
-  /** A picture was clicked: the dashboard shows it full screen. */
+  /** A picture or a video was clicked: the dashboard shows it full screen. */
   'open-image': [file: YandexItem];
   move: [paths: string[]];
   /** Something changed on the Disk: the sidebar tree reads again. */
@@ -456,9 +456,9 @@ const closeMenu = (event: MouseEvent) => {
   if (!(event.target as HTMLElement | null)?.closest('.folder-manager-menu, .card-menu, .card-manage')) menu.value = '';
 };
 
-/** A picture opens in the viewer; any other file downloads. */
+/** A picture or a video opens in the viewer; any other file downloads. */
 function open(file: YandexItem) {
-  if (file.mediaType === 'image') emit('open-image', file);
+  if (file.mediaType === 'image' || file.mediaType === 'video') emit('open-image', file);
   else void download(file);
 }
 

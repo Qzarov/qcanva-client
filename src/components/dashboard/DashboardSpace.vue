@@ -494,9 +494,10 @@ async function open(item: SpaceFeedItem) {
     emit('open', item.kind, item.id);
     return;
   }
-  if (isPicture(item)) {
-    const pictures = shown.value.filter((other) => other.kind === 'file' && isPicture(other));
-    emit('open-media', pictures.map(viewerItem), Math.max(0, pictures.findIndex((other) => other.key === item.key)));
+  if (isPicture(item) || isVideo(item)) {
+    // The feed's pictures and videos together, in its order: the viewer pages through them.
+    const media = shown.value.filter((other) => other.kind === 'file' && (isPicture(other) || isVideo(other)));
+    emit('open-media', media.map(viewerItem), Math.max(0, media.findIndex((other) => other.key === item.key)));
     return;
   }
   await download(item);
@@ -505,6 +506,7 @@ async function open(item: SpaceFeedItem) {
 const viewerItem = (item: SpaceFeedItem): MediaViewerItem => ({
   key: item.key,
   name: item.name,
+  kind: isVideo(item) ? 'video' : 'image',
   date: item.updatedAt,
   preview: previewOf(item),
   loadFull: async () => (item.origin === 'yandex'

@@ -1,5 +1,6 @@
 <template>
-  <!-- A picture of a folder full screen: QCanva folders and Yandex Disk alike.
+  <!-- A picture or a video of a folder full screen: QCanva folders, Yandex
+       Disk and spaces alike; a video plays in place.
        The preview shows at once; the original replaces it once loaded (a
        format the browser cannot show, like HEIC, stays on the preview).
        referrerpolicy goes BEFORE src: Vue sets attributes in this order and
@@ -36,8 +37,33 @@
         <button v-if="index > 0" type="button" class="media-viewer-nav prev" :aria-label="t('photosPrevious')" data-media-prev @click="go(index - 1)">
           <ChevronLeft :size="28" aria-hidden="true" />
         </button>
+        <!-- A video plays here, its picture the poster until it starts. The
+             element is the item's own (keyed): leaving it stops the sound. -->
+        <template v-if="isVideo">
+          <video
+            v-if="fullSrc && !videoFailed"
+            :key="current.key"
+            ref="videoEl"
+            class="media-viewer-video"
+            :src="fullSrc"
+            :poster="current.preview ?? undefined"
+            controls
+            autoplay
+            playsinline
+            preload="metadata"
+            data-media-video
+            @error="videoFailed = true"
+          ></video>
+          <div v-else class="media-viewer-video-note" data-media-video-note>
+            <img v-if="current.preview" class="media-viewer-video-poster" referrerpolicy="no-referrer" :src="current.preview" alt="" aria-hidden="true" />
+            <p class="media-viewer-note">{{ videoFailed ? t('mediaViewerVideoUnsupported') : loading ? t('driveLoading') : t('mediaViewerUnavailable') }}</p>
+            <button v-if="videoFailed" type="button" class="media-viewer-download" data-media-video-download @click="current.download()">
+              <Download :size="16" aria-hidden="true" />{{ t('download') }}
+            </button>
+          </div>
+        </template>
         <img
-          v-if="shownSrc"
+          v-else-if="shownSrc"
           :key="current.key + shownSrc"
           referrerpolicy="no-referrer"
           class="media-viewer-image"
@@ -50,7 +76,7 @@
         <p v-else class="media-viewer-note" data-media-unavailable>{{ loading ? t('driveLoading') : t('mediaViewerUnavailable') }}</p>
         <!-- The original loads out of sight and swaps in once it is ready. -->
         <img
-          v-if="fullSrc && fullSrc !== shownSrc && !failed.has(fullSrc)"
+          v-if="!isVideo && fullSrc && fullSrc !== shownSrc && !failed.has(fullSrc)"
           referrerpolicy="no-referrer"
           class="media-viewer-loader"
           :src="fullSrc"
@@ -68,13 +94,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { ChevronLeft, ChevronRight, Download, X } from '@lucide/vue';
 import { useI18n } from '../../composables/useI18n';
 
 export type MediaViewerItem = {
   key: string;
   name: string;
+  /** A video plays in the viewer; anything else shows as a picture. */
+  kind?: 'image' | 'video';
   date?: string | null;
   /** Shown at once, if there is one. */
   preview: string | null;
@@ -95,6 +123,10 @@ const fullSrc = ref<string | null>(null);
 const shownSrc = ref<string | null>(null);
 const loading = ref(false);
 const failed = reactive(new Set<string>());
+const isVideo = computed(() => current.value?.kind === 'video');
+const videoEl = ref<HTMLVideoElement | null>(null);
+/** The browser cannot play this one (MKV, AVI, HEVC in some browsers): it says so, and offers the download. */
+const videoFailed = ref(false);
 
 const dateLabel = computed(() => {
   const value = current.value?.date;
@@ -109,6 +141,7 @@ async function show() {
   const item = current.value;
   const mine = ++request;
   fullSrc.value = null;
+  videoFailed.value = false;
   shownSrc.value = item?.preview ?? null;
   if (!item) return;
   loading.value = true;
@@ -140,11 +173,16 @@ function go(next: number) {
 watch(index, () => { void show(); });
 
 function close() {
+  videoEl.value?.pause();
   visible.value = false;
 }
 
+/** Inside the player its own keys and gestures win: arrows seek, a swipe scrubs. */
+const inPlayer = (event: Event) => event.target instanceof HTMLVideoElement;
+
 function onKeydown(event: KeyboardEvent) {
   if (event.key === 'Escape') close();
+  else if (inPlayer(event)) return;
   else if (event.key === 'ArrowLeft') go(index.value - 1);
   else if (event.key === 'ArrowRight') go(index.value + 1);
   else return;
@@ -153,7 +191,7 @@ function onKeydown(event: KeyboardEvent) {
 
 let touchX: number | null = null;
 function onTouchStart(event: TouchEvent) {
-  touchX = event.touches[0]?.clientX ?? null;
+  touchX = inPlayer(event) ? null : event.touches[0]?.clientX ?? null;
 }
 function onTouchEnd(event: TouchEvent) {
   if (touchX === null) return;
@@ -162,6 +200,25 @@ function onTouchEnd(event: TouchEvent) {
   if (dx > 60) go(index.value - 1);
   else if (dx < -60) go(index.value + 1);
 }
+
+/**
+ * A <video> has no referrerpolicy of its own, and Yandex Disk answers 403
+ * when it sees our address: while the viewer is open the page sends none.
+ * The hub needs no Referer (its links carry their token). Put back on close.
+ */
+let referrerMeta: HTMLMetaElement | null = null;
+onMounted(() => {
+  if (typeof document === 'undefined') return;
+  referrerMeta = document.createElement('meta');
+  referrerMeta.name = 'referrer';
+  referrerMeta.content = 'no-referrer';
+  referrerMeta.dataset.mediaViewerReferrer = '';
+  document.head.appendChild(referrerMeta);
+});
+onBeforeUnmount(() => {
+  referrerMeta?.remove();
+  referrerMeta = null;
+});
 
 onMounted(async () => {
   void show();
@@ -242,6 +299,40 @@ onMounted(async () => {
   pointer-events: none;
 }
 .media-viewer-note { color: rgba(255, 255, 255, 0.7); }
+.media-viewer-video {
+  max-width: 100%;
+  max-height: 100%;
+  background: #000;
+  outline: none;
+}
+.media-viewer-video-note {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  max-width: 100%;
+  max-height: 100%;
+  text-align: center;
+}
+.media-viewer-video-poster {
+  max-width: min(100%, 560px);
+  max-height: 50vh;
+  object-fit: contain;
+  opacity: 0.55;
+}
+.media-viewer-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.media-viewer-download:hover { background: rgba(255, 255, 255, 0.18); }
 .media-viewer-nav {
   position: absolute;
   top: 50%;

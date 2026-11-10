@@ -231,6 +231,39 @@ test('a photo opens full screen; the original and the download come from Yandex 
   await expect(viewer).toHaveCount(0);
 });
 
+test('a video plays full screen, fetched from Yandex without our Referer', async ({ page }) => {
+  // For this test only: a video in /Фото (other tests count that folder).
+  const clip: Item = { path: '/Фото/clip.mp4', name: 'clip.mp4', type: 'file', size: 9_000_000, mediaType: 'video' };
+  TREE['/Фото']!.push(clip);
+  try {
+    await openDashboard(page, { connected: true });
+    const hits: Array<{ referer: string | undefined; kind: string }> = [];
+    await page.route('https://downloader.disk.yandex.ru/**', async (route) => {
+      const request = route.request();
+      const referer = (await request.headerValue('referer')) ?? undefined;
+      hits.push({ referer, kind: request.resourceType() });
+      if (referer) return route.fulfill({ status: 403, body: 'Forbidden' });
+      await route.fulfill({ status: 200, contentType: 'video/mp4', body: PNG });
+    });
+    await yandexRow(page).click();
+    await page.locator('[data-yandex-subfolder="/Фото"]').click();
+    await page.locator('[data-yandex-file="/Фото/clip.mp4"]').click();
+
+    const viewer = page.locator('[data-media-viewer]');
+    await expect(viewer.locator('[data-media-name]')).toHaveText('clip.mp4');
+    // The player asked Yandex for it - a media request, with no Referer; the bytes are not a video, so it says so.
+    await expect.poll(() => hits.some((hit) => hit.kind === 'media')).toBe(true);
+    expect(hits.every((hit) => hit.referer === undefined)).toBe(true);
+    await expect(viewer.locator('[data-media-video-note]')).toContainText('cannot play');
+    // Closed: the page sends its Referer again.
+    await page.keyboard.press('Escape');
+    await expect(viewer).toHaveCount(0);
+    await expect(page.locator('meta[name="referrer"]')).toHaveCount(0);
+  } finally {
+    TREE['/Фото']!.splice(TREE['/Фото']!.indexOf(clip), 1);
+  }
+});
+
 test('a document that is not a picture still downloads on click', async ({ page }) => {
   await openDashboard(page, { connected: true });
   await page.route('https://downloader.disk.yandex.ru/**', (route) => route.fulfill({
