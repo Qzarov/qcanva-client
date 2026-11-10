@@ -176,37 +176,26 @@
       @pointercancel.capture="cancelLongPress"
       @contextmenu.capture="onSelectionContextMenu"
     >
-    <div class="dash-toolbar">
-      <div class="control-menu dashboard-new-menu">
-        <button class="btn-primary" data-add-button @click.stop="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()">
-          <Plus class="menu-icon" :size="17" aria-hidden="true" />
-          <span>{{ t('add') }}</span>
-        </button>
-      </div>
-      <!-- Types, tags and the order: each behind its own icon, between New and the search. -->
-      <DashboardFilterMenu
-        v-if="spaceId === null"
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'filter:desktop'"
-        :types="contentTypes"
-        :tags="allTagNames"
-        :selected-tags="selectedTags"
-        :with-files="activeSection.kind === 'folder'"
-        @toggle="toggleToolbarMenu('filter:desktop')"
-        @update:types="contentTypes = $event"
-        @toggle-tag="toggleSelectedTag"
-        @reset="clearTypeAndTagFilters"
-      />
-      <DashboardSortMenu
-        v-if="spaceId === null"
-        class="dashboard-toolbar-desktop"
-        :open="openControlMenu === 'sort:desktop'"
-        :mode="sortMode"
-        @toggle="toggleToolbarMenu('sort:desktop')"
-        @select="selectSortMode"
-      />
-      <input v-model.trim="searchQuery" class="dash-search dash-search-toolbar-desktop" :placeholder="folderSearchPlaceholder" />
-    </div>
+    <DashboardToolbarControls
+      :show-controls="spaceId === null"
+      :filter-open="openControlMenu === 'filter:desktop'"
+      :sort-open="openControlMenu === 'sort:desktop'"
+      :content-types="contentTypes"
+      :tags="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :search-query="searchQuery"
+      :search-placeholder="folderSearchPlaceholder"
+      @add="spaceId !== null ? spaceView?.startAdd($event) : yandexPath !== null ? yandexView?.pickFiles() : openAddDialog()"
+      @toggle-filter="toggleToolbarMenu('filter:desktop')"
+      @toggle-sort="toggleToolbarMenu('sort:desktop')"
+      @update:types="contentTypes = $event"
+      @toggle-tag="toggleSelectedTag"
+      @reset-filters="clearTypeAndTagFilters"
+      @select-sort="selectSortMode"
+      @update:search="searchQuery = $event"
+    />
 
     <!-- Floating (style.css), never in the page flow: the list must not
          shift down and back up around a refresh or an action's result. -->
@@ -1353,6 +1342,7 @@ import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue
 import DashboardResourceMenu from '../components/dashboard/DashboardResourceMenu.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
 import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
+import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1523,6 +1513,7 @@ export default defineComponent({
     DashboardResourceMenu,
     DashboardResourceCard,
     DashboardSelectionBar,
+    DashboardToolbarControls,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
