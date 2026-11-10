@@ -473,6 +473,7 @@ import { useDriveSidebarTree } from '../composables/useDriveSidebarTree';
 import { useDriveFileActions } from '../composables/useDriveFileActions';
 import { useDrivePhoneActions } from '../composables/useDrivePhoneActions';
 import { useDriveCreateActions } from '../composables/useDriveCreateActions';
+import { useDriveDropzone } from '../composables/useDriveDropzone';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -497,8 +498,6 @@ const mobileSearchOpen = ref(false);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const isDraggingOver = ref(false);
-let dragCounter = 0;
 
 const { searchQuery, debouncedQuery, searchAllDrive, searchResults, searchNextCursor, isSearching, performSearch, clearSearch } = useDriveSearch({
   folderId: currentFolderId,
@@ -542,6 +541,11 @@ const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onI
 const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelUpload } = useDriveUpload({
   folderId: currentFolderId,
   loadCurrentFolder,
+});
+
+const { isDraggingOver, onDragEnter, onDragOver, onDragLeave, onDrop } = useDriveDropzone({
+  activeTab,
+  handleFilesUpload,
 });
 
 const { treeFolders, initSidebarTree, toggleTreeNode } = useDriveSidebarTree();
@@ -605,41 +609,6 @@ const displayedItems = computed(() => {
 // Upload Handling
 function triggerFileInput() {
   fileInputRef.value?.click();
-}
-
-// Drag & Drop
-function onDragEnter(e: DragEvent) {
-  if (activeTab.value === 'photos') return;
-  if (e.dataTransfer?.types?.includes('Files')) {
-    dragCounter++;
-    isDraggingOver.value = true;
-  }
-}
-
-function onDragOver(e: DragEvent) {
-  if (activeTab.value === 'photos') return;
-  if (e.dataTransfer?.types?.includes('Files')) {
-    e.preventDefault();
-  }
-}
-
-function onDragLeave() {
-  if (activeTab.value === 'photos') return;
-  dragCounter--;
-  if (dragCounter <= 0) {
-    dragCounter = 0;
-    isDraggingOver.value = false;
-  }
-}
-
-function onDrop(e: DragEvent) {
-  dragCounter = 0;
-  isDraggingOver.value = false;
-  if (activeTab.value === 'photos') return;
-  const droppedFiles = e.dataTransfer?.files;
-  if (droppedFiles && droppedFiles.length > 0) {
-    handleFilesUpload(Array.from(droppedFiles));
-  }
 }
 
 function onDocumentClick(e: MouseEvent) {
