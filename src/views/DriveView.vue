@@ -454,8 +454,6 @@ import {
   type DriveSlice,
   type DriveSort,
 } from '../api/drive';
-import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { promptDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
@@ -474,6 +472,7 @@ import { useDriveUpload } from '../composables/useDriveUpload';
 import { useDriveSidebarTree } from '../composables/useDriveSidebarTree';
 import { useDriveFileActions } from '../composables/useDriveFileActions';
 import { useDrivePhoneActions } from '../composables/useDrivePhoneActions';
+import { useDriveCreateActions } from '../composables/useDriveCreateActions';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -495,9 +494,6 @@ const loadingMore = ref(false);
 const error = ref<string | null>(null);
 
 const mobileSearchOpen = ref(false);
-
-// Menus
-const createMenuOpen = ref(false);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
@@ -550,6 +546,12 @@ const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelU
 
 const { treeFolders, initSidebarTree, toggleTreeNode } = useDriveSidebarTree();
 
+const { createMenuOpen, onCreateFolder, onCreateCanvas, onCreateDocument } = useDriveCreateActions({
+  folderId: currentFolderId,
+  loadCurrentFolder,
+  refreshSidebar: initSidebarTree,
+});
+
 const folderTitle = computed(() => {
   if (currentFolderId.value === 'root') {
     return t('drive');
@@ -599,37 +601,6 @@ const displayedItems = computed(() => {
     return 0;
   });
 });
-
-// Create Actions
-async function onCreateFolder() {
-  createMenuOpen.value = false;
-  const name = await promptDialog({
-    title: t('driveNewFolderTitle'),
-    placeholder: t('driveNewFolderPlaceholder'),
-    confirmLabel: t('driveCreate'),
-    cancelLabel: t('driveCancel'),
-  });
-  if (name && name.trim()) {
-    const parentId = currentFolderId.value === 'root' ? null : currentFolderId.value;
-    await resourceFolders.create(name.trim(), parentId);
-    await loadCurrentFolder();
-    await initSidebarTree();
-  }
-}
-
-async function onCreateCanvas() {
-  createMenuOpen.value = false;
-  const targetFolder = currentFolderId.value === 'root' ? null : currentFolderId.value;
-  await canvas.create('Untitled', undefined, targetFolder);
-  await loadCurrentFolder();
-}
-
-async function onCreateDocument() {
-  createMenuOpen.value = false;
-  const targetFolder = currentFolderId.value === 'root' ? null : currentFolderId.value;
-  await textDocuments.create({ title: 'Untitled document', folderId: targetFolder });
-  await loadCurrentFolder();
-}
 
 // Upload Handling
 function triggerFileInput() {
