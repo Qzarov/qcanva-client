@@ -25,6 +25,22 @@ async function openFolder(page: Page, options: Parameters<typeof openDashboard>[
   return server;
 }
 
+/** A real 800×600 picture for the viewer's originals (the fake hub's PNG is a speck). */
+async function serveBigPictures(page: Page) {
+  const dataUrl = await page.evaluate(() => {
+    const canvas = Object.assign(document.createElement('canvas'), { width: 800, height: 600 });
+    const ctx = canvas.getContext('2d')!;
+    const gradient = ctx.createLinearGradient(0, 0, 800, 600);
+    gradient.addColorStop(0, '#2b6cb0');
+    gradient.addColorStop(1, '#f6ad55');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 800, 600);
+    return canvas.toDataURL('image/png');
+  });
+  const body = Buffer.from(dataUrl.split(',')[1]!, 'base64');
+  await page.route(/\/api\/test-bytes\/f-(cat|huge|sea)$/, (route) => route.fulfill({ status: 200, contentType: 'image/png', body }));
+}
+
 /** The folder with the hub's card pictures ready for every file (a video's frame among them). */
 async function openFolderWithPictures(page: Page) {
   const server = await openDashboard(page);
@@ -237,6 +253,48 @@ test.describe('a folder\'s files', () => {
     await expect(viewer.locator('[data-media-video]')).toHaveCount(0);
   });
 
+  test('a picture zooms: double click, the wheel, dragged when closer; the next file starts unzoomed', async ({ page }) => {
+    await openFolder(page);
+    await serveBigPictures(page);
+    await page.locator('[data-folder-file="f-cat"]').click();
+    const viewer = page.locator('[data-media-viewer]');
+    const image = viewer.locator('[data-media-image]');
+    await expect(image).toHaveAttribute('data-media-full', 'true');
+    await expect.poll(() => viewer.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    const box = (await image.boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+    // A double click: closer, around the point clicked.
+    await page.mouse.dblclick(centre.x + 20, centre.y + 10);
+    await expect(image).toHaveAttribute('data-media-zoom', '2.50');
+    await expect(image).toHaveClass(/is-zoomed/);
+    // Dragged: the picture follows the mouse, within its edges.
+    const before = await image.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).e);
+    await page.mouse.move(centre.x, centre.y);
+    await page.mouse.down();
+    await page.mouse.move(centre.x - 40, centre.y, { steps: 4 });
+    await page.mouse.up();
+    await expect.poll(() => image.evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).e)).toBeLessThan(before);
+    // Zoomed, the viewer stays open after a drag, and a double click goes back.
+    await expect(viewer).toBeVisible();
+    await page.mouse.dblclick(centre.x, centre.y);
+    await expect(image).not.toHaveAttribute('data-media-zoom', /.*/);
+
+    // The wheel: up closer, down back to the whole picture, never smaller.
+    await page.mouse.move(centre.x, centre.y);
+    await page.mouse.wheel(0, -400);
+    await expect.poll(async () => Number(await image.getAttribute('data-media-zoom'))).toBeGreaterThan(1.5);
+    await page.mouse.wheel(0, 4000);
+    await expect(image).not.toHaveAttribute('data-media-zoom', /.*/);
+
+    // Zoomed and on to the next file: it starts whole.
+    await page.mouse.dblclick(centre.x, centre.y);
+    await expect(image).toHaveAttribute('data-media-zoom', '2.50');
+    await page.keyboard.press('ArrowRight');
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Панорама.png');
+    await expect(viewer.locator('[data-media-image]')).not.toHaveAttribute('data-media-zoom', /.*/);
+  });
+
   test('a video the browser cannot play says so, and downloads from there', async ({ page }) => {
     const { downloads } = await openFolderWithPictures(page);
     // The fake hub hands back a PNG: no browser plays that as a video.
@@ -394,5 +452,63 @@ test.describe('filters and sort', () => {
     const name = page.locator('[data-folder-file="f-sea"] .folder-file-name');
     expect(await name.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/phone-folder.png`, fullPage: true });
+  });
+});
+
+test.describe('zoom with the fingers', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } });
+
+  /** Two fingers at once, through the browser's own touch input (Playwright's touchscreen has one). */
+  async function pinch(page: Page, centre: { x: number; y: number }, from: number, to: number) {
+    const cdp = await page.context().newCDPSession(page);
+    const points = (half: number) => [
+      { x: centre.x - half, y: centre.y, id: 1 },
+      { x: centre.x + half, y: centre.y, id: 2 },
+    ];
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: points(from / 2) });
+    for (let step = 1; step <= 8; step += 1) {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: points((from + ((to - from) * step) / 8) / 2) });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  }
+
+  test('a pinch zooms a picture without paging; a double tap zooms and comes back; a swipe still pages when whole', async ({ page }) => {
+    await openFolder(page);
+    await serveBigPictures(page);
+    await page.locator('[data-folder-file="f-cat"]').tap();
+    const viewer = page.locator('[data-media-viewer]');
+    const image = viewer.locator('[data-media-image]');
+    await expect(image).toHaveAttribute('data-media-full', 'true');
+    await expect.poll(() => viewer.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+    const box = (await image.boundingBox())!;
+    const centre = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+    // Fingers apart: closer - and still the same picture, not the next one.
+    await pinch(page, centre, 60, 180);
+    await expect.poll(async () => Number(await image.getAttribute('data-media-zoom'))).toBeGreaterThan(2);
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Кот на окне.png');
+    // Together again: whole, never smaller.
+    await pinch(page, centre, 180, 20);
+    await expect(image).not.toHaveAttribute('data-media-zoom', /.*/);
+
+    // A double tap: closer; again: whole.
+    await page.touchscreen.tap(centre.x, centre.y);
+    await page.touchscreen.tap(centre.x, centre.y);
+    await expect(image).toHaveAttribute('data-media-zoom', '2.50');
+    if (SHOTS) {
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `${SHOTS}/media-viewer-zoom-phone.png` });
+    }
+    await page.waitForTimeout(400);
+    await page.touchscreen.tap(centre.x, centre.y);
+    await page.touchscreen.tap(centre.x, centre.y);
+    await expect(image).not.toHaveAttribute('data-media-zoom', /.*/);
+
+    // Whole: a swipe goes on to the next file, as before.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: centre.x + 120, y: centre.y, id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: centre.x - 60, y: centre.y, id: 1 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(viewer.locator('[data-media-name]')).toHaveText('Панорама.png');
   });
 });

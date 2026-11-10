@@ -33,7 +33,18 @@
         </button>
       </header>
 
-      <div class="media-viewer-stage" @click.self="close">
+      <!-- Pinch, drag and wheel anywhere on the stage, not only on the
+           picture: fingers that start beside a small one still zoom it. -->
+      <div
+        class="media-viewer-stage"
+        :class="{ 'is-picture': !isVideo && shownSrc }"
+        @click.self="onStageClick"
+        @pointerdown="onPointerDown"
+        @pointermove="onPointerMove"
+        @pointerup="onPointerUp"
+        @pointercancel="onPointerUp"
+        @wheel="onWheel"
+      >
         <button v-if="index > 0" type="button" class="media-viewer-nav prev" :aria-label="t('photosPrevious')" data-media-prev @click="go(index - 1)">
           <ChevronLeft :size="28" aria-hidden="true" />
         </button>
@@ -62,16 +73,23 @@
             </button>
           </div>
         </template>
+        <!-- Zoom: a double tap or click, a pinch, the wheel; dragged once closer. -->
         <img
           v-else-if="shownSrc"
           :key="current.key + shownSrc"
+          ref="imageEl"
           referrerpolicy="no-referrer"
           class="media-viewer-image"
+          :class="{ 'is-zoomed': zoom.scale > 1, 'is-gesturing': gesturing }"
+          :style="zoomStyle"
           :src="shownSrc"
           :alt="current.name"
+          draggable="false"
           data-media-image
           :data-media-full="shownSrc === fullSrc || undefined"
+          :data-media-zoom="zoom.scale > 1 ? zoom.scale.toFixed(2) : undefined"
           @error="onImageError"
+          @dblclick="onDoubleClick"
         />
         <p v-else class="media-viewer-note" data-media-unavailable>{{ loading ? t('driveLoading') : t('mediaViewerUnavailable') }}</p>
         <!-- The original loads out of sight and swaps in once it is ready. -->
@@ -170,7 +188,176 @@ function go(next: number) {
   if (next < 0 || next >= props.items.length) return;
   index.value = next;
 }
-watch(index, () => { void show(); });
+watch(index, () => {
+  resetZoom();
+  void show();
+});
+
+// ----- zoom: a picture, 1x to 5x, around the point under the fingers or the cursor
+const MAX_SCALE = 5;
+const DOUBLE_TAP_SCALE = 2.5;
+const imageEl = ref<HTMLImageElement | null>(null);
+const zoom = reactive({ scale: 1, x: 0, y: 0 });
+/** Fingers or the mouse on the picture right now: no easing while they move it. */
+const gesturing = ref(false);
+/** Only once zoomed: an inline transform would undo the picture's opening animation. */
+const zoomStyle = computed(() => (zoom.scale > 1 || zoom.x || zoom.y
+  ? { transform: `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.scale})` }
+  : undefined));
+
+function resetZoom() {
+  zoom.scale = 1;
+  zoom.x = 0;
+  zoom.y = 0;
+}
+
+/** The picture's centre and size before any zoom (layout boxes ignore transforms). */
+function imageFrame() {
+  const img = imageEl.value;
+  const stage = img?.offsetParent as HTMLElement | null;
+  if (!img || !stage) return null;
+  const rect = stage.getBoundingClientRect();
+  return {
+    cx: rect.left + img.offsetLeft + img.offsetWidth / 2,
+    cy: rect.top + img.offsetTop + img.offsetHeight / 2,
+    width: img.offsetWidth,
+    height: img.offsetHeight,
+    stageWidth: rect.width,
+    stageHeight: rect.height,
+  };
+}
+
+/** Kept on screen: a zoomed picture can be dragged to its edge, not past it. */
+function clampPan() {
+  const frame = imageFrame();
+  if (!frame || zoom.scale <= 1) {
+    zoom.x = 0;
+    zoom.y = 0;
+    return;
+  }
+  const limitX = Math.max(0, (frame.width * zoom.scale - frame.stageWidth) / 2);
+  const limitY = Math.max(0, (frame.height * zoom.scale - frame.stageHeight) / 2);
+  zoom.x = Math.min(limitX, Math.max(-limitX, zoom.x));
+  zoom.y = Math.min(limitY, Math.max(-limitY, zoom.y));
+}
+
+/** To `scale`, the point (px, py) on screen staying where it is. */
+function zoomAt(scale: number, px: number, py: number) {
+  const frame = imageFrame();
+  const next = Math.min(MAX_SCALE, Math.max(1, scale));
+  if (!frame) return;
+  if (next === 1) {
+    resetZoom();
+    return;
+  }
+  const ratio = next / zoom.scale;
+  zoom.x = px - frame.cx - ratio * (px - frame.cx - zoom.x);
+  zoom.y = py - frame.cy - ratio * (py - frame.cy - zoom.y);
+  zoom.scale = next;
+  clampPan();
+}
+
+function toggleZoomAt(px: number, py: number) {
+  if (zoom.scale > 1) resetZoom();
+  else zoomAt(DOUBLE_TAP_SCALE, px, py);
+}
+
+const pointers = new Map<number, { x: number; y: number }>();
+let pinch: { distance: number; scale: number } | null = null;
+let lastTap: { at: number; x: number; y: number } | null = null;
+/** A pinch or a drag happened in this touch: the swipe to the next file stays out of it. */
+let touchUsedForZoom = false;
+/** The click that ends a drag or a pinch on the stage is not "close". */
+let suppressClick = false;
+
+/** Zoom gestures belong to a picture; the buttons and the video player keep theirs. */
+const zoomable = (event: Event) =>
+  !isVideo.value && Boolean(imageEl.value) && !(event.target as Element | null)?.closest?.('button, video');
+
+function onStageClick() {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
+  close();
+}
+
+const pinchDistance = () => {
+  const [a, b] = [...pointers.values()];
+  return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
+};
+const pinchCentre = () => {
+  const [a, b] = [...pointers.values()];
+  return a && b ? { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } : null;
+};
+
+function onPointerDown(event: PointerEvent) {
+  lastPointerType = event.pointerType;
+  if (!zoomable(event) || (event.pointerType === 'mouse' && event.button !== 0)) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  gesturing.value = true;
+  suppressClick = false;
+  if (pointers.size === 2) {
+    pinch = { distance: pinchDistance(), scale: zoom.scale };
+    touchUsedForZoom = true;
+    suppressClick = true;
+  }
+}
+
+function onPointerMove(event: PointerEvent) {
+  const before = pointers.get(event.pointerId);
+  if (!before) return;
+  const now = { x: event.clientX, y: event.clientY };
+  pointers.set(event.pointerId, now);
+  if (pinch && pointers.size >= 2) {
+    const centre = pinchCentre();
+    const distance = pinchDistance();
+    if (centre && pinch.distance > 0) zoomAt(pinch.scale * (distance / pinch.distance), centre.x, centre.y);
+    return;
+  }
+  if (zoom.scale > 1 && pointers.size === 1) {
+    zoom.x += now.x - before.x;
+    zoom.y += now.y - before.y;
+    clampPan();
+    touchUsedForZoom = true;
+    suppressClick = true;
+  }
+}
+
+function onPointerUp(event: PointerEvent) {
+  const start = pointers.get(event.pointerId);
+  const wasPinch = Boolean(pinch);
+  pointers.delete(event.pointerId);
+  if (pointers.size < 2) pinch = null;
+  if (pointers.size === 0) gesturing.value = false;
+  // A double tap on the picture with a finger; the mouse has its own dblclick.
+  const onImage = event.target === imageEl.value;
+  if (event.pointerType !== 'mouse' && start && onImage && event.type === 'pointerup' && !wasPinch) {
+    const at = event.timeStamp;
+    if (lastTap && at - lastTap.at < 300 && Math.hypot(event.clientX - lastTap.x, event.clientY - lastTap.y) < 30) {
+      toggleZoomAt(event.clientX, event.clientY);
+      lastTap = null;
+      touchUsedForZoom = true;
+    } else {
+      lastTap = { at, x: event.clientX, y: event.clientY };
+    }
+  }
+}
+
+/** The mouse's double click. A browser also sends one after a double tap - that one the tap already did. */
+let lastPointerType = 'mouse';
+function onDoubleClick(event: MouseEvent) {
+  if (lastPointerType !== 'mouse') return;
+  toggleZoomAt(event.clientX, event.clientY);
+}
+
+/** The wheel, and a trackpad's pinch (which comes as the wheel with ctrl). */
+function onWheel(event: WheelEvent) {
+  if (!zoomable(event)) return;
+  event.preventDefault();
+  const step = event.ctrlKey ? 0.01 : 0.0015;
+  zoomAt(zoom.scale * Math.exp(-event.deltaY * step), event.clientX, event.clientY);
+}
 
 function close() {
   videoEl.value?.pause();
@@ -190,13 +377,16 @@ function onKeydown(event: KeyboardEvent) {
 }
 
 let touchX: number | null = null;
+/** A swipe pages through the files - one finger, the picture not zoomed, nothing zoomed by this touch. */
 function onTouchStart(event: TouchEvent) {
-  touchX = inPlayer(event) ? null : event.touches[0]?.clientX ?? null;
+  if (event.touches.length === 1) touchUsedForZoom = false;
+  touchX = inPlayer(event) || event.touches.length > 1 || zoom.scale > 1 ? null : event.touches[0]?.clientX ?? null;
 }
 function onTouchEnd(event: TouchEvent) {
   if (touchX === null) return;
   const dx = (event.changedTouches[0]?.clientX ?? touchX) - touchX;
   touchX = null;
+  if (touchUsedForZoom || zoom.scale > 1) return;
   if (dx > 60) go(index.value - 1);
   else if (dx < -60) go(index.value + 1);
 }
@@ -290,7 +480,19 @@ onMounted(async () => {
   max-height: 100%;
   object-fit: contain;
   user-select: none;
+  /* The fingers are ours on the picture: a pinch zooms it, not the page. */
+  touch-action: none;
+  cursor: zoom-in;
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
 }
+.media-viewer-image.is-zoomed { cursor: grab; }
+.media-viewer-image.is-zoomed.is-gesturing { cursor: grabbing; }
+/* Under the fingers it follows them at once; the double tap and the wheel ease. */
+.media-viewer-image.is-gesturing { transition: none; }
+/* A picture: the fingers on the stage are its own - a pinch zooms it, not the page. */
+.media-viewer-stage.is-picture { touch-action: none; }
+/* Closer than the screen: the picture may reach past the stage's edges. */
+.media-viewer-stage:has(.media-viewer-image.is-zoomed) { overflow: hidden; }
 .media-viewer-loader {
   position: absolute;
   width: 1px;
@@ -368,6 +570,7 @@ onMounted(async () => {
   .media-viewer-enter-active,
   .media-viewer-leave-active,
   .media-viewer-enter-active .media-viewer-image,
-  .media-viewer-leave-active .media-viewer-image { transition: none; }
+  .media-viewer-leave-active .media-viewer-image,
+  .media-viewer-image { transition: none; }
 }
 </style>
