@@ -85,55 +85,18 @@
           @view="viewMode = $event"
         />
 
-        <!-- Main Body: Loading / Error / Empty / Grid / List -->
-        <div v-if="loading" class="drive-loading-state" data-loading>
-          <div class="drive-spinner" aria-hidden="true"></div>
-          <span>{{ t('driveLoading') }}</span>
-        </div>
-
-        <div v-else-if="error" class="drive-error-state" data-error>
-          <p class="drive-error-message">{{ error }}</p>
-          <button type="button" class="drive-btn drive-btn-secondary" @click="loadCurrentFolder">
-            {{ t('driveTryAgain') }}
-          </button>
-        </div>
-
-        <!-- Search with 0 results -->
-        <div
-          v-else-if="isSearching && searchResults.length === 0"
-          class="drive-empty-placeholder"
-          data-empty="search"
+        <DriveContentState
+          :loading="loading"
+          :error="error"
+          :is-searching="isSearching"
+          :search-results-length="searchResults.length"
+          :displayed-items-length="displayedItems.length"
+          :active-slice="activeSlice"
+          :loading-more="loadingMore"
+          :active-next-cursor="activeNextCursor"
+          @retry="loadCurrentFolder"
+          @load-more="onLoadMore"
         >
-          <Search :size="40" class="drive-empty-icon" aria-hidden="true" />
-          <p class="drive-empty-text">{{ t('driveNothingFound') }}</p>
-        </div>
-
-        <!-- Slices empty placeholders -->
-        <div
-          v-else-if="!isSearching && displayedItems.length === 0"
-          class="drive-empty-placeholder"
-          :data-empty="activeSlice"
-        >
-          <template v-if="activeSlice === 'media'">
-            <Image :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">{{ t('driveEmptyMedia') }}</p>
-          </template>
-          <template v-else-if="activeSlice === 'files'">
-            <File :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">{{ t('driveEmptyFiles') }}</p>
-          </template>
-          <template v-else-if="activeSlice === 'docs'">
-            <FileText :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">{{ t('driveEmptyDocs') }}</p>
-          </template>
-          <template v-else>
-            <Folder :size="40" class="drive-empty-icon" aria-hidden="true" />
-            <p class="drive-empty-text">{{ t('driveEmptyFolder') }}</p>
-          </template>
-        </div>
-
-        <!-- Items View (Grid or List, Folders first) -->
-        <div v-else>
           <!-- Grid View -->
           <div
             v-if="viewMode === 'grid'"
@@ -182,20 +145,7 @@
             />
           </div>
 
-          <!-- Load More / Next Page -->
-          <div v-if="activeNextCursor" class="drive-pagination">
-            <button
-              type="button"
-              class="drive-btn drive-btn-secondary"
-              :disabled="loadingMore"
-              data-load-more
-              @click="onLoadMore"
-            >
-              <span v-if="loadingMore">{{ t('driveLoading') }}</span>
-              <span v-else>{{ t('driveShowMore') }}</span>
-            </button>
-          </div>
-        </div>
+        </DriveContentState>
       </section>
 
       <!-- Upload Panel (Bottom-right desktop, bottom-sheet mobile) -->
@@ -219,11 +169,6 @@
 
 <script setup lang="ts">
 import {
-  File,
-  FileText,
-  Folder,
-  Image,
-  Search,
   Upload,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
@@ -239,6 +184,7 @@ import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveHeader from '../components/DriveHeader.vue';
 import DriveContentHeader from '../components/DriveContentHeader.vue';
+import DriveContentState from '../components/DriveContentState.vue';
 import DriveSidebar from '../components/DriveSidebar.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DriveItemCard from '../components/DriveItemCard.vue';
@@ -465,51 +411,6 @@ useDriveLifecycle({
   background: rgba(255, 255, 255, 0.1);
 }
 
-/* States */
-.drive-loading-state,
-.drive-error-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 60px 20px;
-  color: var(--ui-text-muted, #a8c6a8);
-}
-
-.drive-spinner {
-  width: 28px;
-  height: 28px;
-  border: 3px solid rgba(255, 255, 255, 0.1);
-  border-top-color: var(--ui-brand, #00ff00);
-  border-radius: 50%;
-  animation: drive-spin 0.8s linear infinite;
-}
-
-@keyframes drive-spin {
-  to { transform: rotate(360deg); }
-}
-
-.drive-empty-placeholder {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 80px 20px;
-  color: var(--ui-text-muted, #a8c6a8);
-}
-
-.drive-empty-icon {
-  opacity: 0.4;
-}
-
-.drive-empty-text {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 500;
-}
-
 /* Items Grid */
 .drive-grid {
   display: grid;
@@ -521,13 +422,6 @@ useDriveLifecycle({
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-/* Pagination */
-.drive-pagination {
-  display: flex;
-  justify-content: center;
-  padding: 24px 0 10px;
 }
 
 /* Responsive: Mobile View (≤ 640px) */
