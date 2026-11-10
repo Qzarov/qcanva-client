@@ -225,35 +225,13 @@
         </div>
 
         <!-- Mobile Expandable Search -->
-        <div v-if="mobileSearchOpen && activeTab !== 'photos'" class="drive-mobile-search-row">
-          <div class="drive-search-input-wrapper">
-            <Search :size="16" class="drive-search-icon" aria-hidden="true" />
-            <input
-              v-model="searchQuery"
-              type="search"
-              class="drive-search-input"
-              :placeholder="searchAllDrive ? t('driveSearchAllDrive') : t('driveSearchCurrentFolder')"
-              data-drive-search-mobile
-            />
-            <button
-              v-if="searchQuery"
-              type="button"
-              class="drive-search-clear"
-              :aria-label="t('driveClearSearch')"
-              @click="clearSearch"
-            >
-              <X :size="14" aria-hidden="true" />
-            </button>
-          </div>
-          <label class="drive-scope-checkbox-label">
-            <input
-              v-model="searchAllDrive"
-              type="checkbox"
-              data-search-scope-toggle-mobile
-            />
-            <span>{{ t('driveScopeAllDrive') }}</span>
-          </label>
-        </div>
+        <DriveSearchControls
+          v-if="mobileSearchOpen && activeTab !== 'photos'"
+          v-model="searchQuery"
+          v-model:all-drive="searchAllDrive"
+          mobile
+          @clear="clearSearch"
+        />
       </header>
 
       <!-- Desktop Header -->
@@ -279,35 +257,12 @@
 
         <div class="drive-header-actions">
           <!-- Desktop Search -->
-          <div v-if="activeTab !== 'photos'" class="drive-search-container">
-            <div class="drive-search-input-wrapper">
-              <Search :size="16" class="drive-search-icon" aria-hidden="true" />
-              <input
-                v-model="searchQuery"
-                type="search"
-                class="drive-search-input"
-                :placeholder="searchAllDrive ? t('driveSearchAllDrive') : t('driveSearchCurrentFolder')"
-                data-drive-search
-              />
-              <button
-                v-if="searchQuery"
-                type="button"
-                class="drive-search-clear"
-                :aria-label="t('driveClearSearch')"
-                @click="clearSearch"
-              >
-                <X :size="14" aria-hidden="true" />
-              </button>
-            </div>
-            <label class="drive-scope-checkbox-label" :title="t('driveScopeAllDriveTitle')">
-              <input
-                v-model="searchAllDrive"
-                type="checkbox"
-                data-search-scope-toggle
-              />
-              <span>{{ t('driveScopeAllDrive') }}</span>
-            </label>
-          </div>
+          <DriveSearchControls
+            v-if="activeTab !== 'photos'"
+            v-model="searchQuery"
+            v-model:all-drive="searchAllDrive"
+            @clear="clearSearch"
+          />
 
           <!-- Upload Button (Hidden on Photos tab) -->
           <button
@@ -772,7 +727,6 @@ import {
   Trash2,
   Upload,
   Video,
-  X,
 } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -795,6 +749,7 @@ import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
 import DriveItemActionsMenu from '../components/DriveItemActionsMenu.vue';
+import DriveSearchControls from '../components/DriveSearchControls.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
