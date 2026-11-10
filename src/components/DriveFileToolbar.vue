@@ -33,3 +33,75 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 </script>
+
+<style scoped>
+.drive-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.drive-sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.drive-sort-label {
+  font-size: 12px;
+  color: var(--ui-text-muted, #a8c6a8);
+}
+
+.drive-sort-btn {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border, #2a3a2e);
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.drive-sort-btn.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ui-text, #f8fff8);
+  font-weight: 600;
+}
+
+.drive-order-toggle {
+  height: 28px;
+  width: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border, #2a3a2e);
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.drive-view-controls { display: flex; align-items: center; gap: 4px; }
+
+.drive-view-toggle {
+  height: 28px;
+  width: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--ui-border, #2a3a2e);
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.drive-view-toggle.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ui-text, #f8fff8);
+}
+</style>

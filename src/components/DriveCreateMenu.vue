@@ -42,3 +42,42 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 </script>
+
+<style scoped>
+.drive-create-dropdown-container { position: relative; }
+
+.drive-create-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 170px;
+  border-radius: 12px;
+  background: var(--ui-surface-elevated, #1a201c);
+  border: 1px solid var(--ui-border, #2a3a2e);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 100;
+}
+
+.drive-create-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.drive-create-menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+</style>
