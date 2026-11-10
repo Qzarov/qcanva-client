@@ -75,3 +75,68 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 </script>
+
+<style scoped>
+.drive-item-menu-container {
+  position: relative;
+}
+
+.drive-item-menu-container:has(.drive-item-dropdown-menu) { z-index: 5; }
+
+.drive-item-menu-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text-muted, #a8c6a8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.drive-item-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ui-text, #f8fff8);
+}
+
+.drive-item-dropdown-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 160px;
+  border-radius: 10px;
+  background: var(--ui-surface-elevated, #1a201c);
+  border: 1px solid var(--ui-border, #2a3a2e);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  z-index: 120;
+}
+
+.drive-item-menu-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-text, #f8fff8);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.drive-item-menu-action:hover { background: rgba(255, 255, 255, 0.08); }
+
+.drive-item-menu-action.drive-menu-danger { color: var(--ui-danger, #fb464c); }
+.drive-item-menu-action.drive-menu-danger:hover { background: rgba(251, 70, 76, 0.15); }
+</style>
