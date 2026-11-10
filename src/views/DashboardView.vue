@@ -371,34 +371,17 @@
                 @delete="deleteFolder(activeFolder)"
               />
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
-                <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
-                  <button
-                    v-for="child in activeSubfolders"
-                    :key="'subfolder-' + child.id"
-                    type="button"
-                    class="subfolder-card"
-                    @click="selectFolder(child.id)"
-                  >
-                    <span class="subfolder-card-icon" aria-hidden="true">▤</span>
-                    <span class="subfolder-card-name">{{ child.name }}</span>
-                    <span class="subfolder-card-count">{{ child.count || t('emptyFolder') }}</span>
-                    <span v-if="child.latest" class="subfolder-card-date" data-folder-tile-date>{{ formatDate(child.latest) }}</span>
-                  </button>
-                </div>
-                <div v-if="activeFolderEmpty && (hasActiveFilter || activeFolder.role !== 'owner')" class="dash-empty" data-folder-empty>
-                  {{ hasActiveFilter ? t('noFilterMatches') : t('noFolderItems') }}
-                  <button v-if="hasActiveFilter" type="button" class="dash-empty-reset" data-reset-filters @click.stop="resetFilters">{{ t('resetFilters') }}</button>
-                </div>
+                <DashboardActiveSubfolders
+                  :subfolders="activeSubfolders"
+                  :active-folder-empty="activeFolderEmpty"
+                  :has-active-filter="hasActiveFilter"
+                  :is-owner="activeFolder.role === 'owner'"
+                  :format-date="formatDate"
+                  @select="selectFolder"
+                  @reset="resetFilters"
+                  @add="openAddFromTile('folder')"
+                />
                 <div class="dash-grid">
-                  <button
-                    v-if="activeFolderEmpty && !hasActiveFilter && activeFolder.role === 'owner'"
-                    type="button"
-                    class="dashboard-add-tile"
-                    data-feed-add="folder" data-folder-empty
-                    @click.stop="openAddFromTile('folder')"
-                  >
-                    <span class="dashboard-add-tile-label"><Plus :size="18" aria-hidden="true" />{{ t('add') }}</span>
-                  </button>
                   <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
                   <DashboardResourceCard
                     v-if="item.type === 'canvas'"
@@ -1277,6 +1260,7 @@ import DashboardToolbarControls from '../components/dashboard/DashboardToolbarCo
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
 import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
+import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1451,6 +1435,7 @@ export default defineComponent({
     DashboardStatusOverlays,
     DashboardRecentResources,
     DashboardFolderHeader,
+    DashboardActiveSubfolders,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
