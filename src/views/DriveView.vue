@@ -450,14 +450,12 @@ import {
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import {
-  formatFileSize,
-  type DriveItem,
   type DriveOrder,
   type DriveSlice,
   type DriveSort,
 } from '../api/drive';
 import { canvas, resourceFolders, textDocuments } from '../api/client';
-import { alertDialog, promptDialog } from '../composables/appDialog';
+import { promptDialog } from '../composables/appDialog';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
@@ -475,12 +473,7 @@ import { useDriveNavigation } from '../composables/useDriveNavigation';
 import { useDriveUpload } from '../composables/useDriveUpload';
 import { useDriveSidebarTree } from '../composables/useDriveSidebarTree';
 import { useDriveFileActions } from '../composables/useDriveFileActions';
-import {
-  phoneErrorText,
-  phoneEvictText,
-  phoneFetchText,
-  usePhoneNode,
-} from '../composables/usePhoneNode';
+import { useDrivePhoneActions } from '../composables/useDrivePhoneActions';
 
 const route = useRoute();
 const { t } = useI18n();
@@ -536,6 +529,12 @@ const { folderInfo, items, activeNextCursor, loadCurrentFolder, setSlice, setSor
 
 const { activeFileMenuId, propertiesItem, onDownloadFile, onRenameFile, onTrashFile, onShowProperties, toggleFileMenu } = useDriveFileActions({
   loadCurrentFolder,
+});
+
+const { phoneActive, itemDrivePath, onPhoneFetch, onPhoneEvict, ensureLoaded: ensurePhoneLoaded } = useDrivePhoneActions({
+  folderInfo,
+  isSearching,
+  activeFileMenuId,
 });
 
 const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
@@ -632,53 +631,6 @@ async function onCreateDocument() {
   await loadCurrentFolder();
 }
 
-// ---------------------------------------------------------------------------
-// This phone as storage (Android app with the node switched on)
-// ---------------------------------------------------------------------------
-const phoneNode = usePhoneNode();
-const phoneActive = phoneNode.active;
-
-/**
- * The item's path from the drive root by folder names, as the phone's node
- * lays the drive out on disk. Unknown for search hits from other folders.
- */
-function itemDrivePath(item: DriveItem): string | undefined {
-  const info = folderInfo.value;
-  if (!info || isSearching.value) return undefined;
-  const names = (info.path || []).map((crumb) => crumb.name);
-  const folder = info.folder;
-  if (folder.id !== 'root') {
-    if (!folder.name) return undefined;
-    if (info.path?.[info.path.length - 1]?.id !== folder.id) names.push(folder.name);
-  }
-  if (names.some((name) => !name)) return undefined;
-  return [...names, item.name].join('/');
-}
-
-async function onPhoneFetch(item: DriveItem) {
-  activeFileMenuId.value = null;
-  const path = itemDrivePath(item);
-  if (!path) return;
-  try {
-    const outcome = await phoneNode.fetchPath(path);
-    await alertDialog({ title: item.name, message: phoneFetchText(outcome, t, formatFileSize) });
-  } catch (err) {
-    await alertDialog({ title: t('phoneActionFailed'), message: phoneErrorText(err, t) });
-  }
-}
-
-async function onPhoneEvict(item: DriveItem) {
-  activeFileMenuId.value = null;
-  const path = itemDrivePath(item);
-  if (!path) return;
-  try {
-    const result = phoneEvictText(await phoneNode.evictPath(path), t, formatFileSize);
-    await alertDialog({ title: item.name, message: result.text });
-  } catch (err) {
-    await alertDialog({ title: t('phoneActionFailed'), message: phoneErrorText(err, t) });
-  }
-}
-
 // Upload Handling
 function triggerFileInput() {
   fileInputRef.value?.click();
@@ -744,7 +696,7 @@ onMounted(() => {
   loadCurrentFolder();
   initSidebarTree();
   document.addEventListener('click', onDocumentClick);
-  void phoneNode.ensureLoaded();
+  void ensurePhoneLoaded();
 });
 
 onUnmounted(() => {
