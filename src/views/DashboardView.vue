@@ -369,135 +369,34 @@
                   @add="openAddFromTile('folder')"
                 />
                 <div class="dash-grid">
-                  <template v-for="item in activeFolder.items" :key="`${item.type}-${item.id}`">
-                  <DashboardResourceCard
-                    v-if="item.type === 'canvas'"
-                    :resource="item"
-                    kind="canvas"
-                    :title-fallback="t('untitled')"
-                    :icon-label="t('canvas')"
-                    :select-label="t('selectItem')"
-                    :date-label="formatDate(item.updatedAt)"
-                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
-                    :select-key="selectionKey(item)"
-                    :selected="isSelected(item)"
-                    :selectable="isLoggedIn"
-                    :busy="isBusy"
-                    :dragging="draggingResourceId === item.id"
-                    card-tag="div"
-                    :renameable="true"
-                    :show-pin="isOwnedResource(item)"
-                    pin-title="Pin canvas"
-                    :menu-id="item.id"
-                    :menu-open="openMenuCanvasId === item.id"
-                    :menu-style="cardMenuStyle"
-                    :actions="resourceActions(item, 'owned')"
-                    @open="openCanvasFromCard(item.slug || item.id)"
-                    @rename="startRename(item.id)"
-                    @toggle-select="toggleSelected(selectionKey(item))"
-                    @toggle-pin="togglePinned(item)"
-                    @toggle-menu="toggleCardMenu(item.id, $event)"
-                    @select-action="handleResourceAction(item, $event)"
-                  >
-                    <template #title>
-                      <input
-                        v-if="renamingId === item.id"
-                        class="card-title-input"
-                        :value="item.title"
-                        @blur="finishRename($event, item)"
-                        @keydown.enter="($event.target as HTMLInputElement).blur()"
-                        @keydown.escape="renamingId = ''"
-                        @click.stop
-                        ref="renameInput"
-                      />
-                      <span v-else class="card-title-text">{{ item.title || t('untitled') }}</span>
-                    </template>
-                  </DashboardResourceCard>
-                  <DashboardResourceCard
-                    v-else-if="item.type === 'html-document'"
-                    :resource="item"
-                    kind="html-document"
-                    title-fallback="Untitled HTML"
-                    icon-label="HTML document"
-                    :select-label="t('selectItem')"
-                    :date-label="formatDate(item.updatedAt)"
-                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
-                    :select-key="selectionKey(item)"
-                    :selected="isSelected(item)"
-                    :selectable="isLoggedIn"
-                    :busy="isBusy"
-                    :dragging="draggingResourceId === item.id"
-                    :show-pin="isOwnedResource(item)"
-                    pin-title="Pin HTML"
-                    :open-href="`/edit/html/${item.slug || item.id}`"
-                    :open-label="`Open HTML document ${item.title || 'Untitled HTML'}`"
-                    :menu-id="item.id"
-                    :menu-open="openMenuCanvasId === item.id"
-                    :menu-style="cardMenuStyle"
-                    :actions="resourceActions(item, 'owned')"
-                    @open="openHtmlDocumentFromCard(item.slug || item.id)"
-                    @open-link="rememberRecentResource('html-document', item.slug || item.id)"
-                    @toggle-select="toggleSelected(selectionKey(item))"
-                    @toggle-pin="togglePinned(item)"
-                    @toggle-menu="toggleCardMenu(item.id, $event)"
-                    @select-action="handleResourceAction(item, $event)"
+                  <DashboardFolderResourceGrid
+                    :items="activeFolder.items"
+                    :is-logged-in="isLoggedIn"
+                    :is-busy="isBusy"
+                    :dragging-resource-id="draggingResourceId"
+                    :open-menu-canvas-id="openMenuCanvasId"
+                    :renaming-id="renamingId"
+                    :card-menu-style="cardMenuStyle"
+                    :selection-key="selectionKey"
+                    :is-selected="isSelected"
+                    :is-owned-resource="isOwnedResource"
+                    :format-date="formatDate"
+                    :format-card-date-mobile="formatCardDateMobile"
+                    :interactive-template-type-label="interactiveTemplateTypeLabel"
+                    :resource-actions="resourceActions"
+                    @open-canvas="openCanvasFromCard"
+                    @open-html="openHtmlDocumentFromCard"
+                    @open-text="openTextDocumentFromCard"
+                    @open-interactive="openInteractiveTemplate"
+                    @remember="rememberRecentResource"
+                    @start-rename="startRename"
+                    @finish-rename="finishRename"
+                    @cancel-rename="renamingId = ''"
+                    @toggle-selected="toggleSelected"
+                    @toggle-pinned="togglePinned"
+                    @toggle-menu="toggleCardMenu"
+                    @select-action="handleResourceAction"
                   />
-                  <DashboardResourceCard
-                    v-else-if="item.type === 'interactive-template'"
-                    :resource="item"
-                    kind="interactive-template"
-                    :title-fallback="t('untitled')"
-                    :icon-label="interactiveTemplateTypeLabel(item.templateType)"
-                    :select-label="t('selectItem')"
-                    :date-label="formatDate(item.updatedAt)"
-                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
-                    :select-key="selectionKey(item)"
-                    :selected="isSelected(item)"
-                    :selectable="isLoggedIn"
-                    :busy="isBusy"
-                    :folder-resource="`interactive-template:${item.id}`"
-                    :badge-text="item.role && item.role !== 'owner' ? item.role : null"
-                    :show-tags="false"
-                    :menu-id="`folder:interactive-template:${item.id}`"
-                    :menu-open="openMenuCanvasId === `folder:interactive-template:${item.id}`"
-                    :menu-style="cardMenuStyle"
-                    :actions="resourceActions(item, 'interactive')"
-                    menu-title="Действия с шаблоном"
-                    @open="openInteractiveTemplate(item.id)"
-                    @toggle-select="toggleSelected(selectionKey(item))"
-                    @toggle-menu="toggleCardMenu(`folder:interactive-template:${item.id}`, $event)"
-                    @select-action="handleResourceAction(item, $event)"
-                  />
-                  <DashboardResourceCard
-                    v-else
-                    :resource="item"
-                    kind="text-document"
-                    title-fallback="Untitled document"
-                    icon-label="Document"
-                    :select-label="t('selectItem')"
-                    :date-label="formatDate(item.updatedAt)"
-                    :mobile-date-label="formatCardDateMobile(item.updatedAt)"
-                    :select-key="selectionKey(item)"
-                    :selected="isSelected(item)"
-                    :selectable="isLoggedIn"
-                    :busy="isBusy"
-                    :dragging="draggingResourceId === item.id"
-                    :show-pin="isOwnedResource(item)"
-                    pin-title="Pin document"
-                    :open-href="`/docs/${item.slug || item.id}`"
-                    :open-label="`Open document ${item.title || 'Untitled document'}`"
-                    :menu-id="item.id"
-                    :menu-open="openMenuCanvasId === item.id"
-                    :menu-style="cardMenuStyle"
-                    :actions="resourceActions(item, 'owned')"
-                    @open="openTextDocumentFromCard(item.slug || item.id)"
-                    @open-link="rememberRecentResource('text-document', item.slug || item.id)"
-                    @toggle-select="toggleSelected(selectionKey(item))"
-                    @toggle-pin="togglePinned(item)"
-                    @toggle-menu="toggleCardMenu(item.id, $event)"
-                    @select-action="handleResourceAction(item, $event)"
-                  />
-                  </template>
                   <DashboardFolderFiles
                     :folder-id="activeFolder.id"
                     :query="searchQuery"
@@ -1248,6 +1147,7 @@ import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOver
 import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
 import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
 import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
+import DashboardFolderResourceGrid from '../components/dashboard/DashboardFolderResourceGrid.vue';
 import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
@@ -1424,6 +1324,7 @@ export default defineComponent({
     DashboardRecentResources,
     DashboardFolderHeader,
     DashboardActiveSubfolders,
+    DashboardFolderResourceGrid,
     DashboardAccessRequests,
     ResourceThumb,
     ResourceIcon,
@@ -5195,14 +5096,9 @@ export default defineComponent({
     });
 
     const renamingId = ref('');
-    const renameInput = ref<HTMLInputElement[]>([]);
 
     const startRename = (id: string) => {
       renamingId.value = id;
-      nextTick(() => {
-        renameInput.value?.[0]?.focus();
-        renameInput.value?.[0]?.select();
-      });
     };
 
     const finishRename = async (e: Event, c: CanvasRecord) => {
@@ -5563,7 +5459,6 @@ export default defineComponent({
       togglePinned,
       formatDate,
       renamingId,
-      renameInput,
       startRename,
       finishRename,
       resolveAccessRequest,
