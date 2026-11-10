@@ -110,7 +110,7 @@ const emit = defineEmits<{
   'toggle-select': [key: string];
   /** The card pictures found so far, for the full-screen viewer. */
   previews: [previews: Readonly<Record<string, string>>];
-  /** A picture was clicked: the dashboard shows it full screen. */
+  /** A picture or a video was clicked: the dashboard shows it full screen. */
   'open-image': [file: DriveItem];
 }>();
 const { t, locale } = useI18n();
@@ -340,9 +340,9 @@ onBeforeUnmount(() => {
 watch(() => props.folderId, (folderId) => { void load(folderId); }, { immediate: true });
 watch(() => props.refreshKey, () => { void load(props.folderId); });
 
-/** A picture opens in the viewer; any other file downloads. */
+/** A picture or a video opens in the viewer; any other file downloads. */
 function open(file: DriveItem) {
-  if (isImage(file)) emit('open-image', file);
+  if (isImage(file) || isVideo(file)) emit('open-image', file);
   else void download(file);
 }
 
