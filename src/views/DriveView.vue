@@ -7,28 +7,7 @@
     @dragleave.prevent="onDragLeave"
     @drop.prevent="onDrop"
   >
-    <!-- Drag & Drop Overlay -->
-    <div
-      v-if="isDraggingOver && activeTab !== 'photos'"
-      class="drive-drop-overlay"
-      data-drop-overlay
-      aria-hidden="true"
-    >
-      <div class="drive-drop-overlay-content">
-        <Upload :size="48" class="drive-drop-icon" />
-        <span class="drive-drop-text">{{ t('driveDropFilesHere') }}</span>
-      </div>
-    </div>
-
-    <!-- Hidden Multi-file Input -->
-    <input
-      ref="fileInputRef"
-      type="file"
-      multiple
-      style="display: none"
-      data-file-input
-      @change="onFilesSelected"
-    />
+    <DriveUploadOverlay ref="uploadOverlay" :active="isDraggingOver && activeTab !== 'photos'" @selected="onFilesSelected" />
 
     <DriveSidebar
       :photos-enabled="photosEnabled"
@@ -136,14 +115,12 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Upload,
-} from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
+import DriveUploadOverlay from '../components/DriveUploadOverlay.vue';
 import DriveHeader from '../components/DriveHeader.vue';
 import DriveContentHeader from '../components/DriveContentHeader.vue';
 import DriveContentState from '../components/DriveContentState.vue';
@@ -173,7 +150,7 @@ const { route, currentFolderId, activeSlice, activeSort, activeOrder, viewMode, 
 const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t('drivePhotos')));
 
 // File input & Uploads
-const fileInputRef = ref<HTMLInputElement | null>(null);
+const uploadOverlay = ref<InstanceType<typeof DriveUploadOverlay> | null>(null);
 
 const { searchQuery, debouncedQuery, searchAllDrive, searchResults, searchNextCursor, isSearching, performSearch, clearSearch } = useDriveSearch({
   folderId: currentFolderId,
@@ -249,7 +226,7 @@ const { folderRoleLabel, breadcrumbTrail, sliceDefs, getSliceCount, displayedIte
 });
 
 function triggerFileInput() {
-  fileInputRef.value?.click();
+  uploadOverlay.value?.open();
 }
 
 useDriveLifecycle({
