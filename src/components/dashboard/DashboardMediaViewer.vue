@@ -299,9 +299,12 @@ onMounted(async () => {
   pointer-events: none;
 }
 .media-viewer-note { color: rgba(255, 255, 255, 0.7); }
+/* The whole stage, the picture fitted inside it: a small video does not sit
+   as a stamp in the middle, a tall one is not cut. */
 .media-viewer-video {
-  max-width: 100%;
-  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   background: #000;
   outline: none;
 }

@@ -222,7 +222,14 @@ test.describe('a folder\'s files', () => {
     await expect.poll(() => video.evaluate((el: HTMLVideoElement) => el.currentTime)).toBeGreaterThan(0);
     // Played, not downloaded: nothing went through the download path.
     expect(downloads).not.toContain('f-clip');
-    if (SHOTS) await page.screenshot({ path: `${SHOTS}/media-viewer-video.png` });
+    // The whole stage is the player's, the picture fitted inside.
+    const stage = (await viewer.locator('.media-viewer-stage').boundingBox())!;
+    const box = (await video.boundingBox())!;
+    expect(box.width).toBeGreaterThan(stage.width * 0.9);
+    if (SHOTS) {
+      await expect.poll(() => viewer.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+      await page.screenshot({ path: `${SHOTS}/media-viewer-video.png` });
+    }
 
     // On to the next file: the player goes, and its sound with it.
     await viewer.locator('[data-media-next]').click();
