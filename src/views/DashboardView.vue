@@ -353,71 +353,23 @@
             :key="activeFolder.id"
             class="folder-manager-row"
           >
-              <div class="folder-manager-top">
-              <div class="folder-manager-main">
-                <button
-                  type="button"
-                  class="folder-back-button"
-                  :title="t('back')"
-                  :aria-label="t('back')"
-                  data-folder-back-button
-                  @click.stop="goToParentFolder"
-                ><ArrowLeft :size="16" aria-hidden="true" /></button>
-                <span class="folder-manager-title">
-                  <span class="folder-manager-name">{{ activeFolder.name }}</span>
-                  <span class="folder-manager-count">{{ activeFolder.canvasCount }} {{ t('canvas').toLowerCase() }} / {{ activeFolder.htmlDocumentCount }} HTML / {{ activeFolder.textDocumentCount || 0 }} {{ t('docs').toLowerCase() }}<template v-if="activeFolderFileCount"> / {{ activeFolderFileCount }} {{ t('folderFilesTitle').toLowerCase() }}</template></span>
-                </span>
-              </div>
-              <DashboardViewToggle class="folder-view-toggle" :mode="recentViewMode" @update:mode="setRecentViewMode" />
-              <!-- Веб: «+» слева от «⋯» — окно «Добавить» с этой папкой. На мобильном скрыт:
-                   там добавляет плавающая «+», она сама подставляет открытую папку. -->
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu folder-create-menu">
-                <button
-                  class="folder-manager-trigger folder-create-trigger"
-                  data-folder-create-menu
-                  @click.stop="openAddDialog({ folderId: activeFolder.id })"
-                  :title="t('add')"
-                  :aria-label="t('add')"
-                  :disabled="isBusy"
-                ><Plus :size="17" aria-hidden="true" /></button>
-              </div>
-              <div v-if="activeFolder.role === 'owner'" class="folder-manager-menu">
-                <button
-                  class="folder-manager-trigger"
-                  @click.stop="toggleFolderMenu(activeFolder.id)"
-                  :title="t('groupActions')"
-                  :disabled="isBusy"
-                >⋯</button>
-                <div v-if="openControlMenu === 'folder:' + activeFolder.id" class="mobile-action-popover" @click.stop>
-                  <button class="card-menu-item" data-folder-import @click="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })" :disabled="isBusy">{{ t('import') }}</button>
-                  <button class="card-menu-item" @click="openFolderShareModal(activeFolder)" :disabled="isBusy">{{ t('share') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    @click="openRenameFolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('rename') }}</button>
-                  <button
-                    class="card-menu-item"
-                    @click="openSubfolderModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('addFolder') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item"
-                    data-action="move-folder-parent"
-                    @click="openFolderParentModal(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('moveFolderInto') }}</button>
-                  <button
-                    v-if="activeFolder.name !== 'Unsorted'"
-                    class="card-menu-item danger"
-                    @click="deleteFolder(activeFolder)"
-                    :disabled="isBusy"
-                  >{{ t('delete') }}</button>
-                </div>
-              </div>
-              </div>
+              <DashboardFolderHeader
+                :active-folder="activeFolder"
+                :active-folder-file-count="activeFolderFileCount"
+                :recent-view-mode="recentViewMode"
+                :is-busy="isBusy"
+                :menu-open="openControlMenu === 'folder:' + activeFolder.id"
+                @back="goToParentFolder"
+                @update:view-mode="setRecentViewMode"
+                @add="openAddDialog({ folderId: activeFolder.id })"
+                @toggle-menu="toggleFolderMenu(activeFolder.id)"
+                @import="openAddDialog({ folderId: activeFolder.id, importKind: 'file' })"
+                @share="openFolderShareModal(activeFolder)"
+                @rename="openRenameFolderModal(activeFolder)"
+                @add-subfolder="openSubfolderModal(activeFolder)"
+                @move-parent="openFolderParentModal(activeFolder)"
+                @delete="deleteFolder(activeFolder)"
+              />
               <div ref="activeFolderBody" class="folder-manager-body" @scroll="onFolderBodyScroll">
                 <div v-if="activeSubfolders.length" class="dash-grid subfolder-grid">
                   <button
@@ -1324,6 +1276,7 @@ import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar
 import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
 import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOverlays.vue';
 import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
+import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1497,6 +1450,7 @@ export default defineComponent({
     DashboardToolbarControls,
     DashboardStatusOverlays,
     DashboardRecentResources,
+    DashboardFolderHeader,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
