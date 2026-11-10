@@ -208,61 +208,13 @@
           </button>
 
           <!-- Create Button + Menu -->
-          <div class="drive-create-dropdown-container">
-            <button
-              type="button"
-              class="drive-btn drive-btn-secondary"
-              aria-haspopup="menu"
-              :aria-expanded="createMenuOpen"
-              data-create-button
-              @click="createMenuOpen = !createMenuOpen"
-            >
-              <Plus :size="16" aria-hidden="true" />
-              <span>{{ t('driveCreate') }}</span>
-            </button>
-
-            <div
-              v-if="createMenuOpen"
-              class="drive-create-menu"
-              role="menu"
-              :aria-label="t('driveCreateMenuAria')"
-              data-create-menu
-            >
-              <button
-                type="button"
-                role="menuitem"
-                class="drive-create-menu-item"
-                data-create-folder
-                :aria-label="t('driveCreateFolder')"
-                @click="onCreateFolder"
-              >
-                <FolderPlus :size="16" aria-hidden="true" />
-                <span>{{ t('driveFolder') }}</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="drive-create-menu-item"
-                data-create-canvas
-                :aria-label="t('driveCreateCanvas')"
-                @click="onCreateCanvas"
-              >
-                <ResourceIcon kind="canvas" aria-hidden="true" />
-                <span>{{ t('driveCanvas') }}</span>
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                class="drive-create-menu-item"
-                data-create-doc
-                :aria-label="t('driveCreateDocument')"
-                @click="onCreateDocument"
-              >
-                <ResourceIcon kind="text-document" aria-hidden="true" />
-                <span>{{ t('driveDocument') }}</span>
-              </button>
-            </div>
-          </div>
+          <DriveCreateMenu
+            :open="createMenuOpen"
+            @toggle="createMenuOpen = !createMenuOpen"
+            @create-folder="onCreateFolder"
+            @create-canvas="onCreateCanvas"
+            @create-document="onCreateDocument"
+          />
         </div>
       </header>
 
@@ -341,64 +293,14 @@
         </div>
 
         <!-- Toolbar (Sort & Grid/List Toggle) -->
-        <div class="drive-toolbar">
-          <div class="drive-sort-controls">
-            <label class="drive-sort-label">{{ t('driveSortLabel') }}</label>
-            <button
-              type="button"
-              class="drive-sort-btn"
-              :class="{ active: activeSort === 'name' }"
-              data-sort="name"
-              @click="setSort('name')"
-            >
-              {{ t('driveSortName') }}
-            </button>
-            <button
-              type="button"
-              class="drive-sort-btn"
-              :class="{ active: activeSort === 'date' }"
-              data-sort="date"
-              @click="setSort('date')"
-            >
-              {{ t('driveSortDate') }}
-            </button>
-            <button
-              type="button"
-              class="drive-order-toggle"
-              :aria-label="activeOrder === 'asc' ? t('driveOrderAsc') : t('driveOrderDesc')"
-              data-order-toggle
-              @click="toggleOrder"
-            >
-              <ArrowUp v-if="activeOrder === 'asc'" :size="15" aria-hidden="true" />
-              <ArrowDown v-else :size="15" aria-hidden="true" />
-            </button>
-          </div>
-
-          <div class="drive-view-controls">
-            <button
-              type="button"
-              class="drive-view-toggle"
-              :class="{ active: viewMode === 'grid' }"
-              :aria-label="t('driveViewGrid')"
-              :title="t('driveViewGrid')"
-              data-view-mode="grid"
-              @click="viewMode = 'grid'"
-            >
-              <Grid :size="16" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              class="drive-view-toggle"
-              :class="{ active: viewMode === 'list' }"
-              :aria-label="t('driveViewList')"
-              :title="t('driveViewList')"
-              data-view-mode="list"
-              @click="viewMode = 'list'"
-            >
-              <List :size="16" aria-hidden="true" />
-            </button>
-          </div>
-        </div>
+        <DriveFileToolbar
+          :sort="activeSort"
+          :order="activeOrder"
+          :view-mode="viewMode"
+          @sort="setSort"
+          @toggle-order="toggleOrder"
+          @view="viewMode = $event"
+        />
 
         <!-- Main Body: Loading / Error / Empty / Grid / List -->
         <div v-if="loading" class="drive-loading-state" data-loading>
@@ -638,20 +540,14 @@
 <script setup lang="ts">
 import ResourceIcon from '../components/ResourceIcon.vue';
 import {
-  ArrowDown,
   ArrowLeft,
-  ArrowUp,
   Code,
   File,
   FileText,
   Folder,
-  FolderPlus,
-  Grid,
   HardDrive,
   Image,
-  List,
   MonitorSmartphone,
-  Plus,
   Search,
   Trash2,
   Upload,
@@ -680,6 +576,8 @@ import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploa
 import DriveItemActionsMenu from '../components/DriveItemActionsMenu.vue';
 import DriveSearchControls from '../components/DriveSearchControls.vue';
 import DriveFolderTree, { type DriveTreeNode } from '../components/DriveFolderTree.vue';
+import DriveCreateMenu from '../components/DriveCreateMenu.vue';
+import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { isPhotosEnabled } from '../api/photos';
 import {
