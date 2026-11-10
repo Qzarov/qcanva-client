@@ -463,7 +463,7 @@ import { alertDialog, confirmDialog, promptDialog } from '../composables/appDial
 import { useDocumentTitle } from '../composables/useDocumentTitle';
 import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
-import DriveUploadPanel, { type DriveUploadItem } from '../components/DriveUploadPanel.vue';
+import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveSearchControls from '../components/DriveSearchControls.vue';
 import DriveFolderTree, { type DriveTreeNode } from '../components/DriveFolderTree.vue';
 import DriveCreateMenu from '../components/DriveCreateMenu.vue';
@@ -474,6 +474,7 @@ import DrivePhotos from '../components/photos/DrivePhotos.vue';
 import { useDriveSearch } from '../composables/useDriveSearch';
 import { useDriveFolderData } from '../composables/useDriveFolderData';
 import { useDriveNavigation } from '../composables/useDriveNavigation';
+import { useDriveUpload } from '../composables/useDriveUpload';
 import {
   phoneErrorText,
   phoneEvictText,
@@ -509,8 +510,6 @@ const propertiesItem = ref<DriveItem | null>(null);
 
 // File input & Uploads
 const fileInputRef = ref<HTMLInputElement | null>(null);
-const uploads = ref<DriveUploadItem[]>([]);
-const uploadPanelVisible = ref(false);
 const isDraggingOver = ref(false);
 let dragCounter = 0;
 
@@ -544,6 +543,11 @@ const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onI
   currentFolderId,
   folderPath: computed(() => folderInfo.value?.path || []),
   onDownloadFile,
+});
+
+const { uploads, uploadPanelVisible, onFilesSelected, handleFilesUpload, cancelUpload } = useDriveUpload({
+  folderId: currentFolderId,
+  loadCurrentFolder,
 });
 
 const folderTitle = computed(() => {
@@ -790,71 +794,6 @@ function toggleFileMenu(id: string) {
 // Upload Handling
 function triggerFileInput() {
   fileInputRef.value?.click();
-}
-
-function onFilesSelected(e: Event) {
-  const target = e.target as HTMLInputElement;
-  const files = Array.from(target.files || []);
-  if (files.length > 0) {
-    handleFilesUpload(files);
-  }
-  target.value = '';
-}
-
-async function handleFilesUpload(files: File[]) {
-  if (files.length === 0) return;
-  uploadPanelVisible.value = true;
-
-  const targetFolder = currentFolderId.value;
-  const newItems: DriveUploadItem[] = files.map((file) => ({
-    id: `up-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    file,
-    name: file.name,
-    size: file.size,
-    progress: 0,
-    status: 'uploading',
-  }));
-
-  uploads.value = [...newItems, ...uploads.value];
-
-  await Promise.all(
-    newItems.map(async (item) => {
-      try {
-        const handle = driveApi.uploadFile(targetFolder, item.file, (percent) => {
-          const found = uploads.value.find((u) => u.id === item.id);
-          if (found) {
-            found.progress = percent;
-          }
-        });
-        item.abort = () => handle.abort();
-        await handle.promise;
-        const found = uploads.value.find((u) => u.id === item.id);
-        if (found) {
-          found.progress = 100;
-          found.status = 'done';
-        }
-      } catch (err: any) {
-        const found = uploads.value.find((u) => u.id === item.id);
-        if (!found || found.status === 'cancelled') return;
-        found.status = 'error';
-        if (err.status === 413 || err.message?.includes('413') || err.message === t('driveUploadTooLarge')) {
-          found.errorMessage = t('driveUploadTooLarge');
-        } else {
-          found.errorMessage = err.message || t('driveUploadFailed');
-        }
-      }
-    }),
-  );
-
-  await loadCurrentFolder();
-}
-
-function cancelUpload(item: DriveUploadItem) {
-  if (item.status === 'uploading') {
-    item.status = 'cancelled';
-    item.errorMessage = t('driveUploadCancelled');
-    item.abort?.();
-  }
 }
 
 // Drag & Drop
