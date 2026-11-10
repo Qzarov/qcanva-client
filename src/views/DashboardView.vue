@@ -323,26 +323,13 @@
     <div v-if="loading" class="dash-loading">{{ t('loading') }}</div>
 
     <template v-else>
-      <div v-if="isLoggedIn && activeSection.kind === 'recent' && incomingRequests.length" class="dash-section access-requests-section">
-        <div class="dash-section-head">
-          <h2>{{ t('accessRequests') }}</h2>
-          <button class="btn-ghost btn-sm" @click.stop="load()" :disabled="isBusy">{{ t('refresh') }}</button>
-        </div>
-        <div class="access-request-list">
-          <div v-for="request in incomingRequests" :key="request.id" class="access-request-row">
-            <div>
-              <div class="access-request-title">{{ request.resourceTitle || request.resourceId }}</div>
-              <div class="access-request-meta">
-                {{ request.requesterEmail || request.requesterName || request.requesterId }} asks for {{ request.requestedRole }} on {{ request.resourceType === 'canvas' ? 'canvas' : request.resourceType === 'text-document' ? 'document' : 'HTML' }}
-              </div>
-            </div>
-            <div class="access-request-actions">
-              <button class="btn-ghost btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'declined')">{{ t('decline') }}</button>
-              <button class="btn-primary btn-sm" :disabled="isBusy" @click.stop="resolveAccessRequest(request.id, 'approved')">{{ t('approve') }}</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardAccessRequests
+        v-if="isLoggedIn && activeSection.kind === 'recent'"
+        :requests="incomingRequests"
+        :is-busy="isBusy"
+        @refresh="load"
+        @resolve="resolveAccessRequest"
+      />
 
       <section
         v-if="isLoggedIn && activeSection.kind === 'folder' && activeFolder"
@@ -1261,6 +1248,7 @@ import DashboardStatusOverlays from '../components/dashboard/DashboardStatusOver
 import DashboardRecentResources from '../components/dashboard/DashboardRecentResources.vue';
 import DashboardFolderHeader from '../components/dashboard/DashboardFolderHeader.vue';
 import DashboardActiveSubfolders from '../components/dashboard/DashboardActiveSubfolders.vue';
+import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1436,6 +1424,7 @@ export default defineComponent({
     DashboardRecentResources,
     DashboardFolderHeader,
     DashboardActiveSubfolders,
+    DashboardAccessRequests,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
