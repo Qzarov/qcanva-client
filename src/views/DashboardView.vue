@@ -38,34 +38,20 @@
       />
       <div class="dashboard-central-shell">
       <Transition name="dashboard-selection-bar">
-        <div
+        <DashboardSelectionBar
           v-if="isLoggedIn && selectedKeys.length"
-          class="dashboard-selection-bar"
-          role="region"
-          :aria-label="t('selectionActions')"
-          data-selection-bar
-        >
-          <!-- Icons only, the same on a computer and a phone: clear | (N) | select all, move, download, delete. -->
-          <button type="button" class="dashboard-selection-icon" data-selection-clear :aria-label="t('clearSelection')" v-hint="t('clearSelection')" @click="clearSelection">
-            <X :size="17" aria-hidden="true" />
-          </button>
-          <span class="dashboard-selection-count" data-selection-count :aria-label="t('selectedCount').replace('{n}', String(selectedKeys.length))">({{ selectedKeys.length }})</span>
-          <!-- What the ticked files weigh together (documents have no size of their own). -->
-          <span v-if="selectedSize > 0" class="dashboard-selection-size" data-selection-size>{{ formatFileSize(selectedSize) }}</span>
-          <span class="dashboard-selection-sep" aria-hidden="true"></span>
-          <button v-if="!allOnScreenSelected" type="button" class="dashboard-selection-icon" data-selection-select-all :aria-label="t('selectAll')" v-hint="t('selectAll')" @click="selectAllOnScreen">
-            <CheckCheck :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-move :aria-label="t('bulkMove')" v-hint="t('bulkMove')" :disabled="isBusy" @click.stop="openBulkMoveModal">
-            <FolderInput :size="17" aria-hidden="true" />
-          </button>
-          <button type="button" class="dashboard-selection-icon" data-selection-download :aria-label="t('download')" v-hint="t('download')" :disabled="isBusy || downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'" @click="bulkDownload">
-            <Download :size="17" aria-hidden="true" />
-          </button>
-          <button v-if="bulkDeleteCount" type="button" class="dashboard-selection-icon danger" data-selection-delete :aria-label="t('delete')" v-hint="t('delete')" :disabled="isBusy" @click="bulkDelete">
-            <Trash2 :size="17" aria-hidden="true" />
-          </button>
-        </div>
+          :selected-count="selectedKeys.length"
+          :selected-size="selectedSize"
+          :all-on-screen-selected="allOnScreenSelected"
+          :bulk-delete-count="bulkDeleteCount"
+          :is-busy="isBusy"
+          :download-busy="downloadStatus.phase === 'collect' || downloadStatus.phase === 'pack'"
+          @clear="clearSelection"
+          @select-all="selectAllOnScreen"
+          @move="openBulkMoveModal"
+          @download="bulkDownload"
+          @delete="bulkDelete"
+        />
       </Transition>
       <div
         v-if="marquee"
@@ -1344,7 +1330,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, CheckCheck, ChevronDown, ChevronUp, Folder, FolderInput, Menu, Plus, Trash2, Download, UsersRound, X } from '@lucide/vue';
+import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, Folder, Menu, Plus, UsersRound, X } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -1366,6 +1352,7 @@ import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
 import DashboardResourceMenu from '../components/dashboard/DashboardResourceMenu.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
+import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
 import ResourceIcon from '../components/ResourceIcon.vue';
@@ -1535,6 +1522,7 @@ export default defineComponent({
     DashboardViewToggle,
     DashboardResourceMenu,
     DashboardResourceCard,
+    DashboardSelectionBar,
     ResourceThumb,
     ResourceIcon,
     DashboardFolderFiles,
@@ -1553,14 +1541,10 @@ export default defineComponent({
     ArrowLeft,
     ArrowUpDown,
     Check,
-    CheckCheck,
     ChevronDown,
     ChevronUp,
     X,
     Folder,
-    FolderInput,
-    Download,
-    Trash2,
     Menu,
     Plus,
     UsersRound,
