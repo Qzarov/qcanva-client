@@ -63,79 +63,17 @@
         @create-document="onCreateDocument"
       />
 
-      <!-- Files / Photos switch: the photo slice of a folder is its album -->
-      <div
-        v-if="photosEnabled"
-        class="drive-view-switch"
-        :class="{ 'in-folder': currentFolderId !== 'root' }"
-        role="tablist"
-        :aria-label="t('driveViewSwitchAria')"
-        data-view-switch
-      >
-        <button
-          type="button"
-          role="tab"
-          class="drive-view-switch-btn"
-          :class="{ active: activeTab === 'files' }"
-          :aria-selected="activeTab === 'files'"
-          data-view-switch-files
-          @click="setTab('files')"
-        >
-          <Folder :size="15" aria-hidden="true" />
-          <span>{{ t('driveFiles') }}</span>
-        </button>
-        <button
-          type="button"
-          role="tab"
-          class="drive-view-switch-btn"
-          :class="{ active: activeTab === 'photos' }"
-          :aria-selected="activeTab === 'photos'"
-          data-view-switch-photos
-          @click="setTab('photos')"
-        >
-          <Image :size="15" aria-hidden="true" />
-          <span>{{ t('drivePhotos') }}</span>
-        </button>
-      </div>
+      <DriveContentHeader mode="switch" :photos-enabled="photosEnabled" :active-tab="activeTab" :current-folder-id="currentFolderId" @tab="setTab" />
 
       <!-- Photos Tab View: feed of the whole drive or of the folder subtree -->
       <section v-if="activeTab === 'photos'" class="drive-photos-tab" data-photos-tab>
-        <div class="drive-title-bar drive-photos-title-bar">
-          <h1 class="drive-heading" data-photos-title>{{ photosTitle }}</h1>
-        </div>
+        <DriveContentHeader mode="photos" :photos-title="photosTitle" />
         <DrivePhotos :folder-id="photosFolderId" @open-folder="openPhotoInFolder" />
       </section>
 
       <!-- Files Tab View -->
       <section v-else class="drive-files-tab" data-files-tab>
-        <!-- Folder Title & Slice Bar -->
-        <div class="drive-title-bar">
-          <div class="drive-title-meta">
-            <h1 class="drive-heading" data-folder-title>{{ folderTitle }}</h1>
-            <div v-if="folderRoleLabel" class="drive-role-badge">
-              <span>{{ folderRoleLabel }}</span>
-            </div>
-          </div>
-
-          <!-- Slices (Всё / Фото и видео / Файлы / Канвасы и документы) -->
-          <div role="group" :aria-label="t('driveSliceAria')" class="drive-slice-group">
-            <button
-              v-for="s in sliceDefs"
-              :key="s.id"
-              type="button"
-              class="drive-slice-chip"
-              :class="{ active: activeSlice === s.id }"
-              :aria-pressed="activeSlice === s.id"
-              :data-slice="s.id"
-              @click="setSlice(s.id)"
-            >
-              <span>{{ s.label }}</span>
-              <span v-if="getSliceCount(s.id) !== undefined" class="drive-slice-count">
-                {{ getSliceCount(s.id) }}
-              </span>
-            </button>
-          </div>
-        </div>
+        <DriveContentHeader mode="files" :folder-title="folderTitle" :folder-role-label="folderRoleLabel" :active-slice="activeSlice" :slice-defs="sliceDefs" :get-slice-count="getSliceCount" @slice="setSlice" />
 
         <!-- Toolbar (Sort & Grid/List Toggle) -->
         <DriveFileToolbar
@@ -300,6 +238,7 @@ import { useI18n } from '../composables/useI18n';
 import DriveFileProperties from '../components/DriveFileProperties.vue';
 import DriveUploadPanel from '../components/DriveUploadPanel.vue';
 import DriveHeader from '../components/DriveHeader.vue';
+import DriveContentHeader from '../components/DriveContentHeader.vue';
 import DriveSidebar from '../components/DriveSidebar.vue';
 import DriveFileToolbar from '../components/DriveFileToolbar.vue';
 import DriveItemCard from '../components/DriveItemCard.vue';
@@ -485,40 +424,6 @@ useDriveLifecycle({
   flex-shrink: 0;
 }
 
-/* Files / Photos switch: on desktop only inside a folder (album), always on mobile */
-.drive-view-switch {
-  display: none;
-  align-self: flex-start;
-  gap: 2px;
-  padding: 3px;
-  border-radius: 10px;
-  border: 1px solid var(--ui-border, rgba(255, 255, 255, 0.14));
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
-}
-
-.drive-view-switch.in-folder {
-  display: inline-flex;
-}
-
-.drive-view-switch-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 0;
-  border-radius: 8px;
-  padding: 6px 14px;
-  background: transparent;
-  color: var(--ui-text-secondary, #a3b3a3);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.drive-view-switch-btn.active {
-  background: var(--ui-surface-elevated, rgba(255, 255, 255, 0.1));
-  color: var(--ui-text, #f8fff8);
-  font-weight: 600;
-}
-
 /* The photo feed is virtualised against .drive-main's scroll position */
 .drive-photos-tab {
   display: flex;
@@ -558,78 +463,6 @@ useDriveLifecycle({
 
 .drive-btn-secondary:hover {
   background: rgba(255, 255, 255, 0.1);
-}
-
-/* Title & Slice Bar */
-.drive-title-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.drive-title-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.drive-heading {
-  margin: 0;
-  font-size: 26px;
-  font-weight: 700;
-  letter-spacing: -0.3px;
-}
-
-.drive-role-badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(0, 255, 0, 0.1);
-  color: var(--ui-accent-strong, #8cff8c);
-  font-size: 12px;
-  width: fit-content;
-}
-
-/* Slices */
-.drive-slice-group {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  border-radius: 12px;
-  background: var(--ui-surface-subtle, rgba(255, 255, 255, 0.04));
-  border: 1px solid var(--ui-border, #2a3a2e);
-  flex-wrap: wrap;
-}
-
-.drive-slice-chip {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 8px;
-  border: 0;
-  background: transparent;
-  color: var(--ui-text-secondary, #d6f2d6);
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: background 0.15s, color 0.15s;
-}
-
-.drive-slice-chip.active {
-  background: var(--ui-brand, #00ff00);
-  color: var(--color-brand-contrast, #06220c);
-  font-weight: 600;
-}
-
-.drive-slice-count {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-  opacity: 0.8;
 }
 
 /* States */
@@ -699,36 +532,9 @@ useDriveLifecycle({
 
 /* Responsive: Mobile View (≤ 640px) */
 @media (max-width: 640px) {
-  .drive-view-switch {
-    display: inline-flex;
-    align-self: stretch;
-  }
-
-  .drive-view-switch-btn {
-    flex: 1;
-    justify-content: center;
-  }
-
-  .drive-photos-title-bar {
-    display: none;
-  }
-
   .drive-main {
     padding: 16px 14px 28px;
     gap: 16px;
-  }
-
-  .drive-slice-group {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    width: 100%;
-    box-sizing: border-box;
-    padding: 4px;
-  }
-
-  .drive-slice-chip {
-    flex-shrink: 0;
   }
 
   /* Mobile items list instead of cards */
