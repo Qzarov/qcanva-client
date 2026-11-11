@@ -652,7 +652,7 @@
 </template>
 
 <script lang="ts">
-import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, Folder, Menu, Plus, UsersRound, X } from '@lucide/vue';
+import { ChevronDown, ChevronUp, Folder, Plus, UsersRound } from '@lucide/vue';
 import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
@@ -672,7 +672,6 @@ import { useDocumentTitle } from '../composables/useDocumentTitle';
 import DashboardSidebar from '../components/dashboard/DashboardSidebar.vue';
 import { forgetResourceTab } from '../tabs/forget';
 import DashboardViewToggle from '../components/dashboard/DashboardViewToggle.vue';
-import DashboardResourceMenu from '../components/dashboard/DashboardResourceMenu.vue';
 import DashboardResourceCard from '../components/dashboard/DashboardResourceCard.vue';
 import DashboardSelectionBar from '../components/dashboard/DashboardSelectionBar.vue';
 import DashboardToolbarControls from '../components/dashboard/DashboardToolbarControls.vue';
@@ -688,12 +687,8 @@ import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader
 import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
 import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
-import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
-import ResourceIcon from '../components/ResourceIcon.vue';
 import { vHint } from '../directives/hint';
 import DashboardFolderFiles from '../components/dashboard/DashboardFolderFiles.vue';
-import DashboardFilterMenu from '../components/dashboard/DashboardFilterMenu.vue';
-import DashboardSortMenu from '../components/dashboard/DashboardSortMenu.vue';
 import { singleType, typePasses, type DashboardContentType } from '../dashboard/content-filter';
 import { matchesCanvas as matchesCanvasResource, matchesFolderItem as matchesFolderResource, matchesPublicItem as matchesPublicResource, sortResources } from '../dashboard/resource-filters';
 import { useFolderFileCounts } from '../composables/useFolderFileCounts';
@@ -730,8 +725,6 @@ import { useYandexDisk } from '../composables/useYandexDisk';
 import { importTitle, type ImportKind } from '../dashboard/import-files';
 import { marked } from 'marked';
 import type { CharacterImport } from '../dnd/importLongStoryShort';
-import TabsButton from '../components/tabs/TabsButton.vue';
-import LanguageToggle from '../components/LanguageToggle.vue';
 import {
   SIDEBAR_FOLDER_CHILD_LIMIT,
   buildSidebarNavItems,
@@ -751,7 +744,6 @@ import { childFolderCounts, folderLatestChange } from '../dashboard/folder-stats
 import { isPictureFile, isVideoFile } from '../dashboard/thumb-kinds';
 import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
-import ContactEmailInput from '../components/ContactEmailInput.vue';
 import { useDashboardFeedScrollSpy, type FeedSection } from '../composables/useDashboardFeedScrollSpy';
 import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
 import { useDashboardMobileSidebar } from '../composables/useDashboardMobileSidebar';
@@ -859,11 +851,8 @@ const RECENT_RESOURCES_LIMIT = 12;
 export default defineComponent({
   directives: { hint: vHint },
   components: {
-    ContactEmailInput,
-    TabsButton,
     DashboardSidebar,
     DashboardViewToggle,
-    DashboardResourceMenu,
     DashboardResourceCard,
     DashboardSelectionBar,
     DashboardToolbarControls,
@@ -878,11 +867,7 @@ export default defineComponent({
     DashboardPublicHeader,
     DashboardAuthHeader,
     DashboardAccessRequests,
-    ResourceThumb,
-    ResourceIcon,
     DashboardFolderFiles,
-    DashboardFilterMenu,
-    DashboardSortMenu,
     DashboardUploadPanel,
     DashboardUploadBadge,
     DashboardYandexDisk,
@@ -892,15 +877,9 @@ export default defineComponent({
     DashboardTrash,
     DashboardAddDialog,
     InteractiveTemplatePicker,
-    LanguageToggle,
-    ArrowLeft,
-    ArrowUpDown,
-    Check,
     ChevronDown,
     ChevronUp,
-    X,
     Folder,
-    Menu,
     Plus,
     UsersRound,
   },
