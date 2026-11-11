@@ -754,9 +754,9 @@ import { useDashboardMarquee } from '../composables/useDashboardMarquee';
 import { useDashboardLongPress } from '../composables/useDashboardLongPress';
 import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
 import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
+import { useDashboardActionRunner } from '../composables/useDashboardActionRunner';
 
 type CanvasTag = { id: string; name: string; color: string };
-type FeedbackState = { type: 'success' | 'error'; message: string };
 type CanvasRecord = {
   type: 'canvas';
   id: string;
@@ -975,10 +975,8 @@ export default defineComponent({
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
     const suppressNextCardClick = ref(false);
-    const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
-    const feedback = ref<FeedbackState>({ type: 'success', message: '' });
-    let feedbackTimer: ReturnType<typeof setTimeout> | null = null;
+    const { pendingAction, feedback, setFeedback, runAction } = useDashboardActionRunner();
     const tagColors = TAG_COLORS;
     const currentUser = computed(() => getCurrentUser());
     const isOwnedResource = (item: { ownerId?: string }) =>
@@ -1826,31 +1824,8 @@ export default defineComponent({
       });
     };
 
-    const setFeedback = (type: FeedbackState['type'], message: string) => {
-      feedback.value = { type, message };
-      if (feedbackTimer) clearTimeout(feedbackTimer);
-      feedbackTimer = setTimeout(() => {
-        feedback.value.message = '';
-      }, 2800);
-    };
-
     const actionLabel = (action: string, idleLabel: string) =>
       pendingAction.value === action ? 'Saving...' : idleLabel;
-
-    const runAction = async <T>(action: string, task: () => Promise<T>, successMessage?: string) => {
-      pendingAction.value = action;
-      try {
-        const result = await task();
-        if (successMessage) setFeedback('success', successMessage);
-        return result;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'Request failed';
-        setFeedback('error', message);
-        throw error;
-      } finally {
-        pendingAction.value = '';
-      }
-    };
 
     const load = async ({ showLoading = !own.value.length && !publicCanvases.value.length && !ownResourceFolders.value.length } = {}) => {
       if (showLoading) loading.value = true;
