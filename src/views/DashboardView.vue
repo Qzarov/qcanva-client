@@ -987,7 +987,7 @@
 
 <script lang="ts">
 import { ArrowLeft, ArrowUpDown, Check, ChevronDown, ChevronUp, Folder, Menu, Plus, UsersRound, X } from '@lucide/vue';
-import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch } from 'vue';
+import { defineComponent, ref, onBeforeUnmount, onMounted, computed, nextTick, watch, type Ref } from 'vue';
 import { alertDialog, confirmDelete, confirmDialog, promptDialog } from '../composables/appDialog';
 import { selectAll, selectRange, selectionKey, toggleSelection } from '../dashboard/selection';
 import { buildZip, canvasFileContent, safeFileName, saveBlob, splitFileName, textDocumentFileContent, uniqueFileName, type ArchiveFile } from '../dashboard/archive';
@@ -1084,6 +1084,15 @@ import { formatRelativeDate } from '../dashboard/relative-date';
 import { computeVisibleTagFitCount } from '../dashboard/tag-fit';
 import ContactEmailInput from '../components/ContactEmailInput.vue';
 import { useDashboardFeedScrollSpy, type FeedSection } from '../composables/useDashboardFeedScrollSpy';
+import { useDashboardFramePinning } from '../composables/useDashboardFramePinning';
+import { useDashboardMobileSidebar } from '../composables/useDashboardMobileSidebar';
+import { useDashboardSectionTransition } from '../composables/useDashboardSectionTransition';
+import { useDashboardResourceDrag } from '../composables/useDashboardResourceDrag';
+import { useDashboardFolderDrag } from '../composables/useDashboardFolderDrag';
+import { useDashboardMarquee } from '../composables/useDashboardMarquee';
+import { useDashboardLongPress } from '../composables/useDashboardLongPress';
+import { useDashboardBulkDownload } from '../composables/useDashboardBulkDownload';
+import { useDashboardBulkDelete } from '../composables/useDashboardBulkDelete';
 
 type CanvasTag = { id: string; name: string; color: string };
 type FeedbackState = { type: 'success' | 'error'; message: string };
@@ -1294,10 +1303,12 @@ export default defineComponent({
       writeRecentViewMode(storage(), mode);
     };
     const mobileSidebarOpen = ref(false);
-    const mobileSidebarOpener = ref<HTMLElement | null>(null);
-    let previousBodyOverflow: string | null = null;
     const SIDEBAR_DESKTOP_QUERY = LAYOUT.dashboardSidebarDocked;
-    let sidebarDesktopMedia: MediaQueryList | null = null;
+    const { open: openMobileSidebar, close: closeMobileSidebar } = useDashboardMobileSidebar({
+      open: mobileSidebarOpen,
+      opener: ref<HTMLElement | null>(null),
+      desktopQuery: SIDEBAR_DESKTOP_QUERY,
+    });
     // Folders are expanded by default and act as lightweight organizational
     // headers. We track only the folders the user has explicitly collapsed, so
     // any new/unseen folder shows open without a click.
@@ -1312,15 +1323,6 @@ export default defineComponent({
     const draggingResourceType = ref<FolderItem['type']>('canvas');
     const draggingResourceFolderId = ref<string | null>(null);
     const dragTargetFolder = ref('');
-    const folderDragId = ref('');
-    const folderDragOverId = ref('');
-    const resourceDrag = ref<{
-      active: boolean;
-      startX: number;
-      startY: number;
-      item: FolderItem;
-      targetFolderId: string;
-    } | null>(null);
     const suppressNextCardClick = ref(false);
     const pendingAction = ref('');
     const incomingRequests = ref<any[]>([]);
@@ -1668,6 +1670,7 @@ export default defineComponent({
     });
 
     const allResourceFolders = computed(() => [...ownResourceFolders.value, ...sharedResourceFolders.value]);
+    const { navDirection } = useDashboardSectionTransition({ activeSection, folders: allResourceFolders });
     // Where a resource lives, for the Recent tiles ("Work / Plans").
     const folderPathById = computed(() => folderPaths(allResourceFolders.value));
     const folderIdByKey = computed(() => folderIdByResourceKey(allResourceFolders.value));
@@ -2077,6 +2080,7 @@ export default defineComponent({
      * section shows whole rows of it before "Show all", not a fixed 4.
      */
     const dashboardShell = ref<HTMLElement | null>(null);
+    useDashboardFramePinning();
     const feedColumns = ref(FEED_FALLBACK_COLUMNS);
     let feedResizeObserver: ResizeObserver | null = null;
     let feedPhoneMedia: MediaQueryList | null = null;
@@ -2164,39 +2168,6 @@ export default defineComponent({
      * header then sat above the screen with nothing to drag it back by.
      * Whatever scrolls the frame, it goes back to the top.
      */
-    let frameBoxes: HTMLElement[] = [];
-    const pinFrame = () => {
-      for (const box of frameBoxes) {
-        if (box.scrollTop || box.scrollLeft) {
-          box.scrollTop = 0;
-          box.scrollLeft = 0;
-        }
-      }
-      if (window.scrollY || window.scrollX) window.scrollTo(0, 0);
-    };
-    // Not while the keyboard is up: the browser moves the page to keep the
-    // typed-in field in view, and fighting it would hide the field.
-    const pinFrameUnlessTyping = () => {
-      const active = document.activeElement as HTMLElement | null;
-      if (active?.matches('input, textarea, select, [contenteditable="true"]')) return;
-      pinFrame();
-    };
-    const pinFrameAfterTyping = () => { setTimeout(pinFrameUnlessTyping, 50); };
-    onMounted(() => {
-      frameBoxes = ['.app-layout.dashboard-view', '.dashboard-app-shell', '.dashboard-central-shell']
-        .map((selector) => document.querySelector(selector) as HTMLElement | null)
-        .filter((box): box is HTMLElement => Boolean(box));
-      for (const box of frameBoxes) box.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
-      window.addEventListener('scroll', pinFrameUnlessTyping, { passive: true });
-      document.addEventListener('focusout', pinFrameAfterTyping);
-      window.visualViewport?.addEventListener('resize', pinFrameUnlessTyping);
-    });
-    onBeforeUnmount(() => {
-      for (const box of frameBoxes) box.removeEventListener('scroll', pinFrameUnlessTyping);
-      window.removeEventListener('scroll', pinFrameUnlessTyping);
-      document.removeEventListener('focusout', pinFrameAfterTyping);
-      window.visualViewport?.removeEventListener('resize', pinFrameUnlessTyping);
-    });
     const toggleRecentExpanded = () => {
       const collapsing = recentExpanded.value;
       animateFeedGrid('[data-recent-layout]', collapsing, feedLimit('recent'), () => {
@@ -2747,92 +2718,6 @@ export default defineComponent({
       return folderSummaries.value.find((folder) => folder.id === folderId && canDropToFolder(folder));
     };
 
-    const onFolderDragOver = (folder: FolderSummary) => {
-      if (!canDropToFolder(folder)) return;
-      dragTargetFolder.value = folder.id;
-      // Expand the drop target if the user had folded its subtree.
-      if (folder.hasChildren) expandTree(folder.id);
-    };
-
-    const onFolderDragLeave = (folder: FolderSummary) => {
-      if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
-      if (folderDragOverId.value === folder.id) folderDragOverId.value = '';
-    };
-
-    const canReorderFolder = (folder: FolderSummary) =>
-      !isBusy.value
-      && folder.role === 'owner'
-      && !isTechnicalFolder(folder)
-      && ownResourceFolders.value.some((ownedFolder) => ownedFolder.id === folder.id);
-
-    const onFolderDragStart = (event: DragEvent, folder: FolderSummary) => {
-      if (!canReorderFolder(folder)) {
-        event.preventDefault();
-        return;
-      }
-      folderDragId.value = folder.id;
-      event.dataTransfer?.setData('application/x-qcanva-folder', folder.id);
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    };
-
-    const onFolderDragEnd = () => {
-      folderDragId.value = '';
-      folderDragOverId.value = '';
-    };
-
-    const isFolderReorderDrag = (event: DragEvent) =>
-      Boolean(folderDragId.value || Array.from(event.dataTransfer?.types || []).includes('application/x-qcanva-folder'));
-
-    const onFolderDragEnter = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const onFolderDragOverEvent = (event: DragEvent, folder: FolderSummary) => {
-      if (isFolderReorderDrag(event)) {
-        if (canReorderFolder(folder) && folder.id !== folderDragId.value) folderDragOverId.value = folder.id;
-        return;
-      }
-      onFolderDragOver(folder);
-    };
-
-    const reorderFolders = async (sourceId: string, targetId: string) => {
-      if (!sourceId || sourceId === targetId) return;
-      const previousFolders = ownResourceFolders.value.map((folder) => ({ ...folder }));
-      const ids = ownResourceFolders.value
-        .slice()
-        .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
-        .map((folder) => folder.id);
-      const sourceIndex = ids.indexOf(sourceId);
-      const targetIndex = ids.indexOf(targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return;
-      ids.splice(sourceIndex, 1);
-      ids.splice(ids.indexOf(targetId), 0, sourceId);
-      ownResourceFolders.value = ownResourceFolders.value.map((folder) => ({
-        ...folder,
-        sortOrder: ids.indexOf(folder.id),
-      }));
-      try {
-        await resourceFolders.reorder(ids);
-      } catch (error) {
-        ownResourceFolders.value = previousFolders;
-        setFeedback('error', error instanceof Error ? error.message : 'Could not save folder order');
-      }
-    };
-
-    const onFolderDrop = async (event: DragEvent, folder: FolderSummary) => {
-      const sourceId = folderDragId.value || event.dataTransfer?.getData('application/x-qcanva-folder') || '';
-      if (sourceId) {
-        onFolderDragEnd();
-        if (canReorderFolder(folder)) await reorderFolders(sourceId, folder.id);
-        return;
-      }
-      await dropResourceToFolder(folder);
-    };
-
     const resolveSidebarFolder = (folderId: string) =>
       folderSummaries.value.find((folder) => folder.id === folderId) || null;
 
@@ -2902,114 +2787,52 @@ export default defineComponent({
       }
     };
 
-    const removeResourceDragListeners = () => {
-      window.removeEventListener('mousemove', onResourceMouseMove);
-      window.removeEventListener('mouseup', onResourceMouseUp);
-      window.removeEventListener('touchmove', onResourceTouchMove);
-      window.removeEventListener('touchend', onResourceTouchEnd);
-      window.removeEventListener('touchcancel', onResourceTouchCancel);
-    };
+    const {
+      folderDragOverId,
+      canReorderFolder,
+      onFolderDragStart,
+      onFolderDragEnd,
+      onFolderDragEnter,
+      onFolderDragOverEvent,
+      onFolderDragLeave,
+      onFolderDrop,
+    } = useDashboardFolderDrag<FolderSummary>({
+      ownFolders: ownResourceFolders as unknown as Ref<FolderSummary[]>,
+      isBusy,
+      isTechnicalFolder: (folder) => isTechnicalFolder(folder),
+      canDropResource: canDropToFolder,
+      expandTree,
+      onResourceDragOver: (folder) => {
+        dragTargetFolder.value = folder.id;
+        if (folder.hasChildren) expandTree(folder.id);
+      },
+      onResourceDragLeave: (folder) => {
+        if (dragTargetFolder.value === folder.id) dragTargetFolder.value = '';
+      },
+      dropResourceToFolder,
+      reorderFoldersApi: async (ids) => { await resourceFolders.reorder(ids); },
+      setFeedback,
+    });
 
-    const finishResourceDrag = async () => {
-      const state = resourceDrag.value;
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      if (!state?.active) {
-        endResourceDrag();
-        return;
-      }
-      suppressNextCardClick.value = true;
-      window.setTimeout(() => {
-        suppressNextCardClick.value = false;
-      }, 0);
-      const targetFolder = findDropFolder(state.targetFolderId);
-      if (targetFolder) {
-        await dropResourceToFolder(targetFolder);
-      } else {
-        endResourceDrag();
-      }
-    };
-
-    const updateResourceDrag = (clientX: number, clientY: number, event?: Event) => {
-      const state = resourceDrag.value;
-      if (!state) return;
-      const distance = Math.hypot(clientX - state.startX, clientY - state.startY);
-      if (!state.active && distance < 8) return;
-      if (!state.active) {
-        state.active = true;
-        closeCardMenu();
-        draggingResourceId.value = state.item.id;
-        draggingResourceType.value = state.item.type;
-        draggingResourceFolderId.value = state.item.folderId || null;
-      }
-      event?.preventDefault();
-      const target = document.elementsFromPoint(clientX, clientY)
-        .map((element) => element instanceof HTMLElement ? element.closest<HTMLElement>('[data-dashboard-folder]') : null)
-        .find((element): element is HTMLElement => Boolean(element));
-      const folderId = target?.dataset.dashboardFolder || '';
-      const folder = findDropFolder(folderId);
-      state.targetFolderId = folder?.id || '';
-      dragTargetFolder.value = folder?.id || '';
-      // Expand the drop target if the user had folded its subtree.
-      if (folder?.hasChildren) expandTree(folder.id);
-    };
-
-    function onResourceMouseMove(event: MouseEvent) {
-      updateResourceDrag(event.clientX, event.clientY, event);
-    }
-
-    function onResourceMouseUp() {
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchMove(event: TouchEvent) {
-      const point = event.touches[0];
-      if (!point) return;
-      updateResourceDrag(point.clientX, point.clientY, event);
-    }
-
-    function onResourceTouchEnd(event: TouchEvent) {
-      const point = event.changedTouches[0];
-      if (point) updateResourceDrag(point.clientX, point.clientY, event);
-      void finishResourceDrag();
-    }
-
-    function onResourceTouchCancel() {
-      resourceDrag.value = null;
-      removeResourceDragListeners();
-      endResourceDrag();
-    }
-
-    const startResourceDrag = (clientX: number, clientY: number, item: FolderItem, sourceFolder: FolderSummary, target: HTMLElement | null) => {
-      if (isBusy.value) return;
-      if (sourceFolder.role !== 'owner' || !ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)) return;
-      if (target?.closest('button,input,a,textarea,select,[contenteditable="true"]')) return;
-      resourceDrag.value = {
-        active: false,
-        startX: clientX,
-        startY: clientY,
-        item,
-        targetFolderId: '',
-      };
-    };
-
-    const startResourceMouseDrag = (event: MouseEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      if (event.button !== 0) return;
-      startResourceDrag(event.clientX, event.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('mousemove', onResourceMouseMove);
-      window.addEventListener('mouseup', onResourceMouseUp);
-    };
-
-    const startResourceTouchDrag = (event: TouchEvent, item: FolderItem, sourceFolder: FolderSummary) => {
-      const point = event.touches[0];
-      if (!point) return;
-      startResourceDrag(point.clientX, point.clientY, item, sourceFolder, event.target as HTMLElement | null);
-      if (!resourceDrag.value) return;
-      window.addEventListener('touchmove', onResourceTouchMove, { passive: false });
-      window.addEventListener('touchend', onResourceTouchEnd);
-      window.addEventListener('touchcancel', onResourceTouchCancel);
-    };
+    const { resourceDrag, startResourceMouseDrag, startResourceTouchDrag } = useDashboardResourceDrag<FolderItem, FolderSummary>({
+      draggingResourceId,
+      draggingResourceType,
+      draggingResourceFolderId,
+      dragTargetFolder,
+      suppressNextCardClick,
+      closeCardMenu: () => closeCardMenu(),
+      endResourceDrag,
+      findDropFolder,
+      dropResourceToFolder,
+      expandTree,
+      canStart: (item, sourceFolder, target) => (
+        !isBusy.value
+        && sourceFolder.role === 'owner'
+        && ownResourceFolders.value.some((folder) => folder.id === sourceFolder.id)
+        && !target?.closest('button,input,a,textarea,select,[contenteditable="true"]')
+        && item.id.length > 0
+      ),
+    });
 
     const openRenameFolderModal = (folder: FolderSummary) => {
       closeCardMenu();
@@ -3296,97 +3119,14 @@ export default defineComponent({
       }
     });
 
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    let longPressStart: { x: number; y: number } | null = null;
-    let swallowNextClick = false;
-    const cancelLongPress = () => {
-      if (longPressTimer) clearTimeout(longPressTimer);
-      longPressTimer = null;
-      longPressStart = null;
-    };
-    /**
-     * Drawing a frame with the mouse from an empty spot of the dashboard
-     * ticks every card it touches (with Shift or Ctrl/Cmd, on top of what is
-     * ticked already). Only from an empty spot: a press on a card, a button
-     * or a menu keeps its own meaning (opening, dragging into a folder).
-     */
-    const MARQUEE_IGNORE = [
-      '[data-select-key]', 'button', 'a', 'input', 'select', 'textarea', 'label',
-      '[draggable="true"]', '.card-menu', '.mobile-action-popover', '.subfolder-card',
-      '.dashboard-modal-backdrop', '[contenteditable="true"]',
-    ].join(',');
-    const marquee = ref<{ left: number; top: number; width: number; height: number } | null>(null);
-    let marqueeStart: { x: number; y: number; base: string[] } | null = null;
-    const onMarqueeMove = (event: PointerEvent) => {
-      if (!marqueeStart) return;
-      const dx = event.clientX - marqueeStart.x;
-      const dy = event.clientY - marqueeStart.y;
-      // A click with a tremble is still a click, not a frame.
-      if (!marquee.value && Math.hypot(dx, dy) < 5) return;
-      event.preventDefault();
-      window.getSelection?.()?.removeAllRanges();
-      const left = Math.min(event.clientX, marqueeStart.x);
-      const top = Math.min(event.clientY, marqueeStart.y);
-      const right = Math.max(event.clientX, marqueeStart.x);
-      const bottom = Math.max(event.clientY, marqueeStart.y);
-      marquee.value = { left, top, width: right - left, height: bottom - top };
-      const touched = Array.from(dashboardShell.value?.querySelectorAll<HTMLElement>('[data-select-key]') || [])
-        .filter((card) => {
-          const box = card.getBoundingClientRect();
-          return box.right >= left && box.left <= right && box.bottom >= top && box.top <= bottom;
-        })
-        .map((card) => card.dataset.selectKey!);
-      selectedKeys.value = selectAll(marqueeStart.base, touched);
-    };
-    const endMarquee = () => {
-      window.removeEventListener('pointermove', onMarqueeMove);
-      window.removeEventListener('pointerup', endMarquee);
-      window.removeEventListener('pointercancel', endMarquee);
-      marqueeStart = null;
-      marquee.value = null;
-    };
-    /** From anywhere in the scrolling area, the empty space under the last cards too. */
-    const startMarquee = (event: PointerEvent) => {
-      if (!isLoggedIn || event.pointerType !== 'mouse' || event.button !== 0) return;
-      const target = event.target as HTMLElement | null;
-      if (!target || target.closest(MARQUEE_IGNORE)) return;
-      endMarquee();
-      const adding = event.shiftKey || event.metaKey || event.ctrlKey;
-      marqueeStart = { x: event.clientX, y: event.clientY, base: adding ? [...selectedKeys.value] : [] };
-      window.addEventListener('pointermove', onMarqueeMove);
-      window.addEventListener('pointerup', endMarquee);
-      window.addEventListener('pointercancel', endMarquee);
-    };
-    onBeforeUnmount(endMarquee);
-
-    const onSelectionPointerDown = (event: PointerEvent) => {
-      // A long press is not always followed by a click: the flag must not
-      // outlive it and eat the next real tap.
-      swallowNextClick = false;
-      if (!isLoggedIn || event.pointerType === 'mouse') return;
-      const card = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-select-key]');
-      if (!card) return;
-      cancelLongPress();
-      longPressStart = { x: event.clientX, y: event.clientY };
-      longPressTimer = setTimeout(() => {
-        longPressTimer = null;
-        swallowNextClick = true;
-        toggleSelected(card.dataset.selectKey!);
-        navigator.vibrate?.(10);
-      }, 450);
-    };
-    const onSelectionPointerMove = (event: PointerEvent) => {
-      if (longPressStart && Math.hypot(event.clientX - longPressStart.x, event.clientY - longPressStart.y) > 10) cancelLongPress();
-    };
-    /** The system's long-press menu (or text selection) must not follow the tick. */
-    const onSelectionContextMenu = (event: MouseEvent) => {
-      if (!(event.target as HTMLElement | null)?.closest('[data-select-key]')) return;
-      if (swallowNextClick || longPressTimer) event.preventDefault();
-    };
+    const { marquee, startMarquee } = useDashboardMarquee({ enabled: isLoggedIn, dashboardShell, selectedKeys });
+    const { cancelLongPress, onSelectionPointerDown, onSelectionPointerMove, onSelectionContextMenu, consumeSwallowNextClick } = useDashboardLongPress({
+      enabled: isLoggedIn,
+      toggleSelected,
+    });
     const onSelectionClickCapture = (event: MouseEvent) => {
-      if (swallowNextClick) {
+      if (consumeSwallowNextClick()) {
         // The click that ends a long press must not open the card it ticked.
-        swallowNextClick = false;
         event.preventDefault();
         event.stopPropagation();
         return;
@@ -3417,7 +3157,6 @@ export default defineComponent({
     onMounted(() => window.addEventListener('keydown', onSelectionKeydown));
     onBeforeUnmount(() => {
       window.removeEventListener('keydown', onSelectionKeydown);
-      cancelLongPress();
     });
     // Android's Back clears the selection before it leaves the folder.
     useBackHandler(() => {
@@ -3448,10 +3187,6 @@ export default defineComponent({
      * status bar counts them), then packed; one that fails is left out and
      * counted, the rest still download.
      */
-    const downloadStatus = ref<{ phase: 'idle' | 'collect' | 'pack' | 'done' | 'error'; done: number; total: number; failed: number }>({
-      phase: 'idle', done: 0, total: 0, failed: 0,
-    });
-    let downloadStatusTimer: ReturnType<typeof setTimeout> | null = null;
     const archiveFileOf = async (item: FolderItem, taken: Set<string>): Promise<ArchiveFile> => {
       const title = item.title || t('untitled');
       const base = safeFileName(title, t('untitled'));
@@ -3481,47 +3216,20 @@ export default defineComponent({
       const [base, extension] = splitFileName(file.name);
       return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: new Uint8Array(await response.arrayBuffer()) };
     };
-    const bulkDownload = async () => {
-      const items = selectedItems.value;
-      const driveFiles = selectedDriveFiles.value;
-      const yandex = selectedYandexFiles.value;
-      if (!items.length && !driveFiles.length && !yandex.length) return;
-      if (downloadStatusTimer) clearTimeout(downloadStatusTimer);
-      downloadStatus.value = { phase: 'collect', done: 0, total: items.length + driveFiles.length + yandex.length, failed: 0 };
-      const taken = new Set<string>();
-      const files: ArchiveFile[] = [];
-      const add = async (make: () => Promise<ArchiveFile>) => {
-        try {
-          files.push(await make());
-        } catch {
-          downloadStatus.value.failed += 1;
-        }
-        downloadStatus.value.done += 1;
-      };
-      for (const item of items) await add(() => archiveFileOf(item, taken));
-      for (const file of driveFiles) await add(() => archiveFileOfDrive(file, taken));
-      for (const file of yandex) {
-        await add(async () => {
-          const [base, extension] = splitFileName(file.name);
-          return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
-        });
-      }
-      if (!files.length) {
-        downloadStatus.value.phase = 'error';
-      } else {
-        downloadStatus.value.phase = 'pack';
-        try {
-          const blob = await buildZip(files);
-          saveBlob(blob, `qcanva-${new Date().toISOString().slice(0, 10)}.zip`);
-          downloadStatus.value.phase = 'done';
-          clearSelection();
-        } catch {
-          downloadStatus.value.phase = 'error';
-        }
-      }
-      downloadStatusTimer = setTimeout(() => { downloadStatus.value.phase = 'idle'; }, 4000);
-    };
-    onBeforeUnmount(() => { if (downloadStatusTimer) clearTimeout(downloadStatusTimer); });
+    const { downloadStatus, bulkDownload } = useDashboardBulkDownload({
+      selectedItems,
+      selectedDriveFiles,
+      selectedYandexFiles,
+      archiveItem: archiveFileOf,
+      archiveDriveFile: archiveFileOfDrive,
+      archiveYandexFile: async (file: YandexItem, taken: Set<string>) => {
+        const [base, extension] = splitFileName(file.name);
+        return { name: uniqueFileName(safeFileName(base, t('untitled')), extension, taken), content: await fetchYandexContent(file.path) };
+      },
+      buildZip,
+      saveBlob,
+      clearSelection,
+    });
 
     // ----- Spaces: the user's Yandex Disk as a dashboard section
     const yandexView = ref<InstanceType<typeof DashboardYandexDisk> | null>(null);
@@ -3849,48 +3557,48 @@ export default defineComponent({
       return status.phase === 'pack' ? 95 : Math.round(status.done / Math.max(1, status.total) * 90);
     });
 
-    const bulkDelete = async () => {
-      const items = bulkDeletable.value;
-      const driveFiles = bulkDeletableDriveFiles.value;
-      const yandex = selectedYandexFiles.value;
-      const skipped = selectedItems.value.length + selectedDriveFiles.value.length - items.length - driveFiles.length;
-      const confirmed = await confirmDialog({
-        title: t('bulkDeleteTitle').replace('{n}', String(items.length + driveFiles.length + yandex.length)),
+    const { bulkDelete } = useDashboardBulkDelete<FolderItem, DriveItem, YandexItem>({
+      getItems: () => bulkDeletable.value,
+      getDriveFiles: () => bulkDeletableDriveFiles.value,
+      getYandexFiles: () => selectedYandexFiles.value,
+      getSkippedCount: () => selectedItems.value.length + selectedDriveFiles.value.length - bulkDeletable.value.length - bulkDeletableDriveFiles.value.length,
+      confirm: async ({ items, driveFiles, yandex, skipped }) => confirmDialog({
+        title: t('bulkDeleteTitle').replace('{n}', String(items + driveFiles + yandex)),
         message: skipped ? t('bulkDeleteSkipped').replace('{n}', String(skipped)) : undefined,
         confirmLabel: t('delete'),
         danger: true,
-      });
-      if (!confirmed) return;
-      await runAction('bulk-delete', async () => {
-        for (const item of items) {
-          if (item.type === 'canvas') {
-            await canvas.delete(item.id);
-            forgetResourceTab('canvas', item.id);
-          } else if (item.type === 'html-document') {
-            await htmlDocuments.delete(item.id);
-            forgetResourceTab('html', item.id);
-          } else if (item.type === 'text-document') {
-            await textDocuments.delete(item.id);
-            forgetResourceTab('doc', item.id);
-          } else {
-            await interactiveTemplates.delete(item.id);
-            forgetResourceTab('template', item.id);
-          }
+      }),
+      runAction: (task) => runAction('bulk-delete', task, t('bulkDeleted').replace('{n}', String(bulkDeleteCount.value))).then(() => undefined),
+      deleteItem: async (item) => {
+        if (item.type === 'canvas') {
+          await canvas.delete(item.id);
+          forgetResourceTab('canvas', item.id);
+        } else if (item.type === 'html-document') {
+          await htmlDocuments.delete(item.id);
+          forgetResourceTab('html', item.id);
+        } else if (item.type === 'text-document') {
+          await textDocuments.delete(item.id);
+          forgetResourceTab('doc', item.id);
+        } else {
+          await interactiveTemplates.delete(item.id);
+          forgetResourceTab('template', item.id);
         }
-        for (const file of driveFiles) await driveApi.trashFile(file.id);
-        for (const file of yandex) await settleYandexOutcome(await yandexDisk.remove(file.path));
-      }, t('bulkDeleted').replace('{n}', String(items.length + driveFiles.length + yandex.length)));
-      if (yandex.length) yandexRefreshKey.value += 1;
-      if (driveFiles.length) {
-        folderFilesRefreshKey.value += 1;
-        refreshFolderFileCounts();
-      }
-      const deleted = new Set(items.map(selectionKey));
-      own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
-      interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
-      clearSelection();
-      await load();
-    };
+      },
+      trashDriveFile: (file) => driveApi.trashFile(file.id),
+      removeYandexFile: (file) => yandexDisk.remove(file.path).then(settleYandexOutcome),
+      afterSuccess: async ({ items, driveFiles, yandex }) => {
+        if (yandex.length) yandexRefreshKey.value += 1;
+        if (driveFiles.length) {
+          folderFilesRefreshKey.value += 1;
+          refreshFolderFileCounts();
+        }
+        const deleted = new Set(items.map(selectionKey));
+        own.value = own.value.filter((item) => !deleted.has(selectionKey(item)));
+        interactiveTemplateItems.value = interactiveTemplateItems.value.filter((item) => !deleted.has(selectionKey({ type: 'interactive-template', id: item.id })));
+        clearSelection();
+        await load();
+      },
+    });
 
     const togglePinned = async (item: FolderItem) => {
       closeCardMenu();
@@ -4618,149 +4326,10 @@ export default defineComponent({
     // own back arrow, rather than main.ts offering to exit the app.
     useBackHandler(goToParentFolder);
 
-    /**
-     * Into a folder the new view slides in from the right, out of one (to
-     * its parent or the feed) from the left. The class lives only as long
-     * as the animation, so a later re-render (a reload) doesn't replay it.
-     */
-    const navDirection = ref<'none' | 'forward' | 'back'>('none');
-    let navDirectionTimer: ReturnType<typeof setTimeout> | null = null;
-    const sectionDepth = (section: DashboardSection) => {
-      if (section.kind !== 'folder') return -1;
-      const byId = new Map(allResourceFolders.value.map((folder) => [folder.id, folder]));
-      let depth = 0;
-      let parentId = byId.get(section.folderId)?.parentId ?? null;
-      const seen = new Set<string>();
-      while (parentId && !seen.has(parentId)) {
-        seen.add(parentId);
-        depth += 1;
-        parentId = byId.get(parentId)?.parentId ?? null;
-      }
-      return depth;
-    };
-    watch(activeSection, (next, previous) => {
-      if (!previous || (next.kind !== 'folder' && previous.kind !== 'folder')) return;
-      if (next.kind === 'folder' && previous.kind === 'folder' && next.folderId === previous.folderId) return;
-      navDirection.value = next.kind === 'folder' && sectionDepth(next) >= sectionDepth(previous) ? 'forward' : 'back';
-      if (navDirectionTimer) clearTimeout(navDirectionTimer);
-      navDirectionTimer = setTimeout(() => { navDirection.value = 'none'; }, 450);
-    });
-    onBeforeUnmount(() => { if (navDirectionTimer) clearTimeout(navDirectionTimer); });
-
     const toggleSidebarWidth = () => {
       sidebarWidthState.value = sidebarWidthState.value === 'expanded' ? 'collapsed' : 'expanded';
       writeSidebarWidthState(storage(), sidebarWidthState.value);
     };
-
-    const openMobileSidebar = (event?: Event) => {
-      const eventTarget = event?.currentTarget;
-      mobileSidebarOpener.value = eventTarget instanceof HTMLElement
-        ? eventTarget
-        : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-      mobileSidebarOpen.value = true;
-    };
-
-    const closeMobileSidebar = () => {
-      mobileSidebarOpen.value = false;
-    };
-
-    const focusWithoutScroll = (element: HTMLElement) => {
-      try {
-        element.focus({ preventScroll: true });
-      } catch {
-        element.focus();
-      }
-    };
-
-    const isVisibleFocusTarget = (element: HTMLElement | null): element is HTMLElement => {
-      if (!element?.isConnected || element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
-      let current: HTMLElement | null = element;
-      while (current) {
-        if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
-        const style = window.getComputedStyle(current);
-        if (style.display === 'none' || style.visibility === 'hidden') return false;
-        current = current.parentElement;
-      }
-      return true;
-    };
-
-    const restoreSidebarCloseFocus = () => {
-      const opener = mobileSidebarOpener.value;
-      if (isVisibleFocusTarget(opener)) {
-        focusWithoutScroll(opener);
-        return;
-      }
-      const fallback = [
-        document.querySelector<HTMLElement>('.dashboard-sidebar [aria-current="page"]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-home-disclosure]'),
-        document.querySelector<HTMLElement>('.dashboard-sidebar [data-sidebar-width-toggle]'),
-        document.querySelector<HTMLElement>('.dashboard [data-dashboard-view]'),
-      ].find(isVisibleFocusTarget) ?? null;
-      if (isVisibleFocusTarget(fallback)) focusWithoutScroll(fallback);
-    };
-
-    const restoreBodyOverflow = () => {
-      if (typeof document === 'undefined' || previousBodyOverflow === null) return;
-      document.body.style.overflow = previousBodyOverflow;
-      previousBodyOverflow = null;
-    };
-
-    const getSidebarDesktopMedia = () => {
-      try {
-        return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-          ? window.matchMedia(SIDEBAR_DESKTOP_QUERY)
-          : null;
-      } catch {
-        return null;
-      }
-    };
-
-    const closeMobileSidebarOnDesktop = () => {
-      if (sidebarDesktopMedia?.matches) closeMobileSidebar();
-    };
-
-    const addSidebarDesktopListener = (media: MediaQueryList) => {
-      if (typeof media.addEventListener === 'function') {
-        media.addEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof media.addListener === 'function') {
-        media.addListener(closeMobileSidebarOnDesktop);
-      }
-    };
-
-    const removeSidebarDesktopListener = () => {
-      if (!sidebarDesktopMedia) return;
-      if (typeof sidebarDesktopMedia.removeEventListener === 'function') {
-        sidebarDesktopMedia.removeEventListener('change', closeMobileSidebarOnDesktop);
-      } else if (typeof sidebarDesktopMedia.removeListener === 'function') {
-        sidebarDesktopMedia.removeListener(closeMobileSidebarOnDesktop);
-      }
-      sidebarDesktopMedia = null;
-    };
-
-    watch(mobileSidebarOpen, async (open, _previous, onCleanup) => {
-      if (typeof document === 'undefined') return;
-      let cancelled = false;
-      onCleanup(() => {
-        cancelled = true;
-      });
-
-      if (open) {
-        if (previousBodyOverflow === null) previousBodyOverflow = document.body.style.overflow;
-        document.body.style.overflow = 'hidden';
-        await nextTick();
-        if (!cancelled && mobileSidebarOpen.value) {
-          const closeButton = document.querySelector<HTMLElement>('.dashboard-sidebar.mobile-open [data-sidebar-close]');
-          if (closeButton) focusWithoutScroll(closeButton);
-        }
-        return;
-      }
-
-      restoreBodyOverflow();
-      await nextTick();
-      if (!cancelled && !mobileSidebarOpen.value) restoreSidebarCloseFocus();
-    });
 
     const onAppClickCapture = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
@@ -4837,11 +4406,6 @@ export default defineComponent({
       void load({ showLoading: !cached.found });
       takeYandexReturn();
       takeAddressSection();
-      sidebarDesktopMedia = getSidebarDesktopMedia();
-      if (sidebarDesktopMedia) {
-        addSidebarDesktopListener(sidebarDesktopMedia);
-        closeMobileSidebarOnDesktop();
-      }
       window.addEventListener('resize', refreshOverflowIndicators);
       refreshOverflowIndicators();
     });
@@ -4850,9 +4414,7 @@ export default defineComponent({
       document.removeEventListener('visibilitychange', onDashboardVisible);
       void appStateListener?.remove();
       appStateListener = null;
-      removeSidebarDesktopListener();
       window.removeEventListener('resize', refreshOverflowIndicators);
-      restoreBodyOverflow();
     });
 
     return {
@@ -5099,7 +4661,6 @@ export default defineComponent({
       startResourceMouseDrag,
       startResourceTouchDrag,
       endResourceDrag,
-      onFolderDragOver,
       onFolderDragLeave,
       onFolderDragStart,
       onFolderDragEnd,
