@@ -78,71 +78,24 @@
         :transfer-status-text="transferStatusText"
         :transfer-status-percent="transferStatusPercent"
       />
-    <header v-if="!isLoggedIn" class="app-header app-header-public">
-      <div class="app-header-inner">
-        <div class="dashboard-brand">
-          <img src="/qcanva-logo.png" alt="QCanva" />
-          <div>
-            <h1>QCanva</h1>
-            <p v-if="!isLoggedIn" class="dash-subtitle">{{ t('publicResources') }}</p>
-          </div>
-        </div>
-        <div class="header-user-slot">
-          <template v-if="!isLoggedIn">
-            <LanguageToggle />
-            <router-link to="/login" class="btn-ghost">{{ t('login') }}</router-link>
-            <router-link to="/register" class="btn-primary">{{ t('register') }}</router-link>
-          </template>
-        </div>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
-        />
-      </div>
-    </header>
-    <header v-else class="app-header dashboard-auth-header">
-      <div class="app-header-inner">
-        <button
-          type="button"
-          class="btn-ghost btn-sm dashboard-mobile-sidebar-open"
-          :aria-label="t('openNavigation')"
-          data-mobile-sidebar-open
-          @click.stop="openMobileSidebar"
-        ><Menu :size="20" aria-hidden="true" /></button>
-        <input
-          v-model.trim="searchQuery"
-          class="dash-search dash-search-header-mobile"
-          :placeholder="folderSearchPlaceholder"
-        />
-        <!-- A space has its own filters (in its header) and is newest first: not these. -->
-        <DashboardFilterMenu
-          v-if="spaceId === null"
-          class="dashboard-toolbar-mobile"
-          sheet
-          :open="openControlMenu === 'filter:mobile'"
-          :types="contentTypes"
-          :tags="allTagNames"
-          :selected-tags="selectedTags"
-          :with-files="activeSection.kind === 'folder'"
-          @toggle="toggleToolbarMenu('filter:mobile')"
-          @update:types="contentTypes = $event"
-          @toggle-tag="toggleSelectedTag"
-          @reset="clearTypeAndTagFilters"
-        />
-        <DashboardSortMenu
-          v-if="spaceId === null"
-          class="dashboard-toolbar-mobile"
-          sheet
-          :open="openControlMenu === 'sort:mobile'"
-          :mode="sortMode"
-          @toggle="toggleToolbarMenu('sort:mobile')"
-          @select="selectSortMode"
-        />
-        <!-- Tab mode: Back lands here, so the open tabs must be reachable from here too. -->
-        <TabsButton class="dashboard-tabs-button" />
-      </div>
-    </header>
+    <DashboardPublicHeader v-if="!isLoggedIn" v-model:search-query="searchQuery" :folder-search-placeholder="folderSearchPlaceholder" />
+    <DashboardAuthHeader
+      v-else
+      v-model:search-query="searchQuery"
+      :open-control-menu="openControlMenu"
+      :content-types="contentTypes"
+      :all-tag-names="allTagNames"
+      :selected-tags="selectedTags"
+      :with-files="activeSection.kind === 'folder'"
+      :sort-mode="sortMode"
+      :folder-search-placeholder="folderSearchPlaceholder"
+      @open-sidebar="openMobileSidebar"
+      @toggle-menu="toggleToolbarMenu"
+      @update-types="contentTypes = $event"
+      @toggle-tag="toggleSelectedTag"
+      @reset-filters="clearTypeAndTagFilters"
+      @select-sort="selectSortMode"
+    />
 
     <main
       ref="dashboardMain"
@@ -731,6 +684,8 @@ import DashboardFolderResourceGrid from '../components/dashboard/DashboardFolder
 import DashboardFeedResourceGrid from '../components/dashboard/DashboardFeedResourceGrid.vue';
 import DashboardInteractiveFeedGrid from '../components/dashboard/DashboardInteractiveFeedGrid.vue';
 import DashboardModalLayer from '../components/dashboard/DashboardModalLayer.vue';
+import DashboardPublicHeader from '../components/dashboard/DashboardPublicHeader.vue';
+import DashboardAuthHeader from '../components/dashboard/DashboardAuthHeader.vue';
 import DashboardAccessRequests from '../components/dashboard/DashboardAccessRequests.vue';
 import type { DashboardResourceAction, DashboardResourceActionItem } from '../components/dashboard/resource-card.types';
 import ResourceThumb from '../components/dashboard/ResourceThumb.vue';
@@ -920,6 +875,8 @@ export default defineComponent({
     DashboardFeedResourceGrid,
     DashboardInteractiveFeedGrid,
     DashboardModalLayer,
+    DashboardPublicHeader,
+    DashboardAuthHeader,
     DashboardAccessRequests,
     ResourceThumb,
     ResourceIcon,
