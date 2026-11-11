@@ -30,6 +30,11 @@ object UploadQueue {
     private const val MAX_TRIES = 3
     private const val BUFFER = 64 * 1024
     private const val PROGRESS_EVERY_MS = 300L
+    // nginx drops an upload after 60 s without bytes. HttpURLConnection's
+    // readTimeout does not cover a blocked OutputStream.write(), so interrupt
+    // a quiet body before nginx does and let the normal retry loop start over.
+    private const val STALL_TIMEOUT_MS = 45_000L
+    private const val STALL_CHECK_MS = 1_000L
     private const val NETWORK_WAIT_MS = 10 * 60 * 1000L
 
     enum class Mode { MULTIPART, RAW }
@@ -53,6 +58,8 @@ object UploadQueue {
         @Volatile var message = ""
         @Volatile var cancelled = false
         @Volatile var connection: HttpURLConnection? = null
+        @Volatile var lastByteAt = 0L
+        @Volatile var stalled = false
     }
 
     private val jobs = ConcurrentHashMap<String, Job>()
@@ -119,7 +126,7 @@ object UploadQueue {
                     job.message = e.message ?: "network error"
                     if (attempt == MAX_TRIES) return finish(job, "error")
                     job.loaded = 0
-                    progress(job)
+                    progress(job, force = true)
                     if (!waitForNetwork()) return finish(job, "error")
                     Thread.sleep(if (attempt == 1) 1_000L else 3_000L)
                 }
@@ -160,6 +167,26 @@ object UploadQueue {
 
         val connection = (URL(job.url).openConnection() as HttpURLConnection)
         job.connection = connection
+        job.stalled = false
+        job.lastByteAt = System.currentTimeMillis()
+        val watchdog = Thread({
+            try {
+                while (!Thread.currentThread().isInterrupted) {
+                    Thread.sleep(STALL_CHECK_MS)
+                    if (job.cancelled || job.state != "uploading") break
+                    // Once every body byte is sent, readTimeout governs the
+                    // response and the upload watchdog must stay out of it.
+                    if (job.size >= 0 && job.loaded >= job.size) break
+                    if (System.currentTimeMillis() - job.lastByteAt < STALL_TIMEOUT_MS) continue
+                    job.stalled = true
+                    try { connection.disconnect() } catch (_: Exception) {}
+                    break
+                }
+            } catch (_: InterruptedException) {
+                // Normal cleanup after the request finishes or is retried.
+            }
+        }, "qcanva-upload-watchdog").apply { isDaemon = true }
+        watchdog.start()
         try {
             connection.requestMethod = job.method
             connection.doOutput = true
@@ -181,20 +208,25 @@ object UploadQueue {
                     val buffer = ByteArray(BUFFER)
                     while (true) {
                         if (job.cancelled) throw IOException("cancelled")
+                        if (job.stalled) throw IOException("upload stalled")
                         val read = source.read(buffer)
                         if (read < 0) break
                         sink.write(buffer, 0, read)
                         job.loaded += read
+                        job.lastByteAt = System.currentTimeMillis()
                         progress(job)
                     }
+                    if (job.stalled) throw IOException("upload stalled")
                     sink.write(tail)
                 }
             }
+            if (job.stalled) throw IOException("upload stalled")
             progress(job, force = true)
             job.status = connection.responseCode
             val stream = if (job.status >= 400) connection.errorStream else connection.inputStream
             job.body = stream?.bufferedReader()?.use { it.readText() }?.take(64 * 1024) ?: ""
         } finally {
+            watchdog.interrupt()
             job.connection = null
             connection.disconnect()
         }

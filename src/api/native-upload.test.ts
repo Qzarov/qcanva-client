@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const listeners: Record<string, (data: any) => void> = {};
 const plugin = {
@@ -33,6 +33,11 @@ describe('native uploads', () => {
   beforeEach(() => {
     native = true;
     vi.clearAllMocks();
+    plugin.status.mockResolvedValue({ uploads: [] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('hand a picked file to the app\'s queue; progress and the answer come back as events', async () => {
@@ -58,6 +63,74 @@ describe('native uploads', () => {
     const id = plugin.enqueue.mock.calls[0]![0].id;
     listeners.uploadFinished!({ id, state: 'error', status: 413, body: '{}' });
     await expect(handle.promise).rejects.toMatchObject({ status: 413 });
+  });
+
+  it('keeps a queued native try alive when it has no progress events', async () => {
+    vi.useFakeTimers();
+    plugin.enqueue.mockResolvedValue({ accepted: true });
+    const progress = vi.fn();
+    let id = '';
+    plugin.status.mockImplementation(async () => ({ uploads: [{ id, state: 'queued', loaded: 1, total: 3 }] }));
+    const handle = uploadNativelyOr(file, request, parse, vi.fn(), progress);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    id = plugin.enqueue.mock.calls[0]![0].id;
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(plugin.status).toHaveBeenCalledTimes(1);
+    expect(plugin.cancel).not.toHaveBeenCalled();
+    expect(progress).toHaveBeenCalledWith(33);
+
+    let settled = false;
+    void handle.promise.then(() => { settled = true; }, () => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    handle.abort();
+    listeners.uploadFinished!({ id, state: 'cancelled' });
+    await expect(handle.promise).rejects.toThrow('cancelled');
+  });
+
+  it('settles from a terminal status snapshot', async () => {
+    vi.useFakeTimers();
+    plugin.enqueue.mockResolvedValue({ accepted: true });
+    let id = '';
+    plugin.status.mockImplementation(async () => ({ uploads: [{ id, state: 'done', status: 200, body: '{"ok":true}' }] }));
+    const handle = uploadNativelyOr(file, request, parse, vi.fn());
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    id = plugin.enqueue.mock.calls[0]![0].id;
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    await expect(handle.promise).resolves.toEqual({ ok: true });
+    expect(plugin.cancel).not.toHaveBeenCalled();
+  });
+
+  it('retries when the native job is missing from the status snapshot', async () => {
+    vi.useFakeTimers();
+    plugin.enqueue.mockResolvedValue({ accepted: true });
+    const handle = uploadNativelyOr(file, request, parse, vi.fn());
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    const id = plugin.enqueue.mock.calls[0]![0].id;
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    await expect(handle.promise).rejects.toMatchObject({ status: 0 });
+    expect(plugin.cancel).toHaveBeenCalledWith({ id });
+  });
+
+  it('keeps the native try alive when status polling fails', async () => {
+    vi.useFakeTimers();
+    plugin.enqueue.mockResolvedValue({ accepted: true });
+    plugin.status.mockRejectedValue(new Error('bridge unavailable'));
+    const handle = uploadNativelyOr(file, request, parse, vi.fn());
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(plugin.status).toHaveBeenCalledTimes(1);
+    expect(plugin.cancel).not.toHaveBeenCalled();
+
+    const id = plugin.enqueue.mock.calls[0]![0].id;
+    handle.abort();
+    listeners.uploadFinished!({ id, state: 'cancelled' });
+    await expect(handle.promise).rejects.toThrow('cancelled');
   });
 
   it('upload as before when the app does not have the file', async () => {

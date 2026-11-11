@@ -46,6 +46,10 @@ type Pending = {
 };
 const pending = new Map<string, Pending>();
 let listening: Promise<void> | null = null;
+// The native queue has its own watchdog. The page-side timer only checks the
+// native snapshot in case bridge events were lost; queued native jobs can sit
+// without progress while earlier jobs use the three upload slots.
+const STALL_TIMEOUT_MS = 45_000;
 
 function settle(outcome: Outcome) {
   if (outcome.state !== 'done' && outcome.state !== 'error' && outcome.state !== 'cancelled') return;
@@ -64,12 +68,17 @@ function listen(): Promise<void> {
       if (entry && total > 0) entry.onProgress?.(Math.round((loaded / total) * 100));
     });
     await plugin().addListener('uploadFinished', settle);
-    // Back from the background: whatever finished while the page slept.
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState !== 'visible' || !pending.size) return;
-        void plugin().status().then(({ uploads }) => uploads.forEach(settle)).catch(() => undefined);
-      });
+    // Back from the background: whatever finished while the page slept. A
+    // focus/pageshow signal covers WebViews that do not emit visibilitychange
+    // when their host activity resumes.
+    const reconcile = () => {
+      if (!pending.size || (typeof document !== 'undefined' && document.visibilityState !== 'visible')) return;
+      void plugin().status().then(({ uploads }) => uploads.forEach(settle)).catch(() => undefined);
+    };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', reconcile);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', reconcile);
+      window.addEventListener('pageshow', reconcile);
     }
   })();
   return listening;
@@ -94,27 +103,92 @@ export function uploadNativelyOr<T>(
   const id = `nu-${Date.now()}-${(seq += 1)}-${Math.random().toString(36).slice(2, 7)}`;
   let aborted = false;
   let abortActive: () => void = () => { aborted = true; };
+  let accepted = false;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
+  let statusInFlight = false;
+  let lastStatusLoaded = 0;
+  let rejectWatchdog!: (error: unknown) => void;
+  const watchdogFailure = new Promise<never>((_, reject) => { rejectWatchdog = reject; });
+  // Attach a handler immediately so a fake-timer callback cannot create an
+  // unhandled rejection before Promise.race gets a microtask turn.
+  void watchdogFailure.catch(() => undefined);
+  const clearWatchdog = () => {
+    if (watchdogTimer === undefined) return;
+    clearTimeout(watchdogTimer);
+    watchdogTimer = undefined;
+  };
+  const lostNativeUpload = () => {
+    if (aborted || !pending.has(id)) return;
+    aborted = true;
+    pending.delete(id);
+    abortActive();
+    rejectWatchdog(Object.assign(new Error(), { status: 0 }));
+  };
+  const armWatchdog = () => {
+    clearWatchdog();
+    if (!accepted || aborted || !pending.has(id)) return;
+    watchdogTimer = setTimeout(() => {
+      watchdogTimer = undefined;
+      if (!accepted || aborted || !pending.has(id)) return;
+      if (statusInFlight) return;
+      statusInFlight = true;
+      void Promise.resolve()
+        .then(() => plugin().status())
+        .then(({ uploads }) => {
+          if (!accepted || aborted || !pending.has(id)) return;
+          const current = uploads.find((upload) => upload.id === id);
+          if (!current) {
+            lostNativeUpload();
+            return;
+          }
+          if (current.state === 'done' || current.state === 'error' || current.state === 'cancelled') {
+            settle(current);
+            return;
+          }
+          if (typeof current.loaded === 'number') {
+            const loaded = current.loaded;
+            const grew = loaded > lastStatusLoaded;
+            lastStatusLoaded = loaded;
+            if (grew && current.total) reportProgress(Math.round((loaded / current.total) * 100));
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          statusInFlight = false;
+          armWatchdog();
+        });
+    }, STALL_TIMEOUT_MS);
+  };
+  const reportProgress = (percent: number) => {
+    onProgress?.(percent);
+    armWatchdog();
+  };
   const promise = (async () => {
     await listen();
-    const outcome = new Promise<Outcome>((resolve) => pending.set(id, { onProgress, settle: resolve }));
-    const { accepted } = await plugin().enqueue({ id, name: file.name, size: file.size, ...request }).catch(() => ({ accepted: false }));
-    if (!accepted) {
+    const outcome = new Promise<Outcome>((resolve) => pending.set(id, { onProgress: reportProgress, settle: resolve }));
+    const { accepted: wasAccepted } = await plugin().enqueue({ id, name: file.name, size: file.size, ...request }).catch(() => ({ accepted: false }));
+    if (!wasAccepted) {
       pending.delete(id);
       if (aborted) throw (cancelledError?.() ?? new Error('cancelled'));
       const handle = fallback();
       abortActive = handle.abort;
       return handle.promise;
     }
+    accepted = true;
     abortActive = () => { void plugin().cancel({ id }).catch(() => undefined); };
     if (aborted) abortActive();
+    armWatchdog();
     const result = await outcome;
     if (result.state === 'cancelled') throw (cancelledError?.() ?? new Error('cancelled'));
     return parse(result.status ?? 0, result.body ?? '');
   })();
+  const guarded = Promise.race([promise, watchdogFailure]).finally(clearWatchdog);
+  void guarded.catch(() => undefined);
   return {
-    promise,
+    promise: guarded,
     abort: () => {
       aborted = true;
+      clearWatchdog();
       abortActive();
     },
   };
