@@ -290,6 +290,7 @@ function loadUnit(group: string, sub?: string): Promise<void> {
     } finally {
       // Only drop our own entry: a newer request for the same key may have replaced it.
       if (inflight.get(key) === run) inflight.delete(key);
+      if (current()) ensureLoaded();
     }
   })();
   inflight.set(key, run);

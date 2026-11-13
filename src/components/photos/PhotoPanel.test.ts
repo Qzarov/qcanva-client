@@ -305,6 +305,24 @@ describe('PhotoPanel', () => {
     expect(alertMock).toHaveBeenCalled();
   });
 
+  it('a failed album add does not undo a different successful album removal', async () => {
+    let rejectAdd!: (error: Error) => void;
+    addMock.mockImplementation(() => new Promise<number>((_, reject) => { rejectAdd = reject; }));
+    removeMock.mockResolvedValue(1);
+    const w = await setup();
+    await w.get('[data-panel-plus]').trigger('click');
+    await flushPromises();
+
+    await w.findAll('[data-panel-menu-item]')[1]!.trigger('click');
+    await w.findAll('[data-panel-menu-item]')[0]!.trigger('click');
+    await flushPromises();
+    rejectAdd(new Error('add failed'));
+    await flushPromises();
+
+    expect(w.findAll('[data-panel-chip]').map((c) => c.text())).toEqual([]);
+    expect(w.emitted('changed')!.slice(-1)[0]).toEqual([{ fileId: 'f1', albumIds: [] }]);
+  });
+
   it('new album creates it and adds the photo', async () => {
     promptMock.mockResolvedValue('  Новый  ');
     const w = await setup();

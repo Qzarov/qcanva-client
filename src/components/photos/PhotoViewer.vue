@@ -209,7 +209,11 @@ function loadItem(): void {
   void loadVideo();
 }
 
-watch(() => props.item.fileId, loadItem);
+watch(() => props.item.fileId, async () => {
+  loadItem();
+  await nextTick();
+  if (!rootEl.value?.contains(document.activeElement)) rootEl.value?.focus();
+});
 
 // ----- keyboard, touch, focus -----
 

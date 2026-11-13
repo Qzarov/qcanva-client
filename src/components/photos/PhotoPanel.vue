@@ -350,7 +350,14 @@ async function toggleAlbum(id: string, name: string): Promise<void> {
     else await photosApi.addToAlbum(id, [fileId]);
     if (details.value === d) emitAlbums(fileId);
   } catch (e) {
-    if (details.value === d) albums.value = before;
+    if (details.value === d) {
+      albums.value = member
+        ? albums.value.some((a) => a.id === id)
+          ? albums.value
+          : [...albums.value, { id, name }]
+        : albums.value.filter((a) => a.id !== id);
+      emitAlbums(fileId);
+    }
     await reportSaveError(e);
   }
 }

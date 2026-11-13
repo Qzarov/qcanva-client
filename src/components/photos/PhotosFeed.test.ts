@@ -449,6 +449,32 @@ describe('PhotosFeed', () => {
     w.unmount();
   });
 
+  it('loads the next page when the viewport reaches the end while the current page is in flight', async () => {
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 201 }] });
+    let releaseFirst!: () => void;
+    itemsMock.mockImplementation((_p, _g, _s, cursor) => {
+      if (cursor === 'page-2') {
+        return Promise.resolve({ items: [mkItem(200)], nextCursor: null });
+      }
+      return new Promise((resolve) => {
+        releaseFirst = () =>
+          resolve({ items: Array.from({ length: 200 }, (_, i) => mkItem(i)), nextCursor: 'page-2' });
+      });
+    });
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    const el = scroller(w);
+    el.scrollTop = 9600;
+    el.dispatchEvent(new Event('scroll'));
+    releaseFirst();
+    await settle();
+
+    expect(itemsMock.mock.calls.some((call) => call[3] === 'page-2')).toBe(true);
+    w.unmount();
+  });
+
   it('discards a response that started before a params change was applied', async () => {
     const groups = manyGroups(30, 3);
     const itemsFor = (prefix: string, g: string) =>

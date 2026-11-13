@@ -176,6 +176,17 @@ describe('PhotoViewer', () => {
     expect(w.emitted('close')).toHaveLength(1);
   });
 
+  it('keeps keyboard focus in the dialog when the focused next button disappears', async () => {
+    const w = await setup(mkItem(), { index: 3, total: 5, hasPrev: true, hasNext: true });
+    const next = w.get('[data-viewer-next]').element as HTMLElement;
+    next.focus();
+
+    await w.setProps({ item: mkItem({ fileId: 'f5', hash: 'h5' }), index: 4, hasNext: false });
+    await flushPromises();
+
+    expect(document.activeElement).toBe(w.get('[data-photo-viewer]').element);
+  });
+
   it('keeps Tab inside the dialog', async () => {
     const w = await setup(mkItem());
     const buttons = w.findAll('button');
