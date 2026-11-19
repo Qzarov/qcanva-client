@@ -28,7 +28,7 @@
 
       <main class="settings-content">
         <template v-if="section === 'general'">
-          <section class="settings-card" data-settings-account>
+          <UiCard as="section" class="settings-card" data-settings-account>
             <h2>{{ t('settingsAccount') }}</h2>
             <div class="settings-account-row">
               <span class="settings-avatar" aria-hidden="true">{{ avatarLabel }}</span>
@@ -37,8 +37,8 @@
                 <span v-if="user?.email && user.email !== user?.name">{{ user.email }}</span>
               </div>
             </div>
-          </section>
-          <section class="settings-card">
+          </UiCard>
+          <UiCard as="section" class="settings-card">
             <h2>{{ t('settingsAppearance') }}</h2>
             <div class="settings-row">
               <span class="settings-row-label">{{ t('theme') }}</span>
@@ -59,15 +59,41 @@
                 >{{ option.label }}</button>
               </div>
             </div>
-          </section>
-          <section
+          </UiCard>
+          <UiCard
+            as="section"
             v-if="isHubOverrideAllowed()"
             class="settings-card"
             data-settings-hub
           >
             <h2>Хаб (отладка)</h2>
             <HubOverrideField />
+          </UiCard>
+        </template>
+
+        <template v-else-if="section === 'plan'">
+          <PlanSettingsPanel />
+        </template>
+
+        <template v-else-if="section === 'tags'">
+          <section class="settings-intro">
+            <h2>{{ t('settingsTags') }}</h2>
+            <p>{{ t('settingsTagsLead') }}</p>
           </section>
+          <TagsSettingsPanel />
+        </template>
+
+        <template v-else-if="section === 'contacts'">
+          <!-- The panel draws its own heading: the "add" button sits beside it. -->
+          <ContactsSettingsPanel />
+        </template>
+
+        <template v-else-if="section === 'devices'">
+          <section class="settings-intro">
+            <h2>{{ t('cupTitle') }}</h2>
+            <p>{{ t('cupSubtitle') }}</p>
+          </section>
+          <DriveDevicesView embedded />
         </template>
 
         <template v-else-if="section === 'mcp'">
@@ -83,7 +109,7 @@
             <h2>{{ t('settingsHtmlGeneration') }}</h2>
             <p>{{ t('settingsHtmlLead') }}</p>
           </section>
-          <form class="settings-card" data-settings-html @submit.prevent="saveHtml">
+          <UiCard as="form" class="settings-card" data-settings-html @submit.prevent="saveHtml">
             <label class="settings-field">
               <span class="settings-row-label">{{ t('settingsModel') }}</span>
               <input v-model.trim="model" class="dashboard-modal-input" placeholder="openai/gpt-4.1-mini" />
@@ -102,7 +128,7 @@
               <span v-if="saved" class="settings-saved" role="status">{{ t('settingsSaved') }}</span>
               <button type="submit" class="btn-primary" :disabled="saving">{{ t('settingsSave') }}</button>
             </div>
-          </form>
+          </UiCard>
         </template>
       </main>
     </div>
@@ -112,21 +138,30 @@
 <script setup lang="ts">
 import { computed, ref, watch, type Component } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ArrowLeft, FileCode2, KeyRound, SlidersHorizontal } from '@lucide/vue';
+import { ArrowLeft, Contact, CreditCard, FileCode2, KeyRound, MonitorSmartphone, SlidersHorizontal, Tags } from '@lucide/vue';
+import DriveDevicesView from './DriveDevicesView.vue';
 import AccountMenu from '../components/AccountMenu.vue';
 import ThemeSelector from '../components/ThemeSelector.vue';
 import HubOverrideField from '../components/HubOverrideField.vue';
 import McpTokensPanel from '../components/settings/McpTokensPanel.vue';
+import PlanSettingsPanel from '../components/settings/PlanSettingsPanel.vue';
+import TagsSettingsPanel from '../components/settings/TagsSettingsPanel.vue';
+import ContactsSettingsPanel from '../components/settings/ContactsSettingsPanel.vue';
+import UiCard from '../components/ui/UiCard.vue';
 import { getCurrentUser, htmlDocuments } from '../api/client';
 import { isHubOverrideAllowed } from '../api/hubOverride';
 import { useI18n, type UiLocale } from '../composables/useI18n';
 
-type SectionKey = 'general' | 'mcp' | 'html';
+type SectionKey = 'general' | 'plan' | 'tags' | 'contacts' | 'devices' | 'mcp' | 'html';
 type MessageKey = Parameters<ReturnType<typeof useI18n>['t']>[0];
 
 /** `short`: the label on a phone, where the three share one pill. */
 const SECTIONS: { key: SectionKey; label: MessageKey; short?: string; icon: Component }[] = [
   { key: 'general', label: 'settingsGeneral', icon: SlidersHorizontal },
+  { key: 'plan', label: 'settingsPlan', icon: CreditCard },
+  { key: 'tags', label: 'settingsTags', icon: Tags },
+  { key: 'contacts', label: 'settingsContacts', icon: Contact },
+  { key: 'devices', label: 'cupTitle', short: 'Q Control', icon: MonitorSmartphone },
   { key: 'mcp', label: 'mcpTokensTitle', short: 'MCP', icon: KeyRound },
   { key: 'html', label: 'settingsHtmlGeneration', short: 'HTML', icon: FileCode2 },
 ];
@@ -142,7 +177,7 @@ const router = useRouter();
 /** The open section lives in ?section=, so /mcp and /html-settings can link straight to theirs. */
 const section = computed<SectionKey>(() => {
   const value = route.query.section;
-  return value === 'mcp' || value === 'html' ? value : 'general';
+  return value === 'plan' || value === 'tags' || value === 'contacts' || value === 'devices' || value === 'mcp' || value === 'html' ? value : 'general';
 });
 const select = (key: SectionKey) => {
   void router.replace({ query: { ...route.query, section: key === 'general' ? undefined : key } });
@@ -184,8 +219,13 @@ watch(section, (value) => {
 </script>
 
 <style scoped>
+/* Its own scroll container: the canvas's phone rule sets html, body
+   { overflow: hidden }, which kept a long page at its first screen. */
 .settings-page {
-  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
   color: var(--ui-text);
 }
 .settings-topbar {
@@ -244,15 +284,6 @@ watch(section, (value) => {
 .settings-content { display: grid; gap: 16px; align-content: start; min-width: 0; }
 .settings-intro h2 { margin: 0 0 4px; font-size: 22px; }
 .settings-intro p { margin: 0; max-width: 640px; color: var(--ui-text-secondary); line-height: 1.5; }
-.settings-card {
-  display: grid;
-  gap: 14px;
-  padding: 18px 20px;
-  border: 1px solid var(--ui-glass-border);
-  border-radius: 20px;
-  background: var(--ui-glass-tint), var(--ui-glass-card-bg);
-  box-shadow: inset 0 1px 0 var(--ui-glass-highlight), 0 6px 20px rgba(0, 0, 0, 0.12);
-}
 .settings-card h2 { margin: 0; font-size: 16px; }
 .settings-account-row { display: flex; align-items: center; gap: 14px; min-width: 0; }
 .settings-avatar {
@@ -321,7 +352,7 @@ watch(section, (value) => {
   }
   .settings-nav-item { flex: 1 1 0; justify-content: center; gap: 6px; min-height: 38px; padding: 0 8px; border-radius: 999px; font-size: 13px; }
   .settings-nav-label { display: none; }
-  .settings-nav-short { display: inline; }
+  .settings-nav-short { display: inline; white-space: nowrap; }
   .settings-card { padding: 16px; }
   .settings-intro h2 { font-size: 20px; }
 }

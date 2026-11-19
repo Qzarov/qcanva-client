@@ -236,7 +236,7 @@ onBeforeUnmount(() => {
 
       <footer v-if="!isRoot" class="fd-footer">
         <router-link
-          :to="`/drive/${encodeURIComponent(folder.id)}`"
+          :to="`/dashboard?folder=${encodeURIComponent(folder.id)}`"
           class="fd-open-link"
           data-fd-open
         >

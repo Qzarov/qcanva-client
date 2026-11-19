@@ -1,7 +1,8 @@
 // Pure geometry for node resizing — shared by mouse and touch resize paths,
 // and unit-testable in isolation from the canvas component.
 
-export const MIN_NODE_WIDTH = 144;
+/** The smallest block is a 48×48 square: two grid cells each way, an icon or a single word. */
+export const MIN_NODE_WIDTH = 48;
 export const MIN_NODE_HEIGHT = 48;
 export const GRID_SIZE = 24;
 

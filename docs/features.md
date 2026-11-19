@@ -80,9 +80,9 @@
 | Скачивание файла по временной подписанной ссылке | в интерфейсе | `src/views/DriveView.vue` | `POST /api/drive/files/:id/download-link` |
 | Просмотр свойств файла (хеш SHA-256, тип, реплики хранения) | в интерфейсе | `src/components/DriveFileProperties.vue` | `GET /api/drive/files/:id/meta`, `GET /api/drive/devices` |
 | Перемещение файла в корзину | в интерфейсе | `src/views/DriveView.vue` | `DELETE /api/drive/files/:id` |
-| Просмотр удалённых файлов в корзине | в интерфейсе | `src/views/DriveTrashView.vue` | `GET /api/drive/trash` |
-| Восстановление файла из корзины в исходную папку | в интерфейсе | `src/views/DriveTrashView.vue` | `POST /api/drive/files/:id/restore` |
-| Окончательное безвозвратное удаление файла | в интерфейсе | `src/views/DriveTrashView.vue` | `DELETE /api/drive/files/:id?permanent=true` |
+| Просмотр удалённых файлов в корзине | в интерфейсе | `src/components/dashboard/DashboardTrash.vue` | `GET /api/drive/trash` |
+| Восстановление файла из корзины в исходную папку | в интерфейсе | `src/components/dashboard/DashboardTrash.vue` | `POST /api/drive/files/:id/restore` |
+| Окончательное безвозвратное удаление файла | в интерфейсе | `src/components/dashboard/DashboardTrash.vue` | `DELETE /api/drive/files/:id?permanent=true` |
 
 ---
 

@@ -10,10 +10,11 @@ type FolderLike = {
   id: string;
   name: string;
   parentId?: string | null;
-  items?: Partial<Record<'canvases' | 'htmlDocuments' | 'textDocuments', Array<{ id: string }>>>;
+  items?: Partial<Record<'canvases' | 'htmlDocuments' | 'textDocuments' | 'interactiveTemplates', Array<{ id: string }>>>;
   canvases?: Array<{ id: string }>;
   htmlDocuments?: Array<{ id: string }>;
   textDocuments?: Array<{ id: string }>;
+  interactiveTemplates?: Array<{ id: string }>;
 };
 
 const SEPARATOR = ' / ';
@@ -45,6 +46,9 @@ export function folderIdByResourceKey(folders: readonly FolderLike[]): Map<strin
     ['canvases', 'canvas'],
     ['htmlDocuments', 'html-document'],
     ['textDocuments', 'text-document'],
+    // Boards and sheets live in folders too: without this their cards and
+    // Recents tiles never said which one.
+    ['interactiveTemplates', 'interactive-template'],
   ] as const;
   for (const folder of folders) {
     for (const [field, type] of kinds) {

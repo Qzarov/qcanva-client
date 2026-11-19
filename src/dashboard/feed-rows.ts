@@ -3,12 +3,12 @@ import { LAYOUT } from '../composables/layoutMedia';
 /**
  * How many cards a feed section shows before "Show all": whole rows of the
  * card grid, not a fixed count. Mirrors the grid in style.css:
- * `.dashboard .dash-grid` / `.dashboard-recents-grid` auto-fill 210px columns
+ * `.dashboard .dash-grid` / `.dashboard-recents-grid` auto-fill 180px columns
  * with a 12px gap, and a fixed 2 columns at max-width 720px. In list view a
  * section shows as many rows as the grid would have cards, so switching the
  * view doesn't change what is listed.
  */
-export const FEED_CARD_MIN_WIDTH = 210;
+export const FEED_CARD_MIN_WIDTH = 180;
 export const FEED_CARD_GAP = 12;
 export const FEED_PHONE_QUERY = LAYOUT.dashboardPhone;
 export const FEED_PHONE_COLUMNS = 2;

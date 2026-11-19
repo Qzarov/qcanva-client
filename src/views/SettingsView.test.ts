@@ -19,7 +19,7 @@ vi.mock('../api/client', () => ({
 
 function mountView() {
   return mount(SettingsView, {
-    global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, AccountMenu: true, McpTokensPanel: { template: '<div data-mcp-panel />' }, ThemeSelector: true } },
+    global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, AccountMenu: true, McpTokensPanel: { template: '<div data-mcp-panel />' }, ContactsSettingsPanel: { template: '<div data-contacts-panel />' }, ThemeSelector: true } },
   });
 }
 
@@ -49,6 +49,16 @@ describe('SettingsView', () => {
     expect(replace).toHaveBeenCalledWith({ query: { section: 'html' } });
     await flushPromises();
     expect(wrapper.find('[data-settings-html]').exists()).toBe(true);
+  });
+
+  it('has a Contacts section that opens by the address', async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-settings-section="contacts"]').trigger('click');
+    expect(replace).toHaveBeenCalledWith({ query: { section: 'contacts' } });
+    await flushPromises();
+    expect(wrapper.find('[data-contacts-panel]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('Contacts');
   });
 
   it('saves the HTML generation settings without echoing the key back', async () => {

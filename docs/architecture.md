@@ -21,7 +21,7 @@
 | `/` | `landing` | `src/views/LandingView.vue` | Публичный |
 | `/dashboard` | `dashboard` | `src/views/DashboardView.vue` | Доступен гостям (публичный режим) и пользователям |
 | `/drive` | `drive` | `src/views/DriveView.vue` | `meta: { requiresAuth: true }` |
-| `/drive/trash` | `drive-trash` | `src/views/DriveTrashView.vue` | `meta: { requiresAuth: true }` |
+| `/drive/trash` | `drive-trash` | *Redirect* на `/dashboard?section=trash` (`src/components/dashboard/DashboardTrash.vue`) | `meta: { requiresAuth: true }` |
 | `/drive/devices` | `drive-devices` | `src/views/DriveDevicesView.vue` | `meta: { requiresAuth: true }` |
 | `/drive/:folderId` | `drive-folder` | `src/views/DriveView.vue` | `meta: { requiresAuth: true }` |
 | `/html-docs` | `html-docs` | *Redirect* на `/dashboard?type=html` | `meta: { requiresAuth: true }` |
@@ -52,7 +52,7 @@
 - `src/views/LandingView.vue`: публичная посадочная страница с информацией о сервисе и ссылками на вход.
 - `src/views/DashboardView.vue`: главное рабочее пространство с лентой недавних ресурсов, деревом папок, тегами и поиском.
 - `src/views/DriveView.vue`: файловый менеджер облачного диска Q Space с поддержкой папок, загрузки файлов и фотоальбомов.
-- `src/views/DriveTrashView.vue`: корзина удалённых файлов диска с возможностью восстановления и окончательного удаления.
+- `src/components/dashboard/DashboardTrash.vue`: секция корзины удалённых файлов диска в дашборде (`/dashboard?section=trash`) с возможностью восстановления и окончательного удаления.
 - `src/views/DriveDevicesView.vue`: центр управления безопасностью Q Control (ЦУП), мониторинг устройств синхронизации и утерянных файлов.
 - `src/views/HtmlDocumentView.vue`: редактор и изолированный предпросмотр HTML-документов с поддержкой PDF-экспорта и чекбоксов.
 - `src/views/SettingsView.vue`: экран настроек аккаунта, тем оформления, языка, MCP-токенов и параметров ИИ-генерации.

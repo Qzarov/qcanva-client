@@ -1,23 +1,15 @@
 <template>
-  <div
-    v-if="mobileOpen"
-    class="dashboard-sidebar-backdrop"
-    data-sidebar-backdrop
-    aria-hidden="true"
-    @click="emit('close-mobile')"
-  ></div>
-
-  <aside
-    ref="sidebarRef"
+  <SharedSidebarShell
     class="dashboard-sidebar"
     :class="{ collapsed: widthState === 'collapsed', 'mobile-open': mobileOpen }"
     :aria-label="t('dashboard')"
-    :role="mobileOpen ? 'dialog' : undefined"
-    :aria-modal="mobileOpen ? 'true' : undefined"
-    @keydown.esc.stop="emit('close-mobile')"
-    @keydown.tab="trapMobileFocus"
+    :mobile-open="mobileOpen"
+    backdrop-class="dashboard-sidebar-backdrop"
+    backdrop-transition="dashboard-sidebar-backdrop"
+    @close-mobile="emit('close-mobile')"
   >
-    <header class="dashboard-sidebar-header">
+    <template #header>
+      <header class="dashboard-sidebar-header">
       <span class="dashboard-sidebar-brand">
         <img src="/qcanva-logo.png" alt="QCanva" />
       </span>
@@ -33,7 +25,8 @@
       >
         <X :size="18" aria-hidden="true" />
       </button>
-    </header>
+      </header>
+    </template>
 
     <div class="dashboard-sidebar-scroll">
       <nav class="dashboard-sidebar-navigation" :aria-label="t('dashboard')">
@@ -74,29 +67,58 @@
           </button>
         </div>
 
+        <Transition :css="false" @enter="heightTransitionHooks.onEnter" @leave="heightTransitionHooks.onLeave">
         <div v-if="homeExpanded" :id="homeChildrenId" class="dashboard-sidebar-home-children" data-home-children>
-          <section class="dashboard-sidebar-folders" :aria-labelledby="foldersHeadingId">
-            <div class="dashboard-sidebar-section-heading">
-              <h2 :id="foldersHeadingId" class="dashboard-sidebar-label">{{ t('folders') }}</h2>
-              <button
-                type="button"
-                class="btn-ghost btn-sm dashboard-sidebar-create-folder"
-                :aria-label="t('createFolder')"
-                :title="t('createFolder')"
-                data-sidebar-create-folder
-                @click="emit('create-folder')"
-              >
-                <Plus :size="17" aria-hidden="true" />
-              </button>
-            </div>
-
-            <div class="dashboard-sidebar-folder-list">
+          <section class="dashboard-sidebar-folders" :aria-label="t('folders')">
+            <!-- Opened folders unfold their subfolders and files row by row. -->
+            <TransitionGroup
+              tag="div"
+              class="dashboard-sidebar-folder-list"
+              :css="false"
+              @enter="heightTransitionHooks.onEnter"
+              @leave="heightTransitionHooks.onLeave"
+            >
               <div
                 v-for="folder in folders"
-                :key="folder.id"
+                :key="sidebarNavKey(folder)"
                 class="dashboard-sidebar-folder-row"
+                :class="{ 'dashboard-sidebar-file-row': folder.kind === 'file', 'dashboard-sidebar-more-row': folder.kind === 'more' }"
                 :style="folderIndent(folder.depth)"
               >
+                <template v-if="folder.kind === 'file'">
+                  <span class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
+                  <button
+                    type="button"
+                    class="btn-ghost dashboard-sidebar-folder dashboard-sidebar-file"
+                    :data-sidebar-file="folder.key"
+                    :aria-label="folder.title || t('untitled')"
+                    :title="folder.title || t('untitled')"
+                    @click="emit('open-file', folder)"
+                  >
+                    <span class="dashboard-sidebar-icon" aria-hidden="true">
+                      <template v-if="folder.type === 'drive-file'">
+                        <Video v-if="folder.fileKind === 'video'" :size="16" />
+                        <ImageIcon v-else-if="folder.fileKind === 'image'" :size="16" />
+                        <FileIcon v-else :size="16" />
+                      </template>
+                      <ResourceIcon v-else :kind="folder.type" :template-type="folder.templateType" />
+                    </span>
+                    <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.title || t('untitled') }}</span>
+                  </button>
+                </template>
+                <template v-else-if="folder.kind === 'more'">
+                  <span class="dashboard-sidebar-folder-toggle-spacer" aria-hidden="true"></span>
+                  <button
+                    type="button"
+                    class="btn-ghost dashboard-sidebar-folder dashboard-sidebar-more"
+                    :data-sidebar-more="folder.folderId"
+                    :title="t('sidebarMoreItemsTitle')"
+                    @click="emit('select', { kind: 'folder', folderId: folder.folderId })"
+                  >
+                    <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ t('sidebarMoreItems').replace('{n}', String(folder.count)) }}</span>
+                  </button>
+                </template>
+                <template v-else>
                 <button
                   v-if="folder.hasChildren"
                   type="button"
@@ -138,10 +160,23 @@
                   </span>
                   <span class="dashboard-sidebar-label dashboard-sidebar-folder-name">{{ folder.name }}</span>
                 </button>
+                </template>
               </div>
-            </div>
+            </TransitionGroup>
           </section>
         </div>
+        </Transition>
+
+        <DashboardSidebarSpaces
+          v-if="spaces"
+          :active-section="activeSection"
+          :compact="compactPresentation"
+          :yandex-refresh-key="yandexRefreshKey"
+          :active="isActive({ kind: 'spaces' })"
+          @select="emit('select', $event)"
+          @open-yandex-file="emit('open-yandex-file', $event)"
+          @create-space="emit('create-space')"
+        />
 
         <button
           v-for="item in topLevelItems"
@@ -158,11 +193,24 @@
           <span class="dashboard-sidebar-icon" aria-hidden="true"><component :is="item.icon" :size="18" /></span>
           <span class="dashboard-sidebar-label">{{ item.label }}</span>
         </button>
+        <!-- Admins only, and last: a page of its own, not a dashboard section. -->
+        <router-link
+          v-if="admin"
+          to="/admin"
+          class="btn-ghost dashboard-sidebar-item dashboard-sidebar-admin"
+          :aria-label="t('admin')"
+          :title="compactPresentation ? t('admin') : undefined"
+          data-sidebar-admin
+        >
+          <span class="dashboard-sidebar-icon" aria-hidden="true"><ShieldCheck :size="18" /></span>
+          <span class="dashboard-sidebar-label">{{ t('admin') }}</span>
+        </router-link>
       </nav>
 
     </div>
 
-    <footer class="dashboard-sidebar-footer">
+    <template #footer>
+      <footer class="dashboard-sidebar-footer">
       <div v-if="!compactPresentation" class="dashboard-sidebar-version">
         QCanva v{{ appVersion }} ·
         <a
@@ -185,13 +233,19 @@
         <PanelLeftOpen v-if="widthState === 'collapsed'" :size="18" aria-hidden="true" />
         <PanelLeftClose v-else :size="18" aria-hidden="true" />
       </button>
-    </footer>
-  </aside>
+      </footer>
+    </template>
+  </SharedSidebarShell>
 </template>
 
 <script setup lang="ts">
-import { ChevronDown, Folder, FolderCog, Globe2, HardDrive, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, Plus, Users, X } from '@lucide/vue';
+import ResourceIcon from '../ResourceIcon.vue';
+import DashboardSidebarSpaces from './DashboardSidebarSpaces.vue';
+import SharedSidebarShell from '../SharedSidebarShell.vue';
+import type { YandexItem } from '../../api/yandexDisk';
+import { ChevronDown, File as FileIcon, Folder, FolderCog, Image as ImageIcon, Video, Globe2, House, PanelLeftClose, PanelLeftOpen, PanelsTopLeft, ShieldCheck, Trash2, Users, X } from '@lucide/vue';
 import { computed, ref, watch, type CSSProperties, type Component } from 'vue';
+import { heightTransitionHooks } from '../../dashboard/motion';
 import AccountMenu from '../AccountMenu.vue';
 import packageJson from '../../../package.json';
 
@@ -201,7 +255,9 @@ import { useI18n } from '../../composables/useI18n';
 import { SOURCE_CODE_URL } from '../../app-info';
 import {
   isDashboardSectionActive,
-  type DashboardFolderNavItem,
+  sidebarNavKey,
+  type DashboardFileNavItem,
+  type DashboardSidebarNavItem,
   type DashboardSection,
   type DashboardTopLevelSection,
   type SidebarWidthState,
@@ -213,14 +269,23 @@ const props = defineProps<{
   feedSection?: string | null;
   widthState: SidebarWidthState;
   mobileOpen: boolean;
-  folders: readonly DashboardFolderNavItem[];
+  /** The folder tree, with the files of every opened folder. */
+  folders: readonly DashboardSidebarNavItem[];
+  /** The user is an admin: the Admin page closes the list. */
+  admin?: boolean;
+  /** Signed in: the Spaces block (Q Space, Yandex Disk) is shown. */
+  spaces?: boolean;
+  /** Bumped after the dashboard changed the Yandex Disk. */
+  yandexRefreshKey?: number;
 }>();
 
 const emit = defineEmits<{
   select: [section: DashboardSection];
   'toggle-width': [];
   'close-mobile': [];
-  'create-folder': [];
+  'open-file': [file: DashboardFileNavItem];
+  'open-yandex-file': [item: YandexItem];
+  'create-space': [];
   'toggle-folder': [folderId: string];
   'folder-drag-start': [event: DragEvent, folderId: string];
   'folder-drag-end': [event: DragEvent, folderId: string];
@@ -231,40 +296,18 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const foldersHeadingId = 'dashboard-sidebar-folders-heading';
 const homeChildrenId = 'dashboard-sidebar-home-children';
-const sidebarRef = ref<HTMLElement | null>(null);
 const homeExpanded = ref(props.activeSection.kind === 'folder');
-const focusableSelector = [
-  'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
-  '[tabindex]:not([tabindex="-1"])',
-].join(',');
-
-const isVisibleFocusable = (element: HTMLElement, boundary: HTMLElement) => {
-  if (element.tabIndex < 0 || element.getAttribute('aria-hidden') === 'true') return false;
-  let current: HTMLElement | null = element;
-  while (current && current !== boundary) {
-    if (current.hidden || current.getAttribute('aria-hidden') === 'true') return false;
-    const style = window.getComputedStyle(current);
-    if (style.display === 'none' || style.visibility === 'hidden') return false;
-    current = current.parentElement;
-  }
-  return true;
-};
 
 const topLevelItems = computed<Array<{
   kind: DashboardTopLevelSection;
   label: string;
   icon: Component;
 }>>(() => [
-  { kind: 'drive', label: t('drive'), icon: HardDrive },
   { kind: 'shared', label: t('sharedWithMe'), icon: Users },
   { kind: 'interactive', label: t('interactiveTemplate'), icon: PanelsTopLeft },
   { kind: 'public', label: t('public'), icon: Globe2 },
+  { kind: 'trash', label: t('driveTrash'), icon: Trash2 },
 ]);
 
 const widthToggleLabel = computed(() => (
@@ -297,29 +340,9 @@ const isActive = (section: DashboardSection) => (
   || (feedTopLevelInView.value && props.feedSection === section.kind)
 );
 
+
 const folderIndent = (depth: number): CSSProperties => ({
   '--folder-depth': Math.max(0, depth),
 } as CSSProperties);
 
-const trapMobileFocus = (event: KeyboardEvent) => {
-  if (!props.mobileOpen) return;
-  const sidebar = sidebarRef.value;
-  if (!sidebar) return;
-  const focusable = Array.from(sidebar.querySelectorAll<HTMLElement>(focusableSelector))
-    .filter((element) => isVisibleFocusable(element, sidebar));
-  if (!focusable.length) {
-    event.preventDefault();
-    return;
-  }
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  const active = document.activeElement;
-  if (event.shiftKey && (active === first || !sidebar.contains(active))) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && (active === last || !sidebar.contains(active))) {
-    event.preventDefault();
-    first.focus();
-  }
-};
 </script>

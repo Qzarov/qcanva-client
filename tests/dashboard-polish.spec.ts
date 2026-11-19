@@ -107,7 +107,7 @@ test.describe('desktop: notices float instead of pushing the list', () => {
 test.describe('mobile', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
-  test('Public: the sort button sits on the heading row; my foldered public doc is listed; Mine/Others filters', async ({ page }) => {
+  test('Public: the heading row holds no sort of its own (the header\'s is it); my foldered public doc is listed; Mine/Others filters', async ({ page }) => {
     await setupDashboard(page);
     await page.goto('/dashboard');
     await page.waitForSelector('[data-dashboard-view="recent"]', { timeout: 15000 });
@@ -117,9 +117,9 @@ test.describe('mobile', () => {
     });
     const section = page.locator('[data-section="public"]');
     await expect(section).toBeVisible();
-    const title = (await section.locator('.dash-section-head h2').boundingBox())!;
-    const sort = (await section.locator('.dash-sort-button-mobile').boundingBox())!;
-    expect(Math.abs((title.y + title.height / 2) - (sort.y + sort.height / 2))).toBeLessThan(8);
+    await expect(section.locator('.dash-section-head h2')).toBeVisible();
+    await expect(section.locator('[data-sort-menu-trigger]')).toHaveCount(0);
+    await expect(page.locator('.dashboard-toolbar-mobile[data-sort-menu-trigger], .dashboard-toolbar-mobile [data-sort-menu-trigger]').first()).toBeVisible();
     await expect(section).toContainText('My public doc');
     await expect(section).toContainText('Their doc');
     await section.locator('[data-public-owner-filter="others"]').tap();

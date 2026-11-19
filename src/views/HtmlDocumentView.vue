@@ -160,21 +160,25 @@
           <input type="checkbox" v-model="allowPublicEdit" @change="saveAccessSettings" />
           <span>{{ t('allowPublicEditing') }}</span>
         </label>
-        <label class="share-checkbox">
+        <!-- An admin took it out of Public: locked; pressing it says why. -->
+        <label class="share-checkbox" :class="{ 'share-checkbox-locked': publicHidden }" data-share-listed @click="publicHidden && (hiddenNote = true)">
           <input
             type="checkbox"
-            v-model="listedInPublic"
-            :disabled="visibility !== 'public'"
-            @change="saveAccessSettings"
+            :checked="listedInPublic && !publicHidden"
+            :disabled="visibility !== 'public' || publicHidden"
+            @change="listedInPublic = ($event.target as HTMLInputElement).checked; saveAccessSettings()"
           />
-          <span>{{ t('showInPublic') }}</span>
+          <span class="share-checkbox-text">
+            {{ t('showInPublic') }}
+            <small v-if="publicHidden && hiddenNote" class="share-hidden-note" role="status" data-share-hidden-by-admin>{{ t('hiddenByAdmin') }}</small>
+          </span>
         </label>
       </div>
 
       <div class="share-section">
         <div class="share-section-title">{{ t('invitePeople') }}</div>
         <div class="share-form">
-          <input v-model.trim="shareEmail" :placeholder="t('email')" type="email" />
+          <ContactEmailInput v-model.trim="shareEmail" :placeholder="t('email')" :exclude="permissions.map((p) => p.user?.email ?? '')" />
           <select v-model="shareRole">
             <option value="read">{{ t('canView') }}</option>
             <option value="edit">{{ t('canEdit') }}</option>
@@ -321,9 +325,10 @@ import { mapHtmlImageUrls } from '../canvas/imageUrls';
 import BackButton from '../components/BackButton.vue';
 import { tabsEnabled } from '../tabs/flag';
 import { Code2, Download, Eye, MoreVertical, Save } from '@lucide/vue';
+import ContactEmailInput from '../components/ContactEmailInput.vue';
 
 export default defineComponent({
-  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate, Code2, Download, Eye, MoreVertical, Save },
+  components: { AccountMenu, BackButton, HtmlVisualEditor, AccessGate, ContactEmailInput, Code2, Download, Eye, MoreVertical, Save },
   setup() {
     const route = useRoute();
     const router = useRouter();
@@ -357,7 +362,11 @@ export default defineComponent({
     const viewMode = ref<'visual' | 'preview' | 'split' | 'source'>('preview');
     const visibility = ref<'private' | 'authenticated' | 'public'>('private');
     const allowPublicEdit = ref(false);
-    const listedInPublic = ref(true);
+    const listedInPublic = ref(false);
+    const publicHidden = ref(false);
+    const hiddenNote = ref(false);
+    /** The visibility the hub has, to tell "made public now" from a later change. */
+    let savedVisibility: string | null = null;
     const loading = ref(true);
     const cacheStatus = ref<{ kind: 'refreshing' | 'success' | 'error'; text: string } | null>(null);
     const hydratedFromCache = ref(false);
@@ -489,7 +498,9 @@ export default defineComponent({
         setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
-        listedInPublic.value = res.document.listedInPublic !== false;
+        listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
+        savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
@@ -772,11 +783,14 @@ export default defineComponent({
     }
 
     async function saveAccessSettings() {
+      // Made public: not in the Public directory until the owner ticks it.
+      if (visibility.value === 'public' && savedVisibility !== 'public') listedInPublic.value = false;
       await htmlDocuments.update(resolvedId.value, {
         visibility: visibility.value,
         allowPublicEdit: allowPublicEdit.value,
         listedInPublic: listedInPublic.value,
       });
+      savedVisibility = visibility.value;
       await load();
     }
 
@@ -960,7 +974,9 @@ export default defineComponent({
         setRevision(revision.value);
         visibility.value = res.document.visibility || (res.document.shared ? 'public' : 'private');
         allowPublicEdit.value = !!res.document.allowPublicEdit;
-        listedInPublic.value = res.document.listedInPublic !== false;
+        listedInPublic.value = res.document.listedInPublic === true;
+        publicHidden.value = res.document.publicHidden === true;
+        savedVisibility = visibility.value;
         passwordAccessEnabled.value = !!res.document.passwordAccessEnabled;
         passwordAccessRole.value = res.document.passwordAccessRole || 'read';
         role.value = res.role;
@@ -983,7 +999,7 @@ export default defineComponent({
       toggleBarMenu, closeBarMenus, tabMode: tabsEnabled(),
       t,
       backTarget,
-      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
+      title, html, role, viewMode, visibility, allowPublicEdit, listedInPublic, publicHidden, hiddenNote, canEditContent, currentUser, route, loading, accessDenied, gatePasswordAccessEnabled, cacheStatus, isDirty,
       revision, htmlWsConnected, pendingOpsCount, currentRevision, htmlSyncStatus, htmlSyncTitle,
       showSyncEvents, syncEvents, syncReasonLabel, formatSyncEventTime, pendingVisualOp,
       requestingAccess, accessRequestSent, showShare, shareEmail,

@@ -185,9 +185,10 @@ test('shape selection and floating text/border colours preserve controls and key
 test('desktop block actions omit history while general canvas undo remains available', async ({ page }) => {
   await setup(page);
   await page.locator('[data-node-id="text"]').click();
-  await expect(page.getByTitle('Node actions', { exact: true })).toHaveCount(0);
-  const actions = page.locator('.node-toolbar-tabs');
+  const actions = page.locator('[data-node-toolbar]');
   await expect(actions.getByRole('button', { name: 'Duplicate', exact: true })).toBeVisible();
+  // Delete waits in the "More" menu, away from the everyday buttons.
+  await actions.getByRole('button', { name: 'More', exact: true }).click();
   await expect(actions.getByRole('button', { name: 'Delete', exact: true })).toBeVisible();
   await expect(actions.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0);
   await expect(actions.getByRole('button', { name: 'Redo', exact: true })).toHaveCount(0);
@@ -317,19 +318,15 @@ for (const mobile of [false, true]) {
   });
 }
 
-test('context-menu colour picker uses the same floating menu and updates the node', async ({ page }) => {
+test('a right-click on a node selects it for its toolbar: no context menu of its own any more', async ({ page }) => {
   await setup(page);
   await page.locator('[data-node-id="text"]').click({ button: 'right' });
-  await page.locator('.context-menu').getByRole('button', { name: 'Background color', exact: true }).click();
-  const menu = page.getByRole('group', { name: 'Background color', exact: true });
-  await expect(menu).toHaveCSS('position', 'fixed');
-  await menu.getByRole('button', { name: 'Background color 2', exact: true }).click();
+  await expect(page.locator('.context-menu')).toHaveCount(0);
+  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/selected/);
+  // What the menu had is on the toolbar: the fill colours, for one.
+  await page.locator('[data-node-toolbar] [data-node-tool="fill"]').click();
+  await page.locator('[data-node-menu="fill"] .ctx-color-2').click();
   await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-2/);
-  await expect(menu).toBeVisible();
-  await menu.getByRole('button', { name: 'Background color 3', exact: true }).click();
-  await expect(page.locator('[data-node-id="text"]')).toHaveClass(/node-color-3/);
-  await expect(menu).toBeVisible();
-  await page.keyboard.press('Escape'); await expect(menu).toBeHidden();
 });
 
 for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'], [true, 'dark']] as const) {
@@ -343,8 +340,8 @@ for (const [mobile, theme] of [[false, 'light'], [true, 'light'], [false, 'dark'
       await page.locator('.mobile-node-toolbar button[aria-label="Text color"]').click();
     }
     else {
-      await page.getByTitle('Text settings', { exact: true }).click();
-      await page.locator('.node-toolbar [aria-label="Text color"]').click();
+      // The toolbar's Text menu holds its colours itself.
+      await page.locator('[data-node-tool="text"]').click();
     }
     const menu = page.getByRole('group', { name: 'Text color', exact: true });
     const colors = menu.locator(mobile ? 'button[aria-label^="Text color "]' : '.tb-color:not(.tb-color-none)');
@@ -384,7 +381,7 @@ test('wheel scrolls long node text before panning canvas', async ({ page }) => {
   await expect(world).not.toHaveAttribute('style', before!);
 });
 
-test('a text block stops at 144×48 and can grow again', async ({ page }) => {
+test('a text block stops at 48×48 and can grow again', async ({ page }) => {
   await setup(page);
   const node = page.locator('[data-node-id="text"]');
   await node.click();
@@ -394,17 +391,17 @@ test('a text block stops at 144×48 and can grow again', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(box.x + 10, box.y + 10, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '144px', height: '48px' });
+  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '48px', height: '48px' });
   // The inline model size updates before CSS size transitions settle.
   // Wait for the rendered handle position before starting the next drag.
-  await expect(node).toHaveCSS('width', '144px');
+  await expect(node).toHaveCSS('width', '48px');
   await expect(node).toHaveCSS('height', '48px');
   const smallHandle = (await handle.boundingBox())!;
   await handle.hover();
   await page.mouse.down();
   await page.mouse.move(smallHandle.x + smallHandle.width / 2 + 48, smallHandle.y + smallHandle.height / 2 + 48, { steps: 5 });
   await page.mouse.up();
-  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '192px', height: '96px' });
+  await expect.poll(() => node.evaluate(el => ({ width: (el as HTMLElement).style.width, height: (el as HTMLElement).style.height }))).toEqual({ width: '96px', height: '96px' });
 });
 
 test('wheel scrolls a node text editor without moving the canvas', async ({ page }) => {
