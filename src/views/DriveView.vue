@@ -47,7 +47,7 @@
       <!-- Photos Tab View: feed of the whole drive or of the folder subtree -->
       <section v-if="activeTab === 'photos'" class="drive-photos-tab" data-photos-tab>
         <DriveContentHeader mode="photos" :photos-title="photosTitle" />
-        <DrivePhotos :folder-id="photosFolderId" @open-folder="openPhotoInFolder" />
+        <DrivePhotos @open-folder="openPhotoInFolder" />
       </section>
 
       <!-- Files Tab View -->
@@ -147,7 +147,7 @@ const { t } = useI18n();
 const { route, currentFolderId, activeSlice, activeSort, activeOrder, viewMode, loading, loadingMore, error, mobileSearchOpen } = useDrivePageState();
 
 // State
-const photosTitle = computed(() => (photosFolderId.value ? folderTitle.value : t('drivePhotos')));
+const photosTitle = computed(() => t('drivePhotos'));
 
 // File input & Uploads
 const uploadOverlay = ref<InstanceType<typeof DriveUploadOverlay> | null>(null);
@@ -185,7 +185,7 @@ const { phoneActive, itemDrivePath, onPhoneFetch, onPhoneEvict, ensureLoaded: en
   activeFileMenuId,
 });
 
-const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
+const { photosEnabled, activeTab, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
   currentFolderId,
   folderPath: computed(() => folderInfo.value?.path || []),
   onDownloadFile,

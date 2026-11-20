@@ -58,6 +58,13 @@ export function setToken(token: string, role = 'user', accessMode = 'user', user
   }
 }
 
+const authClearHooks = new Set<() => void>();
+
+export function onAuthCleared(fn: () => void): () => void {
+  authClearHooks.add(fn);
+  return () => authClearHooks.delete(fn);
+}
+
 export function clearToken() {
   // Signing out forgets this device's open tabs and drops their live pages.
   clearTabs();
@@ -65,6 +72,14 @@ export function clearToken() {
   localStorage.removeItem('userRole');
   localStorage.removeItem('accessMode');
   localStorage.removeItem('currentUser');
+  localStorage.removeItem('qcanva:photos:view:v1');
+  for (const hook of authClearHooks) {
+    try {
+      hook();
+    } catch {
+      // ignore cleanup errors during logout
+    }
+  }
 }
 
 export function getCurrentUser(): CurrentUser | null {
@@ -185,7 +200,10 @@ export async function request<T>(path: string, options: ApiRequestInit = {}): Pr
     throw new ApiError(res.status, planErrorText(body) || body.message || `HTTP ${res.status}`, body);
   }
 
-  if (res.status === 204) return undefined as T;
+  // 204/205 and empty bodies (e.g. DELETE /photos/albums/:id) carry no JSON.
+  if (res.status === 204 || res.status === 205 || res.headers?.get('content-length') === '0') {
+    return undefined as T;
+  }
   return res.json();
 }
 
