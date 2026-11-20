@@ -24,6 +24,7 @@
         <input
           v-model="query"
           type="search"
+          maxlength="200"
           class="dp-search-input"
           :placeholder="t('photosSearchPlaceholder')"
           :aria-label="t('photosSearchPlaceholder')"
@@ -42,6 +43,8 @@
         </button>
       </form>
     </header>
+
+    <p v-if="mockMode" class="dp-mock" role="status" data-photos-mock-banner>{{ t('photosMockBanner') }}</p>
 
     <!-- Across the whole width, above the feed and the panel, as in the mockup -->
     <PhotosViewBar v-if="!searchActive && (tab === 'feed' || albumId)" />
@@ -165,7 +168,7 @@
 <script setup lang="ts">
 import { Search, X } from '@lucide/vue';
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
-import { isSearchUnavailable, photosApi, type FeedItem } from '../../api/photos';
+import { isPhotosMock, isSearchUnavailable, photosApi, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 import FolderPickerDialog from '../FolderPickerDialog.vue';
 import PhotoPanel from './PhotoPanel.vue';
@@ -184,6 +187,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const view = usePhotosView();
+const mockMode = isPhotosMock();
 
 type MsgKey = Parameters<typeof t>[0];
 const fmt = (key: MsgKey, vars: Record<string, string | number>): string =>
@@ -312,8 +316,8 @@ watch(
 // ----- tabs and albums -----
 
 function setTab(next: Tab): void {
-  if (tab.value === next && albumId.value === null && !searchActive.value) return;
-  if (searchActive.value) clearSearch();
+  if (tab.value === next && albumId.value === null && !searchActive.value && !query.value) return;
+  clearSearch();
   tab.value = next;
   albumId.value = null;
   clearSelection();
@@ -331,7 +335,7 @@ function onTabsKeydown(e: KeyboardEvent): void {
 }
 
 function openAlbum(id: string): void {
-  if (searchActive.value) clearSearch();
+  clearSearch();
   tab.value = 'albums';
   albumId.value = id;
   albumName.value = '';
@@ -390,6 +394,7 @@ const actions = usePhotoSelectionActions({
   onAlbumChanged: (kind, id, fileIds) => {
     const feed = feedRef.value;
     if (!feed) return;
+    if (view.state.value.captions.includes('album')) feed.refreshAlbums?.();
     if (albumId.value || feedParams.value.levels.includes('album')) {
       void feed.refresh();
     } else {
@@ -484,7 +489,16 @@ function stepViewer(delta: number): void {
   viewer.value = { items: v.items, index };
   // An open panel follows the photo being viewed.
   if (panelId.value) panelId.value = v.items[index]!.fileId;
+  if (searchActive.value && index >= v.items.length - 5 && searchCursor.value !== null) {
+    loadMoreSearch();
+  }
 }
+
+watch(searchItems, (list) => {
+  if (viewer.value && searchActive.value) {
+    viewer.value = { ...viewer.value, items: list };
+  }
+});
 
 function onViewerInfo(item: FeedItem): void {
   viewer.value = null;
@@ -518,6 +532,9 @@ function onOpenAlbum(id: string): void {
 function onPanelChanged(change: { fileId: string; favorite?: boolean; albumIds?: string[] }): void {
   const { fileId, ...patch } = change;
   const feed = feedRef.value;
+  if (patch.albumIds !== undefined && view.state.value.captions.includes('album')) {
+    feed?.refreshAlbums?.();
+  }
   feed?.patchItem(fileId, patch);
   // The photo may have to leave (or move between) the groups on screen.
   const albumMoved = patch.albumIds !== undefined && (albumId.value !== null || feedParams.value.levels.includes('album'));
@@ -701,6 +718,15 @@ onBeforeUnmount(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+.dp-mock {
+  margin: 0;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: var(--ui-text-secondary);
+  background: var(--ui-surface-subtle);
+  border-radius: 8px;
 }
 
 .dp-panel {

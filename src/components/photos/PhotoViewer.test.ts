@@ -49,7 +49,7 @@ describe('PhotoViewer', () => {
     vi.resetModules();
     renditionMock.mockReset().mockImplementation(async (hash, size) => `blob:${hash}:${size}`);
     linkMock.mockReset().mockResolvedValue({ url: '/api/drive/files/v1/download?token=t', expiresAt: '' });
-    vi.doMock('../../api/photos', () => ({ renditionUrl: renditionMock }));
+    vi.doMock('../../api/photos', () => ({ renditionUrl: renditionMock, isPhotosMock: () => false }));
     vi.doMock('../../api/drive', async (importOriginal) => {
       const actual = await importOriginal<typeof import('../../api/drive')>();
       return { ...actual, driveApi: { ...actual.driveApi, getDownloadLink: linkMock } };

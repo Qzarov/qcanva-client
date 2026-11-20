@@ -115,4 +115,9 @@ const { t } = useI18n();
   border-color: var(--ui-brand);
   opacity: 1;
 }
+@media (hover: none) {
+  .pgh-pick {
+    opacity: 0.75;
+  }
+}
 </style>

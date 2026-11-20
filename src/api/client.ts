@@ -58,6 +58,13 @@ export function setToken(token: string, role = 'user', accessMode = 'user', user
   }
 }
 
+const authClearHooks = new Set<() => void>();
+
+export function onAuthCleared(fn: () => void): () => void {
+  authClearHooks.add(fn);
+  return () => authClearHooks.delete(fn);
+}
+
 export function clearToken() {
   // Signing out forgets this device's open tabs and drops their live pages.
   clearTabs();
@@ -65,6 +72,14 @@ export function clearToken() {
   localStorage.removeItem('userRole');
   localStorage.removeItem('accessMode');
   localStorage.removeItem('currentUser');
+  localStorage.removeItem('qcanva:photos:view:v1');
+  for (const hook of authClearHooks) {
+    try {
+      hook();
+    } catch {
+      // ignore cleanup errors during logout
+    }
+  }
 }
 
 export function getCurrentUser(): CurrentUser | null {

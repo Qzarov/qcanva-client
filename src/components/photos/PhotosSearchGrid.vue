@@ -31,7 +31,7 @@ const requested = new Set<string>();
 let alive = true;
 
 function requestThumb(item: FeedItem): void {
-  if (requested.has(item.hash)) return;
+  if (!item.processed || requested.has(item.hash)) return;
   requested.add(item.hash);
   renditionUrl(item.hash, 'thumbnail')
     .then((u) => {

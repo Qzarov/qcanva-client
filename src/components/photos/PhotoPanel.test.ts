@@ -389,4 +389,19 @@ describe('PhotoPanel', () => {
     expect(w.find('[data-panel-error]').exists()).toBe(false);
     expect(w.get('h3').text()).toBe('IMG_0001.jpg');
   });
+
+  it('Escape in the album menu closes only the menu and focuses +, and textarea caps length at 10000', async () => {
+    const w = await setup();
+    expect(w.get('[data-panel-desc]').attributes('maxlength')).toBe('10000');
+    await w.get('[data-panel-plus]').trigger('click');
+    await flushPromises();
+    expect(w.find('[data-panel-menu]').exists()).toBe(true);
+
+    await w.get('[data-panel-menu]').trigger('keydown.esc');
+    await flushPromises();
+    expect(w.find('[data-panel-menu]').exists()).toBe(false);
+    expect(w.emitted('close')).toBeUndefined();
+    expect(document.activeElement).toBe(w.get('[data-panel-plus]').element);
+    w.unmount();
+  });
 });

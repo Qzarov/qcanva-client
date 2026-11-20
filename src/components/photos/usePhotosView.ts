@@ -5,6 +5,7 @@ import {
   type ComputedRef,
   type Ref,
 } from 'vue';
+import { onAuthCleared } from '../../api/client';
 import {
   photosApi,
   type FeedParams,
@@ -248,6 +249,23 @@ const readonlyState = readonly(state) as unknown as Readonly<Ref<PhotosViewState
 let initialized = false;
 let touched = false;
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+export function resetPhotosView(): void {
+  if (debounceTimer !== null) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  initialized = false;
+  touched = false;
+  state.value = defaultPhotosViewState();
+  try {
+    getStorage()?.removeItem(PHOTOS_VIEW_STORAGE_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+onAuthCleared(resetPhotosView);
 
 function getStorage(): Storage | undefined {
   try {

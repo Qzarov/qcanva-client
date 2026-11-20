@@ -69,6 +69,7 @@
         <div class="pp-sec-h">
           <h4>{{ t('photosPanelAlbums') }}</h4>
           <button
+            ref="plusBtn"
             type="button"
             class="pp-plus"
             :aria-label="t('photosPanelAddToAlbum')"
@@ -92,7 +93,15 @@
           </button>
           <span v-if="albums.length === 0" class="pp-muted">{{ t('photosPanelNoAlbums') }}</span>
         </div>
-        <div v-if="menuOpen" class="pp-menu" role="group" :aria-label="t('photosPanelAddToAlbum')" data-panel-menu>
+        <div
+          v-if="menuOpen"
+          ref="menuEl"
+          class="pp-menu"
+          role="group"
+          :aria-label="t('photosPanelAddToAlbum')"
+          data-panel-menu
+          @keydown.esc.stop="closeMenu(true)"
+        >
           <button
             v-for="a in allAlbums"
             :key="a.id"
@@ -127,6 +136,7 @@
           :id="descId"
           v-model="description"
           class="pp-desc"
+          maxlength="10000"
           :placeholder="t('photosPanelDescriptionPlaceholder')"
           data-panel-desc
           @blur="flushDescription"
@@ -138,7 +148,7 @@
 
 <script setup lang="ts">
 import { Check, Heart, Plus, X } from '@lucide/vue';
-import { computed, onBeforeUnmount, ref, useId, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import { downloadDriveFile, formatFileSize } from '../../api/drive';
 import {
   photosApi,
@@ -322,6 +332,25 @@ function close(): void {
 
 const memberIds = computed(() => new Set(albums.value.map((a) => a.id)));
 const isMember = (id: string): boolean => memberIds.value.has(id);
+
+const plusBtn = ref<HTMLButtonElement | null>(null);
+const menuEl = ref<HTMLElement | null>(null);
+
+function closeMenu(restoreFocus = false): void {
+  if (!menuOpen.value) return;
+  menuOpen.value = false;
+  if (restoreFocus) void nextTick(() => plusBtn.value?.focus());
+}
+
+function onDocPointerDown(e: PointerEvent): void {
+  if (!menuOpen.value) return;
+  const target = e.target as Node | null;
+  if (target && (menuEl.value?.contains(target) || plusBtn.value?.contains(target))) return;
+  closeMenu(false);
+}
+
+onMounted(() => document.addEventListener('pointerdown', onDocPointerDown));
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown));
 
 async function toggleMenu(): Promise<void> {
   menuOpen.value = !menuOpen.value;

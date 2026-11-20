@@ -16,7 +16,8 @@ import {
   setPhotosMock,
   type FeedParams,
 } from './photos';
-import { ApiError, request } from './client';
+import { ApiError, clearToken, request } from './client';
+import { usePhotosView } from '../components/photos/usePhotosView';
 
 vi.mock('./client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./client')>();
@@ -325,5 +326,61 @@ describe('photos API', () => {
     expect(isSearchUnavailable(new ApiError(500, 'x', { code: 'search_unavailable' }))).toBe(false);
     expect(isSearchUnavailable(new Error('search_unavailable'))).toBe(false);
     expect(isSearchUnavailable(null)).toBe(false);
+  });
+
+  it('chunks addToAlbum and removeFromAlbum requests at 1000 items', async () => {
+    setPhotosMock(false);
+    const ids = Array.from({ length: 2050 }, (_, i) => `f-${i}`);
+    vi.mocked(request)
+      .mockResolvedValueOnce({ added: 1000 })
+      .mockResolvedValueOnce({ added: 1000 })
+      .mockResolvedValueOnce({ added: 50 });
+
+    const added = await hubPhotosApi.addToAlbum('alb-1', ids);
+    expect(added).toBe(2050);
+    expect(request).toHaveBeenCalledTimes(3);
+    expect(JSON.parse((vi.mocked(request).mock.calls[0]![1] as RequestInit).body as string).fileIds).toHaveLength(1000);
+    expect(JSON.parse((vi.mocked(request).mock.calls[2]![1] as RequestInit).body as string).fileIds).toHaveLength(50);
+
+    vi.mocked(request).mockClear();
+    vi.mocked(request)
+      .mockResolvedValueOnce({ removed: 600 })
+      .mockResolvedValueOnce({ removed: 200 });
+    const removed = await hubPhotosApi.removeFromAlbum('alb-1', ids.slice(0, 1200));
+    expect(removed).toBe(800);
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
+  it('clearToken clears rendition token cache, drops stale in-flight tokens, and resets photos view state', async () => {
+    setPhotosMock(false);
+    let resolveTokens!: (v: { tokens: Record<string, string>; expiresAt: string }) => void;
+    vi.mocked(request)
+      .mockResolvedValueOnce({ value: { sort: [{ key: 'size', desc: false }], tile: 'l' } })
+      .mockImplementationOnce(() => new Promise((r) => { resolveTokens = r; }));
+
+    const view = usePhotosView();
+    await Promise.resolve();
+    view.cycleTile();
+    expect(view.state.value.tile).toBe('l');
+    expect(localStorage.getItem('qcanva:photos:view:v1')).toBeTruthy();
+
+    const staleReq = renditionUrl('stale-hash', 'thumbnail');
+    await Promise.resolve();
+    clearToken();
+
+    resolveTokens({
+      tokens: { 'stale-hash': 'tok-user-a' },
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    await expect(staleReq).rejects.toThrow(/reset|cleared/i);
+
+    vi.mocked(request).mockResolvedValueOnce({
+      tokens: { 'stale-hash': 'tok-user-b' },
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    const freshUrl = await renditionUrl('stale-hash', 'thumbnail');
+    expect(freshUrl).toContain('tok-user-b');
+    expect(localStorage.getItem('qcanva:photos:view:v1')).toBeNull();
+    expect(view.state.value.tile).toBe('m');
   });
 });

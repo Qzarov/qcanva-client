@@ -88,7 +88,7 @@
 import { ChevronLeft, ChevronRight, Hourglass, Info, X } from '@lucide/vue';
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { driveApi, resolveDownloadUrl } from '../../api/drive';
-import { renditionUrl, type FeedItem } from '../../api/photos';
+import { isPhotosMock, renditionUrl, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 
 const props = defineProps<{
@@ -128,6 +128,12 @@ let imgRequest = 0;
  */
 async function loadImage(): Promise<void> {
   const request = ++imgRequest;
+  if (!props.item.processed) {
+    imgSrc.value = null;
+    imgSize = null;
+    imgLoading.value = false;
+    return;
+  }
   imgLoading.value = true;
   for (const size of SIZES) {
     if (failedSizes.has(size)) continue;
@@ -179,6 +185,10 @@ async function loadVideo(): Promise<void> {
   videoSource.value = null;
   videoFailed.value = false;
   if (props.item.kind !== 'video') return;
+  if (isPhotosMock()) {
+    videoFailed.value = true;
+    return;
+  }
   try {
     // The hub does not say whether a transcoded rendition exists: try it, and
     // let the playback error send us to the original.

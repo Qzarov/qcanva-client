@@ -10,6 +10,7 @@ const itemsMock = vi.fn<
 >();
 const albumsMock = vi.fn();
 const renditionMock = vi.fn<(hash: string, size: string) => Promise<string>>();
+const invalidateMock = vi.fn<(hash: string) => void>();
 const getFolderMock = vi.fn();
 const isMockMode = vi.fn(() => false);
 
@@ -146,6 +147,7 @@ describe('PhotosFeed', () => {
     renditionMock.mockReset().mockImplementation(async (hash) => `blob:${hash}`);
     getFolderMock.mockReset().mockResolvedValue({ folder: { name: 'Алтай' }, path: [] });
     isMockMode.mockReset().mockReturnValue(false);
+    invalidateMock.mockReset();
     vi.doMock('../../api/photos', () => ({
       photosApi: {
         summary: summaryMock,
@@ -155,6 +157,7 @@ describe('PhotosFeed', () => {
         putPreference: vi.fn().mockResolvedValue(undefined),
       },
       renditionUrl: renditionMock,
+      invalidateRenditionToken: invalidateMock,
       isPhotosMock: isMockMode,
     }));
     vi.doMock('../../api/drive', async (importOriginal) => {
@@ -597,6 +600,53 @@ describe('PhotosFeed', () => {
     await api.refresh();
     await settle();
     expect(summaryMock).toHaveBeenCalledTimes(2);
+    w.unmount();
+  });
+
+  it('collapsed share block still fetches page 2 when group has more items', async () => {
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 3 }] });
+    itemsMock
+      .mockResolvedValueOnce({
+        items: [mkItem(0, { share: { rootFolderId: 'sh1', rootName: 'Отпуск', ownerId: 'u2', ownerName: 'Аня' } })],
+        nextCursor: 'c2',
+      })
+      .mockResolvedValueOnce({
+        items: [mkItem(1), mkItem(2)],
+        nextCursor: null,
+      });
+
+    const { usePhotosView } = await import('./usePhotosView');
+    usePhotosView().toggleShareCollapsed('sh1');
+
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    expect(itemsMock).toHaveBeenCalledTimes(2);
+    expect(w.find('[data-file-id="f1"]').exists()).toBe(true);
+    w.unmount();
+  });
+
+  it('onThumbError invalidates cached token and retries once before placeholder', async () => {
+    summaryMock.mockResolvedValue({ groups: [{ key: '2026-10', count: 1 }] });
+    itemsMock.mockResolvedValue({ items: [mkItem(0)], nextCursor: null });
+    renditionMock
+      .mockResolvedValueOnce('blob:h0-stale')
+      .mockResolvedValueOnce('blob:h0-fresh');
+
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+
+    await w.get('[data-file-id="f0"] img').trigger('error');
+    await settle();
+    expect(invalidateMock).toHaveBeenCalledWith('h0');
+    expect(w.get('[data-file-id="f0"] img').attributes('src')).toBe('blob:h0-fresh');
+
+    await w.get('[data-file-id="f0"] img').trigger('error');
+    await settle();
+    expect(w.find('[data-file-id="f0"] img').exists()).toBe(false);
+    expect(invalidateMock).toHaveBeenCalledTimes(1);
     w.unmount();
   });
 });

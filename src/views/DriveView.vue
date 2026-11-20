@@ -185,7 +185,7 @@ const { phoneActive, itemDrivePath, onPhoneFetch, onPhoneEvict, ensureLoaded: en
   activeFileMenuId,
 });
 
-const { photosEnabled, activeTab, photosFolderId, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
+const { photosEnabled, activeTab, setTab, openPhotoInFolder, onItemClick, navigateToFolder, goBack } = useDriveNavigation({
   currentFolderId,
   folderPath: computed(() => folderInfo.value?.path || []),
   onDownloadFile,

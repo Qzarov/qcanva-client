@@ -4,7 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../api/client';
-import type { FeedItem } from '../../api/photos';
+import { isPhotosMock, type FeedItem } from '../../api/photos';
 import { useI18n } from '../../composables/useI18n';
 import DrivePhotos from './DrivePhotos.vue';
 import { usePhotosView } from './usePhotosView';
@@ -62,7 +62,7 @@ const FeedStub = defineComponent({
   props: ['params', 'captionOnTile', 'tile', 'selected', 'current'],
   emits: ['open', 'activate', 'toggle-select'],
   setup(props, { emit, expose }) {
-    expose({ orderedItems: () => feedItems, refresh: feedRefresh, patchItem: feedPatch });
+    expose({ orderedItems: () => feedItems, refresh: feedRefresh, refreshAlbums: vi.fn(), patchItem: feedPatch });
     return () =>
       h(
         'div',
@@ -363,5 +363,29 @@ describe('DrivePhotos', () => {
       await w.get('[data-stub-chg-fav]').trigger('click');
       expect(feedRefresh).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('switching tabs within debounce cancels pending search, caps search input at 200, and shows mock banner when mock enabled', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(isPhotosMock).mockReturnValueOnce(true);
+      const w = mountIt();
+      await flushPromises();
+      expect(w.get('[data-photos-mock-banner]').text()).toBeTruthy();
+
+      const input = w.get('[data-photos-search-input]');
+      expect(input.attributes('maxlength')).toBe('200');
+      await input.setValue('pending query');
+      await w.findAll('[role="tab"]')[1]!.trigger('click');
+      await vi.advanceTimersByTimeAsync(400);
+      await flushPromises();
+
+      expect(searchMock).not.toHaveBeenCalled();
+      expect(w.find('[data-testid="albums-stub"]').exists()).toBe(true);
+      expect((input.element as HTMLInputElement).value).toBe('');
+      w.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

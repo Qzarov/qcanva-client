@@ -1,3 +1,15 @@
+<script lang="ts">
+import { onAuthCleared } from '../../api/client';
+
+const hashCache = new Map<string, Promise<string | null>>();
+
+export function clearAlbumCoverCache(): void {
+  hashCache.clear();
+}
+
+onAuthCleared(clearAlbumCoverCache);
+</script>
+
 <script setup lang="ts">
 /**
  * The "Albums" tab: a grid of album covers (a collage of up to three photos),
@@ -38,34 +50,40 @@ const root = ref<HTMLElement | null>(null);
 let alive = true;
 let loadSeq = 0;
 
-const hashCache = new Map<string, Promise<string | null>>();
-
 /** At most this many `details()` calls in flight; the rest wait in list order. */
 const MAX_COVER_REQUESTS = 6;
 let activeCovers = 0;
-const waitingCovers: (() => void)[] = [];
+const waitingCovers: { run: () => void; cancel: () => void }[] = [];
 
-async function limited<T>(job: () => Promise<T>): Promise<T> {
+async function limited<T>(job: () => Promise<T>, isActive: () => boolean): Promise<T> {
   if (activeCovers >= MAX_COVER_REQUESTS) {
-    await new Promise<void>((resolve) => waitingCovers.push(resolve));
+    await new Promise<void>((resolve, reject) => {
+      waitingCovers.push({
+        run: resolve,
+        cancel: () => reject(new Error('Album cover request cancelled')),
+      });
+    });
   } else {
     activeCovers += 1;
   }
   try {
+    if (!isActive()) {
+      throw new Error('Album cover request cancelled');
+    }
     return await job();
   } finally {
     const next = waitingCovers.shift();
-    if (next) next();
+    if (next) next.run();
     else activeCovers -= 1;
   }
 }
 
 const isGone = (e: unknown): boolean => (e as { status?: number } | null)?.status === 404;
 
-function hashOf(fileId: string): Promise<string | null> {
+function hashOf(fileId: string, seq: number): Promise<string | null> {
   let p = hashCache.get(fileId);
   if (!p) {
-    p = limited(() => photosApi.details(fileId)).then(
+    p = limited(() => photosApi.details(fileId), () => alive && seq === loadSeq).then(
       (d) => d.item.hash || null,
       () => {
         hashCache.delete(fileId);
@@ -82,8 +100,9 @@ async function loadCovers(list: Album[], seq: number): Promise<void> {
     list.map(async (album) => {
       const urls = await Promise.all(
         album.coverFileIds.slice(0, 3).map(async (fileId) => {
-          const hash = await hashOf(fileId);
-          if (!hash) return '';
+          if (!alive || seq !== loadSeq) return '';
+          const hash = await hashOf(fileId, seq);
+          if (!hash || !alive || seq !== loadSeq) return '';
           try {
             return await renditionUrl(hash, 'thumbnail');
           } catch {
@@ -221,6 +240,9 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   alive = false;
+  while (waitingCovers.length > 0) {
+    waitingCovers.shift()?.cancel();
+  }
   document.removeEventListener('pointerdown', onPointerDown);
 });
 

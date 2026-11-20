@@ -1,4 +1,4 @@
-import { API_BASE, ApiError, request } from './client';
+import { API_BASE, ApiError, onAuthCleared, request } from './client';
 import { resolveDownloadUrl } from './drive';
 import { createPhotosMock, renditionUrlMock, type PhotosMockApi, type PhotosMockDrive } from './photos.mock';
 
@@ -311,19 +311,29 @@ export const hubPhotosApi: PhotosApi = {
   },
 
   async addToAlbum(id: string, fileIds: string[]): Promise<number> {
-    const res = await request<{ added: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
-      method: 'PUT',
-      body: JSON.stringify({ fileIds }),
-    });
-    return res.added;
+    let added = 0;
+    for (let i = 0; i < fileIds.length; i += 1000) {
+      const chunk = fileIds.slice(i, i + 1000);
+      const res = await request<{ added: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
+        method: 'PUT',
+        body: JSON.stringify({ fileIds: chunk }),
+      });
+      added += res.added;
+    }
+    return added;
   },
 
   async removeFromAlbum(id: string, fileIds: string[]): Promise<number> {
-    const res = await request<{ removed: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
-      method: 'DELETE',
-      body: JSON.stringify({ fileIds }),
-    });
-    return res.removed;
+    let removed = 0;
+    for (let i = 0; i < fileIds.length; i += 1000) {
+      const chunk = fileIds.slice(i, i + 1000);
+      const res = await request<{ removed: number }>(`/photos/albums/${encodeURIComponent(id)}/items`, {
+        method: 'DELETE',
+        body: JSON.stringify({ fileIds: chunk }),
+      });
+      removed += res.removed;
+    }
+    return removed;
   },
 
   async getPreference<T>(key: string): Promise<T | null> {
@@ -350,15 +360,28 @@ let pendingBatch = new Map<
   }
 >();
 let batchScheduled = false;
+let tokenEpoch = 0;
 
 export function clearRenditionTokenCache(): void {
+  tokenEpoch += 1;
   tokenCache.clear();
   inFlight.clear();
+  for (const entry of pendingBatch.values()) {
+    entry.reject(new Error('Rendition token cache cleared'));
+  }
   pendingBatch.clear();
   batchScheduled = false;
 }
 
+export function invalidateRenditionToken(hash: string): void {
+  tokenCache.delete(hash);
+  inFlight.delete(hash);
+}
+
+onAuthCleared(clearRenditionTokenCache);
+
 function flushBatch(): void {
+  const myEpoch = tokenEpoch;
   const currentBatch = new Map(pendingBatch);
   pendingBatch.clear();
   batchScheduled = false;
@@ -380,6 +403,12 @@ function flushBatch(): void {
           body: JSON.stringify({ hashes: chunk }),
         });
         const expiresAt = Date.parse(res.expiresAt) || Date.now() + 3_600_000;
+        if (myEpoch !== tokenEpoch) {
+          for (const h of chunk) {
+            currentBatch.get(h)?.reject(new Error('Rendition token session reset'));
+          }
+          return;
+        }
         for (const h of chunk) {
           inFlight.delete(h);
           const entry = currentBatch.get(h);
@@ -393,7 +422,9 @@ function flushBatch(): void {
         }
       } catch (err) {
         for (const h of chunk) {
-          inFlight.delete(h);
+          if (myEpoch === tokenEpoch) {
+            inFlight.delete(h);
+          }
           const entry = currentBatch.get(h);
           entry?.reject(err);
         }

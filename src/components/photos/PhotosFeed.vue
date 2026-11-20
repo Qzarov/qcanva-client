@@ -10,6 +10,7 @@ import {
   watch,
 } from 'vue';
 import {
+  invalidateRenditionToken,
   isPhotosMock,
   photosApi,
   renditionUrl,
@@ -103,7 +104,7 @@ const albumNames = shallowRef(new Map<string, string>());
 let albumsRequested = false;
 
 /** Anchor that survives a transition through an empty layout (hidden tab, zero width). */
-let keptAnchor: Anchor | null = null;
+let keptAnchor: { anchor: Anchor; item: FeedItem | null } | null = null;
 /** Anchor waiting for the units of a refetched feed to load. */
 let pending: { anchor: Anchor; units: Array<{ group: string; sub?: string }>; pages: number } | null = null;
 
@@ -172,7 +173,13 @@ function rebuildIndexes(next: Layout): void {
   unitEnd.clear();
   for (const row of next.rows) {
     if (row.kind === 'h1') h1.push(row);
-    if (row.kind === 'tiles' || row.kind === 'placeholder') {
+    if (
+      row.kind === 'h1' ||
+      row.kind === 'h2' ||
+      row.kind === 'share' ||
+      row.kind === 'tiles' ||
+      row.kind === 'placeholder'
+    ) {
       unitEnd.set(unitKeyOf(row), row.top + row.height);
     }
   }
@@ -234,9 +241,9 @@ function relayout(): void {
       // Only before a relayout, never per scroll event. null (a placeholder under the
       // line) means: do not jump.
       anchor = anchorAt(old.rows, lastScrollTop, STICKY_OFFSET);
-      if (anchor) keptAnchor = anchor;
+      if (anchor) keptAnchor = { anchor, item: findItem(anchor.fileId) };
     } else {
-      anchor = keptAnchor;
+      anchor = keptAnchor?.anchor ?? null;
     }
   }
 
@@ -349,6 +356,22 @@ function distanceTo(row: Row): number {
   return 0;
 }
 
+function queueNextUnitPage(row: Row, bottom: number, next: Map<string, Task>): void {
+  const key = unitKeyOf(row);
+  const have = items.value.get(key);
+  const total = unitCount.get(key) ?? 0;
+  if (
+    have &&
+    have.length < total &&
+    cursors.get(key) &&
+    (unitEnd.get(key) ?? 0) <= bottom &&
+    !inflight.has(key) &&
+    !failed.has(key)
+  ) {
+    next.set(`u:${key}`, { dist: distanceTo(row), run: () => loadUnit(row.groupKey, row.subKey) });
+  }
+}
+
 function ensureLoaded(): void {
   const rows = visibleRows(layout.value.rows, lastScrollTop, viewportH.value, OVERSCAN);
   const bottom = lastScrollTop + viewportH.value + OVERSCAN;
@@ -360,20 +383,10 @@ function ensureLoaded(): void {
       if (!inflight.has(key) && !failed.has(key)) {
         next.set(`u:${key}`, { dist: distanceTo(row), run: () => loadUnit(row.groupKey, row.subKey) });
       }
+    } else if (row.kind === 'share') {
+      queueNextUnitPage(row, bottom, next);
     } else if (row.kind === 'tiles') {
-      const key = unitKeyOf(row);
-      const have = items.value.get(key);
-      const total = unitCount.get(key) ?? 0;
-      if (
-        have &&
-        have.length < total &&
-        cursors.get(key) &&
-        (unitEnd.get(key) ?? 0) <= bottom &&
-        !inflight.has(key) &&
-        !failed.has(key)
-      ) {
-        next.set(`u:${key}`, { dist: distanceTo(row), run: () => loadUnit(row.groupKey, row.subKey) });
-      }
+      queueNextUnitPage(row, bottom, next);
       for (const tl of row.tiles ?? []) {
         requestThumb(tl.item);
         const id = tl.item.folderId;
@@ -483,9 +496,14 @@ async function refresh(): Promise<void> {
   const my = ++epoch;
   const old = layout.value;
   let anchor: Anchor | null = old.rows.length > 0 ? anchorAt(old.rows, lastScrollTop, STICKY_OFFSET) : null;
-  if (anchor) keptAnchor = anchor;
-  else anchor = keptAnchor;
-  const anchorItem = anchor ? findItem(anchor.fileId) : null;
+  let anchorItem: FeedItem | null = null;
+  if (anchor) {
+    anchorItem = findItem(anchor.fileId);
+    keptAnchor = { anchor, item: anchorItem };
+  } else if (keptAnchor) {
+    anchor = keptAnchor.anchor;
+    anchorItem = keptAnchor.item ?? findItem(anchor.fileId);
+  }
   const params = props.params;
 
   if (groups.value.length === 0) status.value = 'loading';
@@ -673,8 +691,18 @@ function tileLabel(item: FeedItem): string {
   return day ? `${item.name}, ${dateGroupTitle(day, 'day', locale.value)}` : item.name;
 }
 
+const retriedThumbs = new Set<string>();
+
 function onThumbError(item: FeedItem): void {
-  thumbs.set(item.hash, null);
+  if (!item.processed || retriedThumbs.has(item.hash)) {
+    thumbs.set(item.hash, null);
+    return;
+  }
+  retriedThumbs.add(item.hash);
+  invalidateRenditionToken(item.hash);
+  renditionUrl(item.hash, 'thumbnail')
+    .then((u) => thumbs.set(item.hash, u))
+    .catch(() => thumbs.set(item.hash, null));
 }
 
 function toggleOne(item: FeedItem): void {
@@ -720,8 +748,10 @@ function groupPressed(group: string, sub?: string): boolean {
 }
 
 async function pickGroup(group: string, sub?: string): Promise<void> {
+  const my = epoch;
   const units = unitsOf(group, sub);
   await Promise.all(units.map((u) => loadAll(u.group, u.sub)));
+  if (my !== epoch) return;
   const ids = new Set<string>();
   for (const u of units) {
     for (const i of items.value.get(unitKey(u.group, u.sub)) ?? []) ids.add(i.fileId);
@@ -826,7 +856,12 @@ function patchItem(fileId: string, patch: Partial<Pick<FeedItem, 'favorite' | 'a
   relayout();
 }
 
-defineExpose({ orderedItems, refresh, patchItem });
+function refreshAlbums(): void {
+  albumsRequested = false;
+  requestAlbums();
+}
+
+defineExpose({ orderedItems, refresh, refreshAlbums, patchItem });
 
 onBeforeUnmount(() => {
   epoch++;
@@ -1124,6 +1159,11 @@ onBeforeUnmount(() => {
 .pf-tile:focus-within .pf-chk,
 .sel-on .pf-chk {
   opacity: 1;
+}
+@media (hover: none) {
+  .pf-chk {
+    opacity: 0.9;
+  }
 }
 .pf-tile.sel {
   outline: 3px solid var(--ui-brand);
