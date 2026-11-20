@@ -20,6 +20,7 @@ export interface HiddenPublicResource {
 
 export type AdminSettingsSource = 'db' | 'env' | 'default';
 
+// схема хаба не описывает ответ
 export interface AdminStorageUsage {
   usedBytes: number;
   blobs: number;
@@ -30,6 +31,7 @@ export interface AdminStorageUsage {
   freeBytes: number | null;
 }
 
+// схема хаба не описывает ответ
 export interface AdminSettings {
   driveMaxFileBytes: number;
   driveMaxFileBytesDefault: number;
@@ -56,6 +58,8 @@ export const adminApi = {
     return adminRequest<AdminSettings>('/admin/settings');
   },
 
+  // схема хаба не описывает тело
+  // схема хаба не описывает ответ
   updateSettings(body: { driveMaxFileBytes?: number | null; storageCapacityBytes?: number | null }): Promise<AdminSettings | { ok: boolean }> {
     return adminRequest<AdminSettings | { ok: boolean }>('/admin/settings', {
       method: 'PUT',
