@@ -13,6 +13,7 @@ const searchMock = vi.hoisted(() => vi.fn());
 const albumsMock = vi.hoisted(() => vi.fn());
 const feedRefresh = vi.hoisted(() => vi.fn());
 const feedPatch = vi.hoisted(() => vi.fn());
+const feedLoadMore = vi.hoisted(() => vi.fn(async () => false));
 
 vi.mock('../../api/photos', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../api/photos')>();
@@ -56,13 +57,21 @@ function mkItem(i: number, over: Partial<FeedItem> = {}): FeedItem {
 
 const feedItems = [mkItem(0), mkItem(1)];
 
+let extraFeedItems: FeedItem[] = [];
+
 /** Stand-ins for the heavy children: the container's wiring is what is under test. */
 const FeedStub = defineComponent({
   name: 'PhotosFeed',
   props: ['params', 'captionOnTile', 'tile', 'selected', 'current'],
   emits: ['open', 'activate', 'toggle-select'],
   setup(props, { emit, expose }) {
-    expose({ orderedItems: () => feedItems, refresh: feedRefresh, refreshAlbums: vi.fn(), patchItem: feedPatch });
+    expose({
+      orderedItems: () => [...feedItems, ...extraFeedItems],
+      refresh: feedRefresh,
+      refreshAlbums: vi.fn(),
+      patchItem: feedPatch,
+      loadMore: feedLoadMore,
+    });
     return () =>
       h(
         'div',
@@ -120,7 +129,13 @@ const ViewBarStub = defineComponent({ name: 'PhotosViewBar', setup: () => () => 
 const ViewerStub = defineComponent({
   name: 'PhotoViewer',
   props: ['item', 'index', 'total', 'hasPrev', 'hasNext'],
-  setup: (p) => () => h('div', { 'data-testid': 'viewer-stub' }, `${(p.item as FeedItem).fileId}`),
+  emits: ['next'],
+  setup: (p, { emit }) => () =>
+    h(
+      'div',
+      { 'data-testid': 'viewer-stub', 'data-total': String(p.total), onClick: () => emit('next') },
+      `${(p.item as FeedItem).fileId}`,
+    ),
 });
 
 let wrapper: VueWrapper | null = null;
@@ -148,8 +163,10 @@ describe('DrivePhotos', () => {
     localStorage.clear();
     useI18n().setLocale('ru');
     usePhotosView().reset();
+    extraFeedItems = [];
     feedRefresh.mockReset();
     feedPatch.mockReset();
+    feedLoadMore.mockReset().mockResolvedValue(false);
     searchMock.mockReset().mockResolvedValue({ items: [mkItem(7), mkItem(8)], nextCursor: null });
     albumsMock.mockReset().mockResolvedValue([{ id: 'alb1', name: 'Алтай', count: 2, bytes: 0, coverFileIds: [] }]);
   });
@@ -387,5 +404,21 @@ describe('DrivePhotos', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('stepping near end of feed in PhotoViewer triggers feed loadMore and syncs viewer items', async () => {
+    feedLoadMore.mockImplementationOnce(async () => {
+      extraFeedItems = [mkItem(99)];
+      return true;
+    });
+    const w = mountIt();
+    await flushPromises();
+    await w.get('[data-file-id="f0"]').trigger('dblclick');
+    await flushPromises();
+    expect(feedLoadMore).toHaveBeenCalledTimes(1);
+    expect(w.get('[data-testid="viewer-stub"]').attributes('data-total')).toBe('3');
+    await w.get('[data-testid="viewer-stub"]').trigger('click');
+    await w.get('[data-testid="viewer-stub"]').trigger('click');
+    expect(w.get('[data-testid="viewer-stub"]').text()).toBe('f99');
   });
 });

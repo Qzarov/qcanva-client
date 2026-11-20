@@ -616,13 +616,14 @@ describe('PhotosFeed', () => {
       });
 
     const { usePhotosView } = await import('./usePhotosView');
-    usePhotosView().toggleShareCollapsed('sh1');
+    usePhotosView().toggleShareCollapsed('2026-10||sh1');
 
     const Feed = await load();
     const w = mountFeed(Feed);
     await settle();
 
     expect(itemsMock).toHaveBeenCalledTimes(2);
+    expect(w.find('[data-file-id="f0"]').exists()).toBe(false);
     expect(w.find('[data-file-id="f1"]').exists()).toBe(true);
     w.unmount();
   });
@@ -647,6 +648,43 @@ describe('PhotosFeed', () => {
     await settle();
     expect(w.find('[data-file-id="f0"] img').exists()).toBe(false);
     expect(invalidateMock).toHaveBeenCalledTimes(1);
+    w.unmount();
+  });
+
+  it('loadMore loads the next page of a paged group, then the next unloaded group', async () => {
+    const octPage1 = Array.from({ length: 48 }, (_, i) => mkItem(i));
+    summaryMock.mockResolvedValue({
+      groups: [
+        { key: '2026-10', count: 80 },
+        { key: '2026-09', count: 1 },
+      ],
+    });
+    itemsMock
+      .mockResolvedValueOnce({ items: octPage1, nextCursor: 'c2' })
+      .mockResolvedValueOnce({ items: [mkItem(48)], nextCursor: null })
+      .mockResolvedValueOnce({
+        items: [mkItem(49, { localTakenAt: '2026-09-10T10:00:00.000Z', takenAt: '2026-09-10T10:00:00.000Z' })],
+        nextCursor: null,
+      });
+
+    const Feed = await load();
+    const w = mountFeed(Feed);
+    await settle();
+    const api = w.vm as unknown as {
+      orderedItems(): FeedItem[];
+      loadMore(): Promise<boolean>;
+    };
+    expect(api.orderedItems()).toHaveLength(48);
+
+    expect(await api.loadMore()).toBe(true);
+    expect(api.orderedItems()).toHaveLength(49);
+    expect(api.orderedItems()[48]!.fileId).toBe('f48');
+
+    expect(await api.loadMore()).toBe(true);
+    expect(api.orderedItems()).toHaveLength(50);
+    expect(api.orderedItems()[49]!.fileId).toBe('f49');
+
+    expect(await api.loadMore()).toBe(false);
     w.unmount();
   });
 });

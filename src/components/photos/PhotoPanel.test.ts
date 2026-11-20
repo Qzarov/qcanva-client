@@ -402,6 +402,15 @@ describe('PhotoPanel', () => {
     expect(w.find('[data-panel-menu]').exists()).toBe(false);
     expect(w.emitted('close')).toBeUndefined();
     expect(document.activeElement).toBe(w.get('[data-panel-plus]').element);
+
+    // Pressing Escape while focus is still on the trigger (+) also closes only the menu.
+    await w.get('[data-panel-plus]').trigger('click');
+    await flushPromises();
+    expect(w.find('[data-panel-menu]').exists()).toBe(true);
+    await w.get('[data-panel-plus]').trigger('keydown.esc');
+    await flushPromises();
+    expect(w.find('[data-panel-menu]').exists()).toBe(false);
+    expect(w.emitted('close')).toBeUndefined();
     w.unmount();
   });
 });

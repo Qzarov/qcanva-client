@@ -861,7 +861,24 @@ function refreshAlbums(): void {
   requestAlbums();
 }
 
-defineExpose({ orderedItems, refresh, refreshAlbums, patchItem });
+async function loadMore(): Promise<boolean> {
+  const my = epoch;
+  for (const g of groups.value) {
+    const units: Array<{ group: string; sub?: string }> =
+      g.subs && g.subs.length > 0 ? g.subs.map((s) => ({ group: g.key, sub: s.key })) : [{ group: g.key }];
+    for (const u of units) {
+      const key = unitKey(u.group, u.sub);
+      if (failed.has(key)) continue;
+      if (!items.value.has(key) || Boolean(cursors.get(key))) {
+        await loadUnit(u.group, u.sub);
+        return my === epoch;
+      }
+    }
+  }
+  return false;
+}
+
+defineExpose({ orderedItems, refresh, refreshAlbums, patchItem, loadMore });
 
 onBeforeUnmount(() => {
   epoch++;

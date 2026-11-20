@@ -467,18 +467,39 @@ function onOpen(item: FeedItem): void {
   }
 }
 
+function maybeLoadMoreForViewer(index: number, items: FeedItem[]): void {
+  if (index < items.length - 5) return;
+  if (searchActive.value) {
+    if (searchCursor.value !== null) loadMoreSearch();
+    return;
+  }
+  const activeId = items[index]?.fileId;
+  void Promise.resolve(feedRef.value?.loadMore?.()).then((loaded) => {
+    if (!loaded || !viewer.value || searchActive.value) return;
+    const fresh = feedRef.value?.orderedItems() ?? [];
+    if (fresh.length === 0) return;
+    const targetId = viewer.value.items[viewer.value.index]?.fileId ?? activeId;
+    const found = targetId ? fresh.findIndex((i) => i.fileId === targetId) : -1;
+    const nextIdx = found >= 0 ? found : Math.min(viewer.value.index, fresh.length - 1);
+    viewer.value = { items: fresh, index: nextIdx };
+  });
+}
+
 function onActivate(item: FeedItem): void {
   const items = shownItems();
   const index = items.findIndex((i) => i.fileId === item.fileId);
   if (index < 0) return;
   panelId.value = item.fileId;
   viewer.value = { items, index };
+  maybeLoadMoreForViewer(index, items);
 }
 
 function onOpenViewerFromPanel(fileId: string): void {
   const items = shownItems();
   const index = items.findIndex((i) => i.fileId === fileId);
-  if (index >= 0) viewer.value = { items, index };
+  if (index < 0) return;
+  viewer.value = { items, index };
+  maybeLoadMoreForViewer(index, items);
 }
 
 function stepViewer(delta: number): void {
@@ -489,9 +510,7 @@ function stepViewer(delta: number): void {
   viewer.value = { items: v.items, index };
   // An open panel follows the photo being viewed.
   if (panelId.value) panelId.value = v.items[index]!.fileId;
-  if (searchActive.value && index >= v.items.length - 5 && searchCursor.value !== null) {
-    loadMoreSearch();
-  }
+  maybeLoadMoreForViewer(index, v.items);
 }
 
 watch(searchItems, (list) => {

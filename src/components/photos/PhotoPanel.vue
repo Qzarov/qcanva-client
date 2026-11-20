@@ -65,7 +65,11 @@
         </nav>
       </section>
 
-      <section class="pp-sec" data-panel-albums>
+      <section
+        class="pp-sec"
+        data-panel-albums
+        @keydown.esc="if (menuOpen) { $event.stopPropagation(); closeMenu(true); }"
+      >
         <div class="pp-sec-h">
           <h4>{{ t('photosPanelAlbums') }}</h4>
           <button
@@ -100,7 +104,6 @@
           role="group"
           :aria-label="t('photosPanelAddToAlbum')"
           data-panel-menu
-          @keydown.esc.stop="closeMenu(true)"
         >
           <button
             v-for="a in allAlbums"
